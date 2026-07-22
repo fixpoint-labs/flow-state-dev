@@ -274,7 +274,7 @@ export type {
   SkillState,
   SkillsCollectionMeta,
   ToolCatalog,
-  WorkerSpec,
+  AgentSpec,
 } from "./skill";
 
 export type { Agent, AgentOverrides, AgentRegistry } from "./agent";

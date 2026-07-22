@@ -1,14 +1,16 @@
 /**
  * Tests for the runtime delegation surface (FIX-918): a bound skill with
- * `workers:` gives its generator taskTools + one direct tool per worker +
- * `runBoard`, materialized per execution through the async tool seam.
+ * `agents:` gives its generator the board-commanded surface — the eight
+ * `taskTools` plus `runBoard`, and NO per-agent tool. Work reaches an agent
+ * only by being assigned as a task and drained.
  *
- * The drain test is the load-bearing one: the executive plans tasks on its
- * own-state ledger (`addTask` with assignee/deps/input), then `runBoard`
- * executes the graph — analysts before the dep-gated synthesizer — with
- * deterministic handler workers, no model. A second plan-then-run on the SAME
- * ledger drains only the new pending tasks: run identity comes from task
- * status, not from a manufactured per-call collection id.
+ * The drain test is load-bearing: the executive plans tasks on its own-state
+ * ledger (`addTask` with assignee/deps/input), then `runBoard` executes the
+ * graph — analysts before the dep-gated synthesizer. To keep it deterministic
+ * (no model), the agents are `agent-ref`s whose injected `materializeAgent`
+ * returns handler board-workers. A second plan-then-run on the SAME ledger
+ * drains only the new pending tasks: run identity comes from task status, not a
+ * manufactured per-call collection id.
  */
 import { describe, expect, it, vi } from "vitest";
 import { generator, handler } from "@flow-state-dev/core";
@@ -21,10 +23,10 @@ import { taskWorkerInputSchema } from "../../src/task-board";
 import { createMockSkillsCollection } from "./mocks";
 
 // ---------------------------------------------------------------------------
-// Fixtures
+// Fixtures — deterministic handler board-workers, staffed via agent-ref +
+// an injected materializeAgent (no model in the loop).
 // ---------------------------------------------------------------------------
 
-/** Deterministic board workers (TaskWorkerInput consumers) — no model. */
 const analystBlock = handler({
   name: "analyst",
   inputSchema: taskWorkerInputSchema.extend({
@@ -45,16 +47,28 @@ const synthesizerBlock = handler({
   }),
 });
 
+/** A registry + materializer that staff each agent key with a handler worker. */
+function deterministicAgents() {
+  const agentRegistry = {
+    get: vi.fn(async (name: string) => ({ name })),
+    list: vi.fn(async () => [{ name: "analyst-agent" }, { name: "synthesizer-agent" }]),
+  };
+  const materializeAgent = vi.fn((_agent: unknown, opts: { workerKey?: string }) =>
+    (opts.workerKey === "synthesizer" ? synthesizerBlock : analystBlock) as never,
+  );
+  return { agentRegistry, materializeAgent };
+}
+
 const teamSkill: InitialSkill = {
   name: "research-team",
   skillMd: [
     "---",
     "description: research team skill",
-    "workers:",
+    "agents:",
     "  analyst:",
-    "    block-ref: analyst",
+    "    agent-ref: analyst-agent",
     "  synthesizer:",
-    "    block-ref: synthesizer",
+    "    agent-ref: synthesizer-agent",
     "---",
     "",
     "Plan tasks with addTask, then call runBoard.",
@@ -65,8 +79,8 @@ const promptSkill: InitialSkill = {
   name: "brief",
   skillMd: [
     "---",
-    "description: single prompt worker",
-    "workers:",
+    "description: single inline agent",
+    "agents:",
     "  briefer:",
     "    prompt: You write briefs.",
     "---",
@@ -138,10 +152,12 @@ async function resolveTools(
   return (tools as GeneratorTool[]) ?? [];
 }
 
+function toolName(t: GeneratorTool): string | undefined {
+  return (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name;
+}
+
 function toolNamed(tools: GeneratorTool[], name: string): GeneratorTool {
-  const tool = tools.find(
-    (t) => ((t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name) === name,
-  );
+  const tool = tools.find((t) => toolName(t) === name);
   if (!tool) throw new Error(`tool not found: ${name}`);
   return tool;
 }
@@ -150,7 +166,7 @@ function buildTeamGenerator() {
   const skills = createSkillsLibrary({
     catalog: {},
     initialSkills: [teamSkill],
-    blocks: { analyst: analystBlock as never, synthesizer: synthesizerBlock as never },
+    ...deterministicAgents(),
   });
   return generator({
     name: "executive",
@@ -162,22 +178,21 @@ function buildTeamGenerator() {
 }
 
 // ---------------------------------------------------------------------------
-// Surface shape
+// Surface shape — board-only, no per-agent tools
 // ---------------------------------------------------------------------------
 
 describe("delegation surface — installed tools", () => {
-  it("installs taskTools, one tool per worker, and runBoard for an active worker skill", async () => {
+  it("installs taskTools + runBoard, and NO per-agent tool, for an active agent skill", async () => {
     const gen = buildTeamGenerator();
     const { ctx } = buildExecCtx();
-    const names = (await resolveTools(gen, ctx)).map(
-      (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
-    );
-    expect(names).toEqual(
-      expect.arrayContaining(["addTask", "listTasks", "analyst", "synthesizer", "runBoard"]),
-    );
+    const names = (await resolveTools(gen, ctx)).map(toolName);
+    expect(names).toEqual(expect.arrayContaining(["addTask", "listTasks", "runBoard"]));
+    // The board commands agents; the host never calls an agent as a tool.
+    expect(names).not.toContain("analyst");
+    expect(names).not.toContain("synthesizer");
   });
 
-  it("installs nothing for a skill without workers", async () => {
+  it("installs nothing for a skill without agents", async () => {
     const skills = createSkillsLibrary({
       catalog: {},
       initialSkills: [
@@ -192,9 +207,7 @@ describe("delegation surface — installed tools", () => {
       uses: [skills.with({ active: ["plain"] } as never)],
     });
     const { ctx } = buildExecCtx();
-    const names = (await resolveTools(gen, ctx)).map(
-      (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
-    );
+    const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).not.toContain("runBoard");
     expect(names).not.toContain("addTask");
   });
@@ -212,7 +225,7 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
     const addTask = toolNamed(tools, "addTask");
     const runBoard = toolNamed(tools, "runBoard");
 
-    // The executive plans: two analysts in parallel, a synthesizer gated on both.
+    // The executive plans: two analyst tasks in parallel, a synthesizer gated on both.
     const a = (await runForTest(
       addTask,
       { goal: "market analysis", assignee: "analyst", input: { subject: "ACME market" } },
@@ -289,21 +302,21 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cross-skill worker dedupe
+// Cross-skill agent dedupe
 // ---------------------------------------------------------------------------
 
-describe("delegation surface — two active skills sharing a worker", () => {
-  it("dedupes an identical worker spec into one tool; distinct specs still collide", async () => {
+describe("delegation surface — two active skills sharing an agent", () => {
+  it("dedupes an identical agent spec across skills; a divergent spec fails loud at build", async () => {
     const skillA: InitialSkill = {
       name: "team-a",
       skillMd: [
         "---",
         "description: a",
-        "workers:",
+        "agents:",
         "  analyst:",
-        "    block-ref: analyst",
+        "    agent-ref: analyst-agent",
         "  synthesizer:",
-        "    block-ref: synthesizer",
+        "    agent-ref: synthesizer-agent",
         "---",
         "",
         "a",
@@ -314,9 +327,9 @@ describe("delegation surface — two active skills sharing a worker", () => {
       skillMd: [
         "---",
         "description: b",
-        "workers:",
+        "agents:",
         "  synthesizer:",
-        "    block-ref: synthesizer",
+        "    agent-ref: synthesizer-agent",
         "---",
         "",
         "b",
@@ -325,8 +338,9 @@ describe("delegation surface — two active skills sharing a worker", () => {
     const skills = createSkillsLibrary({
       catalog: {},
       initialSkills: [skillA, skillB],
-      blocks: { analyst: analystBlock as never, synthesizer: synthesizerBlock as never },
+      ...deterministicAgents(),
     });
+    // Identical `synthesizer` spec across both skills → builds without collision.
     const gen = generator({
       name: "g",
       model: "openai/gpt-5.4-mini",
@@ -335,10 +349,9 @@ describe("delegation surface — two active skills sharing a worker", () => {
       uses: [skills.with({ active: ["team-a", "team-b"] } as never)],
     });
     const { ctx } = buildExecCtx();
-    const names = (await resolveTools(gen, ctx)).map(
-      (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
-    );
-    expect(names.filter((n) => n === "synthesizer")).toHaveLength(1);
+    const names = (await resolveTools(gen, ctx)).map(toolName);
+    expect(names).toEqual(expect.arrayContaining(["addTask", "runBoard"]));
+    expect(names).not.toContain("synthesizer");
 
     // A DIFFERENT spec under the same key is a real collision — fails at build.
     const conflicting: InitialSkill = {
@@ -346,7 +359,7 @@ describe("delegation surface — two active skills sharing a worker", () => {
       skillMd: [
         "---",
         "description: c",
-        "workers:",
+        "agents:",
         "  synthesizer:",
         "    prompt: You synthesize differently.",
         "---",
@@ -357,7 +370,7 @@ describe("delegation surface — two active skills sharing a worker", () => {
     const skills2 = createSkillsLibrary({
       catalog: {},
       initialSkills: [skillA, conflicting],
-      blocks: { analyst: analystBlock as never, synthesizer: synthesizerBlock as never },
+      ...deterministicAgents(),
     });
     expect(() =>
       generator({
@@ -367,21 +380,21 @@ describe("delegation surface — two active skills sharing a worker", () => {
         inputSchema: z.object({}),
         uses: [skills2.with({ active: ["team-a", "team-c"] } as never)],
       }),
-    ).toThrow(/collides/);
+    ).toThrow(/different spec/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// agent-ref workers
+// agent-ref agents
 // ---------------------------------------------------------------------------
 
-describe("delegation surface — agent-ref workers", () => {
+describe("delegation surface — agent-ref agents", () => {
   const agentSkill: InitialSkill = {
     name: "agent-team",
     skillMd: [
       "---",
-      "description: agent worker skill",
-      "workers:",
+      "description: agent-ref skill",
+      "agents:",
       "  scout:",
       "    agent-ref: scout-agent",
       "---",
@@ -390,10 +403,10 @@ describe("delegation surface — agent-ref workers", () => {
     ].join("\n"),
   };
 
-  it("materializes an agent-ref worker through the injected registry", async () => {
-    const scoutDef = handler({
+  it("materializes an agent-ref agent through the injected registry — no host tool", async () => {
+    const scoutBlock = handler({
       name: "scout",
-      inputSchema: z.object({ input: z.string() }),
+      inputSchema: taskWorkerInputSchema,
       outputSchema: z.string(),
       execute: async () => "scouted",
     });
@@ -402,7 +415,7 @@ describe("delegation surface — agent-ref workers", () => {
       get: vi.fn(async (name: string) => (name === "scout-agent" ? agent : undefined)),
       list: vi.fn(async () => [agent]),
     };
-    const materializeAgent = vi.fn(() => scoutDef as never);
+    const materializeAgent = vi.fn(() => scoutBlock as never);
     const skills = createSkillsLibrary({
       catalog: {},
       initialSkills: [agentSkill],
@@ -417,17 +430,13 @@ describe("delegation surface — agent-ref workers", () => {
       uses: [skills.with({ active: ["agent-team"] } as never)],
     });
     const { ctx } = buildExecCtx();
-    const tools = await resolveTools(gen, ctx);
-    // Direct tool + board-mode worker both materialize through the registry.
+    const names = (await resolveTools(gen, ctx)).map(toolName);
+    // The agent is a board participant, resolved through the registry — but it
+    // is NOT a host tool.
     expect(agentRegistry.get).toHaveBeenCalledWith("scout-agent");
     expect(materializeAgent).toHaveBeenCalled();
-    expect(
-      tools.some(
-        (t) =>
-          ((t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name) ===
-          "scout",
-      ),
-    ).toBe(true);
+    expect(names).toEqual(expect.arrayContaining(["addTask", "runBoard"]));
+    expect(names).not.toContain("scout");
   });
 
   it("a static agent-ref skill without registry wiring fails loud at build time", () => {
@@ -448,11 +457,11 @@ describe("delegation surface — agent-ref workers", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Runtime-activated worker skills
+// Runtime-activated agent skills
 // ---------------------------------------------------------------------------
 
 describe("delegation surface — runtime activations", () => {
-  it("a worker skill activated at an explicit location contributes tools on resolution", async () => {
+  it("an agent skill activated at an explicit location contributes tools on resolution", async () => {
     const skills = createSkillsLibrary({
       catalog: {},
       initialSkills: [promptSkill],
@@ -472,10 +481,11 @@ describe("delegation surface — runtime activations", () => {
     (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
       { name: "brief", mode: "inline", activatedAt: 1 },
     ];
-    const names = (await resolveTools(gen, ctx)).map(
-      (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
-    );
-    expect(names).toEqual(expect.arrayContaining(["briefer", "addTask", "runBoard"]));
+    const names = (await resolveTools(gen, ctx)).map(toolName);
+    // The board surface installs on activation; the inline agent is a board
+    // participant, not a host tool.
+    expect(names).toEqual(expect.arrayContaining(["addTask", "runBoard"]));
+    expect(names).not.toContain("briefer");
   });
 
   it("no activation → no delegation tools (board stays a dormant declaration)", async () => {
@@ -495,10 +505,7 @@ describe("delegation surface — runtime activations", () => {
       ],
     });
     const { ctx } = buildExecCtx();
-    const names = (await resolveTools(gen, ctx)).map(
-      (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
-    );
-    expect(names).not.toContain("briefer");
+    const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).not.toContain("runBoard");
   });
 });
@@ -508,7 +515,7 @@ describe("delegation surface — runtime activations", () => {
 // ---------------------------------------------------------------------------
 
 describe("delegation surface — guidance", () => {
-  it("renders the playbook plus the live roster", async () => {
+  it("renders the playbook plus the live agent roster", async () => {
     const gen = buildTeamGenerator();
     const { ctx } = buildExecCtx();
     const fns: Array<(i: unknown, c: unknown) => unknown> = [];

@@ -88,10 +88,7 @@ export {
   buildUserMessage,
   materializeWorker,
   workerInputSchema,
-  directWorkerInputSchema,
   type WorkerMaterializationDeps,
-  type MaterializeWorkerOptions,
-  type WorkerMaterializeMode,
 } from "./worker-materializer";
 
 export {

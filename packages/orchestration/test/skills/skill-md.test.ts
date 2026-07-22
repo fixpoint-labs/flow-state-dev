@@ -214,7 +214,7 @@ describe("kebabToCamel / camelToKebab", () => {
 
 
 // ---------------------------------------------------------------------------
-// Delegation workers parsing — FIX-918
+// Delegation agents parsing — FIX-918
 // ---------------------------------------------------------------------------
 
 const baseHeader = `description: company research`;
@@ -223,11 +223,11 @@ function withFrontmatter(extra: string): string {
   return `---\n${baseHeader}\n${extra}\n---\n\nbody`;
 }
 
-describe("parseSkillMd — delegation workers", () => {
-  it("parses a standalone `workers:` map (no pattern) into state.workers", () => {
+describe("parseSkillMd — delegation agents", () => {
+  it("parses a standalone `agents:` map into state.agents", () => {
     const text = withFrontmatter(
       [
-        `workers:`,
+        `agents:`,
         `  analyst:`,
         `    prompt-ref: ./reference/analyst.md`,
         `  writer:`,
@@ -235,16 +235,16 @@ describe("parseSkillMd — delegation workers", () => {
       ].join("\n"),
     );
     const { state, warnings } = parseSkillMd(text);
-    expect(state.workers?.analyst?.promptRef).toBe("./reference/analyst.md");
-    expect(state.workers?.writer?.prompt).toBe("Write the final report.");
-    // Declaring `workers:` is sufficient — no `pattern:` required, no warning.
-    expect(warnings.some((w) => w.includes("workers"))).toBe(false);
+    expect(state.agents?.analyst?.promptRef).toBe("./reference/analyst.md");
+    expect(state.agents?.writer?.prompt).toBe("Write the final report.");
+    // Declaring `agents:` is sufficient — no `pattern:` required, no warning.
+    expect(warnings.some((w) => w.includes("agents"))).toBe(false);
   });
 
   it("parses inline `prompt: |` literal block scalars and visibility", () => {
     const text = withFrontmatter(
       [
-        `workers:`,
+        `agents:`,
         `  synth:`,
         `    prompt: |`,
         `      You write the report.`,
@@ -253,10 +253,10 @@ describe("parseSkillMd — delegation workers", () => {
       ].join("\n"),
     );
     const { state } = parseSkillMd(text);
-    expect(state.workers?.synth?.prompt).toMatch(
+    expect(state.agents?.synth?.prompt).toMatch(
       /You write the report\.\nUse prior findings\./,
     );
-    expect(state.workers?.synth?.itemVisibility).toEqual({
+    expect(state.agents?.synth?.itemVisibility).toEqual({
       client: true,
       history: true,
     });
@@ -265,7 +265,7 @@ describe("parseSkillMd — delegation workers", () => {
   it("parses agent-ref + agent-overrides without resolving them", () => {
     const text = withFrontmatter(
       [
-        `workers:`,
+        `agents:`,
         `  vet:`,
         `    agent-ref: research-analyst`,
         `    agent-overrides:`,
@@ -274,25 +274,25 @@ describe("parseSkillMd — delegation workers", () => {
       ].join("\n"),
     );
     const { state } = parseSkillMd(text);
-    expect(state.workers?.vet?.agentRef).toBe("research-analyst");
-    expect(state.workers?.vet?.agentOverrides).toEqual({
+    expect(state.agents?.vet?.agentRef).toBe("research-analyst");
+    expect(state.agents?.vet?.agentOverrides).toEqual({
       tools: ["search", "fetch"],
       model: "anthropic/claude-haiku",
     });
   });
 
-  it("rejects a worker with zero of prompt/prompt-ref/block-ref/agent-ref", () => {
+  it("rejects an agent with zero of prompt/prompt-ref/agent-ref", () => {
     const text = withFrontmatter(
-      [`workers:`, `  bare:`, `    tools: [search]`].join("\n"),
+      [`agents:`, `  bare:`, `    tools: [search]`].join("\n"),
     );
     expect(() => parseSkillMd(text)).toThrow(
-      /exactly one of `prompt`, `prompt-ref`, `block-ref`, `agent-ref`/,
+      /exactly one of `prompt`, `prompt-ref`, `agent-ref`/,
     );
   });
 
-  it("rejects a worker with two resolution fields", () => {
+  it("rejects an agent with two resolution fields", () => {
     const text = withFrontmatter(
-      [`workers:`, `  bad:`, `    prompt: hi`, `    prompt-ref: ./x.md`].join("\n"),
+      [`agents:`, `  bad:`, `    prompt: hi`, `    prompt-ref: ./x.md`].join("\n"),
     );
     expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
   });
@@ -300,7 +300,7 @@ describe("parseSkillMd — delegation workers", () => {
   it("rejects agent-overrides without agent-ref", () => {
     const text = withFrontmatter(
       [
-        `workers:`,
+        `agents:`,
         `  w:`,
         `    prompt: hi`,
         `    agent-overrides:`,
@@ -310,15 +310,15 @@ describe("parseSkillMd — delegation workers", () => {
     expect(() => parseSkillMd(text)).toThrow(/agent-overrides[`]? requires/);
   });
 
-  it("rejects an invalid worker key", () => {
+  it("rejects an invalid agent key", () => {
     const text = withFrontmatter(
-      [`workers:`, `  "Bad Key":`, `    prompt: hi`].join("\n"),
+      [`agents:`, `  "Bad Key":`, `    prompt: hi`].join("\n"),
     );
-    expect(() => parseSkillMd(text)).toThrow(/worker key/);
+    expect(() => parseSkillMd(text)).toThrow(/agent key/);
   });
 });
 
-describe("parseSkillMd — removed pattern/fork frontmatter (FIX-918)", () => {
+describe("parseSkillMd — removed pattern/fork/workers/block-ref frontmatter (FIX-918)", () => {
   it("throws a migration error on `context: fork`", () => {
     const text = `---\n${baseHeader}\ncontext: fork\n---\n\nbody`;
     expect(() => parseSkillMd(text)).toThrow(/context: fork.*removed/);
@@ -328,13 +328,31 @@ describe("parseSkillMd — removed pattern/fork frontmatter (FIX-918)", () => {
     const text = withFrontmatter([`pattern: task-board`].join("\n"));
     expect(() => parseSkillMd(text)).toThrow(/pattern.*removed/);
   });
+
+  it("throws a migration error pointing at `agents:` on legacy `workers:`", () => {
+    const text = withFrontmatter(
+      [`workers:`, `  analyst:`, `    prompt: hi`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(
+      /`workers:` was renamed to `agents:`/,
+    );
+  });
+
+  it("throws a migration error pointing at `agent-ref` on a `block-ref:` agent field", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  analyst:`, `    block-ref: analyst`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(
+      /`block-ref` was removed.*agent-ref/s,
+    );
+  });
 });
 
-describe("serializeSkillMd — delegation workers round-trip", () => {
-  it("round-trips a prompt-ref + agent-ref worker map", () => {
+describe("serializeSkillMd — delegation agents round-trip", () => {
+  it("round-trips a prompt-ref + agent-ref agent map", () => {
     const text = withFrontmatter(
       [
-        `workers:`,
+        `agents:`,
         `  market:`,
         `    prompt-ref: ./reference/market.md`,
         `    tools: [search]`,
@@ -349,13 +367,13 @@ describe("serializeSkillMd — delegation workers round-trip", () => {
     const parsed = parseSkillMd(text);
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
-    expect(reparsed.state.workers).toEqual(parsed.state.workers);
+    expect(reparsed.state.agents).toEqual(parsed.state.agents);
   });
 
   it("round-trips an inline `prompt: |` body", () => {
     const text = withFrontmatter(
       [
-        `workers:`,
+        `agents:`,
         `  synth:`,
         `    prompt: |`,
         `      First line.`,
@@ -366,8 +384,8 @@ describe("serializeSkillMd — delegation workers round-trip", () => {
     const parsed = parseSkillMd(text);
     const out = serializeSkillMd(parsed.state, parsed.body);
     const reparsed = parseSkillMd(out);
-    expect(reparsed.state.workers?.synth?.prompt).toBe(
-      parsed.state.workers?.synth?.prompt,
+    expect(reparsed.state.agents?.synth?.prompt).toBe(
+      parsed.state.agents?.synth?.prompt,
     );
   });
 });

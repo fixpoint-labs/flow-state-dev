@@ -99,7 +99,7 @@ export type {
   SkillState,
   SkillsCollectionMeta,
   ToolCatalog,
-  WorkerSpec,
+  AgentSpec,
 } from "./types/skill";
 
 export type {

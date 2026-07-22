@@ -1,16 +1,16 @@
 /**
  * `taskTools` capability — the programmatic surface for a delegation board.
  *
- * When a skill delegates (declares `workers:`), `createSkillsLibrary` installs
+ * When a skill delegates (declares `agents:`), `createSkillsLibrary` installs
  * a private task board on the executive generator's own block state and wires
  * these eight handler-shaped tools (`addTask`/`assignTask`/`completeTask`/
  * `failTask`/`blockTask`/`cancelTask`/`updateTask`/`listTasks`) so the model
- * can enqueue follow-up work, mark a task complete, or query the board.
+ * can assign work, mark a task complete, or query the board.
  *
  * The board is a **ledger** these tools plan on — `addTask` records a row and
  * returns its id; nothing executes it by itself. The executive runs delegated
- * work by calling a worker tool (one task, inline result) or `runBoard` (the
- * delegation surface's drain over this same ledger).
+ * work by assigning tasks (`addTask` with an `assignee` naming an agent) and
+ * then calling `runBoard`, the delegation surface's drain over this same ledger.
  *
  * Board resolution goes through an injectable resolver (FIX-918). The default
  * reads the host generator's own-state board via `ctx.parent` (each handler
@@ -119,9 +119,9 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     name: "addTask",
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
-      "Set assignee to a worker, deps to task ids that must finish first, and input " +
-      "to a structured payload for the worker. Execute the plan with runBoard, or run " +
-      "a single task's work by calling its assignee's worker tool.",
+      "Set assignee to an agent, deps to task ids that must finish first, and input " +
+      "to a structured payload for the agent. Execute the plan by calling runBoard once " +
+      "all tasks are assigned.",
     inputSchema: z.object({
       goal: z.string(),
       assignee: z.string().optional(),

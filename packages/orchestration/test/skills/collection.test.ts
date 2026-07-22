@@ -46,19 +46,19 @@ describe("skillStateSchema", () => {
 
   // The schema is intentionally permissive (passthrough) so it never drops
   // author-declared fields the framework hasn't explicitly modeled. A
-  // delegation skill's `workers:` map (FIX-918) must survive a parse
+  // delegation skill's `agents:` map (FIX-918) must survive a parse
   // round-trip rather than being wiped by state normalization.
-  it("round-trips a delegation `workers` map via passthrough", () => {
+  it("round-trips a delegation `agents` map via passthrough", () => {
     const state = {
       description: "Multi-angle research",
       contextMode: "inline" as const,
-      workers: {
+      agents: {
         analyst: { promptRef: "./reference/analyst.md" },
       },
     };
     const parsed = skillStateSchema.parse(state);
     expect(parsed.contextMode).toBe("inline");
-    expect((parsed as { workers?: unknown }).workers).toEqual(state.workers);
+    expect((parsed as { agents?: unknown }).agents).toEqual(state.agents);
   });
 });
 

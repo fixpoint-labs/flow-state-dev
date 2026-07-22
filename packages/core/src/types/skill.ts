@@ -39,29 +39,34 @@ export type ToolCatalog = Record<string, GeneratorTool>;
 export type SkillContextMode = "inline";
 
 /**
- * A single worker entry under a skill's `workers:` map. Exactly one of
- * `prompt`, `promptRef`, `blockRef`, `agentRef` is set — parsed from
- * kebab-case frontmatter and validated at parse time.
+ * A single agent entry under a skill's `agents:` map (FIX-918). A skill
+ * describes its team as agents — prompt-driven participants — and the board
+ * commands them: work is assigned as tasks and executed by draining the board.
  *
- * `agentRef` and `agentOverrides` resolve through the Agents primitive.
- * The delegation surface materializes each worker into a callable tool.
+ * An agent is defined one of two ways (exactly one resolution field is set,
+ * validated at parse time):
+ *   - **inline** — `prompt` (or `promptRef`) plus optional `tools`/`model`/
+ *     `visibility`. Travels inside the skill folder; a skill stays code-free.
+ *   - **registry** — `agentRef` (+ optional `agentOverrides`), resolving a
+ *     named agent through the supplied AgentRegistry.
+ *
+ * There is no `blockRef`: an arbitrary app block is a *tool* (assign a task to
+ * it — a follow-up), while a prompt-driven participant is an *agent*.
  */
-export interface WorkerSpec {
-  /** Inline prompt body. Substitutions apply at activation. */
+export interface AgentSpec {
+  /** Inline agent: prompt body (the persona). Substitutions apply at activation. */
   prompt?: string;
-  /** Skill-folder-relative path to a prompt file. */
+  /** Inline agent: skill-folder-relative path to a persona prompt file. */
   promptRef?: string;
-  /** Block registry key — caller supplies a populated registry. */
-  blockRef?: string;
-  /** Agent registry key — resolves through the supplied AgentRegistry. */
+  /** Registry agent: agent registry key — resolves through the supplied AgentRegistry. */
   agentRef?: string;
-  /** REPLACE-semantic overrides applied to the resolved agent. Requires agentRef. */
+  /** REPLACE-semantic overrides applied to the resolved registry agent. Requires agentRef. */
   agentOverrides?: AgentOverrides;
-  /** Tool catalog keys made available to a prompt-driven worker. */
+  /** Tool catalog keys an inline agent may call directly (incl. `taskTools`). */
   tools?: string[];
   /** Visibility controlling client delivery and history inclusion. Defaults to `{ client: true, history: false }`. */
   itemVisibility?: ItemVisibility;
-  /** Model id override. Falls back to the deps' default. */
+  /** Model id override for an inline agent. Falls back to the deps' default. */
   model?: string;
 }
 
@@ -105,14 +110,15 @@ export interface SkillState {
   _preservedFields?: Record<string, unknown>;
 
   /**
-   * Declared delegation workers, parsed from the `workers:` frontmatter
-   * field independent of any execution mode (FIX-918). A bound skill that
-   * declares `workers:` turns on the delegation surface in
-   * `createSkillsLibrary`: a private task board, `taskTools`, and one
-   * callable tool per worker key. `prompt`/`promptRef` workers are portable
-   * data; `blockRef`/`agentRef` reference app-registered code.
+   * Declared delegation agents, parsed from the `agents:` frontmatter field
+   * (FIX-918). A bound skill that declares `agents:` turns on the delegation
+   * surface in `createSkillsLibrary`: a private task board, `taskTools`, and a
+   * board-drain tool. The skill assigns work as tasks (`addTask` with an
+   * `assignee` naming an agent) and executes the graph by draining the board —
+   * there are no per-agent host tools. `prompt`/`promptRef` agents are portable
+   * data (inline, code-free); `agentRef` references a registered agent.
    */
-  workers?: Record<string, WorkerSpec>;
+  agents?: Record<string, AgentSpec>;
 }
 
 /**

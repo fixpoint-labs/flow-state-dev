@@ -14,10 +14,10 @@
 
 import type {
   AgentOverrides,
+  AgentSpec,
   ItemVisibility,
   Skill,
   SkillState,
-  WorkerSpec,
 } from "@flow-state-dev/core";
 
 // ---------------------------------------------------------------------------
@@ -48,8 +48,8 @@ const KNOWN_KEYS = new Set([
   "when_to_use",
   "argument-hint",
   "keywords",
-  // Delegation workers (FIX-918)
-  "workers",
+  // Delegation agents (FIX-918)
+  "agents",
   // Claude-Code-only fields we explicitly capture/warn about
   "user-invocable",
   "paths",
@@ -64,11 +64,10 @@ const KNOWN_KEYS = new Set([
   "metadata",
 ]);
 
-/** Worker-spec sub-keys recognized at parse time. */
-const WORKER_KNOWN_KEYS = new Set([
+/** Agent-spec sub-keys recognized at parse time. */
+const AGENT_KNOWN_KEYS = new Set([
   "prompt",
   "prompt-ref",
-  "block-ref",
   "agent-ref",
   "agent-overrides",
   "tools",
@@ -79,13 +78,8 @@ const WORKER_KNOWN_KEYS = new Set([
 /** Sub-keys of `agent-overrides`. */
 const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "visibility"]);
 
-/** Mutually-exclusive worker resolution fields. Exactly one must be set. */
-const WORKER_RESOLUTION_FIELDS = [
-  "prompt",
-  "prompt-ref",
-  "block-ref",
-  "agent-ref",
-] as const;
+/** Mutually-exclusive agent resolution fields. Exactly one must be set. */
+const AGENT_RESOLUTION_FIELDS = ["prompt", "prompt-ref", "agent-ref"] as const;
 
 /**
  * Claude-Code fields we silently ignore at runtime but warn about so users
@@ -136,71 +130,85 @@ export function validateSkillName(name: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Delegation workers parser (FIX-918)
+// Delegation agents parser (FIX-918)
 // ---------------------------------------------------------------------------
 
-/** Pattern a worker key must match. Kebab/snake-case, ASCII alphanumeric. */
-const WORKER_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+/** Pattern an agent key must match. Kebab/snake-case, ASCII alphanumeric. */
+const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 /**
- * Parse the `workers:` frontmatter field into a typed worker map. Decoupled
- * from any execution mode (FIX-918) — declaring `workers:` is what turns on the
- * delegation surface in `createSkillsLibrary`; no `pattern:` is required.
+ * Parse the `agents:` frontmatter field into a typed agent map. Declaring
+ * `agents:` is what turns on the delegation surface in `createSkillsLibrary`:
+ * the skill assigns work as tasks and drains its board; the board runs the
+ * agents. Each entry is one of two shapes — inline (`prompt`/`prompt-ref`) or
+ * a registry reference (`agent-ref`).
  */
-function parseWorkersField(v: unknown): Record<string, WorkerSpec> {
+function parseAgentsField(v: unknown): Record<string, AgentSpec> {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    throw new Error("SKILL.md `workers:` must be a mapping of worker key → spec");
+    throw new Error("SKILL.md `agents:` must be a mapping of agent key → spec");
   }
-  const out: Record<string, WorkerSpec> = {};
+  const out: Record<string, AgentSpec> = {};
   for (const [key, value] of Object.entries(v)) {
-    if (!WORKER_KEY_PATTERN.test(key)) {
+    if (!AGENT_KEY_PATTERN.test(key)) {
       throw new Error(
-        `SKILL.md worker key "${key}" must match /^[a-z0-9][a-z0-9_-]*$/`,
+        `SKILL.md agent key "${key}" must match /^[a-z0-9][a-z0-9_-]*$/`,
       );
     }
-    out[key] = parseWorkerSpec(key, value);
+    out[key] = parseAgentSpec(key, value);
   }
   if (Object.keys(out).length === 0) {
-    throw new Error("SKILL.md `workers:` must contain at least one entry");
+    throw new Error("SKILL.md `agents:` must contain at least one entry");
   }
   return out;
 }
 
-function parseWorkerSpec(key: string, v: unknown): WorkerSpec {
+function parseAgentSpec(key: string, v: unknown): AgentSpec {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    throw new Error(`SKILL.md worker \`${key}\` must be a mapping`);
+    throw new Error(`SKILL.md agent \`${key}\` must be a mapping`);
   }
   const obj = v as Record<string, unknown>;
+
+  // `block-ref` was removed in FIX-918 (mirrors the pattern/fork migration
+  // throw). An arbitrary app block is a *tool*, not an agent — fail loud rather
+  // than silently dropping the field, so an author migrating a PR #854 skill
+  // is pointed at the replacement.
+  if ("block-ref" in obj) {
+    throw new Error(
+      `SKILL.md agent \`${key}\`: \`block-ref\` was removed (FIX-918). An arbitrary app ` +
+        `block is a tool, not an agent — reference a prompt-driven participant with ` +
+        `\`agent-ref\` (registry) or define one inline with \`prompt\`/\`prompt-ref\`.`,
+    );
+  }
+
   for (const k of Object.keys(obj)) {
-    if (!WORKER_KNOWN_KEYS.has(k)) {
+    if (!AGENT_KNOWN_KEYS.has(k)) {
       throw new Error(
-        `SKILL.md worker \`${key}\`: unknown field \`${k}\` (allowed: ${[...WORKER_KNOWN_KEYS].join(", ")})`,
+        `SKILL.md agent \`${key}\`: unknown field \`${k}\` (allowed: ${[...AGENT_KNOWN_KEYS].join(", ")})`,
       );
     }
   }
 
-  const setResolution = WORKER_RESOLUTION_FIELDS.filter((f) => f in obj && obj[f] !== null && obj[f] !== undefined);
+  const setResolution = AGENT_RESOLUTION_FIELDS.filter((f) => f in obj && obj[f] !== null && obj[f] !== undefined);
   if (setResolution.length === 0) {
     throw new Error(
-      `SKILL.md worker \`${key}\`: exactly one of \`prompt\`, \`prompt-ref\`, \`block-ref\`, \`agent-ref\` required`,
+      `SKILL.md agent \`${key}\`: exactly one of \`prompt\`, \`prompt-ref\`, \`agent-ref\` required`,
     );
   }
   if (setResolution.length > 1) {
     throw new Error(
-      `SKILL.md worker \`${key}\`: fields ${setResolution.map((f) => `\`${f}\``).join(", ")} are mutually exclusive — set exactly one`,
+      `SKILL.md agent \`${key}\`: fields ${setResolution.map((f) => `\`${f}\``).join(", ")} are mutually exclusive — set exactly one`,
     );
   }
 
   if ("agent-overrides" in obj && !("agent-ref" in obj)) {
     throw new Error(
-      `SKILL.md worker \`${key}\`: \`agent-overrides\` requires \`agent-ref\``,
+      `SKILL.md agent \`${key}\`: \`agent-overrides\` requires \`agent-ref\``,
     );
   }
 
-  const spec: WorkerSpec = {};
+  const spec: AgentSpec = {};
   if (typeof obj["prompt"] === "string") spec.prompt = obj["prompt"];
   if (typeof obj["prompt-ref"] === "string") spec.promptRef = obj["prompt-ref"];
-  if (typeof obj["block-ref"] === "string") spec.blockRef = obj["block-ref"];
   if (typeof obj["agent-ref"] === "string") spec.agentRef = obj["agent-ref"];
 
   if ("agent-overrides" in obj) {
@@ -210,19 +218,19 @@ function parseWorkerSpec(key: string, v: unknown): WorkerSpec {
   if ("tools" in obj) {
     const t = obj["tools"];
     if (!Array.isArray(t) || !t.every((x) => typeof x === "string")) {
-      throw new Error(`SKILL.md worker \`${key}\`: \`tools\` must be a string list`);
+      throw new Error(`SKILL.md agent \`${key}\`: \`tools\` must be a string list`);
     }
     spec.tools = t as string[];
   }
 
   if ("visibility" in obj) {
-    spec.itemVisibility = parseVisibilityField(`worker \`${key}\``, obj["visibility"]);
+    spec.itemVisibility = parseVisibilityField(`agent \`${key}\``, obj["visibility"]);
   }
 
   if ("model" in obj) {
     const m = obj["model"];
     if (typeof m !== "string") {
-      throw new Error(`SKILL.md worker \`${key}\`: \`model\` must be a string`);
+      throw new Error(`SKILL.md agent \`${key}\`: \`model\` must be a string`);
     }
     spec.model = m;
   }
@@ -230,15 +238,15 @@ function parseWorkerSpec(key: string, v: unknown): WorkerSpec {
   return spec;
 }
 
-function parseAgentOverrides(workerKey: string, v: unknown): AgentOverrides {
+function parseAgentOverrides(agentKey: string, v: unknown): AgentOverrides {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
-    throw new Error(`SKILL.md worker \`${workerKey}\`: \`agent-overrides\` must be a mapping`);
+    throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides\` must be a mapping`);
   }
   const obj = v as Record<string, unknown>;
   for (const k of Object.keys(obj)) {
     if (!AGENT_OVERRIDES_KEYS.has(k)) {
       throw new Error(
-        `SKILL.md worker \`${workerKey}\`: unknown agent-overrides field \`${k}\` (allowed: ${[...AGENT_OVERRIDES_KEYS].join(", ")})`,
+        `SKILL.md agent \`${agentKey}\`: unknown agent-overrides field \`${k}\` (allowed: ${[...AGENT_OVERRIDES_KEYS].join(", ")})`,
       );
     }
   }
@@ -246,19 +254,19 @@ function parseAgentOverrides(workerKey: string, v: unknown): AgentOverrides {
   if ("tools" in obj) {
     const t = obj["tools"];
     if (!Array.isArray(t) || !t.every((x) => typeof x === "string")) {
-      throw new Error(`SKILL.md worker \`${workerKey}\`: \`agent-overrides.tools\` must be a string list`);
+      throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides.tools\` must be a string list`);
     }
     out.tools = t as string[];
   }
   if ("model" in obj) {
     const m = obj["model"];
     if (typeof m !== "string") {
-      throw new Error(`SKILL.md worker \`${workerKey}\`: \`agent-overrides.model\` must be a string`);
+      throw new Error(`SKILL.md agent \`${agentKey}\`: \`agent-overrides.model\` must be a string`);
     }
     out.model = m;
   }
   if ("visibility" in obj) {
-    out.itemVisibility = parseVisibilityField(`worker \`${workerKey}\` agent-overrides`, obj["visibility"]);
+    out.itemVisibility = parseVisibilityField(`agent \`${agentKey}\` agent-overrides`, obj["visibility"]);
   }
   return out;
 }
@@ -789,8 +797,8 @@ export function parseSkillMd(text: string): ParsedSkillMd {
       // parent's context — the opposite of what the author asked for).
       throw new Error(
         v === "fork"
-          ? `SKILL.md \`context: fork\` was removed. For sub-agent isolation, declare \`workers:\` and let the skill delegate; history-inheriting sub-agents are planned separately.`
-          : `SKILL.md \`context: pattern\` was removed. Declare \`workers:\` for delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
+          ? `SKILL.md \`context: fork\` was removed. For sub-agent isolation, declare \`agents:\` and let the skill delegate; history-inheriting sub-agents are planned separately.`
+          : `SKILL.md \`context: pattern\` was removed. Declare \`agents:\` for delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
       );
     }
     if (v === "inline") {
@@ -838,14 +846,24 @@ export function parseSkillMd(text: string): ParsedSkillMd {
   // migration pointer rather than silently reinterpreting the file as inline.
   if ("pattern" in raw && raw["pattern"] !== null && raw["pattern"] !== undefined) {
     throw new Error(
-      `SKILL.md \`pattern:\` was removed (FIX-918). Declare delegation \`workers:\` (a skill with workers gets a task board + one callable tool per worker), or expose a task-board/goalSeekLoop block as an allowed tool for deterministic multi-step recipes.`,
+      `SKILL.md \`pattern:\` was removed (FIX-918). Declare delegation \`agents:\` (a skill with agents gets a task board; assign work as tasks and drain the board), or expose a task-board/goalSeekLoop block as an allowed tool for deterministic multi-step recipes.`,
     );
   }
 
-  // Delegation workers (FIX-918). Parsed independent of any mode — declaring
-  // `workers:` is what turns on the delegation surface in createSkillsLibrary.
+  // Legacy `workers:` frontmatter — renamed to `agents:` in FIX-918. Fail loud
+  // with a migration pointer rather than silently preserving the key (which
+  // would leave the skill with no declared agents and no delegation surface).
   if ("workers" in raw && raw["workers"] !== null && raw["workers"] !== undefined) {
-    state.workers = parseWorkersField(raw["workers"]);
+    throw new Error(
+      `SKILL.md \`workers:\` was renamed to \`agents:\` (FIX-918). Rename the frontmatter key; each entry is an agent defined inline (\`prompt\`/\`prompt-ref\`) or referenced from the registry (\`agent-ref\`).`,
+    );
+  }
+
+  // Delegation agents (FIX-918). Declaring `agents:` is what turns on the
+  // delegation surface in createSkillsLibrary — a private task board the skill
+  // assigns work to and drains.
+  if ("agents" in raw && raw["agents"] !== null && raw["agents"] !== undefined) {
+    state.agents = parseAgentsField(raw["agents"]);
   }
 
   // Warn about ignored Claude-Code fields.
@@ -902,8 +920,8 @@ export function serializeSkillMd(state: SkillState, body: string): string {
     lines.push(`keywords: [${state.keywords.map((k: string) => yamlScalar(k)).join(", ")}]`);
   }
 
-  if (state.workers) {
-    serializeWorkers(lines, state.workers);
+  if (state.agents) {
+    serializeAgents(lines, state.agents);
   }
 
   if (state._preservedFields) {
@@ -917,13 +935,13 @@ export function serializeSkillMd(state: SkillState, body: string): string {
   return lines.join("\n").replace(/\n+$/, "\n");
 }
 
-/** Serialize a skill's `workers:` map (delegation, FIX-918). */
-function serializeWorkers(
+/** Serialize a skill's `agents:` map (delegation, FIX-918). */
+function serializeAgents(
   lines: string[],
-  workers: Record<string, WorkerSpec>,
+  agents: Record<string, AgentSpec>,
 ): void {
-  lines.push("workers:");
-  for (const [key, spec] of Object.entries(workers)) {
+  lines.push("agents:");
+  for (const [key, spec] of Object.entries(agents)) {
     lines.push(`  ${key}:`);
     if (spec.promptRef !== undefined) lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
     if (spec.prompt !== undefined) {
@@ -932,7 +950,6 @@ function serializeWorkers(
       lines.push("    prompt: |");
       for (const ln of spec.prompt.split("\n")) lines.push(`      ${ln}`);
     }
-    if (spec.blockRef !== undefined) lines.push(`    block-ref: ${yamlScalar(spec.blockRef)}`);
     if (spec.agentRef !== undefined) lines.push(`    agent-ref: ${yamlScalar(spec.agentRef)}`);
     if (spec.agentOverrides) {
       lines.push("    agent-overrides:");
