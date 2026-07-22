@@ -121,9 +121,6 @@ async function needsResed(
   if (parsed.state.contextMode !== undefined && persisted.contextMode !== parsed.state.contextMode) {
     return true;
   }
-  if (parsed.state.patternBinding !== undefined && persisted.patternBinding === undefined) {
-    return true;
-  }
   return false;
 }
 

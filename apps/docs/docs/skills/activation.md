@@ -132,9 +132,9 @@ The original tool-call path. The capability's `runSkill` preset is on by default
 The skills capability registers two pieces:
 
 - A dynamic context formatter that lists every enabled skill in the system prompt as `Available skills: - name: description`.
-- The `runSkill` tool. The model calls it with `{ name, input? }`; the router resolves the skill from the collection and dispatches to inline or fork mode.
+- The `runSkill` tool. The model calls it with `{ name, input? }`; the router resolves the skill from the collection and injects its body inline.
 
-The model decides activation. Inline-mode activation patches `activeSkills`; fork-mode runs the skill body as a sub-agent and returns its result.
+The model decides activation. Activation patches `activeSkills`, and the skill's body lands in the generator's prompt on the next step.
 
 This path is appropriate when:
 

@@ -90,7 +90,6 @@ export type {
 export type {
   InitialSkill,
   MatchedSkill,
-  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -99,7 +98,6 @@ export type {
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
-  TaskInitYaml,
   ToolCatalog,
   WorkerSpec,
 } from "./types/skill";

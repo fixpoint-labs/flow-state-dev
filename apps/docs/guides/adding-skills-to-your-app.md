@@ -326,28 +326,9 @@ The seeding step runs once per collection lifetime — after the initial seed, b
 
 If you want to ship skill updates alongside code, the pattern most apps use is: edit the source file, bump a version, and run a migration that overwrites the resource content. The Skills package doesn't prescribe this; it just persists what's in the collection.
 
-## Step 10 (optional): Fork mode for isolated tasks
+## Step 10 (optional): Delegate to sub-workers
 
-Some skills are better as one-shot investigations than as guidance the agent carries forward. Add `context: fork` to the frontmatter:
-
-```markdown
----
-description: Deep research on a topic. Returns a structured report.
-context: fork
-allowed-tools: [search, fetch, crawl]
----
-
-# Research
-
-Given the topic: $ARGUMENTS
-
-Search broadly, fetch the most promising sources, and return a structured
-report with: background, key findings, open questions.
-```
-
-The `runSkill` router spawns a sub-agent generator (the framework's own `generator` block with `itemVisibility: { client: true, history: false }`) running the skill body as its system prompt with only the listed tools. The sub-agent's tool calls and streaming output reach the client for DevTool observability, but don't appear in the parent's conversation history.
-
-The parent sees only a single `runSkill` tool call with the sub-agent's final text as its result.
+Some skills are better handled by a small team than a single agent. A skill that declares a `workers:` field gets a private task board plus one callable tool per worker when it's bound to a generator — the generator hands pieces of its work to those tools and reads the results back. Calling one worker tool is a single-call round-trip: run it as a sub-agent, get the result inline. See [Delegation](/docs/skills/delegation) for the frontmatter shape and the board overrides.
 
 ## Verifying it works
 

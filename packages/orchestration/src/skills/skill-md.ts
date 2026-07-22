@@ -15,11 +15,8 @@
 import type {
   AgentOverrides,
   ItemVisibility,
-  PatternBinding,
   Skill,
-  SkillContextMode,
   SkillState,
-  TaskInitYaml,
   WorkerSpec,
 } from "@flow-state-dev/core";
 
@@ -48,16 +45,11 @@ const KNOWN_KEYS = new Set([
   "allowed-tools",
   "context",
   "disable-model-invocation",
-  "output-schema",
   "when_to_use",
   "argument-hint",
   "keywords",
-  // Pattern binding (this work)
-  "pattern",
-  "collection",
+  // Delegation workers (FIX-918)
   "workers",
-  "initial-tasks",
-  "pattern-config",
   // Claude-Code-only fields we explicitly capture/warn about
   "user-invocable",
   "paths",
@@ -86,17 +78,6 @@ const WORKER_KNOWN_KEYS = new Set([
 
 /** Sub-keys of `agent-overrides`. */
 const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "visibility"]);
-
-/** Sub-keys of an `initial-tasks` entry. */
-const INITIAL_TASK_KEYS = new Set([
-  "id",
-  "goal",
-  "assignee",
-  "deps",
-  "priority",
-  "max-attempts",
-  "metadata",
-]);
 
 /** Mutually-exclusive worker resolution fields. Exactly one must be set. */
 const WORKER_RESOLUTION_FIELDS = [
@@ -155,70 +136,17 @@ export function validateSkillName(name: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Pattern binding parser
+// Delegation workers parser (FIX-918)
 // ---------------------------------------------------------------------------
 
 /** Pattern a worker key must match. Kebab/snake-case, ASCII alphanumeric. */
 const WORKER_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 /**
- * Parse the pattern-binding-related keys from raw frontmatter into a typed
- * PatternBinding. Throws with a precise message on validation failure.
- *
- * The caller has already confirmed `raw["pattern"]` is present and non-null.
+ * Parse the `workers:` frontmatter field into a typed worker map. Decoupled
+ * from any execution mode (FIX-918) — declaring `workers:` is what turns on the
+ * delegation surface in `createSkillsLibrary`; no `pattern:` is required.
  */
-function parsePatternBinding(raw: Record<string, unknown>): PatternBinding {
-  const patternKey = raw["pattern"];
-  if (typeof patternKey !== "string" || patternKey.trim().length === 0) {
-    throw new Error("SKILL.md `pattern:` must be a non-empty string");
-  }
-
-  // Top-level required fields when `pattern` is set.
-  if (!("workers" in raw) || raw["workers"] === null) {
-    throw new Error(
-      `SKILL.md \`pattern: ${patternKey}\` requires a \`workers:\` map`,
-    );
-  }
-
-  const collection = parseCollectionField(raw["collection"]);
-  const workers = parseWorkersField(raw["workers"]);
-  const workerKeys = new Set(Object.keys(workers));
-  const hasInitialTasks = "initial-tasks" in raw && raw["initial-tasks"] !== null;
-  const initialTasks = hasInitialTasks
-    ? parseInitialTasksField(raw["initial-tasks"], workerKeys)
-    : undefined;
-  const patternConfig = parsePatternConfigField(raw["pattern-config"]);
-
-  const binding: PatternBinding = {
-    pattern: patternKey.trim(),
-    workers,
-  };
-  if (initialTasks) binding.initialTasks = initialTasks;
-  if (collection) binding.collection = collection;
-  if (patternConfig) binding.patternConfig = patternConfig;
-  return binding;
-}
-
-function parseCollectionField(
-  v: unknown,
-): { scope: "request" | "session" } | undefined {
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "object" || Array.isArray(v)) {
-    throw new Error("SKILL.md `collection:` must be a mapping with a `scope` field");
-  }
-  const obj = v as Record<string, unknown>;
-  const scope = obj["scope"];
-  if (scope === undefined || scope === null) {
-    return undefined;
-  }
-  if (scope !== "request" && scope !== "session") {
-    throw new Error(
-      `SKILL.md \`collection.scope\` must be "request" or "session" — got ${JSON.stringify(scope)}`,
-    );
-  }
-  return { scope };
-}
-
 function parseWorkersField(v: unknown): Record<string, WorkerSpec> {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
     throw new Error("SKILL.md `workers:` must be a mapping of worker key → spec");
@@ -333,201 +261,6 @@ function parseAgentOverrides(workerKey: string, v: unknown): AgentOverrides {
     out.itemVisibility = parseVisibilityField(`worker \`${workerKey}\` agent-overrides`, obj["visibility"]);
   }
   return out;
-}
-
-function parseInitialTasksField(
-  v: unknown,
-  workerKeys: Set<string>,
-): TaskInitYaml[] {
-  if (!Array.isArray(v)) {
-    throw new Error("SKILL.md `initial-tasks:` must be a list");
-  }
-  const tasks: TaskInitYaml[] = v.map((entry, idx) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error(`SKILL.md \`initial-tasks[${idx}]\` must be a mapping`);
-    }
-    const obj = entry as Record<string, unknown>;
-    for (const k of Object.keys(obj)) {
-      if (!INITIAL_TASK_KEYS.has(k)) {
-        throw new Error(
-          `SKILL.md \`initial-tasks[${idx}]\`: unknown field \`${k}\` (allowed: ${[...INITIAL_TASK_KEYS].join(", ")})`,
-        );
-      }
-    }
-    const goal = obj["goal"];
-    if (typeof goal !== "string" || goal.trim().length === 0) {
-      throw new Error(`SKILL.md \`initial-tasks[${idx}].goal\` is required and must be a non-empty string`);
-    }
-    const out: TaskInitYaml = { goal };
-    if (typeof obj["id"] === "string") out.id = obj["id"];
-    if ("assignee" in obj) {
-      const a = obj["assignee"];
-      if (a !== undefined && a !== null) {
-        if (typeof a !== "string") {
-          throw new Error(`SKILL.md \`initial-tasks[${idx}].assignee\` must be a string`);
-        }
-        out.assignee = a;
-      }
-    }
-    if ("deps" in obj) {
-      const d = obj["deps"];
-      if (d !== undefined && d !== null) {
-        if (!Array.isArray(d) || !d.every((x) => typeof x === "string")) {
-          throw new Error(`SKILL.md \`initial-tasks[${idx}].deps\` must be a string list`);
-        }
-        out.deps = d as string[];
-      }
-    }
-    if ("priority" in obj) {
-      const p = obj["priority"];
-      if (typeof p !== "number") {
-        throw new Error(`SKILL.md \`initial-tasks[${idx}].priority\` must be a number`);
-      }
-      out.priority = p;
-    }
-    if ("max-attempts" in obj) {
-      const m = obj["max-attempts"];
-      if (typeof m !== "number") {
-        throw new Error(`SKILL.md \`initial-tasks[${idx}].max-attempts\` must be a number`);
-      }
-      out.maxAttempts = m;
-    }
-    if ("metadata" in obj) {
-      const md = obj["metadata"];
-      if (md !== null && md !== undefined) {
-        if (typeof md !== "object" || Array.isArray(md)) {
-          throw new Error(`SKILL.md \`initial-tasks[${idx}].metadata\` must be a mapping`);
-        }
-        out.metadata = md as Record<string, unknown>;
-      }
-    }
-    return out;
-  });
-
-  // Auto-assign ids for tasks that don't declare one (so deps can still
-  // reference them via the assignee+position fallback isn't needed — every
-  // task gets a stable id either author-declared or synthesized).
-  const usedIds = new Set<string>();
-  for (const t of tasks) {
-    if (t.id !== undefined) {
-      if (usedIds.has(t.id)) {
-        throw new Error(`SKILL.md \`initial-tasks\` contains duplicate id "${t.id}"`);
-      }
-      usedIds.add(t.id);
-    }
-  }
-  for (let i = 0; i < tasks.length; i++) {
-    if (tasks[i]!.id === undefined) {
-      let candidate = `task-${i + 1}`;
-      let n = i + 1;
-      while (usedIds.has(candidate)) {
-        n++;
-        candidate = `task-${n}`;
-      }
-      tasks[i]!.id = candidate;
-      usedIds.add(candidate);
-    }
-  }
-
-  // Assignees must refer to a known worker key.
-  for (const [i, t] of tasks.entries()) {
-    if (t.assignee !== undefined && !workerKeys.has(t.assignee)) {
-      throw new Error(
-        `SKILL.md \`initial-tasks[${i}].assignee\` references unknown worker "${t.assignee}"`,
-      );
-    }
-  }
-
-  // Deps must reference known task ids; the graph must be acyclic.
-  const idIndex = new Map(tasks.map((t, i) => [t.id!, i]));
-  for (const [i, t] of tasks.entries()) {
-    if (!t.deps) continue;
-    for (const d of t.deps) {
-      if (!idIndex.has(d)) {
-        throw new Error(
-          `SKILL.md \`initial-tasks[${i}].deps\` references unknown task id "${d}"`,
-        );
-      }
-    }
-  }
-  assertAcyclic(tasks);
-
-  return tasks;
-}
-
-function assertAcyclic(tasks: TaskInitYaml[]): void {
-  // Kahn's algorithm decides acyclicity; on failure, walk one of the
-  // surviving SCC nodes back to itself via DFS to surface a concrete
-  // cycle path (more debuggable than "involves a, b, c, ...").
-  const indeg = new Map<string, number>();
-  const adj = new Map<string, string[]>();
-  for (const t of tasks) {
-    indeg.set(t.id!, 0);
-    adj.set(t.id!, []);
-  }
-  for (const t of tasks) {
-    for (const d of t.deps ?? []) {
-      adj.get(d)!.push(t.id!);
-      indeg.set(t.id!, (indeg.get(t.id!) ?? 0) + 1);
-    }
-  }
-  const queue: string[] = [];
-  for (const [id, n] of indeg) if (n === 0) queue.push(id);
-  let visited = 0;
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    visited++;
-    for (const next of adj.get(id) ?? []) {
-      indeg.set(next, (indeg.get(next) ?? 0) - 1);
-      if (indeg.get(next) === 0) queue.push(next);
-    }
-  }
-  if (visited !== tasks.length) {
-    const remaining = [...indeg.entries()].filter(([, n]) => n > 0).map(([id]) => id);
-    const cycle = findCyclePath(adj, remaining) ?? remaining;
-    throw new Error(
-      `SKILL.md \`initial-tasks\` deps form a cycle: ${cycle.join(" → ")}`,
-    );
-  }
-}
-
-/** DFS from each surviving node to find one closed cycle path. */
-function findCyclePath(
-  adj: Map<string, string[]>,
-  surviving: string[],
-): string[] | undefined {
-  const set = new Set(surviving);
-  for (const start of surviving) {
-    const stack: string[] = [start];
-    const onStack = new Set<string>([start]);
-    const visit = (node: string): string[] | undefined => {
-      for (const next of adj.get(node) ?? []) {
-        if (!set.has(next)) continue;
-        if (onStack.has(next)) {
-          const cycleStart = stack.indexOf(next);
-          return [...stack.slice(cycleStart), next];
-        }
-        stack.push(next);
-        onStack.add(next);
-        const result = visit(next);
-        if (result) return result;
-        stack.pop();
-        onStack.delete(next);
-      }
-      return undefined;
-    };
-    const result = visit(start);
-    if (result) return result;
-  }
-  return undefined;
-}
-
-function parsePatternConfigField(v: unknown): Record<string, unknown> | undefined {
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "object" || Array.isArray(v)) {
-    throw new Error("SKILL.md `pattern-config:` must be a mapping");
-  }
-  return v as Record<string, unknown>;
 }
 
 /**
@@ -1050,11 +783,21 @@ export function parseSkillMd(text: string): ParsedSkillMd {
 
   if ("context" in raw) {
     const v = raw["context"];
-    if (v === "fork" || v === "inline" || v === "pattern") {
-      state.contextMode = v as SkillContextMode;
+    if (v === "fork" || v === "pattern") {
+      // FIX-918 removed both non-inline modes. Fail loud rather than silently
+      // downgrade to inline (which would run a would-be sub-agent's work in the
+      // parent's context — the opposite of what the author asked for).
+      throw new Error(
+        v === "fork"
+          ? `SKILL.md \`context: fork\` was removed. For sub-agent isolation, declare \`workers:\` and let the skill delegate; history-inheriting sub-agents are planned separately.`
+          : `SKILL.md \`context: pattern\` was removed. Declare \`workers:\` for delegation, or expose a task-board/goalSeekLoop block as an allowed tool.`,
+      );
+    }
+    if (v === "inline") {
+      state.contextMode = "inline";
     } else if (v !== undefined && v !== null) {
       warnings.push(
-        `\`context\` must be "inline", "fork", or "pattern" — got ${JSON.stringify(v)}; defaulting to inline`,
+        `\`context\` must be "inline" — got ${JSON.stringify(v)}; defaulting to inline`,
       );
     }
   }
@@ -1091,34 +834,18 @@ export function parseSkillMd(text: string): ParsedSkillMd {
     }
   }
 
-  if ("output-schema" in raw) {
-    state.outputSchema = raw["output-schema"];
+  // Legacy `pattern:` frontmatter — removed in FIX-918. Fail loud with a
+  // migration pointer rather than silently reinterpreting the file as inline.
+  if ("pattern" in raw && raw["pattern"] !== null && raw["pattern"] !== undefined) {
+    throw new Error(
+      `SKILL.md \`pattern:\` was removed (FIX-918). Declare delegation \`workers:\` (a skill with workers gets a task board + one callable tool per worker), or expose a task-board/goalSeekLoop block as an allowed tool for deterministic multi-step recipes.`,
+    );
   }
 
-  // Pattern binding. When `pattern:` is present, build a typed binding and
-  // set contextMode to "pattern". Otherwise, warn if pattern-only fields
-  // appear so authors notice they're being ignored.
-  const hasPatternField = "pattern" in raw && raw["pattern"] !== null && raw["pattern"] !== undefined;
-  const orphanPatternKeys = ["workers", "initial-tasks", "pattern-config", "collection"].filter(
-    (k) => k in raw && !hasPatternField,
-  );
-  if (orphanPatternKeys.length > 0) {
-    warnings.push(
-      `frontmatter contains [${orphanPatternKeys.join(", ")}] without \`pattern\` — ignored`,
-    );
-  }
-  if (hasPatternField) {
-    if (state.contextMode && state.contextMode !== "pattern") {
-      throw new Error(
-        `SKILL.md frontmatter sets both \`pattern\` and \`context: ${state.contextMode}\` — context modes are mutually exclusive`,
-      );
-    }
-    state.patternBinding = parsePatternBinding(raw);
-    state.contextMode = "pattern";
-  } else if (state.contextMode === "pattern") {
-    throw new Error(
-      "SKILL.md frontmatter sets `context: pattern` but no `pattern:` field is declared",
-    );
+  // Delegation workers (FIX-918). Parsed independent of any mode — declaring
+  // `workers:` is what turns on the delegation surface in createSkillsLibrary.
+  if ("workers" in raw && raw["workers"] !== null && raw["workers"] !== undefined) {
+    state.workers = parseWorkersField(raw["workers"]);
   }
 
   // Warn about ignored Claude-Code fields.
@@ -1175,8 +902,8 @@ export function serializeSkillMd(state: SkillState, body: string): string {
     lines.push(`keywords: [${state.keywords.map((k: string) => yamlScalar(k)).join(", ")}]`);
   }
 
-  if (state.patternBinding) {
-    serializePatternBinding(lines, state.patternBinding);
+  if (state.workers) {
+    serializeWorkers(lines, state.workers);
   }
 
   if (state._preservedFields) {
@@ -1190,14 +917,13 @@ export function serializeSkillMd(state: SkillState, body: string): string {
   return lines.join("\n").replace(/\n+$/, "\n");
 }
 
-function serializePatternBinding(lines: string[], binding: PatternBinding): void {
-  lines.push(`pattern: ${yamlScalar(binding.pattern)}`);
-  if (binding.collection) {
-    lines.push("collection:");
-    lines.push(`  scope: ${binding.collection.scope}`);
-  }
+/** Serialize a skill's `workers:` map (delegation, FIX-918). */
+function serializeWorkers(
+  lines: string[],
+  workers: Record<string, WorkerSpec>,
+): void {
   lines.push("workers:");
-  for (const [key, spec] of Object.entries(binding.workers)) {
+  for (const [key, spec] of Object.entries(workers)) {
     lines.push(`  ${key}:`);
     if (spec.promptRef !== undefined) lines.push(`    prompt-ref: ${yamlScalar(spec.promptRef)}`);
     if (spec.prompt !== undefined) {
@@ -1228,25 +954,6 @@ function serializePatternBinding(lines: string[], binding: PatternBinding): void
       lines.push(`      history: ${spec.itemVisibility.history}`);
     }
     if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
-  }
-  if (binding.initialTasks && binding.initialTasks.length > 0) {
-    lines.push("initial-tasks:");
-    for (const task of binding.initialTasks) {
-      lines.push(`  - id: ${yamlScalar(task.id ?? "")}`);
-      lines.push(`    goal: ${yamlScalar(task.goal)}`);
-      if (task.assignee !== undefined) lines.push(`    assignee: ${yamlScalar(task.assignee)}`);
-      if (task.deps && task.deps.length > 0)
-        lines.push(`    deps: [${task.deps.map((d) => yamlScalar(d)).join(", ")}]`);
-      if (task.priority !== undefined) lines.push(`    priority: ${task.priority}`);
-      if (task.maxAttempts !== undefined) lines.push(`    max-attempts: ${task.maxAttempts}`);
-      if (task.metadata !== undefined) lines.push(`    metadata: ${yamlValue(task.metadata)}`);
-    }
-  }
-  if (binding.patternConfig) {
-    lines.push("pattern-config:");
-    for (const [k, v] of Object.entries(binding.patternConfig)) {
-      lines.push(`  ${k}: ${yamlValue(v)}`);
-    }
   }
 }
 

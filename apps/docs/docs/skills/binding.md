@@ -47,15 +47,15 @@ const analyst = generator({
 uses: [skills.with({ active: ["detailed-analysis", "cite-sources"] })];
 ```
 
-- **Inline-mode only.** `active` preloads a skill body. Fork and pattern skills are dispatch routes, not context injections, so they can't be preloaded here — they stay on the `runSkill` router (see [Pattern skills](./pattern-skills)).
 - **Declared tools ride along.** Each preloaded skill contributes the tools it names in `allowed-tools`. A skill that declares none is unrestricted, so the whole catalog is contributed.
+- **A preloaded skill can delegate.** If the skill declares a `workers:` field, binding it installs the delegation surface (a private board and callable worker tools) on this generator. See [Delegation](./delegation).
 - **Fails loud on a typo.** A name that isn't a known skill throws at build time. This is an author declaration, not a runtime read, so a silent skip would run the generator without the instructions you asked for. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary` — binding a name with no catalog to check against is itself an error.
 
 Two generators, two different `active` sets, and neither sees the other's skill. That's the whole point.
 
 ## `with({ dynamicActivation })` — let the agent load a skill mid-turn
 
-Sometimes the agent should decide. Turn on `dynamicActivation` and the generator gets a `loadSkill` tool: the model reads a catalog of loadable skills and calls the tool when one applies. The skill's body injects on the next step of the same turn. (The catalog lists only inline skills, since the load tool loads inline bodies — fork/pattern dispatch stays on the v1 `runSkill` router.)
+Sometimes the agent should decide. Turn on `dynamicActivation` and the generator gets a `loadSkill` tool: the model reads a catalog of loadable skills and calls the tool when one applies. The skill's body injects on the next step of the same turn.
 
 ```ts
 const worker = generator({
@@ -67,7 +67,6 @@ const worker = generator({
 ```
 
 - `allowed` is the set the load tool may pull from. Omit it for the whole catalog. Like `active`, it contributes those skills' declared tools so a loaded skill can call the tools its body references.
-- The load tool is **inline-only**. A fork or pattern skill in `allowed` is rejected.
 
 By default the activation is stored in the generator's **own block state** — request-scoped and private. So it stays with this generator, and it does not carry into the next turn. That's usually what you want for a mid-task pickup.
 

@@ -8,8 +8,8 @@
  *     primitives for working with the on-disk format.
  *   - `createRunSkillTool` — the router tool, exported for embedding in
  *     custom generator configurations that don't go through the capability.
- *   - `createSkillForkGenerator`, `inlineActivate` — the two dispatch
- *     branches, exported so custom tool wiring can reuse them.
+ *   - `inlineActivate` — the inline activation branch, exported so custom
+ *     tool wiring can reuse it.
  *   - `buildSkillsCatalogContext`, `buildActiveSkillsContext` — the dynamic
  *     context formatters, exported for the same reason.
  *   - `createSkillsCapability` — the recommended path: bundles all of the
@@ -81,49 +81,31 @@ export {
   pushActiveSkill,
   readActiveSkills,
   unionAllowedTools,
-  type ActivePatternMeta,
   type ActiveSkillEntry,
 } from "./active-skill-state";
-
-export {
-  createPatternRegistry,
-  type MaterializedPattern,
-  type PatternFactory,
-  type PatternRegistry,
-  type PatternRegistryDeps,
-} from "./pattern-registry";
 
 export {
   buildUserMessage,
   materializeWorker,
   workerInputSchema,
+  directWorkerInputSchema,
+  type WorkerMaterializationDeps,
+  type MaterializeWorkerOptions,
+  type WorkerMaterializeMode,
 } from "./worker-materializer";
-
-export {
-  createPatternRunRoute,
-  type PatternRunRouterOptions,
-} from "./pattern-run";
 
 export {
   createTaskToolsCapability,
   taskTools,
+  defaultOwnStateResolver,
+  DELEGATION_BOARD_FIELD,
+  delegationBoardSchema,
+  type TaskCollectionResolver,
 } from "./task-tools-capability";
-
-export {
-  getActivePatternCollection,
-  getActivePatternMeta,
-} from "./active-pattern-collection";
 
 export {
   ensureSeeded,
 } from "./seeding";
-
-export {
-  createSkillForkGenerator,
-  forkInputSchema,
-  type CreateSkillForkGeneratorOptions,
-  type SkillForkInput,
-} from "./fork-generator";
 
 export {
   inlineActivate,

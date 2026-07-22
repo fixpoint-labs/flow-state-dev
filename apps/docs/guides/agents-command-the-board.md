@@ -1,18 +1,18 @@
 ---
 title: Agents that command the board
 sidebar_label: Agents command the board
-description: Let a model add, assign, and complete tasks while the board drains, using the taskTools surface inside a pattern skill.
+description: Let a model add, assign, and complete tasks on a private delegation board, using the taskTools surface a skill's workers field installs.
 ---
 
 # Agents that command the board
 
 So far the tasks on a board were decided by your code — a fixed `initialTasks`
 list, or a router that computed them up front. Sometimes you want the *model* to
-decide the work while the board is running: look at the input, then enqueue
-however many tasks the situation calls for. That's what `taskTools` is for.
+decide the work as it goes: look at the input, then track however many tasks the
+situation calls for. That's what `taskTools` is for.
 
-`taskTools` is a small tool surface a worker can carry. When the worker is a
-generator, the model can call these tools mid-drain to shape the board:
+`taskTools` is a small tool surface a generator can carry. The model calls these
+tools to shape a task board — a ledger it keeps while it works:
 
 | Tool | What the agent does |
 |------|---------------------|
@@ -23,81 +23,72 @@ generator, the model can call these tools mid-drain to shape the board:
 | `updateTask` | Patch priority, metadata, assignee, or labels. |
 | `listTasks` | Read the board, filtered by status or assignee. |
 
-The classic use is **runtime fan-out**: one worker discovers how much work there
-is and queues the rest. The [research team](./building-a-research-team) example
-ships exactly this as the `competitor-analysis` skill — a discoverer worker
-finds 3-5 competitors, calls `addTask` once per competitor plus one for a
-synthesizer that depends on all of them, and the board drains what it queued:
+## Where the board comes from
 
-```markdown title="skills/competitor-analysis/SKILL.md (frontmatter)"
-pattern: task-board
+`taskTools` needs a board to command. A generator gets one by binding a skill
+that declares `workers:`. When a skill declares workers, the skills library
+installs a **private task board** on that generator — own-state, scoped to the
+one generator, not shared with anything else — plus the `taskTools` and one
+callable tool per worker. This is delegation. See
+[Delegation](/docs/skills/delegation) for the full authoring surface.
+
+```markdown title="skills/research-lead/SKILL.md (frontmatter)"
+context: inline
 workers:
-  discoverer:
-    prompt-ref: ./reference/discover.md
-    tools: [search, taskTools]   # ← taskTools on the worker that fans out
-  analyzer:
-    prompt-ref: ./reference/analyze.md
+  researcher:
+    prompt-ref: ./reference/research.md
     tools: [search, fetch]
-  synthesizer:
-    prompt-ref: ./reference/synthesize.md
-initial-tasks:
-  - id: discover
-    goal: Find 3-5 competitors for $ARGUMENTS, then addTask one analyzer per
-          competitor plus a synthesizer whose deps cover them.
-    assignee: discoverer
+  writer:
+    prompt-ref: ./reference/write.md
 ```
 
-The discoverer's prompt tells it to enqueue the work:
+Binding that skill to a generator gives it a `researcher` tool, a `writer` tool,
+the eight `taskTools`, and a private board they write to.
 
-> Use `search` to find the competitors. For each, call `addTask({ goal, assignee: "analyzer" })` and collect the ids. Then `addTask({ goal, assignee: "synthesizer", deps: [...those ids] })`.
+## The board is a ledger, not an engine
 
-## Giving a worker taskTools
+The one thing to keep straight: **nothing auto-runs the board.**
+`addTask({ goal, assignee: "researcher" })` writes a ledger row — it does not
+execute anything. There's no drain loop watching the board and dispatching rows
+to workers. That auto-dispatch is a property of a code-defined `taskBoard`, not
+of a delegation board.
 
-Opt a worker in by putting `taskTools` in **that worker's own `tools:` list**,
-as the discoverer does above. Listing it only in the skill's top-level
-`allowed-tools` does not install it on the worker — the pattern materializer
-composes the capability per-worker from the worker's own `tools`.
+The way the generator actually runs delegated work is by **calling a worker
+tool**. `researcher("adoption of WebTransport")` runs the worker and returns its
+result inline, in one call. So the model's loop looks like:
 
-For an `agent-ref` worker (staffed by a `defineAgent`'d agent), the worker's
-`tools:` field isn't read; put `taskTools` in the agent's `allowedTools` or in
-`agent-overrides.tools` instead. See [Pattern skills](/docs/skills/pattern-skills).
+> Call `addTask` to note the subtopics you plan to cover. Then call the
+> `researcher` tool for each one, collect the findings, and call the `writer`
+> tool with them. Use `completeTask`/`listTasks` to keep the ledger current.
 
-## Why this runs as a skill
+The board tracks the plan; the worker tools do the work. That split is the whole
+model — one call to a worker is the single-shot "run this as a sub-agent, get the
+result" path, with no board choreography required.
 
-`taskTools` resolves *which* board to command by looking at the **active pattern
-skill**. When a `pattern: task-board` skill is dispatched (via `runSkill`), the
-runtime records that the pattern is active, and every `taskTools` call resolves
-that skill's live collection. That's why the example is a `SKILL.md`: the skill
-dispatch is what gives `addTask` a board to add to.
+## When you want real concurrency
 
-Concretely, an agent commanding the board works today when the board is run as a
-pattern skill. The agent doesn't need to know the collection id or anything about
-the substrate — it just calls `addTask`, and the tool finds the active board.
+Worker tools serialize: the generator calls one, waits, calls the next. If you
+need analysts running in parallel, or a synthesizer gated on all of them, a
+serialized executive is the wrong shape. Reach for a code-defined
+[task board](/docs/orchestration/task-board) instead — it drains under its own
+concurrency and dispatcher — and call it as a single tool. A `taskBoard(...).drain`
+is a block, and [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
+Register the drain block in the skills catalog, list it under the skill's
+`allowed-tools`, and the generator calls the whole board as one tool, getting
+back only the finalized result.
 
-## The current limitation
+So the two shapes are:
 
-`taskTools` has no board to resolve **outside** an active pattern skill. If you
-mount a `taskBoard` directly in a flow action (a "code-first" board, no skill)
-and give a generator `taskTools`, every call returns
-`{ ok: false, error: "no_active_pattern" }` — a bare `taskBoard` doesn't register
-itself as an active pattern, so there's nothing for the tool to target.
-
-So the choices today are:
-
-- **Agent decides the tasks →** run the board as a `pattern: task-board` skill and
-  give the fan-out worker `taskTools`. Works now (this guide).
-- **Your code decides the tasks →** a code-first board with `initialTasks` or a
-  router. Blocks inside the flow can still add tasks directly with
-  `getOrCreateTaskCollection(...).addTask(...)` (see [The board lifecycle](./board-lifecycle));
-  that's *code* commanding the board, not an agent via tools.
-
-A collection-bound `taskTools` variant — one you point at a specific
-`collectionId` so an agent can command a code-first board without the skill
-wrapper — is planned but not shipped. Until then, reach for the skill form when
-you want a *model* driving the board.
+- **The model tracks and drives the work itself →** a delegation skill with
+  `workers:`. The board is a ledger; the model calls workers. Serialized, but the
+  model stays in charge of each step (this guide).
+- **The work is a concurrent or dependency-ordered graph →** a code-defined
+  `taskBoard` called as a tool, or mounted directly in a flow. The board's own
+  dispatch runs the parallel work.
 
 ## Related
 
-- [Building a research team](./building-a-research-team) — includes the `competitor-analysis` fan-out skill.
-- [The board lifecycle](./board-lifecycle) — how blocks (as opposed to agents) add tasks to a board.
-- [Pattern skills](/docs/skills/pattern-skills) — the `taskTools` reference and worker wiring.
+- [Delegation](/docs/skills/delegation) — the `workers:` field, the private board, and the `taskTools` ledger.
+- [Building a research team](/guides/building-a-research-team) — a board that drains itself under concurrency.
+- [The board lifecycle](/guides/board-lifecycle) — how blocks (as opposed to agents) add tasks to a board.
+- [Task board](/docs/orchestration/task-board) — the concurrent-drain primitive you can call as a tool.

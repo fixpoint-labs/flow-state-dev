@@ -2,13 +2,13 @@
 
 Agent registry and materialization for flow-state-dev.
 
-An **Agent** is a named, reusable participant composed of a Persona (its system-prompt identity), a model, and tools. Register agents once, reference them from pattern skills via `agent-ref`, or compose them into any flow as standalone blocks.
+An **Agent** is a named, reusable participant composed of a Persona (its system-prompt identity), a model, and tools. Register agents once, reference them as delegation workers via `agent-ref`, or compose them into any flow as standalone blocks.
 
 ## Quick Start
 
 ```ts
 import { defineAgent, createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
-import { createSkillsCapability } from "@flow-state-dev/orchestration";
+import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 
 const analyst = defineAgent({
   name: "research-analyst",
@@ -20,22 +20,29 @@ const analyst = defineAgent({
 
 const registry = createAgentRegistry([analyst]);
 
-const skillsCap = createSkillsCapability({
+const skills = createSkillsLibrary({
   catalog,
   agentRegistry: registry,
   materializeAgent,
-  patternRegistry,
+  initialSkills,
 });
 ```
 
-Then in a pattern skill's `SKILL.md`:
+Then a skill declares the agent as a delegation worker in its `SKILL.md` — a
+`workers:` field turns on delegation, and `agent-ref` staffs the worker from the
+registry:
 
 ```yaml
+---
+description: Research a subject with a named analyst.
+context: inline
 workers:
   analyst:
     agent-ref: research-analyst
     agent-overrides:
       model: openai/gpt-5.4-mini
+---
+Hand the research to your `analyst` worker and return its findings.
 ```
 
 ## Standalone Block
@@ -51,7 +58,7 @@ const block = agentBlock(analyst, { catalog });
 
 ## Structured Output & Capabilities
 
-By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Workers always emit `z.string()`, because the skills pattern machinery builds follow-on actions from text.
+By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Delegation workers always emit `z.string()`, because the executive that calls a worker tool reads its text result.
 
 `usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.with({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
 

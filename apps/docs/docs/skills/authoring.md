@@ -48,8 +48,9 @@ Body goes here.
 |-----|----------|------|---------|
 | `description` | yes | string (≤ 1024 chars) | What the up-front classifier and the `runSkill` catalog listing both see. The trigger for both activation paths — write it well. |
 | `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
-| `context` | no | `inline` \| `fork` | Activation mode. Default `inline`. |
-| `allowed-tools` | no | string[] | Catalog keys the skill can invoke in fork mode. Ignored in inline mode (tools come from the parent). |
+| `context` | no | `inline` | Activation mode. Only `inline` is supported — a matched skill's body is injected into the parent generator's prompt. |
+| `allowed-tools` | no | string[] | Catalog keys the skill declares. A per-generator binding uses them to scope which tools ride along when the skill is preloaded (see [Binding](./binding)); a delegation skill lists its board-as-tool blocks here too. |
+| `workers` | no | map | Worker declarations that turn on delegation. See [Delegation](./delegation). |
 | `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
 | `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
 
@@ -84,7 +85,7 @@ Skipping `keywords` is fine. The classifier still picks up the skill from its de
 
 ## Body
 
-The body is plain Markdown. It becomes either the substituted system prompt (fork mode) or is spliced into the parent generator's system prompt after the skill is activated (inline mode).
+The body is plain Markdown. It's spliced into the parent generator's system prompt after the skill is activated.
 
 Treat the body as an imperative playbook, not a conversation. Short sections. Bullet lists for enforceable rules. Headings the model can refer back to. Avoid qualifiers like "you might consider" — the skill exists because the author has an opinion.
 
@@ -115,22 +116,6 @@ then follow it exactly.
 ```
 
 Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${SKILL_DIR}` replaced by `/workspace/skills/research`.
-
-## Inline vs fork in practice
-
-Inline skills read like a coach sitting next to the agent. The conversation continues in the parent context. Use inline when:
-
-- The skill is guidance about how to handle a class of requests.
-- The user is collaborating with the agent and wants the guidance to persist.
-- The skill doesn't need a different tool set from the parent.
-
-Fork skills read like dispatching a junior agent to run a task and report back. Use fork when:
-
-- The skill is a self-contained task with a clean input and a clean output (e.g. "research this topic").
-- You want to restrict the tools the task can use.
-- You don't want the sub-agent's tool calls and intermediate messages in the parent conversation's history.
-
-Fork mode requires `allowed-tools` to be meaningful — it filters the parent's tool catalog down to the listed keys. Unknown keys are logged and skipped.
 
 ## Reference files
 
@@ -181,8 +166,6 @@ createBashCapability({
 ```
 
 Without bash, reference files still exist as resources but the agent needs a different way to read them (e.g. a `readArtifact`-style tool that takes resource keys directly).
-
-In fork mode, the sub-agent only sees tools listed in `allowed-tools`. If the skill expects to read reference files via bash, include `bash` or `bash-read-file` in the list.
 
 ## Bundling scripts
 

@@ -20,16 +20,12 @@
 
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
-  BlockDefinition,
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
 import type {
-  AgentRegistry,
-  DefinedCapability as DefCap,
   InitialSkill,
   ItemVisibility,
-  MaterializeAgentFn,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import {
@@ -42,8 +38,6 @@ import {
   buildSkillsCatalogContext,
 } from "./context-fn";
 import { createRunSkillTool } from "./run-skill-tool";
-import type { PatternRegistry } from "./pattern-registry";
-import { taskTools as taskToolsCapability } from "./task-tools-capability";
 
 // ---------------------------------------------------------------------------
 // Public options
@@ -69,8 +63,6 @@ export interface SkillsCapabilityOptions {
    * mounted via the bash capability (the default mount setup).
    */
   collectionConfig?: Pick<DefineSkillsCollectionOptions, "maxInstances" | "prefix">;
-  /** Optional override of the model fork-mode subagents run on. */
-  forkModelId?: string;
   /**
    * Restrict this capability to blocks with a matching `itemVisibility`.
    *
@@ -84,46 +76,6 @@ export interface SkillsCapabilityOptions {
    * See CapabilityConfig.itemVisibility.
    */
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
-
-  /**
-   * Optional pattern registry. When supplied, skills declaring `pattern:`
-   * frontmatter dispatch through the pattern route and the `taskTools`
-   * capability is composed in by default; when absent, those skills fail
-   * with a clear configuration error at activation.
-   */
-  patternRegistry?: PatternRegistry;
-
-  /**
-   * Optional block-ref registry threaded to pattern workers using
-   * `block-ref:`. Unknown refs fail at activation with a clear error.
-   */
-  blockRegistry?: Record<string, BlockDefinition>;
-
-  /**
-   * Default-on when `patternRegistry` is supplied. Set `false` to skip
-   * composing the `taskTools` capability — agents lose the runtime
-   * mutation surface (`addTask`, `completeTask`, etc.) but the
-   * declarative pattern dispatch still works.
-   */
-  taskTools?: boolean;
-
-  /**
-   * Optional AgentRegistry for pattern workers using `agent-ref:`.
-   * Wire alongside `materializeAgent` from `@flow-state-dev/workforce`.
-   */
-  agentRegistry?: AgentRegistry;
-
-  /**
-   * Optional capability catalog forwarded to `materializeAgent` for
-   * resolving an agent's `usesCapabilities`.
-   */
-  capabilityCatalog?: Record<string, DefCap>;
-
-  /**
-   * Injected materializer that turns a resolved Agent into a worker-shaped
-   * generator. Import from `@flow-state-dev/workforce`.
-   */
-  materializeAgent?: MaterializeAgentFn;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,13 +116,6 @@ export function createSkillsCapability(
     collectionKey,
     catalog,
     initialSkills,
-    mountPath,
-    ...(options.forkModelId !== undefined ? { forkModelId: options.forkModelId } : {}),
-    ...(options.patternRegistry ? { patternRegistry: options.patternRegistry } : {}),
-    ...(options.blockRegistry ? { blockRegistry: options.blockRegistry } : {}),
-    ...(options.agentRegistry ? { agentRegistry: options.agentRegistry } : {}),
-    ...(options.materializeAgent ? { materializeAgent: options.materializeAgent } : {}),
-    ...(options.capabilityCatalog ? { capabilityCatalog: options.capabilityCatalog } : {}),
   });
 
   const catalogTools = Object.values(catalog);
@@ -188,13 +133,9 @@ export function createSkillsCapability(
     mountPath,
   });
 
-  const composesTaskTools =
-    options.patternRegistry !== undefined && options.taskTools !== false;
-
   return defineCapability({
     name: "skills",
     itemVisibility: options.itemVisibility,
-    ...(composesTaskTools ? { uses: [taskToolsCapability] as const } : {}),
 
     // Always-on surface: the resource collection and the session-state slice
     // active-skills writes into. The collection's intrinsic `scope` (set via
@@ -205,7 +146,7 @@ export function createSkillsCapability(
 
     presets: {
       // Catalog tools — registered for AI SDK schema awareness so any
-      // skill (inline or fork mode) can reference them via allowed-tools.
+      // skill can reference them via allowed-tools.
       tools: { tools: [...catalogTools] },
 
       // Active-skill body formatter — required for any matched skill to

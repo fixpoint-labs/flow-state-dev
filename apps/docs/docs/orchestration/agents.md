@@ -2,12 +2,12 @@
 title: Agents
 sidebar_position: 5
 sidebar_label: Agents
-description: Named, reusable participants composed of a persona, a model, and tools, registered once and referenced from pattern skills or composed as standalone blocks.
+description: Named, reusable participants composed of a persona, a model, and tools, registered once and referenced as delegation workers or composed as standalone blocks.
 ---
 
 # Agents
 
-An agent is a named, reusable participant you define once and use many times. It bundles three things: a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and a set of tools it may call. Once registered, you reference an agent by name from a pattern skill's worker map, or drop it into any flow action as a standalone block.
+An agent is a named, reusable participant you define once and use many times. It bundles three things: a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and a set of tools it may call. Once registered, you reference an agent by name from a skill's `workers:` map (as a delegation worker), or drop it into any flow action as a standalone block.
 
 The point is to stop copy-pasting the same prompt and tool list into every worker. You write the `research-analyst` once, then a supervisor skill, a plan-and-execute skill, and a one-off action can all point at it.
 
@@ -52,29 +52,28 @@ export const agentRegistry = createAgentRegistry([techBriefer]);
 
 An agent definition is inert on its own. Two steps turn it into something that runs.
 
-`createAgentRegistry` builds a catalog from an array of agents. It errors on a duplicate name, so the registry is a single source of truth. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a pattern skill) or standalone (for a flow action).
+`createAgentRegistry` builds a catalog from an array of agents. It errors on a duplicate name, so the registry is a single source of truth. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a delegation worker) or standalone (for a flow action).
 
-You rarely call `materializeAgent` by hand. You hand it to the skills capability, which calls it when a pattern skill's worker resolves an `agent-ref`:
+You rarely call `materializeAgent` by hand. You hand it to the skills library, which calls it when a skill's worker resolves an `agent-ref`:
 
 ```ts
 import { createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
-import { createSkillsCapability } from "@flow-state-dev/orchestration";
-import { defaultPatternRegistry } from "@flow-state-dev/patterns";
+import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 
-const skillsCap = createSkillsCapability({
+const skills = createSkillsLibrary({
   catalog,
   agentRegistry,
   materializeAgent,
-  patternRegistry: defaultPatternRegistry,
+  initialSkills,
 });
 ```
 
-With that wiring in place, a pattern skill's `SKILL.md` references an agent from its `workers:` map. `agent-ref` names the agent; `agent-overrides` adjusts it for this skill:
+With that wiring in place, a skill's `SKILL.md` references an agent from its `workers:` map. Declaring `workers:` turns on delegation for a generator that binds the skill; `agent-ref` names the agent, and `agent-overrides` adjusts it for this skill:
 
 ```yaml
 ---
 description: Multi-angle research on a company. Use when the user asks for a deep dive.
-pattern: task-board
+context: inline
 
 workers:
   analyst:
@@ -82,12 +81,9 @@ workers:
     agent-overrides:
       model: openai/gpt-5.4-mini
       tools: [search, fetch, readDocument]
-
-initial-tasks:
-  - id: market
-    goal: Analyze the market positioning of $ARGUMENTS
-    assignee: analyst
 ---
+You are the research lead. Hand each angle to the `analyst` tool and
+synthesize the results.
 ```
 
 Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `itemVisibility`. The result is a deterministic, auditable tool surface per skill: you read the override block and know exactly what the worker can do.
@@ -109,7 +105,7 @@ Mount `briefingBlock` in a sequencer or wire it as an action the same way you wo
 
 ## Structured output and capabilities
 
-A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Workers stay `z.string()` regardless, because the pattern machinery builds follow-on actions from a worker's text.
+A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Delegation workers stay `z.string()` regardless — the executive that calls a worker tool reads its text result.
 
 `usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
 
@@ -170,6 +166,6 @@ Agents are a young primitive. A few things are declared but not yet wired, and i
 
 ## Related pages
 
-- [Pattern skills](../skills/pattern-skills.md) — referencing agents from a worker map via `agent-ref`.
-- [Task board](./task-board.md) — the drain that runs a skill's workers.
+- [Delegation](../skills/delegation.md) — referencing agents from a worker map via `agent-ref`.
+- [Task board](./task-board.md) — the concurrent drain you can call as a tool.
 - [Orchestration overview](./overview.md) — how agents, the substrate, and the board fit together.

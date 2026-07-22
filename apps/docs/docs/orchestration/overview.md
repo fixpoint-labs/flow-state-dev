@@ -39,9 +39,9 @@ You wire orchestration one of two ways, depending on who's in charge.
 
 **Code-first.** You define the board in TypeScript — its workers, its initial tasks, its dependency graph — and mount it as a step in a flow. You know the shape of the work up front, or your code decides it. This is the `taskBoard(...)` factory.
 
-**Agent-first.** An agent decides what work to create at runtime. You give it the `taskTools` capability — eight tools like `addTask` and `completeTask` — and it enqueues tasks as it discovers them. A discoverer agent might search, find twelve items, and queue one analysis task per item plus a synthesis task that waits on all twelve. This path usually rides on a `pattern: task-board` skill. See [Pattern skills](../skills/pattern-skills).
+**Agent-first.** A generator decides what work to track at runtime. A skill that declares `workers:` installs a private task board plus the `taskTools` capability — eight tools like `addTask` and `completeTask` — and one callable tool per worker. The generator drives the work itself: it calls a worker tool to run a unit of work and reads the result inline, using the board as a ledger to track a multi-step plan. See [Delegation](../skills/delegation) for the skill-authoring surface.
 
-Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. An agent worker under a pattern skill calls `addTask` through the `taskTools` capability, which resolves the active pattern's board. (`taskTools` only works under an active pattern skill, not on a bare code-first board.)
+Both paths drive the same substrate, and a worker can enqueue follow-up work mid-run either way. In a code-defined board, a worker resolves the collection with `getOrCreateTaskCollection` and calls `addTask`. Under a delegation skill, the generator's `taskTools` resolve that skill's private board — the one the binding installed on this generator, not a session-global one. (Delegation's board is a ledger; nothing auto-drains it. When you want a board that runs itself under concurrency, mount a `taskBoard` in a flow or call one as a tool.)
 
 ## Where work blocks, and where it doesn't
 
@@ -60,4 +60,4 @@ A board also needs a rule for when to stop. By default it drains until either ev
 
 - [Patterns overview](../patterns/overview) — the coordination patterns built on the task board.
 - [Agents](./agents) — named participants you can assign work to.
-- [Pattern skills](../skills/pattern-skills) — the agent-first path and the `taskTools` surface.
+- [Delegation](../skills/delegation) — the agent-first path and the `taskTools` surface.

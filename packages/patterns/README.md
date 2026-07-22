@@ -336,12 +336,6 @@ import {
 
 The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers have been retired. Patterns that tracked tasks via those helpers should migrate to `taskBoard`.
 
-## Skill-pattern binding
-
-`defaultPatternRegistry` plugs into `@flow-state-dev/orchestration` so a SKILL.md frontmatter can declare a multi-agent pattern. Wire it via `createSkillsCapability({ patternRegistry: defaultPatternRegistry })`. Eight entries are registered: `task-board`, `plan-and-execute`, `supervisor`, `parallel-tasks`, `coordinator` (deprecated alias for `parallel-tasks`), `routed-specialists`, plus two reserved stubs (`event-actors`, `approval-gate`) that throw clear deferral errors.
-
-Each adapter validates its `pattern-config` block via a strict Zod schema — unknown keys reject at parse rather than silently passing through. See the [pattern skills docs](https://flow-state.dev/docs/skills/pattern-skills) for the full surface.
-
 ## Benchmark adapters
 
 `defaultBenchmarkRegistry` maps each comparable pattern to a `BenchmarkAdapter` so the cross-pattern benchmark harness can run them all against the same task suite. The benchmark engine resolves subjects through this lookup without knowing any pattern's internals. See the [Benchmarks docs](https://flow-state.dev/docs/testing/benchmarks).

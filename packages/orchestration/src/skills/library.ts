@@ -38,12 +38,15 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { CapabilityConfigResolveCtx } from "@flow-state-dev/core/capability";
 import type {
+  BlockDefinition,
   GeneratorTool,
   InitialSkill,
   ItemVisibility,
   PresetDef,
   SkillContextMode,
+  SkillFile,
   ToolCatalog,
+  WorkerSpec,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
 import type { ActivationLocation } from "./activation-store";
@@ -54,6 +57,25 @@ import {
 } from "./collection";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
+import { stripFrontmatter } from "./internal/strip-frontmatter";
+import { buildDirectWorkerTool } from "./worker-materializer";
+import {
+  buildTaskToolsList,
+  DELEGATION_BOARD_FIELD,
+  delegationBoardSchema,
+} from "./task-tools-capability";
+
+/** Model-facing names the eight `taskTools` handlers register. */
+const TASK_TOOL_NAMES = new Set([
+  "addTask",
+  "assignTask",
+  "completeTask",
+  "failTask",
+  "blockTask",
+  "cancelTask",
+  "updateTask",
+  "listTasks",
+]);
 
 // ---------------------------------------------------------------------------
 // Options
@@ -78,6 +100,16 @@ export interface SkillsLibraryOptions {
    * `itemVisibility`. See `createSkillsCapability` for the multi-agent rationale.
    */
   itemVisibility?: ItemVisibility | readonly ItemVisibility[];
+  /**
+   * Block registry for delegation workers declared with `block-ref:`. Unknown
+   * refs fail loud at bind time.
+   */
+  blocks?: Record<string, BlockDefinition>;
+  /**
+   * Model id for delegation worker tools that don't declare their own `model:`.
+   * Falls back to a neutral default when omitted.
+   */
+  workerModelId?: string;
 }
 
 /** The per-generator binding configuration (`skills.with({ ... })`). */
@@ -102,6 +134,16 @@ export interface SkillsBindingConfig {
     scope: "request" | "session" | "user" | "org";
     field: string;
   };
+  /**
+   * Force-off delegation even when a bound skill declares `workers:`. Delegation
+   * is otherwise derived automatically from the presence of `workers:` (FIX-918).
+   */
+  delegation?: boolean;
+  /**
+   * Opt out of the delegation guidance context (the static "how to orchestrate"
+   * playbook + live worker roster). Default on when delegation installs.
+   */
+  guidance?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +155,10 @@ interface IndexedSkill {
   contextMode: SkillContextMode;
   /** `disable-model-invocation` — the skill can't be exposed to the model. */
   disableModelInvocation?: boolean;
+  /** Declared delegation workers (FIX-918). Presence turns on delegation. */
+  workers?: Record<string, WorkerSpec>;
+  /** Bundled skill files — used to resolve `prompt-ref` worker bodies at build time. */
+  files?: SkillFile[];
 }
 
 function indexInitialSkills(
@@ -132,6 +178,8 @@ function indexInitialSkills(
         allowedTools: parsed.state.allowedTools,
         contextMode: parsed.state.contextMode ?? "inline",
         disableModelInvocation: parsed.state.disableModelInvocation,
+        ...(parsed.state.workers ? { workers: parsed.state.workers } : {}),
+        ...(skill.files ? { files: skill.files } : {}),
       });
     } catch {
       // A malformed or invalidly-named bundled skill is a seeding-time concern;
@@ -157,6 +205,8 @@ const bindingConfigSchema = z
       })
       .strict()
       .optional(),
+    delegation: z.boolean().optional(),
+    guidance: z.boolean().optional(),
   })
   // `.strict()` so a typo'd key (`actve`) fails loud instead of being silently
   // stripped and building a generator without the intended binding.
@@ -195,11 +245,13 @@ export function createSkillsLibrary(
     [collectionKey]: skillsCollection,
   };
 
-  // Assert a name is a known inline skill (fail loud on typos). Binding by name
+  // Assert a name is a known skill (fail loud on typos). Binding by name
   // requires a bundled catalog to validate against — if none parsed (no
   // `initialSkills`, or every bundled skill was malformed), that's an author
   // error, not a reason to silently skip validation and widen the tool surface.
-  const assertInline = (name: string, where: "active" | "allowed"): void => {
+  // After FIX-918 every skill is inline, so there is no non-inline mode to
+  // reject here — the surface is inline-by-construction.
+  const assertKnownSkill = (name: string, where: "active" | "allowed"): void => {
     if (index.size === 0) {
       throw new Error(
         `skills.with({ ${where}: [...] }) binds "${name}" by name, but no bundled ` +
@@ -207,18 +259,10 @@ export function createSkillsLibrary(
           `createSkillsLibrary() (an empty index also means every bundled skill failed to parse).`,
       );
     }
-    const entry = index.get(name);
-    if (!entry) {
+    if (!index.has(name)) {
       throw new Error(
         `skills.with({ ${where}: [...] }): unknown skill "${name}". ` +
           `Known skills: ${[...index.keys()].join(", ") || "(none)"}.`,
-      );
-    }
-    if (entry.contextMode !== "inline") {
-      throw new Error(
-        `skills.with({ ${where}: [...] }): "${name}" is a ${entry.contextMode}-mode ` +
-          `skill. Only inline skills can be bound here — fork/pattern skills dispatch ` +
-          `through the runSkill router (createSkillsCapability).`,
       );
     }
   };
@@ -251,7 +295,7 @@ export function createSkillsLibrary(
   ): Partial<PresetDef> => {
     const active = cfg.active ?? [];
     for (const name of active) {
-      assertInline(name, "active");
+      assertKnownSkill(name, "active");
       validateDeclaredTools(name);
     }
 
@@ -282,7 +326,7 @@ export function createSkillsLibrary(
     // which activation path (load tool / upstream matcher / code) feeds it.
     if (cfg.allowed) {
       for (const name of cfg.allowed) {
-        assertInline(name, "allowed");
+        assertKnownSkill(name, "allowed");
         validateDeclaredTools(name);
       }
     }
@@ -344,8 +388,80 @@ export function createSkillsLibrary(
     // the upstream matcher (`createApplySkillActivation`) declares its scope
     // schema on its own block, and a code/generator writer declares the field on
     // its own `sessionStateSchema`. The reader tolerates an absent field.
+    const ownStateFields: Record<string, z.ZodTypeAny> = {};
     if (location.kind === "block" && dynamic) {
-      contributions.stateSchema = z.object({ activeSkills: activeSkillsArraySchema });
+      ownStateFields.activeSkills = activeSkillsArraySchema;
+    }
+
+    // -----------------------------------------------------------------------
+    // Delegation (FIX-918) — derived from a bound skill's `workers:`.
+    // -----------------------------------------------------------------------
+    // A statically-`active` skill that declares `workers:` installs the
+    // delegation surface: a private own-state task board, the `taskTools`
+    // ledger, one direct-call tool per worker, and (unless opted out) a
+    // guidance context. `delegation: false` force-suppresses it.
+    const delegationOn = cfg.delegation !== false;
+    const activeWorkerSkills = delegationOn
+      ? active
+          .map((name) => ({ name, entry: index.get(name)! }))
+          .filter((s) => s.entry.workers && Object.keys(s.entry.workers).length > 0)
+      : [];
+
+    // Own-state can't be added mid-run, so the board field must be declared for
+    // any binding that *might* later resolve a worker-declaring skill:
+    //  - a statically-active worker skill (below), or
+    //  - whole-catalog dynamic activation, where a runtime-loaded skill could
+    //    declare workers (pre-declare an empty board; harmless if unused).
+    const wholeCatalogDynamic = dynamic && !cfg.allowed;
+    const needsBoard =
+      delegationOn && (activeWorkerSkills.length > 0 || wholeCatalogDynamic);
+    if (needsBoard) {
+      ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
+    }
+
+    if (activeWorkerSkills.length > 0) {
+      // taskTools ledger (own-state board via ctx.parent).
+      tools.push(...(buildTaskToolsList() as GeneratorTool[]));
+
+      // One direct-call tool per declared worker. Fail loud at bind time on a
+      // name collision with taskTools, a catalog tool, or another worker — the
+      // runtime rejects duplicate model-facing tool names.
+      const seen = new Set<string>([...TASK_TOOL_NAMES, ...Object.keys(catalog)]);
+      const rosterLines: string[] = [];
+      for (const { name: skillName, entry } of activeWorkerSkills) {
+        for (const [workerKey, spec] of Object.entries(entry.workers!)) {
+          if (seen.has(workerKey)) {
+            throw new Error(
+              `skills: delegation worker "${workerKey}" (skill "${skillName}") collides ` +
+                `with an existing tool name (a taskTools handler, a catalog tool, or another ` +
+                `worker). Rename the worker key.`,
+            );
+          }
+          seen.add(workerKey);
+          const resolvedPrompt = resolveWorkerPrompt(skillName, workerKey, spec, entry.files);
+          tools.push(
+            buildDirectWorkerTool(workerKey, spec, {
+              catalog,
+              skillName,
+              ...(options.blocks ? { blocks: options.blocks } : {}),
+              ...(resolvedPrompt !== undefined ? { resolvedPrompt } : {}),
+              ...(options.workerModelId !== undefined
+                ? { defaultModelId: options.workerModelId }
+                : {}),
+            }) as GeneratorTool,
+          );
+          rosterLines.push(`- ${workerKey}: ${workerPurpose(spec)}`);
+        }
+      }
+
+      // Guidance context — the uniform "how to delegate" playbook + live roster.
+      if (cfg.guidance !== false) {
+        contextEntries.push(buildDelegationGuidance(rosterLines));
+      }
+    }
+
+    if (Object.keys(ownStateFields).length > 0) {
+      contributions.stateSchema = z.object(ownStateFields);
     }
 
     // Group the reader + catalog under a single `<skills>` tag.
@@ -372,4 +488,69 @@ export function createSkillsLibrary(
       resolve,
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Delegation helpers (FIX-918)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a worker's prompt body at build time. Inline `prompt` returns as-is;
+ * `prompt-ref` is read from the skill's bundled files (the resolver is pure and
+ * cannot read the runtime skill collection). Returns `undefined` for
+ * `block-ref`/`agent-ref` workers (no prompt body).
+ */
+function resolveWorkerPrompt(
+  skillName: string,
+  workerKey: string,
+  spec: WorkerSpec,
+  files: SkillFile[] | undefined,
+): string | undefined {
+  if (spec.prompt !== undefined) return spec.prompt;
+  if (spec.promptRef === undefined) return undefined;
+  const wanted = spec.promptRef.replace(/^\.\//, "").replace(/^\//, "");
+  const file = (files ?? []).find(
+    (f) => f.path === wanted || f.path.replace(/^\.\//, "") === wanted,
+  );
+  if (!file) {
+    throw new Error(
+      `skills: delegation worker "${workerKey}" (skill "${skillName}") declares ` +
+        `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
+    );
+  }
+  return stripFrontmatter(file.content);
+}
+
+/** One-line worker purpose for the roster, derived from its declaration. */
+function workerPurpose(spec: WorkerSpec): string {
+  if (spec.agentRef) return `agent \`${spec.agentRef}\``;
+  if (spec.blockRef) return `block \`${spec.blockRef}\``;
+  const body = spec.prompt;
+  if (body) {
+    const firstLine = body.split("\n").map((l) => l.trim()).find(Boolean);
+    if (firstLine) return firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+  }
+  return "a delegated worker";
+}
+
+/** The static delegation playbook, prefixed to the live worker roster. */
+const DELEGATION_PLAYBOOK = [
+  "You can delegate work. You have a private task board and one tool per worker.",
+  "To hand off a unit of work, call the matching worker tool and use the result it returns.",
+  "Nothing runs tasks automatically — you drive the work by calling workers yourself.",
+  "For a multi-step plan, track it with the task tools (addTask/listTasks/completeTask).",
+  "Synthesize the workers' results into your own answer.",
+].join(" ");
+
+/**
+ * Build the delegation guidance context — the static playbook plus the live
+ * worker roster. A plain string context entry (the roster is known at build
+ * time from the active skills' `workers:` maps).
+ */
+function buildDelegationGuidance(rosterLines: string[]): string {
+  const roster =
+    rosterLines.length > 0
+      ? ["", "Your workers:", ...rosterLines].join("\n")
+      : "";
+  return `${DELEGATION_PLAYBOOK}${roster}`;
 }

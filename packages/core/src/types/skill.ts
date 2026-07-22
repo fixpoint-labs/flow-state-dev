@@ -24,25 +24,27 @@ import type { AgentOverrides } from "./agent";
 export type ToolCatalog = Record<string, GeneratorTool>;
 
 /**
- * Activation modes for a skill, controlled by `context:` frontmatter.
+ * Activation mode for a skill, controlled by `context:` frontmatter.
  *
- * - `inline` (default): skill body is injected into the in-flight generator
- *   on the next tool-loop step via the existing `prepareStep` machinery.
- * - `fork`: skill runs in a subagent with isolated context and tool set.
- * - `pattern`: skill activates a multi-agent pattern declared in frontmatter.
- *   Set automatically when `pattern:` is present; rejected if combined with
- *   `context: fork` or `context: inline`.
+ * - `inline` (default, and now the only value): the skill body is injected
+ *   into the in-flight generator on the next tool-loop step via the existing
+ *   `prepareStep` machinery.
+ *
+ * Both non-inline modes were removed in FIX-918: `fork` (an isolated subagent)
+ * and `pattern` (a session-global multi-agent dispatcher). Delegation is now a
+ * capability derived from a skill's `workers:` field (see
+ * `createSkillsLibrary`), not an execution mode. The type is kept as a
+ * one-value union so its readers keep compiling and a future mode has a seam.
  */
-export type SkillContextMode = "inline" | "fork" | "pattern";
+export type SkillContextMode = "inline";
 
 /**
- * A single worker entry under a pattern skill's `workers:` map. Exactly
- * one of `prompt`, `promptRef`, `blockRef`, `agentRef` is set — parsed
- * from kebab-case frontmatter and validated at parse time.
+ * A single worker entry under a skill's `workers:` map. Exactly one of
+ * `prompt`, `promptRef`, `blockRef`, `agentRef` is set — parsed from
+ * kebab-case frontmatter and validated at parse time.
  *
- * `agentRef` and `agentOverrides` are reserved for the Agents primitive.
- * The parser accepts them and the materializer stubs activation with a
- * clear deferral error when no AgentRegistry is wired.
+ * `agentRef` and `agentOverrides` resolve through the Agents primitive.
+ * The delegation surface materializes each worker into a callable tool.
  */
 export interface WorkerSpec {
   /** Inline prompt body. Substitutions apply at activation. */
@@ -64,47 +66,6 @@ export interface WorkerSpec {
 }
 
 /**
- * An entry in a pattern skill's `initial-tasks:` list. Validated at parse
- * time — assignees must match a worker key, deps must reference another
- * initial task by id, and the dep graph must be acyclic.
- */
-export interface TaskInitYaml {
-  /** Stable id used by other tasks' `deps`. Auto-generated when omitted. */
-  id?: string;
-  /** Goal text seeded into the task; `$ARGUMENTS` substituted at activation. */
-  goal: string;
-  /** Worker key responsible for this task. Optional for free-claim patterns. */
-  assignee?: string;
-  /** Ids of tasks this one waits on. Must reference initial-tasks ids. */
-  deps?: string[];
-  /** Priority hint surfaced to the dispatcher. */
-  priority?: number;
-  /** Cap on retries from the dispatcher. */
-  maxAttempts?: number;
-  /** Opaque metadata forwarded onto the materialized Task. */
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Pattern binding parsed from `SKILL.md` frontmatter when `pattern:` is
- * present. Materialized by the runSkill router's pattern route, which
- * delegates worker construction and dispatcher wiring to the registered
- * PatternFactory.
- */
-export interface PatternBinding {
-  /** Kebab-case registry key, e.g. `"task-board"`. */
-  pattern: string;
-  /** Backing scope for the materialized TaskCollection. Defaults to request. */
-  collection?: { scope: "request" | "session" };
-  /** Map of worker key → spec. Keys match `^[a-z0-9_-]+$`. */
-  workers: Record<string, WorkerSpec>;
-  /** Tasks seeded into the collection at activation. Required for task-board; optional for other patterns. */
-  initialTasks?: TaskInitYaml[];
-  /** Verbatim kebab-case config forwarded to the pattern factory. */
-  patternConfig?: Record<string, unknown>;
-}
-
-/**
  * Parsed state for a `skills/{name}/SKILL.md` resource. Derived from the
  * file's YAML frontmatter (kebab-case) and stored on the resource as
  * camelCase. Unknown frontmatter keys are preserved on `_preservedFields`
@@ -122,9 +83,6 @@ export interface SkillState {
 
   /** From `disable-model-invocation`. When true, skill is excluded from runSkill tool enum. */
   disableModelInvocation?: boolean;
-
-  /** Optional JSON Schema the fork-mode subagent's structured output must conform to. */
-  outputSchema?: unknown;
 
   /** Optional Claude `when_to_use`. Appended to description for runSkill tool surface. */
   whenToUse?: string;
@@ -147,10 +105,14 @@ export interface SkillState {
   _preservedFields?: Record<string, unknown>;
 
   /**
-   * Pattern binding when `pattern:` is declared in frontmatter. Present
-   * iff `contextMode === "pattern"`.
+   * Declared delegation workers, parsed from the `workers:` frontmatter
+   * field independent of any execution mode (FIX-918). A bound skill that
+   * declares `workers:` turns on the delegation surface in
+   * `createSkillsLibrary`: a private task board, `taskTools`, and one
+   * callable tool per worker key. `prompt`/`promptRef` workers are portable
+   * data; `blockRef`/`agentRef` reference app-registered code.
    */
-  patternBinding?: PatternBinding;
+  workers?: Record<string, WorkerSpec>;
 }
 
 /**
@@ -190,12 +152,10 @@ export interface RunSkillInput {
 export interface RunSkillOutput {
   /** The skill name that was invoked. */
   skill: string;
-  /** Mode the skill ran in. */
+  /** Mode the skill ran in. Always `"inline"` after FIX-918. */
   mode: SkillContextMode;
-  /** Inline mode: ack message; the agent should re-read context on the next step. */
+  /** Ack message; the agent should re-read context on the next step. */
   message?: string;
-  /** Fork/pattern mode: structured result returned from the subagent or pattern. */
-  result?: unknown;
 }
 
 /** A single supporting file within a skill folder. */
