@@ -123,6 +123,6 @@ So the two shapes are:
 ## Related
 
 - [Delegation](/docs/skills/delegation) — the `agents:` field, the private board, and the `taskTools` + `runBoard` surface.
-- [Building a research team](/guides/building-a-research-team) — a board that drains itself under concurrency.
-- [The board lifecycle](/guides/board-lifecycle) — how blocks (as opposed to agents) add tasks to a board.
+- [Building a research team](/guides/building-a-research-team) — the same team built five ways, including a skill that defines its own agents and the three ways to staff one.
+- [The board lifecycle](/guides/board-lifecycle) — the seed → drain → read lifecycle underneath, from a code-first angle.
 - [Task board](/docs/orchestration/task-board) — the concurrent-drain primitive you can call as a tool.

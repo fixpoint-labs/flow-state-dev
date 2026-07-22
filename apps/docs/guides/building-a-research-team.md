@@ -1,7 +1,7 @@
 ---
 sidebar_position: 9
 title: Building a research team
-description: Build a multi-agent task board — a static board, runtime fan-out with a router, calling the board from a skill, named agents, and agents that decide their own tasks.
+description: Build a multi-agent task board — a static board, runtime fan-out with a router, a skill that defines its own agent team, the three ways to staff an agent, and letting the model decide the tasks.
 ---
 
 # Building a research team
@@ -10,7 +10,7 @@ This guide builds a small team of workers that research a subject together: anal
 
 **What we're building:** a task board where analysts run at the same time and a `synthesizer` starts only after they finish and combines their findings — first with a fixed set of tasks, then with a set decided at runtime.
 
-**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, calling a board as a tool from a skill, wiring the tool catalog, staffing a worker with a named agent, and letting an agent decide its own tasks.
+**Concepts we'll cover:** worker blocks and `taskWorkerInputSchema`, the `taskBoard` factory, dependency gating with `deps`, reading upstream results off `input.deps`, runtime fan-out with a router, a skill that defines its own team of prompt agents and runs its own board, the three ways to staff an agent (inline prompt, registered agent, plain block), and letting the model plan the tasks at runtime.
 
 :::tip Full, runnable code
 Every worker, board, router, `SKILL.md`, and a passing test suite for this
@@ -270,61 +270,83 @@ agent's history. When the graph *should* stay fixed in code, register a
 `taskBoard(...).drain` block in the skills `catalog` and list it under
 `allowed-tools` — [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
 
-## 5. Staff a worker with a named agent
+## 5. Three ways to staff an agent
 
-A board worker has been a block or a prompt. It can also be an **agent**: a named
-participant with a persona, a model, and tools, defined once and reused. Define one
-with `defineAgent`, then materialize it into a worker block for the board's
-`workers` map.
+Section 4's team is defined entirely inline — every agent is a `prompt-ref`
+persona in the skill folder. That's one of three ways to fill a seat on the
+board. The example's `competitor-analysis` skill shows all three side by side.
+
+**Inline prompt agent.** A `prompt` or `prompt-ref` right in the SKILL.md. The
+persona travels with the skill; no app code registers it. This is section 4's
+whole team, and the `discoverer` here:
+
+```yaml
+agents:
+  discoverer:
+    prompt-ref: ./reference/discover.md
+    tools: [search, taskTools]
+```
+
+**A registered agent, by name.** Define an agent once with `defineAgent` — a
+persona, a model, tools — and reference it from any skill with `agent-ref`. Reach
+for this when several skills share the same participant, or when the agent is app
+code you maintain outside the skill folder.
 
 ```ts title="agents.ts"
 import { defineAgent, createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
 
-const marketAnalystAgent = defineAgent({
-  name: "market-analyst",
-  description: "Analyzes market positioning and competitive differentiation.",
+export const competitorAnalyst = defineAgent({
+  name: "competitor-analyst",
+  description: "Analyzes one competitor across positioning, pricing, and distribution.",
   persona:
-    "You are a senior market analyst. Cover category, target customer, and " +
-    "differentiators. Cite every claim.",
+    "You analyze ONE competitor and surface the facts a comparison writer will " +
+    "use. Cover positioning, pricing, distribution, and differentiators. Cite sources.",
   model: "openai/gpt-5.4-mini",
-  allowedTools: ["search", "fetch"], // catalog keys the agent may call
+  allowedTools: ["search", "fetch"],
 });
 
-export const agentRegistry = createAgentRegistry([marketAnalystAgent]);
+export const agentRegistry = createAgentRegistry([competitorAnalyst]);
 export { materializeAgent };
 ```
 
-An agent also staffs a delegation seat. A skill that declares `agents:` gets a
-private board; instead of an inline `prompt`/`prompt-ref`, an agent entry can
-point at a registered agent by name with `agent-ref`:
+```yaml
+agents:
+  analyzer:
+    agent-ref: competitor-analyst
+```
+
+**A plain block, staffed as an agent.** An agent doesn't have to be a persona at
+all. Any block — a handler, a sequencer — can fill a seat: from the board's point
+of view it's just something you assign tasks to. The example's `comparison-writer`
+is a deterministic handler that folds the analyzers' outputs into a matrix, no
+model in the loop. It resolves through the same `agent-ref` seam — the registry
+returns a stub for the name, and `materializeAgent` swaps in the block:
 
 ```yaml
 agents:
-  market-analyst:
-    agent-ref: market-analyst
-    agent-overrides:
-      model: openai/gpt-5.4-mini
+  comparison-writer:
+    agent-ref: comparison-writer
 ```
 
-Resolving `agent-ref` needs `agentRegistry` and `materializeAgent` on the skills
-library:
+Registry agents and block agents both need `agentRegistry` + `materializeAgent`
+on the library; inline agents need neither:
 
 ```ts title="skills.ts"
 import { agentRegistry, materializeAgent } from "./agents";
 
 export const skills = createSkillsLibrary({
   catalog: { search: search(), fetch: fetch() },
-  agentRegistry,      // resolves an `agent-ref` entry to its agent
-  materializeAgent,   // turns that agent into a runnable board worker
   initialSkills,
+  agentRegistry,      // resolves `agent-ref` names — registered agents and block agents
+  materializeAgent,   // turns a resolved agent into the block the board dispatches
 });
 ```
 
-The same agent can staff a seat in any skill that references it, and
-`agent-overrides` lets one skill swap its model or tools without touching the
-definition. See [Agents](/docs/orchestration/agents) and
-[Delegation](/docs/skills/delegation) for personas, structured output, and the
-agent resolution table.
+`agent-overrides` on an `agent-ref` entry lets one skill swap a registered agent's
+model or tools without touching its definition. See [Agents](/docs/orchestration/agents)
+and [Delegation](/docs/skills/delegation) for personas, structured output, and the
+agent resolution table. The example wires all three forms in
+[`src/agents.ts`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/agents.ts).
 
 ## 6. Let an agent decide the tasks
 
