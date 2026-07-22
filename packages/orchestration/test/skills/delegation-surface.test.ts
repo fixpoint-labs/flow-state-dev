@@ -18,6 +18,7 @@ import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
+import { collectAgentSources } from "../../src/skills/delegation-surface";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
 import { createMockSkillsCollection } from "./mocks";
@@ -298,6 +299,55 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
     expect(output.tasks.every((t) => t.status === "completed")).toBe(true);
     const secondTask = output.tasks.find((t) => t.goal === "second")!;
     expect((secondTask.output as { findings: string }).findings).toBe("findings: second");
+  });
+
+  it("reports status 'blocked' when a task is parked via blockTask", async () => {
+    // A blocked task means the board did not fully drain — settle must report
+    // `blocked`, not `drained`, or the coordinator treats stuck work as done.
+    const gen = buildTeamGenerator();
+    const { ctx } = buildExecCtx();
+    const tools = await resolveTools(gen, ctx);
+    const addTask = toolNamed(tools, "addTask");
+    const blockTask = toolNamed(tools, "blockTask");
+    const runBoard = toolNamed(tools, "runBoard");
+
+    const t = (await runForTest(
+      addTask,
+      { goal: "waits on a human", assignee: "analyst" },
+      ctx,
+    )) as { taskId: string };
+    await runForTest(blockTask, { taskId: t.taskId, reason: "pending external input" }, ctx);
+
+    const run = await testBlock(runBoard as never, { input: {} as never });
+    expect(run.error).toBeNull();
+    const output = run.output as { status: string; tasks: Array<{ status: string }> };
+    expect(output.status).toBe("blocked");
+  });
+});
+
+describe("delegation surface — active ∪ runtime activation input", () => {
+  it("carries a runtime activation's input onto an already-static agent skill", async () => {
+    // A skill preloaded via `active` AND loaded at runtime with an input arg:
+    // the body reader lets the dynamic activation win, so the skill's agents
+    // must see the same $ARGUMENTS substitution instead of an empty one.
+    const { ctx } = buildExecCtx();
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "brief", mode: "inline", input: "topic-42", activatedAt: 1 },
+    ];
+    const sources = await collectAgentSources(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [
+        { skillName: "brief", agents: { briefer: { prompt: "Brief about $ARGUMENTS." } } },
+      ],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: true,
+    } as never);
+
+    const brief = sources.filter((s) => s.skillName === "brief");
+    expect(brief).toHaveLength(1); // not duplicated
+    expect(brief[0]!.input).toBe("topic-42");
   });
 });
 

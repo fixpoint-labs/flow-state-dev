@@ -118,6 +118,19 @@ async function needsResed(
   if (!ref) return false;
   const persisted = ref.state as Record<string, unknown> | undefined;
   if (!persisted) return false;
+  // Migration (FIX-918): the source dropped `contextMode`/`patternBinding` and
+  // now declares `agents:`, but a pre-migration persisted record still carries
+  // the old shape. `renderActiveSkillBody` skips a non-inline manifest, so the
+  // migrated body would never render until manual delete/reimport. Reseed when
+  // the persisted record is stale relative to the current source:
+  //  - it still carries a legacy (non-inline) contextMode the source has dropped, or
+  //  - the source declares `agents:` the persisted record lacks.
+  if (persisted.contextMode !== undefined && persisted.contextMode !== "inline") {
+    return true;
+  }
+  if (parsed.state.agents !== undefined && persisted.agents === undefined) {
+    return true;
+  }
   if (parsed.state.contextMode !== undefined && persisted.contextMode !== parsed.state.contextMode) {
     return true;
   }

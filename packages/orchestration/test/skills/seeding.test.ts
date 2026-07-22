@@ -129,4 +129,30 @@ describe("ensureSeeded", () => {
     const restored = c2._store.get("skills/team-skill/SKILL.md")!.state;
     expect(restored.contextMode).toBe("inline");
   });
+
+  // Regression (FIX-918 migration): a pre-migration manifest still carrying a
+  // legacy `contextMode: "pattern"` (and no `agents`) must be re-seeded when the
+  // source SKILL.md has migrated to `agents:` — otherwise renderActiveSkillBody
+  // skips the stale non-inline manifest and the migrated body never renders.
+  it("re-seeds a stale pre-FIX-918 pattern manifest when the source migrated to agents:", async () => {
+    const agentSkill: InitialSkill = {
+      name: "team-skill",
+      skillMd: `---\ndescription: Agent team skill\nagents:\n  briefer:\n    prompt: You write briefs.\n---\n\nPlan with addTask, then runBoard.`,
+    };
+
+    const c = createMockSkillsCollection();
+    await ensureSeeded(c, [agentSkill]);
+
+    // Hand-roll the stale legacy shape on a fresh (mirrored) collection.
+    const c2 = createMockSkillsCollection();
+    for (const [k, v] of c._store) c2._store.set(k, { ...v, state: { ...v.state } });
+    const manifest = c2._store.get("skills/team-skill/SKILL.md")!;
+    manifest.state = { description: "Agent team skill", contextMode: "pattern" };
+
+    await ensureSeeded(c2, [agentSkill]);
+    const restored = c2._store.get("skills/team-skill/SKILL.md")!.state;
+    // Migrated: the legacy mode is gone and the agents map is now present.
+    expect(restored.contextMode).toBeUndefined();
+    expect(restored.agents).toBeDefined();
+  });
 });

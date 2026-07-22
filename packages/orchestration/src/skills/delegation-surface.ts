@@ -124,7 +124,20 @@ export async function collectAgentSources(
 
   const seen = new Set(sources.map((s) => s.skillName));
   for (const entry of readActivations(ctx, deps.location)) {
-    if (seen.has(entry.name)) continue;
+    if (seen.has(entry.name)) {
+      // A skill preloaded via `active` AND loaded at runtime with an input arg:
+      // the body reader lets the dynamic activation win so `$ARGUMENTS` renders
+      // in the skill body. Mirror that here so the skill's agent prompts get the
+      // same substitution instead of an empty one. Replace (don't mutate) the
+      // shared static source so the input doesn't leak across resolver calls.
+      if (entry.input !== undefined) {
+        const i = sources.findIndex((s) => s.skillName === entry.name);
+        if (i !== -1 && sources[i]!.input === undefined) {
+          sources[i] = { ...sources[i]!, input: entry.input };
+        }
+      }
+      continue;
+    }
     if (deps.allowedNames && !deps.allowedNames.includes(entry.name)) continue;
     seen.add(entry.name);
 
@@ -215,8 +228,16 @@ function buildRunBoardTool(
     execute: async () => {
       const collection = await boardCollection();
       const tasks = collection.list();
+      // `blocked` counts as unresolved: a task parked pending an external
+      // condition (or gated behind a failed dep) means the board did NOT fully
+      // drain, so report `blocked` — not `drained` — or the coordinator treats
+      // the plan as complete when work is still stuck.
       const unresolved = tasks.some(
-        (t) => t.status === "pending" || t.status === "in_progress" || t.status === "awaiting_review",
+        (t) =>
+          t.status === "pending" ||
+          t.status === "in_progress" ||
+          t.status === "awaiting_review" ||
+          t.status === "blocked",
       );
       return {
         status: unresolved ? ("blocked" as const) : ("drained" as const),
