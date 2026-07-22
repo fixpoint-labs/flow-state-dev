@@ -3,13 +3,13 @@ description: Multi-angle company research by a small team of analysts. Use when 
 keywords: [research, company, deep-dive, briefing, analyst, market]
 argument-hint: <company name or ticker>
 
-workers:
+agents:
   market-analyst:
-    block-ref: market-analyst
+    agent-ref: market-analyst
   financial-analyst:
-    block-ref: financial-analyst
+    agent-ref: financial-analyst
   synthesizer:
-    block-ref: synthesizer
+    agent-ref: synthesizer
 ---
 
 This skill runs a small research team on your task board: a market analyst and a financial analyst work in parallel, then a synthesizer waits on both and writes the final brief.

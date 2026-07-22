@@ -63,11 +63,11 @@ if (skillsLoadErrors.length > 0) {
 }
 
 // Skills v2 library (FIX-918). The catalog carries the leaf web tools the
-// skills' workers reference via `tools:`. Every research skill declares a
-// `workers:` map, so binding (or runtime-activating) one installs its
-// delegation surface automatically: a private task board, the task tools,
-// one tool per worker, and `runBoard` — the skill plans the tasks and runs
-// its own board.
+// skills' agents reference via `tools:`. Every research skill declares an
+// `agents:` map, so binding (or runtime-activating) one installs its
+// board-commanded delegation surface automatically: a private task board, the
+// task tools, and `runBoard` — the skill plans the tasks (assignee names an
+// agent) and drains its own board.
 const skills = createSkillsLibrary({
   catalog: {
     search: searchTool,

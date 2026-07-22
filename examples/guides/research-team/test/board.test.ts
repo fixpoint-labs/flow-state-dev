@@ -1,10 +1,10 @@
 /**
  * The delegation path, end-to-end and deterministic (FIX-918): a coordinator
- * generator bound to the bundled skills gets the task tools, one tool per
- * worker, and `runBoard`. The tests do exactly what the SKILL.md instructs the
- * model to do — plan tasks with `addTask` (assignee, deps, input), then call
- * `runBoard` — and assert the board executed the graph with the example's
- * deterministic handler workers. No model, no API key.
+ * generator bound to the bundled skills gets the task tools and `runBoard` —
+ * and NO per-agent tool (the board commands the agents). The tests do exactly
+ * what the SKILL.md instructs the model to do — plan tasks with `addTask`
+ * (assignee, deps, input), then call `runBoard` — and assert the board executed
+ * the graph with the example's deterministic handler agents. No model, no API key.
  */
 import { describe, it, expect } from "vitest";
 import { generator } from "@flow-state-dev/core";
@@ -101,25 +101,17 @@ type RunBoardOutput = {
 };
 
 describe("research-team delegation skills", () => {
-  it("binding both skills installs the shared team once: task tools, workers, runBoard", async () => {
+  it("binding both skills installs the board surface: task tools + runBoard, no per-agent tool", async () => {
     const gen = buildCoordinator();
     const tools = await resolveTools(gen, buildExecCtx());
     const names = tools.map(
       (t) => (t as { config?: { name?: string } }).config?.name ?? (t as { name?: string }).name,
     );
-    expect(names).toEqual(
-      expect.arrayContaining([
-        "addTask",
-        "listTasks",
-        "market-analyst",
-        "financial-analyst",
-        "competitor-analyst",
-        "synthesizer",
-        "runBoard",
-      ]),
-    );
-    // Both skills declare `synthesizer` with the same block-ref — deduped.
-    expect(names.filter((n) => n === "synthesizer")).toHaveLength(1);
+    expect(names).toEqual(expect.arrayContaining(["addTask", "listTasks", "runBoard"]));
+    // The board commands the agents — the coordinator gets no per-agent tool.
+    expect(names).not.toContain("market-analyst");
+    expect(names).not.toContain("synthesizer");
+    expect(names).not.toContain("competitor-analyst");
   });
 
   it("research-company: analysts in parallel, synthesizer gated on both", async () => {

@@ -61,7 +61,7 @@ describe("research-team flow", () => {
     expect(done.has("synth")).toBe(true);
   });
 
-  it("bundles two delegation skills that declare their teams as workers", async () => {
+  it("bundles two delegation skills that declare their teams as agents", async () => {
     const dir = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       "../src/skills",
@@ -74,14 +74,17 @@ describe("research-team flow", () => {
     expect(byName.has("research-company")).toBe(true);
     expect(byName.has("competitor-analysis")).toBe(true);
 
-    // FIX-918: pattern mode is gone. Both skills declare `workers:` — binding
-    // them installs the delegation surface (task tools, worker tools, runBoard)
-    // and the skill body plans the board itself.
+    // FIX-918: pattern mode is gone and `workers:` is renamed to `agents:`.
+    // Both skills declare `agents:` — binding them installs the board-commanded
+    // delegation surface (task tools + runBoard) and the skill body plans the
+    // board itself.
     expect(byName.get("research-company")?.skillMd).not.toContain("pattern:");
-    expect(byName.get("research-company")?.skillMd).toContain("workers:");
+    expect(byName.get("research-company")?.skillMd).not.toContain("workers:");
+    expect(byName.get("research-company")?.skillMd).toContain("agents:");
     expect(byName.get("research-company")?.skillMd).toContain("runBoard");
     expect(byName.get("competitor-analysis")?.skillMd).not.toContain("pattern:");
-    expect(byName.get("competitor-analysis")?.skillMd).toContain("workers:");
+    expect(byName.get("competitor-analysis")?.skillMd).not.toContain("workers:");
+    expect(byName.get("competitor-analysis")?.skillMd).toContain("agents:");
     expect(byName.get("competitor-analysis")?.skillMd).toContain("runBoard");
   });
 });

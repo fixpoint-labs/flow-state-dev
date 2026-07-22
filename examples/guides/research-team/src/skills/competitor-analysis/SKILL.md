@@ -3,11 +3,11 @@ description: Competitor analysis as a comparison matrix plus a synthesized read.
 keywords: [competitor, competitors, competition, compare, versus, landscape]
 argument-hint: <product, company, or market>
 
-workers:
+agents:
   competitor-analyst:
-    block-ref: competitor-analyst
+    agent-ref: competitor-analyst
   synthesizer:
-    block-ref: synthesizer
+    agent-ref: synthesizer
 ---
 
 This skill runs a competitor-analysis team on your task board: one analyzer per competitor works in parallel, then a synthesizer waits on all of them and writes the final comparison.

@@ -3,7 +3,7 @@ description: Produce a concise technology briefing on a topic, company, or produ
 keywords: [tech, brief, briefing, technology, overview, rundown, explain]
 argument-hint: <technology, product, or company>
 
-workers:
+agents:
   briefer:
     prompt: |
       You are a senior technology analyst at a research firm. Write concise, opinionated briefings. Lead with the takeaway, then supporting evidence, then risks. Cite every claim. If sources conflict, show the conflict rather than picking a side.

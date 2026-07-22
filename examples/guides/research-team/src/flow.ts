@@ -8,8 +8,8 @@
 //
 // The first two run with no API key — their workers are plain handlers — so
 // they're the ones the tests exercise end-to-end. `chat` binds the skills
-// library; each skill declares `workers:`, so the coordinator gets a task
-// board, worker tools, and runBoard. It needs OPENAI_API_KEY.
+// library; each skill declares `agents:`, so the coordinator gets a task
+// board, the task tools, and runBoard. It needs OPENAI_API_KEY.
 import { defineFlow, generator } from "@flow-state-dev/core";
 import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 import { z } from "zod";
@@ -36,9 +36,9 @@ const researchChat = generator({
   model: "intent/chat",
   inputSchema: z.object({ message: z.string().min(1) }),
   history: true,
-  // Both skills are preloaded. Each declares `workers:`, so the binding
-  // installs the delegation surface — the task tools, one tool per worker,
-  // and runBoard — alongside the skill bodies.
+  // Both skills are preloaded. Each declares `agents:`, so the binding
+  // installs the board-commanded delegation surface — the task tools and
+  // runBoard — alongside the skill bodies.
   uses: [skillsLibrary.with(skillsBinding as never)],
   prompt:
     "You coordinate a small research team. Follow the active skill's " +

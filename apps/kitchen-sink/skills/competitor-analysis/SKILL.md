@@ -3,7 +3,7 @@ description: Produce a competitor analysis as a comparison matrix plus a synthes
 keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 argument-hint: <product, company, or market>
 
-workers:
+agents:
   discoverer:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]

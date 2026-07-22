@@ -3,7 +3,7 @@ description: Multi-angle company research delivered by a small team of analysts.
 keywords: [research, company, deep-dive, deep, dive, briefing, analyst, market]
 argument-hint: <company name or ticker>
 
-workers:
+agents:
   market-analyst:
     prompt-ref: ./reference/market.md
     tools: [search, fetch]
