@@ -349,6 +349,30 @@ describe("delegation surface — active ∪ runtime activation input", () => {
     expect(brief).toHaveLength(1); // not duplicated
     expect(brief[0]!.input).toBe("topic-42");
   });
+
+  it("drops a statically-bound skill whose live manifest is disable-model-invocation", async () => {
+    // The body renderer reads the live manifest and suppresses a disabled skill
+    // even when force-bound via `active`; delegation must match, or a skill
+    // disabled at runtime would still expose its agents via addTask/runBoard.
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/brief/SKILL.md", {
+      name: "skills/brief/SKILL.md",
+      state: { description: "brief", disableModelInvocation: true },
+      content: null,
+    });
+    const { ctx } = buildExecCtx(collection);
+    const sources = await collectAgentSources(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [
+        { skillName: "brief", agents: { briefer: { prompt: "You write briefs." } } },
+      ],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: false,
+    } as never);
+    expect(sources).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

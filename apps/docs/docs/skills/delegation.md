@@ -21,8 +21,10 @@ Add an `agents:` map to the skill's frontmatter. Each key is an agent name; each
 ---
 description: Research a topic using a lead plus two specialists.
 agents:
-  researcher: { prompt: "You research assigned subtopics and report findings." }
-  writer: { prompt: "You synthesize findings into a short report." }
+  researcher:
+    prompt: You research assigned subtopics and report findings.
+  writer:
+    prompt: You synthesize findings into a short report.
 ---
 You are the research lead. Plan the work on your board, then run it:
 1. addTask one research task per subtopic — assignee: "researcher".
@@ -117,8 +119,10 @@ When the user asks for research, the workers run on a task board.
 ---
 description: Research a topic using a lead plus two specialists.
 agents:
-  researcher: { prompt: "You research assigned subtopics." }
-  writer: { prompt: "You synthesize findings into a report." }
+  researcher:
+    prompt: You research assigned subtopics.
+  writer:
+    prompt: You synthesize findings into a report.
 ---
 You are the research lead. Plan the work on your board, then run it:
 1. addTask one research task per subtopic — assignee: "researcher".

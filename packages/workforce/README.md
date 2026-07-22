@@ -28,21 +28,21 @@ const skills = createSkillsLibrary({
 });
 ```
 
-Then a skill declares the agent as a delegation worker in its `SKILL.md` — a
-`workers:` field turns on delegation, and `agent-ref` staffs the worker from the
+Then a skill declares the agent as part of its team in `SKILL.md` — the
+`agents:` field turns on delegation, and `agent-ref` staffs the seat from the
 registry:
 
 ```yaml
 ---
 description: Research a subject with a named analyst.
-context: inline
-workers:
+agents:
   analyst:
     agent-ref: research-analyst
     agent-overrides:
       model: openai/gpt-5.4-mini
 ---
-Hand the research to your `analyst` worker and return its findings.
+Plan the work on your board — `addTask` a research task with `assignee: analyst`,
+then call `runBoard` — and return the analyst's findings.
 ```
 
 ## Standalone Block
@@ -58,7 +58,7 @@ const block = agentBlock(analyst, { catalog });
 
 ## Structured Output & Capabilities
 
-By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Delegation workers always emit `z.string()`, because the executive that calls a worker tool reads its text result.
+By default an agent emits free text (`z.string()`). A **standalone** agent can declare a structured `outputSchema` instead, and the materialized generator emits that typed shape — subject to the same OpenAI-strict requirement as any generator output. Delegation agents (the worker shape) always emit `z.string()`, because the board hands each task's text result back to the skill that planned it.
 
 `usesCapabilities` accepts either a **string key** (resolved against the materialize-time `capabilityCatalog`) or a **capability reference** used as-is — including a `.with({ ... })`-configured capability, which keeps full preset typing (the same way `generator({ uses })` consumes capabilities).
 

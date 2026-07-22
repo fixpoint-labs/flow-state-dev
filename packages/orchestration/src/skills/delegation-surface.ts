@@ -115,11 +115,35 @@ export interface DelegationSurfaceDeps {
  * live manifest (a skill imported after seeding). Deduped by skill name —
  * static wins.
  */
+/** True when the skill's live manifest carries `disable-model-invocation`. */
+async function isManifestDisabled(
+  collection: ResourceCollectionRef,
+  skillName: string,
+): Promise<boolean> {
+  const manifest = await collection.getOptional(skillManifestKey(skillName));
+  return (
+    (manifest?.state as { disableModelInvocation?: boolean } | undefined)
+      ?.disableModelInvocation === true
+  );
+}
+
 export async function collectAgentSources(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
 ): Promise<DelegationAgentSource[]> {
-  const sources: DelegationAgentSource[] = [...deps.staticSources];
+  const collection = getCollection(ctx, deps.collectionKey);
+
+  // Honor a live `disable-model-invocation` on a statically-bound skill. The
+  // body renderer reads the live manifest and suppresses a disabled skill even
+  // when it's force-bound via `active`; the delegation surface must match, or a
+  // skill disabled at runtime would still expose its agents via addTask/runBoard
+  // (the build-time static filter can't see a post-seed edit). Skills with no
+  // live manifest fall back to their build-time (bundled) truth.
+  const sources: DelegationAgentSource[] = [];
+  for (const s of deps.staticSources) {
+    if (collection && (await isManifestDisabled(collection, s.skillName))) continue;
+    sources.push(s);
+  }
   if (!deps.dynamicEligible) return sources;
 
   const seen = new Set(sources.map((s) => s.skillName));
@@ -153,11 +177,13 @@ export async function collectAgentSources(
     }
 
     // Not bundled — read the live manifest (imported/edited after seeding).
-    const collection = getCollection(ctx, deps.collectionKey);
     if (!collection) continue;
     const manifest = await collection.getOptional(skillManifestKey(entry.name));
-    const agents = (manifest?.state as { agents?: Record<string, AgentSpec> } | undefined)
-      ?.agents;
+    const state = manifest?.state as
+      | { agents?: Record<string, AgentSpec>; disableModelInvocation?: boolean }
+      | undefined;
+    if (state?.disableModelInvocation === true) continue;
+    const agents = state?.agents;
     if (agents && Object.keys(agents).length > 0) {
       sources.push({
         skillName: entry.name,

@@ -309,6 +309,15 @@ describe("parseSkillMd — delegation agents", () => {
     expect(() => parseSkillMd(boolRef)).toThrow(/`agent-ref` must be a non-empty string/);
   });
 
+  it("rejects inline tuning fields (tools/model/visibility) on an agent-ref spec", () => {
+    // These apply only to inline agents; on agent-ref the materializer uses
+    // agent-overrides and would silently ignore them. Fail loud instead.
+    const text = withFrontmatter(
+      [`agents:`, `  a:`, `    agent-ref: shared`, `    tools: [search]`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(/can't be set alongside `agent-ref`/);
+  });
+
   it("rejects agent-overrides without agent-ref", () => {
     const text = withFrontmatter(
       [

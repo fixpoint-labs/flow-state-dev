@@ -217,6 +217,21 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
     );
   }
 
+  // Inline tuning fields (`tools`/`model`/`visibility`) apply only to inline
+  // agents. On an `agent-ref` spec the materializer resolves the registered
+  // agent and applies `agent-overrides` — these top-level fields are silently
+  // ignored, so the agent would run with its default surface instead of the
+  // skill-authored one. Reject them and point at `agent-overrides`.
+  if ("agent-ref" in obj) {
+    const inlineTuning = ["tools", "model", "visibility"].filter((k) => k in obj);
+    if (inlineTuning.length > 0) {
+      throw new Error(
+        `SKILL.md agent \`${key}\`: ${inlineTuning.map((k) => `\`${k}\``).join(", ")} ` +
+          `can't be set alongside \`agent-ref\` — put them under \`agent-overrides\` instead.`,
+      );
+    }
+  }
+
   const spec: AgentSpec = {};
   if (typeof obj["prompt"] === "string") spec.prompt = obj["prompt"];
   if (typeof obj["prompt-ref"] === "string") spec.promptRef = obj["prompt-ref"];

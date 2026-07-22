@@ -80,9 +80,14 @@ that plans its *own* fan-out mid-drain. Give one agent `taskTools`, and it can
 ---
 description: Competitor analysis — the team decides the competitors.
 agents:
-  discoverer: { prompt-ref: ./reference/discover.md, tools: [search, taskTools] }
-  analyzer:   { prompt-ref: ./reference/analyze.md,   tools: [search, fetch] }
-  synthesizer:{ prompt-ref: ./reference/synthesize.md }
+  discoverer:
+    prompt-ref: ./reference/discover.md
+    tools: [search, taskTools]
+  analyzer:
+    prompt-ref: ./reference/analyze.md
+    tools: [search, fetch]
+  synthesizer:
+    prompt-ref: ./reference/synthesize.md
 ---
 1. addTask({
      goal: "Identify 3-5 competitors for <topic>, then addTask one 'analyzer'
