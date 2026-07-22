@@ -373,6 +373,31 @@ describe("delegation surface — active ∪ runtime activation input", () => {
     } as never);
     expect(sources).toHaveLength(0);
   });
+
+  it("drops a bundled runtime activation whose live manifest is disable-model-invocation", async () => {
+    // The bundled fast-path must honor a live disable too: a skill activated
+    // into persistent activeState before its manifest was disabled must not
+    // re-enable itself through delegation.
+    const collection = createMockSkillsCollection();
+    collection._store.set("skills/brief/SKILL.md", {
+      name: "skills/brief/SKILL.md",
+      state: { description: "brief", disableModelInvocation: true },
+      content: null,
+    });
+    const { ctx } = buildExecCtx(collection);
+    (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
+      { name: "brief", mode: "inline", activatedAt: 1 },
+    ];
+    const sources = await collectAgentSources(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "explicit", scope: "session", field: "activeSkills" },
+      staticSources: [],
+      bundledAgentIndex: new Map([["brief", { agents: { briefer: { prompt: "hi" } } }]]),
+      dynamicEligible: true,
+    } as never);
+    expect(sources).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

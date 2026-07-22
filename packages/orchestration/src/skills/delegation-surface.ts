@@ -165,6 +165,19 @@ export async function collectAgentSources(
     if (deps.allowedNames && !deps.allowedNames.includes(entry.name)) continue;
     seen.add(entry.name);
 
+    // Read the live manifest once — it gates both paths and supplies agents for
+    // the non-bundled one. Honoring `disable-model-invocation` here covers the
+    // bundled fast-path too: a skill activated into persistent `activeState`
+    // before its manifest was disabled must not still expose its agents (the
+    // body renderer already suppresses it). Matches the static-source filter.
+    const manifest = collection
+      ? await collection.getOptional(skillManifestKey(entry.name))
+      : undefined;
+    const state = manifest?.state as
+      | { agents?: Record<string, AgentSpec>; disableModelInvocation?: boolean }
+      | undefined;
+    if (state?.disableModelInvocation === true) continue;
+
     const bundled = deps.bundledAgentIndex.get(entry.name);
     if (bundled) {
       sources.push({
@@ -176,13 +189,7 @@ export async function collectAgentSources(
       continue;
     }
 
-    // Not bundled — read the live manifest (imported/edited after seeding).
-    if (!collection) continue;
-    const manifest = await collection.getOptional(skillManifestKey(entry.name));
-    const state = manifest?.state as
-      | { agents?: Record<string, AgentSpec>; disableModelInvocation?: boolean }
-      | undefined;
-    if (state?.disableModelInvocation === true) continue;
+    // Not bundled — use the live manifest's agents (imported/edited after seeding).
     const agents = state?.agents;
     if (agents && Object.keys(agents).length > 0) {
       sources.push({
