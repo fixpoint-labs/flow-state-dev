@@ -329,3 +329,42 @@ universal core + established set), which needs user judgment per-BP.
 - WS-6 is verified by the ledger itself: rounds-to-approval and "design-off"
   frequency trend **down** over successive cycles. That trend *is* the proof the
   harness is self-improving.
+
+## 8. Skill-library composition & overlap map
+
+Applying tenet 2 (composition) to the harness's own skills — sub-agents, sub-skills,
+skill forks.
+
+### Done — review consolidation
+
+The review lenses were defined twice (implement-issue's inline panel + the standalone
+audit skills). Now there is **one** definition:
+
+- **`fsd:review`** (new) is the single composition point. It runs the lenses as
+  parallel sub-agents over a change (PR / branch / diff) or a codebase slice, dedupes,
+  and synthesizes one ranked report. Lenses: **Coherence** (`fsd:audit-coherence`),
+  **Restraint** (`fsd:second-look`), **Correctness** (code-reviewer + BP-035),
+  **Completeness** (spec match + red + goal, when a spec is in scope), and optional
+  **Depth** (`fsd:improve-codebase-architecture`, non-blocking).
+- **`implement-issue` Step 6** now *invokes `fsd:review`* instead of an inline
+  four-agent panel. Retired: `philosophy-skeptic-prompt.md` (→ coherence lens) and
+  `simplification-reviewer-prompt.md` (→ restraint lens).
+- **`second-look`** refined to cede redundancy / pattern-conflict / drift to
+  `audit-coherence`; it stays the restraint lens (does this change's surface earn its
+  keep?). `audit-coherence` gained a change/PR scope so it works as the coherence lens
+  on a diff, not just codebase slices.
+
+### Mapped, not built (per user: "just map, don't build")
+
+- **Planning / Linear family** — `plan-day`, `plan-dispatch`, `dispatch-remote`,
+  `linear-triage` overlap on "what to work on / route issues." *Recommendation:* one
+  `plan` orchestrator that composes triage → prioritize → dispatch as sub-steps, with
+  the current skills becoming its stages; keep standalone entry points. Not built.
+- **Ship-small family** — `quick-fix`, `create-issue-and-commit`, `implement-issue`
+  share issue→branch→commit→PR plumbing. *Recommendation:* extract the shared
+  issue/PR plumbing into one referenced sub-routine the three call, rather than three
+  copies; keep the three as distinct entry points (they differ in when the issue is
+  created and how much review runs). Not built.
+- **Prompt/lens assets** — `spec-reviewer-prompt.md` is now referenced by both
+  `implement-issue` (5B.3 per-task) and `review` (completeness lens); if a third
+  consumer appears, promote it to a shared location. Watch, don't move yet.

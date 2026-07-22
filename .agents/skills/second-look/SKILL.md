@@ -18,8 +18,11 @@ This repo accumulates bloat because AI-generated code gets reviewed hard for cor
 | Line-level correctness, bugs | `/code-review` |
 | Line-level cleanup, dedup, dead lines | `/simplify` |
 | Whole-codebase depth refactors | `fsd:improve-codebase-architecture` |
+| Pattern conflicts / redundancy / philosophy drift | `fsd:audit-coherence` |
 
 Second-look operates **above** line level: the approach, the requirements that drove it, and the API/abstraction surface. It does not chase individual lines.
+
+**Its lane vs. coherence.** Second-look asks whether *this change's* surface earns its keep against *its own* requirement — overbuilt? YAGNI? what's the 80/20? Whether the change *duplicates or conflicts with a pattern elsewhere* is a coherence question, not this skill's — route that to `fsd:audit-coherence`. (Second-look is `fsd:review`'s **restraint** lens; audit-coherence is its **coherence** lens. They compose; they don't overlap.)
 
 ## Resolve the target
 

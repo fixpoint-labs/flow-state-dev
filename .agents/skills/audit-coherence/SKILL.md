@@ -52,9 +52,18 @@ Hunt all three. They differ in where the fix lands.
 
 ## Workflow
 
-1. **Scope.** Take the argument as the audit scope (a package, subsystem, or theme
-   like "streaming" / "state"). No argument → propose a scope rather than boiling the
-   ocean; a focused audit that finds real conflicts beats a shallow whole-repo pass.
+1. **Scope.** Two shapes:
+   - **Codebase slice** (a package, subsystem, or theme like "streaming" / "state").
+     No argument → propose a scope rather than boiling the ocean; a focused audit that
+     finds real conflicts beats a shallow whole-repo pass.
+   - **A change** (a PR, branch, or working diff) — how `fsd:review` runs this skill as
+     its **coherence lens**. Read the spec's Part I ("The Case") and the *shape* of the
+     diff, and judge whether the solution coheres with the tenets it claims and the
+     patterns it sits beside. This is the apex review question — the "directionally-right
+     spec but the design feels off" failure a line-level review can't see; weigh a
+     coherence break as reshape-the-approach, not patch-the-lines.
+
+   The three kinds of incoherence below apply in both shapes.
 2. **Map the patterns in scope.** For the target area, enumerate the recurring
    shapes: how blocks are composed, how state is modeled, how errors are handled, how
    resources are wired, naming conventions, boundary rules. Use `fsd:zoom-out` shape

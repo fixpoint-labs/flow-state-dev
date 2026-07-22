@@ -213,42 +213,14 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 
 ### Step 6: Comprehensive Review
 
-This is the critical quality gate. Launch **four review sub-agents in parallel**:
+This is the critical quality gate. **Invoke `fsd:review`** on the change (the implementation branch/PR), passing the spec and the Linear category as context. It is the single definition of how we review — the same skill runs standalone — so there is no separate inline panel here. It composes the review lenses as **parallel sub-agents** and returns one deduped, ranked report:
 
-#### Agent 1: Philosophy Skeptic (apex — highest altitude)
-Launch a `Plan` sub-agent using `./philosophy-skeptic-prompt.md`. It judges whether the *solution* coheres with `docs/philosophy.md` and the spec's stated tenets — the "directionally-right spec but the design feels off" failure the other three structurally cannot see. It reads Part I and the *shape* of the change, not the diff line by line. Weigh its verdict as the most consequential: a COHERENCE CONCERN usually means reshaping the approach or re-anchoring the spec, not patching lines.
+- **Coherence** (`fsd:audit-coherence`) — does the solution cohere with `docs/philosophy.md` and the surrounding patterns? The apex lens: it catches the "directionally-right spec but the design feels off" failure the others structurally can't. A coherence break usually means reshaping the approach, not patching lines.
+- **Restraint** (`fsd:second-look`) — overbuilt / YAGNI / 80-20 / what can be subtracted (BP-038)?
+- **Correctness** — bugs and logic errors + the second-path checklist (BP-035) + the changeset (BP-022).
+- **Completeness** (a spec is in scope) — every spec requirement built and nothing extra, **red demonstrated** (the failing output captured before the fix), and the **goal proven** on a real model (or the documented "no goal check applies" justification; for bugs, diagnose's real-path confirmation).
 
-#### Agent 2: Completeness Review (spec compliance)
-Launch a `general-purpose` sub-agent to:
-- Compare the full implementation against every section of the spec
-- Check each acceptance criterion from the spec
-- Verify edge cases from the spec's "Edge Cases" section are handled
-- Confirm the testing strategy from the spec was followed
-- **Confirm the goal was actually proven — when the spec names a goal check.** If the spec's Testing Strategy names a goal check, confirm it was run with a real model and passed (`fsd:tdd` → "Two kinds of test"); a green CI suite is not evidence. If it wasn't run, or only mocked specs exist, that is a completeness failure: flag it must-fix and run the goal check before presenting. **Honor a documented skip.** If the spec declares "no goal check applies" (docs-only, pure type/schema/internal refactor, config/build plumbing — per `create-spec`'s "When a goal check doesn't apply"), confirm that justification still holds — i.e. no user-observable outcome was actually introduced — rather than demanding a check. For bug work, the real-path confirmation is the goal-level proof — Step 5A for simple bugs, Step 5B.4 for complex bugs that route through sub-agents; verify that verdict (wherever it was recorded) instead of a named goal check.
-- **Confirm red was actually demonstrated, not just that tests are green.** For every new behavioural test and every regression test, the implementer's report (and Step 5B.3's spec reviews) must show the actual failing output captured before the fix/implementation existed, plus the passing output after. A test that was never observed to fail is not evidence it verifies anything — reject work that only claims "tests pass" with no failing-output evidence, and require the missing test be re-demonstrated (write-test-first, or temporarily revert the fix and re-run) before presenting. This does not apply to the documented exceptions: pure characterization/parity work holding pre-existing tests green across a swap, or trivial mechanical edits with no behavioural surface.
-- Flag anything in the spec that wasn't implemented
-- Flag anything implemented that wasn't in the spec
-
-#### Agent 3: Simplification Review
-Launch a `Plan` sub-agent to:
-- Look for over-engineering: abstractions that aren't justified by the spec's scope
-- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-036, BP-014 violations, etc.)
-- Check if any code could be simplified without losing functionality
-- Verify the implementation follows existing codebase patterns rather than inventing new ones
-- Check for YAGNI violations — features or flexibility that wasn't requested
-- **What could this change remove?** (BP-038) — a superseded path left beside the new one, an export/option/config key no caller needs, dead code the change orphaned. Subtraction is part of the change, not a follow-up.
-- Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.step()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
-- **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
-
-#### Agent 4: Quality and Impact Review
-Launch a `superpowers:code-reviewer` sub-agent to:
-- Review code quality: naming, structure, test coverage
-- Check for bugs or logic errors
-- **Run the second-path checklist (BP-035)** against the changed surface: legacy/persisted records, null/empty/boundary inputs and guard-clause order, concurrent/duplicate (409) calls, cancel/error paths, second-tenant key scoping, cost/observability of any new model call, and React derived-state/no-op-render. These are the highest-frequency review-defect classes; treat an unhandled path as must-fix unless explicitly out of scope.
-- Verify adherence to project conventions (AGENTS.md, best-practices.md)
-- Identify if changes affect other parts of the codebase
-- Check documentation needs (architecture docs, READMEs, changeset)
-- For changeset fragments specifically, follow the [Release notes workflow](../../../docs/contributing/release-notes-workflow.md) and BP-022: one user-facing sentence per affected package, no file paths, no test counts, no implementation rationale. Pre-1.0: `patch` or `minor` only, never `major`. If the spec is large, summarize at user-facing depth — don't transcribe the spec into the fragment. Internal-only PRs can use `pnpm changeset --empty`.
+Depth follow-ups (`fsd:improve-codebase-architecture`) come back as non-blocking notes. If the area is unfamiliar or large, `review` may run the depth lens too.
 
 #### Process Review Results
 
@@ -278,8 +250,8 @@ Present the completed work:
 4. **Goal verdict**: when the spec named a goal check, the check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked — the proof the goal was met, distinct from the mocked test suite. When the spec documented that no goal check applies, state that and the one-line justification. For bugs, give diagnose's real-path confirmation instead.
 5. **Deviations**: anything that differed from the spec and why
 6. **Test results**: full typecheck and test output, plus the red/green evidence (failing output captured before the fix/implementation, passing output after) for each new behavioural or regression test — per the confirm-red gate. "Tests pass" alone is not evidence.
-7. **Review findings**: notable observations from the three reviewers
-8. **Simplifications made**: what the simplification review caught and how it was addressed
+7. **Review findings**: notable findings from `fsd:review` across its lenses (coherence, restraint, correctness, completeness) and how the must-fix / should-fix items were resolved
+8. **Restraint & subtraction**: what the restraint lens (`fsd:second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038)
 9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
 Ask the user to review. They may:
@@ -416,7 +388,7 @@ The skill exits this loop only when the PR is merged or closed.
 - **Sub-agents get full context.** Never make a sub-agent read files to understand their task. Paste the relevant spec sections directly into the prompt.
 - **Sequential implementation, parallel review.** Tasks execute in order (they often depend on prior tasks). Reviews run in parallel (they're independent).
 - **Fix before presenting.** The user should see clean work, not a list of known issues. Fix everything the reviewers flag before Step 8.
-- **Simplification is not optional.** The simplification review exists because agents tend to over-build. Take its findings seriously.
+- **Restraint is not optional.** `fsd:review`'s restraint lens (`fsd:second-look`) exists because agents tend to over-build. Take its findings seriously — subtraction is part of the change (BP-038).
 - **One shot for simple issues.** Don't spin up sub-agents for a 10-line bug fix. The complexity assessment in Step 4 exists to prevent ceremony overhead on simple work.
 - **Keep Linear updated.** Every state change should be reflected. The whole point is traceability.
 - **Acknowledge before you act.** On every PR re-invocation, react to every new comment with `eyes` *before* deciding what to do with any of them. Reviewers should never wonder whether the agent saw their comment.

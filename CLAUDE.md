@@ -166,7 +166,8 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `linear-triage`           | Review and prioritize Linear issues                        |
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
 | `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
-| `audit-coherence`         | Sweep the codebase for incoherence (conflicting patterns, philosophy drift, gaps); feeds pruning + grounding refinement |
+| `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
+| `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `implement-issue` |
 
 
 ### Development skills
