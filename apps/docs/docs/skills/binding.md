@@ -48,7 +48,7 @@ uses: [skills.with({ active: ["detailed-analysis", "cite-sources"] })];
 ```
 
 - **Declared tools ride along.** Each preloaded skill contributes the tools it names in `allowed-tools`. A skill that declares none is unrestricted, so the whole catalog is contributed.
-- **A preloaded skill can delegate.** If the skill declares a `workers:` field, binding it installs the delegation surface (a private board, callable worker tools, and `runBoard`) on this generator. See [Delegation](./delegation).
+- **A preloaded skill can delegate.** If the skill declares an `agents:` field, binding it installs the delegation surface (a private board, the `taskTools`, and `runBoard`) on this generator. See [Delegation](./delegation).
 - **Fails loud on a typo.** A name that isn't a known skill throws at build time. This is an author declaration, not a runtime read, so a silent skip would run the generator without the instructions you asked for. Binding by name validates against the library's bundled `initialSkills`, so pass them to `createSkillsLibrary` — binding a name with no catalog to check against is itself an error.
 
 Two generators, two different `active` sets, and neither sees the other's skill. That's the whole point.

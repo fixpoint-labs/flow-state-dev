@@ -46,9 +46,9 @@ Both paths can coexist. See [Activation paths](./activation) for the full breakd
 
 A matched skill is inline instructions. Its substituted body is injected into the parent generator's system prompt on the next step, and the conversation continues in the parent context with the parent's tools. That's the whole model.
 
-A bound skill can additionally **delegate**: if it declares a `workers:` field, the generator gets a private task board, one callable tool per worker, and `runBoard` — it hands off single units of work directly, or plans a task graph and runs the whole board. See [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
+A bound skill can additionally **delegate**: if it declares an `agents:` field, the generator gets a private task board, the `taskTools` to plan on it, and `runBoard` — it assigns the work as tasks (assignees, deps, structured input) and runs the whole graph by draining the board. See [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
 
-Fork mode was removed. A skill no longer runs as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare a worker and call it (that's a one-call round-trip); a sub-agent that inherits the conversation so far is planned separately.
+Fork mode was removed. A skill no longer runs as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`; a sub-agent that inherits the conversation so far is planned separately.
 
 ## Binding skills to one generator
 

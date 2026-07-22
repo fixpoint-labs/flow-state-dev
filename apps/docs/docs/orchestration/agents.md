@@ -2,12 +2,12 @@
 title: Agents
 sidebar_position: 5
 sidebar_label: Agents
-description: Named, reusable participants composed of a persona, a model, and tools, registered once and referenced as delegation workers or composed as standalone blocks.
+description: Named, reusable participants composed of a persona, a model, and tools, registered once and referenced as delegation agents or composed as standalone blocks.
 ---
 
 # Agents
 
-An agent is a named, reusable participant you define once and use many times. It bundles three things: a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and a set of tools it may call. Once registered, you reference an agent by name from a skill's `workers:` map (as a delegation worker), or drop it into any flow action as a standalone block.
+An agent is a named, reusable participant you define once and use many times. It bundles three things: a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and a set of tools it may call. Once registered, you reference an agent by name from a skill's `agents:` map (as a delegation agent), or drop it into any flow action as a standalone block.
 
 The point is to stop copy-pasting the same prompt and tool list into every worker. You write the `research-analyst` once, then a supervisor skill, a plan-and-execute skill, and a one-off action can all point at it.
 
@@ -52,9 +52,9 @@ export const agentRegistry = createAgentRegistry([techBriefer]);
 
 An agent definition is inert on its own. Two steps turn it into something that runs.
 
-`createAgentRegistry` builds a catalog from an array of agents. It errors on a duplicate name, so the registry is a single source of truth. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a delegation worker) or standalone (for a flow action).
+`createAgentRegistry` builds a catalog from an array of agents. It errors on a duplicate name, so the registry is a single source of truth. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a board seat in a delegation skill) or standalone (for a flow action).
 
-You rarely call `materializeAgent` by hand. You hand it to the skills library, which calls it when a skill's worker resolves an `agent-ref`:
+You rarely call `materializeAgent` by hand. You hand it to the skills library, which calls it when a skill's `agent-ref` entry resolves:
 
 ```ts
 import { createAgentRegistry, materializeAgent } from "@flow-state-dev/workforce";
@@ -68,27 +68,27 @@ const skills = createSkillsLibrary({
 });
 ```
 
-With that wiring in place, a skill's `SKILL.md` references an agent from its `workers:` map. Declaring `workers:` turns on delegation for a generator that binds the skill; `agent-ref` names the agent, and `agent-overrides` adjusts it for this skill:
+With that wiring in place, a skill's `SKILL.md` references an agent from its `agents:` map. Declaring `agents:` turns on delegation for a generator that binds the skill; `agent-ref` names the agent, and `agent-overrides` adjusts it for this skill:
 
 ```yaml
 ---
 description: Multi-angle research on a company. Use when the user asks for a deep dive.
-context: inline
 
-workers:
+agents:
   analyst:
     agent-ref: tech-briefer
     agent-overrides:
       model: openai/gpt-5.4-mini
       tools: [search, fetch, readDocument]
 ---
-You are the research lead. Hand each angle to the `analyst` tool and
-synthesize the results.
+You are the research lead. Plan the work on your board — `addTask` one task per
+angle, each `assignee: "analyst"` — then call `runBoard` and synthesize the
+settled tasks' output.
 ```
 
-Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `itemVisibility`. The result is a deterministic, auditable tool surface per skill: you read the override block and know exactly what the worker can do.
+Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `itemVisibility`. The result is a deterministic, auditable tool surface per skill: you read the override block and know exactly what the agent can do.
 
-There's no prompt or persona override. Changing an agent's persona is a change to the agent definition. If you need an ad-hoc prompt for one worker, use `prompt` or `prompt-ref` on the worker spec instead of `agent-ref`.
+There's no prompt or persona override. Changing an agent's persona is a change to the agent definition. If you need an ad-hoc prompt for one agent, use `prompt` or `prompt-ref` on the agent spec instead of `agent-ref`.
 
 ## Standalone block
 
@@ -105,7 +105,7 @@ Mount `briefingBlock` in a sequencer or wire it as an action the same way you wo
 
 ## Structured output and capabilities
 
-A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Delegation workers stay `z.string()` regardless — the executive that calls a worker tool reads its text result.
+A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Delegation agents stay `z.string()` regardless — the delegated agent's output is read off its completed task on the board, not returned inline to the coordinator.
 
 `usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
 
@@ -166,6 +166,6 @@ Agents are a young primitive. A few things are declared but not yet wired, and i
 
 ## Related pages
 
-- [Delegation](../skills/delegation.md) — referencing agents from a worker map via `agent-ref`.
+- [Delegation](../skills/delegation.md) — referencing agents from an `agents:` map via `agent-ref`.
 - [Task board](./task-board.md) — the concurrent drain you can call as a tool.
 - [Orchestration overview](./overview.md) — how agents, the substrate, and the board fit together.
