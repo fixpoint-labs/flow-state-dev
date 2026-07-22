@@ -298,6 +298,15 @@ Drafted: `docs/philosophy.md` (WS-1) — 7 tenets, coherence-apex, three-tier gr
 `docs/contributing/spec-template.md` (WS-2) — the two-part Case/Build-Plan contract;
 `create-spec` wired to it (refinement-lens Step 3.5, interactivity dial, anti-addenda,
 structure now lives in the template — skill shrank).
+WS-3: `implement-issue` challenger sub-agent (`challenger-prompt.md`) — LLM-judged
+high-risk boundaries, best-judgment+loud-flag when AFK.
+WS-4: Philosophy Skeptic (`philosophy-skeptic-prompt.md`) as the apex reviewer in
+the Step 6 panel (now four reviewers).
+
+Review notes folded in: spec-review feedback splits directional (fold in) vs
+in-the-weeds (leave as implementer notes); the throwaway spec PR hosts full examples;
+philosophy scopes framework-vs-labs; "align as you go" made explicit given current
+known bloat/incoherence.
 
 ## 7. Verification (how we'll know it worked)
 

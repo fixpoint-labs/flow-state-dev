@@ -60,10 +60,16 @@ change-specific rule that isn't yet a BP.
 The actual code a developer or end user writes against the new/changed surface, and
 the observable result (return value, emitted items, rendered output). **Usage, not
 implementation.** Include a short before/after when an existing call site changes.
-Keep each example minimal — the smallest thing that conveys the usage. Skip this
-(and say so in one line) only when the change doesn't alter how anyone writes code
-against the framework (internal refactor, pure type change, bug fix restoring
-documented behavior).
+Keep the examples *here* small — the smallest thing that conveys the usage. When a
+fuller, worked example genuinely helps reviewers, put it in the **spec PR** (which is
+never merged) rather than the spec doc, so the implementing agent isn't forced to
+wade through it. Skip examples entirely (and say so in one line) only when the change
+doesn't alter how anyone writes code against the framework (internal refactor, pure
+type change, bug fix restoring documented behavior).
+
+*(Review feedback that's too in-the-weeds to belong in the spec's prose is recorded
+under a "Review notes for the implementer" heading rather than rewritten into the
+design — see `fsd:create-spec` Step 6.5.)*
 
 ### 6. Decisions & rules — the sign-off surface
 
@@ -77,6 +83,10 @@ Keep it to the decisions that *shape the outcome* (aim for ≤ 8). Part II must 
 introduce a decision that isn't represented here — if it does, that decision belongs
 up here where it's visible. Some interpretation room for the implementer is fine and
 expected; these are the calls that are *not* theirs to make.
+
+Then a one-line **Non-goals** note — what this deliberately does *not* do (scope
+boundaries) — so scope creep is visible to the human at sign-off. (Process-level
+follow-ups — deepening opportunities, already-rejected directions — go in §12.)
 
 End with the **size estimate**: Small (1 file / <100 LOC) · Medium (multi-file / 1
 PR / 100–500) · Large (multi-PR / >500). If Large, name the PR split.
@@ -126,7 +136,17 @@ Per-page plan (CREATE/EXTEND, sidebar placement, outline, cross-links, voice ris
 or an explicit "no docs changes required" with justification. Never a vague "update
 the README."
 
-### 12. Dependencies & open questions
+### 12. Dependencies, open questions & follow-ups
 
 Blocking issues / PRs that must land first; external dependencies. Open questions
 that need a decision before implementation, each with options and trade-offs.
+
+**Follow-ups (flagged, not built):**
+- **Deepening opportunities** the area surfaced — shallow handlers, capability-shaped
+  wiring, patterns that strain a tenet — as follow-ups for
+  `fsd:improve-codebase-architecture`. Flagging keeps them visible without expanding
+  scope. (Opportunistic in-scope alignment still happens per the philosophy's
+  "align as you go"; this is for what's genuinely out of scope.)
+- **Already-rejected directions** — before listing a deliberate "won't do," check
+  `docs/internal/out-of-scope/` and reference an existing rejection rather than
+  restating it.

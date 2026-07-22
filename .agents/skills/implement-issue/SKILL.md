@@ -21,6 +21,8 @@ Both disciplines are embedded into the implementer sub-agent prompt at dispatch 
 
 **Exceptions.** (a) Pure characterization/parity work — swapping an implementation while holding pre-existing tests green (see `fsd:tdd` → "When NOT to use TDD") — has no red-green cycle by design; the discipline there is that the parity tests already existed *before* the change and continue to pass, not that anything was ever red. (b) Trivial, mechanical edits with no behavioural surface — config values, docs, renames — don't need a test at all. Anything with observable behaviour (an item emitted, a return value, a state change, a symptom that's now fixed) gets the red gate; when in doubt, treat it as observable.
 
+**Meta-awareness — challenge the spec where the code contradicts it.** The spec did the hard 80% and passed review, but implementation is the first time its assumptions meet real code. At the step boundaries you judge most likely to expose a blind spot — not the trivial ones — run the **challenger** sub-agent (`./challenger-prompt.md`). It asks only whether the code reveals something the spec *misunderstood or didn't realize*; it does not re-litigate a reviewed spec or review quality/scope. On a real blind spot, **surface it**: escalate to the human when available, else take the best-judgment path, fold the correction into the spec, and flag it loudly as a spec deviation in the PR and Linear (never silently force-follow or deviate). A challenged blind spot is prime `fsd:distill-lessons` signal.
+
 ## Workflow
 
 **Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `fsd:create-spec`, open or closed) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
@@ -115,7 +117,7 @@ If the area being touched is unfamiliar to you (whether running this skill direc
 
 ### Step 5A: Simple Implementation
 
-Follow the discipline picked at Step 4.1.
+Follow the discipline picked at Step 4.1. As you work, at any boundary that resists the spec's plan or sits on a Part I decision, run the challenger (Core Principles → Meta-awareness; `./challenger-prompt.md`) before committing to that direction. Skip it at trivial boundaries.
 
 **For bugs (`fsd:diagnose` discipline):**
 
@@ -190,6 +192,8 @@ Provide:
 
 #### 5B.3: Spec Compliance Review (per task)
 
+For a task on a high-risk boundary (it resisted the spec's plan, exposed a checkable assumption, or sits on a Part I decision), **run the challenger first** (`./challenger-prompt.md`) — catch a spec blind spot before the compliance check, since compliance assumes the spec is right. Skip the challenger for mechanical tasks.
+
 After each task, dispatch a spec reviewer sub-agent using `./spec-reviewer-prompt.md`:
 - Provide the spec requirements for this task
 - Provide the implementer's report
@@ -209,9 +213,12 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 
 ### Step 6: Comprehensive Review
 
-This is the critical quality gate. Launch **three review sub-agents in parallel**:
+This is the critical quality gate. Launch **four review sub-agents in parallel**:
 
-#### Agent 1: Completeness Review (spec compliance)
+#### Agent 1: Philosophy Skeptic (apex — highest altitude)
+Launch a `Plan` sub-agent using `./philosophy-skeptic-prompt.md`. It judges whether the *solution* coheres with `docs/philosophy.md` and the spec's stated tenets — the "directionally-right spec but the design feels off" failure the other three structurally cannot see. It reads Part I and the *shape* of the change, not the diff line by line. Weigh its verdict as the most consequential: a COHERENCE CONCERN usually means reshaping the approach or re-anchoring the spec, not patching lines.
+
+#### Agent 2: Completeness Review (spec compliance)
 Launch a `general-purpose` sub-agent to:
 - Compare the full implementation against every section of the spec
 - Check each acceptance criterion from the spec
@@ -222,7 +229,7 @@ Launch a `general-purpose` sub-agent to:
 - Flag anything in the spec that wasn't implemented
 - Flag anything implemented that wasn't in the spec
 
-#### Agent 2: Simplification Review
+#### Agent 3: Simplification Review
 Launch a `Plan` sub-agent to:
 - Look for over-engineering: abstractions that aren't justified by the spec's scope
 - Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-036, BP-014 violations, etc.)
@@ -233,7 +240,7 @@ Launch a `Plan` sub-agent to:
 - Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.step()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `fsd:improve-codebase-architecture`
 - **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
 
-#### Agent 3: Quality and Impact Review
+#### Agent 4: Quality and Impact Review
 Launch a `superpowers:code-reviewer` sub-agent to:
 - Review code quality: naming, structure, test coverage
 - Check for bugs or logic errors

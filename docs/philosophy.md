@@ -24,6 +24,16 @@ Everything below follows from that. The framework's value is what it *absorbs* f
 every app, so the framework must stay something every app can trust: coherent,
 small, and free of any one app's or vendor's knowledge.
 
+**Scope — framework vs. labs/apps.** These tenets govern the **framework** packages
+(`@flow-state-dev/*`, `@thought-fabric/*`). The **labs** and example apps (`labs/*`,
+`apps/*`, `examples/*`) are *consumers* that demonstrate the framework — domain logic
+and app-shaped code legitimately live there. When you work in labs code, "absorb
+infrastructure, not knowledge" is not a rule against having domain logic; it's the
+line you apply when deciding whether something in a lab has become general enough to
+belong *back in the framework*. Coherence, composition, restraint, and readability
+apply everywhere; the framework/app boundary tenet (4) is specifically about the
+public framework surface.
+
 ---
 
 ## The two failures we guard against
@@ -44,6 +54,14 @@ Rank them. When you can only prevent one, prevent the first.
 
 They are the same enemy on two timescales. Coherence is bloat prevention that has
 already compounded.
+
+**Where we are today.** The framework carries known bloat and incoherence — surface
+that accreted before these tenets were written down. We are actively removing it. So
+when you spec or implement a feature and pass through code that strains a tenet, take
+the opportunity to better align it as you go: refine the substrate, delete a dead
+path, reconcile a conflicting pattern — within the change's scope and flagged for
+review, not as unbounded side-quests. Opportunistic alignment is how the loop pays
+down the debt without a separate cleanup project stalling feature work.
 
 ---
 

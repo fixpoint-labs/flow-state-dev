@@ -27,13 +27,13 @@ The spec is the input to `fsd:implement-issue`, which auto-routes based on the L
 - **Bug** → implementation follows `fsd:diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
 - **Feature / Enhancement** → implementation follows `fsd:tdd` (red-green-refactor with vertical tracer-bullet slices).
 
-Shape the spec's Testing Strategy (section 7) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
+Shape the spec's Testing Strategy (Part II §10) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
 
 Other skills the spec author should reach for when relevant:
 
 - **`fsd:zoom-out`** — when sub-agents land in an unfamiliar area of the codebase during Step 2. Asks for a terse map in FSD vocabulary (flow / actions / blocks / capabilities / scopes / items / boundaries / callers). Faster than re-reading the docs cold.
 - **`fsd:prototype`** — when a design question can't be answered from existing code alone. If you find yourself unable to decide between two block shapes / capability surfaces / state models in Step 4 (Synthesize), pause and run a LOGIC prototype against the candidate. For UI questions about devtool / kitchen-sink / renderer changes, run a UI prototype. The prototype's NOTES.md becomes input to the spec; don't ship a spec that hand-waves through a question a one-day prototype would have answered.
-- **`fsd:improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in section 8 (Non-Goals) as a follow-up flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `fsd:improve-codebase-architecture`."*
+- **`fsd:improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in the template's §12 (Follow-ups) as a flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `fsd:improve-codebase-architecture`."*
 
 ## Interactivity — one skill, two modes
 
@@ -72,7 +72,7 @@ Launch a `feature-dev:code-explorer` sub-agent to:
 - Find related code that might be affected by or inform the implementation
 - Read relevant architecture docs (`docs/architecture/*.md`) and best practices
 - Check `AGENTS.md` for any implementation guardrails
-- Surface any **deepening opportunities** the analysis reveals — shallow handlers, repeated capability-shaped wiring, BP-violating patterns in the area being touched. These do not block the spec; they go in the Non-Goals section as follow-up flags to be handled later via `fsd:improve-codebase-architecture`
+- Surface any **deepening opportunities** the analysis reveals — shallow handlers, repeated capability-shaped wiring, BP-violating patterns in the area being touched. These do not block the spec; they go in the template's §12 (Follow-ups) to be handled later via `fsd:improve-codebase-architecture`
 
 #### Agent B: Dependency & PR Context
 Launch an `Explore` sub-agent to:
@@ -151,7 +151,7 @@ The agent must answer, in order:
    - **Cross-links** — which other pages should link to this, and which should this link to? List both directions.
    - **Voice constraints** — explicitly cite the `CLAUDE.md` "Writing Style" rules that are most likely to be violated for this topic (e.g., "watch for em-dashes", "avoid 'powerful' adjective", "introduce term `capability` on first use").
 
-6. **Return a structured docs plan** with one entry per affected file, in the format the spec template requires (see section 9 below).
+6. **Return a structured docs plan** with one entry per affected file, in the format the spec template requires (Part II §11, Documentation Plan).
 
 **Heuristics the agent should apply:**
 - A new public function or capability almost always needs at least: a README entry, an API reference entry, and either a Fundamentals/Ecosystem page or an extension to one.
@@ -308,7 +308,7 @@ Launch a `general-purpose` sub-agent to:
 - Ensure the spec is self-contained enough for an isolated agent session
 
 #### Agent H: Documentation Plan Validation
-Launch an `Explore` sub-agent to review section 9 (Documentation Plan) specifically:
+Launch an `Explore` sub-agent to review the Documentation Plan (Part II §11) specifically:
 - Does the plan answer "is a docs change required?" with a real justification, or does it punt?
 - For each proposed new page: does the proposed sidebar position actually make sense given sibling pages? Re-read the surrounding category and confirm.
 - For each proposed extension: does the existing page actually exist, and is the proposed insertion point inside it sensible?
@@ -325,7 +325,7 @@ The spec is published in two places that must hold identical content: a versione
 
 1. **Write the spec to `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`). This is the canonical reviewable artifact.
 
-2. **Open a spec PR.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>`. **The PR description leads with the spec's Part I ("The Case") verbatim** — problem/why-now, solution in plain terms and the tenets it leans on, tradeoffs, focus practices, usage examples, and the numbered Decisions & rules — so reviewers see the scan-first shape without opening the doc. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the spec *before* any code is written.
+2. **Open a spec PR.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>`. **The PR description leads with the spec's Part I ("The Case") verbatim** — problem/why-now, solution in plain terms and the tenets it leans on, tradeoffs, focus practices, usage examples, and the numbered Decisions & rules — so reviewers see the scan-first shape without opening the doc. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the spec *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
 
 3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc.
 
@@ -343,6 +343,7 @@ The spec is published in two places that must hold identical content: a versione
 The spec PR will draw automated review (the same bots that review code PRs). Treat their feedback as a cheap chance to fix the design on paper:
 
 - **Apply clear, obvious fixes and improvements directly** — factual corrections, missed edge cases, broken references, tightening, a better-scoped approach the reviewer is plainly right about. Update **both** the repo `docs/specs/<ISSUE-ID>.md` and the Linear document (keep them in sync), and reply on the thread noting the fix.
+- **Distinguish directional feedback from in-the-weeds detail.** *Directional* feedback (the approach, a decision, a missed edge case that changes the design) gets folded into the spec — re-draft per the anti-addenda rule. *In-the-weeds* feedback (a naming preference, a local implementation detail, a micro-optimization) is **not** refactored into the spec's own prose — the implementing agent owns the last 20% and may resolve it differently once in the code. Instead, record it verbatim under a short **"Review notes for the implementer"** annotation in the spec for them to weigh, and reply on the thread saying you've left it for implementation rather than baking it into the design. This keeps the spec at the right altitude and avoids doc-language churn over details that aren't the spec's to settle.
 - **Escalate debatable feedback to the user.** When a suggestion is a judgment call, a scope change, or a direction the reviewer and the spec could each reasonably defend, don't silently accept it — surface it with the trade-off (use `AskUserQuestion` for a crisp choice) and let the user decide.
 - **On a major pivot, re-draft — do not append (anti-addenda rule).** When review changes the *direction* (a different approach, a dropped/added deliverable, a reversed decision), rewrite the affected Part I and Part II sections so the spec reads as one coherent document. Do **not** bolt a "reconciliation / AUTHORITATIVE" section onto the top that contradicts the body — an incoherent spec produces an incoherent implementation (tenet 1). Small clarifications can be inline; a changed direction gets rewritten. Keep the repo doc and Linear document in sync through the rewrite.
 - The spec PR is done when review is addressed and the user has signed off on the direction; `fsd:implement-issue` then proceeds from the agreed spec and closes the spec PR unmerged as part of its branch setup. Don't merge or close the spec PR yourself.
@@ -413,7 +414,7 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 - **Research is not copying.** Industry research informs the approach but the implementation must fit this codebase's architecture, not blindly adopt an external pattern.
 - **Self-contained.** The spec must include everything an implementer needs. If they have to read 5 other documents to understand the spec, it's not done.
 - **Non-goals matter.** Explicitly stating what you're NOT doing prevents scope creep and sets expectations.
-- **Documentation is part of the spec, not an afterthought.** Every spec must include section 9 (Documentation Plan) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
+- **Documentation is part of the spec, not an afterthought.** Every spec must include the Documentation Plan (Part II §11) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
 - **Reframing the issue is part of the spec workflow, not a post-script.** Step 7 is required. The moment the spec is published, any solution detail still living in the issue is duplicate or stale. Removing it preserves the issue/spec separation and prevents future readers from following the wrong source. Do not skip it because the issue "looks fine" — re-read it through the PM/business lens and prune.
 - **Open questions are OK.** It's better to flag uncertainty than to make a wrong assumption. Present options with trade-offs and let the project owner decide.
 - **Dependency accuracy is critical.** If you say "no dependencies," an agent will start building immediately. If there's actually a dependency, the work gets thrown away. Be thorough.
