@@ -448,6 +448,44 @@ describe("createSkillsLibrary — block-state default reader", () => {
   });
 });
 
+describe("createSkillsLibrary — delegation gating", () => {
+  const agentSkill = (name: string, disabled: boolean): InitialSkill => ({
+    name,
+    skillMd: [
+      "---",
+      `description: ${name} skill`,
+      ...(disabled ? ["disable-model-invocation: true"] : []),
+      "agents:",
+      "  researcher:",
+      "    prompt: You research things.",
+      "---",
+      "",
+      "addTask then runBoard.",
+    ].join("\n"),
+  });
+
+  const boardField = (skills: ReturnType<typeof createSkillsLibrary>, active: string[]) => {
+    const resolved = skills.__configDef!.resolve(
+      { active } as never,
+      { presets: new Set(), blockKind: "generator" },
+    ) as { stateSchema?: { shape?: Record<string, unknown> } };
+    return resolved.stateSchema?.shape?.delegationBoard;
+  };
+
+  it("installs the delegation board for an enabled agent skill", () => {
+    const skills = createSkillsLibrary({ initialSkills: [agentSkill("team", false)] });
+    expect(boardField(skills, ["team"])).toBeDefined();
+  });
+
+  it("does NOT install delegation for a disable-model-invocation agent skill, even when force-bound via active", () => {
+    // A disabled skill is invisible to the model (its body is suppressed). The
+    // delegation surface is model-facing too, so it must not install — otherwise
+    // a draft/private skill's agents would be reachable through addTask/runBoard.
+    const skills = createSkillsLibrary({ initialSkills: [agentSkill("draft-team", true)] });
+    expect(boardField(skills, ["draft-team"])).toBeUndefined();
+  });
+});
+
 describe("createSkillsLibrary — explicit activeState", () => {
   it("does not return a no-op scope state schema from the resolver", () => {
     // A config resolver's returned surface reaches only the generator's

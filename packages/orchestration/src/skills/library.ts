@@ -408,7 +408,18 @@ export function createSkillsLibrary(
     const staticAgentSkills = delegationOn
       ? active
           .map((name) => ({ name, entry: index.get(name)! }))
-          .filter((s) => s.entry.agents && Object.keys(s.entry.agents).length > 0)
+          .filter(
+            (s) =>
+              // A `disable-model-invocation` skill is invisible to the model —
+              // its body is suppressed even when force-bound via `active` (see
+              // render-skill-body.ts). The delegation surface (task tools +
+              // guidance roster) is model-facing too, so a disabled skill must
+              // not install it, or a draft/private skill would be reachable
+              // through addTask/runBoard.
+              !s.entry.disableModelInvocation &&
+              s.entry.agents &&
+              Object.keys(s.entry.agents).length > 0,
+          )
       : [];
 
     // Build-time validation for the static set — divergent same-key agents and
@@ -460,7 +471,12 @@ export function createSkillsLibrary(
       (cfg.allowed
         ? cfg.allowed.some((name) => {
             const entry = index.get(name);
-            return Boolean(entry?.agents && Object.keys(entry.agents).length > 0);
+            return Boolean(
+              entry &&
+                !entry.disableModelInvocation &&
+                entry.agents &&
+                Object.keys(entry.agents).length > 0,
+            );
           })
         : true);
     const delegationPossible =
