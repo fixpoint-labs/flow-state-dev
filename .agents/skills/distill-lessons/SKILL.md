@@ -1,6 +1,6 @@
 ---
 name: fsd:distill-lessons
-description: Reflect on a completed, reviewed, or reworked change, extract the transferable lessons (not project trivia), and propose best-practice updates. Use after a PR was reworked or heavily reviewed, after a hard bug, or after a design you reversed — especially to learn from your OWN work being changed. Part of the self-testing-and-improving loop. Gates hard against best-practice bloat; writes to docs/contributing/best-practices.md only after user review.
+description: The self-improvement engine. Runs periodically to measure the development loop itself — an auto-derived cycle-ledger of review rounds + feedback classes from GitHub/Linear — and push the SMALLEST upstream fix that kills a recurring rework class (sharpen a tenet, sharpen an existing BP, or add a skill checklist line). Also runs per-PR to reflect on a reworked/reviewed change and extract the transferable lesson. Gates hard against best-practice bloat; writes to docs/philosophy.md or best-practices.md only after user review.
 argument-hint: "<what to reflect on, e.g. 'PR #651' or 'the FIX-788 rework' or 'this session'>"
 ---
 
@@ -11,6 +11,51 @@ the kind that changes how an agent approaches an *unrelated* task next time, and
 codifying the worthwhile part as a best practice. This is the reflection half of
 the self-improvement loop: tests prove the code works; this proves the *approach*
 got better.
+
+## Two altitudes: the change, and the loop
+
+- **The change (per PR).** Reflect on one reworked/reviewed change and extract the
+  transferable lesson. This is the rest of this doc.
+- **The loop (periodic).** Measure the *development loop itself* and improve it where
+  it is most expensive. Higher-value, and what keeps the loop compounding instead of
+  the BP list bloating. Run this every N cycles or on demand.
+
+### Measuring the loop — the cycle-ledger (auto-derived)
+
+The loop's dominant cost is **review rework**: spec and implementation PRs that take
+many rounds to converge. That cost is the signal — measure it from data you already
+produce, don't add ceremony.
+
+- **Auto-derive the ledger** from GitHub + Linear (GitHub MCP `pull_request_read` /
+  review + comment endpoints; Linear MCP for issue state history). For each recent
+  spec and implementation PR, record: **rounds-to-approval** (distinct review passes
+  before merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
+  `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` · `nit`),
+  whether the design was flagged "felt off" (by a reviewer or the challenger), and one
+  line: "what upstream change would have prevented this." Append to
+  `docs/internal/cycle-ledger.md` (create it if absent; one row per PR).
+- **The metric that matters:** rounds-to-approval and `design-off` frequency trending
+  **down** across cycles. That downward trend *is* the proof the harness is improving.
+  Flat or rising means the upstream fixes aren't landing where the rework actually is.
+
+### The unit of improvement — the recurring class, not the incident
+
+Do **not** mint a BP per incident — that is exactly how the BP list bloated. Cluster
+the ledger by feedback class, find the **recurring** ones, and for the top class
+propose the *single smallest upstream change that stops it recurring*, preferring, in
+order:
+
+1. **Sharpen a tenet** in `docs/philosophy.md` — when the class is a philosophy gap
+   (often surfaced by `fsd:audit-coherence`).
+2. **Sharpen an existing BP** so it actually catches the class.
+3. **Add one checklist line to a skill** (`create-spec` / `implement-issue` / a review
+   prompt) so the loop catches the class structurally, before review does.
+4. **Only then**, rarely, a new BP — and only if it clears the gate below.
+
+Success is measured, not asserted: the class's rate in later ledgers should fall. If
+it doesn't, the fix landed at the wrong altitude — move it up or down and try again.
+Present the ledger analysis and the proposed upstream fix to the user (the Step 6
+review gate applies to loop-level changes too).
 
 ## Core principle
 
@@ -26,6 +71,9 @@ The gate (Step 3) exists to throw most candidates away.
 
 ## When to use
 
+- **Periodically — the loop mode.** To measure the development loop and kill a
+  recurring rework class at its source. This is the primary, highest-value use; the
+  per-change triggers below feed it.
 - A PR was **reworked** — by a reviewer, a maintainer, or a later you. The diff
   between your first cut and what merged is the goldmine.
 - A review found a **real bug** (not a style nit), or a design you committed to

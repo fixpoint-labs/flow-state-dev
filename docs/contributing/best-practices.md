@@ -20,6 +20,13 @@ Best practices have two altitudes:
 BP numbers are global IDs and never change file-to-file. A superseded practice
 is marked `Superseded` and links its replacement; it is never deleted.
 
+**Convictions live as tenets now.** `docs/philosophy.md` is the apex; its tenets are
+the lasting layer. A BP that merely restates a tenet is **folded** into that tenet
+(marked Superseded, pointing to it) rather than kept as always-loaded duplication.
+Best practices are the *situational, specific* layer — kept few, and mostly worked
+out per spec (`fsd:create-spec` Part I focus practices). Sharpen or prune before you
+add; a BP that traces to no tenet is a smell.
+
 Update policy:
 
 - A practice is established by **user review** (see the `fsd:distill-lessons`
@@ -41,7 +48,7 @@ Update policy:
 
 ### BP-001: Documentation authority precedence
 
-- Status: Active
+- Status: Superseded (2026-07-22) — folded into `docs/philosophy.md` tenet 1 (Coherence) and the authority hierarchy in `CLAUDE.md` / `AGENTS.md`. Kept for history; not an always-loaded BP.
 - Date: 2026-02-15
 - Scope: Universal — resolving in-repo doc conflicts.
 - Rule:
@@ -86,7 +93,7 @@ Update policy:
 
 ### BP-028: Fix the bug at the layer that owns it, not where it bit you
 
-- Status: Active
+- Status: Superseded (2026-07-22) — folded into `docs/philosophy.md` tenet 5 (Fix at the owning layer). Kept for history; not an always-loaded BP.
 - Date: 2026-06-27
 - Scope: Universal — applies to any change in any package; every agent should weigh it.
 - Rule:
@@ -97,7 +104,7 @@ Update policy:
 
 ### BP-029: Prefer composing existing primitives over re-implementing what a tool already provides
 
-- Status: Active
+- Status: Superseded (2026-07-22) — folded into `docs/philosophy.md` tenet 2 (Composition over features). Kept for history; not an always-loaded BP.
 - Date: 2026-06-27
 - Scope: Universal — applies to any change in any package; every agent should weigh it.
 - Rule:
@@ -159,7 +166,7 @@ Update policy:
 
 ### BP-038: Build the least that satisfies the spec; subtract before you add
 
-- Status: Active
+- Status: Superseded (2026-07-22) — folded into `docs/philosophy.md` tenet 3 (Earn every addition). Kept for history; not an always-loaded BP.
 - Date: 2026-06-29
 - Scope: Universal — every change.
 - Rule:

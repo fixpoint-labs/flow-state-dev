@@ -98,9 +98,10 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 **Read first (every session):**
 
-1. `docs/architecture/overview.md` — System architecture and package roles
-2. `docs/contributing/architecture-reference.md` — Locked contracts quick reference
-3. `AGENTS.md` — Process protocol and code style rules
+1. `docs/philosophy.md` — How we build FSD: the tenets, the apex of the grounding (BPs derive from it)
+2. `docs/architecture/overview.md` — System architecture and package roles
+3. `docs/contributing/architecture-reference.md` — Locked contracts quick reference
+4. `AGENTS.md` — Process protocol and code style rules
 
 **Verifying flow changes**: When you change flow logic, the default verification is `fsdev run` (see `AGENTS.md` → "Verifying flow changes during development"). Reach for `pnpm test` only for unit-level changes; reach for kitchen-sink in a browser only for UI-layer changes.
 
@@ -164,7 +165,9 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
 | `linear-triage`           | Review and prioritize Linear issues                        |
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
-| `distill-lessons`         | Reflect on reworked/reviewed work, extract transferable lessons, propose best-practice updates |
+| `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
+| `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
+| `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `implement-issue` |
 
 
 ### Development skills
@@ -205,11 +208,12 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 ## Authority Hierarchy
 
-1. `docs/architecture/*` — Reference docs
-2. `docs/contributing/best-practices.md` — Implementation standards
-3. `AGENTS.md` — Process protocol
+1. `docs/philosophy.md` — How we think about building FSD (the apex; the tenets BPs derive from)
+2. `docs/architecture/*` — Reference docs
+3. `docs/contributing/best-practices.md` — Implementation standards
+4. `AGENTS.md` — Process protocol
 
-If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`).
+If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`). Where code and grounding are incoherent and no doc disambiguates, that is a philosophy gap — surface it (`fsd:audit-coherence`), don't route around it.
 
 ## Commands
 
@@ -261,19 +265,17 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 
-**Universal — always apply, every task:**
+**Convictions live as tenets** in `docs/philosophy.md` (read first). Former BP-001 / BP-028 / BP-029 / BP-038 are folded into tenets 1 / 5 / 2 / 3 and are no longer separate always-loaded BPs.
 
-- **BP-001** Documentation authority precedence — the more specific in-repo doc wins.
+**Universal — the operational core, always apply, every task:**
+
 - **BP-003** Verification evidence is mandatory — every deliverable has an evidence path + pass criteria.
 - **BP-007** Concise API/file docs — file header + 100% of exported APIs documented; non-obvious helpers too.
 - **BP-022** Release notes via Changesets — every user-facing PR adds a `.changeset/*.md`; internal-only → `--empty`. Pre-1.0: `patch`/`minor` only.
-- **BP-028** Fix the bug at the layer that owns it, not where it bit you — a workaround each caller repeats is a smell.
-- **BP-029** Compose existing primitives over re-implementing what a tool already provides — reserve bespoke code for the genuinely-new primitive.
 - **BP-030** Tolerate the old shape when you change a persisted/in-flight field — dual-read legacy records; reject removed keys loudly; `== null`-guard new nullable fields.
 - **BP-031** Never make auth/routing decisions from caller-controllable input — derive them from a trusted source (server-set identity, verified token, the framework's transport `source`), not `body`/`metadata`/query/headers.
 - **BP-034** Finish move/rename refactors — update provenance (headers, diagrams, doc anchors) and subpath re-exports, not just imports.
 - **BP-035** Walk the second-path checklist before declaring a change done — legacy / null-boundary / concurrent-409 / cancel-error / multi-tenant / cost-observability / React-derived-state paths; test the off/new state of any new flag.
-- **BP-038** Build the least that satisfies the spec; subtract before you add — no speculative surface (YAGNI), delete the path you supersede, minimize public API/options, prefer defaults over knobs.
 
 **Situational — open the category file when working in that area:**
 

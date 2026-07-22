@@ -6,12 +6,13 @@ These instructions define the collaboration protocol for agent-driven work in th
 
 At the start of a new conversation in this repo, read:
 
+- `docs/philosophy.md` — how we build FSD: the tenets (the apex of the grounding)
 - `CLAUDE.md` — project orientation and key constraints
 - `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
 
-**Authority order**: `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins.
+**Authority order**: `docs/philosophy.md` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins; when code and grounding disagree with no doc to settle it, that is a philosophy gap to surface, not to route around.
 
 ## Wave execution protocol
 
