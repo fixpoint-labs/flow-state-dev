@@ -1,36 +1,35 @@
 import { describe, it, expect } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import { researchBoard } from "../src/board";
+import { researchCompany } from "../src/skill-boards";
 
 type TaskChange = {
   type?: string;
   component?: string;
-  data?: {
-    kind?: string;
-    task?: { id: string; status: string; output?: { report?: string } };
-  };
+  data?: { task?: { id: string; status: string } };
 };
 
-describe("static research board", () => {
-  it("runs both analysts, then the synthesizer, and passes deps through", async () => {
-    const result = await testBlock(researchBoard.drain, { input: undefined });
+// `researchCompany` is the drain-as-tool the migrated `research-company` skill
+// exposes (FIX-918): a static market + financial + synthesizer board wrapped in
+// a sequencer that seeds from `{ topic }`, drains, and projects the brief.
+describe("researchCompany drain-as-tool", () => {
+  it("runs both analysts, then the synthesizer, and returns the projected brief", async () => {
+    const result = await testBlock(researchCompany, { input: { topic: "ACME Corp" } });
     expect(result.error).toBeNull();
 
     const statusByTask = new Map<string, string>();
-    let synthReport: string | undefined;
     for (const item of result.items as TaskChange[]) {
       if (item.type !== "component" || item.component !== "task-change" || !item.data?.task) continue;
       statusByTask.set(item.data.task.id, item.data.task.status);
-      if (item.data.kind === "completed" && item.data.task.id === "synth") {
-        synthReport = item.data.task.output?.report;
-      }
     }
 
     expect(statusByTask.get("market")).toBe("completed");
     expect(statusByTask.get("financial")).toBe("completed");
     expect(statusByTask.get("synth")).toBe("completed");
-    // The synthesizer stitched both analysts' findings, read off input.deps.
-    expect(synthReport).toContain("market: ACME Corp");
-    expect(synthReport).toContain("financial: ACME Corp");
+
+    // The tool returns the synthesizer's brief, stitched from both analysts'
+    // findings (read off `input.deps`), not the raw board trace.
+    const report = (result.output as { report: string }).report;
+    expect(report).toContain("market: ACME Corp");
+    expect(report).toContain("financial: ACME Corp");
   });
 });

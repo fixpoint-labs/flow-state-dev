@@ -61,7 +61,7 @@ describe("research-team flow", () => {
     expect(done.has("synth")).toBe(true);
   });
 
-  it("bundles two valid pattern:task-board skills", async () => {
+  it("bundles two inline skills that each expose a board-backed tool", async () => {
     const dir = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       "../src/skills",
@@ -74,12 +74,11 @@ describe("research-team flow", () => {
     expect(byName.has("research-company")).toBe(true);
     expect(byName.has("competitor-analysis")).toBe(true);
 
-    // Both are pattern skills bound to the task board...
-    expect(byName.get("research-company")?.skillMd).toContain("pattern: task-board");
-    expect(byName.get("competitor-analysis")?.skillMd).toContain("pattern: task-board");
-
-    // ...and their prompt-ref reference files come along for the ride.
-    const researchFiles = byName.get("research-company")?.files ?? [];
-    expect(researchFiles.map((f) => f.path)).toContain("reference/market.md");
+    // FIX-918: pattern mode is gone. Both skills are inline and delegate to a
+    // drain-as-tool listed under `allowed-tools`, not a `pattern:` binding.
+    expect(byName.get("research-company")?.skillMd).not.toContain("pattern:");
+    expect(byName.get("research-company")?.skillMd).toContain("researchCompany");
+    expect(byName.get("competitor-analysis")?.skillMd).not.toContain("pattern:");
+    expect(byName.get("competitor-analysis")?.skillMd).toContain("analyzeCompetitors");
   });
 });

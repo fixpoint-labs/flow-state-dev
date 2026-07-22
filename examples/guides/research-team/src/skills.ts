@@ -1,24 +1,26 @@
 // Skills wiring for the research-team example.
 //
-// The two SKILL.md folders under `./skills` describe the same team as a
-// `pattern: task-board` skill — one static (research-company), one that fans
-// out at runtime via a discoverer worker calling addTask (competitor-analysis).
+// The two SKILL.md folders under `./skills` describe the same team as inline
+// skills that expose a task board as a single callable tool (FIX-918 removed
+// `pattern:` mode). `research-company` runs a static market + financial +
+// synthesis board; `competitor-analysis` fans out one analyzer per competitor.
+// Both boards live in `./skill-boards.ts` as `taskBoard(...).drain` blocks and
+// are registered in the catalog below, so a skill lists its board under
+// `allowed-tools` and the coordinator calls it as one tool.
 //
 // `readSkillsDirectory` parses those folders into skill definitions;
-// `createSkillsCapability` turns them into a `runSkill` tool + context that any
-// generator can carry via `uses: [skillsCapability]`. `defaultPatternRegistry`
-// is what lets `pattern:` skills dispatch a board; the workers declare
-// `tools: [search, fetch]`, so the catalog wires those tool blocks.
+// `createSkillsLibrary` turns them into a shared catalog a generator binds to
+// via `uses: [skillsLibrary.with({ ... })]`.
 //
-// The worker prompts call a model, so dispatching a skill live needs an API key
-// (see the flow's `chat` action). Loading and parsing the skills needs neither
-// a model nor a key, which is what `test/flow.test.ts` checks.
+// The boards' workers are deterministic handlers, so dispatching a skill needs
+// no model or API key — loading, parsing, and draining all run offline, which
+// is what the tests check.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/orchestration";
-import { defaultPatternRegistry } from "@flow-state-dev/patterns";
+import { createSkillsLibrary, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
+import { researchCompany, analyzeCompetitors } from "./skill-boards";
 
 /** Absolute path to the bundled `SKILL.md` folders. */
 export const skillsDir = path.resolve(
@@ -35,19 +37,22 @@ for (const { name, error } of errors) {
 export { bundledSkills };
 
 /**
- * A skills capability preloaded with the bundled research skills. Drop it into
- * any generator via `uses: [skillsCapability]` and the model can dispatch a
- * team with `runSkill({ name, input })`.
+ * A shared skills library preloaded with the bundled research skills. Bind it
+ * per generator via `uses: [skillsLibrary.with({ ... })]` and the model can
+ * activate a skill, then call its drain-as-tool (`researchCompany` /
+ * `analyzeCompetitors`) to run the team.
  */
-export const skillsCapability = createSkillsCapability({
-  // Catalog: the string tool keys the skill workers reference (`tools:`).
-  catalog: { search: search(), fetch: fetch() },
+export const skillsLibrary = createSkillsLibrary({
+  // Catalog: the string tool keys the skills reference via `allowed-tools` —
+  // the leaf web tools plus the two board-backed team tools.
+  catalog: {
+    search: search(),
+    fetch: fetch(),
+    researchCompany,
+    analyzeCompetitors,
+  },
   initialSkills: bundledSkills,
   // Session scope keeps the example self-contained — a per-session skill
   // library, no user/org persistence wiring needed.
   scope: "session",
-  // Required for `pattern:` skills to dispatch a board; also composes the
-  // `taskTools` surface (addTask/…) that the competitor-analysis discoverer
-  // uses to fan out at runtime.
-  patternRegistry: defaultPatternRegistry,
 });

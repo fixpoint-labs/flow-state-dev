@@ -10,13 +10,24 @@
 // they're the ones the tests exercise end-to-end. `chat` carries the skills
 // capability so a model can call `runSkill`; it needs OPENAI_API_KEY.
 import { defineFlow, generator } from "@flow-state-dev/core";
+import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { researchBoard } from "./board";
 import { researchRouter } from "./research-router";
-import { skillsCapability } from "./skills";
+import { skillsLibrary } from "./skills";
 
-// A small coordinator agent. It doesn't research anything itself — it dispatches
-// the matching pattern skill and surfaces the team's result.
+// `createSkillsLibrary` returns the config-erased `DefinedCapability`, so
+// `.with()` can't infer the binding-config shape at the call site. Author the
+// binding as a checked `SkillsBindingConfig` literal, then hand it to `.with()`
+// (the cast only bridges the erased signature — the object is still validated
+// against the type, and again by the binding schema at runtime).
+const skillsBinding = {
+  active: ["research-company", "competitor-analysis"],
+} satisfies SkillsBindingConfig;
+
+// A small coordinator agent. It doesn't research anything itself — it activates
+// the matching skill, calls that skill's board-backed tool, and surfaces the
+// team's result.
 const researchChat = generator({
   name: "research-chat",
   // Resolves through the `chat` intent declared in ../fsdev.config.ts
@@ -24,13 +35,15 @@ const researchChat = generator({
   model: "intent/chat",
   inputSchema: z.object({ message: z.string().min(1) }),
   history: true,
-  uses: [skillsCapability],
+  // Both skills are preloaded, so their bodies (and the board tools they list
+  // under `allowed-tools`) are available from turn one.
+  uses: [skillsLibrary.with(skillsBinding as never)],
   prompt:
     "You coordinate a small research team. When the user asks to research a " +
-    "company, call runSkill({ name: 'research-company', input }). When they " +
-    "ask who competes with something or want a comparison, call " +
-    "runSkill({ name: 'competitor-analysis', input }). Pass the target as " +
-    "`input`. Don't research it yourself — surface the skill's result as-is.",
+    "company, call researchCompany({ topic }). When they ask who competes with " +
+    "something or want a comparison, name the competitors yourself and call " +
+    "analyzeCompetitors({ topic, competitors }). Don't research it yourself — " +
+    "surface the tool's result as-is.",
   user: (input) => input.message,
   itemVisibility: { client: true, history: true },
 });

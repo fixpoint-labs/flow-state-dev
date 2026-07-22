@@ -18,22 +18,22 @@
  * dynamic `uses` callbacks only contribute tools and context, not resources.
  */
 import { defineCapability } from "@flow-state-dev/core";
-import { defaultPatternRegistry } from "@flow-state-dev/patterns";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
 import {
   createSkillActivator,
-  createSkillsCapability,
+  createSkillsLibrary,
   readSkillsDirectory,
+  type SkillsBindingConfig,
 } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "../artifacts";
 import { selectBashProvider } from "./bash";
 import { mcpCapability } from "../../../../lib/mcp";
-import { agentRegistry, materializeAgent } from "../agents";
+import { researchCompany, competitorAnalysis } from "./skill-boards";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,14 +63,19 @@ if (skillsLoadErrors.length > 0) {
   }
 }
 
-const skillsCap = createSkillsCapability({
+// Skills v2 library (FIX-918). The catalog carries the leaf web tools plus the
+// two board-backed team tools (`researchCompany`/`competitorAnalysis`) the
+// migrated Shape-2 skills list under `allowed-tools`. `tech-brief` delegates via
+// a declared `workers:` map, so binding it as `active` (below) installs its
+// worker tool + a private task board automatically.
+const skills = createSkillsLibrary({
   catalog: {
     search: searchTool,
     fetch: fetchTool,
     crawl: crawlTool,
+    researchCompany,
+    competitorAnalysis,
   },
-  agentRegistry,
-  materializeAgent,
   initialSkills,
   // User scope: skills are a per-user library that persists across sessions.
   // Org scope would be nicer for team-shared skills, but the chat-agent
@@ -80,11 +85,18 @@ const skillsCap = createSkillsCapability({
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
   itemVisibility: { client: true, history: true },
-  // Pattern skills opt in here. Default registry covers the six
-  // implemented Wave 1 patterns plus coordinator alias and the two
-  // forward-compat stubs. taskTools composes by default.
-  patternRegistry: defaultPatternRegistry,
 });
+
+// `createSkillsLibrary` returns the config-erased `DefinedCapability`, so
+// `.with()` can't infer the binding shape at the call site. Author the binding
+// as a checked `SkillsBindingConfig`, then bridge the erased signature with a
+// cast (the object is still type-checked here, and re-validated by the binding
+// schema at runtime). `tech-brief` is bound `active` so its delegation surface
+// installs; the keyword/LLM activator feeds the rest through `activeSkills`.
+const skillsBinding = {
+  active: ["tech-brief"],
+  activeState: { scope: "session", field: "activeSkills" },
+} satisfies SkillsBindingConfig;
 
 /**
  * skillActivatorBlock — the up-front skill-activation router.
@@ -92,21 +104,21 @@ const skillsCap = createSkillsCapability({
  * Runs once per turn before the main generator. Three tiers (slash prefix,
  * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
  * decide which skills (if any) apply to the user message. Matched skills
- * are written into `session.state.activeSkills`, which the active-skill
- * body formatter on the skills capability reads to inject the substituted
+ * are written into `session.state.activeSkills`, which the skills-library
+ * binding reads (via its matching `activeState`) to inject the substituted
  * body into the system prompt under the `<skills>` tag.
  *
- * Reads from the unified `ctx.resources.skills` registry — the skills
- * capability above declares `scope: "user"`, which routes the collection's
- * storage to the user record. The skill activator follows whatever scope
- * the capability picked (FIX-435).
+ * The `activeState` here mirrors the binding's `activeState` (§4.1) so the
+ * matcher and the reader agree on where runtime activations live.
  */
-export const skillActivatorBlock = createSkillActivator({});
+export const skillActivatorBlock = createSkillActivator({
+  activeState: { scope: "session", field: "activeSkills" },
+});
 
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted
 // collections. No resource declarations here: bash inherits whatever
 // collections are installed on the block (artifacts from artifactsCapability,
-// skills from skillsCap) and mounts each at its pattern prefix. Writes
+// skills from the skills library binding) and mounts each at its pattern prefix. Writes
 // under a mount's directory route back to that collection; files under
 // /workspace/tmp/ are scratch; anything else is dropped with a warning.
 //
@@ -128,7 +140,7 @@ export const bashCap = createBashCapability({
  * context to generators.
  *
  * Static dependencies:
- *   - skillsCap — skills collection + runSkill tool + catalog context
+ *   - skills (bound) — skills collection + catalog/team tools + skill bodies
  *   - bashCap — shell/python execution, always available
  *   - artifactsCapability (inventory preset, tools disabled — bash writes
  *     artifacts via the mounted filesystem)
@@ -144,18 +156,15 @@ export const featuresCapability = defineCapability({
   sessionStateSchema: featuresSessionStateSchema,
 
   uses: [
-    // Static: skills capability — installs the skills collection resource at
-    // build time (dynamic uses callbacks can't contribute resources). Scoped
-    // to primary agents by the capability's own `itemVisibility` so worker
-    // generators in plan-and-execute / supervisor / blackboard skip it.
-    //
-    // The `runSkill` preset stays ON because pattern- and fork-mode skills
-    // need the tool to actually dispatch — the skill activator matches
-    // them and writes their mode into activeSkills, but the dispatch
-    // itself runs through `runSkill`. Inline skills still pre-activate via
-    // the skill activator + body-formatter path; the runSkill tool is a
-    // no-op for them.
-    skillsCap,
+    // Static: skills library binding — installs the skills collection resource
+    // at build time (dynamic uses callbacks can't contribute resources) and
+    // binds this generator to the catalog. Scoped to primary agents by the
+    // library's own `itemVisibility` so worker generators in
+    // plan-and-execute / supervisor / blackboard skip it. `tech-brief`'s
+    // delegation surface installs because it's bound `active`; the Shape-2
+    // team tools are activated on demand through the skill bodies. (The cast
+    // bridges the config-erased `.with()` signature — see `skillsBinding`.)
+    skills.with(skillsBinding as never),
 
     // Static: artifacts — inventory context only. Bash is the write path,
     // so readArtifact/updateArtifact tools are disabled here.
