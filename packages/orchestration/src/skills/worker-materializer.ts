@@ -221,6 +221,16 @@ function resolveTools(
 /** Build the per-invocation user turn from the substrate's TaskWorkerInput. */
 export function buildUserMessage(input: WorkerInput): string {
   const parts: string[] = [`Task: ${input.goal}`];
+  // The structured payload the planner attached via `addTask({ input })`. It is
+  // advertised in the addTask tool description as "handed to the worker," so it
+  // must actually reach the worker's turn — not just sit on the task record.
+  if (input.input !== undefined && input.input !== null) {
+    const rendered =
+      typeof input.input === "string"
+        ? input.input
+        : JSON.stringify(input.input, null, 2);
+    parts.push("", `Input: ${rendered}`);
+  }
   if (input.feedback) {
     parts.push("", `Reviewer feedback: ${input.feedback}`);
   }

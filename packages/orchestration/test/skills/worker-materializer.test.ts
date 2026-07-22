@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSpec } from "@flow-state-dev/core";
-import { materializeWorker } from "../../src/skills/worker-materializer";
+import { materializeWorker, buildUserMessage } from "../../src/skills/worker-materializer";
 import type { WorkerMaterializationDeps } from "../../src/skills/worker-materializer";
 import { skillFileKey } from "../../src/skills/collection";
 import { createMockSkillsCollection } from "./mocks";
@@ -200,5 +200,37 @@ describe("materializeWorker — agent-ref stub", () => {
       workerKey: "vet",
       overrides: { model: "fast" },
     }));
+  });
+});
+
+describe("buildUserMessage", () => {
+  it("renders the addTask input payload so it reaches the worker's turn", () => {
+    // The addTask tool advertises `input` as "handed to the worker"; a skill
+    // that plans `addTask({ goal, input: { subject } })` must actually see it.
+    const msg = buildUserMessage({
+      taskId: "t1",
+      goal: "Research the company",
+      input: { subject: "ACME Corp", depth: "deep" },
+      attempts: 0,
+    } as never);
+    expect(msg).toContain("Task: Research the company");
+    expect(msg).toContain("Input:");
+    expect(msg).toContain("ACME Corp");
+    expect(msg).toContain("deep");
+  });
+
+  it("renders a string input inline without JSON wrapping", () => {
+    const msg = buildUserMessage({
+      taskId: "t1",
+      goal: "g",
+      input: "just a string",
+      attempts: 0,
+    } as never);
+    expect(msg).toContain("Input: just a string");
+  });
+
+  it("omits the input line when no payload was attached", () => {
+    const msg = buildUserMessage({ taskId: "t1", goal: "g", attempts: 0 } as never);
+    expect(msg).not.toContain("Input:");
   });
 });
