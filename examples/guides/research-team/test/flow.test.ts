@@ -61,7 +61,7 @@ describe("research-team flow", () => {
     expect(done.has("synth")).toBe(true);
   });
 
-  it("bundles two inline skills that each expose a board-backed tool", async () => {
+  it("bundles two delegation skills that declare their teams as workers", async () => {
     const dir = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
       "../src/skills",
@@ -74,11 +74,14 @@ describe("research-team flow", () => {
     expect(byName.has("research-company")).toBe(true);
     expect(byName.has("competitor-analysis")).toBe(true);
 
-    // FIX-918: pattern mode is gone. Both skills are inline and delegate to a
-    // drain-as-tool listed under `allowed-tools`, not a `pattern:` binding.
+    // FIX-918: pattern mode is gone. Both skills declare `workers:` — binding
+    // them installs the delegation surface (task tools, worker tools, runBoard)
+    // and the skill body plans the board itself.
     expect(byName.get("research-company")?.skillMd).not.toContain("pattern:");
-    expect(byName.get("research-company")?.skillMd).toContain("researchCompany");
+    expect(byName.get("research-company")?.skillMd).toContain("workers:");
+    expect(byName.get("research-company")?.skillMd).toContain("runBoard");
     expect(byName.get("competitor-analysis")?.skillMd).not.toContain("pattern:");
-    expect(byName.get("competitor-analysis")?.skillMd).toContain("analyzeCompetitors");
+    expect(byName.get("competitor-analysis")?.skillMd).toContain("workers:");
+    expect(byName.get("competitor-analysis")?.skillMd).toContain("runBoard");
   });
 });

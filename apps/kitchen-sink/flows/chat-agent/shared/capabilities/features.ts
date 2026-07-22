@@ -33,7 +33,6 @@ import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "../artifacts";
 import { selectBashProvider } from "./bash";
 import { mcpCapability } from "../../../../lib/mcp";
-import { researchCompany, competitorAnalysis } from "./skill-boards";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,20 +62,22 @@ if (skillsLoadErrors.length > 0) {
   }
 }
 
-// Skills v2 library (FIX-918). The catalog carries the leaf web tools plus the
-// two board-backed team tools (`researchCompany`/`competitorAnalysis`) the
-// migrated Shape-2 skills list under `allowed-tools`. `tech-brief` delegates via
-// a declared `workers:` map, so binding it as `active` (below) installs its
-// worker tool + a private task board automatically.
+// Skills v2 library (FIX-918). The catalog carries the leaf web tools the
+// skills' workers reference via `tools:`. Every research skill declares a
+// `workers:` map, so binding (or runtime-activating) one installs its
+// delegation surface automatically: a private task board, the task tools,
+// one tool per worker, and `runBoard` — the skill plans the tasks and runs
+// its own board.
 const skills = createSkillsLibrary({
   catalog: {
     search: searchTool,
     fetch: fetchTool,
     crawl: crawlTool,
-    researchCompany,
-    competitorAnalysis,
   },
   initialSkills,
+  // Board workers that don't declare their own `model:` resolve through the
+  // flow's `chat` intent ladder like every other kitchen-sink generator.
+  workerModelId: "intent/chat",
   // User scope: skills are a per-user library that persists across sessions.
   // Org scope would be nicer for team-shared skills, but the chat-agent
   // flow has no project wiring yet — "org" falls through to an ambient
@@ -91,8 +92,10 @@ const skills = createSkillsLibrary({
 // `.with()` can't infer the binding shape at the call site. Author the binding
 // as a checked `SkillsBindingConfig`, then bridge the erased signature with a
 // cast (the object is still type-checked here, and re-validated by the binding
-// schema at runtime). `tech-brief` is bound `active` so its delegation surface
-// installs; the keyword/LLM activator feeds the rest through `activeSkills`.
+// schema at runtime). `tech-brief` is bound `active`; the keyword/LLM
+// activator feeds the rest through `activeSkills`, and a runtime-activated
+// worker skill contributes its worker tools + runBoard when the generator's
+// tool surface resolves.
 const skillsBinding = {
   active: ["tech-brief"],
   activeState: { scope: "session", field: "activeSkills" },
@@ -161,9 +164,10 @@ export const featuresCapability = defineCapability({
     // binds this generator to the catalog. Scoped to primary agents by the
     // library's own `itemVisibility` so worker generators in
     // plan-and-execute / supervisor / blackboard skip it. `tech-brief`'s
-    // delegation surface installs because it's bound `active`; the Shape-2
-    // team tools are activated on demand through the skill bodies. (The cast
-    // bridges the config-erased `.with()` signature — see `skillsBinding`.)
+    // delegation surface installs because it's bound `active`; the research
+    // skills install theirs when the activator puts them in `activeSkills`.
+    // (The cast bridges the config-erased `.with()` signature — see
+    // `skillsBinding`.)
     skills.with(skillsBinding as never),
 
     // Static: artifacts — inventory context only. Bash is the write path,

@@ -14,11 +14,11 @@ router, and a `SKILL.md` — each wired into a flow you can run with `fsdev`.
 | `src/workers.ts` | The analyst and synthesizer workers. Plain handlers so the example runs without a model — swap a handler for a `generator` to call an LLM. The synthesizer reads its dependencies' outputs off `input.deps`. |
 | `src/board.ts` | A **static** board: two analysts + a synthesizer, with a fixed dependency graph via `initialTasks` + `deps`. |
 | `src/research-router.ts` | **Runtime fan-out**: a router reads a request, computes one analyzer task per competitor plus a synthesizer, and returns a board seeded with exactly those tasks. |
-| `src/skills/` | The same team as two `pattern: task-board` **skills** — `research-company` (static) and `competitor-analysis` (a discoverer fans out via `addTask`), each with its worker prompts under `reference/`. |
-| `src/skills.ts` | Loads the `SKILL.md` folders and builds a skills capability (`runSkill` tool + catalog) a generator can carry. |
-| `src/flow.ts` | The `research-team` flow: one action per path — `research`, `researchCompetitors`, and `chat` (dispatches the skills). |
+| `src/skills/` | The same team as two delegation **skills** — each declares its workers in `workers:` frontmatter and its body plans the board (`addTask` with assignees and deps, then `runBoard`). |
+| `src/skills.ts` | Loads the `SKILL.md` folders and builds a skills library. The skills' `block-ref:` workers resolve against the registered handler blocks, so the teams run without a model. |
+| `src/flow.ts` | The `research-team` flow: one action per path — `research`, `researchCompetitors`, and `chat` (the delegation skills through a coordinator). |
 | `fsdev.config.ts` | Registers the flow so `fsdev` can run it. |
-| `test/` | `board.test.ts` and `research-router.test.ts` drive the blocks directly; `flow.test.ts` runs the two model-free actions end-to-end and checks the bundled skills parse. |
+| `test/` | `board.test.ts` drives the delegation surface exactly as the skills instruct (addTask → runBoard); `flow.test.ts` runs the two model-free actions end-to-end and checks the bundled skills parse. |
 
 ## Run it with fsdev
 
@@ -37,8 +37,9 @@ pnpm fsdev run research-team researchCompetitors \
 
 Both drain to a `task-board-meta` item with `terminationReason: "all-completed"`.
 
-The `chat` action dispatches the pattern skills through a coordinator agent, so
-it needs a model (the skill workers call an LLM):
+The `chat` action binds the delegation skills to a coordinator agent, which
+plans tasks on its board and runs them — so it needs a model (the coordinator
+is an LLM, even though these example workers aren't):
 
 ```bash
 OPENAI_API_KEY=... pnpm fsdev run research-team chat \
@@ -52,5 +53,6 @@ pnpm --filter @flow-state-dev/example-guide-research-team test
 pnpm --filter @flow-state-dev/example-guide-research-team typecheck
 ```
 
-The board, router, and flow tests are deterministic and need no API keys. The
-skill test only parses the `SKILL.md` folders, so it needs no model either.
+The board and flow tests are deterministic and need no API keys — the
+delegation tests drive the same tools the model would call, against the
+example's handler workers.

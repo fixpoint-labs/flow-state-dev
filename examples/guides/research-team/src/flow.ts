@@ -4,11 +4,12 @@
 //
 //   research             → the static code-first board (deterministic, no model)
 //   researchCompetitors  → runtime fan-out via a router (deterministic, no model)
-//   chat                 → dispatch the pattern skills through an agent (needs a model)
+//   chat                 → the delegation skills through a coordinator agent (needs a model)
 //
 // The first two run with no API key — their workers are plain handlers — so
-// they're the ones the tests exercise end-to-end. `chat` carries the skills
-// capability so a model can call `runSkill`; it needs OPENAI_API_KEY.
+// they're the ones the tests exercise end-to-end. `chat` binds the skills
+// library; each skill declares `workers:`, so the coordinator gets a task
+// board, worker tools, and runBoard. It needs OPENAI_API_KEY.
 import { defineFlow, generator } from "@flow-state-dev/core";
 import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 import { z } from "zod";
@@ -25,9 +26,9 @@ const skillsBinding = {
   active: ["research-company", "competitor-analysis"],
 } satisfies SkillsBindingConfig;
 
-// A small coordinator agent. It doesn't research anything itself — it activates
-// the matching skill, calls that skill's board-backed tool, and surfaces the
-// team's result.
+// A small coordinator agent. It doesn't research anything itself — the bound
+// skill tells it how to plan tasks on its board (addTask with assignees and
+// deps), and runBoard executes the team. The skill runs the board.
 const researchChat = generator({
   name: "research-chat",
   // Resolves through the `chat` intent declared in ../fsdev.config.ts
@@ -35,15 +36,15 @@ const researchChat = generator({
   model: "intent/chat",
   inputSchema: z.object({ message: z.string().min(1) }),
   history: true,
-  // Both skills are preloaded, so their bodies (and the board tools they list
-  // under `allowed-tools`) are available from turn one.
+  // Both skills are preloaded. Each declares `workers:`, so the binding
+  // installs the delegation surface — the task tools, one tool per worker,
+  // and runBoard — alongside the skill bodies.
   uses: [skillsLibrary.with(skillsBinding as never)],
   prompt:
-    "You coordinate a small research team. When the user asks to research a " +
-    "company, call researchCompany({ topic }). When they ask who competes with " +
-    "something or want a comparison, name the competitors yourself and call " +
-    "analyzeCompetitors({ topic, competitors }). Don't research it yourself — " +
-    "surface the tool's result as-is.",
+    "You coordinate a small research team. Follow the active skill's " +
+    "instructions: plan the work with addTask (assignee, deps, input), run it " +
+    "with runBoard, and surface the synthesizer's report as-is. Don't research " +
+    "anything yourself.",
   user: (input) => input.message,
   itemVisibility: { client: true, history: true },
 });
@@ -60,8 +61,8 @@ export const researchTeamFlow = defineFlow({
     // board with one analyzer per competitor plus a gated synthesizer.
     researchCompetitors: { block: researchRouter },
 
-    // Skill path: a coordinator agent that dispatches the SKILL.md teams via
-    // runSkill. Needs a model (OPENAI_API_KEY).
+    // Skill path: a coordinator agent whose SKILL.md teams plan and run their
+    // own boards. Needs a model (OPENAI_API_KEY).
     chat: { block: researchChat, userMessage: (input) => input.message },
   },
   session: { stateSchema: z.object({}) },

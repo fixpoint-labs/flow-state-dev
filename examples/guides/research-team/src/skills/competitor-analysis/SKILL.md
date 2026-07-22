@@ -1,17 +1,21 @@
 ---
-description: Competitor analysis as a comparison matrix plus a synthesized read. Use when the user asks who competes with a product, how one stacks up against another, or what a category's landscape looks like. One analyzer runs per competitor in parallel; a synthesizer waits on all of them.
+description: Competitor analysis as a comparison matrix plus a synthesized read. Use when the user asks who competes with a product, how one stacks up against another, or what a category's landscape looks like. You pick the competitors, fan out one analyzer per competitor on your board, and gate a synthesizer on all of them.
 keywords: [competitor, competitors, competition, compare, versus, landscape]
 argument-hint: <product, company, or market>
 
-allowed-tools: [analyzeCompetitors]
+workers:
+  competitor-analyst:
+    block-ref: competitor-analyst
+  synthesizer:
+    block-ref: synthesizer
 ---
 
-This skill runs a competitor-analysis team on a task board: one analyzer per competitor works in parallel, then a synthesizer waits on all of them and writes the final comparison.
+This skill runs a competitor-analysis team on your task board: one analyzer per competitor works in parallel, then a synthesizer waits on all of them and writes the final comparison.
 
-The team is exposed as a single tool, `analyzeCompetitors`. You pick the competitors, then hand the target and that list to the tool:
+You pick the competitors and you run the board. Identify 3 to 5 competitors for the target across direct, adjacent, and DIY/status-quo tiers, then:
 
-```
-analyzeCompetitors({ topic: "<the target>", competitors: ["<name>", "<name>", ...] })
-```
+1. `addTask` one analysis per competitor — `assignee: "competitor-analyst"`, `input: { "subject": "<competitor name>" }`.
+2. `addTask` the synthesis — `assignee: "synthesizer"`, `deps` set to every analyzer task id from step 1, `input: { "subject": "<the target>" }`.
+3. Call `runBoard` once. The analyzers run in parallel; the synthesizer starts when all of them complete.
 
-Identify 3 to 5 competitors across direct, adjacent, and DIY/status-quo tiers, then call the tool once with the target as `topic` and the names as `competitors`. It fans out one analyzer per competitor, gates a synthesizer on all of them, and returns `{ report }` — the comparison matrix and read. Surface that report to the user as-is. Don't do the analysis yourself in the chat.
+The settled board's synthesizer task carries `{ report }` — the comparison matrix and read. Surface it to the user as-is; don't do the analysis yourself in the chat.
