@@ -244,15 +244,17 @@ export async function materializeWorker(
     if (!deps.agentRegistry) {
       throw new Error(
         `Worker '${workerKey}' uses agent-ref '${spec.agentRef}' but no ` +
-          `agentRegistry was supplied. Wire an AgentRegistry via ` +
-          `createSkillsLibrary({ agentRegistry }) or use prompt/prompt-ref instead.`,
+          `agentRegistry was supplied to materializeWorker. The delegation surface ` +
+          `does not resolve agent-ref workers — use prompt/prompt-ref/block-ref, or ` +
+          `supply an agentRegistry to whatever wires this board's workers.`,
       );
     }
     if (!deps.materializeAgent) {
       throw new Error(
         `Worker '${workerKey}' uses agent-ref '${spec.agentRef}' but no ` +
-          `materializeAgent function was supplied. Wire it via ` +
-          `createSkillsLibrary({ materializeAgent }).`,
+          `materializeAgent function was supplied to materializeWorker. The delegation ` +
+          `surface does not resolve agent-ref workers — use prompt/prompt-ref/block-ref, ` +
+          `or supply a materializeAgent to whatever wires this board's workers.`,
       );
     }
     const agent = await deps.agentRegistry.get(spec.agentRef);
