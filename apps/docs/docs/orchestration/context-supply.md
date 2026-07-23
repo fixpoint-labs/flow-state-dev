@@ -58,13 +58,13 @@ The inherited window is **bounded by default**. A conversation agent inherits th
 ```ts
 const forked = generator({
   model: "openai/gpt-5.4-mini",
-  history: true,                                     // inherit the conversation so far
-  itemVisibility: { client: true, history: false }, // keep its own steps out of host history
+  history: { limit: { turns: 8 } },                  // inherit the last several turns
+  itemVisibility: { client: true, history: false },  // keep its own steps out of host history
   prompt: "Summarize the discussion into a short brief.",
 });
 ```
 
-That is the mechanism `context-supply: conversation` wires up for a declared agent. You reach for the field, not this, when the participant is authored as portable skill data rather than hand-written code. (Note the field lives on the agent, not on `generator(...)`; a generator uses `history` and `itemVisibility` directly.)
+That is the mechanism `context-supply: conversation` wires up for a declared agent — including the bounded window (a plain `history: true` would inherit the full history window instead). You reach for the field, not this, when the participant is authored as portable skill data rather than hand-written code. (Note the field lives on the agent, not on `generator(...)`; a generator uses `history` and `itemVisibility` directly.)
 
 ## Why context supply is a delegation property, not a skill mode
 
