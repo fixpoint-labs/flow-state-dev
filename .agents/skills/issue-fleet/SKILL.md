@@ -142,7 +142,12 @@ even if more are queued. State the chosen N and the cap to the user.
    Claude Code session — no reachable webhook endpoint, no server-side scheduler. Check
    whether you're in a cloud session before relying on either; if local, arm a **`Monitor`
    poll loop (the `watch-pr` skill)** per live PR as the primary wake signal — it wakes only
-   on real activity and covers comments, reviews (incl. approvals), and CI. See
+   on real activity and covers comments, reviews (incl. approvals), CI, and PR-meta.
+   **Arming a Monitor is *not* idempotent** (unlike `subscribe_pr_activity`) — re-arming one
+   every wake would stack duplicate pollers, notifications, and API traffic. So **store each
+   PR's Monitor handle in the `.orchestration` cache and re-arm only when it's missing or
+   dead** (one Monitor per PR); the unconditional re-assert discipline above applies to the
+   *cloud* `subscribe_pr_activity` call, not to local Monitors. See
    [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud
    vs. local" for how to detect the environment and the full fallback design.
 

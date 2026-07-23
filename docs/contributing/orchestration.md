@@ -250,6 +250,13 @@ Also advance the comment `since` cursor **only after a successful fetch**: a swa
 transient `gh` failure that still moved the cursor would drop any comment posted during the
 failed interval outside the next window.
 
+**Arming a Monitor is not idempotent — one per PR.** Unlike `subscribe_pr_activity` (safe to
+re-call every wake), each `watch-pr` arm spawns a *new* poll subprocess. A coordinator that
+re-arms on every refresh would stack duplicate pollers, notifications, and API traffic. So a
+local fleet/lifecycle must **track each PR's Monitor handle in its `.orchestration` cache and
+re-arm only when it's missing or dead** — the "re-assert every wake" discipline is for the
+cloud subscription, not for local Monitors.
+
 Two caveats to state to the user up front, not discover later. **(1) Session-only.** A
 `Monitor` (like a `CronCreate` job) dies when the session ends, unlike a cloud session's
 server-side routines — a local fleet's "still watching" guarantee is weaker; say so rather
