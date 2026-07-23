@@ -23,7 +23,7 @@
  * `try { ... } catch {}`, per the desk's provider convention.
  */
 import type { TickerDatedProviderInput } from "./types";
-import type { ToolOutput } from "../../flows/analysis/tools/schemas";
+import { INSIDER_ROW_CAP, INSIDER_WINDOW_DAYS, isoDateDaysBefore } from "./dates";
 
 const AV_BASE = "https://www.alphavantage.co/query";
 
@@ -80,12 +80,10 @@ export function hasAlphaVantageKey(): boolean {
 
 /**
  * Resolve the active daily limit from `ALPHAVANTAGE_DAILY_LIMIT`, fail-safe.
- * The disable sentinel is the EXACT string "0" — nothing else. A positive
- * integer sets the limit; everything else (blank, "twenty", "-5", "25.5", and
- * the zero-like typos "0.0"/"00"/"-0") falls back to the 25 default rather than
- * silently disabling the guard (a naïve `Number(env ?? 25)` would read "" and
- * "typo" as ≤ 0, and a `Number(raw) === 0` check would let "0.0"/"00"/"-0"
- * switch protection off on a formatting mistake). Returns 0 only for "0".
+ * Only the exact string "0" disables the guard; a positive integer sets the
+ * limit; everything else (blank, non-numeric, negative, non-integer, and
+ * zero-like typos) falls back to 25 rather than silently disabling protection.
+ * The malformed-input cases are enumerated in `alpha-vantage.spec.ts`.
  */
 function resolveDailyLimit(): number {
   const raw = process.env.ALPHAVANTAGE_DAILY_LIMIT?.trim();
@@ -163,15 +161,6 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Subtracts `days` calendar days from a `YYYY-MM-DD` date string. */
-function isoDateDaysBefore(date: string, days: number): string {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-const INSIDER_WINDOW_DAYS = 90;
-const INSIDER_ROW_CAP = 50;
 const TRANSCRIPT_CONTENT_CAP = 12_000;
 
 /**
@@ -187,7 +176,7 @@ const TRANSCRIPT_CONTENT_CAP = 12_000;
  */
 export async function fetchAlphaVantageInsiderTransactions(
   input: TickerDatedProviderInput,
-): Promise<ToolOutput<"get_insider_transactions">> {
+) {
   const from = isoDateDaysBefore(input.date, INSIDER_WINDOW_DAYS);
   type Row = {
     transaction_date?: string;
@@ -229,7 +218,7 @@ export async function fetchAlphaVantageInsiderTransactions(
     })
     .filter((t): t is NonNullable<typeof t> => t !== null);
   return {
-    source: "alphavantage",
+    source: "alphavantage" as const,
     ticker: input.ticker,
     asOf: input.date,
     transactions,
@@ -313,7 +302,7 @@ async function fetchTranscriptForQuarter(
  */
 export async function fetchAlphaVantageEarningsTranscript(
   input: TickerDatedProviderInput,
-): Promise<ToolOutput<"get_earnings_transcript">> {
+) {
   const empty = {
     source: "alphavantage" as const,
     ticker: input.ticker,
@@ -379,7 +368,7 @@ export async function fetchAlphaVantageEarningsTranscript(
   }
 
   return {
-    source: "alphavantage",
+    source: "alphavantage" as const,
     ticker: input.ticker,
     asOf: input.date,
     available: content !== null,
@@ -400,23 +389,36 @@ export async function fetchAlphaVantageEarningsTranscript(
  */
 export async function fetchAlphaVantageAnalystEnrichment(
   ticker: string,
-): Promise<Pick<ToolOutput<"get_analyst_estimates">, "consensusEstimates" | "priceTargets">> {
+): Promise<{
+  consensusEstimates:
+    | { fyEpsAvg: number | null; fyRevenueAvg: number | null; numAnalysts: number | null }
+    | null;
+  priceTargets:
+    | { high: number | null; low: number | null; median: number | null; consensus: number | null }
+    | null;
+}> {
   const [overview, estimates] = await Promise.allSettled([
     alphaVantageRequest({ function: "OVERVIEW", symbol: ticker }),
     alphaVantageRequest({ function: "EARNINGS_ESTIMATES", symbol: ticker }),
   ]);
 
-  let priceTargets: ToolOutput<"get_analyst_estimates">["priceTargets"] = null;
+  // Only construct a field when AV actually returned a value. A success-but-empty
+  // OVERVIEW (`AnalystTargetPrice: "None"`) or estimates row must NOT masquerade
+  // as a real answer — an all-null object would wrongly tag the tool
+  // `"alphavantage"` instead of degrading to `unavailable` (degrade-honestly).
+  let priceTargets:
+    | { high: number | null; low: number | null; median: number | null; consensus: number | null }
+    | null = null;
   if (overview.status === "fulfilled") {
-    priceTargets = {
-      consensus: num(overview.value.AnalystTargetPrice),
-      high: null,
-      low: null,
-      median: null,
-    };
+    const consensus = num(overview.value.AnalystTargetPrice);
+    if (consensus !== null) {
+      priceTargets = { consensus, high: null, low: null, median: null };
+    }
   }
 
-  let consensusEstimates: ToolOutput<"get_analyst_estimates">["consensusEstimates"] = null;
+  let consensusEstimates:
+    | { fyEpsAvg: number | null; fyRevenueAvg: number | null; numAnalysts: number | null }
+    | null = null;
   if (estimates.status === "fulfilled") {
     type EstRow = {
       horizon?: string;
@@ -428,11 +430,12 @@ export async function fetchAlphaVantageAnalystEnrichment(
     const row =
       rows.find((r) => /current fiscal year|annual/i.test(r.horizon ?? "")) ?? rows[0];
     if (row) {
-      consensusEstimates = {
-        fyEpsAvg: num(row.eps_estimate_average),
-        fyRevenueAvg: num(row.revenue_estimate_average),
-        numAnalysts: num(row.eps_estimate_number_of_analysts),
-      };
+      const fyEpsAvg = num(row.eps_estimate_average);
+      const fyRevenueAvg = num(row.revenue_estimate_average);
+      const numAnalysts = num(row.eps_estimate_number_of_analysts);
+      if (fyEpsAvg !== null || fyRevenueAvg !== null || numAnalysts !== null) {
+        consensusEstimates = { fyEpsAvg, fyRevenueAvg, numAnalysts };
+      }
     }
   }
 

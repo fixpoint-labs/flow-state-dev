@@ -98,4 +98,24 @@ describe("get_analyst_estimates", () => {
     expect(out.consensusEstimates).toBeNull();
     expect(out.priceTargets).toBeNull();
   });
+
+  it("stays unavailable when Finnhub is absent and AV returns success-but-empty (all-null)", async () => {
+    // AV OVERVIEW answers 200 but AnalystTargetPrice is "None" and estimates are
+    // empty — no real data. Must NOT masquerade as a provider answer.
+    process.env.FINNHUB_API_KEY = "fh";
+    process.env.ALPHAVANTAGE_API_KEY = "av";
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+      const url = new URL((input as URL).toString());
+      if (url.hostname.includes("finnhub")) {
+        return Promise.resolve(new Response("down", { status: 429 }));
+      }
+      const fn = url.searchParams.get("function");
+      const payload = fn === "OVERVIEW" ? { AnalystTargetPrice: "None" } : { estimates: [] };
+      return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
+    });
+    const out = await execute({ ticker: "NVDA", date: "2026-05-06" }, ctx("live"));
+    expect(out.source).toBe("unavailable");
+    expect(out.consensusEstimates).toBeNull();
+    expect(out.priceTargets).toBeNull();
+  });
 });

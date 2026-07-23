@@ -36,16 +36,21 @@ export const get_analyst_estimates = handler({
           fetchFinnhubEarningsSurprises(input.ticker).catch(() => []),
         ]);
 
-        // AV enrichment — each field independent; never throws (allSettled inside).
-        let consensusEstimates = null;
-        let priceTargets = null;
-        if (hasAlphaVantageKey()) {
-          try {
-            const enr = await fetchAlphaVantageAnalystEnrichment(input.ticker);
-            consensusEstimates = enr.consensusEstimates;
-            priceTargets = enr.priceTargets;
-          } catch {}
-        }
+        // AV enrichment — costs 2 AV budget units when keyed (OVERVIEW +
+        // EARNINGS_ESTIMATES via Promise.allSettled). This is unconditional by
+        // design: consensusEstimates + priceTargets are fields the Finnhub
+        // baseline structurally never fills, so the enrichment is always
+        // additive and gating it on "Finnhub missing those fields" would never
+        // skip (they are always missing). The tradeoff is quota: on the 25/day
+        // free tier ~12 distinct tickers exhaust the cap from this tool alone —
+        // sized into ALPHAVANTAGE_DAILY_LIMIT (spec §4 budget accounting). The
+        // fetcher returns null (not an all-null object) when AV has no real
+        // data, so `avAnswered` stays false and the tool degrades honestly.
+        const enr = hasAlphaVantageKey()
+          ? await fetchAlphaVantageAnalystEnrichment(input.ticker).catch(() => null)
+          : null;
+        const consensusEstimates = enr?.consensusEstimates ?? null;
+        const priceTargets = enr?.priceTargets ?? null;
 
         const finnhubAnswered =
           ratingsDistribution !== null || earningsSurprises.length > 0;

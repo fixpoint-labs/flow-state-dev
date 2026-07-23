@@ -448,12 +448,15 @@ describe("fetchAlphaVantageAnalystEnrichment", () => {
     expect(out.consensusEstimates).toBeNull();
   });
 
-  it("maps an AV 'None' target price to null", async () => {
+  it("returns null priceTargets (not an all-null object) for an AV 'None' target price", async () => {
+    // Degrade-honestly: a success-but-empty OVERVIEW must not present as a real
+    // answer, so the whole priceTargets object is null, not { consensus: null }.
     mockFetchByFunction({
       OVERVIEW: { AnalystTargetPrice: "None" },
       EARNINGS_ESTIMATES: { estimates: [] },
     });
     const out = await fetchAlphaVantageAnalystEnrichment("NVDA");
-    expect(out.priceTargets?.consensus).toBeNull();
+    expect(out.priceTargets).toBeNull();
+    expect(out.consensusEstimates).toBeNull();
   });
 });

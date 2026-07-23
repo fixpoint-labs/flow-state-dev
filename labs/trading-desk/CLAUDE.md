@@ -1517,9 +1517,15 @@ Then:
 If the tool needs a new external API, add its fetch helper to a new
 `lib/providers/<provider>.ts` file (one per provider). Keep it stateless — read
 keys from env, throw on any failure, no caching (the tool handler wraps the
-call with `getOrFetch`). A tool that imports flow internals (memo keys, a
-flow resource) is **flow-coupled** — it stays with its consumer under
-`agents/<group>/tools/`, NOT in the catalog (see `find_counter_evidence`).
+call with `getOrFetch`). **Exception: a provider that owns a hard rate/quota
+budget may hold in-process state for that guard** — `alpha-vantage.ts` keeps a
+process-scoped daily-request counter because its free tier caps at 25/day and a
+stateless guard cannot prevent cross-call exhaustion in one process. That is the
+only sanctioned reason to depart from stateless; everything else (fetched data,
+retries, fallback policy) stays out of the provider. A tool that imports flow
+internals (memo keys, a flow resource) is **flow-coupled** — it stays with its
+consumer under `agents/<group>/tools/`, NOT in the catalog (see
+`find_counter_evidence`).
 
 ## Round-robin patterns
 
