@@ -42,14 +42,17 @@ Cross-cutting decisions that live above any single issue. New issues joining thi
 
 All durable portfolio intent — target allocation, constraints, risk posture, capital sleeves, and (future) per-sleeve rubric weighting — lives as config-as-data on the **one** `portfolioMandate` resource. New intent **extends the mandate schema**; it does not spawn a parallel resource. FIX-761 shipped the flat mandate deliberately coordinated as the container the later work grows into (BP-038 — don't pre-build the container, but don't fork it either). Sleeves proved the pattern (`sleeves[]` on the mandate); the per-sleeve rubric (FIX-776) should follow it (a `weightingProfile` on the sleeve), not introduce a second policy store.
 
-### T2 — Decide once, then project deterministically; never touch the rating
+### T2 — Decide once, then project deterministically; policy and sizing never touch the frozen rating
 
-The load-bearing architectural invariant of the whole desk. The LLM produces **one** decision per run. Every portfolio-aware refinement — posture clamp (FIX-752), mandate gate (FIX-761), portfolio-fit sizing (FIX-728), sleeve routing (FIX-771) — is a **deterministic projection** computed at PM commit from *frozen* state, in the same commit handler (`mandate-gates.ts` / `policy-gate.ts`), and it is **downward-only sizing that never mutates `finalRating`**. Any new portfolio reasoning must fit this shape: if a feature wants to change *what the desk thinks of the name*, that is a rubric/analysis change (T5), not a gate. If it only changes *how much fits and where*, it is a deterministic projection. This is why sleeve routing could be added as a projection of the single decision rather than a second model pass — and it is the first test any new "portfolio-aware" idea has to pass.
+The load-bearing architectural invariant of the whole desk, in two layers. **First the rating is formed:** the LLM produces one rating, which is bounded to the model-implied valuation envelope (`clampRatingToBand`) and then **frozen** — so `finalRating` *is* shaped after the LLM, but only by rating/valuation logic, and only before the freeze. **Then policy and sizing project from the frozen decision:** every portfolio-aware refinement — posture clamp (FIX-752), mandate gate (FIX-761), portfolio-fit sizing (FIX-728), sleeve routing (FIX-771) — is a **deterministic projection** computed at PM commit from *frozen* state, in the same commit handler (`mandate-gates.ts` / `policy-gate.ts`), and it is **downward-only sizing/routing that never touches the frozen `finalRating`**.
+
+The dividing line tells you which layer a feature belongs to. If it changes *what the desk thinks of the name*, it shapes the **rating before the freeze** — the valuation spine today, a configurable rubric (FIX-776) or multi-asset analysis (FIX-777) tomorrow — an analysis/rating change, not a policy gate. If it only changes *how much fits and where*, it is a **policy/sizing projection after the freeze** and must not move the rating. That split is why sleeve routing could be added as a projection of the single decision rather than a second model pass — and it is the first test any new "portfolio-aware" idea has to pass.
 
 ```mermaid
 flowchart LR
-  LLM["LLM decides once<br/>(finalRating — never mutated below)"] --> COMMIT
-  subgraph COMMIT["PM commit — deterministic projections from frozen state"]
+  LLM["LLM rating"] --> CLAMP["valuation-envelope clamp<br/>clampRatingToBand"] --> FROZEN["frozen decision<br/>(finalRating fixed here)"]
+  FROZEN --> COMMIT
+  subgraph COMMIT["PM commit — policy/sizing projections from frozen state (never touch finalRating)"]
     direction TB
     POS["posture clamp<br/>(FIX-752)"] --> MAN["mandate gate<br/>(FIX-761)"] --> FIT["portfolio-fit sizing<br/>(FIX-728)"] --> SLV["per-sleeve routing<br/>(FIX-771)"]
   end
