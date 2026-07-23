@@ -13,19 +13,30 @@
 
 ## 1. Purpose & objective *(the `epic approved` sign-off surface)*
 
-**Why this body of work.** FIX-918 (spec PR #850) landed the board-commanded delegation
-model: a skill declares a roster under `agents:`, the coordinating host plans work with
-`addTask({ goal, assignee, deps, input })`, and drains it with `runBoard`. That landing
-was deliberately kept focused, and it left a *cluster* of tightly-coupled follow-ons and
-open design decisions all sitting on the **same delegation surface** —
+**Why this body of work.** FIX-918 (spec PRs #850/#855, impl PR #854 — **shipped**,
+merged 2026-07-22) landed the board-commanded delegation model: a skill declares a roster
+under `agents:`, the coordinating host plans work with
+`addTask({ goal, assignee, deps, input })`, and drains it with `runBoard` (the old
+`context: pattern` / `context: fork` skill execution modes were removed). That landing was
+deliberately kept focused, and it left a *cluster* of tightly-coupled follow-ons and open
+design decisions all sitting on the **same delegation surface** —
 `worker-materializer.ts`, `task-tools-capability.ts`, the substrate `TaskInit`, and the
 `keyedRouter` dispatch. Decided in isolation they would contradict each other: the most
 concrete example is that FIX-924 wants to **reject** an unknown assignee at creation while
 FIX-923's on-demand direction wants to **accept** an explicitly ad-hoc one. This epic
-exists so those cross-cutting calls are made together rather than in a vacuum.
+exists so those cross-cutting calls are made together rather than in a vacuum — and it
+**includes FIX-918 itself as the shipped foundation** (parented under the epic), so the
+delegation surface and everything built on it are discoverable from one place and the
+sequencing story reads end-to-end.
 
-**Outcome we are signing off on.** A *coherent* delegation substrate:
+**Outcome we are signing off on.** A *coherent* delegation substrate built on a foundation
+that is already in place:
 
+- the **delegation foundation is already shipped** — FIX-918 delivered the
+  board-commanded agent-team delegation surface (skills declare `agents:`; the host plans
+  with `addTask` and drains with `runBoard`; pattern-mode and fork-mode removed). It is
+  **Done**; it carries no spec-approval gate and no implementation under this epic. It is
+  included so the sequencing story is complete and the set is navigable from one issue;
 - the **host model** is decided once (manager-plus-synthesizer; on-demand fallback worker
   as a floor; per-task runtime identities as the specialization layer) — FIX-923, the
   keystone research spike;
@@ -45,6 +56,12 @@ context seams.
 
 **Holistic-necessity check (does the *set* overbuild even if each issue earns its place?).**
 
+- **FIX-918 is the shipped foundation, folded into the set as a completed member.** It is
+  **Done** (impl PR #854 merged 2026-07-22); it carries no spec-approval gate and no
+  implementation under this epic. It is in the epic so the delegation surface and the
+  follow-ons that build on it live under one parent and the sequencing story reads
+  end-to-end (918 shipped → the build/decision issues below). Approving the objective does
+  not re-open it.
 - The **five core delegation issues — FIX-923, FIX-920, FIX-927, FIX-641, FIX-924 — are
   genuinely one body of work.** They share the same files, and they carry hard sequencing
   dependencies (923 gates 641 and narrows 924; 927 is a one-file bug on the very same
@@ -70,11 +87,13 @@ context seams.
 
 ## 2. Themes & long-horizon direction
 
-### 2a. The sequencing spine — FIX-923 is the keystone
+### 2a. The sequencing spine — FIX-918 shipped; FIX-923 is the keystone
 
-FIX-923 is a **research/decision spike whose deliverable is a recommendation, not a
-build** (spec PR #864, Part I drafted; Part II in the doc). Sequence it **first** because
-its outcome:
+FIX-918 is **already shipped** (impl PR #854 merged) — the delegation surface every issue
+below builds on, not a step left to sequence. From there, FIX-923 is a
+**research/decision spike whose deliverable is a recommendation, not a build** (spec PR
+#864, Part I drafted; Part II in the doc). Sequence it **first among the remaining work**
+because its outcome:
 
 - **gates FIX-641** — 641 (dynamic worker identities) is the concrete implementation of
   923's Q2 "on-demand" path. 641 is `blocked-by` 923 in Linear and must not build until
@@ -84,8 +103,8 @@ its outcome:
   rule becomes "reject a *typo'd named-agent reference*, allow an *explicit ad-hoc /
   general* dispatch," not "reject every undeclared assignee."
 
-Spine: **923 → { 641 build, 924 rule-widening }**, with 920/927 proceeding in parallel and
-917/482 independent.
+Spine: **918 (shipped foundation) → 923 → { 641 build, 924 rule-widening }**, with 920/927
+building on 918's surface in parallel and 917/482 independent.
 
 ### 2b. The shared assignee / identity validation gate (923 ↔ 924 ↔ 641)
 
@@ -114,12 +133,16 @@ we do not build two overlapping selectors:
   single home (482's `strategy: "llm"` vs. flow-policy's `compact` stub — decide, don't
   grow both).
 
-### 2d. External dependency — FIX-918 (spec PR #850) is NOT in this epic
+### 2d. FIX-918 — the shipped foundation this substrate builds on
 
-FIX-920 builds directly on FIX-918's decoupled `workers:` parser + delegation preset that
-make a declared worker callable. **FIX-918 is an external dependency**, tracked outside
-this epic; it is the substrate all five delegation issues assume as already landed
-(board-commanded delegation, `agents:`, `addTask`, `runBoard`, PR #854).
+FIX-918 landed the board-commanded delegation model — skills declare a roster under
+`agents:`, the host plans with `addTask` and drains with `runBoard`, and the old
+`context: pattern` / `context: fork` skill execution modes were removed. It is **Done**
+(spec PRs #850/#855, impl PR #854 merged 2026-07-22). FIX-920 builds directly on its
+decoupled `workers:` parser + delegation preset that make a declared worker callable, and
+the whole set assumes its surface as already landed. It is **in this epic as the completed
+foundation** — parented under FIX-930 so the surface and its follow-ons are discoverable
+from one place — and needs no approval gate or implementation here.
 
 ### 2e. Block-state substrate (FIX-917) — adjacent, supporting
 
@@ -145,6 +168,7 @@ table (a projection, not a second live source).
 
 | Issue | Title | Role in epic | Spec PR | Impl PR |
 |---|---|---|---|---|
+| FIX-918 | Remove skill pattern/fork modes; board-commanded agent-team delegation | **Shipped foundation** — the surface the set builds on · **Done, no pending gates** | [#850](https://github.com/fixpoint-labs/flow-state-dev/pull/850), [#855](https://github.com/fixpoint-labs/flow-state-dev/pull/855) (merged) | [#854](https://github.com/fixpoint-labs/flow-state-dev/pull/854) (merged) |
 | FIX-923 | Research: delegation host model (manager/IC + on-demand vs pre-defined) | **Keystone** — gates 641, narrows 924 | [#864](https://github.com/fixpoint-labs/flow-state-dev/pull/864) (draft — Part I) | — |
 | FIX-924 | Roster-aware task assignment: validate assignee at creation | Validation gate (923 widens it) | [#865](https://github.com/fixpoint-labs/flow-state-dev/pull/865) (closed unmerged · `spec approved`) | — |
 | FIX-920 | Re-introduce fork-like sub-execution via a task context-supply mode | Context source (inherit) | [#853](https://github.com/fixpoint-labs/flow-state-dev/pull/853) (ready) | — |
@@ -153,8 +177,9 @@ table (a projection, not a second live source).
 | FIX-917 | Block state fast-follows: consolidate 4-key schema, warn on suspend-reset | Adjacent substrate (loosely coupled) | [#866](https://github.com/fixpoint-labs/flow-state-dev/pull/866) (ready) | — |
 | FIX-482 | `utility.contextSelector` — composable goal-aware context pruning | Context pruning (composes w/ 920; loosely coupled) | — | — |
 
-**External dependency (not an epic sub-issue):** FIX-918 (spec PR #850, impl PR #854) —
-board-commanded delegation surface that 920 and the whole set assume as landed.
+FIX-918 leads the index as the **already-shipped foundation** (Done, both spec PRs and the
+impl PR merged — no pending gates); the remaining rows are the follow-on work that builds
+on its surface.
 
 ---
 
