@@ -178,11 +178,11 @@ Provide:
 - **Codebase conventions** from AGENTS.md and best-practices.md — universal rules + index inline; situational rule text (e.g. BP-010 react, BP-011–BP-016 blocks/generators/resources) in `docs/contributing/best-practices/<category>.md`
 - **The chosen discipline block** filled into the `[Discipline]` slot
 
-**Model selection:**
-- Mechanical tasks (isolated functions, clear specs, 1-2 files) → `sonnet`
-- Integration tasks (multi-file coordination, pattern matching) → default model
-- Architecture/design tasks (new abstractions, complex patterns) → `opus`
-- Bugs with non-trivial reproduction → default model or `opus` (the diagnose loop benefits from careful reading; sonnet often skips Phase 1)
+**Model selection (per the AGENTS.md model-tiering policy — "Opus judges, Sonnet executes decided work, Haiku fetches"):**
+- **Decided execution** — a well-specified task whose architecture the spec already settled (mechanical or integration) → dispatch the **`spec-implementer`** agent (Sonnet). It escalates any un-decided fork as a blocker rather than inventing it, so judgment stays upstream.
+- **Architecture / design tasks** (a new abstraction, a genuinely open shape the spec left to the implementer) → keep on the **default (Opus)** model; the judgment isn't settled yet.
+- **Bugs with non-trivial reproduction** → **default (Opus)**; the diagnose loop benefits from careful reading (cheaper models often skip Phase 1). Once the repro and fix approach are clear, the mechanical fix itself can go to `spec-implementer`.
+- **Read-only orientation** before a task (a `fsd:zoom-out` map, locating callers) → the **`scout`** agent (Haiku).
 
 **Handle implementer status:**
 - **DONE** → proceed to spec review

@@ -41,7 +41,8 @@ On each invocation, reconstruct the phase from a **small** read:
 - **Durable truth:** the Linear issue state + whether a spec PR / impl PR exist and
   their status (open / review / CI / merged). Fetch these compactly (Linear MCP; the
   GitHub `pull_request_read` methods `get`, `get_check_runs`, `get_review_comments`).
-- **Handle cache:** a compact record at `.agents/orchestration/<ISSUE-ID>.md` — issue
+- **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
+  session-only** directory — never `git add`/commit/PR it) — issue
   ID, spec PR#, impl PR#, branch, worktree path, current phase, and the last action
   taken. A few lines. Update it at the end of every step. It is a cache of handles,
   not a log of content.
@@ -76,6 +77,10 @@ PR is merged or closed. Never poll with `sleep`.
 - Persist state as a handful of fields (the handle cache), so re-entry costs a small
   read, not a replay.
 - Prefer event-driven wakes over scheduled ones; the heartbeat is a backstop.
+- **Model tiering** (AGENTS.md): the orchestrator itself is thin — keep it on the
+  default (Opus) for its routing judgment. Read-only status/handle fetches use the
+  **`scout`** agent (Haiku); phase work runs through `fsd:create-spec` /
+  `fsd:implement-issue`, which tier their own sub-agents (Sonnet for decided execution).
 
 ## Boundaries
 

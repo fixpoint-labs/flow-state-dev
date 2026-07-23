@@ -56,6 +56,10 @@ spec.
    - **Completeness** (change with a spec) → the prompt below.
    - **Depth** (if selected) → run `fsd:improve-codebase-architecture` on the touched
      area; its output is *candidate follow-ups*, non-blocking.
+   - **Model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness** on
+     **Sonnet** — they check *decided* work against the spec/checklist, not open design.
+     **Coherence** and **Restraint** keep the judgment tier (Opus, the default); **Depth**
+     inherits its skill's tier.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
    sharpest framing. Never double-count.
@@ -67,7 +71,7 @@ spec.
 ## Correctness lens (prompt)
 
 ```
-Agent tool (superpowers:code-reviewer):
+Agent tool (superpowers:code-reviewer, model: sonnet):
   Review the change for quality (naming, structure, test coverage) and bugs/logic errors.
   Run the SECOND-PATH CHECKLIST (BP-035) against the changed surface — treat an unhandled
   path as must-fix unless explicitly out of scope:
@@ -83,7 +87,7 @@ Agent tool (superpowers:code-reviewer):
 ## Completeness lens (prompt — change with a spec only)
 
 ```
-Agent tool (general-purpose):
+Agent tool (general-purpose, model: sonnet):
   Verify the implementation against the spec by reading the code, not the report.
     - Everything the spec requires is implemented; nothing extra that the spec didn't ask for.
     - Edge cases from the spec are handled; the testing strategy was followed.
