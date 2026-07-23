@@ -52,15 +52,16 @@ even if more are queued. State the chosen N and the cap to the user.
    `.orchestration/fleet.md` alongside the set**, so it survives across wakes (the next
    refresh needs it to re-read `epic approved`, keep the epic PR subscribed, and pass the
    branch/SHA to workers).
-2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
-   status to derive its phase (reuse each issue's `.orchestration/<ISSUE>.md`
-   handle cache) — **including each open spec PR's `draft` flag and its labels**: a flip
-   from `draft` to ready signals building Part II, and the **`spec approved` label**
-   signals moving to implementation. **If an epic is active,** also read the epic PR's
-   **`epic approved` label** and resolve the epic branch handle (branch + head SHA) **once
-   here** — pass it to workers in step 3 so they don't each re-fetch it. These read-only
-   status/handle fetches are the mechanical tier — use the **`scout`** agent (Haiku), not a
-   full worker. Do **not** re-dispatch the worktree workers just to read state.
+2. **Refresh the table.** Fetch each issue's Linear state + PR status to derive its phase
+   (reuse each issue's `.orchestration/<ISSUE>.md` handle cache) — **including each open spec
+   PR's `draft` flag and its labels**: a flip from `draft` to ready signals building Part II,
+   and the **`spec approved` label** signals moving to implementation. **If an epic is
+   active,** fetch the **epic issue and its sub-issues in one Linear query** (parent→children
+   — the point of the parent model) rather than N independent fetches, and read the epic PR's
+   **`epic approved` label**; resolve the epic branch handle (branch + head SHA) **once here**
+   and pass it to workers in step 3 so they don't each re-fetch it. These read-only fetches
+   are the mechanical tier — use the **`scout`** agent (Haiku), not a full worker. Do **not**
+   re-dispatch the worktree workers just to read state.
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
@@ -119,16 +120,22 @@ it; below is only the *fleet's* operating procedure.
 The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
-- **Discover, then create.** An issue's epic is its **parent** — check whether the set's
-  issues already sit under a Linear parent carrying the **`epic` label (Kind group)**; reuse
-  it if so. Otherwise dispatch `epic-agent` to stand one up: it creates the **Epic issue**
-  (`epic` Kind label), **re-parents the set's issues as sub-issues**, writes the epic-spec
+- **Discover, then create.** An issue's epic is its **parent** — have `scout` check the set
+  in one pass and return `{ epicIssueId, consistent }`. If they all share the same
+  **`Epic`-labelled (Kind group)** parent, reuse it. If the set is **mixed** (some under an
+  epic, some not) or carries **two different epic parents**, don't guess — surface it to the
+  user before creating a second epic. Otherwise dispatch `epic-agent` to stand one up: it
+  creates the **Epic issue**
+  (`Epic` Kind label), **re-parents the set's issues as sub-issues**, writes the epic-spec
   (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
   document), and returns the handles. The fleet holds only handles (epic issue ID, name,
   branch, epic PR#), never the spec text.
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **`epic approved`** sign-off and hold the epic's issues at NEEDS_SPEC until it lands
-  (loop step 3). It's the *only* epic-level gate; direction stays ungated.
+  (loop step 3). It's the *only* epic-level gate; direction stays ungated. When the label
+  lands, **the fleet writes the mirror** — move the Epic *issue's* Linear state to reflect
+  "objective approved" (the PR label is the trigger; the Linear state is the human-facing
+  mirror, and the fleet owns keeping it in step so it doesn't drift).
 - **Own the subscription; fan feedback down.** Route epic PR review/human feedback **down**
   to the aligned issue workers (sub-agents can't subscribe; the fleet does, same as a
   spec-PR event). When an epic comment is **heavy or its fan-out target is unclear** ("which
@@ -137,7 +144,7 @@ The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, wor
   re-dispatch `epic-agent` to **fold** the feedback into the epic-spec **and** refresh its
   running index from the PR handles in your table — one update pass, not a separate mode.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
-  deleted** and stays discoverable via the Epic issue (its attached document + `epic` label).
+  deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.
 
 ## Intake — filing & queueing discovered issues
@@ -153,7 +160,10 @@ Then decide whether it joins the fleet:
 - **Related and unblocked** (nothing it's blocked-by is still open/in-progress) → it
   *may be added to the active set*, up to the concurrency cap, entering at NEEDS_SPEC.
   It still hits its own **spec-approval gate** before any implementation — so this
-  starts a *spec*, not unreviewed code. Surface each addition to the user.
+  starts a *spec*, not unreviewed code. Surface each addition to the user. **When an epic
+  is active, pass the epic issue ID to `issue-manager`** so the new issue is **parented
+  under the epic** (subject to the same one-parent safety check) — otherwise it won't show
+  under the epic in Linear and `create-spec` won't discover the epic via `issue.parent`.
 - **Blocked** → track it (a row in the fleet record, marked blocked-by); pull it into
   the active set when its blocker merges (a merge event re-enters the fleet).
 - Over the cap → queue it; admit it when a slot frees.

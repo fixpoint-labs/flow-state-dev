@@ -24,10 +24,11 @@ finds the conflicts and hands them back.
 > [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)),
 > coherence is mostly built in *up front*, so this skill narrows to a **conformance check**
 > with a reduced procedure:
-> 1. **Read the current epic-spec first** — the doc on the `epic/<name>` branch *and* the
->    epic PR thread. The epic-agent may have folded in feedback the issue specs haven't
->    picked up yet; skip this and you can report "clean" while the specs have drifted from
->    the latest epic direction.
+> 1. **Read the current epic-spec first** — from the same source order `fsd:create-spec`
+>    uses: the `epic/<name>` branch head while the epic PR is open (else the Epic issue's
+>    attached Linear document), plus the epic PR thread. The epic-agent may have folded in
+>    feedback the issue specs haven't picked up yet; skip this and you can report "clean"
+>    while the specs have drifted from the latest epic direction.
 > 2. Check each issue spec **adheres** to the epic's objective, themes, and decisions.
 > 3. Flag **residual inter-spec conflicts** the epic didn't settle.
 >

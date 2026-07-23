@@ -29,8 +29,12 @@ epic-spec *is* the state, visible to humans and issue agents.
 Take the single action the dispatch calls for:
 
 - **Create** (first dispatch): first stand up the **Linear Epic issue** — create it, tag it
-  with the **`epic` label (Kind group)**, and **re-parent the set's work issues as its
-  sub-issues** (relations per `issue-manager` conventions). Then write the epic-spec —
+  with the **`Epic` label (Kind group)**, and **parent the set's work issues under it as
+  sub-issues** (relations per `issue-manager` conventions). **Re-parenting is destructive —
+  Linear allows one parent.** Before setting the epic as an issue's parent, check for an
+  existing parent: if the issue already has a functional parent, do **not** silently detach
+  it — link with `relates-to` instead and flag it for the fleet to surface. Only re-parent
+  issues that have no conflicting parent. Then write the epic-spec —
   **lead with the purpose & objective** (the gated sign-off surface — abstract "why +
   outcome"), then themes/direction and an initial index — commit it to `epic/<name>`, open
   the **never-merged** epic PR, and **attach it as the Epic issue's Linear document**

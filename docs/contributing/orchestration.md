@@ -39,7 +39,7 @@ flowchart TD
   IL --> CS[create-spec] & II[implement-issue]
   II --> SI[spec-implementer] & RV[review lenses]
   EA -->|reads/writes| ES[(epic-spec<br/>epic/&lt;name&gt; branch + epic PR<br/>+ Linear Epic issue doc)]
-  EPIC[[Linear Epic issue · Kind: epic]] -.->|parent of| ISS[work issues = sub-issues]
+  EPIC[[Linear Epic issue · Kind: Epic]] -.->|parent of| ISS[work issues = sub-issues]
   EA -->|creates / attaches spec| EPIC
 ```
 
@@ -61,14 +61,16 @@ An **epic-spec** is a coordination artifact for a set of related issues. It exis
 decisions aren't made in a vacuum. It is **not** an implementing spec, and issues do
 **not** derive from it — they *reference and align* to it.
 
-The epic itself is a **Linear parent issue tagged with the `epic` label (Kind group)**, and
+The epic itself is a **Linear parent issue tagged with the `Epic` label (Kind group)**, and
 the work items are its **sub-issues**. That makes Linear the durable state manager for the
 whole set — one query on the epic issue returns its state plus every sub-issue's state — and
 makes discovery native: a work issue's epic is simply its **parent** (no registry to parse).
-The `epic` label lets humans filter epic issues off the working board (they're containers,
+The `Epic` label lets humans filter epic issues off the working board (they're containers,
 not work), and forces the set to crystallize *what it's trying to achieve*. The fleet creates the epic
-issue and re-parents the set's issues under it (via the `epic-agent`; `issue-manager`
-conventions for relations apply).
+issue and parents the set's issues under it (via the `epic-agent`; `issue-manager`
+conventions for relations apply). **Re-parenting respects Linear's one-parent rule** — an
+issue that already has a functional parent is linked with `relates-to` and flagged, never
+silently detached.
 
 **Contents:**
 
@@ -91,7 +93,7 @@ conventions for relations apply).
 - **Dual-synced to the Linear *Epic issue's* document** — same branch + Linear-document
   pattern as issue specs (BP-037), one altitude up: the epic-spec attaches to the epic
   issue exactly as a spec attaches to a work issue. **Discovery is native** — a work issue's
-  epic is its **parent** (check `issue.parent`; does it carry the `epic` Kind label?). No registry, no
+  epic is its **parent** (check `issue.parent`; does it carry the `Epic` Kind label?). No registry, no
   free-text parsing.
 - **Authored/maintained by the `epic-agent`**, dispatched by the fleet. The agent **never
   starts over**: each dispatch it reads the current epic-spec (the doc + PR thread are its
@@ -115,8 +117,9 @@ per issue.
 
 **The PR label drives; Linear mirrors.** All three gates are GitHub signals because the
 coordinator wakes on PR webhooks — Claude can't react to Linear events. The epic *issue's*
-Linear state is a human-facing mirror of the objective gate, not the trigger. (The epic
-issue itself is tagged with the **`epic` label under Linear's "Kind" group** — that's what
+Linear state is a human-facing mirror of the objective gate, not the trigger — the
+**fleet writes that mirror** when the label lands, so it doesn't drift. (The epic issue
+itself is tagged with the **`Epic` label under Linear's "Kind" group** — that's what
 marks a Linear issue as an epic and keeps it filterable off the working board.)
 
 ```mermaid
