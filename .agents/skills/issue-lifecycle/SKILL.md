@@ -229,8 +229,9 @@ cloud vs. local" for how to detect the environment and the full fallback design.
   one worktree per issue).
 - This is the *coordinated, single-session, event-driven* lifecycle — one session
   shepherds the whole issue, start to merge-ready PR.
-- **Goal verification is part of done, not a gate.** `issue-implement` proves the goal on a real
-  model at completion; a worker that skipped it to save credits hasn't finished. Same enforcement
+- **Goal verification is part of done, not a gate.** `issue-implement` proves the goal on the
+  real path at completion (a real model when the goal declares one; model-free goals are valid);
+  a worker that skipped a model-backed goal to save credits hasn't finished. Same enforcement
   rule — and the same narrow "no goal check applies" exception — as `issue-fleet` → Boundaries;
   don't accept a cost-based skip.
 - Gates are fixed: **spec approval in, merge out.** Everything between runs without

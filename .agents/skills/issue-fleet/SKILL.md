@@ -318,9 +318,12 @@ step. So:
   issue A's pending spec.
 - **Goal verification is part of done, not a gate.** (The canonical enforcement statement;
   `issue-lifecycle` cross-references this.) An issue's implementation isn't finished until its
-  goal is proven on a real model (`issue-implement` runs it at completion). A worker that reports
-  it skipped the goal to save API credits has **not** finished — the credit spend is the point,
-  and the inference credential is normally in the env. Send it back to run the goal; don't accept
+  goal is proven on the **real path** (`issue-implement` runs it at completion) — a real model
+  when the goal declares one, but some goals are intentionally *model-free* (real path, no model
+  call, e.g. a suspend/resume or CRUD-persistence goal), and a model-free PASS is a valid proof,
+  not an excuse to demand credentials. A worker that reports it skipped a **model-backed** goal to
+  save API credits has **not** finished — the credit spend is the point, and the inference
+  credential is normally in the env. Send it back to run the goal; don't accept
   a cost-based skip. The only acceptable non-run is a stated (never silent) "no goal check
   applies" — docs, pure refactor, or config with **no observable outcome** (config-backed flow
   wiring *is* observable and must be proven through `fsdev run`) — or a genuine
