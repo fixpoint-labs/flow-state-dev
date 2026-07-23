@@ -344,20 +344,54 @@ describe("delegation memo — mid-turn disable busts the cache", () => {
   });
 
   it("rebuilds when a new skill is activated between steps", async () => {
-    // Base roster active; a second activation appears at step 1 → snapshot grows
-    // → a second materialization.
-    const collection = createMockSkillsCollection();
-    const { gen, materializeAgent } = buildScoutGenerator();
-    const { ctx } = buildExecCtx(collection);
+    // Base roster active (scout-team, static); a second agent-declaring skill
+    // (helper-team, bundled but NOT statically active) gets activated mid-turn
+    // via the binding's block-state activation field — the snapshot grows →
+    // the memo busts → a second materialization at step 1.
+    const helperSkill: InitialSkill = {
+      name: "helper-team",
+      skillMd: [
+        "---",
+        "description: helper team",
+        "agents:",
+        "  helper:",
+        "    prompt: You help.",
+        "---",
+        "",
+        "Delegate to the helper.",
+      ].join("\n"),
+    };
+    const agents = deterministicAgents();
+    const skills = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [scoutSkill, helperSkill],
+      ...agents,
+    });
+    const gen = generator({
+      name: "executive",
+      model: "openai/gpt-5.4-mini",
+      prompt: "delegate",
+      inputSchema: z.object({}),
+      uses: [skills.with({ active: ["scout-team"], dynamicActivation: true } as never)],
+    });
+    const { ctx, selfState } = buildExecCtx();
 
-    await resolveTools(gen, ctx); // step 0 — one materialization (scout static)
-    expect(materializeAgent).toHaveBeenCalledTimes(1);
+    const step0 = (await resolveTools(gen, ctx)).map(toolName);
+    expect(step0).toContain("runBoard");
+    expect(agents.materializeAgent).toHaveBeenCalledTimes(1); // scout-team only
 
-    // scout-team is static; activating it again with the same identity does not
-    // grow the snapshot, so re-run remains cached. Confirm the reuse path:
+    // Activate helper-team mid-turn (block-state location — the binding's
+    // default when no `activeState` is configured).
+    selfState.activeSkills = [
+      { name: "helper-team", mode: "inline", activatedAt: Date.now() },
+    ];
+
+    // Step 1: snapshot now covers scout-team + helper-team → cache busts →
+    // a full rebuild re-materializes scout-team's agent-ref agent, so the
+    // count grows (helper-team's inline agent needs no materializeAgent call).
     const step1 = (await resolveTools(gen, ctx)).map(toolName);
     expect(step1).toContain("runBoard");
-    expect(materializeAgent).toHaveBeenCalledTimes(1);
+    expect(agents.materializeAgent).toHaveBeenCalledTimes(2);
   });
 });
 
