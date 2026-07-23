@@ -15,6 +15,7 @@ import {
   collapseToCanonicalLog,
   ITEM_UPDATE_INVARIANT_KEYS
 } from "@flow-state-dev/contracts/items";
+import { looseDeepEqual } from "@flow-state-dev/contracts/helpers";
 import type {
   Content,
   MessageItem,
@@ -366,6 +367,16 @@ export function createRequestStreamStore(): RequestStreamStore {
       // A patch that was entirely invariant keys changes nothing — report no-op
       // so the binder doesn't signal a phantom flush.
       if (Object.keys(sanitized).length === 0) return false;
+
+      // Throw-safe structural compare: this is a "did the render input change?"
+      // guard on wire-parsed client items, so use looseDeepEqual (never throws
+      // on exotic shapes; a false negative only costs a harmless re-render)
+      // rather than the JSON-only state-write comparator.
+      const existingRecord = existing as Record<string, unknown>;
+      const isNoOp = Object.keys(sanitized).every((key) =>
+        looseDeepEqual(existingRecord[key], sanitized[key])
+      );
+      if (isNoOp) return false;
 
       // Route through upsertItem so a patch touching a sort key (ts/itemIndex)
       // or `ownedBy` re-sorts and re-indexes ownership rather than leaving the
