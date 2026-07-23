@@ -1,5 +1,5 @@
 ---
-name: fsd:polish-docs
+name: polish-docs
 description: The docs editor. A corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges documentation so it reads elegantly and navigates well — unafraid to rewrite and move content to make cohesive sense. Runs standalone on a section or the whole site, and is auto-dispatched at fleet/epic wrap to clean up the docs a batch of issues each edited in isolation. Edits and opens a draft PR; never auto-merges.
 argument-hint: "<scope, e.g. 'guides', 'the orchestration section', a PR/branch/epic, or empty = whole site>"
 ---
@@ -20,11 +20,11 @@ here, cohesive restructuring **is** the task.)
 
 ## What this is — and isn't
 
-- **`fsd:add-docs-page`** adds *one* new page in the right place. This edits the *whole* corpus
+- **`add-docs-page`** adds *one* new page in the right place. This edits the *whole* corpus
   (or a slice) for cohesion and readability.
-- **`fsd:audit-coherence`** hunts code/philosophy incoherence and is **read-only** — it proposes.
+- **`audit-coherence`** hunts code/philosophy incoherence and is **read-only** — it proposes.
   This is about *documentation* readability and structure, and it **edits**.
-- **`fsd:second-look` / restraint** cuts code that shouldn't exist. This cuts *prose* that
+- **`second-look` / restraint** cuts code that shouldn't exist. This cuts *prose* that
   shouldn't exist and consolidates what does.
 
 One hard line separates polish from vandalism: **you edit presentation, never facts.** Preserve
@@ -37,7 +37,7 @@ that reads nicely but is false. Elegant and wrong is worse than crammed and righ
 Read first: the **"Writing Style (site content)"** section of `CLAUDE.md` (the voice contract —
 engineer audience, short varied sentences, minimal em-dashes, no AI cadence, warm not cold,
 sidebar labels never repeat the category, current model names in examples) and the reference
-example it names, `apps/docs/blog/2026-03-06-philosophy.md`. Also skim `fsd:add-docs-page`'s
+example it names, `apps/docs/blog/2026-03-06-philosophy.md`. Also skim `add-docs-page`'s
 "Core Principle" — docs are for an engineer who knows TS/React but has never seen FSD. Those are
 the standards you edit *toward*; don't restate them here, apply them.
 

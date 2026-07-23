@@ -117,7 +117,7 @@ The dispatcher copies one of these into the `[DISCIPLINE BLOCK]` slot above base
 ### TDD block (for Feature / Enhancement / Improvement issues)
 
 ```
-Follow `fsd:tdd` — red-green-refactor with vertical tracer-bullet slices.
+Follow `tdd` — red-green-refactor with vertical tracer-bullet slices.
 
 **Vertical slices only — no horizontal slicing.** Do NOT write all tests
 first and then all code. Tests written in bulk test imagined behaviour,
@@ -180,15 +180,15 @@ Correct order:
 Test placement: co-located `*.spec.ts` next to the source. For
 cross-package behaviour, `packages/integration-tests/`. Goal checks live
 in the root `goals/` library (`goals/<describe>/<it>/`, see
-`goals/README.md`) and never run in CI. See `fsd:tdd` → "Two kinds of
-test" for the split, and `fsd:write-block-tests` for the mock-context
+`goals/README.md`) and never run in CI. See `tdd` → "Two kinds of
+test" for the split, and `write-block-tests` for the mock-context
 idiom used in CI specs.
 ```
 
 ### Diagnose block (for Bug issues)
 
 ```
-Follow `fsd:diagnose` — six phases, in order. Do NOT skip phases or
+Follow `diagnose` — six phases, in order. Do NOT skip phases or
 reorder them. The discipline exists because hard bugs without a feedback
 loop produce hours of speculative code changes.
 
@@ -201,7 +201,7 @@ loop produce hours of speculative code changes.
    - `fsdev run <flowKind> <action> -i '<json>' --flow-dir <path>` with
      NDJSON capture to stdout for flow-level repros
    - For flow execution trace reading specifically, hand off to
-     `fsd:debug-flow` for the NDJSON event-type reference and the
+     `debug-flow` for the NDJSON event-type reference and the
      failure-pattern lookup table.
    Do NOT proceed without a loop you believe in.
 2. **Reproduce.** Run the loop. Watch the failure mode appear. Confirm

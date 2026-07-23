@@ -1,5 +1,5 @@
 ---
-name: fsd:distill-lessons
+name: distill-lessons
 description: The self-improvement engine. Runs periodically to measure the development loop itself — an auto-derived cycle-ledger of review rounds + feedback classes from GitHub/Linear — and push the SMALLEST upstream fix that kills a recurring rework class (sharpen a tenet, sharpen an existing BP, or add a skill checklist line). Also runs per-PR to reflect on a reworked/reviewed change and extract the transferable lesson. Gates hard against best-practice bloat; writes to docs/philosophy.md or best-practices.md only after user review.
 argument-hint: "<what to reflect on, e.g. 'PR #651' or 'the FIX-788 rework' or 'this session'>"
 ---
@@ -33,7 +33,7 @@ almost never becomes a *new* BP. In descending preference, a lesson lands as:
    too: *"if it grows into a checklist, it has failed"*; sharpening a tenet is as gated as
    adding a BP, not a default),
 2. a **sharpened existing BP** so it actually catches the class,
-3. **per-spec guidance** — a lesson `fsd:create-spec` reasons to *for this class of
+3. **per-spec guidance** — a lesson `issue-spec` reasons to *for this class of
    change*, carried in the spec, not the registry (the common home now),
 4. **one checklist line** in a skill so the loop catches the class structurally, or
 5. — rarely, and only past the Step-3 gate — a **new BP**.
@@ -69,9 +69,9 @@ propose the *single smallest upstream change that stops it recurring*, preferrin
 order:
 
 1. **Sharpen a tenet** in `docs/philosophy.md` — when the class is a philosophy gap
-   (often surfaced by `fsd:audit-coherence`).
+   (often surfaced by `audit-coherence`).
 2. **Sharpen an existing BP** so it actually catches the class.
-3. **Add one checklist line to a skill** (`create-spec` / `implement-issue` / a review
+3. **Add one checklist line to a skill** (`issue-spec` / `issue-implement` / a review
    prompt) so the loop catches the class structurally, before review does.
 4. **Only then**, rarely, a new BP — and only if it clears the gate below.
 
@@ -164,14 +164,14 @@ Assign each survivor a home — **prefer the lightest one that fits**, in the la
 from "The bias" above. Reach down the list only when the one above genuinely doesn't fit:
 
 - **Philosophy gap** → a **sharpened tenet** in `docs/philosophy.md` — only when the class
-  is a true grounding gap (often surfaced by `fsd:audit-coherence`) and no tenet already
+  is a true grounding gap (often surfaced by `audit-coherence`) and no tenet already
   covers it. Gated like any grounding change; keep the tenet deep, not a checklist.
 - **Already-covered-but-fuzzy** → an edit that **sharpens the existing BP** (or tenet), not
   a new number. A near-duplicate weakens both.
-- **Situational, worked per spec** → **guidance `fsd:create-spec` reasons to for this class
+- **Situational, worked per spec** → **guidance `issue-spec` reasons to for this class
   of change**, carried in the spec rather than a standing entry. The common home — this is
   the "reason from the tenets per spec, don't grow the registry" path.
-- **Structural** → **one checklist line** in a skill (`create-spec` / `implement-issue` / a
+- **Structural** → **one checklist line** in a skill (`issue-spec` / `issue-implement` / a
   review prompt) so the loop catches the class before review does.
 - **Drop / defer** → record it in the PR or a short note, not the BP doc. This is the most
   common outcome and that's correct.

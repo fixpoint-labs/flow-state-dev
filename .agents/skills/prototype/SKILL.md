@@ -1,5 +1,5 @@
 ---
-name: fsd:prototype
+name: prototype
 description: Build a throwaway prototype to flesh out an FSD design — either a runnable flow harness in apps/kitchen-sink for block/pattern/capability/state-machine questions, or several radically different UI variants on a single route for devtool or renderer questions. Use when the user wants to prototype, sanity-check a block shape, mock up a UI, explore design options, or says "prototype this", "let me play with it", "try a few designs".
 ---
 
@@ -24,7 +24,7 @@ The two branches produce very different artifacts — getting this wrong wastes 
    - UI prototype: `pnpm --filter @flow-state-dev/kitchen-sink dev` or `pnpm --filter @flow-state-dev/devtool dev` (whichever app hosts the variants).
    The user must be able to start it without thinking.
 3. **No persistence by default.** Use the in-memory store. Seed state via `--seed-session` / `--seed-user` / `--seed-project` if the question depends on starting state. Reach for `@flow-state-dev/store-sqlite` only when the question is specifically about persistence semantics — and label the database file `PROTOTYPE-wipe-me.sqlite`.
-4. **Skip the polish.** No vitest specs, no error handling beyond what makes the prototype runnable, no abstractions. Prototypes that grow specs aren't prototypes any more — they're code, and they need to go through `fsd:tdd` instead.
+4. **Skip the polish.** No vitest specs, no error handling beyond what makes the prototype runnable, no abstractions. Prototypes that grow specs aren't prototypes any more — they're code, and they need to go through `tdd` instead.
 5. **Surface the state.** For logic: every `fsdev run` invocation produces NDJSON on stdout — that *is* the state surface. Don't pretty-print or filter; let the user read the full stream. For UI: render the full relevant state inside the variant (real data shape, real cardinality), or print it in a debug panel during prototyping.
 6. **Keep the candidate module portable.** The piece that's actually answering the question — the candidate block, pattern, capability, or state model — should be importable from somewhere that could one day become a real package location. The kitchen-sink flow / variant component is the throwaway shell; the underlying construct is the bit worth keeping if the answer is "yes, ship it."
 7. **Delete or absorb when done.** When the prototype has answered its question, either delete it or fold the validated decision into the real code. Don't leave it under `_prototypes/` rotting; that directory must stay genuinely temporary.
@@ -33,8 +33,8 @@ The two branches produce very different artifacts — getting this wrong wastes 
 
 The **answer** is the only thing worth keeping from a prototype. Capture it somewhere durable along with the question it was answering:
 
-- **Question survives, answer adopted** → fold the candidate into the relevant package (`packages/core/`, `packages/patterns/`, `packages/tools/`, etc.) and write the regression tests via `fsd:tdd`. Note the prototype in the commit message: *"Distilled from `apps/kitchen-sink/flows/_prototypes/<name>` — see commit X."*
-- **Question survives, answer rejected** → record in `docs/internal/out-of-scope/<concept>.md` if the rejection meets the three-way filter (hard to reverse, surprising without context, real trade-off). See `fsd:improve-codebase-architecture`'s SKILL.md for the filter.
+- **Question survives, answer adopted** → fold the candidate into the relevant package (`packages/core/`, `packages/patterns/`, `packages/tools/`, etc.) and write the regression tests via `tdd`. Note the prototype in the commit message: *"Distilled from `apps/kitchen-sink/flows/_prototypes/<name>` — see commit X."*
+- **Question survives, answer rejected** → record in `docs/internal/out-of-scope/<concept>.md` if the rejection meets the three-way filter (hard to reverse, surprising without context, real trade-off). See `improve-codebase-architecture`'s SKILL.md for the filter.
 - **Question shifted mid-prototype** → leave a short `NOTES.md` next to the prototype before deleting, with the original question and what was learned. The user (or a future agent) can decide whether the new question needs its own prototype.
 
 Don't leave the prototype directory populated. It rots fast and confuses the next reader; the framework's architecture docs and BPs are durable, half-finished prototypes are not.

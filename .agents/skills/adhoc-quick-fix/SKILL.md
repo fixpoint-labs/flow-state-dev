@@ -1,5 +1,5 @@
 ---
-name: fsd:quick-fix
+name: adhoc-quick-fix
 description: Log an issue to Linear and immediately start fixing it. Handles duplicate detection, ticket creation, implementation, quality review via sub-agents, and Linear status updates — only pausing for user review before committing.
 argument-hint: "<description of the issue or improvement>"
 ---
@@ -63,7 +63,7 @@ Now do the actual work. Follow the project's standard development practices:
    pnpm --filter <affected-package> test
    ```
 5. If tests fail, fix them. If existing tests don't cover the fix, add targeted test coverage.
-6. **Confirm the fix against the real path when the behaviour is user-visible** and there's a runnable real path — a flow, generator, or a handler/pattern surfaced through a flow. Mocked specs passing doesn't prove the symptom is gone: run it through a real model (`fsdev run`) and confirm the actual outcome the user reported is fixed — that's the goal. Only pure type/unit fixes with no user-visible behaviour skip this. (See `fsd:tdd` → "Two kinds of test".)
+6. **Confirm the fix against the real path when the behaviour is user-visible** and there's a runnable real path — a flow, generator, or a handler/pattern surfaced through a flow. Mocked specs passing doesn't prove the symptom is gone: run it through a real model (`fsdev run`) and confirm the actual outcome the user reported is fixed — that's the goal. Only pure type/unit fixes with no user-visible behaviour skip this. (See `tdd` → "Two kinds of test".)
 
 Work autonomously through this step. Don't ask the user for approach approval — just pick the right fix and implement it.
 

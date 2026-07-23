@@ -47,7 +47,7 @@ Third-party services you don't control. The deepened module takes the external d
 **FSD test conventions** (match these when relocating tests):
 
 - Co-locate `*.spec.ts` next to the source: `packages/<pkg>/src/.../foo.ts` → `packages/<pkg>/src/.../foo.spec.ts`. Don't pile all tests into a `__tests__` directory.
-- Use `@flow-state-dev/testing` for block contexts, generator mocks, and pattern test harnesses. The `fsd:write-block-tests` skill encodes the conventions for the mock-context idiom.
+- Use `@flow-state-dev/testing` for block contexts, generator mocks, and pattern test harnesses. The `write-block-tests` skill encodes the conventions for the mock-context idiom.
 - Cross-package or flow-level regressions go in `packages/integration-tests/` (Tier 1 suite).
 - Generator output-schema invariants: import `makeSchemaStrict` from `@flow-state-dev/core` and assert no `ZodOptional`/`ZodDefault`/`ZodRecord`/non-literal `ZodUnion` survives (BP-016).
 - Verify the refactor before declaring done: `pnpm --filter <pkg> typecheck && pnpm --filter <pkg> test`. Root `pnpm typecheck` also runs the package-boundary validator (`scripts/validate-package-boundaries.mjs`) — use it after any cross-package refactor.

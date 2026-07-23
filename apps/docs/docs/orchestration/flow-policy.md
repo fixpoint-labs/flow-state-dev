@@ -215,5 +215,6 @@ Override sparingly. The default is the default because it's the safe pick — su
 
 ## See also
 
+- [Context supply](./context-supply) — the other input lever: what prior *conversation* a delegated agent inherits, versus flow policy's tool-call observations
 - [Plan and Execute](../patterns/plan-and-execute) — the default `recentTrajectory({ n: 8 })` pin lives here
 - [Supervisor](../patterns/supervisor) — defaults to `declaredDepsOnly` so each task's review stays focused

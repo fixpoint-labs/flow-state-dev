@@ -3,6 +3,12 @@
 **Date:** 2026-07-22
 **Status:** implemented (this PR)
 
+> **Historical naming note:** skill names below reflect what they were called when this
+> was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
+> `issue-implement`, and `dispatch-remote` (mentioned in "Relationship to existing
+> skills" below) has been **removed** along with `plan-dispatch`. Don't invoke the old
+> names — this doc is a point-in-time design record, not current reference.
+
 ## Why
 
 We can shepherd an issue end-to-end (spec → approval → implement → PR feedback) and,
@@ -50,8 +56,8 @@ phase into a sub-agent whose context is discarded once it returns a compact summ
 
 - `fsd:dispatch-remote` routes an issue to a *separate* cloud task by Linear state
   (fire-and-forget); these orchestrators *hold the lifecycle* in one session.
-- `issue-lifecycle` composes `fsd:create-spec`, `fsd:implement-issue` (which itself
-  composes `fsd:review`). No lifecycle logic is duplicated.
+- `issue-lifecycle` composes `issue-spec`, `issue-implement` (which itself
+  composes `review`). No lifecycle logic is duplicated.
 
 ## Skill properties (the isolation model, made declarative)
 
@@ -79,8 +85,8 @@ Confirmed against the Claude Code skill/agent frontmatter reference:
 
 ## Verification
 
-Dogfood: run `fsd:issue-lifecycle` on one real issue end-to-end and confirm (a) the
+Dogfood: run `issue-lifecycle` on one real issue end-to-end and confirm (a) the
 orchestrator's context stays small across the phases (it only ever holds summaries),
 (b) it pauses correctly at spec approval and before merge, (c) it re-enters on PR
-events. Then run `fsd:issue-fleet` on 2–3 issues and confirm isolated worktrees/branches
+events. Then run `issue-fleet` on 2–3 issues and confirm isolated worktrees/branches
 and independent per-issue gates.

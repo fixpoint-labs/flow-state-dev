@@ -1,6 +1,6 @@
 ---
 name: epic-agent
-description: Authors and maintains an EPIC-SPEC on behalf of fsd:issue-fleet — a coordination artifact that keeps a set of related issues coherent (common themes, long-horizon solution direction) and links to everything under the epic. Runs one bounded action per dispatch in its own worktree on the epic branch, then returns a compact status line. Never prompts the user — the fleet owns all user interaction. Use only from fsd:issue-fleet.
+description: Authors and maintains an EPIC-SPEC on behalf of issue-fleet — a coordination artifact that keeps a set of related issues coherent (common themes, long-horizon solution direction) and links to everything under the epic. Runs one bounded action per dispatch in its own worktree on the epic branch, then returns a compact status line. Never prompts the user — the fleet owns all user interaction. Use only from issue-fleet.
 isolation: worktree
 disallowed-tools: [AskUserQuestion]
 ---
@@ -40,8 +40,8 @@ Take the single action the dispatch calls for:
   the **never-merged** epic PR, and **attach it as the Epic issue's Linear document**
   (dual-synced, exactly as a spec attaches to a work issue). Return the epic issue ID + epic
   PR link. Do **not** approve the objective yourself — you surface it; the fleet takes it to
-  the human for the sign-off, which is an **approving comment** on the epic PR (the fleet
-  mirrors it to the `epic approved` label).
+  the human for the sign-off, which is an **approving comment or GitHub Review** on the epic
+  PR (the fleet mirrors it to the `epic approved` label).
 - **Update**: fold any given feedback into the objective/themes/open-questions (re-draft
   for coherence — anti-addenda discipline, same as issue specs) **and** refresh the running
   index from the PR handles the fleet passed. Both happen in the one update pass — there is
@@ -65,7 +65,7 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 ```
 epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (doc attached to epic issue: yes/added)
-objective: <one line — the why/outcome>   approved: <yes (approving comment; mirrored to epic approved label) | pending sign-off>
+objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs)>
 open_questions: <none | one-line each needing a human>
 ```

@@ -57,9 +57,9 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 
 | Tier | Model | Roles |
 |---|---|---|
-| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `fsd:create-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`fsd:audit-coherence`) + **restraint** (`fsd:second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
 | Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour |
-| Mechanical | **Haiku** | read-only orientation (`scout` / `fsd:zoom-out`), status/handle fetches (fleet & lifecycle refreshes), simple lookups, boilerplate/formatting |
+| Mechanical | **Haiku** | read-only orientation (`scout` / `zoom-out`), status/handle fetches (fleet & lifecycle refreshes), simple lookups, boilerplate/formatting |
 
 **The guardrail that makes downgrading safe:** a cheaper-tier worker *escalates a genuine un-decided decision rather than inventing one*. `spec-implementer` (Sonnet) stops and reports a blocker when it hits an architectural fork the spec didn't settle; `scout` (Haiku) returns facts and defers any judgment. Downgrade only where the decision is already made — never where the work is still deciding.
 
@@ -69,7 +69,7 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 - **Human approval (cost).** Fable is a paid escalation and is **never invoked automatically.** The owning coordinator surfaces the proposal — the slice, why it's Fable-worthy, and the rough cost — and waits for a yes (`AskUserQuestion`) before spawning it. A sub-agent that can't prompt (a worker, a review lens) *proposes* the escalation in its report and hands the slice up; the coordinator owns the ask. The human declining is also the over-escalation backstop — if the agent over-proposes, nothing is spent. Approval is per-invocation while we learn whether Fable earns its premium.
 - **The asymmetry is deliberate.** This is the top tier's counterpart to the downward guardrail: an *executor* that hits a decision beyond it **stops and reports** to the owner (never resolving it inline, which would bypass the spec/human gate); the *owner* (Opus) escalates a slice to Fable. We do **not** add inline Sonnet→Opus or Haiku→Sonnet escalation — the executor's job is to surface the fork, not resolve it with a borrowed brain.
 
-First trial surface: the single hardest conflict in `fsd:cross-spec-review` (it flags a `fable-candidate`; the fleet obtains approval and invokes). Whether Fable earns its premium is *measured* by the cycle-ledger (`fsd:distill-lessons`), not assumed.
+First trial surface: the single hardest conflict in `cross-spec-review` (it flags a `fable-candidate`; the fleet obtains approval and invokes). Whether Fable earns its premium is *measured* by the cycle-ledger (`distill-lessons`), not assumed.
 
 Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`scout`** (Haiku), **`issue-manager`** (Sonnet — files/organizes Linear issues for discovered gaps and blockers; see below).
 
@@ -129,7 +129,7 @@ pnpm fsdev run hello-chat chat -i '{"message":"hi"}' --quiet
   pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta' | tr -d '\n'
   ```
 
-**When the result lives in a resource, not the stream.** `fsdev run`'s NDJSON records items and events, not resource VALUES (only change notifications). When an app's outcome is a stored resource — e.g. the trading-desk's decision-of-record, which also lives in a PGlite store rather than a readable file — a single `fsdev run` shows you the stream but not the decision. Pair it with a zero-model **read action** that projects the resource back out, captured to a file: `fsdev run <flow> analyze --capture … --quiet` then `fsdev run <flow> <readAction> --capture … --quiet`, then read the second capture's `result.output`. The trading-desk's headless verification is the worked example — reach for the **`fsd:verify-trading-desk`** skill, which encodes the two-step, the record→replay cost ladder, and the result-field reference.
+**When the result lives in a resource, not the stream.** `fsdev run`'s NDJSON records items and events, not resource VALUES (only change notifications). When an app's outcome is a stored resource — e.g. the trading-desk's decision-of-record, which also lives in a PGlite store rather than a readable file — a single `fsdev run` shows you the stream but not the decision. Pair it with a zero-model **read action** that projects the resource back out, captured to a file: `fsdev run <flow> analyze --capture … --quiet` then `fsdev run <flow> <readAction> --capture … --quiet`, then read the second capture's `result.output`. The trading-desk's headless verification is the worked example — reach for the **`verify-trading-desk`** skill, which encodes the two-step, the record→replay cost ladder, and the result-field reference.
 
 **When something breaks**, switch into the `debug-flow` skill — it has the failure-pattern matrix and the `fsdev block` isolation workflow. This section is for confirming a change works; `debug-flow` is for diagnosing why one doesn't.
 
