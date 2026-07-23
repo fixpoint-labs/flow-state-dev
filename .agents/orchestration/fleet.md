@@ -7,9 +7,9 @@ Linear access: MCP is wrong-workspace (OnSecurity). Use Linear GraphQL API + $LI
 ## Status table
 | Issue | Phase | Spec PR | Impl PR | Gate pending? | Worktree | Notes |
 |-------|-------|---------|---------|---------------|----------|-------|
-| FIX-920 | SPEC_REVISING | #853 | — | after revise → user re-review | claude/fix-920-spec-tsdnqg | revision worker aa7f0f61b5ddb5c92: rename WorkerSpec→AgentSpec/workers:→agents:, reframe test to board-commanded runBoard, drop dead blockRef guard. Wiring seam survives. User wants to re-review revised spec before implement. |
+| FIX-920 | AWAITING_SPEC_APPROVAL (revised) | #853 | — | user re-review | claude/fix-920-spec-tsdnqg | Spec revised to merged FIX-918 (agents:/runBoard, board-commanded, blockRef dropped, refs fixed). Q2a/Q3 still OPEN. Ready for user sign-off. |
 | FIX-917 | AWAITING_SPEC_APPROVAL | #866 | — | pending user | worktree | spec PR #866 up, subscribed. Decision 2 (hard rename vs BP-030 dual-read) needs sign-off; contingent on zero external consumers of the 4 legacy keys |
-| FIX-923 | AWAITING_SPEC_APPROVAL | #864 | — | pending user | worktree | RESEARCH issue; spec PR #864 up, subscribed |
+| FIX-923 | RE-SPECING (co-spec w/ 901) | #864 | — | after respec → user | spec/FIX-923 | Co-spec host model with blocking-vs-background drain as first-class axis, forward-compatible w/ FIX-901. Reference 901 as mechanism (don't spec its hard parts). Research Claude Code + Codex harness background-task models for inspiration. Establish 923↔901 relation. |
 | FIX-924 | AWAITING_SPEC_APPROVAL | #865 | — | pending user | worktree | spec PR #865 up, subscribed. soft-coupled to FIX-923; DO NOT implement 924 until 923 research accepted |
 
 Note: coordination PR #862 closed-without-merge by user (deliberate — record is internal). fleet.md commits continue to the branch; do NOT open a replacement PR.
