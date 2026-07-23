@@ -121,6 +121,7 @@ const sidebars: SidebarsConfig = {
         "orchestration/task-board",
         "orchestration/goal-seek-loop",
         "orchestration/flow-policy",
+        "orchestration/context-supply",
         "orchestration/agents",
         {
           type: "category",

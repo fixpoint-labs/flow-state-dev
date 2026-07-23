@@ -73,6 +73,7 @@ const AGENT_KNOWN_KEYS = new Set([
   "tools",
   "visibility",
   "model",
+  "context-supply",
 ]);
 
 /** Sub-keys of `agent-overrides`. */
@@ -259,6 +260,27 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
       throw new Error(`SKILL.md agent \`${key}\`: \`model\` must be a string`);
     }
     spec.model = m;
+  }
+
+  // FIX-920: `context-supply` controls how much prior conversation an inline
+  // agent inherits. It applies only to prompt/prompt-ref agents — an agent-ref
+  // agent owns its own context, so setting it there is a fail-loud error rather
+  // than a silent no-op (mirrors the inline-tuning-on-agent-ref rejection).
+  if ("context-supply" in obj) {
+    if ("agent-ref" in obj) {
+      throw new Error(
+        `SKILL.md agent \`${key}\`: \`context-supply\` applies to prompt/prompt-ref agents; ` +
+          `agent-ref agents own their own context.`,
+      );
+    }
+    const cs = obj["context-supply"];
+    if (cs !== "isolated" && cs !== "conversation") {
+      throw new Error(
+        `SKILL.md agent \`${key}\`: \`context-supply\` must be "isolated" or "conversation" ` +
+          `(got ${JSON.stringify(cs)})`,
+      );
+    }
+    spec.contextSupply = cs;
   }
 
   return spec;
@@ -997,6 +1019,8 @@ function serializeAgents(
       lines.push(`      history: ${spec.itemVisibility.history}`);
     }
     if (spec.model !== undefined) lines.push(`    model: ${yamlScalar(spec.model)}`);
+    if (spec.contextSupply !== undefined)
+      lines.push(`    context-supply: ${spec.contextSupply}`);
   }
 }
 

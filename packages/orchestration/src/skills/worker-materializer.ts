@@ -86,6 +86,18 @@ export const workerInputSchema = z.object({
 type WorkerInput = TaskWorkerInput;
 
 /**
+ * Turn window a `contextSupply: "conversation"` agent inherits (FIX-920).
+ *
+ * `conversation` ships **bounded by default** per the delegation-substrate epic
+ * (FIX-930): rather than inheriting the full history window (~50 turns), the
+ * worker's `history` slot is bounded to the last N whole turns using the real
+ * `ItemQuery.limit` shape (`{ limit: { turns: N } }`, not `{ turns: N }`). This
+ * caps the token / latency cost of feeding prior conversation into a delegated
+ * agent; a per-agent override is a documented future extension.
+ */
+export const CONVERSATION_HISTORY_TURNS = 8;
+
+/**
  * Build the executable board worker for one agent entry.
  *
  * Dispatch order (parse-time mutual exclusion guarantees exactly one branch
@@ -96,6 +108,32 @@ export async function materializeWorker(
   spec: AgentSpec,
   deps: WorkerMaterializationDeps,
 ): Promise<BlockDefinition> {
+  // FIX-920: validate `contextSupply` here, not only in the frontmatter parser.
+  // `AgentSpec`/`materializeWorker` are exported and persisted `PatternBinding`s
+  // are only shallowly revalidated, so a programmatic or persisted spec bypasses
+  // `parseAgentSpec`. This is the authoritative guard — it covers (a) an
+  // out-of-enum value (which would otherwise fall through the `=== "conversation"`
+  // check below and silently run isolated) and (b) `contextSupply` on an
+  // `agentRef` agent (whose context is owned by the workforce materializer, not
+  // reachable from this history slot).
+  if (spec.contextSupply !== undefined) {
+    if (
+      spec.contextSupply !== "isolated" &&
+      spec.contextSupply !== "conversation"
+    ) {
+      throw new Error(
+        `Agent '${agentKey}': invalid context-supply '${String(spec.contextSupply)}' ` +
+          `— expected "isolated" or "conversation".`,
+      );
+    }
+    if (spec.agentRef !== undefined) {
+      throw new Error(
+        `Agent '${agentKey}': context-supply applies to prompt/prompt-ref agents; ` +
+          `agent-ref agents own their own context (resolved through the agent registry).`,
+      );
+    }
+  }
+
   // 1. agent-ref — resolve a registered Agent via the injected registry.
   if (spec.agentRef !== undefined) {
     if (!deps.agentRegistry) {
@@ -151,9 +189,26 @@ export async function materializeWorker(
   // neutral `"intent/chat"` fallback so a delegation skill works out of the box.
   const modelId = spec.model ?? deps.defaultModelId ?? "intent/chat";
 
+  // FIX-920: a `conversation` agent inherits the parent conversation via the
+  // generator `history` slot, bounded to the last N whole turns. Output
+  // isolation (below) is independent — the agent reads prior history but its
+  // own steps still stay out of host history. If the author also made output
+  // history-visible, that isolation is defeated: warn, don't silently proceed.
+  const inheritsConversation = spec.contextSupply === "conversation";
+  if (inheritsConversation && spec.itemVisibility?.history === true) {
+    console.warn(
+      `[skills] agent "${agentKey}": context-supply "conversation" with ` +
+        `history-visible output — the sub-work re-enters host history, so it is ` +
+        `no longer isolated.`,
+    );
+  }
+
   return generator({
     name: `skillWorker_${deps.skillName}_${agentKey}`,
     itemVisibility: spec.itemVisibility ?? { client: true, history: false },
+    ...(inheritsConversation
+      ? { history: { limit: { turns: CONVERSATION_HISTORY_TURNS } } }
+      : {}),
     agentName: `skill-${deps.skillName}-${agentKey}`,
     inputSchema: workerInputSchema,
     outputSchema: z.string(),

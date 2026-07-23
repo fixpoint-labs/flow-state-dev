@@ -68,6 +68,26 @@ export interface AgentSpec {
   itemVisibility?: ItemVisibility;
   /** Model id override for an inline agent. Falls back to the deps' default. */
   model?: string;
+  /**
+   * How much prior context the materialized agent inherits (FIX-920). INPUT
+   * policy only — it controls what the agent *reads*, via the generator
+   * `history` slot; it does not touch the output axis (`itemVisibility.history`)
+   * or flow-policy / `priorWork` (tool-call observations).
+   *
+   * - `"isolated"` (default when absent): the agent sees only its task input —
+   *   today's behavior. No conversation history slot.
+   * - `"conversation"`: the agent inherits the parent conversation up to the
+   *   point it was dispatched (the fork point), then diverges. The window is
+   *   **bounded by default** (not the full history window). Its own steps still
+   *   stay out of the host's history (output keeps `itemVisibility.history:
+   *   false`), so the host context window is preserved — fork-like sub-execution.
+   *
+   * Only honorable for inline (`prompt`/`promptRef`) agents; setting it on an
+   * `agentRef` agent fails loud (that agent owns its own context). Named
+   * `contextSupply` (not `contextMode`) to avoid colliding with the skill-level
+   * `SkillContextMode` in this file and the workforce agent-level `contextMode`.
+   */
+  contextSupply?: "isolated" | "conversation";
 }
 
 /**
