@@ -133,12 +133,14 @@ reports against it and invents nothing. FIX-789's per-payload leakage tags (`poi
   + ledger), never poll/sleep loops.
 - **FIX-793 scores stored decision artifacts** against recorded forward prices — it does not
   re-analyze historical rows.
-- **Child specs link, don't restate** the existing substrate. The path FIX-794 composes for
-  `keep | discard | inconclusive` is the **batch eval harness** — the `pnpm eval sweep` command in
-  `labs/trading-desk` (`scripts/eval-runs.ts`), which appends per-run records to `scoreboard.jsonl`,
-  plus the scorers in `labs/trading-desk/eval/*`. See `labs/trading-desk/docs/run-quality-eval.md` for
-  its exact CLI (required `--manifest`, budget/judge flags) rather than reproducing the invocation
-  here. The `verify-trading-desk` skill is a **single-run
+- **Child specs link, don't restate** the existing substrate — and must not collapse its two roles
+  into one. **`pnpm eval sweep`** in `labs/trading-desk` (`scripts/eval-runs.ts`) is the **record
+  producer**: it appends per-run `QualityRecord` rows to `scoreboard.jsonl` and exits non-zero on run
+  errors / hard-invariant failures, but it does **not** emit the compare verdict. The
+  `keep | discard | inconclusive` **verdict is owned by the FIX-791 run-diff / golden scorecard**
+  over those records (§2b) — a campaign routes its decision through that diff, never raw scoreboard
+  rows or sweep exit status. See `labs/trading-desk/docs/run-quality-eval.md` for the sweep CLI
+  (required `--manifest`, budget/judge flags), plus the scorers in `labs/trading-desk/eval/*`. The `verify-trading-desk` skill is a **single-run
   smoke verifier** (`fsdev run` + `runSummary`) for focused real-path diagnosis — **not** the
   scoreboard/batch path, so FIX-794 must not compose it as the eval loop. And the `distill-lessons`
   campaign-ledger pattern — disambiguating **desk eval loop** from the dev cycle-ledger, which are
