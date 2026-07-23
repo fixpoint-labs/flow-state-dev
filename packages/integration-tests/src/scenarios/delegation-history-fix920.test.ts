@@ -40,14 +40,14 @@ import conversationDelegationFlow from "./fixtures/conversation-delegation-flow"
 
 const FACT = "The project codename is Aurora.";
 const SCRATCH_MARKER = "SCRATCHPAD_MARKER_7f3a";
-const WORKER_BLOCK_NAME = "skillWorker_research-team_historian";
+const WORKER_BLOCK_NAME = "skillWorker_conversation-delegation-team_historian";
 
 describe("FIX-920 §7: context-supply conversation — inheritance in, isolation out", () => {
   it(
     "the delegated agent inherits prior conversation, and its own items never re-enter host history",
     async () => {
       const stores = createInMemoryStores();
-      const sessionId = "fix920-delegation-history";
+      const sessionId = "conversation-delegation-history";
 
       // Turn 1 — establish the fact in a plain (non-delegating) turn.
       const turn1 = await testFlow({

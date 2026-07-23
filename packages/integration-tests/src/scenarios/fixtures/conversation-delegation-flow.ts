@@ -25,7 +25,7 @@ const scratchTool = handler({
 });
 
 const teamSkill: InitialSkill = {
-  name: "research-team",
+  name: "conversation-delegation-team",
   skillMd: [
     "---",
     "description: a small delegation team",
@@ -52,7 +52,7 @@ const skills = createSkillsLibrary({
 // `.with()` can't infer the binding-config shape at the call site — same
 // pattern as the research-team example (see its `flow.ts`).
 const skillsBinding = {
-  active: ["research-team"]
+  active: ["conversation-delegation-team"]
 } satisfies SkillsBindingConfig;
 
 const host = generator({
@@ -69,7 +69,7 @@ const host = generator({
 });
 
 const flow = defineFlow({
-  kind: "test-fix920-conversation-delegation",
+  kind: "test-conversation-delegation",
   requireUser: true,
   actions: {
     run: {
