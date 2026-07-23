@@ -54,7 +54,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 - BP-001–BP-039 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
 - Package boundaries: `server` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
-- Middleware coverage: block middleware is internal-only — `docs/architecture/internal-execution-seams.md` documents the internal seams (not a public extension point). Keep suggestions aligned with what's currently exposed rather than inventing parallel mechanisms.
+- Block interception: there is no block-middleware system (retracted and removed) — `docs/architecture/internal-execution-seams.md` documents `InternalExecutionSeams`, the framework-internal interception hooks. Keep suggestions aligned with what's currently exposed (lifecycle hooks, `.tap()`, capabilities, seams) rather than inventing a parallel middleware mechanism.
 
 ## Process
 

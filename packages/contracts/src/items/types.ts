@@ -525,14 +525,14 @@ export type SourceItem = OutputItemBase & {
  *
  * Sequencers emit one logical snapshot per instance, keyed by `key`
  * (the sequencer's `blockInstanceId`). Subsequent emissions for the same
- * key are in-place updates, not new entries — clients and middleware
- * dedupe on `key`.
+ * key are in-place updates, not new entries — clients and the checkpoint
+ * writer dedupe on `key`.
  *
  * - `durable: true` — also written to `stores.checkpoints` so the Phase 2
  *   resume runtime (FIX-141) can pick up after an interrupted request.
  * - `durable: false` — stream-only, observability for the devtool.
  * - `terminal: true` — final emission for this sequencer's run (success,
- *   error, or cancellation). Durability middleware treats terminal frames
+ *   error, or cancellation). The durability provider treats terminal frames
  *   as a `delete(requestId, blockInstanceId)` signal so the checkpoint
  *   store stays clean once the sequencer completes.
  *
@@ -551,8 +551,8 @@ export type StateSnapshotItem = OutputItemBase & {
   version: number;
   /** When true, also persist this snapshot to `stores.checkpoints`. */
   durable: boolean;
-  /** When true, this is the final emission for the sequencer run; durability
-   *  middleware should `delete` rather than `write`. */
+  /** When true, this is the final emission for the sequencer run; the
+   *  durability provider should `delete` rather than `write`. */
   terminal?: boolean;
 };
 

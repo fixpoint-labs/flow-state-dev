@@ -6,8 +6,6 @@ import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { SuspensionError, runRescue } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
-import { composeMiddleware } from "../middleware/compose";
-import type { BlockMiddlewareContext } from "../middleware/types";
 import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
@@ -254,19 +252,6 @@ export async function executeBlock(
             }).container
           : undefined;
 
-      // Middleware is fed only through the internal composition seam
-      // (runtimeConfig → options.middleware); block authors cannot register it.
-      const middlewareStack = options.middleware ?? [];
-      const blockInfo = { name: options.block.name, kind: options.block.kind };
-      const runMiddleware = composeMiddleware(middlewareStack, blockInfo);
-
-      const middlewareContext: BlockMiddlewareContext = {
-        block: blockInfo,
-        input: interceptedInput,
-        metadata: attemptMetadata,
-        blockContext: options.ctx
-      };
-
       // Populate ctx.cap from the block's resolved capabilities.
       const blockCaps = (options.block.config as any).__resolvedCapabilities;
       if (blockCaps && blockCaps.length > 0) {
@@ -411,22 +396,14 @@ export async function executeBlock(
 
       let scopedExecutionResult: { output: unknown; modelUsage?: GeneratorModelUsageMeta; modelIdentity?: ModelIdentity } | undefined;
 
-      // Run middleware chain around block execution.
-      // Middleware wraps the output only; modelUsage is captured internally.
-      const executionResult = await runMiddleware(
-        middlewareContext,
-        async () => {
-          // executeCore returns the raw output via the _withExecutionScope
-          // path (unwraps via scopedExecutionResult). The non-scope test path
-          // also returns the unwrapped output here.
-          const out = await executeCore();
-          return out;
-        }
-      ).then((output) => ({
-        output,
+      // executeCore returns the raw output via the _withExecutionScope path
+      // (unwraps via scopedExecutionResult). The non-scope test path also
+      // returns the unwrapped output here.
+      const executionResult = {
+        output: await executeCore(),
         modelUsage: scopedExecutionResult?.modelUsage,
         modelIdentity: scopedExecutionResult?.modelIdentity
-      }));
+      };
 
       const interceptedOutput = applyBlockOutputSeam(seams, executionResult.output, attemptMetadata);
 

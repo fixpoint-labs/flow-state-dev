@@ -1191,8 +1191,6 @@ export async function runActionInternal<
       throw parseError;
     }
 
-    // Middleware is an internal composition seam fed only through
-    // runtimeConfig (framework-owned); flow/block authors cannot register it.
     let result;
     try {
       result = await executeBlock({
@@ -1200,7 +1198,6 @@ export async function runActionInternal<
         input: parsedInput,
         ctx,
         retry: options.retry,
-        middleware: options.runtimeConfig.middleware,
         internalSeams,
         metadata: {
           scope: "request"

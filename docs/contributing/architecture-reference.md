@@ -74,18 +74,18 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 → [Streaming](../architecture/streaming.md)
 
-## Middleware (internal-only)
+## Block interception (internal-only)
 
-- Block middleware is **not** a public extension point — no `middleware:` on
-  `createFlowApiRouter`, `defineFlow`, or `BlockConfig`, and no `Middleware`
-  export from `@flow-state-dev/core`.
-- The engine keeps an internal composition seam (`composeMiddleware` +
-  `executeBlock` wrap), fed only through `RuntimeConfig.middleware`.
-- Framework-internal interception also flows through `InternalExecutionSeams`
+- There is **no** block-middleware system — no `middleware:` on
+  `createFlowApiRouter`, `defineFlow`, or `BlockConfig`, no `Middleware`
+  export, and no internal composition seam. The public contract was retracted
+  and the dormant internal seam removed with it (zero consumers).
+- Framework-internal interception flows through `InternalExecutionSeams`
   (`interceptBlockInput` / `interceptBlockOutput` / `interceptNormalizedError`
   / `onGeneratorLifecycle` / `onActionLifecycle`).
 - App authors use lifecycle hooks, `.tap()`, capabilities, the trace system, or
-  `errorCapture` instead.
+  `errorCapture` instead. See
+  [`../architecture/internal-execution-seams.md`](../architecture/internal-execution-seams.md).
 
 → [Internal Execution Seams](../architecture/internal-execution-seams.md)
 

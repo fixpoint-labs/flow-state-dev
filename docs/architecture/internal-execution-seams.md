@@ -1,9 +1,9 @@
 # Internal Execution Seams
 
-Block middleware is not a public extension point. The engine keeps two
-framework-internal ways to observe or wrap block execution — the
-`InternalExecutionSeams` hooks and an internal middleware compose seam — but
-neither is registerable by flow or block authors. App authors reach for
+Block execution has one framework-internal interception mechanism — the
+`InternalExecutionSeams` hooks — and it is not registerable by flow or block
+authors. There is no block-middleware system; that public contract was retracted
+and the internal composition seam removed with it. App authors reach for
 lifecycle hooks, `.tap()`, capabilities, or the trace system instead.
 
 An "execution seam" here means a hook point the runtime exposes around block
@@ -11,12 +11,12 @@ dispatch that only framework code (not flow/block config) can populate.
 
 **Prerequisites:** [Execution and Errors](./execution-and-errors.md).
 
-## Why middleware is not public
+## Why there's no block middleware
 
 A public middleware contract shipped early during Phase 1 with three
 registration tiers (global, flow, block), a `filter`, short-circuit, and a
-published doc — and zero consumers. Every problem it was meant to solve is
-handled better elsewhere:
+published doc — and zero consumers anywhere in `packages/`, `apps/`, or `labs/`.
+Every problem it was meant to solve is handled better elsewhere:
 
 - **Timing / logging** → action lifecycle hooks (`onCompleted` / `onErrored`)
   or a structured `logger`.
@@ -26,8 +26,16 @@ handled better elsewhere:
 - **Cross-cutting behavior** → capabilities, sequencer composition, `.tap()`.
 
 Carrying an unconsumed public API is a third "how do I wrap a block?" answer
-alongside those, so it was retracted. The interception *point* is cheap to keep
-and is the real readiness asset for a future designed public contract.
+alongside those, so it was retracted. The dormant internal composition seam it
+fed had no consumer either, so it was removed too rather than kept as
+speculative surface.
+
+If a genuinely framework-owned, around-execution need lands later — the likely
+candidates are durability checkpointing-as-a-wrapper or a token/cost-budget
+guardrail on generator calls — reintroduce it as a **single narrow
+guardrail/interceptor capability** scoped to generators, not a resurrected
+global/flow/block registration API. That is a bounded, documented change against
+a real first consumer.
 
 ## Internal execution seams
 
@@ -51,32 +59,6 @@ const seams: InternalExecutionSeams = {
 };
 ```
 
-## Internal middleware compose
-
-The engine retains `composeMiddleware` (`packages/engine/src/middleware/`) and
-the `executeBlock` wrapping point. A middleware stack is fed **only** through
-`RuntimeConfig.middleware`, set by framework code constructing a `RuntimeConfig`
-directly — there is no `middleware:` option on `defineFlow`, block builders, or
-`createFlowApiRouter` (and `createRuntimeConfig` deliberately drops any flat
-`middleware` field, so a stale `as any` router option cannot smuggle a stack
-in). `runAction` forwards `runtimeConfig.middleware` to `executeBlock`, which
-composes it around block execution and runs it on every retry attempt.
-
-Why this coexists with `InternalExecutionSeams`: the seam hooks transform input
-and output as separate single-purpose functions that always proceed to the
-block. The compose seam is the only one that wraps the call as one unit —
-`around`/short-circuit control flow (a middleware may skip `next()` and return
-without running the block) plus a per-block `filter`. Keep the input/output
-hooks for observation and transformation; the compose seam is for
-around-execution control.
-
-This seam is dormant: no production code feeds a non-empty stack today. It is
-kept for framework-owned instrumentation (e.g. a future durability middleware).
-Note the intended re-entry shape: when a real cross-cutting consumer appears
-(most likely a token/cost-budget guardrail), expose it as a **single narrow
-guardrail/interceptor capability** scoped to generators against this internal
-seam — not a resurrected global/flow/block registration API.
-
 ## What app authors use instead
 
 | Former middleware use case | Public alternative |
@@ -92,13 +74,10 @@ seam — not a resurrected global/flow/block registration API.
 
 | Artifact | Location |
 |----------|----------|
-| `Middleware`, `MiddlewareFn`, `MiddlewareContext`, `BlockMiddlewareContext` | `packages/engine/src/middleware/types.ts` (engine-internal) |
-| `composeMiddleware` | `packages/engine/src/middleware/compose.ts` (engine-internal) |
 | `InternalExecutionSeams` | `packages/engine/src/execution/internal/seams.ts` |
-| `RuntimeConfig.middleware` | `packages/engine/src/runtime-config.ts` |
 
-Nothing middleware-related is exported from `@flow-state-dev/core`'s public
-surface, and nothing is re-exported from the `@flow-state-dev/engine` package
-root.
+Nothing middleware-related exists on `@flow-state-dev/core`'s or
+`@flow-state-dev/engine`'s public surface, and the engine no longer carries a
+middleware composition seam internally.
 
 See also: [Execution and Errors](./execution-and-errors.md).

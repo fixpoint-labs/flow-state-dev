@@ -280,7 +280,7 @@ actions: {
 },
 ```
 
-> Block middleware is not a public extension point. For cross-cutting
+> There is no block-middleware extension point. For cross-cutting
 > observability (logging, timing), use action lifecycle hooks (`onCompleted` /
 > `onErrored`), a structured `logger`, or `.tap()` on sequencers. See
 > [Internal Execution Seams](../../../docs/architecture/internal-execution-seams.md).

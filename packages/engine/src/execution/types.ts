@@ -9,7 +9,6 @@ import type {
   FlowInstance,
   RetryPolicy
 } from "@flow-state-dev/core/types";
-import type { Middleware } from "../middleware/types";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";
@@ -64,7 +63,6 @@ export type ExecuteBlockOptions = {
   input: unknown;
   ctx: ExecuteBlockContext;
   retry?: RetryPolicy;
-  middleware?: Middleware[];
   metadata?: Partial<ExecutionMetadata>;
   logger?: RuntimeLogger;
 };
@@ -144,7 +142,7 @@ export type RunActionOptions<
   replayMode?: boolean;
   /**
    * Instance-level options forwarded verbatim through the execution chain
-   * (resolvers, settings, middleware, logger, tracing). See
+   * (resolvers, settings, logger, tracing). See
    * {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
