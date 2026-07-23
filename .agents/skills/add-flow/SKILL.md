@@ -29,7 +29,7 @@ Before writing, read at least one existing flow:
 | Flow | What to learn from it |
 |------|----------------------|
 | `examples/hello-chat/src/flows/hello-chat/flow.ts` | Minimal single-action flow, session state, userMessage, history |
-| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, clientData, capabilities, middleware |
+| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, clientData, capabilities |
 
 Also read:
 - `docs/architecture/flows-and-actions.md` — Flow definition contract
@@ -280,24 +280,10 @@ actions: {
 },
 ```
 
-#### Middleware
-
-Intercept all block execution for logging, timing, or transformation:
-
-```typescript
-middleware: [
-  {
-    name: "timing",
-    filter: (block) => block.kind === "generator",  // Optional: target specific block kinds
-    execute: async (ctx, next) => {
-      const start = Date.now();
-      const output = await next();
-      console.log(`${ctx.block.name} took ${Date.now() - start}ms`);
-      return output;
-    },
-  },
-],
-```
+> Block middleware is not a public extension point. For cross-cutting
+> observability (logging, timing), use action lifecycle hooks (`onCompleted` /
+> `onErrored`), a structured `logger`, or `.tap()` on sequencers. See
+> [Internal Execution Seams](../../../docs/architecture/internal-execution-seams.md).
 
 #### Tools Configuration
 

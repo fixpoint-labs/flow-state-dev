@@ -16,10 +16,10 @@
  */
 import type {
   FlowStateSettings,
-  Middleware,
   ModelResolver,
   VoiceProvider
 } from "@flow-state-dev/core/types";
+import type { Middleware } from "./middleware/types";
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "./execution/logging";
 import type { DurabilityProvider } from "./durability/types";

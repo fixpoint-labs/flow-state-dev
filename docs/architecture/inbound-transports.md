@@ -108,6 +108,9 @@ interface InboundTransportHost {
   readonly registry: FlowRegistry;
   readonly stores: StoreRegistry;
   readonly resolvers?: { /* model, speech, transcription */ };
+  // Internal composition seam introspection only (populated from
+  // runtimeConfig.middleware); not an author-facing registration API.
+  // See ./internal-execution-seams.md.
   readonly middleware?: Middleware[];
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;

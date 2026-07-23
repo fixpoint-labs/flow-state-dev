@@ -6,7 +6,7 @@ import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { SuspensionError, runRescue } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
-import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
+import { composeMiddleware } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
 import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import { normalizeError } from "../errors/normalize-error";
@@ -254,11 +254,9 @@ export async function executeBlock(
             }).container
           : undefined;
 
-      // Build middleware chain: caller-provided (global + flow) + block-level.
-      const middlewareStack = mergeMiddlewareStacks(
-        options.middleware,
-        options.block.config.middleware
-      );
+      // Middleware is fed only through the internal composition seam
+      // (runtimeConfig → options.middleware); block authors cannot register it.
+      const middlewareStack = options.middleware ?? [];
       const blockInfo = { name: options.block.name, kind: options.block.kind };
       const runMiddleware = composeMiddleware(middlewareStack, blockInfo);
 

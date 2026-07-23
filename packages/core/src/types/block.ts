@@ -8,7 +8,6 @@ import type {
 import type { AnyResourceRef, DefinedResource, ResourceRef } from "./resource";
 import type { DefinedResourceCollection, ResourceCollectionRef } from "./resource-collection";
 import type { ExternalResourceCollectionRef } from "./external-resource-collection";
-import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { TracingLevel } from "../helpers/tracing-level";
@@ -773,7 +772,6 @@ export interface BlockConfig<
   onErrored?: (error: Error, ctx: BlockContext) => Promise<void> | void;
 
   retry?: RetryPolicy;
-  middleware?: Middleware[];
 
   /**
    * Per-block rescue handlers (FIX-742). When this block's execution throws a

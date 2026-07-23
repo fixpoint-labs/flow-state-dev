@@ -1,7 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import type { AuthenticationConfig } from "./auth";
 import type { BlockContext, BlockDefinition, DeclaredResourceEntry, RetryPolicy } from "./block";
-import type { Middleware } from "./middleware";
 import type {
   DefinedResource,
   ResourceConfig,
@@ -447,7 +446,6 @@ export type FlowDefinition<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  middleware?: Middleware[];
 
   /**
    * Per-flow MCP exposure config. When `mcp.enabled === true`, the
@@ -525,7 +523,6 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  middleware?: Middleware[];
   mcp?: McpConfig;
   chat?: ChatConfig;
   webhooks?: WebhookConfig;
@@ -564,7 +561,6 @@ export type FlowInstance<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  middleware?: Middleware[];
   mcp?: McpConfig;
   chat?: ChatConfig;
   webhooks?: WebhookConfig;
@@ -606,7 +602,6 @@ export type FlowType<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  middleware?: Middleware[];
   mcp?: McpConfig;
   chat?: ChatConfig;
   webhooks?: WebhookConfig;

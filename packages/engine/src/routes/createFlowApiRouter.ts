@@ -9,7 +9,6 @@
  */
 import type {
   FlowStateSettings,
-  Middleware,
   ModelResolver,
   VoiceProvider
 } from "@flow-state-dev/core/types";
@@ -61,7 +60,6 @@ export type CreateFlowApiRouterOptions = {
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
-  middleware?: Middleware[];
   /**
    * Tracing verbosity for observability (non-durable) state snapshots
    * (FIX-406 6H): `"verbose"` (per-step, for DevTool), `"normal"` (block

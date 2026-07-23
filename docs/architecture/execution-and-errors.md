@@ -7,7 +7,7 @@ The execution runtime orchestrates block dispatch, retry policies, rescue bounda
 The runtime is responsible for:
 
 1. Invoking blocks via `block.run(input, ctx)`
-2. Running the [middleware](middleware.md) chain (global → flow → block → execute)
+2. Applying internal [execution seams](internal-execution-seams.md) at block dispatch boundaries
 3. Applying kind-specific lifecycle seams
 4. Maintaining block/step provenance
 5. Emitting stream items and events

@@ -162,7 +162,6 @@ export interface CreateFlowStateOptions<
   detectInterruptedOnStartup?: boolean;
 
   /** Forwarded to `createFlowApiRouter` for power users (custom transports). */
-  middleware?: CreateFlowApiRouterOptions["middleware"];
   adapters?: CreateFlowApiRouterOptions["adapters"];
 
   /**

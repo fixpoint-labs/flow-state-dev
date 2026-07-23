@@ -3,7 +3,8 @@
  * terminal execution function. The chain runs outer-to-inner (first middleware
  * in the array wraps outermost).
  */
-import type { BlockKind, Middleware, MiddlewareContext } from "@flow-state-dev/core/types";
+import type { BlockKind } from "@flow-state-dev/core/types";
+import type { Middleware, MiddlewareContext } from "./types";
 
 /**
  * Compose an array of middleware into a single function that wraps `execute`.

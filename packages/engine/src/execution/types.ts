@@ -7,9 +7,9 @@ import type {
   ActionCore,
   BlockDefinition,
   FlowInstance,
-  Middleware,
   RetryPolicy
 } from "@flow-state-dev/core/types";
+import type { Middleware } from "../middleware/types";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";

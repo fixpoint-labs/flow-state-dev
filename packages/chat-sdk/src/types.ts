@@ -134,7 +134,7 @@ export interface ChatAdapterOptions {
  * Provenance metadata stamped onto every chat-originated envelope, namespaced
  * under `chat` so it sits beside `metadata.webhook` / `metadata.schedule` in
  * the shared action-forms model (FIX-838). Surfaced on
- * `RequestRecord.metadata` and available to flow middleware; the devtool reads
+ * `RequestRecord.metadata` and available to lifecycle hooks; the devtool reads
  * `metadata.chat` to explain why a flow fired.
  *
  * `eventKey` is the resolution coordinate: the matched `chat.on` subscription

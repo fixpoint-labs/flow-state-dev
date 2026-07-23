@@ -1,14 +1,21 @@
-import {
-  defineFlow,
-  handler,
-  sequencer
-} from "@flow-state-dev/core";
-import type { Middleware } from "@flow-state-dev/core/types";
+/**
+ * Middleware is an ENGINE-INTERNAL composition seam (FIX-831). It is fed only
+ * through `runtimeConfig.middleware` → `executeBlock({ middleware })`; there is
+ * no author-facing registration on `defineFlow`, block builders, or
+ * `createFlowApiRouter`. These tests assert the internal seam plus behavioral
+ * retraction guards proving the removed surfaces no longer wire middleware.
+ *
+ * Note: type-level guards (`@ts-expect-error`) are not CI-enforced in this
+ * package (the typecheck script walks `src/**` only, and vitest does not
+ * typecheck), so retraction is verified behaviorally here and by the grep gate
+ * documented in `docs/specs/FIX-831.md` Step 6.
+ */
+import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { composeMiddleware, mergeMiddlewareStacks } from "../src/middleware/compose";
+import type { Middleware } from "../src/middleware/types";
 import {
-  composeMiddleware,
-  mergeMiddlewareStacks,
   createExecutionContext,
   createInMemoryStores,
   createResponseEmitter,
@@ -16,7 +23,7 @@ import {
   runAction
 } from "../src";
 
-async function createTestContext(requestId: string, flow?: ReturnType<ReturnType<typeof defineFlow>>) {
+async function createTestContext(requestId: string) {
   const defaultBlock = handler({
     name: "echo",
     inputSchema: z.string(),
@@ -24,7 +31,7 @@ async function createTestContext(requestId: string, flow?: ReturnType<ReturnType
     execute: (input) => input
   });
 
-  const defaultFlow = flow ?? defineFlow({
+  const defaultFlow = defineFlow({
     kind: "middleware-test",
     actions: {
       run: {
@@ -59,7 +66,7 @@ async function createTestContext(requestId: string, flow?: ReturnType<ReturnType
   return { ctx, stores, flow: defaultFlow };
 }
 
-describe("middleware composition", () => {
+describe("composeMiddleware", () => {
   it("passes through when no middleware is provided", async () => {
     const run = composeMiddleware([], { name: "test", kind: "handler" });
     const result = await run({ block: { name: "test", kind: "handler" }, input: "hello" }, async () => "world");
@@ -224,12 +231,12 @@ describe("mergeMiddlewareStacks", () => {
   });
 });
 
-describe("middleware integration with executeBlock", () => {
-  it("runs block-level middleware around block execution", async () => {
+describe("executeBlock internal middleware seam", () => {
+  it("runs caller-provided middleware around block execution", async () => {
     const order: string[] = [];
 
     const mw: Middleware = {
-      name: "block-mw",
+      name: "seam-mw",
       execute: async (ctx, next) => {
         order.push("before");
         const result = await next();
@@ -242,7 +249,6 @@ describe("middleware integration with executeBlock", () => {
       name: "tracked",
       inputSchema: z.number(),
       outputSchema: z.number(),
-      middleware: [mw],
       execute: (input) => {
         order.push("execute");
         return input * 2;
@@ -253,7 +259,8 @@ describe("middleware integration with executeBlock", () => {
     const result = await executeBlock({
       block,
       input: 5,
-      ctx
+      ctx,
+      middleware: [mw]
     });
 
     expect(result.error).toBeUndefined();
@@ -261,21 +268,21 @@ describe("middleware integration with executeBlock", () => {
     expect(order).toEqual(["before", "execute", "after"]);
   });
 
-  it("runs caller middleware + block middleware in correct order", async () => {
+  it("composes multiple caller-provided middleware in order", async () => {
     const order: string[] = [];
 
-    const globalMw: Middleware = {
-      name: "global",
+    const outer: Middleware = {
+      name: "outer",
       execute: async (ctx, next) => {
-        order.push("global");
+        order.push("outer");
         return next();
       }
     };
 
-    const blockMw: Middleware = {
-      name: "block",
+    const innerMw: Middleware = {
+      name: "inner",
       execute: async (ctx, next) => {
-        order.push("block");
+        order.push("inner");
         return next();
       }
     };
@@ -284,7 +291,6 @@ describe("middleware integration with executeBlock", () => {
       name: "ordered",
       inputSchema: z.number(),
       outputSchema: z.number(),
-      middleware: [blockMw],
       execute: (input) => {
         order.push("execute");
         return input;
@@ -296,14 +302,13 @@ describe("middleware integration with executeBlock", () => {
       block,
       input: 1,
       ctx,
-      middleware: [globalMw]
+      middleware: [outer, innerMw]
     });
 
-    // Global (caller) middleware runs before block middleware
-    expect(order).toEqual(["global", "block", "execute"]);
+    expect(order).toEqual(["outer", "inner", "execute"]);
   });
 
-  it("runs middleware on each retry attempt", async () => {
+  it("runs caller middleware on each retry attempt", async () => {
     let mwCalls = 0;
     let executeCalls = 0;
 
@@ -319,7 +324,6 @@ describe("middleware integration with executeBlock", () => {
       name: "flaky",
       inputSchema: z.number(),
       outputSchema: z.number(),
-      middleware: [countingMw],
       retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
       execute: (input) => {
         executeCalls++;
@@ -334,7 +338,8 @@ describe("middleware integration with executeBlock", () => {
     const result = await executeBlock({
       block,
       input: 42,
-      ctx
+      ctx,
+      middleware: [countingMw]
     });
 
     expect(result.error).toBeUndefined();
@@ -345,14 +350,14 @@ describe("middleware integration with executeBlock", () => {
   });
 });
 
-describe("middleware integration with runAction", () => {
-  it("passes global middleware through runAction to block execution", async () => {
+describe("runAction internal middleware seam", () => {
+  it("passes runtimeConfig.middleware through runAction to block execution", async () => {
     const order: string[] = [];
 
     const globalMw: Middleware = {
-      name: "global-action",
+      name: "runtime-config",
       execute: async (ctx, next) => {
-        order.push("global");
+        order.push("middleware");
         return next();
       }
     };
@@ -391,75 +396,10 @@ describe("middleware integration with runAction", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.output).toBe("hello");
-    expect(order).toEqual(["global", "execute"]);
+    expect(order).toEqual(["middleware", "execute"]);
   });
 
-  it("composes global + flow middleware in correct order", async () => {
-    const order: string[] = [];
-
-    const globalMw: Middleware = {
-      name: "global",
-      execute: async (ctx, next) => {
-        order.push("global");
-        return next();
-      }
-    };
-
-    const flowMw: Middleware = {
-      name: "flow",
-      execute: async (ctx, next) => {
-        order.push("flow");
-        return next();
-      }
-    };
-
-    const blockMw: Middleware = {
-      name: "block",
-      execute: async (ctx, next) => {
-        order.push("block");
-        return next();
-      }
-    };
-
-    const block = handler({
-      name: "layered",
-      inputSchema: z.object({ message: z.string() }),
-      outputSchema: z.string(),
-      middleware: [blockMw],
-      execute: (input) => {
-        order.push("execute");
-        return input.message;
-      }
-    });
-
-    const flow = defineFlow({
-      kind: "mw-layered-test",
-      middleware: [flowMw],
-      actions: {
-        chat: {
-          inputSchema: z.object({ message: z.string() }),
-          block
-        }
-      }
-    })();
-
-    const stores = createInMemoryStores();
-    const result = await runAction({
-      flow,
-      actionName: "chat",
-      input: { message: "hello" },
-      userId: "user_1",
-      stores,
-      runtimeConfig: {
-        middleware: [globalMw]
-      }
-    });
-
-    expect(result.error).toBeUndefined();
-    expect(order).toEqual(["global", "flow", "block", "execute"]);
-  });
-
-  it("middleware can access block context metadata", async () => {
+  it("exposes block identity on the middleware context", async () => {
     let capturedContext: Record<string, unknown> = {};
 
     const inspectorMw: Middleware = {
@@ -508,7 +448,7 @@ describe("middleware integration with runAction", () => {
     expect(capturedContext.hasInput).toBe(true);
   });
 
-  it("middleware errors propagate as execution failures", async () => {
+  it("propagates middleware errors as execution failures", async () => {
     const failingMw: Middleware = {
       name: "failing",
       execute: async () => {
@@ -547,5 +487,82 @@ describe("middleware integration with runAction", () => {
 
     expect(result.error).toBeDefined();
     expect(result.error!.message).toBe("middleware boom");
+  });
+});
+
+describe("public middleware surface is retracted (FIX-831)", () => {
+  it("ignores middleware smuggled onto a block builder config", async () => {
+    let blockMwRan = false;
+
+    const blockMw: Middleware = {
+      name: "block-mw",
+      execute: async (ctx, next) => {
+        blockMwRan = true;
+        return next();
+      }
+    };
+
+    // `middleware` is no longer part of BlockConfig; force it on via `as any`
+    // to prove executeBlock does not read `block.config.middleware`.
+    const block = handler({
+      name: "no-block-mw",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      middleware: [blockMw],
+      execute: (input) => input
+    } as any);
+
+    const { ctx } = await createTestContext("req_retract_block");
+    const result = await executeBlock({ block, input: 7, ctx });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe(7);
+    expect(blockMwRan).toBe(false);
+  });
+
+  it("ignores middleware smuggled onto defineFlow", async () => {
+    let flowMwRan = false;
+
+    const flowMw: Middleware = {
+      name: "flow-mw",
+      execute: async (ctx, next) => {
+        flowMwRan = true;
+        return next();
+      }
+    };
+
+    const block = handler({
+      name: "flow-retract-block",
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.string(),
+      execute: (input) => input.message
+    });
+
+    // `middleware` is no longer part of the flow definition; force it on via
+    // `as any` to prove runAction does not wire `flow.middleware`.
+    const flow = defineFlow({
+      kind: "mw-flow-retract-test",
+      middleware: [flowMw],
+      actions: {
+        chat: {
+          inputSchema: z.object({ message: z.string() }),
+          block
+        }
+      }
+    } as any)();
+
+    const stores = createInMemoryStores();
+    const result = await runAction({
+      flow,
+      actionName: "chat",
+      input: { message: "hello" },
+      userId: "user_1",
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe("hello");
+    expect(flowMwRan).toBe(false);
   });
 });

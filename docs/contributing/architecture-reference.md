@@ -74,19 +74,20 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 → [Streaming](../architecture/streaming.md)
 
-## Middleware
+## Middleware (internal-only)
 
-- Around-pattern interception of block execution
-- Three layers, composed outer-to-inner: global → flow → block
-- Global: `createFlowApiRouter({ middleware })` — wraps all blocks in all flows
-- Flow: `defineFlow({ middleware })` — wraps all blocks in that flow
-- Block: `BlockConfig.middleware` — wraps that block only
-- Optional `filter` predicate to target specific block kinds/names
-- `next()` may only be called once per middleware (double-call throws)
-- Middleware runs on every retry attempt
-- Types in `core`; composition logic in `engine`
+- Block middleware is **not** a public extension point — no `middleware:` on
+  `createFlowApiRouter`, `defineFlow`, or `BlockConfig`, and no `Middleware`
+  export from `@flow-state-dev/core`.
+- The engine keeps an internal composition seam (`composeMiddleware` +
+  `executeBlock` wrap), fed only through `RuntimeConfig.middleware`.
+- Framework-internal interception also flows through `InternalExecutionSeams`
+  (`interceptBlockInput` / `interceptBlockOutput` / `interceptNormalizedError`
+  / `onGeneratorLifecycle` / `onActionLifecycle`).
+- App authors use lifecycle hooks, `.tap()`, capabilities, the trace system, or
+  `errorCapture` instead.
 
-→ [Middleware](../architecture/middleware.md)
+→ [Internal Execution Seams](../architecture/internal-execution-seams.md)
 
 ## Lifecycle Hooks
 

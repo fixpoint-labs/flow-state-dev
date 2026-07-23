@@ -37,7 +37,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 **Authority hierarchy** (suggestions must respect this):
 
-1. `docs/architecture/*` — adapted reference docs (block kinds, items, streaming, state/scopes, execution/errors, middleware, capabilities, sequencer DSL, server/client, etc.).
+1. `docs/architecture/*` — adapted reference docs (block kinds, items, streaming, state/scopes, execution/errors, internal execution seams, capabilities, sequencer DSL, server/client, etc.).
 2. `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-039): universal rules + the situational index. New patterns are added per its update policy — universal → this file + the `CLAUDE.md` mirror; situational → the matching `docs/contributing/best-practices/<category>.md` + both indexes.
 3. `docs/contributing/architecture-reference.md` — quick reference to locked contracts.
 4. `AGENTS.md` — process protocol.
@@ -54,7 +54,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 - BP-001–BP-039 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
 - Package boundaries: `server` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
-- Middleware coverage: `docs/architecture/middleware.md` documents which seams are public — keep suggestions aligned with what's currently exposed rather than inventing parallel mechanisms.
+- Middleware coverage: block middleware is internal-only — `docs/architecture/internal-execution-seams.md` documents the internal seams (not a public extension point). Keep suggestions aligned with what's currently exposed rather than inventing parallel mechanisms.
 
 ## Process
 
@@ -63,7 +63,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 Read the relevant docs first so suggestions don't re-litigate decided design:
 
 - `docs/architecture/overview.md` — package roles and the system shape
-- `docs/architecture/<area>.md` — `blocks.md`, `items.md`, `streaming.md`, `state-and-scopes.md`, `execution-and-errors.md`, `middleware.md`, `capabilities.md`, `sequencer-dsl.md`, `server-and-client.md`, etc.
+- `docs/architecture/<area>.md` — `blocks.md`, `items.md`, `streaming.md`, `state-and-scopes.md`, `execution-and-errors.md`, `internal-execution-seams.md`, `capabilities.md`, `sequencer-dsl.md`, `server-and-client.md`, etc.
 - `docs/contributing/architecture-reference.md` — locked contracts quick reference
 - `docs/contributing/best-practices.md` — universal rules + situational index (BP-001–BP-039, constraints not suggestions); open the relevant `docs/contributing/best-practices/<category>.md` for situational rule text
 
