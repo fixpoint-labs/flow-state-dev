@@ -86,8 +86,9 @@ even if more are queued. State the chosen N and the cap to the user.
    ```
    Agent tool (agentType: issue-worker):
      description: "Advance <ISSUE>"
-     prompt: Advance <ISSUE> by its one next bounded step (its current phase), in your
-             worktree. Return the compact status line. One step, then exit.
+     prompt: Advance <ISSUE> to its next external wait, in your worktree — a satisfied gate
+             is not a wait, so chain through it (a just-approved spec goes close-PR →
+             implement → open impl PR in this run). Return the compact status line, then exit.
    ```
 
    Dispatch independent issues' workers **in parallel** (one message, multiple calls),
@@ -284,14 +285,32 @@ the set or an alignment edit could ripple.
 
 ## Gates & autonomy
 
-- **Spec-approval gate is per issue.** Each issue independently waits for the user's
-  sign-off — an **approving comment or review** on its spec PR, which the fleet mirrors to
-  the `spec approved` label — before implementing; approvals are independent, so issue B isn't
-  blocked by issue A's pending spec.
-- **Stop before merge**, per issue. The fleet never merges.
-- A worker that reports a **blocker** (dependency not landed, ambiguous spec review,
-  a challenger-surfaced spec blind spot) surfaces to the user for that issue; the
-  rest continue.
+**The gates are the only human blocks. Everything between them is the fleet's job to keep
+moving.** The fleet exists to drive work *forward* — to coordinate related issues into a
+cohesive, synergistic whole and keep the process advancing — not to ask permission at each
+step. So:
+
+- **A satisfied gate is a release — proceed, don't re-ask.** The moment an issue's
+  spec-approval gate is met (an approving comment/review on the spec PR, **or the user saying
+  "approved" in-session**), that issue advances **straight through to implementation on the
+  same wake** — the worker chains approval → close spec PR → dispatch `issue-implement` without
+  ending its turn (see `issue-lifecycle` → Phases). **Never** hold an approved issue waiting for
+  a *second*, generic "ok to implement?" — the approval already was that go-ahead. Sitting in a
+  holding pattern after approval is the failure this section exists to prevent.
+- **Drain, don't stall.** End the fleet's turn only when every remaining issue is genuinely
+  **waiting on an external signal** (an unmet gate, CI, a review, a dependency PR still open).
+  If a refresh shows an issue whose next action needs no new input — approval just landed,
+  a dependency just merged — dispatch it *this* turn; don't leave it for the heartbeat.
+- **A real blocker is the agent's to resolve or sequence, not to punt.** If implementation
+  can't proceed because of an open decision or an unlanded prerequisite from another issue,
+  that's the fleet's problem to handle: sequence the prerequisite (run its blocker to merge
+  first), or resolve the decision from the spec/codebase. Surface it to the user **only** when
+  it genuinely needs a human call (a decision the spec doesn't settle) — with the specific
+  question, not a vague "should I continue?". A prerequisite that simply needs to land is
+  tracked and ordered by the fleet, never a reason to idle.
+- **Spec-approval gate is per issue.** Approvals are independent — issue B isn't blocked by
+  issue A's pending spec.
+- **Stop before merge**, per issue. The fleet never merges — that is the one gate *out*.
 
 ## Token & depth discipline
 
