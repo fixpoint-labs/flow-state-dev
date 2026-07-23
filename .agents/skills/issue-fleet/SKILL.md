@@ -45,19 +45,21 @@ even if more are queued. State the chosen N and the cap to the user.
    handle cache). Do **not** re-dispatch workers just to read state.
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
-   the concurrency cap, dispatch a **worktree-isolated worker**:
+   the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
+   `.claude/agents/issue-worker.md`, which declares `isolation: worktree` (its own
+   worktree/branch) and has no `AskUserQuestion` (it never prompts; it returns
+   blockers for the fleet to surface):
 
    ```
-   Agent tool (isolation: worktree):
+   Agent tool (agentType: issue-worker):
      description: "Advance <ISSUE>"
-     prompt: Run fsd:issue-lifecycle for <ISSUE> — take exactly the ONE next bounded
-             step for its current phase, in this worktree, and report back the compact
-             status (phase, PR#, any gate now pending, any blocker). Do not loop or
-             wait; take one step and exit.
+     prompt: Advance <ISSUE> by its one next bounded step (its current phase), in your
+             worktree. Return the compact status line. One step, then exit.
    ```
 
    Dispatch independent issues' workers **in parallel** (one message, multiple calls),
-   up to the cap.
+   up to the cap. (Where the harness lacks custom agents, fall back to the Agent tool
+   with `isolation: worktree` and the same prompt.)
 4. **Collect compact status** and update the table. Never fold a worker's full output
    in — one status line per issue.
 5. **Surface gates.** For any issue now **awaiting spec approval**, surface its Part I

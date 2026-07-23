@@ -1,5 +1,7 @@
 ---
 name: fsd:second-look
+context: fork
+agent: general-purpose
 description: Use when you want a retrospective re-examination of a branch, PR, a Linear issue's attached spec, or a named feature in the @flow-state-dev repo — to question whether the solution was (or will be) the right approach, whether it's overbuilt or carries YAGNI/speculative surface, what the 80/20 version would be, and whether building it revealed a simpler path. Read-only; produces a scannable findings table, no edits or tickets. Keywords: bloat, overbuilt, over-engineered, too much code, premature abstraction, YAGNI, 80/20, was this the best approach, cut scope, review spec before building, FIX-.
 ---
 

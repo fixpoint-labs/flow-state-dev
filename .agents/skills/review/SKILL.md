@@ -1,5 +1,7 @@
 ---
 name: fsd:review
+context: fork
+agent: general-purpose
 description: The single definition of how we review. Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by fsd:implement-issue at the end of its work so there is one review, not a per-skill panel.
 argument-hint: "<PR# | branch | area | (empty = working diff vs main)>"
 ---

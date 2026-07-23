@@ -52,6 +52,30 @@ phase into a sub-agent whose context is discarded once it returns a compact summ
 - `issue-lifecycle` composes `fsd:create-spec`, `fsd:implement-issue` (which itself
   composes `fsd:review`). No lifecycle logic is duplicated.
 
+## Skill properties (the isolation model, made declarative)
+
+Confirmed against the Claude Code skill/agent frontmatter reference:
+
+- **Orchestrators stay inline** — `issue-lifecycle` and `issue-fleet` are NOT
+  `context: fork`. They're stateful event-loop coordinators; forking would discard the
+  state they must persist and re-enter with. Their token savings come from forking the
+  *phases*, not themselves.
+- **Interactive phase skills stay inline** — `create-spec` / `implement-issue` are not
+  forked (they ask questions and gate on approval; force-forking breaks that). The
+  orchestrator isolates them by *dispatching them into a sub-agent*.
+- **Analysis skills are `context: fork`** — `review`, `audit-coherence`, `second-look`
+  carry `context: fork` + `agent: general-purpose` (general-purpose, not Explore,
+  because they fan out their own lens sub-agents and Explore lacks the Agent tool).
+  `disable-model-invocation` is deliberately **left off** — it would block the
+  invoked-by-`implement-issue` path; the two flags are independent. Result: these run
+  isolated (findings don't clutter the caller) whether run standalone or from inside
+  `implement-issue`.
+- **Worktree isolation is agent-only** — it can't live on a skill. `issue-fleet`
+  dispatches a custom agent, `.claude/agents/issue-worker.md` (→ `.agents/subagents/`),
+  which declares `isolation: worktree` and drops `AskUserQuestion` (workers never
+  prompt; they return blockers for the fleet to surface). Where a harness lacks custom
+  agents, the fleet falls back to the Agent tool's `isolation: worktree`.
+
 ## Verification
 
 Dogfood: run `fsd:issue-lifecycle` on one real issue end-to-end and confirm (a) the
