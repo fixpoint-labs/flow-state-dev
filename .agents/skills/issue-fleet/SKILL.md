@@ -47,7 +47,11 @@ even if more are queued. State the chosen N and the cap to the user.
    and confirm with the user. Record the set + chosen N in `.orchestration/fleet.md`
    (compact: the issue list and per-issue handle-cache pointers). If the set shares a
    Linear project with **cross-cutting concerns**, discover or create its **epic** now —
-   see [Epic coordination](#epic-coordination-optional--when-the-set-shares-cross-cutting-concerns).
+   see [Epic coordination](#epic-coordination-optional--when-the-set-shares-cross-cutting-concerns) —
+   and **record the epic handle (name · `epic/<name>` branch · epic PR# · project doc) in
+   `.orchestration/fleet.md` alongside the set**, so it survives across wakes (the next
+   refresh needs it to re-read `epic approved`, keep the epic PR subscribed, and pass the
+   branch/SHA to workers).
 2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
    status to derive its phase (reuse each issue's `.orchestration/<ISSUE>.md`
    handle cache) — **including each open spec PR's `draft` flag and its labels**: a flip
