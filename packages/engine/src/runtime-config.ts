@@ -16,7 +16,6 @@
  */
 import type {
   FlowStateSettings,
-  Middleware,
   ModelResolver,
   VoiceProvider
 } from "@flow-state-dev/core/types";
@@ -36,7 +35,6 @@ export interface RuntimeConfig {
   voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
-  middleware?: Middleware[];
   logger?: RuntimeLogger;
   /** Tracing verbosity for observability snapshots (FIX-406 6H). */
   tracingLevel?: TracingLevel;
@@ -77,7 +75,6 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
     settings: options.settings,
-    middleware: options.middleware,
     logger: options.logger,
     tracingLevel: options.tracingLevel,
     maxResponseBufferSize: options.maxResponseBufferSize,

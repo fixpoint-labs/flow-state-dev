@@ -7,7 +7,6 @@ import type {
   ActionCore,
   BlockDefinition,
   FlowInstance,
-  Middleware,
   RetryPolicy
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
@@ -64,7 +63,6 @@ export type ExecuteBlockOptions = {
   input: unknown;
   ctx: ExecuteBlockContext;
   retry?: RetryPolicy;
-  middleware?: Middleware[];
   metadata?: Partial<ExecutionMetadata>;
   logger?: RuntimeLogger;
 };
@@ -144,7 +142,7 @@ export type RunActionOptions<
   replayMode?: boolean;
   /**
    * Instance-level options forwarded verbatim through the execution chain
-   * (resolvers, settings, middleware, logger, tracing). See
+   * (resolvers, settings, logger, tracing). See
    * {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;

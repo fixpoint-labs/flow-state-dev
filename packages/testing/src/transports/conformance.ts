@@ -63,7 +63,6 @@ export function createMockTransportHost(
   const host: InboundTransportHost = {
     registry: minimalRegistry(),
     stores: minimalStores(),
-    middleware: [],
     async validateDispatch() {},
     dispatch(envelope) {
       dispatchCalls.push({ envelope });

@@ -171,8 +171,6 @@ export {
   type TTSEmitterHook
 } from "./voice";
 
-export * from "./middleware";
-
 export { createCheckpointDurabilityProvider } from "./durability/checkpoint-durability-provider";
 export type { DurabilityProvider, Lease, LeaseOptions } from "./durability/types";
 export {

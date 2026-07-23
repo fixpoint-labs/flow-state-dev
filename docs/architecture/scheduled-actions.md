@@ -239,7 +239,7 @@ through `resolveActionCore` (see [Action forms](./action-forms.md)): for
 a static schedule it reads `flow.schedules.static[scheduleId]` via the
 `metadata.schedule.scheduleId` coordinate, gated on `source ===
 "scheduled"`. The namespaced `metadata.schedule` fields land on the
-`RequestRecord` and are visible to lifecycle hooks, middleware, the items
+`RequestRecord` and are visible to lifecycle hooks, the items
 log, and DevTool's provenance panel.
 
 ### Dynamic schedules carry their core; they don't recover

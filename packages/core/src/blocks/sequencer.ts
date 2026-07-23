@@ -758,7 +758,7 @@ function runSequencerOperations(
     let lastDescriptor: BlockOutputHint = { kind: "inline" };
 
     // Monotonic write counter for the (requestId, blockInstanceId) checkpoint —
-    // increments on each emission so durability middleware can disambiguate
+    // increments on each emission so the durability provider can disambiguate
     // overwrites and clients can render version progress.
     let snapshotVersion = 0;
     let lastStepName = "__initial__";

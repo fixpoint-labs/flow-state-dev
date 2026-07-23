@@ -1,5 +1,5 @@
 /**
- * Internal extension seams for execution instrumentation and middleware evolution.
+ * Internal extension seams for execution instrumentation and interception.
  */
 import type { FlowError } from "../../errors/flow-error";
 import type { ExecutionMetadata } from "../types";

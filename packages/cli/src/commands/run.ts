@@ -335,7 +335,7 @@ export async function executeRunCommand(
     const logger = createCliLogger(logLevel);
 
     // 7. Execute the flow action. With a config, forward the app's runtimeConfig
-    // (durability, middleware, settings, ...), overriding only the logger (CLI
+    // (durability, settings, ...), overriding only the logger (CLI
     // stderr discipline) and the model resolver (per --model).
     const runtimeConfig: RuntimeConfig =
       baseRuntimeConfig !== undefined

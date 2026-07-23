@@ -108,7 +108,6 @@ interface InboundTransportHost {
   readonly registry: FlowRegistry;
   readonly stores: StoreRegistry;
   readonly resolvers?: { /* model, speech, transcription */ };
-  readonly middleware?: Middleware[];
   validateDispatch(envelope: InboundRequestEnvelope): Promise<void>;
   dispatch(envelope: InboundRequestEnvelope): DispatchHandle;
   resolvePrincipal(ctx: PrincipalResolutionContext): Promise<ResolvedPrincipal>;

@@ -7,7 +7,7 @@ The execution runtime orchestrates block dispatch, retry policies, rescue bounda
 The runtime is responsible for:
 
 1. Invoking blocks via `block.run(input, ctx)`
-2. Running the [middleware](middleware.md) chain (global → flow → block → execute)
+2. Applying internal [execution seams](internal-execution-seams.md) at block dispatch boundaries
 3. Applying kind-specific lifecycle seams
 4. Maintaining block/step provenance
 5. Emitting stream items and events
@@ -306,7 +306,7 @@ At every step boundary a sequencer emits a `state_snapshot` item with:
 - `key: blockInstanceId` — stable dedup key. Every snapshot from the same sequencer instance shares the same `key`; the wire-level convention is that consumers treat each new emit as an in-place update of the same logical item.
 - `version: number` — monotonic write counter. Increments on each emission that actually changed state.
 - `durable: boolean` — when `true`, the runtime persists the snapshot to `stores.checkpoints`.
-- `terminal?: boolean` — set on the final emission for the sequencer's run (success, error, or cancellation). Durability middleware treats terminal frames as a delete signal.
+- `terminal?: boolean` — set on the final emission for the sequencer's run (success, error, or cancellation). The durability provider treats terminal frames as a delete signal.
 
 Net wire effect: instead of N items per sequencer per turn (one per step), there is one logical item per sequencer that updates N times. The DevTool collapses these into one row per sequencer instance showing the current state.
 

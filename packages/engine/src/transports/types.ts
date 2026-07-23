@@ -12,7 +12,6 @@
 import type {
   ActionCore,
   InboundSource,
-  Middleware,
   ModelResolver,
   PrincipalResolutionContext,
   ResolvePrincipalFn,
@@ -212,7 +211,6 @@ export interface InboundTransportHost {
      */
     voice?: VoiceProvider;
   };
-  readonly middleware?: Middleware[];
   readonly logger?: RuntimeLogger;
 
   /**
