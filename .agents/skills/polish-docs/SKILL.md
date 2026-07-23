@@ -80,9 +80,14 @@ Run these as lenses over the scope. They compound; do them together, not as sepa
 
 Restructuring breaks links and moves anchors — prove it didn't:
 
-- **`pnpm --filter @flow-state-dev/docs build`** — Docusaurus fails the build on broken internal
-  links and bad references. Green build is the evidence that every move and merge kept the graph
-  intact. Fix redirects for any page you renamed or relocated (the site uses
+- **`pnpm --filter @flow-state-dev/docs build`** — Docusaurus is configured `onBrokenLinks:
+  "throw"`, so broken **doc-route** links hard-fail the build. But `onBrokenMarkdownLinks` is set
+  to `"warn"` (`apps/docs/docusaurus.config.ts`), so broken **raw Markdown** links only *warn* and
+  the build still exits green — and a moved or renamed page is exactly where those break. So a zero
+  exit code is **not** sufficient evidence: **scan the build output for broken-link warnings and
+  treat every one as a must-fix** before opening the PR. Green *and* warning-free is the evidence
+  that every move and merge kept the graph intact.
+- Fix redirects for any page you renamed or relocated (the site uses
   `@docusaurus/plugin-client-redirects`).
 - Re-read moved/merged pages once as a reader to confirm the rearrangement flows.
 
