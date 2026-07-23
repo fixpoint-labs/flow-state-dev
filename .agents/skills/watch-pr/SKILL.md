@@ -46,7 +46,7 @@ tick and costs a full turn whether or not anything changed. For watching a PR, `
    even when no comment, review, or check lands). Comments are `since`-windowed; reviews, checks,
    and meta are snapshot-diffed (no `since` param).
 
-   Two correctness points the naive version gets wrong:
+   Four correctness points the naive version gets wrong:
    - **Only advance the comment cursor after *successful* comment fetches.** A transient `gh`
      failure is swallowed (so the loop survives), but if `last` moved to `now` anyway, a comment
      posted during that failed interval would fall outside the next `since=$last` window and be
@@ -55,6 +55,14 @@ tick and costs a full turn whether or not anything changed. For watching a PR, `
    - **Prime the review/check/meta snapshots** with current state before the loop, so the first
      tick emits only activity that lands *after* arming (webhook semantics), not the PR's whole
      history.
+   - **Key checks by check-run `.id`, not just `name: conclusion`.** On a new head SHA the
+     re-run mints new check-run ids; keying only on `name: conclusion` means a green-again run
+     that matches the old commit's strings diffs to nothing and never wakes the fleet to notice
+     CI passed on its new push. (Reviews already key on `.id`; checks now do too.)
+   - **`--paginate` the list endpoints.** `gh api` returns only the first 30 without it. A spec
+     PR reviewed on every push accumulates many reviews, so a fresh `APPROVED` can sit past
+     page 1 — invisible to a single-page fetch, which drops the approval gate this watch exists
+     to catch. Paginate reviews, comments, and check-runs.
 
    ```bash
    OWNER=<owner>; REPO=<repo>; N=<number>
@@ -62,33 +70,38 @@ tick and costs a full turn whether or not anything changed. For watching a PR, `
    # Noisy deploy bots you rarely want; drop or extend as the user prefers.
    NOISE='vercel\[bot\]|github-actions\[bot\]'
    REV_JQ='.[] | "\(.id)\t\(.user.login) \(.state)\(if (.body|length)>0 then ": "+(.body[0:200]) else "" end)"'
-   CHK_JQ='.check_runs[] | select(.status=="completed") | "\(.name): \(.conclusion)"'
+   # Key checks by check-run .id (like reviews key by .id): a new commit / re-run mints new
+   # ids, so a green-again run whose name:conclusion strings match the old commit STILL emits.
+   CHK_JQ='.check_runs[] | select(.status=="completed") | "\(.id)\t\(.name): \(.conclusion)"'
    META_JQ='"draft=\(.isDraft) state=\(.state) merged=\(.mergedAt // "no")"'
+   # `--paginate` on the list endpoints: a spec PR reviewed on every push can hold >30 reviews,
+   # and a fresh APPROVED past page 1 would be invisible to a single-page fetch — missing the
+   # exact approval gate this watch replaces. Same for a burst of comments / a repo with >30 checks.
    sha=$(gh pr view "$N" --json headRefOid -q .headRefOid 2>/dev/null)
-   prev_rev=$(gh api "repos/$OWNER/$REPO/pulls/$N/reviews" --jq "$REV_JQ" 2>/dev/null | sort)
-   prev_chk=$(gh api "repos/$OWNER/$REPO/commits/$sha/check-runs" --jq "$CHK_JQ" 2>/dev/null | sort)
+   prev_rev=$(gh api --paginate "repos/$OWNER/$REPO/pulls/$N/reviews" --jq "$REV_JQ" 2>/dev/null | sort)
+   prev_chk=$(gh api --paginate "repos/$OWNER/$REPO/commits/$sha/check-runs" --jq "$CHK_JQ" 2>/dev/null | sort)
    prev_meta=$(gh pr view "$N" --json isDraft,state,mergedAt -q "$META_JQ" 2>/dev/null)
    while true; do
      now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
      ok=1
 
-     c=$(gh api "repos/$OWNER/$REPO/issues/$N/comments?since=$last" \
+     c=$(gh api --paginate "repos/$OWNER/$REPO/issues/$N/comments?since=$last" \
        --jq '.[] | "comment  \(.user.login): \(.body[0:280])"' 2>/dev/null) || ok=0
      [ -n "$c" ] && printf '%s\n' "$c" | grep -Ev "^comment  ($NOISE):" || true
 
-     ic=$(gh api "repos/$OWNER/$REPO/pulls/$N/comments?since=$last" \
+     ic=$(gh api --paginate "repos/$OWNER/$REPO/pulls/$N/comments?since=$last" \
        --jq '.[] | "inline   \(.user.login) [\(.path):\(.line // .original_line)]: \(.body[0:240])"' 2>/dev/null) || ok=0
      [ -n "$ic" ] && printf '%s\n' "$ic" || true
 
-     cur_rev=$(gh api "repos/$OWNER/$REPO/pulls/$N/reviews" --jq "$REV_JQ" 2>/dev/null | sort)
+     cur_rev=$(gh api --paginate "repos/$OWNER/$REPO/pulls/$N/reviews" --jq "$REV_JQ" 2>/dev/null | sort)
      [ -n "$cur_rev" ] && comm -13 <(printf '%s\n' "$prev_rev") <(printf '%s\n' "$cur_rev") \
        | sed 's/^[0-9]*\t/review   /' | grep -Ev "^review   ($NOISE) " || true
      [ -n "$cur_rev" ] && prev_rev=$cur_rev
 
      sha=$(gh pr view "$N" --json headRefOid -q .headRefOid 2>/dev/null)
-     cur_chk=$(gh api "repos/$OWNER/$REPO/commits/$sha/check-runs" --jq "$CHK_JQ" 2>/dev/null | sort)
+     cur_chk=$(gh api --paginate "repos/$OWNER/$REPO/commits/$sha/check-runs" --jq "$CHK_JQ" 2>/dev/null | sort)
      [ -n "$cur_chk" ] && comm -13 <(printf '%s\n' "$prev_chk") <(printf '%s\n' "$cur_chk") \
-       | sed 's/^/check    /' || true
+       | sed 's/^[0-9]*\t/check    /' || true
      [ -n "$cur_chk" ] && prev_chk=$cur_chk
 
      # PR meta — catches the quiet transitions (draft→ready, merge/close) with no other activity.
