@@ -76,6 +76,10 @@ PR is merged or closed. Never poll with `sleep`.
 - Persist state as a handful of fields (the handle cache), so re-entry costs a small
   read, not a replay.
 - Prefer event-driven wakes over scheduled ones; the heartbeat is a backstop.
+- **Model tiering** (AGENTS.md): the orchestrator itself is thin — keep it on the
+  default (Opus) for its routing judgment. Read-only status/handle fetches use the
+  **`scout`** agent (Haiku); phase work runs through `fsd:create-spec` /
+  `fsd:implement-issue`, which tier their own sub-agents (Sonnet for decided execution).
 
 ## Boundaries
 

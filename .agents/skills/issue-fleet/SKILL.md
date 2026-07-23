@@ -42,7 +42,9 @@ even if more are queued. State the chosen N and the cap to the user.
    (compact: the issue list and per-issue handle-cache pointers).
 2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
    status to derive its phase (reuse each issue's `.agents/orchestration/<ISSUE>.md`
-   handle cache). Do **not** re-dispatch workers just to read state.
+   handle cache). These read-only status/handle fetches are the mechanical tier — use
+   the **`scout`** agent (Haiku), not a full worker. Do **not** re-dispatch the
+   worktree workers just to read state.
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at

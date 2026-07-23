@@ -33,7 +33,7 @@ whose shape the spec nailed). Reach for the challenger when a boundary has any o
 ## Dispatch
 
 ```
-Agent tool (Plan):
+Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger is meta-awareness, not mechanical execution, so it does NOT drop to a cheaper model:
   description: "Challenge spec at: [boundary name]"
   prompt: |
     You are the challenger — the implementation loop's meta-awareness. Your only

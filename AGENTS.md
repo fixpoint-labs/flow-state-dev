@@ -46,6 +46,22 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 - Keep exported API surfaces documented with concise, high-signal comments.
 - Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
 
+## Model tiering — match the model to where judgment lives
+
+We front-load architectural judgment (spec authoring, the coherence / Philosophy-Skeptic review lens, the challenger). Once the decisions are made, execution and fetching are the token-heavy, low-judgment bulk — run those on cheaper models. The rule:
+
+**Opus coordinates and judges · Sonnet executes decided work · Haiku fetches and scouts.**
+
+| Tier | Model | Roles |
+|---|---|---|
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `fsd:create-spec` authoring/research, the **coherence** review lens (`fsd:audit-coherence`) + **restraint** (`fsd:second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour |
+| Mechanical | **Haiku** | read-only orientation (`scout` / `fsd:zoom-out`), status/handle fetches (fleet & lifecycle refreshes), simple lookups, boilerplate/formatting |
+
+**The guardrail that makes downgrading safe:** a cheaper-tier worker *escalates a genuine un-decided decision rather than inventing one*. `spec-implementer` (Sonnet) stops and reports a blocker when it hits an architectural fork the spec didn't settle; `scout` (Haiku) returns facts and defers any judgment. Downgrade only where the decision is already made — never where the work is still deciding.
+
+Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`scout`** (Haiku).
+
 ## Verifying flow changes during development
 
 When you change flow logic, the default verification path is `fsdev run`, not `pnpm test` and not opening kitchen-sink in a browser. The CLI runs the full `runAction` engine against the same stores and execution context the production server uses, with structured NDJSON events on stdout and `[flow-state] *` runtime logs on stderr. It is the fastest way to confirm a change works as intended.
