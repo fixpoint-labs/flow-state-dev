@@ -107,6 +107,17 @@ The fleet coordinates the epic; the **`epic-agent`** sub-agent does the writing:
   epic PR**, and add the branch to the Linear project's epic list. One bounded action, then
   it exits — the fleet holds only the handles (epic name, branch, epic PR#), never the spec
   text.
+- **Gate on the objective — the one epic-level sign-off.** The epic-spec leads with a
+  **purpose & objective** (abstract: why the whole effort, what outcome). Surface *that* to
+  the user for a **directional sign-off** — the **`epic approved` label** on the epic PR —
+  and **hold ramping the epic's issues until it's applied.** This is the holistic
+  anti-over-engineering check the per-issue gates can't do: each issue may earn its place
+  while the whole set overbuilds, so we align on *why* before sinking the work in. It's
+  abstract — outcome and scope, not detail. It is the **only** epic-level gate: the epic's
+  *direction* (themes, decisions, index) stays ungated and evolves via feedback. Distinct
+  from each issue's own `spec approved` gate, which still applies per issue. (Re-read the
+  epic PR's labels on each table refresh, like the spec-PR labels, so a missed `labeled`
+  webhook is still caught.)
 - **Own the epic PR subscription; fan feedback down.** Subscribe to the epic PR
   (`subscribe_pr_activity`). Review comments and human feedback on it are cross-cutting —
   route them **down** to the aligned issue workers so each re-checks its spec against the
