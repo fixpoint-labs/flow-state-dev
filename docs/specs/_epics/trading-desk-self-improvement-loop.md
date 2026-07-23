@@ -64,7 +64,9 @@ consumers + a spur that feeds both:
 which records the gate but does not trigger it (a worker waits for the human approval, not the
 label). On approval the Backlog sub-issues (FIX-789 / 792 / 793 / 794 / 812) are released from
 NEEDS_SPEC. FIX-788 / FIX-790 are Done and FIX-791 is In Review — wrapped for coordination, not
-rolled back. Per-issue state lives in the running index (§3), the single source of truth for it.
+rolled back. Within this doc, per-issue state is tracked only in the running index (§3) to avoid
+drift — but that index is a projection refreshed from Linear + PR handles; Linear and the PRs
+remain the state authority.
 
 ---
 
@@ -141,7 +143,9 @@ reports against it and invents nothing. FIX-789's per-payload leakage tags (`poi
 
 ## 3. Running index
 
-Durable audit log and **single source of per-issue state**. Refreshed as PRs open.
+A durable audit log — **a projection refreshed from Linear + PR handles, not a second live
+source**; Linear and the PRs remain the state authority. Within this doc, per-issue state is
+tracked here only (not restated in §1/§2), refreshed as PRs open.
 
 | Issue | State | Spine | Priority | Spec PR | Impl PR | Notes |
 |---|---|---|---|---|---|---|
