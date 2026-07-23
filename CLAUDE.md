@@ -168,6 +168,8 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
 | `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
 | `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `implement-issue` |
+| `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); every phase runs in a fresh bounded sub-agent so token cost stays small |
+| `issue-fleet`             | Coordinate MULTIPLE issues in parallel, each in its own git worktree/branch; composes `issue-lifecycle` per issue via worktree-isolated workers; holds only a compact status table |
 
 
 ### Development skills

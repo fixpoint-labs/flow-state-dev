@@ -1,5 +1,7 @@
 ---
 name: fsd:audit-coherence
+context: fork
+agent: general-purpose
 description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from fsd:improve-codebase-architecture (deepening) and fsd:second-look (per-feature retrospective). Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
 argument-hint: "<optional scope, e.g. a package, a subsystem, or 'streaming'>"
 ---
