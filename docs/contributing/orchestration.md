@@ -196,22 +196,39 @@ succeeds: no event will ever arrive to wake the session.
 are similarly cloud-only and won't resolve locally. Check for either before relying on
 `subscribe_pr_activity` — don't assume cloud by default.
 
-**Local fallback: poll instead of subscribing.** `CronCreate` (and `Monitor`, for a single
-long-lived watch) are harness-native — not gated to the cloud environment — so a local
-fleet/lifecycle can schedule a recurring re-check in place of the webhook wake: on each
-fire, run the same table refresh (comments, reviews, CI, `draft` flag) the cloud path runs
-on a webhook wake, just as the **primary** signal instead of the backstop heartbeat. Pick
-an interval appropriate to how urgently the issue needs a response (a few minutes for
-active review, longer once it's just waiting).
+**Local fallback: poll with `Monitor`, not a scheduler.** Both `Monitor` and `CronCreate`
+are harness-native (not cloud-gated), but they poll very differently, and for PR-watching
+`Monitor` is the better primitive:
 
-Two caveats worth stating to the user up front, not discovering later: `CronCreate` jobs
-are **session-only, in-memory, and auto-expire after 7 days** — closing the terminal or
-ending the session loses all local scheduling silently, unlike a cloud session's routines,
-which persist server-side. A local fleet's "still watching" guarantee is therefore weaker
-than a cloud one's; say so rather than imply parity. *(This fallback is the recommended
-design but hasn't been confirmed against a live local run yet — verify `CronCreate` actually
-fires and re-enters the loop as expected the first time a fleet/lifecycle runs locally,
-before trusting it unattended.)*
+- **`Monitor` (preferred).** Arms a shell poll loop that runs in a **subprocess**; each
+  stdout line it emits becomes an event that wakes the session. The loop hits the PR's
+  comment / review / check endpoints on an interval (60s+ for a remote API — GitHub rate
+  limits) and prints only *new* activity. Because the polling itself is a subprocess, the
+  model wakes **only on a real event**, not on every tick — cost is proportional to actual
+  PR activity, and the poll behavior is deterministic (fixed shell, not a model turn that
+  re-decides each fire). This is the closest local analogue to the cloud webhook stream.
+  The **`watch-pr` skill** packages this loop — reach for it rather than re-deriving the
+  endpoints; use it as the *primary* wake signal a local fleet/lifecycle re-enters on.
+- **`CronCreate` (only when you need a time-based tick).** Fires a *prompt* on a wall-clock
+  schedule, so it costs a full model turn **every** fire whether or not anything changed —
+  a poll-and-compare on every empty tick. Use it only for a genuinely time-driven check
+  (a low-frequency "is the Monitor still alive / anything I missed" backstop), not as the
+  main watch.
+
+**Cover the same signals the cloud path does** (this is where the naive comment-only loop
+fails): the watch must poll **PR comments *and* reviews *and* check-runs** — a
+`state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint, so
+a comment-only loop makes a local orchestrator deaf to the exact approval gate above. The
+`draft→ready-for-review` flip and merge/close are lower-frequency; a Monitor tick can catch
+them too, or a low-frequency `CronCreate` backstop can.
+
+Two caveats to state to the user up front, not discover later: a `Monitor` (like a
+`CronCreate` job) is **session-only** — it dies when the session ends, unlike a cloud
+session's server-side routines. A local fleet's "still watching" guarantee is therefore
+weaker than a cloud one's; say so rather than imply parity. *(This fallback is the
+recommended design but hasn't been confirmed against a live local run yet — verify the
+`watch-pr` Monitor actually emits and re-enters the loop the first time a fleet/lifecycle
+runs locally, before trusting it unattended.)*
 
 ## Token discipline (why it stays cheap)
 

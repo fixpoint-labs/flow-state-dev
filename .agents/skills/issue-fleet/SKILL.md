@@ -138,10 +138,11 @@ even if more are queued. State the chosen N and the cap to the user.
 
    **Both `subscribe_pr_activity` and `send_later` are cloud-only.** Neither works in a local
    Claude Code session — no reachable webhook endpoint, no server-side scheduler. Check
-   whether you're in a cloud session before relying on either; if local, use `CronCreate` to
-   poll instead, as the *primary* signal rather than a backstop. See
+   whether you're in a cloud session before relying on either; if local, arm a **`Monitor`
+   poll loop (the `watch-pr` skill)** per live PR as the primary wake signal — it wakes only
+   on real activity and covers comments, reviews (incl. approvals), and CI. See
    [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud
-   vs. local" for how to detect it and the full fallback design.
+   vs. local" for how to detect the environment and the full fallback design.
 
 ## Epic coordination (optional — when the set shares cross-cutting concerns)
 

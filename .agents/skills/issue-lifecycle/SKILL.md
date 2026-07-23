@@ -178,9 +178,10 @@ label). Never poll with `sleep`.
 
 **Both `subscribe_pr_activity` and `send_later` are cloud-only** — neither works in a local
 Claude Code session (no reachable webhook endpoint, no server-side scheduler). Check whether
-you're in a cloud session before relying on either; if local, poll instead — see
+you're in a cloud session before relying on either; if local, arm a **`Monitor` poll loop
+(the `watch-pr` skill)** on the issue's PR(s) as the wake signal in place of both — see
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud vs.
-local" for how to detect it and what to use (`CronCreate`) in place of both.
+local" for how to detect the environment and the full fallback design.
 
 ## Token discipline (the point of this skill)
 
