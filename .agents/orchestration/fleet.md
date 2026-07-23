@@ -22,7 +22,9 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 - Cross-spec design review (920/917/923/924 interactions): agent ab963c9f4375e4534 — RUNNING (read-only, returns to fleet).
 - FIX-917 review-response: agent a7c5fac94b420145e — DONE (P1 refuted, P2 minor set).
 - FIX-917 predicate fold-in: agent a76bb0f4945e926ca — DONE (a1e78e34: §7 warn-on-dirty+non-sequencer, Decision 4, §12 Q3 resolved, §3/§8/§9 synced, both threads replied).
-- All four specs at AWAITING_SPEC_APPROVAL. Backstop check-in trig_01MhRkGdfiCwtRZw3yUMXFHt.
+- FIX-917 dead-key rejection (BP-030): agent a0c64c00a15eba49c — RUNNING (Codex r3635062826: hard-rename must reject removed legacy keys loudly at runtime, not TS-only).
+- All four specs at AWAITING_SPEC_APPROVAL. Backstop check-in trig_01RYq12rZkKpd6mkdopHdiuJ (~02:32Z).
+- WATCH: Codex re-reviews on each push (treadmill). Findings so far all valid+converging (P1 refuted, P2 changeset, predicate, dead-key). If future rounds nitpick/repeat, STOP folding and tell user spec is good enough.
 
 ## PR notes
 - #866 (FIX-917 spec) taken out of draft by user 2026-07-23 — review signal only; spec PRs are not merged.
