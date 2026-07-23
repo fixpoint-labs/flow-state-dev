@@ -79,7 +79,7 @@ Agent tool (general-purpose):
     **Against the spec:**
     - Did I implement everything this task requires?
     - Did I handle the edge cases the spec mentions for this task?
-    - Did I build the modules/layers the spec's direction calls for, in the order it sets? (The spec is directional — exact signatures and types are mine to settle in the code, so long as they honor its Decisions and direction.)
+    - Did I build the modules/layers the spec's direction calls for, in the order it sets? (The spec is directional — exact signatures and types are mine to settle, so long as they honor its Decisions and direction. Where it *did* lock a shape — a call signature in a Part I §5 usage example, or a type fixed by a §6 Decision — I match it exactly.)
 
     **Quality:**
     - Are names clear and consistent with the codebase?

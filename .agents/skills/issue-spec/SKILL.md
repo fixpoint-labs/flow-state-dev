@@ -89,7 +89,7 @@ Launch an `Explore` sub-agent to:
 
 ### Step 3: Research Solutions
 
-Launch these research sub-agents in parallel. Agents C and D inform the Case; Agent G (Documentation Scoping) produces the Documentation Plan (Part II §11).
+Launch these research sub-agents in parallel. Agents C and D inform the Case (they feed the Step 3.5 verdict, so they run before it). Agent G (Documentation Scoping) produces the Documentation Plan (Part II §11), which must reflect the **final** scope — so run it against the scope Step 3.5 settles: if the necessity/refinement verdict reduces or refines the scope (or you're unsure it will), defer Agent G to Step 4 (synthesis) or (re)run it there on the settled scope, rather than shipping a docs plan drawn for the original ask.
 
 #### Agent C: Industry Research
 Launch a `general-purpose` sub-agent to research how this type of problem is commonly solved:
