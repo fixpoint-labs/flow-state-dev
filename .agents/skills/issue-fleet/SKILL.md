@@ -77,8 +77,9 @@ even if more are queued. State the chosen N and the cap to the user.
    `.claude/agents/issue-worker.md`, which declares `isolation: worktree` (its own
    worktree/branch) and has no `AskUserQuestion` (it never prompts; it returns
    blockers for the fleet to surface). **Epic gate:** if the issue is under an epic whose
-   epic PR has **no approving comment or review yet** (step 2 didn't detect one, and the `epic approved`
-   mirror label is absent), hold it at NEEDS_SPEC — do **not** dispatch a worker to advance it
+   epic PR has **no approving comment or review** (as re-derived by step 2's scan this wake —
+   the gate is the fresh evidence, not the `epic approved` label, which is only the mirror the
+   fleet writes), hold it at NEEDS_SPEC — do **not** dispatch a worker to advance it
    (that's the objective gate; see Epic coordination). When you do
    dispatch, pass the resolved **epic handle** (branch + SHA) from step 2 so `issue-spec`
    can align without re-fetching:

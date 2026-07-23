@@ -61,11 +61,14 @@ On each invocation, reconstruct the phase from a **small** read:
     in [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A comment or a
     review submission is the gate because either *wakes* the lifecycle — a `labeled` webhook
     doesn't arrive, but both of these do. On detecting either, **mirror it to the
-    `spec approved` label** (a durable, filterable record) in the same step. Its presence is
-    the gate to advance to NEEDS_IMPLEMENTATION — and what authorizes the lifecycle to
-    **close the spec PR** (unmerged) at that transition
-    (only once the PR is ready and Part II is present; an approval on a still-draft Case is
-    premature — surface it, don't implement).
+    `spec approved` label** (a durable, filterable record) in the same step. **The gate is the
+    fresh evidence — a current-head approving comment/review, re-derived by this scan each
+    wake — not the label.** The `spec approved` label is a mirror only; it can go stale (it was
+    applied at an earlier commit, then a push or a later `CHANGES_REQUESTED` landed), so
+    **never advance from the label alone** — re-confirm approval against the current head every
+    wake. That fresh approval is what advances to NEEDS_IMPLEMENTATION and authorizes closing
+    the spec PR (unmerged), only once the PR is ready and Part II is present; an approval on a
+    still-draft Case is premature — surface it, don't implement.
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
   ID, spec PR#, impl PR#, branch, worktree path, current phase, and the last action
