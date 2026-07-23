@@ -47,6 +47,8 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 - Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
 - **Working memory is session-only — never commit it.** Orchestration state (the fleet board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it.
 
+> **Orchestration reference.** How the fleet, epics, and issue lifecycles compose — roles, gates (draft→ready, `spec approved`, `epic approved`), and the epic-spec — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it.
+
 ## Model tiering — match the model to where judgment lives
 
 We front-load architectural judgment (spec authoring, the coherence / Philosophy-Skeptic review lens, the challenger). Once the decisions are made, execution and fetching are the token-heavy, low-judgment bulk — run those on cheaper models. The rule:

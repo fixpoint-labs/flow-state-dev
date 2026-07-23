@@ -20,11 +20,18 @@ coherence lens (`fsd:audit-coherence`) pointed at a *batch of specs* instead of 
 normally `fsd:issue-fleet` — owns the user walkthrough and the alignment; this skill just
 finds the conflicts and hands them back.
 
-> **When an epic-spec already coordinates the set** (see `fsd:issue-fleet` → "Epic
-> coordination"), coherence is mostly built in *up front* — the issue specs aligned to a
-> shared direction as they were written. There, this skill's job narrows to a **conformance
-> check**: did the specs actually stay true to the epic and to each other? Reach for the
-> full batch sweep when there's no epic; use it as the lighter conformance pass when there is.
+> **When an epic-spec already coordinates the set** (see
+> [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)),
+> coherence is mostly built in *up front*, so this skill narrows to a **conformance check**
+> with a reduced procedure:
+> 1. **Read the current epic-spec first** — the doc on the `epic/<name>` branch *and* the
+>    epic PR thread. The epic-agent may have folded in feedback the issue specs haven't
+>    picked up yet; skip this and you can report "clean" while the specs have drifted from
+>    the latest epic direction.
+> 2. Check each issue spec **adheres** to the epic's objective, themes, and decisions.
+> 3. Flag **residual inter-spec conflicts** the epic didn't settle.
+>
+> Reach for the full batch sweep (below) only when there is **no** epic.
 
 ## The gate — run only on validated specs
 
