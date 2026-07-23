@@ -318,13 +318,22 @@ describe("materializeAgent", () => {
       expect(uses).not.toContain(taskToolsSingleton);
     });
 
-    it("warns when a worker declares taskTools but no boardTaskTools was supplied", () => {
+    it("warns when a worker declares taskTools but no boardTaskTools was supplied, regardless of env", () => {
       const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      materializeAgent(makeAgent({ allowedTools: ["taskTools"] }), makeOpts());
-      expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining("boardTaskTools was supplied"),
-      );
-      spy.mockRestore();
+      const originalNodeEnv = process.env.NODE_ENV;
+      // Matches the two other warns in this function (usesSkills, contextMode
+      // "fork"): unconditional, not dev-only — the misconfiguration is worth
+      // surfacing in production too.
+      process.env.NODE_ENV = "production";
+      try {
+        materializeAgent(makeAgent({ allowedTools: ["taskTools"] }), makeOpts());
+        expect(spy).toHaveBeenCalledWith(
+          expect.stringContaining("boardTaskTools was supplied"),
+        );
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+        spy.mockRestore();
+      }
     });
 
     it("does not warn for a standalone taskTools agent (no board is legitimate)", () => {

@@ -102,20 +102,13 @@ function buildAgentGenerator(
     ...(usesTaskTools ? [opts.boardTaskTools ?? taskToolsCapability] : []),
   ];
 
-  // Dev-only signal: a worker declaring taskTools with no board capability falls
-  // back to the empty singleton, which fails at drain with `no_delegation_board`.
-  // Surface it at materialization time instead. Scoped to workers (standalone
-  // agents legitimately have no board) and silenced in production. Env is read
-  // off globalThis so this package needs no node type dependency.
-  const nodeEnv = (
-    globalThis as { process?: { env?: Record<string, string | undefined> } }
-  ).process?.env?.NODE_ENV;
-  if (
-    nodeEnv !== "production" &&
-    opts.shape === "worker" &&
-    usesTaskTools &&
-    !opts.boardTaskTools
-  ) {
+  // A worker declaring taskTools with no board capability falls back to the
+  // empty singleton, which fails at drain with `no_delegation_board`. Surface
+  // it at materialization time instead. Scoped to workers (standalone agents
+  // legitimately have no board). Fires in every environment, matching the
+  // usesSkills/contextMode warnings below — this misconfiguration is worth
+  // surfacing in production too, not just dev.
+  if (opts.shape === "worker" && usesTaskTools && !opts.boardTaskTools) {
     console.warn(
       `[workforce] agent "${agent.name}": worker declares taskTools but no ` +
         `boardTaskTools was supplied — fan-out tools will target the empty ` +
