@@ -20,7 +20,7 @@ import {
   taskBoard,
   taskBoardStateSchema,
   taskWorkerInputSchema,
-} from "@flow-state-dev/patterns/task-board";
+} from "@flow-state-dev/orchestration/task-board";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";
@@ -49,7 +49,9 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
 
     const board = taskBoard({
       name: "ed-board",
-      collection: { collectionId: "ed-board" },
+      // Sequencer-backed: `ed-root` below holds the `tasks` slot this board
+      // drains. Explicit since the default backing is request.
+      collection: { backing: "sequencer", collectionId: "ed-board" },
       concurrency: CONCURRENCY,
       dispatcher: "topological",
       workers: worker,
@@ -76,7 +78,7 @@ describe("FIX-621: task-board event-driven worker idle-wait", () => {
             name: "ed-root",
             inputSchema: z.unknown(),
             stateSchema: taskBoardStateSchema,
-          }).step(board.block),
+          }).step(board.drain),
         },
       },
     })({ id: "default" });

@@ -71,6 +71,7 @@ function bundle(sessionId: string): RunArtifactsBundle {
       positionCapClamped: null,
       excluded: null,
       preGatePolicyTargetPct: null,
+      evidenceVerdict: null,
       memos: [],
       memoErrors: 0,
     },

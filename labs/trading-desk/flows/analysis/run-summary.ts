@@ -102,6 +102,12 @@ export const runSummaryStateSchema = z.object({
   positionCapClamped: z.boolean().nullable().default(null),
   excluded: z.boolean().nullable().default(null),
   preGatePolicyTargetPct: z.number().nullable().default(null),
+  // Evidence-sufficiency verdict (FIX-781) — the always-on capital gate's read
+  // path for the goal check. Null on a legacy / stopped run.
+  evidenceVerdict: z
+    .enum(["sufficient", "insufficient-evidence"])
+    .nullable()
+    .default(null),
 
   // Per-memo status + an error rollup.
   memos: z.array(runSummaryMemoSchema),
@@ -209,6 +215,7 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     positionCapClamped: decision?.positionCapClamped ?? null,
     excluded: decision?.excluded ?? null,
     preGatePolicyTargetPct: decision?.preGatePolicyTargetPct ?? null,
+    evidenceVerdict: decision?.evidenceVerdict ?? null,
 
     memos: memoLines,
     memoErrors,

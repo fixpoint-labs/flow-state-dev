@@ -11,6 +11,7 @@ import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
   InferCapabilities,
+  InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
@@ -55,13 +56,25 @@ export interface HandlerConfig<
   // schema → handle conversion at `ctx.targets`).
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
+  // FIX-914: this block's own state (`stateSchema`) and its immediate
+  // parent's state (`parentStateSchema`). Appended at the end so existing
+  // positional `HandlerConfig<...>` usages stay valid.
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute" | "stateSchema"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
   orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   parentInputSchema?: TParentInputSchema;
+  /** This block's own request-scoped state (FIX-914). Exposed via `ctx.self`. */
+  stateSchema?: TStateSchema;
+  /** Expected shape of the immediate parent's own state (FIX-914). Exposed
+   *  via `ctx.parent`'s state ops when the parent declares `stateSchema`. */
+  parentStateSchema?: TParentStateSchema;
   /**
    * Flat resource declaration: accessor key → resource definition. Resources
    * are routed to the right storage layer via their intrinsic `scope`
@@ -79,7 +92,7 @@ export interface HandlerConfig<
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
       TResources, TSequencerState, TParentInput, TMergedTargetSchemas,
-      TCapabilities
+      TCapabilities, TSelfState, TParentState
     >
   ) => Promise<TOutput> | TOutput;
 }
@@ -107,20 +120,24 @@ export function handler<
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+  TStateSchema extends ZodTypeAny | undefined = undefined,
+  TParentStateSchema extends ZodTypeAny | undefined = undefined,
+  TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
+  TParentState extends object = InferStateFromSchema<TParentStateSchema>,
 >(
   config: HandlerConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
     TResourceDefs, TTargetSchemas, TUses,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-    TResources, TMergedTargetSchemas, TCapabilities
+    TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "handler");
+  const { declaredResources, resolvedCapabilities, stateSchema } = resolveCapabilities(config, "handler");
 
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "handler",
-    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+    config: { ...config, stateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput,
     declaredResources,
     // A handler is a leaf — its OWN declarations equal its bubble-up set
@@ -229,6 +246,10 @@ handler.withDefaults = function withDefaults<
     TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
     TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
     TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
+    TStateSchema extends ZodTypeAny | undefined = undefined,
+    TParentStateSchema extends ZodTypeAny | undefined = undefined,
+    TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
+    TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   >(
     config: Omit<
       HandlerConfig<
@@ -236,7 +257,7 @@ handler.withDefaults = function withDefaults<
         TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
         TResourceDefs, TTargetSchemas, TUses,
         TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-        TResources, TMergedTargetSchemas, TCapabilities
+        TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
       >,
       keyof typeof defaults
     > & Partial<Pick<
@@ -245,7 +266,7 @@ handler.withDefaults = function withDefaults<
         TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
         TResourceDefs, TTargetSchemas, TUses,
         TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-        TResources, TMergedTargetSchemas, TCapabilities
+        TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
       >,
       keyof typeof defaults & keyof HandlerConfig
     >>,
@@ -258,7 +279,7 @@ handler.withDefaults = function withDefaults<
       TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
       TResourceDefs, TTargetSchemas, TUses,
       TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-      TResources, TMergedTargetSchemas, TCapabilities
+      TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
     >;
     return handler(merged);
   };

@@ -143,6 +143,22 @@ describe("createRequestStreamStore — applyItemPatch", () => {
     expect(store.getById("a")!.type).toBe("message");
   });
 
+  it("returns false when patch values already match the stored item", () => {
+    const store = createRequestStreamStore();
+    store.upsert(
+      makeItem({ id: "a", ts: 100, status: "completed" as OutputItem["status"] })
+    );
+    expect(store.applyItemPatch("a", { status: "completed" })).toBe(false);
+  });
+
+  it("returns false for a structurally equal nested patch", () => {
+    const store = createRequestStreamStore();
+    const item = makeItem({ id: "a", ts: 100 });
+    (item as OutputItem & { output?: unknown }).output = { x: 1 };
+    store.upsert(item);
+    expect(store.applyItemPatch("a", { output: { x: 1 } })).toBe(false);
+  });
+
   it("re-sorts when a patch changes a sort key (ts)", () => {
     const store = createRequestStreamStore();
     store.upsert(makeItem({ id: "a", ts: 100 }));
@@ -612,6 +628,41 @@ describe("createRequestStreamStore — canonical collapse (crash recovery)", () 
     const store = createRequestStreamStore();
     store.loadSnapshot([makeItem({ id: "m1", type: "message", itemIndex: 0, ts: 1000 })]);
     expect(store.getRaw()).not.toBe(store.getRaw());
+  });
+
+  it("keeps completed sibling tool_output across generator resume (FIX-814, Rule 4)", () => {
+    const gate = "req_1:root/step[0]:0";
+    const prov = { blockName: "gen", blockInstanceId: gate, phase: "main" as const };
+    const toolOutput = (
+      id: string,
+      itemIndex: number,
+      callId: string,
+      status: string
+    ): OutputItem =>
+      ({
+        id,
+        type: "tool_output",
+        status,
+        itemIndex,
+        ts: 1000 + itemIndex,
+        requestId: "req_1",
+        blockName: callId === "s1" ? "sibling" : "gate",
+        output: status === "completed" ? { via: callId } : undefined,
+        provenance: prov,
+        toolCall: { callId, name: callId === "s1" ? "sibling" : "gate" }
+      }) as OutputItem;
+
+    const store = createRequestStreamStore();
+    store.loadSnapshot([
+      makeItem({ id: "t1", type: "block_trace", status: "in_progress", itemIndex: 0, ts: 1000, provenance: prov }),
+      toolOutput("s1c", 1, "s1", "completed"),
+      toolOutput("g1f", 2, "g1", "failed"),
+      makeItem({ id: "t2", type: "block_trace", status: "completed", itemIndex: 3, ts: 1003, provenance: prov }),
+      toolOutput("g1c", 4, "g1", "completed")
+    ]);
+
+    const toolIds = store.getSorted().filter((i) => i.type === "tool_output").map((i) => i.id);
+    expect(toolIds).toEqual(["s1c", "g1c"]);
   });
 });
 

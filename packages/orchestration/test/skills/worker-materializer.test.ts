@@ -1,0 +1,236 @@
+import { describe, expect, it, vi } from "vitest";
+import type { AgentSpec } from "@flow-state-dev/core";
+import { materializeWorker, buildUserMessage } from "../../src/skills/worker-materializer";
+import type { WorkerMaterializationDeps } from "../../src/skills/worker-materializer";
+import { skillFileKey } from "../../src/skills/collection";
+import { createMockSkillsCollection } from "./mocks";
+
+function deps(
+  overrides: Partial<WorkerMaterializationDeps> = {},
+): WorkerMaterializationDeps {
+  const collection = createMockSkillsCollection();
+  return {
+    catalog: {},
+    skillName: "demo",
+    skillCollection: collection,
+    defaultModelId: "openai/gpt-4o-mini",
+    ...overrides,
+  };
+}
+
+describe("materializeWorker — prompt-driven branches", () => {
+  it("builds a generator from an inline prompt", async () => {
+    const spec: AgentSpec = { prompt: "You are a market analyst." };
+    const block = await materializeWorker("analyst", spec, deps());
+    expect(block).toBeDefined();
+    expect((block as { kind?: string }).kind).toBe("generator");
+  });
+
+  it("substitutes $ARGUMENTS in the inline prompt body", async () => {
+    const spec: AgentSpec = { prompt: "Investigate $ARGUMENTS thoroughly." };
+    const d = deps({ input: "ACME Corp" });
+    const block = await materializeWorker("analyst", spec, d);
+    // The generator stores the prompt as a static string. Reach in to verify
+    // the substitution happened.
+    const promptSlot = (block as { config?: { prompt?: unknown } }).config?.prompt;
+    expect(JSON.stringify(promptSlot)).toContain("ACME Corp");
+  });
+
+  it("reads prompt-ref content from the skill collection and strips frontmatter", async () => {
+    const collection = createMockSkillsCollection();
+    await collection.create(skillFileKey("demo", "reference/market.md"), {});
+    const ref = collection.getOptional(skillFileKey("demo", "reference/market.md"));
+    await (ref as unknown as { writeContent: (s: string) => Promise<void> }).writeContent(
+      "---\ndescription: scratch\n---\n\nYou are a market analyst.",
+    );
+    const spec: AgentSpec = { promptRef: "reference/market.md" };
+    const block = await materializeWorker(
+      "analyst",
+      spec,
+      deps({ skillCollection: collection }),
+    );
+    const promptSlot = (block as { config?: { prompt?: unknown } }).config?.prompt;
+    expect(JSON.stringify(promptSlot)).toContain("You are a market analyst.");
+  });
+
+  it("throws a clear error when prompt-ref points at a missing file", async () => {
+    const spec: AgentSpec = { promptRef: "reference/nope.md" };
+    await expect(materializeWorker("analyst", spec, deps())).rejects.toThrow(
+      /prompt-ref 'reference\/nope\.md' not found/,
+    );
+  });
+
+  it("warns + drops unknown tool keys, matches additive-not-restrictive policy", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const spec: AgentSpec = { prompt: "hi", tools: ["search", "ghost"] };
+    await materializeWorker("a", spec, deps());
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('unknown tool "ghost"'),
+    );
+    warn.mockRestore();
+  });
+
+  it("resolves model: per-worker → deps default → 'intent/chat' fallback", async () => {
+    const collection = createMockSkillsCollection();
+
+    // 1. Per-worker model wins.
+    const withWorkerModel = await materializeWorker(
+      "a",
+      { prompt: "x", model: "anthropic/claude-haiku" },
+      { catalog: {}, skillName: "demo", skillCollection: collection },
+    );
+    expect((withWorkerModel as { config?: { model?: string } }).config?.model).toBe(
+      "anthropic/claude-haiku",
+    );
+
+    // 2. Falls back to deps.defaultModelId.
+    const withDepsDefault = await materializeWorker(
+      "b",
+      { prompt: "x" },
+      {
+        catalog: {},
+        skillName: "demo",
+        skillCollection: collection,
+        defaultModelId: "openai/gpt-4o-mini",
+      },
+    );
+    expect((withDepsDefault as { config?: { model?: string } }).config?.model).toBe(
+      "openai/gpt-4o-mini",
+    );
+
+    // 3. Final fallback to 'intent/chat' — no per-worker model, no deps default.
+    //    This is the kitchen-sink default-skills-capability scenario.
+    const fallback = await materializeWorker(
+      "c",
+      { prompt: "x" },
+      { catalog: {}, skillName: "demo", skillCollection: collection },
+    );
+    expect((fallback as { config?: { model?: string } }).config?.model).toBe("intent/chat");
+  });
+
+  it("defaults itemVisibility to sub-equivalent and propagates spec.itemVisibility", async () => {
+    const sub = await materializeWorker("a", { prompt: "x" }, deps());
+    expect((sub as { config?: { itemVisibility?: { client: boolean; history: boolean } } }).config?.itemVisibility).toEqual(
+      { client: true, history: false },
+    );
+    const primary = await materializeWorker(
+      "b",
+      { prompt: "x", itemVisibility: { client: true, history: true } },
+      deps(),
+    );
+    expect((primary as { config?: { itemVisibility?: { client: boolean; history: boolean } } }).config?.itemVisibility).toEqual(
+      { client: true, history: true },
+    );
+  });
+
+  it("routes 'taskTools' in spec.tools through capability composition", async () => {
+    const block = await materializeWorker(
+      "discoverer",
+      { prompt: "find competitors", tools: ["taskTools"] },
+      deps(),
+    );
+    const cfg = (block as { config?: { uses?: readonly { name?: string }[] } }).config;
+    expect(cfg?.uses).toBeDefined();
+    expect(cfg?.uses?.[0]?.name).toBe("taskTools");
+  });
+
+  it("omits the uses slot when taskTools is not requested", async () => {
+    const block = await materializeWorker(
+      "analyst",
+      { prompt: "analyze", tools: ["search"] },
+      deps({ catalog: { search: { config: { name: "search" } } as never } }),
+    );
+    const cfg = (block as { config?: { uses?: unknown } }).config;
+    expect(cfg?.uses).toBeUndefined();
+  });
+});
+
+describe("materializeWorker — agent-ref stub", () => {
+  it("throws \"no agentRegistry\" when none was supplied", async () => {
+    await expect(
+      materializeWorker("vet", { agentRef: "research-veteran" }, deps()),
+    ).rejects.toThrow(/no \s*agentRegistry was supplied|no agentRegistry was supplied/i);
+  });
+
+  it("throws \"no materializeAgent\" when registry is supplied but materializer is not", async () => {
+    const mockRegistry = {
+      get: vi.fn(),
+      list: vi.fn(),
+    } as never;
+    await expect(
+      materializeWorker(
+        "vet",
+        { agentRef: "research-veteran" },
+        deps({ agentRegistry: mockRegistry }),
+      ),
+    ).rejects.toThrow(/no materializeAgent function was supplied/);
+  });
+
+  it("throws naming registered agents when agent is not found", async () => {
+    const mockRegistry = {
+      get: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([{ name: "other-agent" }]),
+    } as never;
+    const mockMaterialize = vi.fn();
+    await expect(
+      materializeWorker(
+        "vet",
+        { agentRef: "research-veteran" },
+        deps({ agentRegistry: mockRegistry, materializeAgent: mockMaterialize as any }),
+      ),
+    ).rejects.toThrow(/not in the registry.*other-agent/);
+  });
+
+  it("calls materializeAgent when agent-ref resolves", async () => {
+    const agent = { name: "research-veteran", description: "d", persona: "p" };
+    const mockRegistry = {
+      get: vi.fn().mockResolvedValue(agent),
+      list: vi.fn().mockResolvedValue([agent]),
+    } as never;
+    const fakeBlock = { kind: "generator" as const, config: {} } as any;
+    const mockMaterialize = vi.fn().mockReturnValue(fakeBlock);
+    const result = await materializeWorker(
+      "vet",
+      { agentRef: "research-veteran", agentOverrides: { model: "fast" } },
+      deps({ agentRegistry: mockRegistry, materializeAgent: mockMaterialize as any }),
+    );
+    expect(result).toBe(fakeBlock);
+    expect(mockMaterialize).toHaveBeenCalledWith(agent, expect.objectContaining({
+      shape: "worker",
+      workerKey: "vet",
+      overrides: { model: "fast" },
+    }));
+  });
+});
+
+describe("buildUserMessage", () => {
+  it("renders the addTask input payload so it reaches the worker's turn", () => {
+    // The addTask tool advertises `input` as "handed to the worker"; a skill
+    // that plans `addTask({ goal, input: { subject } })` must actually see it.
+    const msg = buildUserMessage({
+      taskId: "t1",
+      goal: "Research the company",
+      input: { subject: "ACME Corp", depth: "deep" },
+      attempts: 0,
+    } as never);
+    expect(msg).toContain("Task: Research the company");
+    expect(msg).toContain("Input:");
+    expect(msg).toContain("ACME Corp");
+    expect(msg).toContain("deep");
+  });
+
+  it("renders a string input inline without JSON wrapping", () => {
+    const msg = buildUserMessage({
+      taskId: "t1",
+      goal: "g",
+      input: "just a string",
+      attempts: 0,
+    } as never);
+    expect(msg).toContain("Input: just a string");
+  });
+
+  it("omits the input line when no payload was attached", () => {
+    const msg = buildUserMessage({ taskId: "t1", goal: "g", attempts: 0 } as never);
+    expect(msg).not.toContain("Input:");
+  });
+});

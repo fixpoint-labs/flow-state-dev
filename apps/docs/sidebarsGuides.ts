@@ -7,6 +7,16 @@ const sidebars: SidebarsConfig = {
     "nextjs-setup",
     "development-tips",
     "building-agents",
+    {
+      type: "category",
+      label: "Orchestration",
+      items: [
+        "building-a-research-team",
+        "board-lifecycle",
+        "create-your-own-pattern",
+        "agents-command-the-board",
+      ],
+    },
     "human-in-the-loop",
     "prompts-as-markdown",
     "trading-desk-walkthrough",

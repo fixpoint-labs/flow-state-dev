@@ -561,7 +561,7 @@ const saveResult = handler({
 });
 ```
 
-`ctx.parent` is `undefined` at the root level (the flow's top-level action block).
+`ctx.parent` is `undefined` at the root level (the flow's top-level action block). This covers identity and input only — for reading a parent's *state*, see [Block State](/docs/advanced/block-state).
 
 ## Blocks are composable
 

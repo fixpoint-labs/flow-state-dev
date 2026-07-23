@@ -34,7 +34,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskWorkerInput,
-} from "@flow-state-dev/tasks";
+} from "@flow-state-dev/orchestration";
 import { reviewerVerdictSchema, type ReviewerInput } from "../schemas";
 import { legacyWorkerAdapter } from "./legacy-worker-adapter";
 

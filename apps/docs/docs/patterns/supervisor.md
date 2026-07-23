@@ -19,7 +19,7 @@ If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent e
 ```
 goal
   → captureAndPlan            (store goal, run planner, seed taskBoard collection)
-  → board.block               (drain — each worker runs the per-task review chain)
+  → board.drain               (drain — each worker runs the per-task review chain)
   → cascadeSkipDependents     (.tap — cancel pendings whose deps errored)
   → labelFailedReviews        (.tap — label terminal errored tasks by failure category)
   → synthesize                (build { goal, results } and run the synthesizer)
@@ -269,8 +269,9 @@ The synthesizer receives `{ goal: string, results: unknown[] }` where `results` 
 
 ## See also
 
-- [Task Board](./task-board) — the substrate that powers Supervisor's worker dispatch
+- [Task Board](../orchestration/task-board) — the substrate that powers Supervisor's worker dispatch
 - [Parallel Tasks](./parallelTasks) — fan-out without per-task review
 - [Round Robin](./round-robin) — fixed-roster turn-taking with a judge, no per-task retry
 - [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution with optional replanning
+- [GoalSeekLoop](../orchestration/goal-seek-loop) — the board-level judge loop Supervisor is deliberately *not* built on (its review is per-task, a different axis)
 - [Patterns Overview](./overview) — when to use which pattern

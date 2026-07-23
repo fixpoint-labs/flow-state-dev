@@ -128,6 +128,36 @@ export const policyDecisionSchema = z.object({
 
 export type PolicyDecision = z.infer<typeof policyDecisionSchema>;
 
+/** The evidence-sufficiency decision mirror (FIX-781), derived at commit from the
+ *  valuation-spine + reward-to-risk evidence bases + the deterministic
+ *  `criticalDataThin` signal — the `computeEvidenceGate` result plus the pre-gate
+ *  size/action for attribution. Null on a legacy run (pre-feature). Mirrors the
+ *  `mandateDecision` / `policyDecision` shape. */
+export const evidenceDecisionSchema = z.object({
+  /** `insufficient-evidence` = the run may not add new exposure. */
+  verdict: z.enum(["sufficient", "insufficient-evidence"]),
+  spineEvidenceBasis: z.enum(["sufficient", "thin"]).nullable(),
+  spineLowConfidence: z.boolean(),
+  rewardToRiskEvidenceBasis: z.enum(["sufficient", "thin"]).nullable(),
+  /** Deterministic missing-substrate signal — any primary financial input was
+   *  `source: "unavailable"` (derived from the tool markers, never the LLM). */
+  criticalDataThin: z.boolean(),
+  /** The commit clamped `targetWeightPct` down to the current weight. */
+  sizeClamped: z.boolean(),
+  /** initiate/add was downgraded to hold. */
+  actionDowngraded: z.boolean(),
+  /** False when the current weight was unknown (held-unpriced) → the numeric
+   *  clamp was SKIPPED (the action downgrade still enforces the no-add). */
+  currentWeightKnown: z.boolean(),
+  /** The size entering the evidence gate — after the FIX-752 + FIX-761 clamps —
+   *  so a clamp is attributable to the evidence layer specifically. */
+  preGateEvidenceTargetPct: z.number(),
+  /** The action entering the evidence gate (the post-FIX-761 `gatedAction`). */
+  preGateEvidenceAction: z.enum(["initiate", "add", "trim", "exit", "hold"]),
+});
+
+export type EvidenceDecision = z.infer<typeof evidenceDecisionSchema>;
+
 /** Structured memo body the renderer dispatches on. Mirrors the Claude Design
  *  handoff's `Thesis` shape so the same component renders fixture and live
  *  outputs identically. Fields are nullable while the memo is `pending` or
@@ -408,6 +438,10 @@ export const memoStateSchema = z.object({
   // would be stripped by `safeParse` (the `mandateDecision` precedent), so it is
   // modeled here.
   policyDecision: policyDecisionSchema.nullable().default(null),
+  // Evidence-sufficiency decision mirror (FIX-781), projected onto the PM memo at
+  // commit so the PmHero evidence block reads the verdict + clamp flags from one
+  // place. Null on a legacy run (pre-feature); always written on new completed runs.
+  evidenceDecision: evidenceDecisionSchema.nullable().default(null),
 });
 
 export type MemoState = z.infer<typeof memoStateSchema>;

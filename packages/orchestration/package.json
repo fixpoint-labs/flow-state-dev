@@ -1,0 +1,91 @@
+{
+  "name": "@flow-state-dev/orchestration",
+  "version": "0.0.0",
+  "description": "Orchestration substrate for flow-state-dev: task collections, dispatchers, the task-board primitive, and the skills runtime.",
+  "keywords": [
+    "ai",
+    "agents",
+    "llm",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "orchestration",
+    "tasks",
+    "task-board",
+    "skills",
+    "dispatch"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/orchestration"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./tasks": {
+      "types": "./dist/tasks/index.d.ts",
+      "default": "./src/tasks/index.ts"
+    },
+    "./task-board": {
+      "types": "./dist/task-board/index.d.ts",
+      "default": "./src/task-board/index.ts"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./tasks": {
+        "types": "./dist/tasks/index.d.ts",
+        "default": "./dist/tasks/index.js"
+      },
+      "./task-board": {
+        "types": "./dist/task-board/index.d.ts",
+        "default": "./dist/task-board/index.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "vitest": "^3.2.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

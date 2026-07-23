@@ -6,12 +6,13 @@ These instructions define the collaboration protocol for agent-driven work in th
 
 At the start of a new conversation in this repo, read:
 
+- `docs/philosophy.md` — how we build FSD: the tenets (the apex of the grounding)
 - `CLAUDE.md` — project orientation and key constraints
 - `docs/contributing/best-practices.md` — implementation standards (the active BPs at the top of that file)
 - `docs/contributing/architecture-reference.md` — quick reference for locked contracts
 - Relevant docs in `docs/architecture/` for the task at hand
 
-**Authority order**: `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins.
+**Authority order**: `docs/philosophy.md` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file. When two in-repo docs disagree, the more specific one wins; when code and grounding disagree with no doc to settle it, that is a philosophy gap to surface, not to route around.
 
 ## Wave execution protocol
 
@@ -44,6 +45,35 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 - Do not reference wave labels in runtime code or tests.
 - Keep exported API surfaces documented with concise, high-signal comments.
 - Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
+- **Working memory is session-only — never commit it.** Orchestration state (the fleet board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it.
+
+> **Orchestration reference.** How the fleet, epics, and issue lifecycles compose — roles, gates (draft→ready, `spec approved`, `epic approved`), and the epic-spec — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it.
+
+## Model tiering — match the model to where judgment lives
+
+We front-load architectural judgment (spec authoring, the coherence / Philosophy-Skeptic review lens, the challenger). Once the decisions are made, execution and fetching are the token-heavy, low-judgment bulk — run those on cheaper models. The rule:
+
+**Opus coordinates and judges · Sonnet executes decided work · Haiku fetches and scouts.**
+
+| Tier | Model | Roles |
+|---|---|---|
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `issue-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`audit-coherence`) + **restraint** (`second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour |
+| Mechanical | **Haiku** | read-only orientation (`scout` / `zoom-out`), status/handle fetches (fleet & lifecycle refreshes), simple lookups, boilerplate/formatting |
+
+**The guardrail that makes downgrading safe:** a cheaper-tier worker *escalates a genuine un-decided decision rather than inventing one*. `spec-implementer` (Sonnet) stops and reports a blocker when it hits an architectural fork the spec didn't settle; `scout` (Haiku) returns facts and defers any judgment. Downgrade only where the decision is already made — never where the work is still deciding.
+
+**Upward escalation — first-class, slice-only, and human-gated.** The default judgment tier is Opus, and it does *not* escalate a whole phase to a costlier model. But when Opus hits a *single, bounded* decision it judges genuinely beyond it — one where both horns are defensible on the tenets and being wrong is expensive to reverse — it may escalate **that one decision** to a **Fable** sub-agent, passing only the *slice*: the specific fork, the options, and the context needed to decide. Never the whole task. Fable returns an adjudication; the owning agent still decides and surfaces to the human — Fable advises, it does not decide. Three guards, in order:
+
+- **Structural (anti-over-escalation).** Escalation *requires* isolating the decision to a self-contained slice. If it can't be reduced to a slice, it isn't a Fable call — it's ordinary work, or a human escalation.
+- **Human approval (cost).** Fable is a paid escalation and is **never invoked automatically.** The owning coordinator surfaces the proposal — the slice, why it's Fable-worthy, and the rough cost — and waits for a yes (`AskUserQuestion`) before spawning it. A sub-agent that can't prompt (a worker, a review lens) *proposes* the escalation in its report and hands the slice up; the coordinator owns the ask. The human declining is also the over-escalation backstop — if the agent over-proposes, nothing is spent. Approval is per-invocation while we learn whether Fable earns its premium.
+- **The asymmetry is deliberate.** This is the top tier's counterpart to the downward guardrail: an *executor* that hits a decision beyond it **stops and reports** to the owner (never resolving it inline, which would bypass the spec/human gate); the *owner* (Opus) escalates a slice to Fable. We do **not** add inline Sonnet→Opus or Haiku→Sonnet escalation — the executor's job is to surface the fork, not resolve it with a borrowed brain.
+
+First trial surface: the single hardest conflict in `cross-spec-review` (it flags a `fable-candidate`; the fleet obtains approval and invokes). Whether Fable earns its premium is *measured* by the cycle-ledger (`distill-lessons`), not assumed.
+
+Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`scout`** (Haiku), **`issue-manager`** (Sonnet — files/organizes Linear issues for discovered gaps and blockers; see below).
+
+**File discovered work, don't scope-creep it.** When work surfaces a gap, a follow-up, or a blocker that isn't the current task's job, file it through the **`issue-manager`** agent (related to the current issue, in the current project — it duplicate-checks, writes it PM-shaped, wires blocked-by/blocks/relates/parent, and returns a ready/blocked verdict). Under the fleet, a filed *unblocked, related* issue can be pulled into the active set (still gated at its own spec-approval).
 
 ## Verifying flow changes during development
 

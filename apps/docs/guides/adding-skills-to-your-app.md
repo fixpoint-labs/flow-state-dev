@@ -19,7 +19,7 @@ This guide assumes you already have an app with a generator that takes a user me
 ## Step 1: Install the package
 
 ```bash
-pnpm add @flow-state-dev/skills
+pnpm add @flow-state-dev/orchestration
 ```
 
 Everything lives there — the capability factory, the directory reader, and the primitives under it.
@@ -79,7 +79,7 @@ In the module where you define your capabilities, load the directory:
 
 ```ts
 // lib/capabilities.ts
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
+import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search, fetch, crawl } from "@flow-state-dev/tools";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -164,7 +164,7 @@ import {
   createSkillActivator,
   createSkillsCapability,
   readSkillsDirectory,
-} from "@flow-state-dev/skills";
+} from "@flow-state-dev/orchestration";
 
 // ... readSkillsDirectory + tools as before ...
 
@@ -193,7 +193,7 @@ export const assistant = generator({
   prompt: "You are a helpful assistant. Active skills override defaults.",
   // The active-skill body formatter (in the `context` preset) stays on,
   // so matched skills still get their body injected.
-  uses: [skillsCap.presets({ runSkill: false })],
+  uses: [skillsCap.with({ runSkill: false })],
 });
 ```
 
@@ -326,28 +326,9 @@ The seeding step runs once per collection lifetime — after the initial seed, b
 
 If you want to ship skill updates alongside code, the pattern most apps use is: edit the source file, bump a version, and run a migration that overwrites the resource content. The Skills package doesn't prescribe this; it just persists what's in the collection.
 
-## Step 10 (optional): Fork mode for isolated tasks
+## Step 10 (optional): Delegate to sub-workers
 
-Some skills are better as one-shot investigations than as guidance the agent carries forward. Add `context: fork` to the frontmatter:
-
-```markdown
----
-description: Deep research on a topic. Returns a structured report.
-context: fork
-allowed-tools: [search, fetch, crawl]
----
-
-# Research
-
-Given the topic: $ARGUMENTS
-
-Search broadly, fetch the most promising sources, and return a structured
-report with: background, key findings, open questions.
-```
-
-The `runSkill` router spawns a sub-agent generator (the framework's own `generator` block with `itemVisibility: { client: true, history: false }`) running the skill body as its system prompt with only the listed tools. The sub-agent's tool calls and streaming output reach the client for DevTool observability, but don't appear in the parent's conversation history.
-
-The parent sees only a single `runSkill` tool call with the sub-agent's final text as its result.
+Some skills are better handled by a small team than a single agent. A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool when it's bound to a generator. The generator assigns work as tasks (`addTask` with an `assignee` naming one of the skill's agents, `deps` to order them) and runs the whole graph by calling `runBoard`. The board runs the agents — there is no per-agent tool the generator calls by hand. See [Delegation](/docs/skills/delegation) for the frontmatter shape and the board overrides.
 
 ## Verifying it works
 

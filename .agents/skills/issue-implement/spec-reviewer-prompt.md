@@ -54,6 +54,16 @@ Agent tool (general-purpose):
       check is end-to-end and meant to run after integration (the orchestrator
       runs it). In those cases verify the documented justification or deferral
       instead of demanding a check.
+    - **Was red actually demonstrated?** For every new behavioural test or
+      regression test, the implementer's report must include the actual
+      failing output captured before the fix/implementation existed, plus
+      the passing output after. "Tests pass" with no failing-output evidence
+      is not proof the test verifies anything — FAIL it and require the
+      implementer to re-demonstrate red (write-test-first, or temporarily
+      revert the fix and re-run) before accepting. Exceptions: pure
+      characterization/parity work holding pre-existing tests green across
+      a swap, and trivial mechanical edits with no behavioural surface —
+      neither needs red evidence.
 
     **Extra/unneeded work:**
     - Did they build anything not in the spec?

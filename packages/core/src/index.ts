@@ -90,7 +90,6 @@ export type {
 export type {
   InitialSkill,
   MatchedSkill,
-  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -99,9 +98,8 @@ export type {
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
-  TaskInitYaml,
   ToolCatalog,
-  WorkerSpec,
+  AgentSpec,
 } from "./types/skill";
 
 export type {
@@ -117,6 +115,7 @@ export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,
+  ConfigArgOf,
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
@@ -125,6 +124,7 @@ export type {
   PresetOverrides,
   UsesEntry,
   UsesSlot,
+  WithArg,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";

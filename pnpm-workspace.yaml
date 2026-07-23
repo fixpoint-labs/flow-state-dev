@@ -2,5 +2,6 @@ packages:
   - packages/*
   - apps/*
   - examples/*
+  - examples/guides/*
   - labs/*
   - goals

@@ -314,7 +314,7 @@ const board = taskBoard({
   initialTasks: tasks.map(t => ({ id: t.id, goal: t.goal, assignee: "default" })),
 });
 
-// board.block plugs into a sequencer; task-change + task-board-meta items
+// board.drain plugs into a sequencer; task-change + task-board-meta items
 // are emitted automatically as tasks move through pending → in_progress → completed/errored.
 ```
 

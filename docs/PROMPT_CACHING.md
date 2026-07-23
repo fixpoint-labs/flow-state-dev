@@ -24,7 +24,7 @@ Call paths inspected:
 |-----------|----------|---------------|
 | `generator()` | `packages/core/src/blocks/generator.ts` | No |
 | `utility.*` (analyzer, summarizer, classifier, router, advisor, etc.) | `packages/core/src/utility/*.ts` | No — all build on top of `generator()` |
-| `@flow-state-dev/skills` context injection | `packages/skills/src/context-fn.ts` | No — composed through `generator()` |
+| `@flow-state-dev/orchestration` context injection | `packages/orchestration/src/skills/context-fn.ts` | No — composed through `generator()` |
 | `@flow-state-dev/patterns` (supervisor, plan-and-execute, blackboard, reactive blackboard, etc.) | `packages/patterns/src/*.ts` | No — all use the generator block |
 | Kitchen-sink app, hello-chat example | `apps/kitchen-sink`, `examples/hello-chat` | No |
 

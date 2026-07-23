@@ -59,20 +59,41 @@ Capabilities can declare other capabilities they depend on. Those dependencies i
 
 ## Configuring presets
 
-A capability can ship with named presets that toggle pieces of its behavior. The default usually does the right thing, but you can opt parts in or out.
+A capability can ship with named presets that toggle pieces of its behavior. The default usually does the right thing, but you can opt parts in or out. Set them with `.with()`:
 
 ```ts
 // Default — recent context and tools are both active
 uses: [memoryCapability]
 
 // Read-only generator — turn off the tools preset
-uses: [memoryCapability.presets({ tools: false })]
+uses: [memoryCapability.with({ tools: false })]
 
 // Swap to full context instead of recent
-uses: [memoryCapability.presets({ recentContext: false, fullContext: true })]
+uses: [memoryCapability.with({ recentContext: false, fullContext: true })]
 ```
 
-Each capability documents which presets it ships with and what they do. If you pass a preset name that doesn't exist on the capability, you get an error at factory time.
+Each capability documents which presets it ships with and what they do. Passing an unknown preset name to `.presets()` errors at factory time; passing `.with()` a key that matches neither a preset nor a config field errors at the `.with()` call site — so a misspelled preset name fails loud instead of silently slipping into config.
+
+## Configuring open config
+
+Presets are on/off switches. Some capabilities also accept a typed **value** — a list, a limit, a field name. Pass it through the same `.with()`:
+
+```ts
+// A capability that accepts a list of allowed skills:
+uses: [skills.with({ allowed: ["research", "summarize"] })]
+```
+
+`.with()` takes preset toggles and config values in one flat object, routing each key to the right place — a key that names a preset toggles it, everything else is config:
+
+```ts
+uses: [skills.with({ allowed: ["research"], dynamicActivation: true })]
+```
+
+The value is validated against the capability's schema — a wrong shape is a build-time error. One thing to watch: using the **same** capability more than once in a block with **conflicting** config values throws (config carries values, so the framework won't silently pick one). Pass identical config, or configure it in a single place.
+
+Under `.with()` are the two primitives the capability author defines: `.presets({ name: true/false })` for the toggles and `.config(value)` for the typed value. They compose directly too — `skills.config({ allowed: ["research"] }).presets({ dynamicActivation: true })`, in either order — when you want to be explicit about which surface you're touching. `.with()` is that composition in one call.
+
+Each capability documents the config it accepts. See [authoring open config](/docs/advanced/capabilities-authoring#open-config-with-a-resolver) to write one.
 
 ## Parameterized capabilities
 
@@ -126,7 +147,7 @@ Capabilities are validated at factory time, so most install mistakes show up bef
 
 When a block lists a capability in `uses`, the framework reflects the capability's declared schemas into the block's `ctx` types at factory time. You don't need to re-declare what the capability already claims.
 
-The four axes where this flows:
+The axes where this flows:
 
 | Capability field | Where it appears in `ctx` |
 |---|---|
@@ -134,8 +155,11 @@ The four axes where this flows:
 | `sessionResourceSchemas` / `sessionResources` | `ctx.session.resources.*` |
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
+| `stateSchema` | `ctx.self.state` |
 
-If the block declares its own schema for the same axis, both are merged. The block's own declaration wins on key collision.
+If the block declares its own schema for the same axis, both are merged. For most axes the block's own declaration wins on key collision; `stateSchema` is stricter — a field declared by both a capability and the block (or by two capabilities) must be the *same schema reference*, or the build throws instead of silently picking one side. To share a field deliberately, both sides reference one schema constant (the same rule `ctx.targets` and resources already use). `ctx.targets`, `ctx.sequencer`, and `ctx.self` here are three of [block state](/docs/advanced/block-state)'s four addressing modes — the remaining one, `ctx.parent`, addresses the immediate parent's state, which a capability can't declare into (it isn't the parent's own capability).
+
+Type inference reflects the capability's **top-level** schema declarations. A schema contributed only through a preset (or the open-config resolver) still merges at runtime — the container works and `ctx.self` is populated — but it isn't reflected in the block's `ctx` types, so declare the schema at the capability's top level when you want it typed without re-declaring it on the block.
 
 Here's a concrete example. A capability declares session state with a `ticker` field. A handler lists it in `uses` and reads `ticker` without declaring anything itself:
 

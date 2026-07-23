@@ -6,21 +6,22 @@
  * worker by default), and an evaluator decides whether to replan and
  * re-enter the board for another drain.
  *
- * Pipeline (post-FIX-447 migration onto the taskBoard substrate):
+ * Expressed on the `goalSeekLoop` primitive (FIX-910). The pattern supplies the
+ * loop's slots and `goalSeekLoop` assembles the judge-gated drain loop:
  *
- *   captureAndPlan
- *     → board.block                   ← loopBack target
- *     → cascadeSkipDependents
- *     → evaluatePlanProgress
- *     → .stepIf(decision === "replan", replanner)
- *     → .stepIf(Array.isArray(tasks), applyReplan)
- *     → .map(d => { decision: d.decision ?? "continue" })
- *     → .loopBack(board.block.name, { when: decision !== "complete" })
- *     → synthesize
+ *   seed:      synthesizeGoal? → stampOuterGoal → captureAndPlan
+ *   afterDrain: cascadeSkipDependents
+ *   judge:     evaluator → (replanner on replan-without-tasks) → Verdict
+ *   finalize:  synthesize
+ *   onError:   "fail"   (an evaluator throw propagates, as before)
  *
- * The board is request-backed (`{ backing: "request", collectionId:
- * name }`) so the same TaskCollection survives across `board.block`
- * re-entries inside the replan loop. Per-worker concurrency defaults to
+ * The replan branch stays *inside* the judge adapter (not `goalSeekLoop`'s
+ * generic `replanner` slot) because P&E's public `replanner` contract is fed the
+ * evaluator's full output, which the normalized `Verdict` would drop.
+ *
+ * The board uses the default request backing (`{ collectionId: name }`)
+ * so the same TaskCollection survives across `board.drain` re-entries
+ * inside the replan loop. Per-worker concurrency defaults to
  * 1 to preserve the legacy single-stream-per-step semantic; bump
  * `maxConcurrency` to fan out independent steps within a single drain.
  *
@@ -30,7 +31,8 @@
  * legacy status translation.
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/tasks";
+import { flowPolicy } from "@flow-state-dev/orchestration";
+import type { TaskInit } from "@flow-state-dev/orchestration";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,
@@ -43,7 +45,12 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard, createCascadeSkipDependents } from "../task-board";
+import {
+  taskBoard,
+  createCascadeSkipDependents,
+  goalSeekLoop,
+  type Verdict,
+} from "@flow-state-dev/orchestration/task-board";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
@@ -53,7 +60,6 @@ import {
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { resolveGoalSynthesisStep } from "../shared/planning-entry";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
-import { createApplyReplan } from "./blocks/apply-replan";
 import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
 
 // ---------------------------------------------------------------------------
@@ -90,7 +96,7 @@ export { createCaptureAndPlan } from "./blocks/capture-and-plan";
 export { createApplyReplan } from "./blocks/apply-replan";
 // Re-exported from the task-board substrate (its true home, FIX-631) to
 // preserve plan-and-execute's public subpath API.
-export { createCascadeSkipDependents } from "../task-board";
+export { createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 export {
   createSynthesize,
   createBuildPlanOutput,
@@ -687,7 +693,7 @@ export function planAndExecute<
   // `cascadeSkipDependents` after the drain.
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",
@@ -702,20 +708,15 @@ export function planAndExecute<
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });
-  const applyReplan = createApplyReplan({
-    name,
-    maxAttemptsPerTask,
-    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
-  });
   const synthesize = createSynthesize({ name, synthesizer });
 
-  // ------- Assemble pipeline -----------------------------------------------
+  // ------- Assemble on goalSeekLoop (FIX-910) ------------------------------
 
   // captureAndPlan stamps `goal` on its OWN inner sequencer state — that
-  // doesn't reach the outer pipeline's state where evaluator and synthesize
+  // doesn't reach the loop-owner state where the evaluator and synthesize
   // read from. Mirror the goal here so downstream blocks see it. When goal
   // synthesis ran first, the chain value carries the synthesized goal, so
-  // this stamps the synthesized goal into the outer state too (FIX-827).
+  // this stamps the synthesized goal into the loop state too (FIX-827).
   const stampOuterGoal = handler({
     name: `${name}-stamp-outer-goal`,
     inputSchema: planAndExecuteInputSchema,
@@ -725,40 +726,68 @@ export function planAndExecute<
     },
   });
 
-  // Loosely typed so the optional synthesis prefix can change the chain shape.
-  let pipeline: any = sequencer({
-    name,
+  // Seed (the loop's produce step): optional goal synthesis, then stamp the
+  // goal, then plan + seed the board. No `stateSchema` here so the inner blocks
+  // resolve `ctx.sequencer` up to the loop-owner container (where `goal` lives).
+  let seed: any = sequencer({
+    name: `${name}-plan`,
     inputSchema: planAndExecuteInputSchema,
-    stateSchema: planAndExecuteStateSchema,
   });
-  if (synthesizeGoalStep !== undefined) pipeline = pipeline.step(synthesizeGoalStep);
-  pipeline = pipeline
-    .tap(stampOuterGoal)
-    .step(captureAndPlan)
-    .step(board.block)
-    .tap(cascadeSkipDependents)
+  if (synthesizeGoalStep !== undefined) seed = seed.step(synthesizeGoalStep);
+  seed = seed.tap(stampOuterGoal).step(captureAndPlan);
+
+  // Judge adapter (a block judge, so it receives the raw drain output directly —
+  // preserving a custom evaluator's legacy input): run P&E's evaluator, run
+  // P&E's own replanner on a replan-without-tasks (its legacy contract is the
+  // evaluator's full output, NOT goalSeekLoop's lossy Verdict), then map to a
+  // Verdict. The self-cap reason is keyed on the iteration count both evaluator
+  // variants patch: a `complete` at `iteration >= maxIterations` reports
+  // `max-iterations`, an earlier `complete` reports `converged`.
+  const judgeAdapter = sequencer({ name: `${name}-judge`, inputSchema: z.unknown() })
     .step(evaluator)
-    // Replanner only runs when the evaluator asked for a replan AND
-    // didn't pre-bake the new tasks. Pre-baked `tasks` bypasses the
-    // LLM call and goes straight to applyReplan.
     .stepIf(
       (d: unknown) =>
         (d as { decision?: string }).decision === "replan" &&
         !Array.isArray((d as { tasks?: unknown }).tasks),
       replanner,
     )
-    .stepIf(
-      (d: unknown) => Array.isArray((d as { tasks?: unknown }).tasks),
-      applyReplan,
-    )
-    .map((d: unknown) => ({
-      decision: (d as { decision?: string }).decision ?? "continue",
-    }))
-    .loopBack(board.block.name, {
-      when: (r: unknown) => (r as { decision?: string }).decision !== "complete",
-      maxIterations,
-    })
-    .step(synthesize);
+    .map((out: unknown, ctx): Verdict => {
+      const iteration =
+        (ctx.sequencer?.state as { iteration?: number } | undefined)?.iteration ?? 0;
+      const o = out as { decision?: string; reasoning?: string; tasks?: unknown };
+      // The replanner ran — its output is `{ tasks }` with no `decision`.
+      if (o.decision === undefined && Array.isArray(o.tasks)) {
+        return { decision: "replan", reason: "replan", tasks: o.tasks as TaskInit[] };
+      }
+      if (o.decision === "complete") {
+        return {
+          decision: "done",
+          reason: iteration >= maxIterations ? "max-iterations" : "converged",
+        };
+      }
+      if (o.decision === "replan") {
+        return Array.isArray(o.tasks)
+          ? { decision: "replan", reason: "replan", tasks: o.tasks as TaskInit[] }
+          : { decision: "replan", reason: "replan" };
+      }
+      return { decision: "continue", reason: o.reasoning ?? "continue" };
+    });
 
-  return pipeline as SequencerDefinition<any, any>;
+  return goalSeekLoop({
+    name,
+    inputSchema: planAndExecuteInputSchema,
+    stateSchema: planAndExecuteStateSchema,
+    board,
+    seed,
+    afterDrain: cascadeSkipDependents,
+    judge: judgeAdapter,
+    maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+    maxIterations,
+    finalize: synthesize,
+    // Parity: today's P&E has no rescue around `.step(evaluator)`, so an
+    // evaluator throw must propagate as a request error, not be swallowed as a
+    // judge-error termination.
+    onError: "fail",
+  }) as SequencerDefinition<any, any>;
 }

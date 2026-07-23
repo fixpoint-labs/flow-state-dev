@@ -21,6 +21,7 @@ export const KITCHEN_SINK_MODELS = [
   "vercel/google/gemini-2.5-pro",
   "vercel/zai/glm-5.2",
   "vercel/xiaomi/mimo-v2.5",
+  "vercel/moonshotai/kimi-k3",
 ] as const;
 
 /** Union of accepted gateway model strings for the kitchen-sink. */
@@ -29,6 +30,24 @@ export type KitchenSinkModel = (typeof KITCHEN_SINK_MODELS)[number];
 /** Default model selection when a user has no stored preference. */
 export const DEFAULT_KITCHEN_SINK_MODEL: KitchenSinkModel =
   "vercel/anthropic/claude-sonnet-5";
+
+/** True when `value` is a current catalog model id. */
+export function isKitchenSinkModel(value: string): value is KitchenSinkModel {
+  return (KITCHEN_SINK_MODELS as readonly string[]).includes(value);
+}
+
+/**
+ * Resolve a persisted or client-provided model id to a catalog entry.
+ * Unknown or removed catalog ids fall back to {@link DEFAULT_KITCHEN_SINK_MODEL}.
+ */
+export function coalesceKitchenSinkModel(
+  value: string | null | undefined,
+): KitchenSinkModel {
+  if (value != null && isKitchenSinkModel(value)) {
+    return value;
+  }
+  return DEFAULT_KITCHEN_SINK_MODEL;
+}
 
 /** Friendly labels and descriptions used by the selector dropdown. */
 export const MODEL_LABELS: Record<
@@ -78,5 +97,9 @@ export const MODEL_LABELS: Record<
   "vercel/xiaomi/mimo-v2.5": {
     label: "MiMo V2.5",
     description: "Open-weight, efficient reasoning",
+  },
+  "vercel/moonshotai/kimi-k3": {
+    label: "Kimi K3",
+    description: "Open-weight, agentic long context",
   },
 };

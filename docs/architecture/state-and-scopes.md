@@ -284,6 +284,25 @@ import { createFilesystemStores } from "@flow-state-dev/engine";
 const devStores = createFilesystemStores({ rootDir: "./data", developmentOnly: true });
 ```
 
+## Block-Level State (FIX-914)
+
+The per-execution-scope state container — originally gated to `kind === "sequencer"` — is generalized to any block that declares an own-state `stateSchema`. `config.stateSchema` already meant "this block's own state"; the change lifts the container-creation gate at four call sites (`createExecutionContext.ts`'s `_withExecutionScope`, `sequencer.ts`'s in-flow child dispatch, `executeBlock.ts`'s root dispatch, `tool-executor.ts`'s tool `ExecutionParent`) from `kind === "sequencer"` to "effective `stateSchema` present."
+
+**One runtime primitive, four addressing modes**, all resolving over the same per-scope-node container:
+
+- `ctx.self` — the current block's own container. Bound directly to the current scope node (not via `getTarget`, which resolves by name and can throw `AmbiguousBlockNameError` — `ctx.self` never needs a name).
+- `ctx.parent` — the immediate parent's container, present when the parent has `stateSchema` (checked via `parentChain.previous.parentStateContainer`) — regardless of whether the child declares `parentStateSchema`. `parentStateSchema` is compile-time only today (typing `ctx.parent`'s state ops), mirroring the existing `parentInputSchema`; it doesn't gate runtime access. A child reaches its owner without naming it — the tool → generator write for skill activation is `ctx.parent`, not a new resolver.
+- `ctx.sequencer` — nearest sequencer ancestor (unchanged; already implemented as `getTarget(nearestSequencerName)`).
+- `ctx.targets.<name>` / `getTarget` — a named ancestor (unchanged); a named non-sequencer target now has state if it declared `stateSchema`.
+
+**Fan-out / loop contract:** each `forEach`/`parallel` iteration and each `loopBack`-re-executed body is a fresh scope node → a fresh container → private state per iteration. A loop-owning sequencer keeps its own container across passes, so its `ctx.self` (or a step's `ctx.sequencer`) accumulates. This is emergent from the existing per-scope-node model, not new machinery.
+
+**Router purity:** a router's `execute` can read `ctx.self`/`ctx.parent` but must not write to them — the suspendable-router purity contract (`execution-and-errors.md`) requires resume to re-run `execute` as a pure, read-only function. A preceding `.tap(handler)` performs any write a router-adjacent flow needs recorded.
+
+**Durability boundary (PR1 scope):** block state is in-memory only. Durable checkpoint + suspend/resume persistence for non-sequencer block state is an explicit follow-up — the checkpoint store keys on `provenance.blockInstanceId` (not `item.key`), and retry-stable durability for an arbitrary block needs a path-based storage key, a new `emitStateSnapshot` call site, and suspension stamping/restore on the block's own path. Sequencer checkpoints are unchanged. `state_change` items for non-sequencer containers reuse the existing `scope: "block_instance"` emit path and are transient-by-default in production (`shouldPersistScopeChange`) — not a client-visible projection.
+
+**Capability-contributed own state (FIX-914 PR2):** a capability can contribute to a block's own-state `stateSchema` — the seam a generator capability needs to give its host generator a working `ctx.self` container without the block author declaring `stateSchema` directly (the skills capability's `activeSkills` field, for example). Declared via `defineCapability({ stateSchema: z.object({...}) })` or the same field on a preset; valid on any block kind, since any block can hold state. Capabilities merge together and then with the block's own `stateSchema` via `mergeCapabilityOwnStateWithBlock` (`capability/merge.ts`), which is the collision-detecting counterpart to `sequencerStateSchema`'s `.extend()`-based merge: a field declared by two sources must be the same schema reference or the build throws — the same reference-equality rule the sibling `mergeTargetsInto`/`mergeResourcesInto` use, and no silent last-wins. (Reference-equality rather than a structural comparison, so a nested-object or parse-mode difference can't slip past a shallow check and diverge from the intersected `ctx.self` type.) `resolveCapabilities`'s `mergedSurface.stateSchema` is wired into the block's effective `config.stateSchema` at each factory (`handler`, `generator`, `router`, `sequencer`); type inference (`InferCapabilityOwnState`) intersects into `TSelfState` for handler/generator/router — sequencer capabilities stay runtime-only, matching `SequencerCtx`'s existing untyped `ctx.cap`. Removing the legacy `targetStateSchemas`/`sequencerStateSchema`/`parentStateSchema` declaration-key fragmentation in favor of one consolidated key is a later audit-then-remove issue — the *runtime* unifies onto one container now; the *config surface* still has four schema keys.
+
 ## State Schema Bubbling
 
 Block-level state declarations bubble upward for compatibility checking. This enables:

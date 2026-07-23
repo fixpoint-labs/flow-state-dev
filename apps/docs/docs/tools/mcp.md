@@ -105,6 +105,6 @@ const mcpCap = createMcpCapability({ manager });
 ## Presets
 
 ```typescript
-mcpCap.presets({ guidance: false }); // tools only, no system-prompt block
-mcpCap.presets({ tools: false });    // guidance only (rare — mostly useful for debugging)
+mcpCap.with({ guidance: false }); // tools only, no system-prompt block
+mcpCap.with({ tools: false });    // guidance only (rare — mostly useful for debugging)
 ```

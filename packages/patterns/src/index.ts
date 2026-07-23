@@ -1,5 +1,3 @@
-export { defaultPatternRegistry } from "./skill-registry";
-
 export * from "./rlm";
 export {
   parallelTasks,
@@ -116,46 +114,8 @@ export type {
   Actor,
   EventActorsWorkspaceState,
 } from "./eventActors";
-export {
-  taskBoard,
-  taskBoardStateSchema,
-  taskBoardWorkerStateSchema,
-  claimResultSchema,
-  taskWorkerInputSchema,
-  checkBoardOutputSchema,
-  selectNextReadyTaskOutputSchema,
-  createSeedCollection,
-  createSelectNextReadyTask,
-  createClaimTask,
-  buildWorkerStep,
-  isUniformWorker,
-  packWorkerInput,
-  createRecordSuccess,
-  createRecordError,
-  createCheckBoard,
-  createCascadeSkipDependents,
-} from "./task-board";
-export type {
-  TaskBoardConfig,
-  TaskBoardHandle,
-  TaskBoardSequencerCollectionSpec,
-  TaskBoardRequestCollectionSpec,
-  TaskBoardCollectionFactory,
-  TaskBoardDispatcherInput,
-  TaskBoardState,
-  TaskBoardWorkerState,
-  ClaimResult,
-  CheckBoardOutput,
-  SeedCollectionOptions,
-  SelectNextReadyTaskOptions,
-  SelectNextReadyTaskOutput,
-  ClaimTaskOptions,
-  ClaimTaskOutput,
-  BuildWorkerStepOptions,
-  RecordSuccessOptions,
-  RecordErrorOptions,
-  CheckBoardOptions,
-} from "./task-board";
+// The task-board primitive moved to `@flow-state-dev/orchestration/task-board`.
+// Import it from there directly; the wrapper patterns below build on it.
 export {
   roundRobin,
   roundRobinInputSchema,

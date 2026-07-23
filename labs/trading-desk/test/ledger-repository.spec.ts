@@ -66,6 +66,8 @@ function ev(overrides: Partial<LedgerEventInput> = {}): LedgerEventInput {
     description: null,
     basisUnknown: null,
     proceedsUnknown: null,
+    lotKey: null,
+    closesLotKey: null,
     ...overrides,
   };
 }
@@ -365,6 +367,42 @@ describe("ingestLedgerEvents — position materialization (ledger wins)", () => 
     expect(nvda?.quantity).toBe(10);
     expect(nvda?.costBasis).toBeCloseTo((4 * 500 + 6 * 600) / 10); // 560
     expect(nvda?.acquiredDate).toBe("2026-01-05"); // hold period anchor
+  });
+
+  it("nulls the aggregate cost basis when an imported (keyed) lot lacks basis — not a partial average (D5, FIX-895)", async () => {
+    // A tax-lot import of two keyed lots: one priced, one with blank basis. The
+    // materialized holding basis must be honestly null, not the priced lot's
+    // partial average presented as the whole position's cost.
+    await repo.ingestLedgerEvents(
+      [
+        ev({
+          ticker: "AAPL",
+          tradeDate: "2026-01-01",
+          quantity: 10,
+          unitPrice: 100,
+          amount: -1000,
+          source: "file",
+          externalId: "taxlot:u:AAPL:2026-01-01:1",
+          lotKey: "taxlot:u:AAPL:2026-01-01:1",
+        }),
+        ev({
+          ticker: "AAPL",
+          tradeDate: "2026-02-01",
+          quantity: 5,
+          unitPrice: null,
+          amount: 0,
+          basisUnknown: "import-missing-basis",
+          source: "file",
+          externalId: "taxlot:u:AAPL:2026-02-01:1",
+          lotKey: "taxlot:u:AAPL:2026-02-01:1",
+        }),
+      ],
+      "devuser",
+    );
+    const { holdings } = await repo.getPortfolio("devuser");
+    const aapl = holdings.find((h) => h.ticker === "AAPL");
+    expect(aapl?.quantity).toBe(15); // both lots held
+    expect(aapl?.costBasis).toBeNull(); // honestly unknown, NOT the partial 100 average
   });
 
   it("overwrites a disagreeing snapshot quantity with the ledger-derived position", async () => {
@@ -754,6 +792,48 @@ describe("backfillSplits (FIX-874 follow-up) — provider split backfill", () =>
     const second = await backfillSplits("devuser", repo, stub, "2024-12-31");
     expect(second.inserted).toBe(0);
     expect(second.deduplicated).toBe(1);
+  });
+
+  it("skips a fully-keyed (account, ticker) pair but still backfills another account's unkeyed history in the same ticker (FIX-895)", async () => {
+    // A tax-lot file is already split-adjusted as of export, so a provider split
+    // would double-adjust its synthetic keyed lots — skip such pairs. The skip is
+    // account-local: a second account holding the SAME ticker via unkeyed (OFX/manual)
+    // history still needs its split backfilled.
+    await repo.upsertAccount({ id: "acc-keyed", userId: "devuser", name: "TaxLot", type: "taxable" });
+    await repo.upsertAccount({ id: "acc-ofx", userId: "devuser", name: "OFX", type: "taxable" });
+    // acc-keyed: entirely tax-lot keyed AAPL history.
+    await repo.ingestLedgerEvents(
+      [
+        ev({
+          accountId: "acc-keyed",
+          ticker: "AAPL",
+          tradeDate: "2024-01-02",
+          quantity: 10,
+          unitPrice: 120,
+          amount: -1200,
+          source: "file",
+          lotKey: "taxlot:u:AAPL:2024-01-02:1",
+          externalId: "taxlot:u:AAPL:2024-01-02:1",
+        }),
+      ],
+      "devuser",
+    );
+    // acc-ofx: unkeyed AAPL history.
+    await repo.ingestLedgerEvents(
+      [ev({ accountId: "acc-ofx", ticker: "AAPL", tradeDate: "2024-01-02", quantity: 10, unitPrice: 120, amount: -1200, source: "file", externalId: "ofx-AAPL" })],
+      "devuser",
+    );
+
+    const stub = async (ticker: string) =>
+      ticker === "AAPL" ? [{ date: "2024-06-10", numerator: 10, denominator: 1 }] : [];
+    const report = await backfillSplits("devuser", repo, stub, "2024-12-31");
+
+    // Exactly one split written — for the unkeyed account only.
+    expect(report.inserted).toBe(1);
+    const keyedSplits = (await repo.getLedger("devuser", { accountId: "acc-keyed" })).filter((r) => r.type === "split");
+    const ofxSplits = (await repo.getLedger("devuser", { accountId: "acc-ofx" })).filter((r) => r.type === "split");
+    expect(keyedSplits).toHaveLength(0); // fully-keyed pair skipped
+    expect(ofxSplits).toHaveLength(1); // unkeyed pair still backfilled
   });
 
   it("collects a per-ticker provider failure without aborting the rest", async () => {

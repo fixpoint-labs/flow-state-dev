@@ -2,7 +2,7 @@ import type { StateRef } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { DeclaredResources } from "@flow-state-dev/core";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import { z } from "zod";
 import {
   createExecutionContext,
@@ -71,14 +71,6 @@ export type TestContextRuntime = {
   flow: FlowInstance;
   getItems: () => OutputItem[];
 };
-
-function cloneRecord<TValue extends Record<string, unknown>>(value: TValue): TValue {
-  if (typeof globalThis.structuredClone === "function") {
-    return globalThis.structuredClone(value) as TValue;
-  }
-
-  return JSON.parse(JSON.stringify(value)) as TValue;
-}
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -206,7 +198,7 @@ async function seedStores(options: {
     resources: Record<string, unknown> | undefined
   ): Promise<void> => {
     if (resources === undefined) return;
-    const normalized = toJsonObjectRecord(cloneRecord(resources));
+    const normalized = toJsonObjectRecord(cloneValue(resources));
     for (const [key, value] of Object.entries(normalized)) {
       await options.stores.resourceState.set(scopeType, scopeId, key, value);
     }
@@ -216,7 +208,7 @@ async function seedStores(options: {
     await options.stores.user.set(options.userId, {
       id: options.userId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
+      state: toJsonObject(cloneValue(options.seed.user.state ?? {})),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -229,7 +221,7 @@ async function seedStores(options: {
       id: options.orgId,
       orgId: options.orgId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.org?.state ?? {})),
+      state: toJsonObject(cloneValue(options.seed.org?.state ?? {})),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -245,7 +237,7 @@ async function seedStores(options: {
       orgId: options.orgId,
       metadata: undefined,
       latestRequestId: undefined,
-      state: toJsonObject(cloneRecord(options.seed.session?.state ?? {})),
+      state: toJsonObject(cloneValue(options.seed.session?.state ?? {})),
       version: 0,
       createdAt: now,
       updatedAt: now,
@@ -265,7 +257,7 @@ async function seedStores(options: {
       source: "http",
       status: "in_progress",
       startedAtMs: now,
-      state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
+      state: toJsonObject(cloneValue(options.seed.request.state ?? {})),
       metadata: undefined,
       version: 0,
       createdAt: now,
@@ -298,7 +290,7 @@ function wrapScopeStateOps(
         scope,
         operation,
         args,
-        resultingState: cloneRecord(asRecord(handle.state))
+        resultingState: cloneValue(asRecord(handle.state))
       });
 
       return result;
@@ -330,7 +322,7 @@ function createTargetRef(
       scope: targetState.scope,
       operation,
       args,
-      resultingState: cloneRecord(targetState.value),
+      resultingState: cloneValue(targetState.value),
       targetName: targetState.name,
       targetInstanceId: targetState.instanceId
     });
@@ -341,7 +333,7 @@ function createTargetRef(
     instanceId: targetState.instanceId,
     input: undefined,
     get state() {
-      return cloneRecord(targetState.value);
+      return cloneValue(targetState.value);
     },
     patchState: async (updates: unknown): Promise<boolean> => {
       let changed = false;
@@ -550,7 +542,7 @@ export async function createTestContext<TInput = unknown>(
   const sequencerName = options.sequencer?.name ?? options.sequencerName ?? "sequencer";
   if (options.sequencer !== undefined) {
     targetStateByName.set(sequencerName, {
-      value: cloneRecord(options.sequencer.state),
+      value: cloneValue(options.sequencer.state),
       scope: "block_instance",
       instanceId: `${sequencerName}_instance`,
       name: sequencerName
@@ -559,7 +551,7 @@ export async function createTestContext<TInput = unknown>(
 
   for (const [name, target] of Object.entries(options.targets ?? {})) {
     targetStateByName.set(name, {
-      value: cloneRecord(target.state),
+      value: cloneValue(target.state),
       scope: "request",
       instanceId: `${name}_instance`,
       name

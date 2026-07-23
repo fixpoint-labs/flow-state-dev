@@ -94,6 +94,7 @@ function completedBundle(): RunArtifactsBundle {
     positionCapClamped: null,
     excluded: null,
     preGatePolicyTargetPct: null,
+    evidenceVerdict: null,
     memos: [],
     memoErrors: 0,
   };

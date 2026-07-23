@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Skills
 
-`@flow-state-dev/skills` — Markdown playbooks the agent loads on demand. Each skill is a folder with a `SKILL.md` and (optionally) supporting files. When a skill activates, its body is rendered into the generator's system prompt as specialized instructions for one kind of task.
+`@flow-state-dev/orchestration` — Markdown playbooks the agent loads on demand. Each skill is a folder with a `SKILL.md` and (optionally) supporting files. When a skill activates, its body is rendered into the generator's system prompt as specialized instructions for one kind of task.
 
 ## What a skill is
 
@@ -42,22 +42,26 @@ Skills are not always-on. Something has to decide a skill applies before its bod
 
 Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the preset toggles, and how to compose them.
 
-## Three activation modes
+## What a matched skill does
 
-A skill that has been matched runs in one of three modes, declared in its frontmatter:
+A matched skill is inline instructions. Its substituted body is injected into the parent generator's system prompt on the next step, and the conversation continues in the parent context with the parent's tools. That's the whole model.
 
-- **Inline** (default). The substituted skill body is injected into the parent generator's system prompt on the next step. The conversation continues in the parent context with the parent's tools.
-- **Fork.** Activation spawns a sub-agent — a framework `generator` with `itemVisibility: { client: true, history: false }` — running the skill body with a resolved subset of catalog tools. The sub-agent's tool calls and output stream to the client for live observability but are excluded from the parent's conversation history.
-- **Pattern.** Activation materializes a task board (or any registered pattern) with named workers running in parallel. Use this when a skill is best handled by a small team rather than a single agent. See [Pattern skills](./pattern-skills) for the frontmatter shape and the worker catalog.
+A bound skill can additionally **delegate**: if it declares an `agents:` field, the generator gets a private task board, the `taskTools` to plan on it, and `runBoard` — it assigns the work as tasks (assignees, deps, structured input) and runs the whole graph by draining the board. See [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
 
-Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is collaborating with the agent and wants the guidance to persist. Choose pattern when the work decomposes naturally into independent sub-tasks that can run concurrently.
+Fork mode was removed. A skill no longer runs as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`; a sub-agent that inherits the conversation so far is planned separately.
+
+## Binding skills to one generator
+
+The activation paths above write into session-wide state that every generator in the conversation reads. That's fine for a single agent. In a multi-agent flow it means one agent's skill leaks into another's context, and an activation persists for the rest of the conversation.
+
+When you want a skill to belong to **one** generator — declared where that generator is defined, carried only by it — reach for the per-generator binding: a shared `createSkillsLibrary` plus `generator({ uses: [skills.with({ active, dynamicActivation })] })`. The common case is a one-line declarative `active` list, with no activate/deactivate lifecycle. See [Per-generator binding](./binding) for the full surface.
 
 ## Wiring it up
 
 Add the capability to a generator via `uses:`. The capability installs a skills resource collection plus three presets (all on by default): `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the catalog listing the model reads).
 
 ```ts
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
+import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/orchestration";
 import { search, fetch, crawl } from "@flow-state-dev/tools";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,7 +83,7 @@ export const skillsCap = createSkillsCapability({
 When you adopt up-front activation via `createSkillActivator`, drop the `runSkill` preset at the use site to skip the redundant tool-call path:
 
 ```ts
-uses: [skillsCap.presets({ runSkill: false }), skillActivator, /* ... */]
+uses: [skillsCap.with({ runSkill: false }), skillActivator, /* ... */]
 ```
 
 Then attach it to any generator:
@@ -139,11 +143,10 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 
 | Export | Purpose |
 |--------|---------|
-| `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.presets({ runSkill: false })`. |
+| `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.with({ runSkill: false })`. |
 | `createSkillActivator(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |
-| `createSkillForkGenerator(options)` | The fork-mode generator, for custom wiring. |
 | `inlineActivate` | The inline-mode handler, for custom wiring. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, for tools that build skills programmatically. |
 | `skillActivationSourceSchema`, `matchedSkillSchema` | Runtime Zod schemas mirroring the `SkillActivationSource` / `MatchedSkill` types from `@flow-state-dev/core`. |

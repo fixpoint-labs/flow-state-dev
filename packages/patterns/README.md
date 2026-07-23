@@ -49,6 +49,8 @@ See `apps/kitchen-sink` for a full integration example.
 
 Single-pass fan-out/fan-in orchestration backed by `taskBoard`. Decomposes a goal into sub-tasks, dispatches a worker concurrently for each, and synthesizes the completed results. No feedback loop.
 
+> `parallelTasks` and `planAndExecute` are expressed on the [`goalSeekLoop`](https://flow-state.dev/docs/orchestration/goal-seek-loop) primitive (`parallelTasks` as a single pass, `planAndExecute` as a re-planning loop). Their public factories, config, and output shapes are unchanged.
+
 ```typescript
 import { parallelTasks } from "@flow-state-dev/patterns";
 import { handler } from "@flow-state-dev/core";
@@ -109,7 +111,7 @@ const system = eventActors({
 
 ### Task Board
 
-Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
+Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/orchestration`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains, or when no remaining pending task can be claimed (every pending has a non-`completed` dep — `onIdle: "complete-or-blocked"` default), or when `shouldExit` returns true in `wait` mode.
 
 **Termination modes (`onIdle`)**:
 
@@ -120,7 +122,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures"` field so callers can tell a clean drain from a dep-blocked exit without inspecting `counts`.
 
 ```typescript
-import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";
+import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
 
 const board = taskBoard({
   name: "research-board",
@@ -139,30 +141,30 @@ const board = taskBoard({
   ],
 });
 
-// board.block plugs into a flow as an action; the parent sequencer's
+// board.drain plugs into a flow as an action; the parent sequencer's
 // stateSchema must include taskBoardStateSchema (or the canonical
 // Record<string, Task> at the configured stateKey).
 ```
 
 #### Re-entry across an outer loop
 
-The default `collection: { collectionId: "..." }` puts the `tasks` record on the board's own sequencer state. That state is per-invocation, so calling `board.block` twice from a parent sequencer produces two independent collections. For boards that need to be re-entered — typically a replan loop that calls `board.block` across iterations and adds new tasks between rounds — opt into the request-scoped backing:
+The default backing is request-scoped, so `board.drain` re-entry works out of the box. Omit `collection` (or pass `{ collectionId }` to name it) and the `tasks` record lives on `ctx.request`, surviving every block boundary in the request — including subsequent `board.drain` invocations and adds from a sibling step before the first drain. This is what a replan loop needs: call the board across iterations, add new tasks between rounds, and each drain picks them up.
 
 ```typescript
 const board = taskBoard({
   name: "replan-board",
-  collection: { backing: "request", collectionId: "replan-board" },
+  // request-scoped by default; nothing to restate
   // ...workers, dispatcher, etc.
 });
 ```
 
-The collection then lives on `ctx.request` and survives every block boundary in the request, including subsequent `board.block` invocations. CAS semantics are identical to the sequencer-state default — request-state exposes the same atomic-state surface — so contention safety, retries, and `task-change` emission all work the same. Lifetime is the request, not the session; for cross-request boards, use a caller-supplied factory with a session/user/org-scoped resource collection.
+CAS semantics are identical across backings — request-state exposes the same atomic-state surface — so contention safety, retries, and `task-change` emission all work the same. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
 
 `awaiting_review` is fully supported: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
 
 Workers are first-class block compositions, not callbacks. The pattern composes them via `.step(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `utility.keyedRouter` selects per `task.assignee`; each worker is pre-connected with the `Task → TaskWorkerInput` adapter so the router stays a pure key-keyed dispatch (BP-013).
 
-`createCascadeSkipDependents` is a substrate building block consumers `.tap()` after `board.block`: it transitively cancels any pending task whose deps include an `errored` task (stamping a `"skipped"` label), so dep-blocked pendings reach a terminal status instead of lingering. `planAndExecute` and `supervisor` both wire it this way.
+`createCascadeSkipDependents` is a substrate building block consumers `.tap()` after `board.drain`: it transitively cancels any pending task whose deps include an `errored` task (stamping a `"skipped"` label), so dep-blocked pendings reach a terminal status instead of lingering. `planAndExecute` and `supervisor` both wire it this way.
 
 **Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`, `createCascadeSkipDependents`
 
@@ -286,9 +288,10 @@ Pre-migration workers that declared the legacy `executableTaskSchema` (input sha
 Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally as they run. Synthesizer prompt builders, reviewer input builders, and replanners can read those emissions per-task via `TaskHandle.items()` instead of forcing the worker to pack everything into a structured `outputSchema`.
 
 ```typescript
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
-const collection = getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
+// inside a block's async execute(input, ctx):
+const collection = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
 
 for (const task of collection.list({ status: "completed" })) {
   const items = task.items();
@@ -332,12 +335,6 @@ import {
 ```
 
 The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers have been retired. Patterns that tracked tasks via those helpers should migrate to `taskBoard`.
-
-## Skill-pattern binding
-
-`defaultPatternRegistry` plugs into `@flow-state-dev/skills` so a SKILL.md frontmatter can declare a multi-agent pattern. Wire it via `createSkillsCapability({ patternRegistry: defaultPatternRegistry })`. Eight entries are registered: `task-board`, `plan-and-execute`, `supervisor`, `parallel-tasks`, `coordinator` (deprecated alias for `parallel-tasks`), `routed-specialists`, plus two reserved stubs (`event-actors`, `approval-gate`) that throw clear deferral errors.
-
-Each adapter validates its `pattern-config` block via a strict Zod schema — unknown keys reject at parse rather than silently passing through. See the [pattern skills docs](https://flow-state.dev/docs/skills/pattern-skills) for the full surface.
 
 ## Benchmark adapters
 

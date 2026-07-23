@@ -90,7 +90,7 @@ The trader runs two generators in sequence. First, a fast-model **approach pream
 Reading the upstream thesis happens through a capability. A capability bundles resources, tools, and context formatters; the generator opts in declaratively:
 
 ```ts
-uses: [tradingDesk.presets({ investmentThesis: true })]
+uses: [tradingDesk.with({ investmentThesis: true })]
 ```
 
 That one line means: install the resource that the investment thesis lives in, and format it into the generator's prompt context. No manual wiring of `context: { ... }` functions, no threading the resource through sequencer state. Adding a new generator that needs the thesis is one preset flag.
@@ -118,7 +118,7 @@ export const traderApproachGenerator = createApproachGenerator({
   agentName: PHASE_3_MEMO_KEYS.trader.agentName,
   artifactName: "TradeProposal",
   prompt: TRADER_APPROACH_PROMPT,
-  uses: [tradingDesk.presets({ investmentThesis: true })],
+  uses: [tradingDesk.with({ investmentThesis: true })],
 });
 ```
 
@@ -159,6 +159,12 @@ What the mandate moves is the position size and an explicit worth-it verdict, no
 Three presets ship. This is a demonstration of gating a sizing decision on an explicit, documented standard. It is not production risk governance, and not advice.
 
 The per-run mandate can also inherit from a durable, user-set portfolio policy. That policy is an Investment Policy Statement, a plain record of what the book is aiming for: a target mix across asset classes, standing rules like a maximum weight for any one name or a list of names never to add, and a time horizon. You write it once in the Portfolio view and it sticks. When a run starts, the desk reads it, so the appetite dial can come from the standing policy instead of being picked fresh each time. The standing constraints shape the size too: the recommended weight respects the single-name cap, and an excluded name is never recommended as an add. It is policy-gated sizing for a demo, not a production IPS governance framework, and not advice.
+
+### The evidence gate
+
+The mandate and the portfolio policy are both optional. One sizing rule is not: an evidence-sufficiency gate that runs on every decision. Before the desk can add to a position it checks that the call rests on real evidence. It looks at three things: whether the valuation work was grounded, whether the reward-to-risk figure has an actual distribution behind it, and whether the core financial statements came back. If any one of those is thin or missing, the run may not add exposure. An `initiate` or `add` collapses to a `hold`, and the size is capped at whatever the book already holds.
+
+This exists to keep a data gap from reading as a signal. Missing evidence is not bearish and not bullish. It's absent. So the gate never touches the rating, which stays anchored to whatever the desk could actually observe. It only holds back new money. And because it's derived from the same deterministic checks that produce the valuation spine and the reward-to-risk figure, not from the model's own read of its confidence, it fires the same way every time on the same inputs. It's the cheapest kind of discipline: the desk declines to size up when it can't show its work.
 
 ## Custom instructions and steerability
 

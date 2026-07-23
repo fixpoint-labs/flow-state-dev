@@ -1,28 +1,23 @@
 /**
- * Pattern-skill + real task-board regression.
+ * `taskTools` capability + real task-board composition.
  *
- * Bisection step 2. The companion `pattern-skill-task-tools.test.ts`
- * proved a `uses: [taskToolsCapability]` generator can dispatch addTask
- * in isolation. This test wraps the same generator inside a real
- * `taskBoard()` with `concurrency: 4` — the production shape — so any
- * hang isolates to contention between the discoverer's addTask CAS
- * write and the 3 idle workers' poll-loop CAS writes against
- * `request.atomicState`.
- *
- * The mock fires one `addTask` and then a terminal text. If the run
- * completes, the bug needs something beyond contention (skill
- * activation nesting, multiple addTask in sequence, or the `runSkill`
- * router wrapping). If it hangs, the per-test timeout surfaces it as a
- * fast failure and we have the minimal reproducer.
+ * A `uses: [taskTools]` generator runs inside a production-shape
+ * `taskBoard()` with `concurrency: 4`. The mock fires one `addTask` and then
+ * a terminal text; the board drains its seeded task. The guard is that this
+ * composition of surviving primitives (the task-board substrate and the
+ * agent-callable `taskTools` surface) completes without hanging — any
+ * regression surfaces as a fast per-test timeout failure. Skill pattern/fork
+ * modes were removed in FIX-918; the board here is wired directly, not via a
+ * skill.
  */
 import { describe, expect, it } from "vitest";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import patternSkillTaskBoardFlow from "./fixtures/pattern-skill-task-board-flow";
 import { itemsByType } from "../helpers/assertions";
 
-describe("pattern-skill + task-board dispatch", () => {
+describe("taskTools + task-board composition", () => {
   it(
-    "completes the addTask lifecycle when a uses-capability generator runs inside a 4-worker board",
+    "completes when a uses-taskTools generator runs inside a 4-worker board",
     async () => {
       const result = await testFlow({
         flow: patternSkillTaskBoardFlow,

@@ -179,8 +179,6 @@ The bias analyzer pipeline: `biasDetectAgreement → biasClassify → biasScore 
 
 Six bias types detected: sycophancy, confirmation bias, anchoring bias, authority deference, recency bias, false consensus.
 
-See [Metacognition](/thought-fabric/metacognition) for the full guide.
-
 ## Building custom analyzers
 
 Any block that accepts `{ userInput, response }` and returns an `AnalyzerResult` works. The simplest approach: wrap a generator with a formatting handler.
@@ -281,7 +279,6 @@ const selfCorrectingChat = sequencer({ name: "self-correct", inputSchema: chatIn
 
 ## See also
 
-- [Metacognition](/thought-fabric/metacognition) — full guide to the bias & sycophancy analyzer
 - [Parallel Tasks](./parallelTasks) — single-pass fan-out for independent tasks
 - [Supervisor](./supervisor) — fan-out with quality review loop
 - [Patterns Overview](./overview) — when to use which pattern

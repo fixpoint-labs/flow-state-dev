@@ -22,8 +22,11 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskInit,
-} from "@flow-state-dev/tasks";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "../task-board/blocks/board-meta";
+} from "@flow-state-dev/orchestration";
+import {
+  TASK_BOARD_META_COMPONENT_TYPE,
+  type TaskContextSupply,
+} from "@flow-state-dev/orchestration/task-board";
 
 export interface PlanningEntryStateShape {
   goal?: string;
@@ -34,17 +37,15 @@ export interface PlanningEntryStateShape {
 /**
  * How each task's `context` is populated when the planner didn't supply one
  * (FIX-827). `"goal"` (default) copies the (synthesized) goal into every
- * gap-task — free, deterministic, and the fix for the dropped-data bug; in
- * this mode a planner-emitted `context` always wins and only the gaps are
- * filled. `false` leaves context empty (pre-FIX-827 behavior).
+ * gap-task; `false` leaves context empty; a `BlockDefinition` runs a custom
+ * per-task enricher over `{ goal, tasks }`.
  *
- * A `BlockDefinition` runs once over `{ goal, tasks }` (the tasks include any
- * planner-emitted `context`) and returns `{ tasks }`, so a cheap model or a
- * deterministic step can differentiate per task in a single call. The custom
- * block owns the returned contexts — it is not post-filtered, so it should
- * preserve planner-emitted `context` itself if that's the desired behavior.
+ * The canonical definition now lives in
+ * `@flow-state-dev/orchestration/task-board` (it moved with the lifted
+ * `createApplyReplan`, FIX-910); re-exported here so callers importing it from
+ * `planning-entry` keep working (BP-034).
  */
-export type TaskContextSupply = "goal" | false | BlockDefinition<any, any>;
+export type { TaskContextSupply };
 
 /**
  * Whether to synthesize a self-contained goal from conversation before

@@ -43,7 +43,9 @@ type AddTransactionDialogProps = {
   accounts: AccountState[];
   defaultAccountId: string | undefined;
   /** Persist the event. Parent dispatches `recordLedgerEvent` + refetches. */
-  onSubmit: (event: NewLedgerEvent) => void;
+  /** Persist the event. May REJECT (e.g. the one-source seam 409, FIX-895) — the
+   *  dialog awaits it, renders a rejection as a visible error, and stays open. */
+  onSubmit: (event: NewLedgerEvent) => Promise<void>;
 };
 
 const TYPE_OPTIONS: ReadonlyArray<{ value: LedgerEventType; label: string }> = [
@@ -146,7 +148,7 @@ export function AddTransactionDialog({
     }
   }, [open, defaultAccountId, accounts]);
 
-  const handleSubmit = (): void => {
+  const handleSubmit = async (): Promise<void> => {
     if (accountId.length === 0) {
       setError("Account is required");
       return;
@@ -217,20 +219,26 @@ export function AddTransactionDialog({
     }
     const trimmedDescription = description.trim();
     const trimmedBasis = basisUnknown.trim();
-    onSubmit({
-      accountId,
-      type,
-      tradeDate: tradeDate.trim(),
-      amount: amountNum,
-      ticker: trimmedTicker.length === 0 ? null : trimmedTicker,
-      quantity: signedQuantity(type, quantityNum),
-      unitPrice: unitPriceNum,
-      description: trimmedDescription.length === 0 ? null : trimmedDescription,
-      basisUnknown:
-        type === "transfer" && trimmedBasis.length > 0 ? trimmedBasis : null,
-      attributes: null,
-    });
-    onClose();
+    // Await the persist so a server rejection (the one-source seam 409, FIX-895)
+    // renders as a visible error and the dialog stays open — never a silent close.
+    try {
+      await onSubmit({
+        accountId,
+        type,
+        tradeDate: tradeDate.trim(),
+        amount: amountNum,
+        ticker: trimmedTicker.length === 0 ? null : trimmedTicker,
+        quantity: signedQuantity(type, quantityNum),
+        unitPrice: unitPriceNum,
+        description: trimmedDescription.length === 0 ? null : trimmedDescription,
+        basisUnknown:
+          type === "transfer" && trimmedBasis.length > 0 ? trimmedBasis : null,
+        attributes: null,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not record the transaction.");
+    }
   };
 
   return (
@@ -420,7 +428,7 @@ export function AddTransactionDialog({
           </button>
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             className="rounded bg-[color:var(--c-accent)] px-3 py-1 text-xs font-medium text-white hover:opacity-90"
           >
             Add transaction

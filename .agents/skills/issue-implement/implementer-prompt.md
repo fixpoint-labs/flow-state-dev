@@ -98,6 +98,7 @@ Agent tool (general-purpose):
     - What you implemented
     - What you tested and results
     - **Key decisions you made (with ramifications):** any choice the spec left open that you resolved, any deviation, any tradeoff under a constraint — the decision, the alternative you rejected, and what it locks in or rules out. The orchestrator compiles these across tasks into the PR's top-5. If the task was mechanical with no real decisions, say so.
+    - **Red/green evidence:** for every new behavioural test or regression test you wrote, the actual failing output you captured before the fix/implementation existed, and the passing output after. "Tests pass" alone does not satisfy this — a test never observed to fail proves nothing. If this task is one of the documented exceptions (pure characterization/parity refactor holding pre-existing tests green, or a trivial mechanical edit with no behavioural surface), say so instead of fabricating evidence.
     - **Goal verdict:** for a TDD task, if the spec named a slice-level goal check runnable after this task, the real-model command/path and its PASS/FAIL verdict; if the goal proof is end-to-end, say it's deferred to the orchestrator (don't run it early or invent a PASS). For a Bug task, the real-path confirmation (`fsdev run`) that the user-visible symptom is gone, or "N/A — type/unit-only regression." Mocked specs don't prove the goal.
     - Files changed
     - Self-review findings (if any)
@@ -130,14 +131,22 @@ Correct order:
 1. **Tracer bullet.** Write ONE test for the first behaviour from the
    spec's Testing Strategy, using `@flow-state-dev/testing`'s mock
    context (or `fsdev block` for one-shot block isolation if the spec
-   names that seam). Watch it fail (RED). Write the minimal block /
-   capability / pattern code to make it pass (GREEN).
-2. **Incremental loop.** For each remaining behaviour: RED (one test,
-   fails) → GREEN (minimal code, passes). One test at a time. Don't
-   anticipate future tests. Each test asserts on **observable**
-   behaviour through the public surface — items emitted, state mutated,
-   return values, lifecycle hooks fired. Not internal state, not call
-   order, not intermediate sequencer step shapes.
+   names that seam). Run it and confirm it fails for the intended
+   reason — the behaviour doesn't exist yet, not a typo or import error.
+   Capture the failing output (the actual error or assertion diff); you
+   need it for your report. Only then write the minimal block /
+   capability / pattern code to make it pass (GREEN), run it again, and
+   capture the passing output. Writing the test after the code — or
+   writing test and code together and only checking green — does not
+   satisfy this gate.
+2. **Incremental loop.** For each remaining behaviour: write the next
+   test, run it, confirm it fails for the intended reason, and capture
+   the failing output — then write minimal code, run it, and capture the
+   passing output (RED → GREEN). One test at a time. Don't anticipate
+   future tests. Each test asserts on **observable** behaviour through
+   the public surface — items emitted, state mutated, return values,
+   lifecycle hooks fired. Not internal state, not call order, not
+   intermediate sequencer step shapes.
 3. **For generators specifically.** Use `mockGenerator` from
    `@flow-state-dev/testing` so the model loop is deterministic.
    Assert on the items emitted (`message`, `block_output`, `step_error`,
@@ -209,10 +218,13 @@ loop produce hours of speculative code changes.
    from the NDJSON stream instead of logs.
 5. **Fix + regression test.** Write the regression test BEFORE the
    fix, at the seam the spec named in Testing Strategy (or the
-   correct equivalent if the spec didn't name one). Watch it fail.
-   Apply the fix. Watch it pass. Re-run the Phase 1 feedback loop
-   against the original (un-minimised) scenario to confirm. If no
-   correct seam exists, that itself is the finding — flag it.
+   correct equivalent if the spec didn't name one). Run it and watch
+   it fail — capture the failing output and confirm the failure
+   matches the bug, not a typo or setup error. Apply the fix. Run it
+   again and watch it pass — capture that output too; both go in your
+   report. Re-run the Phase 1 feedback loop against the original
+   (un-minimised) scenario to confirm. If no correct seam exists, that
+   itself is the finding — flag it.
 6. **Cleanup + goal-level proof.** Before reporting:
    - Original repro no longer reproduces
    - Regression test passes

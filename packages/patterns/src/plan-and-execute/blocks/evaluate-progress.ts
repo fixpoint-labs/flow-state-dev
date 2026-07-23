@@ -24,12 +24,12 @@
  */
 import { handler, generator, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrCreateTaskCollection, type Task } from "@flow-state-dev/tasks";
+import { getOrCreateTaskCollection, type Task } from "@flow-state-dev/orchestration";
 import {
   iterationOutputSchema,
   planAndExecuteStateSchema,
 } from "../schemas";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "../../task-board/blocks/board-meta";
+import { TASK_BOARD_META_COMPONENT_TYPE } from "@flow-state-dev/orchestration/task-board";
 
 export const evaluatorOutputSchema = z
   .object({

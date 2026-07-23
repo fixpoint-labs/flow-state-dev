@@ -17,6 +17,12 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 Both disciplines are embedded into the implementer sub-agent prompt at dispatch time. The implementer doesn't choose — this skill picks based on the label and gives them the right shape.
 
+**Red is a gate, not a suggestion.** For any change with observable behaviour, the discipline is not satisfied by writing the test after the code, or writing the test and the fix together and only confirming green. The flow is always: write ONE behavioural test → run it → observe it fail for the intended reason (not a typo, import error, or missing fixture) → write the minimal code → observe it pass. Both the failing output and the passing output are evidence (BP-003) — "tests pass" alone proves nothing if the test was never seen to fail. This applies everywhere this skill drives a code change: Step 5A/5B implementation (tracer-bullet loop, red-before-green per slice) and Step 10.4 fixes made in response to PR review (every regression test shown failing against the un-fixed code first). Step 6's completeness review checks for this evidence, not just green tests.
+
+**Exceptions.** (a) Pure characterization/parity work — swapping an implementation while holding pre-existing tests green (see `tdd` → "When NOT to use TDD") — has no red-green cycle by design; the discipline there is that the parity tests already existed *before* the change and continue to pass, not that anything was ever red. (b) Trivial, mechanical edits with no behavioural surface — config values, docs, renames — don't need a test at all. Anything with observable behaviour (an item emitted, a return value, a state change, a symptom that's now fixed) gets the red gate; when in doubt, treat it as observable.
+
+**Meta-awareness — challenge the spec where the code contradicts it.** The spec did the hard 80% and passed review, but implementation is the first time its assumptions meet real code. At the step boundaries you judge most likely to expose a blind spot — not the trivial ones — run the **challenger** sub-agent (`./challenger-prompt.md`). It asks only whether the code reveals something the spec *misunderstood or didn't realize*; it does not re-litigate a reviewed spec or review quality/scope. On a real blind spot, **surface it**: escalate to the human when available, else take the best-judgment path, fold the correction into the spec, and flag it loudly as a spec deviation in the PR and Linear (never silently force-follow or deviate). A challenged blind spot is prime `distill-lessons` signal.
+
 ## Workflow
 
 **Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `issue-spec`, open or closed) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
@@ -53,18 +59,25 @@ Before starting work, check:
    - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/issue-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
-2. **Dependencies resolved?** Check blocking issues:
+2. **Build Plan present?** A full-workflow spec is authored in two stages (`issue-spec`): Part I ("The Case") ships first in a **draft** spec PR; Part II ("The Build Plan") is authored only after the human promotes that PR to ready-for-review. If the spec is still **Part II-pending** (the `## Part II — The Build Plan` heading is marked *pending*, or the spec PR is still a **draft**), the Case hasn't been approved and there's no plan to implement → **stop** and tell the user to review the draft spec PR and mark it ready-for-review, which triggers the Build Plan; implement only once the full spec is present and signed off. Under `issue-lifecycle` / `issue-fleet` that sign-off is an **approving comment from the user** on the spec PR — mirrored by the orchestrator to the `spec approved` label — which the orchestrator gates on before dispatching this skill; run standalone, your invocation is the approval — but still don't implement a Part II-pending spec. (Bugs and agent-brief issues have no two-stage spec — this check doesn't apply to them.)
+
+3. **Dependencies resolved?** Check blocking issues:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
    - If blockers are "Done" but code isn't on main → check if there's a merged PR. If not, flag it
 
-3. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
+4. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
 
 If all clear, move to Step 3.
 
 ### Step 3: Set Up Branch
 
 1. Ensure main is up to date: `git checkout main && git pull`
-2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID
+2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID.
+   **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one
+   node of the spec's PR plan.) Then use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement
+   **only that sub-PR's deliverables** (not the whole issue), branch off the dependency's
+   branch if it has one (else main), and open that sub-PR. Do **not** close the spec PR
+   per sub-PR — the lifecycle closes it once, when the plan starts.
 3. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
 
    ```bash
@@ -111,7 +124,7 @@ If the area being touched is unfamiliar to you (whether running this skill direc
 
 ### Step 5A: Simple Implementation
 
-Follow the discipline picked at Step 4.1.
+Follow the discipline picked at Step 4.1. As you work, at any boundary that resists the spec's plan or sits on a Part I decision, run the challenger (Core Principles → Meta-awareness; `./challenger-prompt.md`) before committing to that direction. Skip it at trivial boundaries.
 
 **For bugs (`diagnose` discipline):**
 
@@ -124,9 +137,9 @@ Follow the discipline picked at Step 4.1.
 3. Reproduce the bug through the loop. Confirm the failure mode matches what the user described.
 4. Hypothesise: 3–5 ranked falsifiable hypotheses before testing any.
 5. Instrument with `[DEBUG-<short-hash>]` tags so cleanup is a single grep at the end.
-6. Apply the fix.
-7. Write the regression test (Phase 5 of diagnose) at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided.
-8. Run the loop again; verify the original repro no longer reproduces. If the bug was user-visible behaviour (not a pure type/unit regression), confirm the fix through the **real path** too — `fsdev run` against a real model — not only the mocked regression spec, so you've proven the symptom is actually gone.
+6. **Write the regression test before the fix** (Phase 5 of diagnose), at the correct seam — the seam the spec named in Testing Strategy, or the spec's substitute if one was not provided. Run it and confirm it fails for the bug's actual reason, not a typo or setup error. Capture the failing output — you'll need it for the report.
+7. Apply the fix.
+8. Run the regression test again and capture the passing output. Run the loop again; verify the original repro no longer reproduces. If the bug was user-visible behaviour (not a pure type/unit regression), confirm the fix through the **real path** too — `fsdev run` against a real model — not only the mocked regression spec, so you've proven the symptom is actually gone.
 9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
 10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
@@ -136,8 +149,8 @@ Follow the discipline picked at Step 4.1.
 
 1. Read relevant code to understand the area (use `zoom-out` shape if unfamiliar)
 2. List the behaviours to test from the spec's Testing Strategy — observable outcomes through the public surface (items emitted, state changes, return values), not implementation steps
-3. **Tracer bullet**: write ONE test for the first behaviour through `@flow-state-dev/testing`'s mock context → write minimal code to pass → green
-4. **Incremental loop**: for each remaining behaviour, RED (one test, fails) → GREEN (minimal code, passes). One test at a time. Do not write all tests first.
+3. **Tracer bullet**: write ONE test for the first behaviour through `@flow-state-dev/testing`'s mock context. Run it — confirm it fails for the intended reason (the behaviour doesn't exist yet, not a typo or import error) — and capture the failing output. Only then write the minimal code to make it pass, run it again, and capture the passing output.
+4. **Incremental loop**: for each remaining behaviour, RED (write the test, run it, confirm it fails for the intended reason, capture the output) → GREEN (minimal code, run it, capture the passing output). One test at a time. Do not write all tests first, and do not write a test and its implementation together without running the test red first.
 5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
 6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
 7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
@@ -172,11 +185,11 @@ Provide:
 - **Codebase conventions** from AGENTS.md and best-practices.md — universal rules + index inline; situational rule text (e.g. BP-010 react, BP-011–BP-016 blocks/generators/resources) in `docs/contributing/best-practices/<category>.md`
 - **The chosen discipline block** filled into the `[Discipline]` slot
 
-**Model selection:**
-- Mechanical tasks (isolated functions, clear specs, 1-2 files) → `sonnet`
-- Integration tasks (multi-file coordination, pattern matching) → default model
-- Architecture/design tasks (new abstractions, complex patterns) → `opus`
-- Bugs with non-trivial reproduction → default model or `opus` (the diagnose loop benefits from careful reading; sonnet often skips Phase 1)
+**Model selection (per the AGENTS.md model-tiering policy — "Opus judges, Sonnet executes decided work, Haiku fetches"):**
+- **Decided execution** — a well-specified task whose architecture the spec already settled (mechanical or integration) → dispatch the **`spec-implementer`** agent (Sonnet). It escalates any un-decided fork as a blocker rather than inventing it, so judgment stays upstream.
+- **Architecture / design tasks** (a new abstraction, a genuinely open shape the spec left to the implementer) → keep on the **default (Opus)** model; the judgment isn't settled yet.
+- **Bugs with non-trivial reproduction** → **default (Opus)**; the diagnose loop benefits from careful reading (cheaper models often skip Phase 1). Once the repro and fix approach are clear, the mechanical fix itself can go to `spec-implementer`.
+- **Read-only orientation** before a task (a `zoom-out` map, locating callers) → the **`scout`** agent (Haiku).
 
 **Handle implementer status:**
 - **DONE** → proceed to spec review
@@ -185,6 +198,8 @@ Provide:
 - **BLOCKED** → assess and either provide more context, use a more capable model, break the task smaller, or escalate to user
 
 #### 5B.3: Spec Compliance Review (per task)
+
+For a task on a high-risk boundary (it resisted the spec's plan, exposed a checkable assumption, or sits on a Part I decision), **run the challenger first** (`./challenger-prompt.md`) — catch a spec blind spot before the compliance check, since compliance assumes the spec is right. Skip the challenger for mechanical tasks.
 
 After each task, dispatch a spec reviewer sub-agent using `./spec-reviewer-prompt.md`:
 - Provide the spec requirements for this task
@@ -205,38 +220,14 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 
 ### Step 6: Comprehensive Review
 
-This is the critical quality gate. Launch **three review sub-agents in parallel**:
+This is the critical quality gate. **Invoke `review`** on the change (the implementation branch/PR), passing the spec and the Linear category as context. It is the single definition of how we review — the same skill runs standalone — so there is no separate inline panel here. It composes the review lenses as **parallel sub-agents** and returns one deduped, ranked report:
 
-#### Agent 1: Completeness Review (spec compliance)
-Launch a `general-purpose` sub-agent to:
-- Compare the full implementation against every section of the spec
-- Check each acceptance criterion from the spec
-- Verify edge cases from the spec's "Edge Cases" section are handled
-- Confirm the testing strategy from the spec was followed
-- **Confirm the goal was actually proven — when the spec names a goal check.** If the spec's Testing Strategy names a goal check, confirm it was run with a real model and passed (`tdd` → "Two kinds of test"); a green CI suite is not evidence. If it wasn't run, or only mocked specs exist, that is a completeness failure: flag it must-fix and run the goal check before presenting. **Honor a documented skip.** If the spec declares "no goal check applies" (docs-only, pure type/schema/internal refactor, config/build plumbing — per `issue-spec`'s "When a goal check doesn't apply"), confirm that justification still holds — i.e. no user-observable outcome was actually introduced — rather than demanding a check. For bug work, the real-path confirmation is the goal-level proof — Step 5A for simple bugs, Step 5B.4 for complex bugs that route through sub-agents; verify that verdict (wherever it was recorded) instead of a named goal check.
-- Flag anything in the spec that wasn't implemented
-- Flag anything implemented that wasn't in the spec
+- **Coherence** (`audit-coherence`) — does the solution cohere with `docs/philosophy.md` and the surrounding patterns? The apex lens: it catches the "directionally-right spec but the design feels off" failure the others structurally can't. A coherence break usually means reshaping the approach, not patching lines.
+- **Restraint** (`second-look`) — overbuilt / YAGNI / 80-20 / what can be subtracted (BP-038)?
+- **Correctness** — bugs and logic errors + the second-path checklist (BP-035) + the changeset (BP-022).
+- **Completeness** (a spec is in scope) — every spec requirement built and nothing extra, **red demonstrated** (the failing output captured before the fix), and the **goal proven** on a real model (or the documented "no goal check applies" justification; for bugs, diagnose's real-path confirmation).
 
-#### Agent 2: Simplification Review
-Launch a `Plan` sub-agent to:
-- Look for over-engineering: abstractions that aren't justified by the spec's scope
-- Identify unnecessary indirection or complexity (shallow handlers per BP-013, wrapper sequencers per BP-036, BP-014 violations, etc.)
-- Check if any code could be simplified without losing functionality
-- Verify the implementation follows existing codebase patterns rather than inventing new ones
-- Check for YAGNI violations — features or flexibility that wasn't requested
-- **What could this change remove?** (BP-038) — a superseded path left beside the new one, an export/option/config key no caller needs, dead code the change orphaned. Subtraction is part of the change, not a follow-up.
-- Surface **deepening opportunities** the implementation revealed — capability-shaped wiring that wasn't extracted, repeated `.step()` chains that could be a pattern, shallow modules. These do not block the PR; flag them as follow-ups to be handled later via `improve-codebase-architecture`
-- **Key question**: "If I were reading this PR for the first time, what would I find unnecessarily complex?"
-
-#### Agent 3: Quality and Impact Review
-Launch a `superpowers:code-reviewer` sub-agent to:
-- Review code quality: naming, structure, test coverage
-- Check for bugs or logic errors
-- **Run the second-path checklist (BP-035)** against the changed surface: legacy/persisted records, null/empty/boundary inputs and guard-clause order, concurrent/duplicate (409) calls, cancel/error paths, second-tenant key scoping, cost/observability of any new model call, and React derived-state/no-op-render. These are the highest-frequency review-defect classes; treat an unhandled path as must-fix unless explicitly out of scope.
-- Verify adherence to project conventions (AGENTS.md, best-practices.md)
-- Identify if changes affect other parts of the codebase
-- Check documentation needs (architecture docs, READMEs, changeset)
-- For changeset fragments specifically, follow the [Release notes workflow](../../../docs/contributing/release-notes-workflow.md) and BP-022: one user-facing sentence per affected package, no file paths, no test counts, no implementation rationale. Pre-1.0: `patch` or `minor` only, never `major`. If the spec is large, summarize at user-facing depth — don't transcribe the spec into the fragment. Internal-only PRs can use `pnpm changeset --empty`.
+Depth follow-ups (`improve-codebase-architecture`) come back as non-blocking notes. If the area is unfamiliar or large, `review` may run the depth lens too.
 
 #### Process Review Results
 
@@ -252,7 +243,7 @@ Fix all must-fix and should-fix items. Re-run affected tests after fixes.
 First, **compile the Key Decisions & Ramifications (top 5)** — the most consequential decisions made *during implementation* (not the spec's): a shape the spec left open, a deviation, a tradeoff under a constraint the spec didn't anticipate. For each: the decision, the alternative rejected, and the ramification — what it locks in, what it rules out, what risk it carries. If implementation was purely mechanical with no real decisions, say so rather than padding to five. This list is reused verbatim in Step 8 (presentation) and Step 9 (PR body).
 
 Then update the Linear issue:
-- Add a comment summarizing: what was implemented, approach taken, test results, the **goal verdict** (the goal-check command and its PASS verdict; or, when the spec documented no goal check, the justification; or, for bugs, diagnose's real-path confirmation), any deviations from spec
+- Add a comment summarizing: what was implemented, approach taken, test results — including the red/green evidence (the failing output captured before the fix/implementation, then the passing output after) for each new behavioural or regression test, per the confirm-red gate; "tests pass" alone is not sufficient — the **goal verdict** (the goal-check command and its PASS verdict; or, when the spec documented no goal check, the justification; or, for bugs, diagnose's real-path confirmation), any deviations from spec
 - Include the **Key Decisions & Ramifications (top 5)** compiled above — the durable record lives on the issue so the decisions are reviewable async, not just in chat
 - Keep state as "In Progress" until user approves
 
@@ -265,9 +256,9 @@ Present the completed work:
 3. **Changes**: files modified/created with brief descriptions
 4. **Goal verdict**: when the spec named a goal check, the check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked — the proof the goal was met, distinct from the mocked test suite. When the spec documented that no goal check applies, state that and the one-line justification. For bugs, give diagnose's real-path confirmation instead.
 5. **Deviations**: anything that differed from the spec and why
-6. **Test results**: full typecheck and test output
-7. **Review findings**: notable observations from the three reviewers
-8. **Simplifications made**: what the simplification review caught and how it was addressed
+6. **Test results**: full typecheck and test output, plus the red/green evidence (failing output captured before the fix/implementation, passing output after) for each new behavioural or regression test — per the confirm-red gate. "Tests pass" alone is not evidence.
+7. **Review findings**: notable findings from `review` across its lenses (coherence, restraint, correctness, completeness) and how the must-fix / should-fix items were resolved
+8. **Restraint & subtraction**: what the restraint lens (`second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038)
 9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
 Ask the user to review. They may:
@@ -353,13 +344,13 @@ Process each comment in its bucket:
 
 **Actionable code feedback (you agree with the change):**
 
-1. Make the change. For non-trivial feedback, follow the same discipline the PR was built under (TDD for features → add the failing test first; diagnose for bugs → reproduce the regression first).
+1. Make the change. Any test added to address the feedback — a regression test for a bug the reviewer found, a new behavioural test for a requested capability — must be demonstrated failing against the un-fixed code first: write the test before the fix, or if the fix is already written, temporarily revert it and run the test to confirm it fails for the right reason. Only then make it pass. Capture both the failing output and the passing output; you need both for the reply. This is the same discipline the PR was built under (TDD for features → tracer-bullet the test red before green; diagnose for bugs → reproduce the regression first, same red-then-green order) — PR-review fixes don't get a pass on the gate just because they're small.
 2. Run the affected package's typecheck and tests:
    `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 3. Commit with a message that names the feedback being addressed and references the issue:
    `fix: address PR review — {short summary} (FIX-N)`
 4. Push to the PR branch: `git push`
-5. Reply on the comment thread describing exactly what changed, with concrete file references (path:line). For inline review comments, post as a threaded reply so the conversation stays attached to the code:
+5. Reply on the comment thread describing exactly what changed, with concrete file references (path:line), and — for any new test — the red/green evidence (failing output before the fix, passing output after), not just "tests pass." For inline review comments, post as a threaded reply so the conversation stays attached to the code:
 
    ```bash
    gh api -X POST repos/{owner}/{repo}/pulls/{PR}/comments \
@@ -372,7 +363,7 @@ Process each comment in its bucket:
 **Non-actionable code feedback (no change is the right call):**
 
 1. Reply on the thread explaining the decision. Be direct and concrete. Cite the spec, a BP rule (BP-007–BP-016), an architecture doc, or a scope boundary that justifies it.
-2. If the suggestion is a real follow-up that just isn't this PR's job, offer to file a Linear issue and link it in the reply.
+2. If the suggestion is a real follow-up that just isn't this PR's job, dispatch the **`issue-manager`** agent to file a Linear issue for it (related to this one, in the same project; it duplicate-checks and wires relations) and link it in the reply.
 
 **Non-code conversation:**
 
@@ -404,7 +395,7 @@ The skill exits this loop only when the PR is merged or closed.
 - **Sub-agents get full context.** Never make a sub-agent read files to understand their task. Paste the relevant spec sections directly into the prompt.
 - **Sequential implementation, parallel review.** Tasks execute in order (they often depend on prior tasks). Reviews run in parallel (they're independent).
 - **Fix before presenting.** The user should see clean work, not a list of known issues. Fix everything the reviewers flag before Step 8.
-- **Simplification is not optional.** The simplification review exists because agents tend to over-build. Take its findings seriously.
+- **Restraint is not optional.** `review`'s restraint lens (`second-look`) exists because agents tend to over-build. Take its findings seriously — subtraction is part of the change (BP-038).
 - **One shot for simple issues.** Don't spin up sub-agents for a 10-line bug fix. The complexity assessment in Step 4 exists to prevent ceremony overhead on simple work.
 - **Keep Linear updated.** Every state change should be reflected. The whole point is traceability.
 - **Acknowledge before you act.** On every PR re-invocation, react to every new comment with `eyes` *before* deciding what to do with any of them. Reviewers should never wonder whether the agent saw their comment.

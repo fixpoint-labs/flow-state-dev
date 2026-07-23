@@ -134,7 +134,7 @@ export default defineFlow({
 
 **Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
-**Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/tasks` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
+**Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
 
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and per-scope `client` blocks
@@ -190,12 +190,14 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
   - `fns: (ctx) => ({ ... })` — Helper functions exposed at `ctx.cap.{name}.{fn}`, memoized on first access
   - `presets` — Named opt-in/opt-out bundles of any block config surface. Use `.presets({ name: true/false })` to configure
+  - `config: { schema?, resolve }` — Open, typed configuration. The resolver maps a validated value onto a block surface (like a preset, but value-carrying). Consumers pass it with `.config(value)`, which composes with `.presets()` in either order
+  - `.with(bag)` — The normalized consumer builder. Collapses `.config()` and `.presets()` into one flat call: preset-named keys become preset toggles, the rest become the config value. `cap.with({ allowed: ["x"], dynamicActivation: true })` ≡ `cap.config({ allowed: ["x"] }).presets({ dynamicActivation: true })`. `.config`/`.presets` remain the underlying primitives; a preset name colliding with a config field is a `defineCapability()` error
   - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
   - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
 
 **Capability schema forwarding:**
 
-When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The four forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (from presets). Block-own declarations merge in; the block wins on key collision.
+When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
 
 ```ts
 const myCap = defineCapability({
@@ -222,7 +224,7 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 - `bindToolCacheStore(ctx, store)` — Attach a store to a context without going through the capability path.
 - `canonicalizeToolArgs(value)` — Deterministic JSON canonicalizer for custom `keyFn`s that want the substrate's default normalization.
 - Types: `ToolCacheStore`, `ToolCacheEntry`, `ToolCacheAccessor`, `CreateToolCacheCapabilityOptions`.
-- See [Flow policy](https://flow-state.dev/docs/patterns/flow-policy) for the full guide, including when to mark a tool cacheable and how Task Board auto-installs the capability.
+- See [Flow policy](https://flow-state.dev/docs/orchestration/flow-policy) for the full guide, including when to mark a tool cacheable and how Task Board auto-installs the capability.
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
@@ -419,7 +421,9 @@ A reusable typed-edge primitive for relational state. `edgeSchema` describes a d
 
 Resources opt into a first-class edge graph with `defineResource({ edges: true })` (or `{ vocabulary, maxEdges }`): the framework stores an `edges` array in the resource's state and exposes an `.edges` API (`add`, `supersede`, `remove`, `all`, `neighbors`, `egoGraph`, `shortestPath`, `pruneDangling`) on the live resource reference. Resources without `edges` are unaffected.
 
-## Sequencer instance state
+## Block state (and its sequencer special case)
+
+Any block — handler, generator, router, or sequencer — can declare its own request-scoped `stateSchema` and read/write it via `ctx.self`. A child block reaches its immediate parent's state the same way, via `ctx.parent`, when it declares `parentStateSchema`. Sequencer instance state below is the common case of this same primitive: `ctx.sequencer` is `ctx.self` addressed by "nearest enclosing sequencer" instead of "this block." See [Block State](https://flow-state.dev/docs/advanced/block-state) for the full addressing model (`ctx.self`, `ctx.parent`, `ctx.sequencer`, `ctx.targets`) and the fan-out/loop isolation contract.
 
 A sequencer can declare a `stateSchema` that gives every step in the pipeline a shared, typed state container. State is read via `ctx.sequencer.state` and written via the seven helpers on `ctx.sequencer`: `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `atomicState`.
 

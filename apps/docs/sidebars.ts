@@ -114,6 +114,29 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Orchestration",
+      items: [
+        "orchestration/overview",
+        "orchestration/task-substrate",
+        "orchestration/task-board",
+        "orchestration/goal-seek-loop",
+        "orchestration/flow-policy",
+        "orchestration/agents",
+        {
+          type: "category",
+          label: "Skills",
+          items: [
+            "skills/overview",
+            "skills/binding",
+            "skills/activation",
+            "skills/authoring",
+            "skills/delegation",
+          ],
+        },
+      ],
+    },
+    {
+      type: "category",
       label: "Ecosystem",
       items: [
         "ecosystem/overview",
@@ -128,9 +151,7 @@ const sidebars: SidebarsConfig = {
               items: [
                 "patterns/parallelTasks",
                 "patterns/supervisor",
-                "patterns/task-board",
                 "patterns/plan-and-execute",
-                "patterns/flow-policy",
                 "patterns/routed-specialists",
                 "patterns/round-robin",
                 "patterns/debate",
@@ -169,16 +190,6 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: "category",
-          label: "Skills",
-          items: [
-            "skills/overview",
-            "skills/activation",
-            "skills/authoring",
-            "skills/pattern-skills",
-          ],
-        },
-        {
-          type: "category",
           label: "UI",
           items: [
             "ui/overview",
@@ -198,7 +209,6 @@ const sidebars: SidebarsConfig = {
             "memory/hygiene",
           ],
         },
-        "ecosystem/thought-fabric-pointer",
         {
           type: "category",
           label: "Dev Experience",
@@ -237,6 +247,7 @@ const sidebars: SidebarsConfig = {
         "advanced/custom-model-resolver",
         "advanced/inbound-transports",
         "advanced/manual-flow-execution",
+        "advanced/block-state",
         "advanced/state-targets-and-parents",
         "advanced/sequencer-state",
         "state/mutation-model",

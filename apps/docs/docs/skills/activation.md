@@ -24,7 +24,7 @@ The tool-call path is still the right choice when activation is fluid (the agent
 ## Up-front: `createSkillActivator`
 
 ```ts
-import { createSkillActivator } from "@flow-state-dev/skills";
+import { createSkillActivator } from "@flow-state-dev/orchestration";
 
 export const skillActivator = createSkillActivator({
   scope: "user", // matches the skills capability's scope
@@ -78,7 +78,7 @@ Set `enableLlmClassifier: false` in tests that shouldn't depend on a mocked clas
 When a flow uses `skillActivator`, the `runSkill` tool and the catalog context formatter are redundant — the up-front path activates skills before the model has anything to call. The capability ships them in a `runSkill` preset that you opt out of with the standard preset overrides:
 
 ```ts
-import { createSkillsCapability, createSkillActivator } from "@flow-state-dev/skills";
+import { createSkillsCapability, createSkillActivator } from "@flow-state-dev/orchestration";
 
 export const skillsCap = createSkillsCapability({
   catalog: { /* ... */ },
@@ -89,7 +89,7 @@ export const skillsCap = createSkillsCapability({
 export const skillActivator = createSkillActivator({ scope: "user" });
 
 // At the use site:
-//   uses: [skillsCap.presets({ runSkill: false }), skillActivator, ...]
+//   uses: [skillsCap.with({ runSkill: false }), skillActivator, ...]
 ```
 
 The active-skill body formatter lives on a separate `context` preset that stays on by default — that's how matched skills get their substituted body into the system prompt. Dropping `runSkill` only removes the catalog listing and the tool itself.
@@ -132,9 +132,9 @@ The original tool-call path. The capability's `runSkill` preset is on by default
 The skills capability registers two pieces:
 
 - A dynamic context formatter that lists every enabled skill in the system prompt as `Available skills: - name: description`.
-- The `runSkill` tool. The model calls it with `{ name, input? }`; the router resolves the skill from the collection and dispatches to inline or fork mode.
+- The `runSkill` tool. The model calls it with `{ name, input? }`; the router resolves the skill from the collection and injects its body inline.
 
-The model decides activation. Inline-mode activation patches `activeSkills`; fork-mode runs the skill body as a sub-agent and returns its result.
+The model decides activation. Activation patches `activeSkills`, and the skill's body lands in the generator's prompt on the next step.
 
 This path is appropriate when:
 

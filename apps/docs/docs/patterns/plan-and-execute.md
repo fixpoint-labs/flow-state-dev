@@ -18,7 +18,7 @@ If tasks are independent and can run in parallel, use [Parallel Tasks](./paralle
 ```
 goal
   → captureAndPlan          (store goal, run planner, seed taskBoard collection)
-  → board.block             (drain — workers process tasks until idle)   ←┐ loopBack target
+  → board.drain             (drain — workers process tasks until idle)   ←┐ loopBack target
   → cascadeSkipDependents   (cancel pendings whose deps errored)            │
   → evaluator               (decide: continue | replan | complete)         │
   → [replanner]             (only when replan + no inline tasks)            │
@@ -27,7 +27,7 @@ goal
   → synthesize              (build legacy plan output, then run synthesizer)
 ```
 
-Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.block` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
+Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.drain` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
 
 ## Basic usage
 
@@ -406,7 +406,7 @@ const research = planAndExecute({
 
 Each step in a plan runs as its own worker generator. By default that worker has no awareness of what previous steps already looked up or tried — only its declared `deps` and the materialized `dependencyResults` shape get plumbed through. For a plan whose later steps refine or build on earlier ones, that's often too narrow.
 
-Plan and Execute pins `flowPolicy.recentTrajectory({ n: 8 })` by default. Each step's worker sees the last eight tool observations the run produced, regardless of which task they came from, on its `priorWork` slot. The evaluator and replanner pick up the same trajectory, which is how they can reason about whether the plan is converging. Override with the `flowPolicy` config slot if you want a different selection (declared-deps-only for stricter isolation, `allCompleted` for an aggregating final pass). See the [Flow policy](./flow-policy) guide for the full list of built-in policies and the cross-task tool-result memoization layer that pairs with them.
+Plan and Execute pins `flowPolicy.recentTrajectory({ n: 8 })` by default. Each step's worker sees the last eight tool observations the run produced, regardless of which task they came from, on its `priorWork` slot. The evaluator and replanner pick up the same trajectory, which is how they can reason about whether the plan is converging. Override with the `flowPolicy` config slot if you want a different selection (declared-deps-only for stricter isolation, `allCompleted` for an aggregating final pass). See the [Flow policy](../orchestration/flow-policy) guide for the full list of built-in policies and the cross-task tool-result memoization layer that pairs with them.
 
 ## Stream items
 
@@ -419,7 +419,8 @@ Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have 
 
 ## See also
 
-- [Task Board](./task-board) — the substrate that powers Plan & Execute's task dispatch and replan re-entry
+- [Task Board](../orchestration/task-board) — the substrate that powers Plan & Execute's task dispatch and replan re-entry
+- [GoalSeekLoop](../orchestration/goal-seek-loop) — the judge-gated loop primitive Plan & Execute is expressed on
 - [Parallel Tasks](./parallelTasks) — parallel execution, no dependencies, single pass
 - [Supervisor](./supervisor) — parallel execution with quality review loop
 - [Decomposer](./utility-blocks/core) — the default planner, including the `title`/`context` output fields

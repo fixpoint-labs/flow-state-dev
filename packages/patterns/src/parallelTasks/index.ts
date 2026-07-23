@@ -5,15 +5,17 @@
  * the taskBoard primitive, then synthesizes the completed results. One pass,
  * no feedback loop. Use Supervisor when tasks need judgment and iteration.
  *
- * Pipeline:
- *   [planner] → [seedTasksFromPlan] → [board.block] → [collectResults] → [synthesizer]
+ * Expressed on the `goalSeekLoop` primitive (FIX-910) as a single-pass loop —
+ * `maxIterations: 1` with an always-`done` judge, so there is exactly one drain
+ * and no feedback iteration. The seed (planner + seedTasksFromPlan) and the
+ * finalize (collectResults + synthesizer) become the loop's `seed`/`finalize`
+ * slots; the bespoke drain-and-collect pipeline is gone.
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
-import { taskBoard } from "../task-board";
+import { taskBoard, goalSeekLoop, type Verdict } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 
@@ -90,7 +92,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: worker,
     concurrency: maxConcurrency,
     dispatcher: "fifo",
@@ -112,27 +114,43 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     activeStatusMessage: "Combining results",
     inputSchema: z.unknown(),
     outputSchema: z.array(z.unknown()),
+    uses: [board.capability],
     execute: async (_input, ctx) => {
-      const collection = await getOrCreateTaskCollection({
-        ctx,
-        backing: "request",
-        collectionId: name,
+      const completed = await ctx.cap[board.capability.name].listTasks({
+        status: "completed",
       });
-      return collection
-        .list({ status: "completed" })
+      return completed
         .map((t) => t.output)
         .filter((o): o is unknown => o !== undefined);
     }
   });
 
-  return sequencer({
+  // Seed: plan the goal, then seed the board — the loop's produce step.
+  const seed = sequencer({
+    name: `${name}-plan`,
+    inputSchema: parallelTasksInputSchema,
+  })
+    .step(activePlanner)
+    .tap(seedTasks);
+
+  // Finalize: collect completed outputs, then merge/synthesize. Both steps —
+  // `goalSeekLoop` projects the settled board before invoking `finalize`, but
+  // `collectResults` re-reads the collection, so the projection is ignored and
+  // the merge/`outputSchema` step still runs (parity with the old
+  // `.step(collectResults).step(finalize)` tail).
+  const finalizeStep = sequencer({ name: `${name}-finalize` })
+    .step(collectResults)
+    .step(finalize);
+
+  return goalSeekLoop({
     name,
     inputSchema: parallelTasksInputSchema,
     activeStatusMessage: "Planning tasks",
-  })
-    .step(activePlanner)
-    .tap(seedTasks)
-    .step(board.block)
-    .step(collectResults)
-    .step(finalize) as SequencerDefinition<any, any>;
+    board,
+    seed,
+    // Single pass: after the one drain the work is done by construction.
+    judge: (): Verdict => ({ decision: "done", reason: "converged" }),
+    maxIterations: 1,
+    finalize: finalizeStep,
+  }) as SequencerDefinition<any, any>;
 }

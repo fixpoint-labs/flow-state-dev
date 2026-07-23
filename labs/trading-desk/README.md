@@ -286,7 +286,10 @@ Defaults to `NVDA / 2026-05-06`. The top bar exposes four controls:
   tool payload into the fixture corpus, making the run immediately replayable
   with `fixture`; not offered in the UI — pass it via the action input). The
   three financial statements (balance sheet, income statement, cash flow) come
-  from SEC EDGAR XBRL filings first, falling back to Yahoo for non-US filers.
+  from SEC EDGAR XBRL filings first, falling back to Yahoo for non-US filers, and
+  — for a newly listed issuer whose audited financials live only in its IPO
+  prospectus — a bounded S-1 / 424B* recovery before "unavailable"
+  ([financials recovery](docs/financials-recovery.md)).
 
 Press **re-run** to dispatch a new `analyze` request.
 
@@ -477,6 +480,22 @@ default.
 This is a documented, user-set policy — not financial advice, and not a
 production IPS governance framework. See
 [`docs/portfolio-mandate.md`](docs/portfolio-mandate.md).
+
+## Evidence-sufficiency gate
+
+There is one more sizing rule, and it is always on. You can't turn it off and
+there's nothing to configure. If the evidence behind a call is too thin, the desk
+will not add to the position. "Too thin" means a concrete gap: the valuation work
+couldn't be grounded, the reward-to-risk read has no real distribution behind it,
+or one of the core financial statements came back unavailable. Any one of those and
+the recommendation is held, not added — an `initiate` or `add` becomes a `hold`,
+and the size is capped at what you already own.
+
+The point is honesty about what's missing. A blank where a number should be is not
+a reason to buy and not a reason to sell. It's just missing, in both directions. So
+the gate never turns thin data into a bearish call: it leaves the rating alone and
+only holds back new money. It runs on every analysis, with or without a portfolio
+or a mandate, and it can't be overridden.
 
 ## Custom instructions
 
@@ -733,13 +752,16 @@ methodology rather than advice:
 - **Not a complete data layer.** Fixture mode ships hand-curated JSON
   snapshots at `2026-05-06` for NVDA / AAPL / JPM. Live mode wires SEC
   EDGAR (authoritative US filings, keyless) for the financial statements
-  with Yahoo Finance as fallback, and Yahoo for prices and the valuation
-  snapshot (keyless). A field a provider doesn't report reads `null`
-  (unobserved), never a fabricated 0. Don't extrapolate from a fixture run
-  to a real-data run.
+  with Yahoo Finance as fallback, then a bounded IPO-prospectus recovery
+  (S-1 / 424B*) for a newly listed issuer companyfacts and Yahoo both miss
+  ([financials recovery](docs/financials-recovery.md)), and Yahoo for prices
+  and the valuation snapshot (keyless). A field a provider doesn't report reads
+  `null` (unobserved), never a fabricated 0. Don't extrapolate from a fixture
+  run to a real-data run.
 
 ## Further reading
 
+- [Critical-financials recovery](docs/financials-recovery.md) — the IPO-prospectus fallback: the recovery hierarchy, promote gates, cost behavior, and the `recoveryAudit` trail when a newly listed issuer's audited financials live only in its S-1 / 424B*.
 - [Portfolio mandate (IPS)](docs/portfolio-mandate.md) — the durable household policy: schema, validation, the FIX-752 reconciliation, and what the desk enforces vs treats as advisory.
 - [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
 - [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the app phase by phase.

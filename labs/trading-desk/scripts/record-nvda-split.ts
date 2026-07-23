@@ -54,6 +54,8 @@ const report = await repo.ingestLedgerEvents(
       description: "NVIDIA 10-for-1 stock split (effective 2024-06-10)",
       basisUnknown: null,
       proceedsUnknown: null,
+      lotKey: null,
+      closesLotKey: null,
       attributes: { numerator: 10, denominator: 1 },
     },
   ],

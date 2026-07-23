@@ -276,6 +276,81 @@ adapter deliberately ignores query-string tokens. `forwardQueryParams`
 is for non-secret, installation-scoped metadata like a source tag, not
 for anything that grants access.
 
+## Deriving a session id per tool call
+
+MCP is sessionless: by default every `tools/call` runs in a fresh flow
+session, so there is no built-in way to say "these calls belong together."
+The [sessionless-MCP SEP](https://modelcontextprotocol.io/seps/2567-sessionless-mcp)
+recommends that a server wanting session semantics expose session creation as
+its own tool. The per-action `mcp.session` directive is how you do that: it
+lets one action mint a flow session id, and another reuse it.
+
+It has two forms.
+
+A **template string** mints a fresh id. The first `*` is replaced with a random
+token; with no `*` the token is appended. Use it to hand the caller a reusable
+id whose prefix names the concept:
+
+```ts
+actions: {
+  createConversation: {
+    block: createConversation,   // returns the new session id to the caller
+    description: "Open a conversation, then log activity under it.",
+    mcp: { session: "conv_*" },  // this call dispatches under conv_1784…_a1b2
+  },
+}
+```
+
+**`{ fromInput: <field> }`** reads the string at `input.<field>` and uses it as
+the session id, so calls passing the same value land in one session:
+
+```ts
+actions: {
+  logActivity: {
+    block: logActivity,
+    description: "Log activity into the conversation named by conversationId.",
+    mcp: { session: { fromInput: "conversationId" } },
+  },
+}
+```
+
+A client calls `createConversation` once, gets back a `conv_…` id, then passes it
+as `conversationId` on every later `logActivity`. Those calls all run under the
+same flow session, so whatever an action writes to session state (or the
+session's request history) is shared across them.
+
+This is a **flow** session id, not the protocol `Mcp-Session-Id`. No
+`Mcp-Session-Id` header is issued and the client needs no MCP session
+machinery; the id only selects which flow session state and history a call
+sees. See [State & Scopes](../fundamentals/state-and-scopes#session-the-primary-scope)
+for what a session holds.
+
+With `{ fromInput }` the id is model-supplied, so treat it as a grouping key
+only, never an auth or routing decision. The principal still comes from your
+[`resolvePrincipal`](#authentication), and the framework's session user-binding
+check rejects a call whose caller identity does not match the stored session's
+owner — so an action cannot run against another principal's session state.
+
+Two caveats worth knowing before you use `{ fromInput }` beyond a single
+trusted principal:
+
+- **Single-principal until session keys are namespaced.** The id is used as a
+  bare flow session key. In a multi-user flow without distinct tenant prefixes,
+  a caller could pass another user's known id; the user-binding check blocks the
+  run, but a pre-dispatch metadata write (the session's auto-resume pointer) is
+  only tenant-guarded today, not user-guarded. Namespace caller-supplied session
+  keys by principal before exposing `{ fromInput }` to mutually-distrusting
+  users.
+- **The key is written before your schema validates.** The adapter derives the
+  session id and dispatches — persisting a session record keyed by that raw
+  value — *before* the action's input schema runs. So an oversized `fromInput`
+  value writes an oversized-keyed session even though the call is then rejected.
+  Bound the field's length in the action's input schema (the adapter does not
+  bound it for you).
+
+If the field is missing or empty, the call falls back to a fresh ephemeral
+session and the action's own input schema decides whether that is an error.
+
 ## Origin enforcement
 
 Browser-originated requests are rejected with 403 unless the `Origin`
@@ -296,10 +371,12 @@ affected.
 The current release covers the critical path for production use, with a
 few intentional cuts:
 
-- **Stateless only.** Every `tools/call` runs in a fresh flow session.
-  No `Mcp-Session-Id` is issued, no per-session continuity across
-  calls. This is the right default for serverless deployments and most
-  agentic use cases. Stateful sessions land later.
+- **Stateless by default.** Every `tools/call` runs in a fresh flow
+  session unless the action opts in with `mcp.session` (see
+  [Deriving a session id per tool call](#deriving-a-session-id-per-tool-call)).
+  No `Mcp-Session-Id` is ever issued — grouping is a flow session id the
+  caller learns and reuses, not a protocol session. This is the right
+  default for serverless deployments and most agentic use cases.
 - **Single text tool result.** Tool calls return one text content
   block — either the action's terminal output (JSON-stringified if
   non-string) or the most recent message item from the action's

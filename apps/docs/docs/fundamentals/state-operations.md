@@ -199,3 +199,4 @@ This is a guardrail, not a hard limit. State is meant for flat, structured field
 - **[State Mutation Model](/docs/state/mutation-model)** — dispatch internals, lock vs CAS, mutation timeout.
 - **[State Targets and Parents](/docs/advanced/state-targets-and-parents)** — typed access to ancestor block state.
 - **[Sequencer State](/docs/advanced/sequencer-state)** — state scoped to one execution of one sequencer instance, checkpointed for resume.
+- **[Block State](/docs/advanced/block-state)** — the same seven operations, scoped to any block's own request-scoped state via `ctx.self`.

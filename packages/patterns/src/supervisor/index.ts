@@ -10,11 +10,11 @@
  * exhausted, then `labelFailedReviews` tags the terminal task.
  *
  * Pipeline:
- *   captureAndPlan → board.block → cascadeSkipDependents (.tap)
+ *   captureAndPlan → board.drain → cascadeSkipDependents (.tap)
  *   → labelFailedReviews (.tap) → synthesize
  */
 import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
-import { flowPolicy } from "@flow-state-dev/tasks";
+import { flowPolicy } from "@flow-state-dev/orchestration";
 import type {
   ItemVisibility,
   GeneratorHistoryConfig,
@@ -25,7 +25,7 @@ import type {
 } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
-import { taskBoard, createCascadeSkipDependents } from "../task-board";
+import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 import {
   supervisorInputSchema,
   supervisorStateSchema,
@@ -336,7 +336,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // drain — they get cascade-skipped after instead.
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId: name },
+    collection: { collectionId: name },
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",
@@ -388,7 +388,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   return pipeline
     .tap(stampOuterGoal)
     .step(captureAndPlan)
-    .step(board.block)
+    .step(board.drain)
     .tap(cascadeSkipDependents)
     .tap(labelFailedReviews)
     .step(synthesize) as SequencerDefinition<any, any>;

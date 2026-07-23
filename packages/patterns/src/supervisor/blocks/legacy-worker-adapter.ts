@@ -13,7 +13,7 @@
  * worker keeps its legacy contract.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { TaskWorkerInput } from "@flow-state-dev/tasks";
+import type { TaskWorkerInput } from "@flow-state-dev/orchestration";
 import { executableTaskSchema, type ExecutableTask } from "../schemas";
 
 /**

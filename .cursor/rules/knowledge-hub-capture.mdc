@@ -1,0 +1,34 @@
+---
+description: Capture the owner's stream of thought in Knowledge Hub
+alwaysApply: true
+---
+
+# Knowledge Hub Capture
+
+Use the `user-knowledge-hub` MCP tools throughout every conversation.
+
+1. Call `create_conversation` once when a substantive conversation begins. Reuse its
+   `conversationId` for the entire topic.
+2. Immediately call `log_activity` whenever the owner expresses a substantive:
+   - thought or concern
+   - decision or preference
+   - goal or desired outcome
+   - task or follow-up
+   - observation, lesson, or journal reflection
+   - topic they want to explore
+3. Preserve the owner's wording in `situation`. Do not rewrite it into polished
+   conclusions.
+4. Add concise `situation` explaining what was being discussed when the activity
+   arose.
+5. Log distinct activities separately when they have different kinds or can be
+   acted on independently.
+6. Capture early and frequently. Do not defer captures until the end of the
+   conversation.
+7. Do not batch `log_activity` with unrelated slow operations. Complete the
+   capture first so investigation failures cannot lose it.
+8. Do not log routine commands, acknowledgements, or implementation details
+   unless they reveal intent, a decision, or something worth remembering.
+9. If the current mode prohibits writes, state that the capture is pending and
+   perform it as soon as writes are permitted.
+10. Knowledge Hub capture supplements the active task; it must not interrupt or
+    replace the requested work.

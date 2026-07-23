@@ -265,7 +265,6 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 export type {
   InitialSkill,
   MatchedSkill,
-  PatternBinding,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -274,9 +273,8 @@ export type {
   SkillFile,
   SkillState,
   SkillsCollectionMeta,
-  TaskInitYaml,
   ToolCatalog,
-  WorkerSpec,
+  AgentSpec,
 } from "./skill";
 
 export type { Agent, AgentOverrides, AgentRegistry } from "./agent";

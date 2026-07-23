@@ -3,13 +3,13 @@
  *
  * These tests validate that schemas declared on a capability
  * (`sessionStateSchema`, `resources`, `targetStateSchemas`,
- * `sequencerStateSchema`) are forwarded into consumer blocks' ctx via the
- * `InferCapability*` utilities — without requiring the consumer to
- * re-declare the schemas.
+ * `sequencerStateSchema`, `stateSchema`) are forwarded into consumer blocks'
+ * ctx via the `InferCapability*` utilities — without requiring the consumer
+ * to re-declare the schemas.
  *
  * Coverage:
  *   - Empty `uses` arrays → each utility resolves to `{}`
- *   - Single-cap forwarding for each axis (session/resources/targets/sequencer)
+ *   - Single-cap forwarding for each axis (session/resources/targets/sequencer/own-state)
  *   - Multi-capability intersection merges non-overlapping keys
  *   - Wrong-slot regression: a capability declaring only resources must
  *     not leak into the session-state inference (slot-position check)
@@ -21,6 +21,7 @@ import { z } from "zod";
 import { defineCapability } from "../../capability/define-capability";
 import { defineResource } from "../resource";
 import type {
+  InferCapabilityOwnState,
   InferCapabilityResources,
   InferCapabilitySequencerState,
   InferCapabilitySessionState,
@@ -67,17 +68,24 @@ const sequencerCap = defineCapability({
   sequencerStateSchema: z.object({ step: z.number() }),
 });
 
+const ownStateCap = defineCapability({
+  name: "withOwnState",
+  stateSchema: z.object({ loaded: z.array(z.string()) }),
+});
+
 // ── Empty uses → each utility is `{}` ────────────────────────────────
 
 type EmptySession = InferCapabilitySessionState<readonly []>;
 type EmptyResources = InferCapabilityResources<readonly []>;
 type EmptyTargets = InferCapabilityTargets<readonly []>;
 type EmptySequencer = InferCapabilitySequencerState<readonly []>;
+type EmptyOwnState = InferCapabilityOwnState<readonly []>;
 
 const _emptySession: EmptySession = {};
 const _emptyResources: EmptyResources = {};
 const _emptyTargets: EmptyTargets = {};
 const _emptySequencer: EmptySequencer = {};
+const _emptyOwnState: EmptyOwnState = {};
 
 // ── Single capability — session state forwarding ─────────────────────
 
@@ -93,7 +101,7 @@ const _twoTicker: TwoSession["ticker"] = "AAPL";
 const _twoCount: TwoSession["count"] = 1;
 
 // ── Wrong-slot regression: resources-only cap must not leak ──────────
-// Slot positions: 5=sessionState, 6=resources, 7=targets, 8=sequencer.
+// Slot positions: 5=sessionState, 6=resources, 7=targets, 8=sequencer, 9=ownState.
 // If slots were swapped, declaring only `resources` would surface in
 // session-state inference — assert it doesn't.
 
@@ -168,15 +176,27 @@ type SequencerShape = InferCapabilitySequencerState<
 >;
 const _step: SequencerShape["step"] = 0;
 
+// ── Own-state forwarding (FIX-914 PR2) ────────────────────────────────
+
+type OwnStateShape = InferCapabilityOwnState<readonly [typeof ownStateCap]>;
+const _loaded: OwnStateShape["loaded"] = ["a"];
+
+// Wrong-slot regression: a sequencer-only cap must not leak into own-state.
+type SequencerOnlyOwnState = InferCapabilityOwnState<readonly [typeof sequencerCap]>;
+const _sequencerOnlyOwnState: SequencerOnlyOwnState = {};
+void _sequencerOnlyOwnState;
+
 // ── Suppress unused-variable warnings ────────────────────────────────
 
 void _emptySession;
 void _emptyResources;
 void _emptyTargets;
 void _emptySequencer;
+void _emptyOwnState;
 void _ticker;
 void _twoTicker;
 void _twoCount;
 void _raw;
 void _configured;
+void _loaded;
 void _step;

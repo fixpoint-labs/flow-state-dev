@@ -1,0 +1,29 @@
+{
+  "name": "@flow-state-dev/example-guide-research-team",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Runnable, tested companion code for the Building a research team guide.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root .",
+    "fsdev": "tsx ../../../packages/cli/bin/fsdev.ts"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/engine": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
+    "@flow-state-dev/patterns": "workspace:*",
+    "@flow-state-dev/tools": "workspace:*",
+    "@flow-state-dev/workforce": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

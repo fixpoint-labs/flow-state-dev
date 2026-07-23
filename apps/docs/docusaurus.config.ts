@@ -1,6 +1,6 @@
-import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import { earthyDark, earthyLight } from "./src/prismThemes";
 
 const config: Config = {
   title: "flow-state.dev",
@@ -35,6 +35,10 @@ const config: Config = {
           editUrl:
             "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
         },
+        // Blog is intentionally unlisted, not disabled: posts still build and
+        // /blog/* stays reachable (e.g. the philosophy post), but the navbar
+        // and footer links are removed. Don't "fix" this by re-adding nav
+        // items — remove this block entirely if the blog should be dropped.
         blog: {
           showReadingTime: true,
           editUrl:
@@ -60,14 +64,25 @@ const config: Config = {
       },
     ],
     [
-      "@docusaurus/plugin-content-docs",
+      // Task Board and Flow Policy moved from /docs/patterns/* to
+      // /docs/orchestration/* when the orchestration package was carved out.
+      // Keep the old URLs alive so existing links don't 404.
+      "@docusaurus/plugin-client-redirects",
       {
-        id: "thought-fabric",
-        path: "thought-fabric",
-        routeBasePath: "thought-fabric",
-        sidebarPath: "./sidebarsThoughtFabric.ts",
-        editUrl:
-          "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
+        redirects: [
+          {
+            from: "/docs/patterns/task-board",
+            to: "/docs/orchestration/task-board",
+          },
+          {
+            from: "/docs/patterns/flow-policy",
+            to: "/docs/orchestration/flow-policy",
+          },
+          {
+            from: "/docs/skills/pattern-skills",
+            to: "/docs/skills/delegation",
+          },
+        ],
       },
     ],
   ],
@@ -94,14 +109,6 @@ const config: Config = {
           label: "Guides",
         },
         {
-          type: "docSidebar",
-          sidebarId: "thoughtFabricSidebar",
-          docsPluginId: "thought-fabric",
-          position: "left",
-          label: "Thought Fabric",
-        },
-        { to: "/blog", label: "Blog", position: "left" },
-        {
           href: "https://github.com/fixpoint-labs/flow-state-dev",
           label: "GitHub",
           position: "right",
@@ -127,16 +134,11 @@ const config: Config = {
               to: "/guides/building-a-chat-app",
             },
             { label: "Server Setup", to: "/docs/server/setup" },
-            {
-              label: "Thought Fabric",
-              to: "/thought-fabric/introduction",
-            },
           ],
         },
         {
           title: "More",
           items: [
-            { label: "Blog", to: "/blog" },
             {
               label: "GitHub",
               href: "https://github.com/fixpoint-labs/flow-state-dev",
@@ -147,8 +149,8 @@ const config: Config = {
       copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: earthyLight,
+      darkTheme: earthyDark,
       additionalLanguages: ["bash", "json"],
     },
     colorMode: {

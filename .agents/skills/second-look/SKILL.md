@@ -1,5 +1,7 @@
 ---
 name: second-look
+context: fork
+agent: general-purpose
 description: Use when you want a retrospective re-examination of a branch, PR, a Linear issue's attached spec, or a named feature in the @flow-state-dev repo — to question whether the solution was (or will be) the right approach, whether it's overbuilt or carries YAGNI/speculative surface, what the 80/20 version would be, and whether building it revealed a simpler path. Read-only; produces a scannable findings table, no edits or tickets. Keywords: bloat, overbuilt, over-engineered, too much code, premature abstraction, YAGNI, 80/20, was this the best approach, cut scope, review spec before building, FIX-.
 ---
 
@@ -18,8 +20,11 @@ This repo accumulates bloat because AI-generated code gets reviewed hard for cor
 | Line-level correctness, bugs | `/code-review` |
 | Line-level cleanup, dedup, dead lines | `/simplify` |
 | Whole-codebase depth refactors | `improve-codebase-architecture` |
+| Pattern conflicts / redundancy / philosophy drift | `audit-coherence` |
 
 Second-look operates **above** line level: the approach, the requirements that drove it, and the API/abstraction surface. It does not chase individual lines.
+
+**Its lane vs. coherence.** Second-look asks whether *this change's* surface earns its keep against *its own* requirement — overbuilt? YAGNI? what's the 80/20? Whether the change *duplicates or conflicts with a pattern elsewhere* is a coherence question, not this skill's — route that to `audit-coherence`. (Second-look is `review`'s **restraint** lens; audit-coherence is its **coherence** lens. They compose; they don't overlap.)
 
 ## Resolve the target
 

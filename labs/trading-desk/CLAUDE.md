@@ -602,6 +602,27 @@ Two load-bearing decisions:
   skipped. Stock splits are the exception — they are now ingested (see below).
   The parser never fabricates a value to make a row land.
 
+### Tax-lot CSV (FIX-895)
+
+The second format on this path: brokerage **tax-lot CSVs** (an *unrealized*
+open-lots file and a *realized* closed-lots file), sniffed after OFX fails
+(`portfolio-tax-lot-csv.ts` → `detectTaxLotCsv` / `parseTaxLotCsv`). Unrealized
+rows become `buy`s; realized rows become linked `buy`+`sell` pairs that reproduce
+the exact disposal the broker reported. The load-bearing extension is **lot
+identity on the ledger**: a nullable `lotKey` on acquisitions and `closesLotKey`
+on disposals (`ledger_events` columns + `LedgerEventInput`), so `deriveLots`
+consumes the *specific* broker-matched lot instead of FIFO-guessing — FIFO stays
+the fallback for feeds that carry no lot identity. A **one-source-per-ticker seam**
+(`assertOneSourcePerTicker` in `db/repository.ts`) refuses mixing keyed and unkeyed
+share history for a ticker in either order, so tax-lot imports go into a **fresh,
+dedicated account**; a refusal renders as a normal `FileImportReport` (0 inserts +
+guidance). Because the lot fields join `computeFingerprint` unconditionally, the
+recipe is only safe on a cleared ledger — a **one-time fresh-start wipe** (`pnpm
+db:clean` in dev, `pnpm ledger-reset` on deploy, gated by a `rollout_markers`
+sentinel the deploy migrator checks) precedes it. The shared CSV primitives live
+in `parsers/csv-utils.ts` (both parsers import them, acyclically). Full grammar in
+[`docs/transaction-import-formats.md`](docs/transaction-import-formats.md).
+
 ## Stock splits / corporate actions (FIX-876)
 
 Positions are FIFO-derived from the ledger, and the ledger now models **stock
@@ -1144,6 +1165,77 @@ constraints, a time horizon, and rebalancing bands. Full detail in
   and the per-run appetite dial,
   [Risk-appetite mandate (FIX-752)](#risk-appetite-mandate-decision-tier--fix-752).
 
+## Evidence-sufficiency gate (always-on) — FIX-781
+
+An always-on, deterministic capital gate — the third sibling of the FIX-752
+appetite dial and the FIX-761 policy gate, but unconditional. It caps NEW
+exposure whenever the evidence behind a call is too thin, so a thin/missing
+substrate can never authorize adding to a position. Independent of the optional
+risk mandate: it fires on mandate-blind and portfolio-blind runs alike.
+
+- **Three evidence layers, fail-closed OR (`lib/evidence-gate.ts`, pure).**
+  `computeEvidenceGate` reads (1) the valuation-spine `evidenceBasis` +
+  `expectedReturn.lowConfidence`, (2) the reward-to-risk `evidenceBasis`, and (3)
+  a DETERMINISTIC `criticalDataThin` signal — true when ANY of the four primary
+  financial payloads (fundamentals / income / balance-sheet / cashflow) is absent
+  or `source: "unavailable"`, derived by `deriveCriticalDataThin` from the tool-set
+  markers, NEVER the LLM `dataQuality`. Sufficient requires all three clear; any one
+  thin ⇒ `insufficient-evidence`. The OR (not AND) closes the "forecaster emits ≥3
+  buckets on thin substrate → reward-to-risk reads sufficient" hole — a single
+  missing statement still gates.
+
+- **No-add, downward-only, non-overridable.** On insufficient evidence the target
+  is capped to the current position (`min(target, currentWeight)`; `0` for a
+  portfolio-blind / not-held name), `initiate`/`add` become `hold`, and
+  `trim`/`exit`/`hold` are preserved. When the current position can't be measured
+  in the run's own NAV basis (the scoped weight is `null`, held-but-unpriced) the
+  numeric clamp is SKIPPED and the pre-gate size passes through — the action
+  downgrade enforces the no-add, exactly the `computePolicyGate`
+  `householdWeightKnown: false` precedent (never fabricate a size from an unknown
+  basis). The gate NEVER touches `finalRating` (the FIX-715/752/761 orthogonality
+  — observed negative evidence still rates bearish; only new exposure is gated).
+  There is no override — `mandateOverrideReason` cannot clear an
+  insufficient-evidence verdict.
+
+- **The scoped current weight is computed at commit from the frozen snapshot.** The
+  PM commit derives it via `householdTickerWeight(portfolio, ticker)` (the same pure
+  helper `seedSession` uses for the FIX-761 household weight) over the FROZEN
+  `state.portfolio` snapshot — the analyzed ticker's weight in the run's OWN scoped
+  NAV basis (three-value: `0` not-held, positive held+priced, `null`
+  held-but-unpriced). It is NOT a separate session field: the snapshot is the single
+  source of truth, so a session predating a would-be scoped-weight field can't
+  default it to a wrong value (BP-030). Distinct from the `portfolioFit.currentWeightPct`
+  echo, which is a display partial-sum coercing unpriced lots to 0. The evidence
+  gate uses this SCOPED weight, not the household weight the policy gate uses.
+
+- **Derived at commit, mirrored three ways.** The PM commit
+  (`agents/portfolio-manager/writer.ts`) runs the gate AFTER the mandate + policy
+  gates (its input is the post-policy `gatedAction` + target), sets the final
+  `portfolioFit.action`/`targetWeightPct`, and mirrors the full
+  `evidenceDecision` (verdict + evidence bases + clamp flags +
+  `preGateEvidenceTargetPct`/`preGateEvidenceAction`) onto the memo, the
+  `evidenceVerdict` onto the decision snapshot, and the same onto the RunSummary.
+  The PmHero `EvidencePanel` (`components/theses/evidence-panel.tsx`) reads the
+  memo mirror. Because the gate runs last, eval clamp checks compare against
+  `evidenceDecision.preGateEvidenceTargetPct` (the pre-evidence baseline), and a
+  dedicated `evidence/*` deterministic invariant (`eval/invariants.ts`) recomputes
+  the verdict and asserts the no-add held.
+
+- **NOT a generator output.** `evidenceDecisionSchema` is a memo-state mirror —
+  `.nullable()`/`.default()` are fine; do NOT add it to
+  `output-schemas-strict.spec.ts`. The gate derives everything; the PM emits no
+  evidence-specific prose (the prompt only states the symmetric "missing data is
+  non-evidence in both directions" rule).
+
+- **v1 simplifications.** The `criticalDataThin` set is the four primary financial
+  payloads; a broader "underwriting-critical inputs" set is a deferred option. On a
+  held-but-unpriced name the size passes through unclamped (the action still
+  enforces the no-add) rather than withholding a numeric target — the Option-B
+  match to the FIX-761 sibling, avoiding a nullable-target blast radius across the
+  hero / summary / eval consumers. See the sibling gates,
+  [Risk-appetite mandate (FIX-752)](#risk-appetite-mandate-decision-tier--fix-752)
+  and [Portfolio mandate (IPS) — FIX-761](#portfolio-mandate-ips--fix-761).
+
 ## Adding a new generator
 
 **Structured-output agents in the trader / risk / forecaster / PM /
@@ -1547,7 +1639,15 @@ mode below). The lens reads both via the Macro and Quant memos
 
 The three financial statements (`get_balance_sheet` / `get_income_statement`
 / `get_cashflow`) source from **SEC EDGAR XBRL companyfacts first, then Yahoo
-`fundamentals-timeseries`, then empty payload**. EDGAR is the authoritative
+`fundamentals-timeseries`, then a bounded IPO-prospectus recovery, then empty
+payload**. When companyfacts + Yahoo both miss the subject's valuation-critical
+fields — including a newly listed issuer whose companyfacts is HTTP-success but
+sparse (null revenue/operating income/FCF) — a single-flight recovery discovers
+S-1 / 424B* primaries, transcribes their audited statements with one bounded
+model call, hard-validates the result, and promotes it onto the spine tagged
+`source: "edgar-prospectus"` (USD billions), else keeps `unavailable` with a
+`financialsData.recoveryAudit` trail. It is a correctness path (that one bounded
+model call may fire even on `fast`), not analyst color. See [`docs/financials-recovery.md`](docs/financials-recovery.md). EDGAR is the authoritative
 US-filing source and answers even when Yahoo throttles its unauthenticated
 endpoint (a 200-with-no-data response the Yahoo mapper detects and treats as a
 miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. Statement

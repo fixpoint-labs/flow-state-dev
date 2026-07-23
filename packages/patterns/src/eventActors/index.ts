@@ -18,7 +18,7 @@
  *   sequencer
  *     .tap(appendEntry)            // append the seed entry to workspace
  *     .tap(spawnInitialTasks)      // one Task per matching actor (depth=1)
- *     .step(taskBoard.block)       // drain — workers re-emit recursively
+ *     .step(taskBoard.drain)       // drain — workers re-emit recursively
  *
  * Each worker (the actor body wrapped):
  *
@@ -40,8 +40,8 @@ import {
   type TaskCollectionRef,
   type TaskWorkerInput,
   type TaskWorkerRegistry,
-} from "@flow-state-dev/tasks";
-import { taskBoard, taskWorkerInputSchema } from "../task-board";
+} from "@flow-state-dev/orchestration";
+import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { matchTopic } from "./match-topic";
 import {
   createEventActorsWorkspaceResource,
@@ -360,7 +360,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
 
   const board = taskBoard({
     name: `${name}-board`,
-    collection: { backing: "request", collectionId },
+    collection: { collectionId },
     workers: workerRegistry,
     concurrency,
     dispatcher: "fifo",
@@ -374,7 +374,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   })
     .tap(appendEntry)
     .tap(spawnInitialTasks)
-    .step(board.block);
+    .step(board.drain);
 
   return {
     emit,

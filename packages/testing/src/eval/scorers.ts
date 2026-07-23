@@ -1,3 +1,4 @@
+import { deepEqual } from "@flow-state-dev/core/helpers";
 import type { ZodTypeAny } from "zod";
 import type { Scorer, ScoreResult } from "./types";
 
@@ -20,16 +21,21 @@ function resolvePath(obj: unknown, path: string): unknown {
   return current;
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 function passResult(reason?: string): ScoreResult {
   return { score: 1, passed: true, reason };
 }
 
 function failResult(reason?: string): ScoreResult {
   return { score: 0, passed: false, reason };
+}
+
+/** Structural equality for eval fixtures; maps deepEqual throws (depth cap, non-JSON) to "not equal". */
+function evalValuesEqual(a: unknown, b: unknown): boolean {
+  try {
+    return deepEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +51,7 @@ export function exactMatch<TOutput = unknown>(field?: string): Scorer<TOutput> {
       }
       const a = field !== undefined ? getField(output, field) : output;
       const b = field !== undefined ? getField(expected, field) : expected;
-      return deepEqual(a, b)
+      return evalValuesEqual(a, b)
         ? passResult()
         : failResult(
             `Expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`,
@@ -110,7 +116,7 @@ export function jsonPath<TOutput = unknown>(
     name: `jsonPath(${path})`,
     score({ output }) {
       const value = resolvePath(output, path);
-      return deepEqual(value, expected)
+      return evalValuesEqual(value, expected)
         ? passResult()
         : failResult(
             `At path "${path}": expected ${JSON.stringify(expected)}, got ${JSON.stringify(value)}`,

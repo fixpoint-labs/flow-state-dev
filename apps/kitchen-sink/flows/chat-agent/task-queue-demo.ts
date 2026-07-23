@@ -12,8 +12,8 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/patterns/task-board";
+import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 
 const COLLECTION_ID = "task-queue-demo";
 
@@ -108,7 +108,7 @@ export const taskQueueDemoInputSchema = z.object({
 
 const board = taskBoard({
   name: "task-queue-demo",
-  collection: { backing: "request", collectionId: COLLECTION_ID },
+  collection: { collectionId: COLLECTION_ID },
   // Cast: TaskWorkerRegistry expects TaskWorker<unknown, unknown>; our
   // handlers are typed-narrower (z.object outputs). The taskBoard
   // pipeline only reads task.input/output as `unknown`, so the runtime
@@ -131,4 +131,4 @@ const board = taskBoard({
   maxIterations: 20,
 });
 
-export const taskQueueDemo = board.block;
+export const taskQueueDemo = board.drain;

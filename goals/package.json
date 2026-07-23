@@ -10,6 +10,7 @@
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/mcp": "workspace:*",
     "@flow-state-dev/node": "workspace:*",
+    "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "zod": "^3.25.76"
   }

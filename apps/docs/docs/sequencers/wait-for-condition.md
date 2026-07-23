@@ -148,8 +148,8 @@ Pair the task-board claim predicate with the task-change wake filter:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
-import { whenBoardClaimable } from "@flow-state-dev/patterns/task-board";
-import { onTaskChangeFor } from "@flow-state-dev/tasks";
+import { whenBoardClaimable } from "@flow-state-dev/orchestration/task-board";
+import { onTaskChangeFor } from "@flow-state-dev/orchestration";
 
 sequencer({ name: "idle-wait" })
   .waitForCondition(whenBoardClaimable(collection), {
@@ -178,7 +178,7 @@ When in doubt, omit `wakeOn` — the default behavior wakes on every item.
 
 ### Helpers
 
-`@flow-state-dev/tasks` exports `onTaskChangeFor(collectionId)` — the wake filter for any predicate that reads from a task collection.
+`@flow-state-dev/orchestration` exports `onTaskChangeFor(collectionId)` — the wake filter for any predicate that reads from a task collection.
 
 ## Lifecycle
 

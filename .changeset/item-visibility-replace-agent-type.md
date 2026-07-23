@@ -4,7 +4,7 @@
 "@flow-state-dev/client": minor
 "@flow-state-dev/react": minor
 "@flow-state-dev/testing": minor
-"@flow-state-dev/skills": minor
+"@flow-state-dev/orchestration": minor
 "@flow-state-dev/memory": minor
 "@flow-state-dev/patterns": minor
 "@flow-state-dev/devtool": minor

@@ -30,7 +30,7 @@ The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps
 
 ### In-memory scopes use a FIFO queue
 
-A *target* state container, a *sequencer* state container, or any scope you build that doesn't bridge through a `persist` callback gets the lock path. Each container has a tail promise; new mutators chain off it, run one at a time in submission order, and the tail advances.
+A *target* state container, a *sequencer* state container, [block state](/docs/advanced/block-state) generally, or any scope you build that doesn't bridge through a `persist` callback gets the lock path. Each container has a tail promise; new mutators chain off it, run one at a time in submission order, and the tail advances.
 
 In a single-process Node.js runtime, the only race vector for these mutators is `await`-point interleaving inside this process. Optimistic concurrency control with a fixed retry budget is the wrong primitive here — concurrent task-board workers create predictable, sustained contention, and the retry budget exhausts long before all writers can land. Serializing at the source costs nothing and is correct by construction.
 

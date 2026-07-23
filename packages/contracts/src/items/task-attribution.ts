@@ -1,6 +1,6 @@
 /**
  * Per-task item attribution (FIX-658) — the single shared algorithm consumed
- * by both the substrate (`task.items()` via `@flow-state-dev/tasks`) and the
+ * by both the substrate (`task.items()` via `@flow-state-dev/orchestration`) and the
  * UI (`<TaskPlan />` / `<RequestGroupRenderer>` via `@flow-state-dev/ui`), so
  * the two always return the same answer.
  *

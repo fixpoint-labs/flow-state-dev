@@ -34,6 +34,11 @@ export class FixtureMissingError extends Error {
  *   - `"finnhub"`     — live mode, Finnhub answered.
  *   - `"edgar"`       — live mode, SEC EDGAR XBRL companyfacts answered.
  *                       Authoritative US-filing source for the statement tools.
+ *   - `"edgar-prospectus"` — live/record mode, a valuation-critical statement
+ *                       field was recovered from an SEC registration/prospectus
+ *                       primary document (S-1 / 424B*) after companyfacts + Yahoo
+ *                       missed (FIX-898). Validated + normalized to USD billions
+ *                       before promotion — never a narrative-only estimate.
  *   - `"yahoo"`       — live mode, Yahoo answered.
  *   - `"fred"`        — live mode, FRED API answered.
  *   - `"polymarket"`  — live mode, Polymarket Gamma API answered.
@@ -53,6 +58,7 @@ const sourceTag = z.enum([
   "yahoo",
   "finnhub",
   "edgar",
+  "edgar-prospectus",
   "fred",
   "polymarket",
   "xai",
@@ -107,6 +113,32 @@ export const cashflowSchema = z.object({
   freeCashFlow: z.number().nullable(),
   unit: z.string().default("USD billions"),
 });
+
+/**
+ * Audit trail for one critical-financials recovery attempt (FIX-898). Written
+ * once per run onto the `financialsData` spine by the recovery runtime — the
+ * SOLE writer — whenever recovery RUNS, so downstream evidence-sufficiency gates
+ * (FIX-781) can read whether "unavailable" is honest exhaustion vs. an untried
+ * path. When companyfacts or Yahoo answered, recovery never runs and the audit
+ * is simply ABSENT (there is no explicit "skipped" record — absence is the
+ * skipped signal).
+ */
+export const recoveryAuditSchema = z.object({
+  attempted: z.boolean(),
+  outcome: z.enum([
+    "promoted",
+    "rejected",
+    "no-candidates",
+    "extract-failed",
+  ]),
+  formsTried: z.array(z.string()),
+  urls: z.array(z.string()),
+  rejectionReasons: z.array(z.string()),
+  // Only the SEC-hosted prospectus is an authoritative statement source in v1
+  // (issuer-IR URLs are SEC-linked context only, never the promoted provenance).
+  recoveredSource: z.enum(["edgar-prospectus"]).optional(),
+});
+export type RecoveryAudit = z.infer<typeof recoveryAuditSchema>;
 
 export const fundamentalsSchema = z.object({
   source: sourceTag,
@@ -608,6 +640,16 @@ export const secFilingsSchema = z.object({
     title: z.string(),
     url: z.string(),
   })),
+  // Registration / prospectus primary documents (S-1, S-1/A, 424B*, F-1*) for
+  // newly listed issuers, kept in a sibling array so the periodic-only MD&A /
+  // red-flag consumers stay unchanged (FIX-898). A newly listed name's audited
+  // financials live here (in the prospectus), not yet in periodic XBRL.
+  registrationFilings: z.array(z.object({
+    form: z.string(),
+    filingDate: z.string(),
+    title: z.string(),
+    url: z.string(),
+  })).default([]),
   materialEvents: z.array(z.object({
     filingDate: z.string(),
     form: z.string(),

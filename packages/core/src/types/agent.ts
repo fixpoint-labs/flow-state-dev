@@ -41,7 +41,7 @@ export interface PersonaInlineConfig {
  *
  * No prompt/system override: a change to an agent's persona is a change
  * to the agent definition; for ad-hoc bodies, use `prompt` or `prompt-ref`
- * on the WorkerSpec instead of `agent-ref`.
+ * on the AgentSpec instead of `agent-ref`.
  */
 export interface AgentOverrides {
   /** REPLACES the agent's allowed-tools list. */
@@ -104,7 +104,7 @@ export interface AgentRegistry {
 
 /**
  * Options for materializing an Agent into a worker-shaped or standalone generator.
- * Defined in core (not workforce) so `@flow-state-dev/skills` can type the
+ * Defined in core (not workforce) so `@flow-state-dev/orchestration` can type the
  * injected `materializeAgent` dep without importing `@flow-state-dev/workforce`.
  */
 export interface MaterializeAgentOptions {

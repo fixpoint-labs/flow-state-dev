@@ -11,7 +11,7 @@
  * `PlanTaskSchema` and `PlanSchema` are kept as legacy exports so
  * external consumers that imported them before the migration keep
  * compiling. New code should depend on the substrate `Task` type from
- * `@flow-state-dev/tasks` instead.
+ * `@flow-state-dev/orchestration` instead.
  */
 import { z } from "zod";
 

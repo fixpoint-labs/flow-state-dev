@@ -1,20 +1,17 @@
 /**
- * Pattern-skill `taskTools` + real `taskBoard` regression fixture.
+ * `taskTools` capability + real `taskBoard` composition fixture.
  *
- * Next bisection step up from `pattern-skill-task-tools-flow.ts`. That
- * fixture proved capability-tool dispatch works in isolation; this one
- * adds the production-shape task-board around it: a discoverer worker
- * with `uses: [taskToolsCapability]` running inside a `taskBoard()` with
- * `concurrency: 4`, request-backed collection, and a seeded `discover`
- * task that mirrors what the skill registry creates.
- *
- * If `addTask` hangs here but not in the simpler fixture, the bug needs
- * task-board contention (4 workers polling `request.atomicState` while
- * the discoverer tries to mutate the same scope) to surface.
+ * A discoverer worker with `uses: [taskTools]` runs inside a production-shape
+ * `taskBoard()` (concurrency 4, request-backed collection, a seeded `discover`
+ * task). It exercises the surviving primitives — the task-board substrate and
+ * the agent-callable `taskTools` surface — composing without a hang: the worker
+ * calls `addTask` and the board drains its seeded task to completion. This is
+ * not a skill-mode test (skill pattern/fork modes were removed in FIX-918); the
+ * board is wired directly.
  */
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
-import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";
-import { taskTools } from "@flow-state-dev/skills";
+import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
+import { taskTools } from "@flow-state-dev/orchestration";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });
@@ -71,7 +68,7 @@ const pipeline = sequencer({
   name: "pattern-skill-task-board-pipeline",
   inputSchema,
   stateSchema: taskBoardStateSchema
-}).step(board.block);
+}).step(board.drain);
 
 const flow = defineFlow({
   kind: "test-pattern-skill-task-board",
