@@ -85,7 +85,10 @@ FIX-801 ETF, FIX-802 macro, FIX-803 indicators-eval, FIX-804 events }.** FIX-800
 in spec review and can implement once **both** its own `spec approved` gate lands (the
 per-issue gate always stands) **and** FIX-798 has landed; the four Backlog consumers ramp
 after `epic approved` and align to FIX-798's provider/budget shape rather than pre-committing
-their own; FIX-803 is spiked when its turn comes.
+their own; FIX-803 is spiked when its turn comes. **A consumer's Build Plan (spec Part II)
+holds until FIX-798's spec is approved** — its Case (Part I) may open, but the budget / cache /
+provenance shape it commits to isn't settled until FIX-798 resolves §4 Q3/Q4, so
+pre-committing invites the exact rework this epic exists to avoid.
 
 ### 2b. The shared AV surface — one provider, one budget, one fallback convention
 
@@ -116,12 +119,15 @@ inheritance explicitly when it ramps. This keeps FIX-798's shared surface thin a
 family is one epic rather than six standalone tools.
 
 **Deliberately out of the AV layer:** making AV the *preferred* source for data an existing
-provider already covers — displacing Finnhub / FRED / Yahoo is the FIX-675 bake-off's call,
-not this epic's. This does **not** restrict AV being the *sole* source for genuinely new
-primitives that have no existing tool (movers FIX-800, ETF look-through FIX-801, events
-FIX-804, commodities FIX-802) — those are legitimately AV-sourced. Generalized multi-provider
-composition + the per-run rate-budget for capped providers belong to **FIX-675** (see §4 Q3);
-premium-gated AV surface (realtime options/index) is out.
+provider already covers — displacing Finnhub / FRED / Yahoo / Massive is the FIX-675
+bake-off's call, not this epic's. This does **not** restrict AV being the *sole* source for
+genuinely new primitives that have no existing tool — movers (FIX-800), ETF look-through
+(FIX-801), events (FIX-804). **FIX-799 (news) and FIX-802 (commodities/macro) are
+*supplements*, not new primitives**: commodities are already partly covered (FRED WTI via
+`get_macro_indicators`, Massive CL/GC via `get_futures_curve`) and news by Finnhub, so AV
+extends them for uncovered gaps or as a fallback rather than bypassing the existing source
+order. Generalized multi-provider composition + the per-run rate-budget for capped providers
+belong to **FIX-675** (see §4 Q3); premium-gated AV surface (realtime options/index) is out.
 
 ---
 
