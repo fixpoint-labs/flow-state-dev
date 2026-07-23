@@ -90,6 +90,40 @@ even if more are queued. State the chosen N and the cap to the user.
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. Stop the fleet once every issue is merged, closed, or dropped.
 
+## Epic coordination (optional — when the set shares cross-cutting concerns)
+
+When the fleet's issues belong to the same body of work (usually one Linear project) and
+have **cross-cutting concerns** — shared surface, naming, sequencing, or a common
+solution direction — stand up an **epic-spec** so those decisions aren't made in a vacuum.
+A batch of unrelated issues doesn't need one; skip it there (tenets 2/3).
+
+The fleet coordinates the epic; the **`epic-agent`** sub-agent does the writing:
+
+- **Discover first.** Check the issues' **Linear project description for an epic-branch
+  list**. If an epic already covers this set, reuse it — don't open a second.
+- **Create when warranted.** If coordination is warranted and no epic exists, dispatch the
+  **`epic-agent`** (custom agent at `.claude/agents/epic-agent.md`, `isolation: worktree`,
+  no `AskUserQuestion`) to author the epic-spec on `epic/<name>`, open the **never-merged
+  epic PR**, and add the branch to the Linear project's epic list. One bounded action, then
+  it exits — the fleet holds only the handles (epic name, branch, epic PR#), never the spec
+  text.
+- **Own the epic PR subscription; fan feedback down.** Subscribe to the epic PR
+  (`subscribe_pr_activity`). Review comments and human feedback on it are cross-cutting —
+  route them **down** to the aligned issue workers so each re-checks its spec against the
+  new direction. (Sub-agents can't hold subscriptions; the fleet does, and fans out — same
+  as it routes a spec-PR event.)
+- **Issues signal up.** An issue's `fsd:create-spec` looks for the epic branch and aligns
+  to it if present (continuing unchanged if not), and can **comment on the epic PR** to
+  raise a cross-cutting concern *upward* while it keeps working — non-blocking. Those
+  comments wake the fleet (it's subscribed); re-dispatch the `epic-agent` to fold them in.
+- **Keep the index fresh.** As spec/impl PRs open, hand the `epic-agent` the current PR
+  handles from your status table so it refreshes the epic-spec's running PR index — the one
+  hub linking to everything under the epic. Cheap: it refreshes when the epic-agent next
+  runs, not on every PR open.
+- **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
+  deleted** and stays listed on the project for later reference. No approval gate governs any
+  of this — the epic shapes the issue specs continuously; it never blocks them.
+
 ## Intake — filing & queueing discovered issues
 
 Work surfaces new issues: a worker (or the spec/impl phases) hits a missing piece, a

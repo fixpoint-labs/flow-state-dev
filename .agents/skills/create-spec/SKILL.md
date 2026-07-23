@@ -66,6 +66,7 @@ Use the Linear MCP tools to fetch the full issue:
 3. Fetch any parent issue or sub-tasks to understand the broader context
 4. Fetch blocking issues to understand what this depends on and what state those dependencies are in
 5. `list_comments` to read any discussion or decisions already made on the issue
+6. **Look for an epic.** Read the issue's **Linear project description for an epic-branch list** (the fleet records epic branches there). If one covers this work, fetch the epic-spec from that `epic/<name>` branch (`git fetch origin epic/<name> && git show FETCH_HEAD:docs/specs/_epics/<name>.md`, or the closed-PR fallback). It is a **coordination reference, not a parent contract**: use it to absorb the set's common themes and longer-horizon solution direction so this spec aligns with its siblings — but this spec still makes its own local decisions. If there's no epic, proceed unchanged (an epic is optional context, never a dependency). When an epic applies, cite its relevant direction in Part I §2 (the tenets/direction that led here) and carry the epic PR link in the spec. If while authoring you spot a **cross-cutting concern** — a conflict with the epic's direction, or a decision that should be made epic-wide — **comment on the epic PR** to raise it upward (the fleet folds it into the epic-spec) and keep working; it doesn't block this spec.
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
 

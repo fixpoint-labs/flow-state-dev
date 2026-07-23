@@ -55,7 +55,7 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 
 | Tier | Model | Roles |
 |---|---|---|
-| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `fsd:create-spec` authoring/research, the **coherence** review lens (`fsd:audit-coherence`) + **restraint** (`fsd:second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
+| Judgment | **Opus** (default) | the orchestrators (thin, cheap to keep smart), `fsd:create-spec` authoring/research, epic-spec authoring/coordination (`epic-agent`), the **coherence** review lens (`fsd:audit-coherence`) + **restraint** (`fsd:second-look`), the **challenger**, ambiguous debugging, necessity/refinement calls |
 | Decided execution | **Sonnet** | implementing a task from an approved spec (`spec-implementer`), the **completeness** + **correctness** review lenses, straightforward PR-feedback fixes, tests for a named behaviour |
 | Mechanical | **Haiku** | read-only orientation (`scout` / `fsd:zoom-out`), status/handle fetches (fleet & lifecycle refreshes), simple lookups, boilerplate/formatting |
 
