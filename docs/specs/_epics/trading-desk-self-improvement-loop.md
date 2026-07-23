@@ -180,7 +180,7 @@ PRs open.
 | **FIX-793** | Backlog | showcase | — | — | outcome scoring / backtest; blocked-by 789/790 |
 | **FIX-812** | Backlog | showcase | — | — | track-record surface *(Endgame B)*; blocked-by 790/793 |
 
-Epic PR (this doc, never merged): _to be filled when the epic PR opens_.
+Epic PR (this doc, never merged): [#898](https://github.com/fixpoint-labs/flow-state-dev/pull/898).
 
 ---
 
