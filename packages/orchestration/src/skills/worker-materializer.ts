@@ -32,6 +32,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskWorkerInput } from "../tasks";
+import { taskWorkerInputSchema } from "../task-board";
 import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
@@ -73,16 +74,15 @@ export interface WorkerMaterializationDeps {
   boardTaskTools?: DefinedCapability;
 }
 
-/** Board-worker input — matches the substrate's TaskWorkerInput. */
-export const workerInputSchema = z.object({
-  taskId: z.string(),
-  goal: z.string(),
-  input: z.unknown().optional(),
-  attempts: z.number(),
-  feedback: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  deps: z.record(z.string(), z.unknown()).optional(),
-});
+/**
+ * Board-worker input schema. The worker-input shape is owned by the task-board
+ * substrate (`taskWorkerInputSchema`) — the board dispatch feeds it — so this is
+ * a re-export rather than a second definition that could drift (FIX-928, D2).
+ * The substrate schema is a compatible superset (adds optional `title`/`context`,
+ * stricter `attempts: int().nonnegative()`); the extra optionals are accepted,
+ * not required, so both importers of this alias keep working.
+ */
+export const workerInputSchema = taskWorkerInputSchema;
 
 type WorkerInput = TaskWorkerInput;
 

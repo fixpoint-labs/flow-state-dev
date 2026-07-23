@@ -25,7 +25,6 @@
  */
 
 import { handler, sequencer } from "@flow-state-dev/core";
-import { deepEqual } from "@flow-state-dev/core/helpers";
 import type {
   AgentRegistry,
   AgentSpec,
@@ -50,6 +49,8 @@ import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { materializeWorker } from "./worker-materializer";
+import { specsCollide } from "./internal/agent-key-reconcile";
+import { resolveDelegationBuild } from "./internal/delegation-memo";
 import {
   buildTaskToolsList,
   createTaskToolsCapability,
@@ -164,6 +165,14 @@ export async function collectAgentSources(
     }
     if (deps.allowedNames && !deps.allowedNames.includes(entry.name)) continue;
     seen.add(entry.name);
+
+    // Honor a live `disable-model-invocation` before the bundled shortcut too.
+    // The static loop and the non-bundled runtime branch already drop disabled
+    // skills; without this read the bundled branch would re-expose a bundled
+    // skill (or a static skill also present in `activeState`) disabled mid-turn.
+    // The memo snapshots this output, so the collector must be disable-correct
+    // on all three paths or the cache would harden the leak (FIX-928, §7.1).
+    if (collection && (await isManifestDisabled(collection, entry.name))) continue;
 
     const bundled = deps.bundledAgentIndex.get(entry.name);
     if (bundled) {
@@ -301,21 +310,54 @@ function buildRunBoardTool(
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolve the delegation build for this execution step. Re-walks eligibility
+ * (`collectAgentSources`, including its live-manifest disable read) on every
+ * call — that walk is never memoized — then hands the per-execution memo
+ * (`internal/delegation-memo.ts`) the resolved sources plus a closure over
+ * the actual build (`buildTools`/`buildGuidance`); the memo invokes the
+ * closure only when the resolved source list has changed since the last
+ * call for this execution. Both `buildDelegationTools` and
+ * `buildDelegationGuidance` call this, so the roster is walked and built
+ * once per snapshot and shared between them (D1).
+ */
+async function resolveBuild(
+  ctx: BlockContext,
+  deps: DelegationSurfaceDeps,
+): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
+  const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
+  return resolveDelegationBuild(ctx, sources, async () => ({
+    tools: await buildTools(ctx, deps, sources),
+    guidance: buildGuidance(sources),
+  }));
+}
+
+/**
  * Build the delegation tool surface for one generator execution. Returns `[]`
- * when no bound skill declares agents. The surface is board-only: the eight
- * `taskTools` plus `runBoard`, with NO per-agent tool. Throws on an agent that
- * cannot materialize (bad ref, missing wiring) — a bound-but-broken delegation
- * skill must fail loud, not silently lose its team. A *runtime* activation whose
- * agent key collides with a divergent spill from another active skill is skipped
- * with a warning instead (a model-driven activation must not crash the turn).
+ * when no bound skill declares agents. Memoized per execution via
+ * `resolveDelegationBuild` — the tools materialize once per turn and are reused
+ * across steps until the resolved source list changes.
  */
 export async function buildDelegationTools(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
 ): Promise<GeneratorTool[]> {
-  const sources = await collectAgentSources(ctx, deps);
-  if (sources.length === 0) return [];
+  return (await resolveBuild(ctx, deps)).tools;
+}
 
+/**
+ * Materialize the board-only tool surface (the eight `taskTools` plus
+ * `runBoard`, NO per-agent tool) from an already-resolved source list. Throws on
+ * an agent that cannot materialize (bad ref, missing wiring) — a bound-but-broken
+ * delegation skill must fail loud, not silently lose its team. A *runtime*
+ * activation whose agent key collides with a divergent spill from another active
+ * skill is skipped with a warning instead (a model-driven activation must not
+ * crash the turn). Called only when `sources.length > 0`.
+ */
+async function buildTools(
+  ctx: BlockContext,
+  deps: DelegationSurfaceDeps,
+  sources: DelegationAgentSource[],
+): Promise<GeneratorTool[]> {
   // The board lives on the generator's own block state. The tools resolver
   // runs in the generator's own scope, so `ctx.self` IS that state ref — the
   // drain and the agents' board-bound taskTools close over it, which is what
@@ -339,9 +381,12 @@ export async function buildDelegationTools(
       changeVisibility: DELEGATION_BOARD_VISIBILITY,
     });
 
-  // Inline agents that declare `tools: [taskTools]` resolve them against this
-  // same board, so mid-drain fan-out (an agent enqueuing follow-up tasks) lands
-  // on the ledger the drain is watching.
+  // Two task-tools shapes are deliberately both in play here: `buildTaskToolsList()`
+  // below produces the flat, model-facing eight tools the executive sees, while
+  // `createTaskToolsCapability(...)` closes over THIS board so an inline agent that
+  // declares `tools: [taskTools]` fans out mid-drain onto the same ledger the drain
+  // is watching. They are not redundant — one is the host surface, one is the
+  // worker's board-bound capability (FIX-928, D4).
   const boardTaskTools = createTaskToolsCapability(() => boardCollection());
 
   const staticNames = new Set(deps.staticSources.map((s) => s.skillName));
@@ -361,7 +406,7 @@ export async function buildDelegationTools(
         // real collision — fail loud for static skills (build-time validation
         // mirrors this), warn + skip for a runtime activation so a model-driven
         // load can't crash the turn.
-        if (deepEqual(seenSpecs.get(agentKey), spec)) continue;
+        if (!specsCollide(seenSpecs.get(agentKey)!, spec)) continue;
         if (!staticNames.has(source.skillName)) {
           console.warn(
             `[skills] delegation agent "${agentKey}" (runtime skill "${source.skillName}") ` +
@@ -427,22 +472,30 @@ const DELEGATION_PLAYBOOK = [
 ].join(" ");
 
 /**
+ * Build the roster text from an already-resolved source list. Returns `null`
+ * (contributes nothing) when no bound skill declares agents.
+ */
+function buildGuidance(sources: DelegationAgentSource[]): string | null {
+  if (sources.length === 0) return null;
+  // Dedupe by agent key — two skills sharing an agent list it once,
+  // mirroring the board's participant registry.
+  const roster = new Map<string, string>();
+  for (const source of sources) {
+    for (const [key, spec] of Object.entries(source.agents)) {
+      if (!roster.has(key)) roster.set(key, `- ${key}: ${agentPurpose(spec, source.files)}`);
+    }
+  }
+  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}`;
+}
+
+/**
  * Build the delegation guidance context entry — a function resolved at render
  * time so the roster reflects runtime activations, not just the static set.
+ * Shares the per-execution memo with the tools resolver (D1), so the roster is
+ * walked and built once per snapshot rather than independently every step.
  * Returns `null` (contributes nothing) when no bound skill declares agents.
  */
 export function buildDelegationGuidance(deps: DelegationSurfaceDeps) {
-  return async (_input: unknown, ctx: BlockContext): Promise<string | null> => {
-    const sources = await collectAgentSources(ctx, deps);
-    if (sources.length === 0) return null;
-    // Dedupe by agent key — two skills sharing an agent list it once,
-    // mirroring the board's participant registry.
-    const roster = new Map<string, string>();
-    for (const source of sources) {
-      for (const [key, spec] of Object.entries(source.agents)) {
-        if (!roster.has(key)) roster.set(key, `- ${key}: ${agentPurpose(spec, source.files)}`);
-      }
-    }
-    return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}`;
-  };
+  return async (_input: unknown, ctx: BlockContext): Promise<string | null> =>
+    (await resolveBuild(ctx, deps)).guidance;
 }

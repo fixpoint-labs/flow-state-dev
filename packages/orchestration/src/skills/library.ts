@@ -32,7 +32,7 @@
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
@@ -435,7 +435,7 @@ export function createSkillsLibrary(
           // Two active skills may share an agent (e.g. a common synthesizer).
           // An IDENTICAL spec dedupes into one board worker; a different spec
           // under the same key is a real collision.
-          if (deepEqual(prior, spec)) continue;
+          if (!specsCollide(prior, spec)) continue;
           throw new Error(
             `skills: delegation agent "${agentKey}" (skill "${skillName}") declares a ` +
               `different spec than another active skill's agent under the same key. Rename the agent key.`,
@@ -478,7 +478,12 @@ export function createSkillsLibrary(
                 Object.keys(entry.agents).length > 0,
             );
           })
-        : true);
+        : // Whole-catalog mode: intentionally broader than strictly needed. We
+          // can't tell yet whether any activation WILL bring agents, and own-state
+          // fields can't be added mid-run, so the board field is pre-declared
+          // defensively for any binding that MIGHT resolve one (harmless if unused —
+          // it defaults to an empty record) (FIX-928, D4).
+          true);
     const delegationPossible =
       delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible);
     if (delegationPossible) {
