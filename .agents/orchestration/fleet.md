@@ -25,6 +25,7 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 ## PR notes
 - #866 (FIX-917 spec) taken out of draft by user 2026-07-23 — review signal only; spec PRs are not merged.
 - #866 CRUX: Codex P1 + Cursor pt7/line170 BOTH claim FIX-914 block-state API (ctx.self/parentStateSchema) is NOT on main despite FIX-914=Done. Worker a7c5fac94b420145e verifying. If premise broken → spec-blind-spot, surface to user.
+- #866 predicate fold-in DISPATCHED: agent a76bb0f4945e926ca — §7 warn-on-dirty+non-sequencer (drop ancestor walk), §12 Q3 resolved, Decision 4 updated, reply both threads. (User approved fold-in.)
 - #866 NEW Codex P2 (r3635010743, line 267, post-P2-push): ancestor-sequencer-checkpoint suppression is a FALSE NEGATIVE — sequencer checkpoint only persists ctx.sequencer.state via state_snapshot, NOT a child block's own container, so a dirty child suspending in a durable sequencer would be SILENT on the common HITL path (exactly what the warning should catch). Converges with Cursor line-267. Recommended fix: adopt Cursor's simpler v1 (warn on dirty own-state + non-sequencer, DROP ancestor walk, accept false positive) — resolves §12 Q3. SURFACED to user for sign-off (design decision on unapproved spec).
 - #866 Cursor /simplify batch (NON-BLOCKING per cursor's own verdict) — DEFERRED until P1 verdict, then one follow-up worker on spec/FIX-917:
   - Part 2 v1: drop ancestor checkpoint-coverage walk; warn on dirty own-state + non-sequencer (accept false positive) until Q3 pinned (lines 267, 257-267)
