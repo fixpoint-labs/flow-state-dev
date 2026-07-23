@@ -2,8 +2,8 @@
 
 This is the **canonical reference** for how we drive Linear issues to merged PRs with
 agents — the roles, the artifacts, and the gates. The orchestration skills
-(`fsd:issue-fleet`, `fsd:issue-lifecycle`, `fsd:create-spec`, `fsd:implement-issue`,
-`fsd:cross-spec-review`) and the worker sub-agents (`issue-worker`, `epic-agent`,
+(`issue-fleet`, `issue-lifecycle`, `issue-spec`, `issue-implement`,
+`cross-spec-review`) and the worker sub-agents (`issue-worker`, `epic-agent`,
 `scout`, `spec-implementer`, `issue-manager`) **reference this doc** instead of each
 restating the shared concepts. When a concept here changes, it changes here.
 
@@ -11,9 +11,9 @@ restating the shared concepts. When a concept here changes, it changes here.
 
 - **Fleet** — the coordinator. One thin, event-driven session that drives several
   issues in parallel, holds a compact status table, owns subscriptions, and dispatches
-  worker sub-agents. Ephemeral (a session). See `fsd:issue-fleet`.
+  worker sub-agents. Ephemeral (a session). See `issue-fleet`.
 - **Issue lifecycle** — one issue from spec to merge-ready PR, as a state machine
-  advanced one bounded step per event. See `fsd:issue-lifecycle`.
+  advanced one bounded step per event. See `issue-lifecycle`.
 - **Epic** *(optional)* — a coordination layer above a *set* of related issues so
   cross-cutting decisions aren't made in a vacuum. An epic is a **Linear parent issue
   with the `Epic` label (Kind group)**; the work items are its **sub-issues**. Its artifact is the
@@ -36,7 +36,7 @@ flowchart TD
   Fleet -->|status fetches| SC[scout]
   Fleet -->|discovered work| IM[issue-manager]
   IW -->|runs| IL[issue-lifecycle step]
-  IL --> CS[create-spec] & II[implement-issue]
+  IL --> CS[issue-spec] & II[issue-implement]
   II --> SI[spec-implementer] & RV[review lenses]
   EA -->|reads/writes| ES[(epic-spec<br/>epic/&lt;name&gt; branch + epic PR<br/>+ Linear Epic issue doc)]
   EPIC[[Linear Epic issue · Kind: Epic]] -.->|parent of| ISS[work issues = sub-issues]
@@ -75,7 +75,7 @@ silently detached.
 **Contents:**
 
 1. **Purpose & objective** — abstract: *why* this body of work, *what outcome*. The
-   **holistic necessity check** (the `fsd:create-spec` Step 3.5 lens at epic altitude):
+   **holistic necessity check** (the `issue-spec` Step 3.5 lens at epic altitude):
    each issue can earn its place while the whole set overbuilds. This is the gated
    sign-off surface (see Gates).
 2. **Themes & long-horizon direction** — cross-cutting decisions above any one issue
@@ -108,34 +108,66 @@ out-of-band chat approval:
 | Gate | Signal | Meaning | Blocks |
 |---|---|---|---|
 | **Build Plan** | spec PR `draft` → ready-for-review | The Case (Part I) holds | authoring Part II (the Build Plan) |
-| **Spec approval** | an approving comment from a human on the spec PR | The full spec is signed off | implementing that issue |
-| **Epic objective** | an approving comment from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold at NEEDS_SPEC) |
+| **Spec approval** | an approving comment or GitHub Review from a human on the spec PR | The full spec is signed off | implementing that issue |
+| **Epic objective** | an approving comment or GitHub Review from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold at NEEDS_SPEC) |
 
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
 feedback, upward comments) flows continuously and never blocks. The two spec gates are
 per issue.
 
-**Why a comment, not a label — the comment drives; label and Linear mirror.** A `labeled`
-webhook is **not** in the PR-activity stream the coordinator subscribes to (comments, CI,
-and reviews are), so a label a human applies never wakes the session — it's only noticed on
-the next heartbeat poll. A **comment is delivered**, so an approving comment wakes the
-coordinator immediately. The two sign-off gates therefore run on an **approving comment from
-a human**, and the coordinator **mirrors it to the `spec approved` / `epic approved` label**
-— a durable, filterable record — the moment it detects one. The label is written by the
-coordinator now, not applied by the human; it records the gate, it no longer triggers it.
+**Why a comment or review, not a label — either drives; label and Linear mirror.** A
+`labeled` webhook is **not** in the PR-activity stream the coordinator subscribes to
+(comments, CI, and reviews are), so a label a human applies never wakes the session —
+it's only noticed on the next heartbeat poll. A **comment or a review submission is
+delivered**, so either wakes the coordinator immediately. The two sign-off gates
+therefore run on **either an approving comment or an approving GitHub Review from a
+human**, and the coordinator **mirrors it to the `spec approved` / `epic approved`
+label** — a durable, filterable record — the moment it detects one. The label is
+written by the coordinator now, not applied by the human; it records the gate, it no
+longer triggers it.
 
-**What counts as approval.** A comment that (a) expresses approval — its body says
-"approved" — **and** (b) is authored by a human: not a bot account, and not a comment whose
-body marks it as bot-written (the `_Generated by …_` attribution footer, a "written by
-&lt;bot&gt;" line). That second clause is load-bearing — it excludes the coordinator's own
-footer-signed comments and every review bot, so only a genuine human sign-off trips the gate.
-The Build-Plan gate is **unchanged**: it's still the human promoting the draft spec PR to
-ready-for-review (caught on the heartbeat too, since a `ready_for_review` webhook isn't
-guaranteed to arrive either).
+**What counts as approval.** Either signal, from a human:
+
+- **A comment** that (a) expresses approval — its body says "approved" — **and** (b) is
+  authored by a human: not a bot account, and not a comment whose body marks it as
+  bot-written (the `_Generated by …_` attribution footer, a "written by &lt;bot&gt;"
+  line).
+- **A GitHub Review** whose **current effective state is `APPROVED`**, authored by a human
+  — same bot exclusion as the comment path — **and** whose author is not the PR's own author.
+  GitHub already refuses to let a PR author submit an "Approve" review on their own PR, so a
+  native review approval is inherently a second person's sign-off; the coordinator checks
+  `review.user != pr.user` explicitly anyway rather than depending on that alone. This matters
+  in practice: automated review bots (Cursor Bugbot, Codex, and similar) post Review
+  submissions with a `state`, not just comments, and none of them should trip this gate.
+
+  **Latest-state, not any-state — the reviews list is chronological history.** The reviews
+  endpoint returns *every* review ever submitted, so a lone `state: APPROVED` in it does **not**
+  mean the PR is approved *now*. Collapse to the **latest review per human reviewer** and gate
+  on that: an approval counts only if that reviewer's most-recent review is `APPROVED`, and
+  **no** human reviewer's latest review is `CHANGES_REQUESTED` (a later change-request overrides
+  an earlier approval; a later approval clears an earlier change-request). Otherwise a reviewer
+  who approved and then requested changes would still trip the gate on the stale approval.
+
+  **Fresh against the current head.** Each review carries a `commit_id`. An approval on an
+  earlier commit is **stale** once the author pushes new work — implementation must not start
+  from an unreviewed head. Require the approving review's `commit_id` to be the PR's current
+  head SHA (or, equivalently, treat any substantive push after an approval as re-opening the
+  gate). Because the coordinator re-derives gate state every wake (it never treats a
+  once-seen approval as permanent — see the subscription/refresh discipline), a post-approval
+  push naturally drops the gate back to pending on the next refresh; the rule here is just that
+  the check is "is the *current head* approved," not "was anything ever approved."
+
+Both clauses are load-bearing — they exclude the coordinator's own footer-signed
+comments and every review bot, so only a genuine human sign-off — by comment or by
+review — trips the gate. **A substantive push after a comment-based approval re-opens the
+gate too** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
+as approving the state at that moment; new work needs fresh sign-off). The Build-Plan gate is
+**unchanged**: it's still the human promoting the draft spec PR to ready-for-review (caught on
+the heartbeat too, since a `ready_for_review` webhook isn't guaranteed to arrive either).
 
 The epic *issue's* Linear state is a second human-facing mirror of the objective gate, not
-the trigger — the **fleet writes that mirror** when the approving comment lands, so it
-doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
+the trigger — the **fleet writes that mirror** when the approving comment or review lands,
+so it doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
 "Kind" group** — that's what marks a Linear issue as an epic and keeps it filterable off the
 working board.)
 
@@ -164,9 +196,86 @@ flowchart TD
 ```
 
 The fleet owns the epic PR subscription (sub-agents can't hold one) and routes epic
-feedback *down* to the aligned issue workers; an issue's `fsd:create-spec` can comment
+feedback *down* to the aligned issue workers; an issue's `issue-spec` can comment
 *up* on the epic PR to raise a cross-cutting concern while it keeps working. All on
 existing `subscribe_pr_activity` + PR-comment machinery — no new plumbing.
+
+## Environment: cloud vs. local (PR subscriptions)
+
+`subscribe_pr_activity` depends on a webhook relay GitHub can call back into — that relay
+exists only for Claude's **hosted/cloud environments** (Claude Code on the web, a managed
+remote execution environment). A **local** Claude Code CLI session has no publicly
+reachable callback endpoint, so subscribing does nothing there even if the call itself
+succeeds: no event will ever arrive to wake the session.
+
+**Detecting which one you're in.** A cloud session's system prompt carries an explicit
+"remote execution environment" section that a local session's prompt lacks entirely; the
+`mcp__Claude_Code_Remote__*` tools (`list_environments`, `create_trigger`, `send_later`)
+are similarly cloud-only and won't resolve locally. Check for either before relying on
+`subscribe_pr_activity` — don't assume cloud by default.
+
+**Local fallback: poll with `Monitor`, not a scheduler.** Both `Monitor` and `CronCreate`
+are harness-native (not cloud-gated), but they poll very differently, and for PR-watching
+`Monitor` is the better primitive:
+
+- **`Monitor` (preferred).** Arms a shell poll loop that runs in a **subprocess**; each
+  stdout line it emits becomes an event that wakes the session. The loop hits the PR's
+  comment / review / check endpoints on an interval (60s+ for a remote API — GitHub rate
+  limits) and prints only *new* activity. Because the polling itself is a subprocess, the
+  model wakes **only on a real event**, not on every tick — cost is proportional to actual
+  PR activity, and the poll behavior is deterministic (fixed shell, not a model turn that
+  re-decides each fire). This is the closest local analogue to the cloud webhook stream.
+  The **`watch-pr` skill** packages this loop — reach for it rather than re-deriving the
+  endpoints; use it as the *primary* wake signal a local fleet/lifecycle re-enters on.
+- **`CronCreate` (only when you need a time-based tick).** Fires a *prompt* on a wall-clock
+  schedule, so it costs a full model turn **every** fire whether or not anything changed —
+  a poll-and-compare on every empty tick. Use it only for a genuinely time-driven check
+  (a low-frequency "is the Monitor still alive / anything I missed" backstop), not as the
+  main watch.
+
+**Cover the same signals the cloud path does** (this is where the naive comment-only loop
+fails): the watch must poll **PR comments *and* reviews *and* check-runs *and* PR meta**
+(`isDraft`/`state`/`mergedAt`). Two things the comment-only loop gets wrong:
+
+- A `state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint —
+  omit it and a local orchestrator goes deaf to the exact approval gate above.
+- The **`draft→ready-for-review` promotion** (and merge/close) is a *quiet* transition — no
+  comment, review, or check accompanies it. A watch that only polls activity endpoints never
+  sees it, so a local lifecycle waiting in `AWAITING_CASE_APPROVAL` for the human to promote a
+  draft spec PR would hang. `watch-pr` polls the PR-meta each tick so its **continuous 60s
+  cadence *is* the heartbeat for that transition** — which is why, locally, it substitutes for
+  the `send_later` draft-promotion heartbeat too, not just `subscribe_pr_activity`.
+
+Also advance the comment `since` cursor **only after a successful fetch**: a swallowed
+transient `gh` failure that still moved the cursor would drop any comment posted during the
+failed interval outside the next window.
+
+**Arming a Monitor is not idempotent — one per PR.** Unlike `subscribe_pr_activity` (safe to
+re-call every wake), each `watch-pr` arm spawns a *new* poll subprocess. A coordinator that
+re-arms on every refresh would stack duplicate pollers, notifications, and API traffic. So a
+local fleet/lifecycle must **track each PR's Monitor handle in its `.orchestration` cache and
+re-arm only when it's missing or dead** — the "re-assert every wake" discipline is for the
+cloud subscription, not for local Monitors.
+
+**Read current state at arm time — the Monitor only reports what changes *next*.** The Monitor
+primes its snapshot so it emits only post-arm activity — which means anything already true when
+it starts (CI that already finished green, an approval already posted) is suppressed and never
+fires. A coordinator that arms the Monitor *right after opening a PR* can therefore miss an
+already-green CI run, and locally there's no `send_later` heartbeat to re-read — the issue
+stalls in `PR_FEEDBACK` on a green PR. So on the wake that arms (or re-arms) a Monitor for a
+PR, the coordinator must **immediately re-derive that PR's current CI / review / draft state
+and act on it in the same wake** — exactly the re-derive-every-wake discipline; the Monitor is
+for subsequent changes, the current state is the coordinator's to read directly.
+
+Two caveats to state to the user up front, not discover later. **(1) Session-only.** A
+`Monitor` (like a `CronCreate` job) dies when the session ends, unlike a cloud session's
+server-side routines — a local fleet's "still watching" guarantee is weaker; say so rather
+than imply parity. The one thing the Monitor *can't* self-heal is its own process dying, so an
+unattended local run should still arm a low-frequency `CronCreate` backstop that re-checks
+state and re-arms the watch. **(2) Unproven.** This fallback is the recommended design but
+hasn't been confirmed against a live local run yet — verify the `watch-pr` Monitor actually
+emits and re-enters the loop the first time a fleet/lifecycle runs locally, before trusting it
+unattended.
 
 ## Token discipline (why it stays cheap)
 
@@ -180,7 +289,8 @@ Event routing follows the same discipline. The coordinator does **not** read eve
 content: on a PR event it maps PR# → owning issue and dispatches that issue's worker,
 which reads the review/CI in its own context. Two reads are the exception, both **small
 and offloaded to `scout`**, not folded into the coordinator: the **spec/epic-PR approval
-check** ("is there an approving comment from a human?" — the sign-off gate) and
+check** ("is there an approving comment or GitHub Review from a human?" — the sign-off
+gate — checks both the PR's comments and its reviews) and
 **epic-PR feedback fan-out** ("which aligned issues does this comment touch?"). Scout
 returns the verdict / target list; the coordinator routes on it and, for a detected
 approval, applies the mirror label.

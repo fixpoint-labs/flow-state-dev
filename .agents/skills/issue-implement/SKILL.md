@@ -1,5 +1,5 @@
 ---
-name: fsd:implement-issue
+name: issue-implement
 description: Use when implementing a Linear issue. Fetches the issue and spec, creates a fix branch, auto-routes by Linear category (Bug vs Feature/Enhancement) to the right implementation discipline, dispatches sub-agents for complex work, runs a comprehensive review, opens a PR, and then stays on the PR — acknowledging new review comments with an eyes reaction and responding to every code-related comment with either a fix or a justification. Handles "Fix bug for FIX-N" and "Implement FEAT-N" the same way — the routing happens inside.
 argument-hint: "<Linear issue ID, e.g. FIX-123>"
 ---
@@ -12,20 +12,20 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
-- **Bug** → implementer sub-agents follow **`fsd:diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup). For flow-execution bugs specifically, Phase 1 of diagnose hands off to **`fsd:debug-flow`** for the NDJSON trace reader.
-- **Feature / Enhancement** → implementer sub-agents follow **`fsd:tdd`** (red-green-refactor with vertical tracer-bullet slices). One test → minimal code → repeat. No horizontal slicing.
+- **Bug** → implementer sub-agents follow **`diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup). For flow-execution bugs specifically, Phase 1 of diagnose hands off to **`debug-flow`** for the NDJSON trace reader.
+- **Feature / Enhancement** → implementer sub-agents follow **`tdd`** (red-green-refactor with vertical tracer-bullet slices). One test → minimal code → repeat. No horizontal slicing.
 
 Both disciplines are embedded into the implementer sub-agent prompt at dispatch time. The implementer doesn't choose — this skill picks based on the label and gives them the right shape.
 
 **Red is a gate, not a suggestion.** For any change with observable behaviour, the discipline is not satisfied by writing the test after the code, or writing the test and the fix together and only confirming green. The flow is always: write ONE behavioural test → run it → observe it fail for the intended reason (not a typo, import error, or missing fixture) → write the minimal code → observe it pass. Both the failing output and the passing output are evidence (BP-003) — "tests pass" alone proves nothing if the test was never seen to fail. This applies everywhere this skill drives a code change: Step 5A/5B implementation (tracer-bullet loop, red-before-green per slice) and Step 10.4 fixes made in response to PR review (every regression test shown failing against the un-fixed code first). Step 6's completeness review checks for this evidence, not just green tests.
 
-**Exceptions.** (a) Pure characterization/parity work — swapping an implementation while holding pre-existing tests green (see `fsd:tdd` → "When NOT to use TDD") — has no red-green cycle by design; the discipline there is that the parity tests already existed *before* the change and continue to pass, not that anything was ever red. (b) Trivial, mechanical edits with no behavioural surface — config values, docs, renames — don't need a test at all. Anything with observable behaviour (an item emitted, a return value, a state change, a symptom that's now fixed) gets the red gate; when in doubt, treat it as observable.
+**Exceptions.** (a) Pure characterization/parity work — swapping an implementation while holding pre-existing tests green (see `tdd` → "When NOT to use TDD") — has no red-green cycle by design; the discipline there is that the parity tests already existed *before* the change and continue to pass, not that anything was ever red. (b) Trivial, mechanical edits with no behavioural surface — config values, docs, renames — don't need a test at all. Anything with observable behaviour (an item emitted, a return value, a state change, a symptom that's now fixed) gets the red gate; when in doubt, treat it as observable.
 
-**Meta-awareness — challenge the spec where the code contradicts it.** The spec did the hard 80% and passed review, but implementation is the first time its assumptions meet real code. At the step boundaries you judge most likely to expose a blind spot — not the trivial ones — run the **challenger** sub-agent (`./challenger-prompt.md`). It asks only whether the code reveals something the spec *misunderstood or didn't realize*; it does not re-litigate a reviewed spec or review quality/scope. On a real blind spot, **surface it**: escalate to the human when available, else take the best-judgment path, fold the correction into the spec, and flag it loudly as a spec deviation in the PR and Linear (never silently force-follow or deviate). A challenged blind spot is prime `fsd:distill-lessons` signal.
+**Meta-awareness — challenge the spec where the code contradicts it.** The spec did the hard 80% and passed review, but implementation is the first time its assumptions meet real code. At the step boundaries you judge most likely to expose a blind spot — not the trivial ones — run the **challenger** sub-agent (`./challenger-prompt.md`). It asks only whether the code reveals something the spec *misunderstood or didn't realize*; it does not re-litigate a reviewed spec or review quality/scope. On a real blind spot, **surface it**: escalate to the human when available, else take the best-judgment path, fold the correction into the spec, and flag it loudly as a spec deviation in the PR and Linear (never silently force-follow or deviate). A challenged blind spot is prime `distill-lessons` signal.
 
 ## Workflow
 
-**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `fsd:create-spec`, open or closed) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
+**Re-entry on an in-flight PR.** Before running Step 1 from scratch, check if this issue already has an open **implementation** PR (`gh pr list --search "FIX-N in:title,body" --state open`, or the URL recorded on the Linear issue). **Ignore the docs-only spec PR** (`spec(FIX-N)` title / `spec/FIX-N` branch from `issue-spec`, open or closed) — that's the spec artifact, not the implementation; matching it would wrongly jump to PR-feedback mode and skip the build. If an implementation PR exists, the implementation phase is done — jump directly to **Step 10 (Respond to PR Feedback)**. Do not branch, re-implement, or re-review.
 
 ### Step 1: Pull the Linear Issue
 
@@ -55,11 +55,11 @@ If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` usi
 Before starting work, check:
 
 1. **Spec exists?**
-   - **Issue labeled "Bug" with a clear reproduction** → proceed without a full spec. Bugs follow `fsd:diagnose`, which requires a feedback loop before any code change — that's the implementer's first job, not the spec author's. If the issue body lacks a reproduction or is ambiguous, still consider running `/create-spec` (specs aren't only for features) — the spec for a bug captures the reproduction shape and the regression-test seam.
-   - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/create-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
+   - **Issue labeled "Bug" with a clear reproduction** → proceed without a full spec. Bugs follow `diagnose`, which requires a feedback loop before any code change — that's the implementer's first job, not the spec author's. If the issue body lacks a reproduction or is ambiguous, still consider running `/issue-spec` (specs aren't only for features) — the spec for a bug captures the reproduction shape and the regression-test seam.
+   - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/issue-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
-2. **Build Plan present?** A full-workflow spec is authored in two stages (`fsd:create-spec`): Part I ("The Case") ships first in a **draft** spec PR; Part II ("The Build Plan") is authored only after the human promotes that PR to ready-for-review. If the spec is still **Part II-pending** (the `## Part II — The Build Plan` heading is marked *pending*, or the spec PR is still a **draft**), the Case hasn't been approved and there's no plan to implement → **stop** and tell the user to review the draft spec PR and mark it ready-for-review, which triggers the Build Plan; implement only once the full spec is present and signed off. Under `fsd:issue-lifecycle` / `fsd:issue-fleet` that sign-off is an **approving comment from the user** on the spec PR — mirrored by the orchestrator to the `spec approved` label — which the orchestrator gates on before dispatching this skill; run standalone, your invocation is the approval — but still don't implement a Part II-pending spec. (Bugs and agent-brief issues have no two-stage spec — this check doesn't apply to them.)
+2. **Build Plan present?** A full-workflow spec is authored in two stages (`issue-spec`): Part I ("The Case") ships first in a **draft** spec PR; Part II ("The Build Plan") is authored only after the human promotes that PR to ready-for-review. If the spec is still **Part II-pending** (the `## Part II — The Build Plan` heading is marked *pending*, or the spec PR is still a **draft**), the Case hasn't been approved and there's no plan to implement → **stop** and tell the user to review the draft spec PR and mark it ready-for-review, which triggers the Build Plan; implement only once the full spec is present and signed off. Under `issue-lifecycle` / `issue-fleet` that sign-off is an **approving comment or GitHub Review from the user** on the spec PR — mirrored by the orchestrator to the `spec approved` label — which the orchestrator gates on before dispatching this skill; run standalone, your invocation is the approval — but still don't implement a Part II-pending spec. (Bugs and agent-brief issues have no two-stage spec — this check doesn't apply to them.)
 
 3. **Dependencies resolved?** Check blocking issues:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
@@ -73,7 +73,7 @@ If all clear, move to Step 3.
 
 1. Ensure main is up to date: `git checkout main && git pull`
 2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID.
-   **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `fsd:issue-lifecycle` for one
+   **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one
    node of the spec's PR plan.) Then use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement
    **only that sub-PR's deliverables** (not the whole issue), branch off the dependency's
    branch if it has one (else main), and open that sub-PR. Do **not** close the spec PR
@@ -92,8 +92,8 @@ If all clear, move to Step 3.
 
 #### 4.1: Pick the discipline (by Linear category label)
 
-- **Bug** → discipline = **`fsd:diagnose`**. Implementer sub-agent must build a feedback loop and reproduce the bug *before* changing code. The discipline's six phases (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup) get embedded in the implementer prompt. For flow-execution bugs specifically, point the implementer at `fsd:debug-flow` for Phase 1 mechanics (NDJSON event types, failure-pattern table).
-- **Feature / Enhancement / Improvement** → discipline = **`fsd:tdd`**. Implementer sub-agent follows red-green-refactor with vertical tracer-bullet slices: write one behavioural test for the first slice → minimal code to pass → repeat. No "write all the specs first" — that produces tests insensitive to real bugs.
+- **Bug** → discipline = **`diagnose`**. Implementer sub-agent must build a feedback loop and reproduce the bug *before* changing code. The discipline's six phases (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup) get embedded in the implementer prompt. For flow-execution bugs specifically, point the implementer at `debug-flow` for Phase 1 mechanics (NDJSON event types, failure-pattern table).
+- **Feature / Enhancement / Improvement** → discipline = **`tdd`**. Implementer sub-agent follows red-green-refactor with vertical tracer-bullet slices: write one behavioural test for the first slice → minimal code to pass → repeat. No "write all the specs first" — that produces tests insensitive to real bugs.
 - **Mixed** (e.g. a "bug" issue that actually requires building new infrastructure to fix, or a "feature" issue that resurfaces a known bug) → flag to the user and pick one explicitly. Default toward TDD if uncertain; the bug regression test still gets written, just inside the TDD loop.
 
 Record the discipline; you'll inject it into the implementer prompt at Step 5.
@@ -120,19 +120,19 @@ If complex → go to Step 5B.
 
 #### 4.3: Familiarity check
 
-If the area being touched is unfamiliar to you (whether running this skill directly or dispatching sub-agents), get a map first via `fsd:zoom-out` shape — package / flow / actions / block kinds / capabilities / scopes / items / boundaries / callers. A 30-second orientation prevents an hour of misdirected work.
+If the area being touched is unfamiliar to you (whether running this skill directly or dispatching sub-agents), get a map first via `zoom-out` shape — package / flow / actions / block kinds / capabilities / scopes / items / boundaries / callers. A 30-second orientation prevents an hour of misdirected work.
 
 ### Step 5A: Simple Implementation
 
 Follow the discipline picked at Step 4.1. As you work, at any boundary that resists the spec's plan or sits on a Part I decision, run the challenger (Core Principles → Meta-awareness; `./challenger-prompt.md`) before committing to that direction. Skip it at trivial boundaries.
 
-**For bugs (`fsd:diagnose` discipline):**
+**For bugs (`diagnose` discipline):**
 
-1. Read relevant code to understand the area (use `fsd:zoom-out` shape if unfamiliar)
+1. Read relevant code to understand the area (use `zoom-out` shape if unfamiliar)
 2. **Build a feedback loop FIRST** (Phase 1 of diagnose). Don't touch code until you have a reproduction:
    - Default: vitest filter at the package level — fastest, sharpest
    - For block-level isolation: `fsdev block <path> -i '<json>'`
-   - For flow-level reproduction: `fsdev run` with NDJSON capture (hand off to `fsd:debug-flow` for trace reading)
+   - For flow-level reproduction: `fsdev run` with NDJSON capture (hand off to `debug-flow` for trace reading)
    - For type-only regressions: `pnpm --filter <pkg> typecheck`
 3. Reproduce the bug through the loop. Confirm the failure mode matches what the user described.
 4. Hypothesise: 3–5 ranked falsifiable hypotheses before testing any.
@@ -145,16 +145,16 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
 12. Skip to Step 6 (Review)
 
-**For features/enhancements (`fsd:tdd` discipline):**
+**For features/enhancements (`tdd` discipline):**
 
-1. Read relevant code to understand the area (use `fsd:zoom-out` shape if unfamiliar)
+1. Read relevant code to understand the area (use `zoom-out` shape if unfamiliar)
 2. List the behaviours to test from the spec's Testing Strategy — observable outcomes through the public surface (items emitted, state changes, return values), not implementation steps
 3. **Tracer bullet**: write ONE test for the first behaviour through `@flow-state-dev/testing`'s mock context. Run it — confirm it fails for the intended reason (the behaviour doesn't exist yet, not a typo or import error) — and capture the failing output. Only then write the minimal code to make it pass, run it again, and capture the passing output.
 4. **Incremental loop**: for each remaining behaviour, RED (write the test, run it, confirm it fails for the intended reason, capture the output) → GREEN (minimal code, run it, capture the passing output). One test at a time. Do not write all tests first, and do not write a test and its implementation together without running the test red first.
 5. After all tests pass, refactor while green: extract duplication, deepen modules, follow BP-011–BP-016. Never refactor while red.
 6. For generators specifically: assert schema strictness with `makeSchemaStrict` per BP-016.
 7. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
-8. **Run the goal check** if the spec's Testing Strategy names one (real model, real path — see `fsd:tdd` → "Two kinds of test"). Green specs are mocked; they don't prove the goal. Run `fsdev run` against a real model or `pnpm tsx goals/<describe>/<it>/run.mts` and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
+8. **Run the goal check** if the spec's Testing Strategy names one (real model, real path — see `tdd` → "Two kinds of test"). Green specs are mocked; they don't prove the goal. Run `fsdev run` against a real model or `pnpm tsx goals/<describe>/<it>/run.mts` and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
 9. Commit with a conventional commit message referencing the issue ID
 10. Skip to Step 6 (Review)
 
@@ -174,13 +174,13 @@ Create a TodoWrite with all tasks.
 
 For each task, sequentially dispatch an implementer sub-agent using the template in `./implementer-prompt.md`. The template has a `[Discipline]` slot — fill it based on Step 4.1:
 
-- **Bug** → fill with the `fsd:diagnose` discipline block (see template). Sub-agent must build a feedback loop and reproduce before changing code; produces a regression test at the spec's named seam; runs the cleanup pass before reporting.
-- **Feature/Enhancement** → fill with the `fsd:tdd` discipline block (see template). Sub-agent runs red-green-refactor with tracer bullets, one test → one impl, no horizontal slicing.
+- **Bug** → fill with the `diagnose` discipline block (see template). Sub-agent must build a feedback loop and reproduce before changing code; produces a regression test at the spec's named seam; runs the cleanup pass before reporting.
+- **Feature/Enhancement** → fill with the `tdd` discipline block (see template). Sub-agent runs red-green-refactor with tracer bullets, one test → one impl, no horizontal slicing.
 
 Provide:
 
 - **Full task text** from the spec (don't make the sub-agent read files)
-- **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints. If the sub-agent is landing in unfamiliar code, include a `fsd:zoom-out` shape map up front
+- **Scene-setting context**: where this fits in the overall implementation, what prior tasks produced, architectural constraints. If the sub-agent is landing in unfamiliar code, include a `zoom-out` shape map up front
 - **The relevant spec sections** that inform this task (Technical Design, Edge Cases, Testing Strategy — Testing Strategy is especially load-bearing because it names the discipline's seam)
 - **Codebase conventions** from AGENTS.md and best-practices.md — universal rules + index inline; situational rule text (e.g. BP-010 react, BP-011–BP-016 blocks/generators/resources) in `docs/contributing/best-practices/<category>.md`
 - **The chosen discipline block** filled into the `[Discipline]` slot
@@ -189,7 +189,7 @@ Provide:
 - **Decided execution** — a well-specified task whose architecture the spec already settled (mechanical or integration) → dispatch the **`spec-implementer`** agent (Sonnet). It escalates any un-decided fork as a blocker rather than inventing it, so judgment stays upstream.
 - **Architecture / design tasks** (a new abstraction, a genuinely open shape the spec left to the implementer) → keep on the **default (Opus)** model; the judgment isn't settled yet.
 - **Bugs with non-trivial reproduction** → **default (Opus)**; the diagnose loop benefits from careful reading (cheaper models often skip Phase 1). Once the repro and fix approach are clear, the mechanical fix itself can go to `spec-implementer`.
-- **Read-only orientation** before a task (a `fsd:zoom-out` map, locating callers) → the **`scout`** agent (Haiku).
+- **Read-only orientation** before a task (a `zoom-out` map, locating callers) → the **`scout`** agent (Haiku).
 
 **Handle implementer status:**
 - **DONE** → proceed to spec review
@@ -214,20 +214,20 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 - Run full typecheck: `pnpm typecheck`
 - Run full test suite: `pnpm test`
 - Fix any cross-task integration issues
-- **Prove the goal on the assembled work** (real model, real path — see `fsd:tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; this step proves the whole achieves the outcome. Confirm PASS before moving to review and record the command and verdict.
+- **Prove the goal on the assembled work** (real model, real path — see `tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; this step proves the whole achieves the outcome. Confirm PASS before moving to review and record the command and verdict.
   - **Feature/Enhancement:** run the goal check the spec names. If the spec documented that no goal check applies, skip and note the documented justification.
   - **Bug** (complex bugs route through 5B, not 5A): if the original symptom was user-visible, re-run the **original repro through the real path** (`fsdev run` against a real model) on the assembled fix and confirm it's gone — this is the bug's goal verdict Step 6 expects. For a pure type/unit regression, note "N/A — type/unit-only" with the regression test as the proof.
 
 ### Step 6: Comprehensive Review
 
-This is the critical quality gate. **Invoke `fsd:review`** on the change (the implementation branch/PR), passing the spec and the Linear category as context. It is the single definition of how we review — the same skill runs standalone — so there is no separate inline panel here. It composes the review lenses as **parallel sub-agents** and returns one deduped, ranked report:
+This is the critical quality gate. **Invoke `review`** on the change (the implementation branch/PR), passing the spec and the Linear category as context. It is the single definition of how we review — the same skill runs standalone — so there is no separate inline panel here. It composes the review lenses as **parallel sub-agents** and returns one deduped, ranked report:
 
-- **Coherence** (`fsd:audit-coherence`) — does the solution cohere with `docs/philosophy.md` and the surrounding patterns? The apex lens: it catches the "directionally-right spec but the design feels off" failure the others structurally can't. A coherence break usually means reshaping the approach, not patching lines.
-- **Restraint** (`fsd:second-look`) — overbuilt / YAGNI / 80-20 / what can be subtracted (BP-038)?
+- **Coherence** (`audit-coherence`) — does the solution cohere with `docs/philosophy.md` and the surrounding patterns? The apex lens: it catches the "directionally-right spec but the design feels off" failure the others structurally can't. A coherence break usually means reshaping the approach, not patching lines.
+- **Restraint** (`second-look`) — overbuilt / YAGNI / 80-20 / what can be subtracted (BP-038)?
 - **Correctness** — bugs and logic errors + the second-path checklist (BP-035) + the changeset (BP-022).
 - **Completeness** (a spec is in scope) — every spec requirement built and nothing extra, **red demonstrated** (the failing output captured before the fix), and the **goal proven** on a real model (or the documented "no goal check applies" justification; for bugs, diagnose's real-path confirmation).
 
-Depth follow-ups (`fsd:improve-codebase-architecture`) come back as non-blocking notes. If the area is unfamiliar or large, `review` may run the depth lens too.
+Depth follow-ups (`improve-codebase-architecture`) come back as non-blocking notes. If the area is unfamiliar or large, `review` may run the depth lens too.
 
 #### Process Review Results
 
@@ -257,8 +257,8 @@ Present the completed work:
 4. **Goal verdict**: when the spec named a goal check, the check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked — the proof the goal was met, distinct from the mocked test suite. When the spec documented that no goal check applies, state that and the one-line justification. For bugs, give diagnose's real-path confirmation instead.
 5. **Deviations**: anything that differed from the spec and why
 6. **Test results**: full typecheck and test output, plus the red/green evidence (failing output captured before the fix/implementation, passing output after) for each new behavioural or regression test — per the confirm-red gate. "Tests pass" alone is not evidence.
-7. **Review findings**: notable findings from `fsd:review` across its lenses (coherence, restraint, correctness, completeness) and how the must-fix / should-fix items were resolved
-8. **Restraint & subtraction**: what the restraint lens (`fsd:second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038)
+7. **Review findings**: notable findings from `review` across its lenses (coherence, restraint, correctness, completeness) and how the must-fix / should-fix items were resolved
+8. **Restraint & subtraction**: what the restraint lens (`second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038)
 9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
 Ask the user to review. They may:
@@ -311,7 +311,7 @@ gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions
 gh api repos/{owner}/{repo}/issues/comments/{comment_id}/reactions
 ```
 
-A comment is **new** (unprocessed) if it does not yet have an `eyes` reaction from us (the PR author / the agent's GitHub identity). Ignore comments authored by us — we don't acknowledge our own replies.
+A comment still **needs handling** if either (a) it has no `eyes` reaction from us yet (never seen), **or** (b) it is a *code* comment (actionable or non-actionable) that we have **not yet replied to**. **The reply — not the `eyes` reaction — is the completion marker for a code comment.** `eyes` means "seen, still open"; a threaded reply means "resolved." So a code comment sitting at **eyes-only** (a straggler from a pass that reacted and maybe even acted, but never answered) is **picked up again here**, not treated as done — this is what prevents "the agent read it and acted but never said so." Detect an existing reply to an inline comment by a child comment whose `in_reply_to_id` is that comment and whose author is us. Ignore comments authored by us (our own replies aren't feedback). Non-code conversation is done at just the `eyes` reaction — it needs no reply.
 
 #### 10.2: Mark each new comment as seen with an `eyes` reaction
 
@@ -376,7 +376,17 @@ Leave it alone. The `eyes` reaction is already there, which is acknowledgment en
 - Reference file paths and commit shas when describing a fix.
 - One reply per comment thread, not a wall of text.
 
-#### 10.6: Continue until merged
+#### 10.6: Completion gate — no code comment left silent
+
+Before you end this PR-feedback pass, **enumerate every code comment in the batch (actionable *and* non-actionable) and confirm each has a reply from us.** Every reply is one of exactly three outcomes:
+
+1. **Acted** — what changed and where (with the commit sha / `path:line`), per 10.4.
+2. **Declining** — the concrete reason no change is being made (a spec/BP/scope citation), per the non-actionable path.
+3. **Escalated** — a comment that needs a decision you can't make (a spec-level call, a scope question only the maintainer can settle): reply saying you've surfaced it and are holding on that thread, rather than leaving it silent. Under the fleet, also return it as a blocker so the fleet surfaces it — but the thread still gets the reply.
+
+Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
+
+#### 10.7: Continue until merged
 
 After processing the batch:
 
@@ -395,9 +405,9 @@ The skill exits this loop only when the PR is merged or closed.
 - **Sub-agents get full context.** Never make a sub-agent read files to understand their task. Paste the relevant spec sections directly into the prompt.
 - **Sequential implementation, parallel review.** Tasks execute in order (they often depend on prior tasks). Reviews run in parallel (they're independent).
 - **Fix before presenting.** The user should see clean work, not a list of known issues. Fix everything the reviewers flag before Step 8.
-- **Restraint is not optional.** `fsd:review`'s restraint lens (`fsd:second-look`) exists because agents tend to over-build. Take its findings seriously — subtraction is part of the change (BP-038).
+- **Restraint is not optional.** `review`'s restraint lens (`second-look`) exists because agents tend to over-build. Take its findings seriously — subtraction is part of the change (BP-038).
 - **One shot for simple issues.** Don't spin up sub-agents for a 10-line bug fix. The complexity assessment in Step 4 exists to prevent ceremony overhead on simple work.
 - **Keep Linear updated.** Every state change should be reflected. The whole point is traceability.
 - **Acknowledge before you act.** On every PR re-invocation, react to every new comment with `eyes` *before* deciding what to do with any of them. Reviewers should never wonder whether the agent saw their comment.
-- **Never leave a code-related comment unresponded to.** Every actionable comment gets a code change + reply; every non-actionable code comment gets a reply explaining why no change is being made. Only pure non-code conversation (acknowledgments, scheduling, off-topic) can be left at just the `eyes` reaction.
+- **Never leave a code-related comment unresponded to.** Every actionable comment gets a code change + reply; every non-actionable code comment gets a reply explaining why no change is being made. Only pure non-code conversation (acknowledgments, scheduling, off-topic) can be left at just the `eyes` reaction. **The `eyes` reaction marks *seen*, not *resolved*** — a code comment is done only when it *also* has a reply. A comment left at eyes-only (read, considered, maybe even acted on, but never answered) is the exact failure this guards against: the reviewer can't tell whether it was seen, understood, or handled. The 10.6 completion gate enforces this every pass.
 - **Replies describe outcomes, not reasoning.** Say what changed and where, or why nothing changed and which rule/spec backs that. No performative agreement.

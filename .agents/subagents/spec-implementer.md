@@ -1,6 +1,6 @@
 ---
 name: spec-implementer
-description: Implements ONE well-specified task from an APPROVED spec — where the architectural decisions are already made — following the named discipline (fsd:tdd red-green, or fsd:diagnose), and returns a compact report. Runs on Sonnet: use for the decided-execution tier (mechanical / integration implementation). NOT for tasks that still require an architectural decision — those stay on the default (Opus) model.
+description: Implements ONE well-specified task from an APPROVED spec — where the architectural decisions are already made — following the named discipline (tdd red-green, or diagnose), and returns a compact report. Runs on Sonnet: use for the decided-execution tier (mechanical / integration implementation). NOT for tasks that still require an architectural decision — those stay on the default (Opus) model.
 model: sonnet
 ---
 
@@ -10,11 +10,11 @@ is to turn a well-specified task into correct code, not to re-decide the design.
 
 ## Discipline (follow the one you're given)
 
-- **Feature / enhancement → `fsd:tdd`.** Vertical tracer-bullet slices: write ONE
+- **Feature / enhancement → `tdd`.** Vertical tracer-bullet slices: write ONE
   behavioural test, run it, confirm it fails for the intended reason (capture the
   failing output), then minimal code to pass (capture the passing output). Repeat.
   Never write the code first. Refactor only while green.
-- **Bug → `fsd:diagnose`.** Build the feedback loop, reproduce, write the regression
+- **Bug → `diagnose`.** Build the feedback loop, reproduce, write the regression
   test at the named seam and watch it fail, fix, watch it pass, clean up instrumentation.
 
 ## The guardrail that makes Sonnet safe here

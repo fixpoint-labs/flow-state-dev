@@ -14,7 +14,7 @@ A rejection earns an out-of-scope entry only when **all three** of these are tru
 
 If any of the three is missing, skip the entry. Ephemeral reasons ("not now, we're frozen for the wave") don't belong here either — those are tracked in Linear, not in durable knowledge.
 
-The same filter applies when an agent running `fsd:improve-codebase-architecture` proposes a refactor that the maintainer rejects. The skill routes load-bearing rejections here.
+The same filter applies when an agent running `improve-codebase-architecture` proposes a refactor that the maintainer rejects. The skill routes load-bearing rejections here.
 
 ## File format
 
@@ -68,7 +68,7 @@ calcifying into "never".
 
 Triggered when:
 
-- An architecture review (`fsd:improve-codebase-architecture`) produces a load-bearing rejection.
+- An architecture review (`improve-codebase-architecture`) produces a load-bearing rejection.
 - A Linear issue is closed `wontfix` with reasoning that meets the three-way filter.
 - A design discussion concludes with a deliberate "no, and here's why."
 
@@ -80,7 +80,7 @@ Procedure:
 
 ### Reading entries during triage
 
-`fsd:linear-triage` and any new-issue-creation skill should scan this directory when evaluating a new request. Matching is by *concept*, not keyword — "session plugin hooks" matches `plugin-runtime.md` even though neither shares vocabulary with the other.
+`linear-triage` and any new-issue-creation skill should scan this directory when evaluating a new request. Matching is by *concept*, not keyword — "session plugin hooks" matches `plugin-runtime.md` even though neither shares vocabulary with the other.
 
 When a match surfaces, present it: *"This is similar to `docs/internal/out-of-scope/plugin-runtime.md` — we rejected this before because [reason]. Do you still feel the same way?"*
 

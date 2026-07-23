@@ -158,20 +158,21 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 | Skill                     | Purpose                                                    |
 | ------------------------- | ---------------------------------------------------------- |
-| `create-spec`             | Research and write implementation specs for Linear issues  |
-| `implement-issue`         | Implement a Linear issue from its spec document            |
-| `quick-fix`               | Log a bug to Linear and fix it immediately                 |
-| `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
+| `issue-spec`              | Research and write implementation specs for Linear issues  |
+| `issue-implement`         | Implement a Linear issue from its spec document            |
+| `adhoc-quick-fix`         | Log a bug to Linear and fix it immediately                 |
+| `adhoc-commit-as-new-issue` | Create a Linear issue for work already done, commit and PR |
 | `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
 | `linear-triage`           | Review and prioritize Linear issues                        |
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |
 | `distill-lessons`         | Self-improvement engine: measure the loop (auto-derived cycle-ledger) and push the smallest upstream fix for a recurring rework class |
 | `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
-| `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `implement-issue` |
+| `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `issue-implement` |
 | `polish-docs`             | The docs editor — a corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges docs for readability and navigation (unafraid to rewrite/move); run standalone on a section or the whole site, and auto-dispatched at fleet/epic wrap as a draft docs-cleanup PR |
 | `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); every phase runs in a fresh bounded sub-agent so token cost stays small |
 | `issue-fleet`             | Coordinate MULTIPLE issues in parallel, each in its own git worktree/branch; composes `issue-lifecycle` per issue via worktree-isolated workers; holds only a compact status table |
 | `cross-spec-review`       | Review a fleet's BATCH of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the fleet |
+| `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local fleet/lifecycle's webhook stand-in |
 
 > **How the orchestration fits together** — the fleet/epic/issue lifecycles, the roles, the gates (draft→ready, `spec approved`, `epic approved`), and the epic-spec — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
 
@@ -219,7 +220,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 3. `docs/contributing/best-practices.md` — Implementation standards
 4. `AGENTS.md` — Process protocol
 
-If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`). Where code and grounding are incoherent and no doc disambiguates, that is a philosophy gap — surface it (`fsd:audit-coherence`), don't route around it.
+If docs conflict, the more specific reference wins (e.g. `docs/architecture/streaming.md` over a general statement in `overview.md`). Where code and grounding are incoherent and no doc disambiguates, that is a philosophy gap — surface it (`audit-coherence`), don't route around it.
 
 ## Commands
 

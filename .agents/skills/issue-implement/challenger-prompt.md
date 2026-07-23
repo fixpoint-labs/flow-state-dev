@@ -86,5 +86,5 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
   judgment later. Never bury a direction change in a diff.
 - Either way: update the spec so it stays coherent (anti-addenda — rewrite the
   affected reasoning, don't append a contradiction), and record the blind spot as a
-  candidate lesson for `fsd:distill-lessons` (a spec that missed something is prime
+  candidate lesson for `distill-lessons` (a spec that missed something is prime
   self-improvement signal).

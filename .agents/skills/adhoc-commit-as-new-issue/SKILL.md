@@ -1,5 +1,5 @@
 ---
-name: fsd:create-issue-and-commit
+name: adhoc-commit-as-new-issue
 description: Create a Linear issue for work already done (or in progress), check out a fix/ branch, commit the changes, and open a PR. For quick logging and shipping of on-the-fly work.
 argument-hint: "<brief description of what was done>"
 ---

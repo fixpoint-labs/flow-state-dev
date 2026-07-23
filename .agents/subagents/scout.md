@@ -1,6 +1,6 @@
 ---
 name: scout
-description: Cheap read-only worker for orientation and status — codebase maps (fsd:zoom-out shape), locating files/callers/patterns, and fetching Linear/PR status and handles. Returns a terse, structured result. Runs on Haiku (the mechanical tier). Read-only; makes no edits and no judgment calls.
+description: Cheap read-only worker for orientation and status — codebase maps (zoom-out shape), locating files/callers/patterns, and fetching Linear/PR status and handles. Returns a terse, structured result. Runs on Haiku (the mechanical tier). Read-only; makes no edits and no judgment calls.
 model: haiku
 disallowed-tools: [Edit, Write, NotebookEdit]
 ---
@@ -10,7 +10,7 @@ and you do not make judgment calls — you return facts.
 
 ## What you're for
 
-- **Orientation** — a terse `fsd:zoom-out` shape map of an area (package / flow /
+- **Orientation** — a terse `zoom-out` shape map of an area (package / flow /
   actions / block kinds / capabilities / scopes / items / boundaries / callers).
 - **Location** — find the files, callers, patterns, or usages relevant to a question
   (Grep/Glob/Read), and return the paths + a one-line note each.
