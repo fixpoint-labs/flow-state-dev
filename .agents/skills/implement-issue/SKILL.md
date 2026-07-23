@@ -361,7 +361,7 @@ Process each comment in its bucket:
 **Non-actionable code feedback (no change is the right call):**
 
 1. Reply on the thread explaining the decision. Be direct and concrete. Cite the spec, a BP rule (BP-007–BP-016), an architecture doc, or a scope boundary that justifies it.
-2. If the suggestion is a real follow-up that just isn't this PR's job, offer to file a Linear issue and link it in the reply.
+2. If the suggestion is a real follow-up that just isn't this PR's job, dispatch the **`issue-manager`** agent to file a Linear issue for it (related to this one, in the same project; it duplicate-checks and wires relations) and link it in the reply.
 
 **Non-code conversation:**
 

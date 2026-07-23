@@ -117,6 +117,7 @@ PR is merged or closed. Never poll with `sleep`.
 
 ## Boundaries
 
+- **Discovered gaps/blockers** during the work get **filed via the `issue-manager` agent** (related to this issue, same project) — never dropped or scope-crept into it. It returns a ready/blocked verdict; under the fleet, an unblocked related one can join the active set.
 - One issue. For several in parallel, use `fsd:issue-fleet` (it composes this skill,
   one worktree per issue).
 - This is the *coordinated, single-session, event-driven* lifecycle. It differs from

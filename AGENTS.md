@@ -61,7 +61,9 @@ We front-load architectural judgment (spec authoring, the coherence / Philosophy
 
 **The guardrail that makes downgrading safe:** a cheaper-tier worker *escalates a genuine un-decided decision rather than inventing one*. `spec-implementer` (Sonnet) stops and reports a blocker when it hits an architectural fork the spec didn't settle; `scout` (Haiku) returns facts and defers any judgment. Downgrade only where the decision is already made — never where the work is still deciding.
 
-Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`scout`** (Haiku).
+Set the tier declaratively with `model:` on a worker agent (`.claude/agents/*.md`) or `model:` / `effort:` on a skill; or per-dispatch via the Agent tool's model override. Standing worker agents: **`spec-implementer`** (Sonnet), **`scout`** (Haiku), **`issue-manager`** (Sonnet — files/organizes Linear issues for discovered gaps and blockers; see below).
+
+**File discovered work, don't scope-creep it.** When work surfaces a gap, a follow-up, or a blocker that isn't the current task's job, file it through the **`issue-manager`** agent (related to the current issue, in the current project — it duplicate-checks, writes it PM-shaped, wires blocked-by/blocks/relates/parent, and returns a ready/blocked verdict). Under the fleet, a filed *unblocked, related* issue can be pulled into the active set (still gated at its own spec-approval).
 
 ## Verifying flow changes during development
 

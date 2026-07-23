@@ -81,6 +81,27 @@ even if more are queued. State the chosen N and the cap to the user.
    backstop and re-arm while any issue is live. Re-enter on PR events or the check-in.
    Stop the fleet once every issue is merged, closed, or dropped.
 
+## Intake — filing & queueing discovered issues
+
+Work surfaces new issues: a worker (or the spec/impl phases) hits a missing piece, a
+follow-up, or a blocker. Don't drop it and don't scope-creep it into the current issue
+— **file it** through the **`issue-manager`** agent (related to its source issue, in
+the current project; it duplicate-checks, writes it PM-shaped, wires relations, and
+returns a ready/blocked verdict).
+
+Then decide whether it joins the fleet:
+
+- **Related and unblocked** (nothing it's blocked-by is still open/in-progress) → it
+  *may be added to the active set*, up to the concurrency cap, entering at NEEDS_SPEC.
+  It still hits its own **spec-approval gate** before any implementation — so this
+  starts a *spec*, not unreviewed code. Surface each addition to the user.
+- **Blocked** → track it (a row in the fleet record, marked blocked-by); pull it into
+  the active set when its blocker merges (a merge event re-enters the fleet).
+- Over the cap → queue it; admit it when a slot frees.
+
+This is how discovered work flows into the loop without a human re-filing it — while
+the spec-approval gate keeps a human in the loop before anything is built.
+
 ## Gates & autonomy
 
 - **Spec-approval gate is per issue.** Each issue independently waits for the user's
