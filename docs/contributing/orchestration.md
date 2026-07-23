@@ -182,6 +182,37 @@ feedback *down* to the aligned issue workers; an issue's `issue-spec` can commen
 *up* on the epic PR to raise a cross-cutting concern while it keeps working. All on
 existing `subscribe_pr_activity` + PR-comment machinery — no new plumbing.
 
+## Environment: cloud vs. local (PR subscriptions)
+
+`subscribe_pr_activity` depends on a webhook relay GitHub can call back into — that relay
+exists only for Claude's **hosted/cloud environments** (Claude Code on the web, a managed
+remote execution environment). A **local** Claude Code CLI session has no publicly
+reachable callback endpoint, so subscribing does nothing there even if the call itself
+succeeds: no event will ever arrive to wake the session.
+
+**Detecting which one you're in.** A cloud session's system prompt carries an explicit
+"remote execution environment" section that a local session's prompt lacks entirely; the
+`mcp__Claude_Code_Remote__*` tools (`list_environments`, `create_trigger`, `send_later`)
+are similarly cloud-only and won't resolve locally. Check for either before relying on
+`subscribe_pr_activity` — don't assume cloud by default.
+
+**Local fallback: poll instead of subscribing.** `CronCreate` (and `Monitor`, for a single
+long-lived watch) are harness-native — not gated to the cloud environment — so a local
+fleet/lifecycle can schedule a recurring re-check in place of the webhook wake: on each
+fire, run the same table refresh (comments, reviews, CI, `draft` flag) the cloud path runs
+on a webhook wake, just as the **primary** signal instead of the backstop heartbeat. Pick
+an interval appropriate to how urgently the issue needs a response (a few minutes for
+active review, longer once it's just waiting).
+
+Two caveats worth stating to the user up front, not discovering later: `CronCreate` jobs
+are **session-only, in-memory, and auto-expire after 7 days** — closing the terminal or
+ending the session loses all local scheduling silently, unlike a cloud session's routines,
+which persist server-side. A local fleet's "still watching" guarantee is therefore weaker
+than a cloud one's; say so rather than imply parity. *(This fallback is the recommended
+design but hasn't been confirmed against a live local run yet — verify `CronCreate` actually
+fires and re-enters the loop as expected the first time a fleet/lifecycle runs locally,
+before trusting it unattended.)*
+
 ## Token discipline (why it stays cheap)
 
 Coordinators (fleet, lifecycle) hold only **handles** — issue IDs, PR#s, branches, a few

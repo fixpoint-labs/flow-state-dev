@@ -1,0 +1,4 @@
+---
+---
+
+Internal (skills): `issue-fleet` and `issue-lifecycle` now re-assert PR subscriptions every wake (driven off the fleet's status table / the issue's current PR set), not just once when a PR opens — a missed or lost `subscribe_pr_activity` call (a worker opened a PR and exited before subscribing, or a cold session resume) now self-heals on the next refresh instead of silently leaving that PR deaf to events for the rest of the run. Also documents that `subscribe_pr_activity` and `send_later` are cloud-only (no reachable webhook endpoint / server-side scheduler in a local Claude Code session): canonical guidance lives in `docs/contributing/orchestration.md` → "Environment: cloud vs. local," which recommends `CronCreate`-driven polling (harness-native, not cloud-gated) as the local fallback for both.

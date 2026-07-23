@@ -68,6 +68,21 @@ even if more are queued. State the chosen N and the cap to the user.
    worker. Do **not** re-dispatch the worktree workers just to read state. When scout reports an
    approving comment or review, **mirror it to the `spec approved` / `epic approved` label** so
    the sign-off stays filterable (loop step 4/5).
+   - **Re-assert every subscription off the table you just built, every refresh.** Walk the
+     table you just derived and call `subscribe_pr_activity` for **every currently-open PR
+     it names** — each issue's spec PR (if open), each issue's impl PR#(s) (if open), and the
+     epic PR (if active). Do this every wake, unconditionally, not only when a PR first opens
+     — the call is idempotent, so re-subscribing to a PR already subscribed costs nothing.
+     This is the fix for silent subscription loss: a worker opens a PR and exits before
+     anyone subscribes (sub-agents can't hold a subscription — only the fleet can), a
+     subscribe call is skipped by an early return, or the session cold-resumes after a
+     restart and its prior subscriptions didn't survive. Driving this off the table itself
+     — rather than a one-off action tied to the moment a PR opens — means a missed
+     subscription self-heals on the very next refresh instead of silently leaving that PR
+     deaf to events for the rest of the run. **`subscribe_pr_activity` only works in a cloud
+     session** — check whether you're in one before relying on it; if you're local, poll
+     instead. See [`orchestration.md`](../../../docs/contributing/orchestration.md) →
+     "Environment: cloud vs. local."
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
@@ -111,8 +126,8 @@ even if more are queued. State the chosen N and the cap to the user.
    author — the label is applied by the fleet, not the human). The *other*
    issues keep moving. For any issue **ready to merge**, surface it and stop there (merge
    is the user's).
-6. **End the turn.** Subscribe to **all live PRs — spec, impl, and the epic PR (when
-   active)** (`subscribe_pr_activity`): a spec PR's review activity during Case/spec review
+6. **End the turn.** Subscriptions are already current — step 2 re-asserted them off the
+   table for every live PR this refresh. A spec PR's review activity during Case/spec review
    must wake the fleet, not wait for the heartbeat, and epic PR activity must too (so feedback
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
@@ -124,6 +139,13 @@ even if more are queued. State the chosen N and the cap to the user.
    each open spec PR's `draft` flag to catch it on the next wake. Schedule one fleet check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. Stop the fleet once every issue is merged, closed, or dropped.
+
+   **Both `subscribe_pr_activity` and `send_later` are cloud-only.** Neither works in a local
+   Claude Code session — no reachable webhook endpoint, no server-side scheduler. Check
+   whether you're in a cloud session before relying on either; if local, use `CronCreate` to
+   poll instead, as the *primary* signal rather than a backstop. See
+   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud
+   vs. local" for how to detect it and the full fallback design.
 
 ## Epic coordination (optional — when the set shares cross-cutting concerns)
 

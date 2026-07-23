@@ -153,10 +153,17 @@ Single-PR issues are just a one-node plan: no change to their flow.
 
 ## Waking
 
-Subscribe to both PRs' activity so review/CI events re-enter this loop
-(`subscribe_pr_activity`). **The spec-approval gate now rides that stream** — an approving
-comment is a delivered PR-activity event, so it wakes this loop immediately (the reason the
-gate moved off a label, whose webhook never arrives). As a fallback heartbeat for
+**Re-subscribe on every invocation, not just when a PR first opens.** On each wake, call
+`subscribe_pr_activity` for whichever of the issue's PRs currently exist and are open (the
+spec PR while it's live, the impl PR once opened) — unconditionally, every time, regardless
+of whether this invocation just opened one of them. The call is idempotent, so re-subscribing
+to a PR already subscribed costs nothing, and doing it every wake self-heals a missed or lost
+subscription (a sub-agent opened the PR and exited before subscribing — sub-agents can't hold
+one, only this loop can — or the session cold-resumed after a restart) instead of leaving
+that PR silently deaf to events for the rest of the issue's life. **The spec-approval gate
+rides that stream** — an approving comment or review is a delivered PR-activity event, so it
+wakes this loop immediately (the reason the gate moved off a label, whose webhook never
+arrives). As a fallback heartbeat for
 transitions webhooks *don't* cover — CI success, merge, and **the spec PR's
 draft→ready-for-review promotion** (still label-like: no guaranteed `ready_for_review`
 webhook) — schedule a check-in (`send_later`, ~30–60 min) and re-arm it while the issue is
@@ -165,6 +172,12 @@ signals rather than trusting a webhook arrived: in AWAITING_CASE_APPROVAL, a `dr
 `false` is the promotion; in AWAITING_SPEC_APPROVAL, an approving human comment or review on
 the spec PR is the go-ahead (check the PR's comments and reviews — both small reads; not a
 label). Never poll with `sleep`.
+
+**Both `subscribe_pr_activity` and `send_later` are cloud-only** — neither works in a local
+Claude Code session (no reachable webhook endpoint, no server-side scheduler). Check whether
+you're in a cloud session before relying on either; if local, poll instead — see
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment: cloud vs.
+local" for how to detect it and what to use (`CronCreate`) in place of both.
 
 ## Token discipline (the point of this skill)
 
