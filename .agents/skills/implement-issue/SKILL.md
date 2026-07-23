@@ -59,11 +59,13 @@ Before starting work, check:
    - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/create-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
-2. **Dependencies resolved?** Check blocking issues:
+2. **Build Plan present?** A full-workflow spec is authored in two stages (`fsd:create-spec`): Part I ("The Case") ships first in a **draft** spec PR; Part II ("The Build Plan") is authored only after the human promotes that PR to ready-for-review. If the spec is still **Part II-pending** (the `## Part II — The Build Plan` heading is marked *pending*, or the spec PR is still a **draft**), the Case hasn't been approved and there's no plan to implement → **stop** and tell the user to review the draft spec PR and mark it ready-for-review, which triggers the Build Plan; implement only once the full spec is present and signed off. (Bugs and agent-brief issues have no two-stage spec — this check doesn't apply to them.)
+
+3. **Dependencies resolved?** Check blocking issues:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
    - If blockers are "Done" but code isn't on main → check if there's a merged PR. If not, flag it
 
-3. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
+4. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
 
 If all clear, move to Step 3.
 

@@ -10,6 +10,8 @@ You are a specification research and authoring agent. Given a Linear issue, your
 
 **A spec argues from the philosophy and is built in two parts.** The spec is grounded in `docs/philosophy.md`: it names the tenets its solution leans on, and it is written as the two-part contract in [`docs/contributing/spec-template.md`](../../../docs/contributing/spec-template.md) — Part I "The Case" for the human decision-maker, Part II "The Build Plan" for the implementing agent. Direction lives in Part I where the human signs off on it; granular detail lives in Part II.
 
+**The two parts are authored in two stages, gated by the spec PR's draft state.** Stage 1 writes **Part I ("The Case")** and opens the spec PR **as a draft** (Part I is also the Linear lead). The human reviews the Case there; promoting the PR to **ready for review** is the signal that the Case holds. Stage 2 then writes **Part II ("The Build Plan")** and appends it — so the plan details the *approved* Case, not a speculative one, and reviewers get a second pass on Part II. No Build-Plan research is spent on a Case that doesn't survive its first read (tenet 3). Standalone, the gate collapses to confirm-the-Case-then-continue in the same run; under `fsd:issue-lifecycle` / `fsd:issue-fleet` the GitHub draft→ready promotion is the durable, event-driven trigger.
+
 **Specs prevent wasted implementation cycles.** A good spec means the implementer doesn't have to make architectural decisions, guess at edge cases, or discover conflicts mid-PR. Invest the research time upfront so implementation is mechanical.
 
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
@@ -43,6 +45,15 @@ The default is **batch**; `--interactive` opts into the hands-on mode.
 - **Interactive (`--interactive`).** Pause at each load-bearing decision as it arises — the necessity/refinement verdict, an unresolved design fork (Step 4), a scope or docs-placement call — and get the user's answer before proceeding. For users who want to shape the spec as it forms.
 
 Either way the decisions land in Part I's numbered **Decisions & rules** block; the dial controls *when* the user is consulted, not whether the decisions are surfaced.
+
+## Authoring stages — which steps run when
+
+The two-part spec is authored across two stages, gated by the spec PR's draft state:
+
+- **Stage 1 — The Case (draft PR).** Steps 1–3.5 (pull, research, necessity/refinement verdict), then draft **Part I** and publish it via **Step 6** as a **draft** spec PR + Linear lead, with a Part II placeholder and the opening **Spec evolution** entry. Stop there — the Case is now under first-pass human review.
+- **Stage 2 — The Build Plan (on promotion).** Triggered when the spec PR is promoted from draft to **ready for review**. Reload the (possibly review-revised) Part I, run **Step 4** (synthesize) and **Step 5** (validate) and the docs-scoping Agent G focused on the Build Plan, then append **Part II** via **Step 6.6** and push to the same PR. Part II is now under review too.
+
+The docs-scoping **Agent G** (Step 3, item G) and the **Step 5** validators (E/F/H) produce Part II content — run them in **Stage 2**, not Stage 1, so their output reflects the approved Case and isn't stashed across the review gate. Every stage adds an entry to the spec's **Spec evolution** timeline (bottom of the template).
 
 ## Workflow
 
@@ -84,7 +95,7 @@ Launch an `Explore` sub-agent to:
 
 ### Step 3: Research Solutions
 
-Launch three sub-agents in parallel:
+Launch these research sub-agents in parallel. In **Stage 1** run Agents C and D (they inform the Case); **Agent G (Documentation Scoping) is deferred to Stage 2** — its output is Part II §11, so it runs against the approved Case.
 
 #### Agent C: Industry Research
 Launch a `general-purpose` sub-agent to research how this type of problem is commonly solved:
@@ -104,6 +115,8 @@ Launch a `feature-dev:code-explorer` sub-agent to:
 - **Return**: specific files and patterns to follow, with code references
 
 #### Agent G: Documentation Scoping
+
+> **Stage 2.** Agent G's output is the Documentation Plan (Part II §11), so run it in **Stage 2** (Step 6.6), not Stage 1 — its placement decisions should reflect the approved Case. Agents C and D run in Stage 1 to inform the Case; Agent G waits.
 
 Launch an `Explore` sub-agent to map the documentation surface and propose where this change belongs. This is **not** a generic "update the docs" task — placement and content shape require the same rigor as code architecture.
 
@@ -284,12 +297,18 @@ How this workflow's research feeds the template:
   parallel where independent; record its shape as a Part I §6 decision (per the template).
 - **The Step 3.5 verdict shapes Part I.** A "refine the substrate" or "build smaller"
   verdict changes what the Case argues for — reflect it in §1–§3, don't bury it.
-- **Write Part I last,** as a summary of Part II, not an outline of it. Before
-  publishing, verify every Decision and deliverable in Part I traces to a Part II
-  section; reconcile any that don't (either the spec is incomplete or Part I
-  overpromised).
+- **Part I is drafted first (Stage 1) but stays honest to Part II (Stage 2).** In
+  Stage 1 you write the Case from the research and the necessity verdict — it stands on
+  its own; you need enough design conviction to name the Decisions, not a finished plan.
+  When Part II is written in Stage 2, verify every Decision and deliverable in Part I
+  traces to a Part II section and reconcile any that don't (either Part II is incomplete
+  or Part I overpromised — fix it, and log the fix as a Spec evolution entry). Part I
+  stays a *summary* of the plan, not an outline of it; the two-stage order just moves
+  that reconciliation to when Part II lands.
 
 ### Step 5: Validate the Spec
+
+> **Stage 2.** These validators check the technical design, sequence, PR plan, and docs plan — all Part II. Run them in **Stage 2** (Step 6.6), once Part II is drafted against the approved Case.
 
 Launch two validation agents in parallel:
 
@@ -323,15 +342,15 @@ Launch an `Explore` sub-agent to review the Documentation Plan (Part II §11) sp
 
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
-### Step 6: Publish the spec — repo PR + Linear (kept in sync)
+### Step 6: Publish the Case — draft spec PR + Linear (Stage 1, kept in sync)
 
-The spec is published in two places that must hold identical content: a versioned doc in the repo (the reviewable artifact) and the Linear document (the issue-attached copy).
+Stage 1 publishes **Part I only** in two places that must hold identical content: a versioned doc in the repo (the reviewable artifact) and the Linear document (the issue-attached copy). Part II is appended later, in Stage 2 (Step 6.6).
 
-1. **Write the spec to `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`). This is the canonical reviewable artifact.
+1. **Write `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`) with **Part I only**, followed by a `## Part II — The Build Plan` heading marked *(pending — authored when the Case is approved; see `fsd:create-spec` Step 6.6)*, and an opening **Spec evolution** section with one entry: `- **Case drafted** — <one line: how the problem is framed and the approach chosen>.` This is the canonical reviewable artifact for the Case.
 
-2. **Open a spec PR.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>`. **The PR description leads with the spec's Part I ("The Case") verbatim** — problem/why-now, solution in plain terms and the tenets it leans on, tradeoffs, focus practices, usage examples, and the numbered Decisions & rules — so reviewers see the scan-first shape without opening the doc. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the spec *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
+2. **Open the spec PR as a draft.** Branch `spec/<ISSUE-ID>`, commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>` with **`draft: true`** (`create_pull_request`). A draft signals the Case is under first-pass human review; **promoting it to ready-for-review is the trigger to author Part II** (Step 6.6). **The PR description leads with Part I ("The Case") verbatim** — problem/why-now, solution in plain terms and the tenets it leans on, tradeoffs, focus practices, usage examples, and the numbered Decisions & rules — so reviewers see the scan-first shape without opening the doc, and add a one-line note that Part II (the Build Plan) is authored when the PR is marked ready. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the Case *before* any code — or even a full plan — is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
 
-3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc.
+3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc (Part I + the pending-Part II marker at this stage).
 
 4. **Update issue relations and comment**:
    - Add/update dependency relations discovered during research (`save_issue` with `blockedBy` / `blocks`).
@@ -344,13 +363,23 @@ The spec is published in two places that must hold identical content: a versione
 
 ### Step 6.5: Respond to spec-PR review
 
-The spec PR will draw automated review (the same bots that review code PRs). Treat their feedback as a cheap chance to fix the design on paper:
+The spec PR will draw automated review (the same bots that review code PRs). This step runs in **both stages** — during the draft phase it addresses **Part I (Case)** feedback; after promotion it also addresses **Part II (Build Plan)** feedback. Treat their feedback as a cheap chance to fix the design on paper:
 
 - **Apply clear, obvious fixes and improvements directly** — factual corrections, missed edge cases, broken references, tightening, a better-scoped approach the reviewer is plainly right about. Update **both** the repo `docs/specs/<ISSUE-ID>.md` and the Linear document (keep them in sync), and reply on the thread noting the fix.
 - **Distinguish directional feedback from in-the-weeds detail.** *Directional* feedback (the approach, a decision, a missed edge case that changes the design) gets folded into the spec — re-draft per the anti-addenda rule. *In-the-weeds* feedback (a naming preference, a local implementation detail, a micro-optimization) is **not** refactored into the spec's own prose — the implementing agent owns the last 20% and may resolve it differently once in the code. Instead, record it verbatim under a short **"Review notes for the implementer"** annotation in the spec for them to weigh, and reply on the thread saying you've left it for implementation rather than baking it into the design. This keeps the spec at the right altitude and avoids doc-language churn over details that aren't the spec's to settle.
 - **Escalate debatable feedback to the user.** When a suggestion is a judgment call, a scope change, or a direction the reviewer and the spec could each reasonably defend, don't silently accept it — surface it with the trade-off (use `AskUserQuestion` for a crisp choice) and let the user decide.
-- **On a major pivot, re-draft — do not append (anti-addenda rule).** When review changes the *direction* (a different approach, a dropped/added deliverable, a reversed decision), rewrite the affected Part I and Part II sections so the spec reads as one coherent document. Do **not** bolt a "reconciliation / AUTHORITATIVE" section onto the top that contradicts the body — an incoherent spec produces an incoherent implementation (tenet 1). Small clarifications can be inline; a changed direction gets rewritten. Keep the repo doc and Linear document in sync through the rewrite.
+- **On a major pivot, re-draft — do not append (anti-addenda rule).** When review changes the *direction* (a different approach, a dropped/added deliverable, a reversed decision), rewrite the affected Part I and Part II sections so the spec reads as one coherent document. Do **not** bolt a "reconciliation / AUTHORITATIVE" section onto the top that contradicts the body — an incoherent spec produces an incoherent implementation (tenet 1). Small clarifications can be inline; a changed direction gets rewritten. Keep the repo doc and Linear document in sync through the rewrite. **Then record the pivot as one line in the spec's Spec evolution timeline** (`- **After Case review** — <what changed>, because <why>.`) — the body stays coherent, the timeline carries the why so the debate isn't lost.
 - The spec PR is done when review is addressed and the user has signed off on the direction; `fsd:implement-issue` then proceeds from the agreed spec and closes the spec PR unmerged as part of its branch setup. Don't merge or close the spec PR yourself.
+
+### Step 6.6: Author the Build Plan when the Case is approved (Stage 2)
+
+The trigger is the **spec PR's promotion from draft to ready-for-review** — the human's signal that the Case (Part I) holds and is worth detailing. Under `fsd:issue-lifecycle` / `fsd:issue-fleet` that transition is detected (the PR's `draft` flag flips to `false`) and dispatches this step; standalone, proceed here once the user confirms the Case. Do **not** author Part II before the Case is approved — spending the Build-Plan research on a Case that's still in flux is the waste this staging exists to avoid.
+
+1. **Reload the current Part I** from `docs/specs/<ISSUE-ID>.md` — it may have been revised during Case review (Step 6.5). Part II must detail the *approved* Case, so read what's actually there now, not what you drafted in Stage 1.
+2. **Run the Build-Plan research and synthesis.** Step 4 (synthesize the technical design, implementation sequence — name the *removals* too — edge cases, and testing strategy) and the **docs-scoping Agent G** (Step 3, item G), then **Step 5** validation (Agents E/F/H) — all focused on Part II. For a Large issue this is where the **PR plan** (the sub-PR DAG, §8) is authored; record its shape as a Part I §6 decision and reconcile Part I if that changes the sign-off surface.
+3. **Append Part II** in place of the pending placeholder, verifying every Part I Decision traces to a Part II section (reconcile per Step 4's rule). Keep Part I intact unless the reconciliation revised it. **Update the Linear document to match** (keep the two in sync).
+4. **Add a Spec evolution entry:** `- **Build Plan added** — <one line: the seam mapped, and the PR shape if multi-PR>.`
+5. **Push to the same (now ready) spec PR — do not open a new one.** Part II is now under review alongside Part I; Step 6.5 continues to apply to Part II feedback. The single spec-approval-to-implement gate is unchanged: `fsd:implement-issue` proceeds only once the full spec (Part I + II) is signed off.
 
 ### Step 7: Reframe the Issue Description
 
@@ -396,7 +425,7 @@ This step is required, not optional. The spec now exists as the authoritative so
 
 ### Step 8: Present Summary
 
-Present the completed spec to the user:
+This runs at the end of **Stage 1** — the Case is published as a draft spec PR; Part II is not written yet. Present the Case to the user and tell them the next move: **review the draft spec PR, then mark it ready-for-review to trigger the Build Plan (Part II)**. Present:
 
 1. **Necessity & refinement verdict** (one line): "Build as scoped", "Refine the substrate — <primitive> covers it", or "Build smaller — dropped <X>." Surfacing this in the summary lets the user see that Step 3.5 actually ran and what its outcome was; future readers can audit whether the gate worked. If the verdict was anything other than "Build as scoped," you will not have reached Step 8 without user confirmation — note that confirmation here too.
 2. **Part I ("The Case")**: paste it verbatim, **leading with the plain-language problem and solution** (BP-039) so the user gets the gist before any dense detail, and keeping the tradeoffs, focus practices, usage examples, and numbered decisions so the user can evaluate the change at a glance. This is the same scan-first surface the spec PR description leads with (Step 6, item 2) — the user should see exactly what they'd see opening the spec document. If you find yourself rewording it for the summary, Part I itself is wrong; fix it in the spec and then paste here.

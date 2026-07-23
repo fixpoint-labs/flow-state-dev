@@ -11,6 +11,14 @@ A spec has two readers with opposite needs, so it has two parts and a hard divid
   work. The last 20% is the implementer's once they're in the code. It is allowed to
   be dense where density buys precision.
 
+**Authored in two stages, gated by the spec PR's draft state.** Part I is written and
+published first, as a **draft** spec PR (and the Linear lead). The human reviews the
+Case there. Marking the PR **ready for review** is the signal that the Case holds — and
+only then is Part II written and appended, so the Build Plan details the *approved* Case
+rather than a speculative one. Reviewers then get a second pass on Part II. This also
+means no Build-Plan tokens are spent on a Case that doesn't survive its first read (tenet
+3). See `fsd:create-spec` Steps 6 and 6.6.
+
 > **Anti-addenda rule.** When spec-PR review forces a major pivot, **re-draft the
 > affected sections.** Do not bolt on an "AUTHORITATIVE reconciliation" section that
 > contradicts the body — an incoherent spec produces an incoherent implementation
@@ -170,3 +178,35 @@ that need a decision before implementation, each with options and trade-offs.
 - **Already-rejected directions** — before listing a deliberate "won't do," check
   `docs/internal/out-of-scope/` and reference an existing rejection rather than
   restating it.
+
+---
+
+## Spec evolution *(the change story, not an audit log)*
+
+A short, reader-facing timeline of how this spec got to where it is — kept at the bottom,
+updated whenever the spec changes meaningfully. It is **not** a diff and **not** a
+changelog (commit history already carries those, in full). One line per meaningful turn:
+*what changed and why*, in plain terms a human skims in a few seconds. Its job is to let a
+reviewer coming to the spec late see the shape of the debate that produced it — which is
+exactly what the anti-addenda rule strips out of the body.
+
+- The first entry is the **Case** being drafted.
+- The second is the **Build Plan** being added (on promotion to ready-for-review).
+- Each later entry is a **review-driven pivot** — the same rewrite the anti-addenda rule
+  demands in the body, recorded here as a one-line "what/why" so the evolution stays
+  legible without leaving reconciliation scars in the design.
+
+Format — **newest last**, each entry one line:
+
+`- **<stage / trigger>** — <what changed>, because <why>.`
+
+Example:
+
+- **Case drafted** — framed the problem as resume-after-disconnect; chose sequence-based replay over full re-send.
+- **Build Plan added** — mapped the `sse.ts` seam; split into 2 PRs (engine, then client).
+- **After Case review** — dropped multi-region scope; a reviewer flagged it as a separate concern.
+- **After Build-Plan review** — swapped the in-memory cursor for the store's sequence, per reviewer.
+
+Keep it to meaningful turns. Typo fixes and wording nits don't earn a line. If the spec
+was authored in one pass with no pivots, two entries (Case, Build Plan) is the whole
+timeline — that's fine.
