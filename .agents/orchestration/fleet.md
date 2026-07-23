@@ -8,8 +8,8 @@ Linear access: MCP is wrong-workspace (OnSecurity). Use Linear GraphQL API + $LI
 | Issue | Phase | Spec PR | Impl PR | Gate pending? | Worktree | Notes |
 |-------|-------|---------|---------|---------------|----------|-------|
 | FIX-920 | AWAITING_SPEC_APPROVAL (revised) | #853 | — | user re-review | claude/fix-920-spec-tsdnqg | Spec revised to merged FIX-918 (agents:/runBoard, board-commanded, blockRef dropped, refs fixed). Q2a/Q3 still OPEN. Ready for user sign-off. |
-| FIX-917 | AWAITING_SPEC_APPROVAL | #866 | — | pending user | worktree | spec PR #866 up, subscribed. Decision 2 (hard rename vs BP-030 dual-read) needs sign-off; contingent on zero external consumers of the 4 legacy keys |
-| FIX-923 | RE-SPECING (co-spec w/ 901) | #864 | — | after respec → user | spec/FIX-923 | Co-spec host model with blocking-vs-background drain as first-class axis, forward-compatible w/ FIX-901. Reference 901 as mechanism (don't spec its hard parts). Research Claude Code + Codex harness background-task models for inspiration. Establish 923↔901 relation. |
+| FIX-917 | AWAITING_SPEC_APPROVAL | #866 | — | pending user | spec/FIX-917 | Spec sound. P1(Codex)=REFUTED (stale pre-FIX-914 base, branch 105 behind main; 4-key surface verified on main). P2=fixed b9d05a4a (changeset minor for hard-rename). Rebase branch onto main at IMPLEMENT time (not needed to approve spec). Cursor /simplify batch = impl-time refinements (deferred); 2 items need user sign-off: §12-Q2 sequencer state.own, Decision-2 consumer-check-as-hard-gate. |
+| FIX-923 | AWAITING_SPEC_APPROVAL (co-spec done) | #864 | — | pending user | spec/FIX-923 | Re-spec pushed: drain-mode axis (blocking/background), FIX-901-forward-compat host model, §8A drain analysis, §8B harness prior art (Claude Code/Codex), Decision 7. 923↔901 related created + Linear mirror. Conclusions unchanged for blocking drain today. |
 | FIX-924 | AWAITING_SPEC_APPROVAL | #865 | — | pending user | worktree | spec PR #865 up, subscribed. soft-coupled to FIX-923; DO NOT implement 924 until 923 research accepted |
 
 Note: coordination PR #862 closed-without-merge by user (deliberate — record is internal). fleet.md commits continue to the branch; do NOT open a replacement PR.
@@ -19,7 +19,8 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 - (prior specs done: 917→#866, 923→#864, 924→#865; 920 revision→#853)
 
 ## Active workers (cont.)
-- FIX-917 review-response: agent a7c5fac94b420145e — verify Codex P1 (does FIX-914 block-state API exist on main?), fix/refute, set changeset minor (P2), reply threads.
+- (none running) — all four specs at AWAITING_SPEC_APPROVAL. Fleet idle pending user gates + backstop check-in trig_01MhRkGdfiCwtRZw3yUMXFHt (~01:49Z).
+- FIX-917 review-response: agent a7c5fac94b420145e — DONE (P1 refuted, P2 minor set).
 
 ## PR notes
 - #866 (FIX-917 spec) taken out of draft by user 2026-07-23 — review signal only; spec PRs are not merged.
