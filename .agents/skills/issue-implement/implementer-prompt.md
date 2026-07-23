@@ -172,9 +172,11 @@ Correct order:
    goal check that is runnable after this task in isolation — if so, run
    it against a **real** model (`fsdev run`, or `pnpm tsx
    goals/<describe>/<it>/run.mts`) and report the command and PASS/FAIL
-   verdict. Don't skip a runnable slice check to save API credits — the
-   spend is the point, and the inference credential is normally already in
-   the env (e.g. `AI_GATEWAY_API_KEY`); check for it and run. Otherwise (pure
+   verdict. Don't skip a runnable slice check to save API credits: for a
+   model-backed goal the spend is the point and the inference credential is
+   normally already in the env (e.g. `AI_GATEWAY_API_KEY`), so attempt the
+   run; a model-free slice goal (`Model: n/a`) just runs its real path, no
+   credential. Otherwise (pure
    plumbing, or a slice whose only proof is end-to-end), say the goal
    proof is deferred to the orchestrator. Never invent a PASS verdict for
    a check you couldn't run.
@@ -235,8 +237,10 @@ loop produce hours of speculative code changes.
      confirm the fix through the real path — `fsdev run` against a real
      model — not only the mocked regression spec, and report it as the
      goal verdict. Don't skip a runnable slice-level confirmation to save
-     API credits — the spend is the point, and the credential is normally
-     in the env (e.g. `AI_GATEWAY_API_KEY`); attempt the run. If the
+     API credits: for a model-backed repro the spend is the point and the
+     credential is normally in the env (e.g. `AI_GATEWAY_API_KEY`), so
+     attempt the run; a model-free repro just runs its real path, no
+     credential. If the
      symptom only reproduces once later tasks land
      and integration is done, do NOT run it; say the assembled proof is
      deferred to the orchestrator (it runs it in Step 5B.4). Pure
