@@ -311,7 +311,7 @@ gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions
 gh api repos/{owner}/{repo}/issues/comments/{comment_id}/reactions
 ```
 
-A comment is **new** (unprocessed) if it does not yet have an `eyes` reaction from us (the PR author / the agent's GitHub identity). Ignore comments authored by us — we don't acknowledge our own replies.
+A comment still **needs handling** if either (a) it has no `eyes` reaction from us yet (never seen), **or** (b) it is a *code* comment (actionable or non-actionable) that we have **not yet replied to**. **The reply — not the `eyes` reaction — is the completion marker for a code comment.** `eyes` means "seen, still open"; a threaded reply means "resolved." So a code comment sitting at **eyes-only** (a straggler from a pass that reacted and maybe even acted, but never answered) is **picked up again here**, not treated as done — this is what prevents "the agent read it and acted but never said so." Detect an existing reply to an inline comment by a child comment whose `in_reply_to_id` is that comment and whose author is us. Ignore comments authored by us (our own replies aren't feedback). Non-code conversation is done at just the `eyes` reaction — it needs no reply.
 
 #### 10.2: Mark each new comment as seen with an `eyes` reaction
 
@@ -376,7 +376,17 @@ Leave it alone. The `eyes` reaction is already there, which is acknowledgment en
 - Reference file paths and commit shas when describing a fix.
 - One reply per comment thread, not a wall of text.
 
-#### 10.6: Continue until merged
+#### 10.6: Completion gate — no code comment left silent
+
+Before you end this PR-feedback pass, **enumerate every code comment in the batch (actionable *and* non-actionable) and confirm each has a reply from us.** Every reply is one of exactly three outcomes:
+
+1. **Acted** — what changed and where (with the commit sha / `path:line`), per 10.4.
+2. **Declining** — the concrete reason no change is being made (a spec/BP/scope citation), per the non-actionable path.
+3. **Escalated** — a comment that needs a decision you can't make (a spec-level call, a scope question only the maintainer can settle): reply saying you've surfaced it and are holding on that thread, rather than leaving it silent. Under the fleet, also return it as a blocker so the fleet surfaces it — but the thread still gets the reply.
+
+Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
+
+#### 10.7: Continue until merged
 
 After processing the batch:
 
@@ -399,5 +409,5 @@ The skill exits this loop only when the PR is merged or closed.
 - **One shot for simple issues.** Don't spin up sub-agents for a 10-line bug fix. The complexity assessment in Step 4 exists to prevent ceremony overhead on simple work.
 - **Keep Linear updated.** Every state change should be reflected. The whole point is traceability.
 - **Acknowledge before you act.** On every PR re-invocation, react to every new comment with `eyes` *before* deciding what to do with any of them. Reviewers should never wonder whether the agent saw their comment.
-- **Never leave a code-related comment unresponded to.** Every actionable comment gets a code change + reply; every non-actionable code comment gets a reply explaining why no change is being made. Only pure non-code conversation (acknowledgments, scheduling, off-topic) can be left at just the `eyes` reaction.
+- **Never leave a code-related comment unresponded to.** Every actionable comment gets a code change + reply; every non-actionable code comment gets a reply explaining why no change is being made. Only pure non-code conversation (acknowledgments, scheduling, off-topic) can be left at just the `eyes` reaction. **The `eyes` reaction marks *seen*, not *resolved*** — a code comment is done only when it *also* has a reply. A comment left at eyes-only (read, considered, maybe even acted on, but never answered) is the exact failure this guards against: the reviewer can't tell whether it was seen, understood, or handled. The 10.6 completion gate enforces this every pass.
 - **Replies describe outcomes, not reasoning.** Say what changed and where, or why nothing changed and which rule/spec backs that. No performative agreement.
