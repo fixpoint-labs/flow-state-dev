@@ -83,6 +83,23 @@ difference here is the unit is a set of specs, not a code slice. Where the docs
 choices is right, say which wins and why; where nothing disambiguates, flag it as a
 decision the user must make (that's a philosophy gap, not yours to resolve).
 
+## Flagging a hard conflict for Fable adjudication (proposal only)
+
+Most conflicts you adjudicate yourself, or they're `decision-needed` calls the user makes
+directly. A few are *genuinely hard*: high blast radius (the resolution reshapes surface
+across several specs), both resolutions defensible on the tenets, costly to reverse. For
+**at most the one or two hardest**, you may **flag a Fable-adjudication candidate** — you
+do **not** invoke Fable yourself. You're read-only and can't prompt, and Fable is a paid
+escalation that requires the user's approval, which only the fleet can obtain (see
+`AGENTS.md` → model tiering, upward escalation).
+
+- Mark the conflict `fable-candidate: YES` and include the **self-contained slice**: the
+  conflicting spec excerpts, the exact decision, and the tenets in tension — so the fleet
+  can hand it to Fable (on approval) without re-deriving it.
+- If you can't reduce it to a slice, it isn't a candidate — leave it as an ordinary
+  `decision-needed` conflict. That inability is the structural guard; the human-approval
+  gate at the fleet is the cost guard.
+
 ## Report (compact — the fleet holds this, not the spec texts)
 
 Return a ranked table, worst mutual-incoherence first. For each conflict:
@@ -94,6 +111,7 @@ kind:     scope-overlap | decision-conflict | surface-collision | assumption-con
 where:    <the section/decision/API in each spec that collides>
 recommend: <the resolution, and which spec(s) should change to land it>
 decision-needed?: NO (docs settle it — <which doc>) | YES (<the call the user must make, with options>)
+fable-candidate: NO | YES (<the self-contained slice — excerpts, the decision, tenets in tension>)
 ```
 
 End with a one-line verdict: **COHERENT** (no changes needed) or **N conflicts — M need a

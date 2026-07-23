@@ -70,6 +70,41 @@ next sub-agent fetches it.
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `fsd:implement-issue` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); the issue is DONE only when every sub-PR is merged. |
 | **DONE** — impl PR merged | none | Update the cache to DONE; report completion. |
 
+## Linear status is a mirror you own
+
+Linear's GitHub auto-status is **off** — it mis-fired on spec PRs, treating a spec PR's
+open/merge as the *issue's* progress and closing issues early. So the lifecycle sets the
+issue's Linear status **explicitly** at every phase transition, the same "PR is the
+trigger, Linear state is the human-facing mirror, the orchestrator keeps it in step" rule
+the epic objective gate already follows. Nothing else updates it now.
+
+**The rule the auto-status got wrong: a spec PR is not the implementation.** A spec PR
+only ever moves the issue *within spec review*; only the **impl** PR moves it to In
+Review / Done. Never let a spec PR's open/close/merge push the issue toward Done.
+
+Set the issue's status (Linear MCP `save_issue` with `stateId`, team `flow-state`
+`1ec31154-539c-45d5-bee7-8d12f36357d6`) at each transition. IDs are inlined so no
+per-write lookup is needed:
+
+| Transition | Status | `stateId` |
+|---|---|---|
+| NEEDS_SPEC picked up (dispatching `create-spec`) | **In Spec Dev** | `16091670-e146-42a6-ac19-df1c13cd42c8` |
+| Draft spec PR opened (→ AWAITING_CASE_APPROVAL) | **In Spec Review** | `520c428e-9e4d-41f9-bcf2-f6e84b6d1ec2` |
+| Spec PR ready / Part II building (→ AWAITING_SPEC_APPROVAL) | **In Spec Review** (unchanged) | `520c428e-9e4d-41f9-bcf2-f6e84b6d1ec2` |
+| `spec approved` label detected (→ NEEDS_IMPLEMENTATION) | **Spec Approved** | `dfe5f095-467b-4b08-9494-693b928d0b86` |
+| Implementation dispatched (`implement-issue` starts) | **In Development** | `53d6fd64-8136-42ea-b33c-65fd97d9dbf5` |
+| Impl PR opened (→ PR_FEEDBACK) | **In Review** | `91df31a4-b3fd-4a3a-afd8-1b0496e7956e` |
+| Impl PR merged (→ DONE) | **Done** | `f5983dd3-92a5-4a9a-84d8-23e775b7fa8f` |
+
+**Who writes it:** whichever agent effects or detects the transition, in the same step —
+the worker sets it for a transition it *causes* (it opened the PR); the orchestrator sets
+it inline (one cheap `save_issue` call) for a transition it *detects* on refresh (the
+`spec approved` label, a merge). Set it **idempotently** — if the issue is already in the
+target state, leave it. On a multi-PR issue the status tracks the **whole** issue: In
+Review while any impl sub-PR is open, Done only when every sub-PR is merged (a spec PR
+never counts). If these IDs ever stop resolving (a workflow edit), re-fetch with
+`list_issue_statuses` for team `flow-state` and update this table — don't guess.
+
 ## Multi-PR issues (PR plan)
 
 When the spec declares a **PR plan** (a DAG of sub-PRs — `fsd:create-spec` Large
