@@ -133,10 +133,14 @@ reports against it and invents nothing. FIX-789's per-payload leakage tags (`poi
   poll/sleep loops.
 - **FIX-793 scores stored decision artifacts** against recorded forward prices — it does not
   re-analyze historical rows.
-- **Child specs link, don't restate** the existing substrate: `labs/trading-desk/docs/run-quality-eval.md`
-  + `labs/trading-desk/eval/*`, the `verify-trading-desk` skill (the headless path FIX-794 composes),
-  and the `distill-lessons` campaign-ledger pattern — disambiguating **desk eval loop** from the dev
-  cycle-ledger, which are different things.
+- **Child specs link, don't restate** the existing substrate. The path FIX-794 composes for
+  `keep | discard | inconclusive` is the **batch eval harness** — `pnpm eval sweep`
+  (`scripts/eval-runs.ts`) producing `scoreboard.jsonl`, plus `labs/trading-desk/eval/*` and
+  `labs/trading-desk/docs/run-quality-eval.md`. The `verify-trading-desk` skill is a **single-run
+  smoke verifier** (`fsdev run` + `runSummary`) for focused real-path diagnosis — **not** the
+  scoreboard/batch path, so FIX-794 must not compose it as the eval loop. And the `distill-lessons`
+  campaign-ledger pattern — disambiguating **desk eval loop** from the dev cycle-ledger, which are
+  different things.
 
 ---
 
