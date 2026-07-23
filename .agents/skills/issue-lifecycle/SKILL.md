@@ -153,10 +153,13 @@ Single-PR issues are just a one-node plan: no change to their flow.
 
 ## Waking
 
-**Re-subscribe on every invocation, not just when a PR first opens.** On each wake, call
+**Re-subscribe on every invocation, not just when a PR first opens — and do it last, after**
+**this invocation's dispatched sub-agent (if any) has returned.** On each wake, call
 `subscribe_pr_activity` for whichever of the issue's PRs currently exist and are open (the
 spec PR while it's live, the impl PR once opened) — unconditionally, every time, regardless
-of whether this invocation just opened one of them. The call is idempotent, so re-subscribing
+of whether this invocation just opened one of them. Subscribing before dispatching would miss
+a PR this same invocation opens (e.g. NEEDS_SPEC dispatching the sub-agent that opens the
+spec PR) — that PR wouldn't exist yet at that point in the turn. The call is idempotent, so re-subscribing
 to a PR already subscribed costs nothing, and doing it every wake self-heals a missed or lost
 subscription (a sub-agent opened the PR and exited before subscribing — sub-agents can't hold
 one, only this loop can — or the session cold-resumed after a restart) instead of leaving

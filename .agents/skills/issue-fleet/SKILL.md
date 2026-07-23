@@ -67,22 +67,9 @@ even if more are queued. State the chosen N and the cap to the user.
    a human approval — are the mechanical tier: use the **`scout`** agent (Haiku), not a full
    worker. Do **not** re-dispatch the worktree workers just to read state. When scout reports an
    approving comment or review, **mirror it to the `spec approved` / `epic approved` label** so
-   the sign-off stays filterable (loop step 4/5).
-   - **Re-assert every subscription off the table you just built, every refresh.** Walk the
-     table you just derived and call `subscribe_pr_activity` for **every currently-open PR
-     it names** — each issue's spec PR (if open), each issue's impl PR#(s) (if open), and the
-     epic PR (if active). Do this every wake, unconditionally, not only when a PR first opens
-     — the call is idempotent, so re-subscribing to a PR already subscribed costs nothing.
-     This is the fix for silent subscription loss: a worker opens a PR and exits before
-     anyone subscribes (sub-agents can't hold a subscription — only the fleet can), a
-     subscribe call is skipped by an early return, or the session cold-resumes after a
-     restart and its prior subscriptions didn't survive. Driving this off the table itself
-     — rather than a one-off action tied to the moment a PR opens — means a missed
-     subscription self-heals on the very next refresh instead of silently leaving that PR
-     deaf to events for the rest of the run. **`subscribe_pr_activity` only works in a cloud
-     session** — check whether you're in one before relying on it; if you're local, poll
-     instead. See [`orchestration.md`](../../../docs/contributing/orchestration.md) →
-     "Environment: cloud vs. local."
+   the sign-off stays filterable (loop step 4/5). (Subscription happens once, in step 6,
+   after step 3/4 may have opened new PRs this turn — don't subscribe here, it's premature:
+   any PR a worker opens in step 3 doesn't exist yet at this point in the loop.)
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
@@ -126,8 +113,17 @@ even if more are queued. State the chosen N and the cap to the user.
    author — the label is applied by the fleet, not the human). The *other*
    issues keep moving. For any issue **ready to merge**, surface it and stop there (merge
    is the user's).
-6. **End the turn.** Subscriptions are already current — step 2 re-asserted them off the
-   table for every live PR this refresh. A spec PR's review activity during Case/spec review
+6. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
+   table** — each issue's spec PR, each issue's impl PR#(s), and the epic PR (if active) —
+   unconditionally, every turn, not only when a PR first opens. Do this **here, after step 4**,
+   not in step 2: step 3 may have dispatched a worker that opened a brand-new PR this very
+   turn, and step 4 is where that PR# lands in the table — subscribing any earlier would miss
+   it, leaving it deaf to review/approval activity until the next heartbeat. `subscribe_pr_activity`
+   is idempotent, so re-subscribing to a PR already subscribed costs nothing; doing it
+   unconditionally off the full table (not just "PRs that changed this turn") is what makes a
+   lost subscription self-heal on the very next wake — a worker opened a PR and exited before
+   subscribing (sub-agents can't hold one — only the fleet can), a call was skipped, or the
+   session cold-resumed. A spec PR's review activity during Case/spec review
    must wake the fleet, not wait for the heartbeat, and epic PR activity must too (so feedback
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
