@@ -7,10 +7,10 @@ Linear access: MCP is wrong-workspace (OnSecurity). Use Linear GraphQL API + $LI
 ## Status table
 | Issue | Phase | Spec PR | Impl PR | Gate pending? | Worktree | Notes |
 |-------|-------|---------|---------|---------------|----------|-------|
-| FIX-920 | AWAITING_SPEC_APPROVAL | #853 | — | YES (user sign-off) | claude/fix-920-spec-tsdnqg | depends FIX-918 (Done) |
-| FIX-917 | NEEDS_SPEC → dispatching | — | — | no | tbd | block-state fast-follows |
-| FIX-923 | NEEDS_SPEC → dispatching | — | — | no | tbd | RESEARCH issue |
-| FIX-924 | NEEDS_SPEC → dispatching | — | — | no | tbd | soft-coupled to FIX-923; DO NOT implement 924 until 923 research accepted |
+| FIX-920 | SPEC_REVISING | #853 | — | after revise → user re-review | claude/fix-920-spec-tsdnqg | revision worker aa7f0f61b5ddb5c92: rename WorkerSpec→AgentSpec/workers:→agents:, reframe test to board-commanded runBoard, drop dead blockRef guard. Wiring seam survives. User wants to re-review revised spec before implement. |
+| FIX-917 | SPEC (worker running) | — | — | no | worktree | block-state fast-follows |
+| FIX-923 | AWAITING_SPEC_APPROVAL | #864 | — | pending user | worktree | RESEARCH issue; spec PR #864 up, subscribed |
+| FIX-924 | SPEC (worker running) | — | — | no | worktree | soft-coupled to FIX-923; DO NOT implement 924 until 923 research accepted |
 
 ## Active workers (this wake)
 - FIX-917 spec: agent a7621470321a9f83b
