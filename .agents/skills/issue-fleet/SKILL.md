@@ -62,14 +62,16 @@ even if more are queued. State the chosen N and the cap to the user.
    with `isolation: worktree` and the same prompt.)
 4. **Collect compact status** and update the table. Never fold a worker's full output
    in — one status line per issue.
-5. **Surface gates.** For any issue now **awaiting spec approval**, surface its Part I
-   summary to the user and note it's blocked on their sign-off; the *other* issues
-   keep moving. For any issue **ready to merge**, surface it and stop there (merge is
-   the user's).
-6. **End the turn.** Subscribe to all live impl PRs; schedule one fleet check-in
-   (`send_later`, ~30–60 min) as the heartbeat and re-arm while any issue is live.
-   Re-enter on PR events or the check-in. Stop the fleet once every issue is merged,
-   closed, or dropped.
+5. **Surface gates.** For any issue now **awaiting spec approval**, surface its **spec
+   PR link** (the PR description leads with Part I — the user reviews it there) and note
+   it's blocked on their sign-off; the fleet holds the *link*, not the spec text. The
+   *other* issues keep moving. For any issue **ready to merge**, surface it and stop
+   there (merge is the user's).
+6. **End the turn.** Subscribe to **all live PRs — spec and impl** (`subscribe_pr_activity`):
+   a spec PR's review activity during `AWAITING_SPEC_APPROVAL` must wake the fleet, not
+   wait for the heartbeat. Schedule one fleet check-in (`send_later`, ~30–60 min) as the
+   backstop and re-arm while any issue is live. Re-enter on PR events or the check-in.
+   Stop the fleet once every issue is merged, closed, or dropped.
 
 ## Gates & autonomy
 

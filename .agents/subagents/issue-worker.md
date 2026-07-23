@@ -15,6 +15,8 @@ You'll be given a Linear issue ID (and possibly a note on its current phase). Ru
 for its current phase — no more:
 
 - needs a spec → run the create-spec step, open the spec PR, stop.
+- spec PR open with unhandled review events (awaiting approval) → run one
+  `fsd:create-spec` Step 6.5 round (apply clear fixes, escalate debatable), stop.
 - spec approved → run the implement step (in this worktree, on the issue's branch),
   open the impl PR, stop.
 - impl PR has unhandled review/CI events → run one PR-feedback round, push, stop.
