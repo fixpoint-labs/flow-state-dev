@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   KITCHEN_SINK_MODELS,
   DEFAULT_KITCHEN_SINK_MODEL,
+  coalesceKitchenSinkModel,
 } from "../../../lib/models";
 
 // ---------------------------------------------------------------------------
@@ -104,9 +105,23 @@ export const selectedModelSchema = z
   .enum(KITCHEN_SINK_MODELS)
   .default(DEFAULT_KITCHEN_SINK_MODEL);
 
+/**
+ * User-state field for `selectedModel`. Coalesces stale persisted ids before
+ * enum validation so explicit parses (and any future load-time validation)
+ * match generator read-time behavior. Writes still go through
+ * {@link selectedModelSchema} on `setSelectedModel`.
+ */
+export const persistedSelectedModelSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" || value == null
+      ? coalesceKitchenSinkModel(value)
+      : value,
+  z.enum(KITCHEN_SINK_MODELS),
+);
+
 /** Per-user state: display name, selected model, extended-thinking toggle. */
 export const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
-  selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
+  selectedModel: persistedSelectedModelSchema.default(DEFAULT_KITCHEN_SINK_MODEL),
   thinkingEnabled: z.boolean().default(false),
 });
