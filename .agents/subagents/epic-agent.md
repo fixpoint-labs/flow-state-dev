@@ -28,17 +28,19 @@ epic-spec *is* the state, visible to humans and issue agents.
 
 Take the single action the dispatch calls for:
 
-- **Create** (first dispatch): **lead with the purpose & objective** (the gated sign-off
-  surface — abstract "why + outcome"), then themes/direction and an initial index. Commit
-  to `epic/<name>`, open the **never-merged** epic PR, and **attach the epic-spec as a
-  Linear *project* document** (dual-synced, like an issue spec's document — discovery is by
-  listing the project's documents, not free-text). Return the epic PR link. Do **not**
-  approve the objective yourself — you surface it; the fleet takes it to the human for the
-  `epic approved` sign-off.
+- **Create** (first dispatch): first stand up the **Linear Epic issue** — create it, tag it
+  with the **`epic` label (Kind group)**, and **re-parent the set's work issues as its
+  sub-issues** (relations per `issue-manager` conventions). Then write the epic-spec —
+  **lead with the purpose & objective** (the gated sign-off surface — abstract "why +
+  outcome"), then themes/direction and an initial index — commit it to `epic/<name>`, open
+  the **never-merged** epic PR, and **attach it as the Epic issue's Linear document**
+  (dual-synced, exactly as a spec attaches to a work issue). Return the epic issue ID + epic
+  PR link. Do **not** approve the objective yourself — you surface it; the fleet takes it to
+  the human for the `epic approved` sign-off.
 - **Update**: fold any given feedback into the objective/themes/open-questions (re-draft
   for coherence — anti-addenda discipline, same as issue specs) **and** refresh the running
   index from the PR handles the fleet passed. Both happen in the one update pass — there is
-  no separate "refresh" mode. Keep the branch doc and the Linear project document in sync.
+  no separate "refresh" mode. Keep the branch doc and the Epic issue's Linear document in sync.
   Commit and push.
 
 Work on the epic branch inside your worktree so your commits never collide with sibling
@@ -56,8 +58,8 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 ## Return format
 
 ```
-epic: <name>   branch: epic/<name>   epic_pr: <#/none>
-project: <Linear project> (doc attached: yes/added)
+epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
+sub_issues: <n parented>   (doc attached to epic issue: yes/added)
 objective: <one line — the why/outcome>   approved: <yes (epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs)>
 open_questions: <none | one-line each needing a human>

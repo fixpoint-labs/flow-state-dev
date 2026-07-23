@@ -48,7 +48,7 @@ even if more are queued. State the chosen N and the cap to the user.
    (compact: the issue list and per-issue handle-cache pointers). If the set shares a
    Linear project with **cross-cutting concerns**, discover or create its **epic** now —
    see [Epic coordination](#epic-coordination-optional--when-the-set-shares-cross-cutting-concerns) —
-   and **record the epic handle (name · `epic/<name>` branch · epic PR# · project doc) in
+   and **record the epic handle (epic issue ID · name · `epic/<name>` branch · epic PR#) in
    `.orchestration/fleet.md` alongside the set**, so it survives across wakes (the next
    refresh needs it to re-read `epic approved`, keep the epic PR subscribed, and pass the
    branch/SHA to workers).
@@ -119,10 +119,13 @@ it; below is only the *fleet's* operating procedure.
 The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
-- **Discover, then create.** List the Linear **project's documents** for an existing
-  epic-spec; reuse it if one covers this set. Otherwise dispatch `epic-agent` to author it
-  (`epic/<name>` branch + never-merged epic PR + attached project document) and return the
-  handles. The fleet holds only handles (epic name, branch, epic PR#), never the spec text.
+- **Discover, then create.** An issue's epic is its **parent** — check whether the set's
+  issues already sit under a Linear parent carrying the **`epic` label (Kind group)**; reuse
+  it if so. Otherwise dispatch `epic-agent` to stand one up: it creates the **Epic issue**
+  (`epic` Kind label), **re-parents the set's issues as sub-issues**, writes the epic-spec
+  (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
+  document), and returns the handles. The fleet holds only handles (epic issue ID, name,
+  branch, epic PR#), never the spec text.
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **`epic approved`** sign-off and hold the epic's issues at NEEDS_SPEC until it lands
   (loop step 3). It's the *only* epic-level gate; direction stays ungated.
@@ -134,7 +137,8 @@ The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, wor
   re-dispatch `epic-agent` to **fold** the feedback into the epic-spec **and** refresh its
   running index from the PR handles in your table — one update pass, not a separate mode.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
-  deleted** and stays discoverable via the project document. Closing needs no sign-off.
+  deleted** and stays discoverable via the Epic issue (its attached document + `epic` label).
+  Closing needs no sign-off.
 
 ## Intake — filing & queueing discovered issues
 
