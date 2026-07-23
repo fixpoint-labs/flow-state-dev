@@ -12,7 +12,8 @@ import type { Middleware, MiddlewareContext } from "./types";
  * Middleware is filtered against the block identity, then chained so that each
  * middleware's `next()` calls the next middleware or the terminal `execute`.
  *
- * @param middlewares - Ordered array: global first, then flow, then block.
+ * @param middlewares - The block-execution middleware stack, in outer-to-inner
+ *   order. Fed from the single internal source (`RuntimeConfig.middleware`).
  * @param blockInfo  - Identity of the block being executed (for filter matching).
  * @returns A function that accepts a context and terminal executor, returns the output.
  */
@@ -51,20 +52,4 @@ export function composeMiddleware(
 
     return dispatch(0);
   };
-}
-
-/**
- * Merge middleware arrays from multiple sources (global, flow, block) in
- * precedence order. Undefined/empty arrays are skipped.
- */
-export function mergeMiddlewareStacks(
-  ...stacks: (Middleware[] | undefined)[]
-): Middleware[] {
-  const result: Middleware[] = [];
-  for (const stack of stacks) {
-    if (stack !== undefined && stack.length > 0) {
-      result.push(...stack);
-    }
-  }
-  return result;
 }

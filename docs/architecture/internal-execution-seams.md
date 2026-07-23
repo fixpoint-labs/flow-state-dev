@@ -53,17 +53,29 @@ const seams: InternalExecutionSeams = {
 
 ## Internal middleware compose
 
-The engine retains `composeMiddleware` / `mergeMiddlewareStacks`
-(`packages/engine/src/middleware/`) and the `executeBlock` wrapping point. A
-middleware stack is fed **only** through `RuntimeConfig.middleware`, which the
-engine bundles internally — there is no `middleware:` option on `defineFlow`,
-block builders, or `createFlowApiRouter`. `runAction` forwards
-`runtimeConfig.middleware` to `executeBlock`, which composes it around block
-execution and runs it on every retry attempt.
+The engine retains `composeMiddleware` (`packages/engine/src/middleware/`) and
+the `executeBlock` wrapping point. A middleware stack is fed **only** through
+`RuntimeConfig.middleware`, set by framework code constructing a `RuntimeConfig`
+directly — there is no `middleware:` option on `defineFlow`, block builders, or
+`createFlowApiRouter` (and `createRuntimeConfig` deliberately drops any flat
+`middleware` field, so a stale `as any` router option cannot smuggle a stack
+in). `runAction` forwards `runtimeConfig.middleware` to `executeBlock`, which
+composes it around block execution and runs it on every retry attempt.
+
+Why this coexists with `InternalExecutionSeams`: the seam hooks transform input
+and output as separate single-purpose functions that always proceed to the
+block. The compose seam is the only one that wraps the call as one unit —
+`around`/short-circuit control flow (a middleware may skip `next()` and return
+without running the block) plus a per-block `filter`. Keep the input/output
+hooks for observation and transformation; the compose seam is for
+around-execution control.
 
 This seam is dormant: no production code feeds a non-empty stack today. It is
-kept for framework-owned instrumentation (e.g. a future durability middleware)
-and for a designed public contract built against a real first consumer.
+kept for framework-owned instrumentation (e.g. a future durability middleware).
+Note the intended re-entry shape: when a real cross-cutting consumer appears
+(most likely a token/cost-budget guardrail), expose it as a **single narrow
+guardrail/interceptor capability** scoped to generators against this internal
+seam — not a resurrected global/flow/block registration API.
 
 ## What app authors use instead
 
@@ -81,7 +93,7 @@ and for a designed public contract built against a real first consumer.
 | Artifact | Location |
 |----------|----------|
 | `Middleware`, `MiddlewareFn`, `MiddlewareContext`, `BlockMiddlewareContext` | `packages/engine/src/middleware/types.ts` (engine-internal) |
-| `composeMiddleware`, `mergeMiddlewareStacks` | `packages/engine/src/middleware/compose.ts` (engine-internal) |
+| `composeMiddleware` | `packages/engine/src/middleware/compose.ts` (engine-internal) |
 | `InternalExecutionSeams` | `packages/engine/src/execution/internal/seams.ts` |
 | `RuntimeConfig.middleware` | `packages/engine/src/runtime-config.ts` |
 

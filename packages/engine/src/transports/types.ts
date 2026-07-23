@@ -18,7 +18,6 @@ import type {
   ResolvedPrincipal,
   VoiceProvider
 } from "@flow-state-dev/core/types";
-import type { Middleware } from "../middleware/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { LiveRequestStream } from "../streaming/live-stream";
@@ -212,12 +211,6 @@ export interface InboundTransportHost {
      */
     voice?: VoiceProvider;
   };
-  /**
-   * Internal composition seam introspection only — NOT an author-facing
-   * registration API. Populated from `runtimeConfig.middleware`. See
-   * `docs/architecture/internal-execution-seams.md`.
-   */
-  readonly middleware?: Middleware[];
   readonly logger?: RuntimeLogger;
 
   /**

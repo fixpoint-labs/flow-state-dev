@@ -36,6 +36,11 @@ export interface RuntimeConfig {
   voiceProvider?: VoiceProvider;
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
+  /**
+   * Engine-internal block-execution seam (FIX-831). Not an author-facing
+   * option — set only by framework code constructing a `RuntimeConfig`
+   * directly. Fed to `runAction` → `executeBlock` → `composeMiddleware`.
+   */
   middleware?: Middleware[];
   logger?: RuntimeLogger;
   /** Tracing verbosity for observability snapshots (FIX-406 6H). */
@@ -77,7 +82,11 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
     settings: options.settings,
-    middleware: options.middleware,
+    // NB: `middleware` is deliberately NOT copied from the flat public options.
+    // The internal seam (`RuntimeConfig.middleware`) is fed only by framework
+    // code building a `RuntimeConfig` directly (passed via `runtimeConfig`), so
+    // a retracted/stale `createFlowApiRouter({ middleware } as any)` cannot
+    // smuggle an author-facing stack into block execution.
     logger: options.logger,
     tracingLevel: options.tracingLevel,
     maxResponseBufferSize: options.maxResponseBufferSize,

@@ -7,13 +7,16 @@
  *
  * Note: type-level guards (`@ts-expect-error`) are not CI-enforced in this
  * package (the typecheck script walks `src/**` only, and vitest does not
- * typecheck), so retraction is verified behaviorally here and by the grep gate
- * documented in `docs/specs/FIX-831.md` Step 6.
+ * typecheck), so retraction is verified behaviorally by the guards below —
+ * middleware smuggled onto a block builder or `defineFlow` via `as any` is not
+ * executed, and `createRuntimeConfig` drops a flat `middleware` option so a
+ * stale `createFlowApiRouter({ middleware })` cannot feed the seam.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { composeMiddleware, mergeMiddlewareStacks } from "../src/middleware/compose";
+import { composeMiddleware } from "../src/middleware/compose";
+import { createRuntimeConfig } from "../src/runtime-config";
 import type { Middleware } from "../src/middleware/types";
 import {
   createExecutionContext,
@@ -212,22 +215,6 @@ describe("composeMiddleware", () => {
         async () => "value"
       )
     ).rejects.toThrow("post-processing failed");
-  });
-});
-
-describe("mergeMiddlewareStacks", () => {
-  it("merges stacks in order, skipping undefined", () => {
-    const a: Middleware = { name: "a", execute: async (_, next) => next() };
-    const b: Middleware = { name: "b", execute: async (_, next) => next() };
-    const c: Middleware = { name: "c", execute: async (_, next) => next() };
-
-    const merged = mergeMiddlewareStacks([a], undefined, [b, c], []);
-    expect(merged.map((m) => m.name)).toEqual(["a", "b", "c"]);
-  });
-
-  it("returns empty array when all undefined", () => {
-    const merged = mergeMiddlewareStacks(undefined, undefined);
-    expect(merged).toEqual([]);
   });
 });
 
@@ -564,5 +551,21 @@ describe("public middleware surface is retracted (FIX-831)", () => {
     expect(result.error).toBeUndefined();
     expect(result.output).toBe("hello");
     expect(flowMwRan).toBe(false);
+  });
+
+  it("drops a flat middleware option smuggled through createRuntimeConfig", () => {
+    const mw: Middleware = {
+      name: "router-mw",
+      execute: async (_ctx, next) => next()
+    };
+
+    // `createFlowApiRouter` builds its runtime config via
+    // `createRuntimeConfig(options)`. A JS / `as any` caller that keeps the
+    // retracted `createFlowApiRouter({ middleware })` option must NOT have it
+    // reach the internal seam — the flat option is dropped, so the only way in
+    // stays a framework-built `RuntimeConfig` passed as `runtimeConfig`.
+    const runtimeConfig = createRuntimeConfig({ middleware: [mw] } as any);
+
+    expect(runtimeConfig.middleware).toBeUndefined();
   });
 });
