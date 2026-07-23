@@ -283,12 +283,9 @@ How this workflow's research feeds the template:
 - **Part II is the *directional* build plan** — technical design, implementation sequence (name the
   *removals* too, per tenet 3), edge cases, testing strategy (goal check + CI specs,
   informed by Agents A/E), documentation plan (from Agent G's Step 3G output),
-  dependencies & open questions. It carries the shape and sequence — which modules/layers
-  are involved, how they fit, the order to build them — **not** the finished design.
-  **Prefer a mermaid diagram** to signatures and file trees for architecture, data flow,
-  and state machines; avoid file paths and full signatures; an illustrative snippet is
-  allowed only to pin a decision or sketch a seam, labelled a sketch. Keep each section
-  light by default — deepen one only if review asks for more to sign it off. **For a Large
+  dependencies & open questions. Write it at the altitude the template defines (shape and
+  sequence over finished design, diagram over signatures, depth pulled not pushed) — don't
+  restate those rules here, follow them. **For a Large
   issue, the sequence includes a PR plan** — a small DAG of sub-PRs (`id · deliverables ·
   depends_on`) that `issue-lifecycle` builds in parallel where independent; record its
   shape as a Part I §6 decision (per the template).
@@ -426,7 +423,7 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 ## Guidelines
 
 - **Depth over speed.** This is a research task. Spend the time to get it right. A thin spec is worse than no spec because it gives false confidence.
-- **Be specific.** "Update the server" is not a spec. "Add a `resumeFromSequence` parameter to `createSSEStream()` in `packages/engine/src/streaming/sse.ts` that filters items below the given sequence number" is a spec.
+- **Be specific about direction, not signatures.** "Update the server" is not a spec. "Resume an SSE stream by filtering out items below the caller's last-seen sequence number, at the streaming seam" is — it names the actual behavior and where it lives without pinning the exact signature or file path (those are the implementer's).
 - **Show the code in use, not just the contract.** When the change materially alters the public API surface, **Part I §5** must include minimal usage examples — the actual code a developer or end user writes against the new or changed surface and the observable result — not only the signatures. Part II §7 names the API surface directionally; §5's examples show someone calling it. Skip only when nothing about how code is written against the framework changes (internal refactor, pure type/schema change, config or build plumbing, a bug fix that restores documented behavior), and say so in one line.
 - **Follow existing patterns.** The codebase has established conventions. The spec should extend them, not invent new ones. When deviating, explain why.
 - **Research is not copying.** Industry research informs the approach but the implementation must fit this codebase's architecture, not blindly adopt an external pattern.
