@@ -1604,6 +1604,7 @@ Required environment variables:
 FINNHUB_API_KEY=...      # finnhub.io — fundamentals snapshot, prices, news, insider transactions, institutional ownership
 FRED_API_KEY=...         # research.stlouisfed.org — macro indicators + NFCI financial conditions
 XAI_API_KEY=...          # xai — Grok-backed social sentiment via xSearch (optional)
+ALPHAVANTAGE_API_KEY=... # alphavantage.co — earnings-call transcripts + analyst estimates enrichment + insider fallback (terminal fallback / stub-completer, never primary). Free tier 25 req/day; ALPHAVANTAGE_DAILY_LIMIT tunes the in-process budget guard (0 = unlimited). Optional
 MASSIVE_API_KEY=...      # massive.com (rebranded polygon.io) — options chain (Quant) + futures curve (Macro). PAID, per-product (options Starter, futures separate); optional
 ```
 
