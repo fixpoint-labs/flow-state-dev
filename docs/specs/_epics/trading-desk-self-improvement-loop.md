@@ -62,11 +62,10 @@ consumers + a spur that feeds both:
 **What ramps on approval.** The epic-objective gate is an approving comment or GitHub Review from a
 **human** on the epic PR (#898) — the coordinator then *mirrors* it to the `epic approved` label,
 which records the gate but does not trigger it (a worker waits for the human approval, not the
-label). On approval the Backlog sub-issues (FIX-789 / 792 / 793 / 794 / 812) are released from
-NEEDS_SPEC. FIX-788 / FIX-790 are Done and FIX-791 is In Review — wrapped for coordination, not
-rolled back. Within this doc, per-issue state is tracked only in the running index (§3) to avoid
-drift — but that index is a projection refreshed from Linear + PR handles; Linear and the PRs
-remain the state authority.
+label). Approval releases the not-yet-specced sub-issues (FIX-789 / 792 / 793 / 794 / 812) from
+NEEDS_SPEC; the already-shipped and in-flight substrate (FIX-788 / 790 / 791) is wrapped for
+coordination, not rolled back. Current per-issue state lives only in the running index (§3) — itself
+a projection refreshed from Linear + PR handles, with Linear and the PRs as the state authority.
 
 ---
 
@@ -174,6 +173,8 @@ Genuinely undecided — for spec time, not settled decisions (those are §2c).
 2. **Is FIX-812 a page, a file, or both?** The loop wants a machine-readable artifact, the showcase
    wants a browsable page; these may not be one surface. A rendering decision only — the
    compute/present seam (§2b) settles the *data* regardless.
-3. **Where does the outcome definition live across the eval/product boundary?** `outcomeVerdict`
-   semantics are shared by eval-side FIX-793 and product-side FIX-763. Fix the snapshot field shapes
-   once, in FIX-793, so both read the same fields; FIX-812 reports against that definition.
+3. **What exact snapshot fields serve *both* the eval backtest and the product review loop?**
+   Ownership is settled — FIX-793 defines `outcomeVerdict` (§2b/§2c). What's open is the concrete
+   shape: the fields (horizon window, benchmark, per-horizon returns, max drawdown) that satisfy
+   eval-side FIX-793 *and* product-side FIX-763 from one schema, not two. Resolve in FIX-793's spec
+   against FIX-763's needs.
