@@ -115,10 +115,13 @@ genuinely new primitives (ETF look-through, events calendar). Each issue states 
 inheritance explicitly when it ramps. This keeps FIX-798's shared surface thin and is why the
 family is one epic rather than six standalone tools.
 
-**Deliberately out of the AV layer:** making AV a *preferred/primary* source anywhere, and
-generalized multi-provider composition + the per-run rate-budget for capped providers — both
-belong to **FIX-675** (see §4 Q3), not this epic; plus any premium-gated AV surface (realtime
-options/index).
+**Deliberately out of the AV layer:** making AV the *preferred* source for data an existing
+provider already covers — displacing Finnhub / FRED / Yahoo is the FIX-675 bake-off's call,
+not this epic's. This does **not** restrict AV being the *sole* source for genuinely new
+primitives that have no existing tool (movers FIX-800, ETF look-through FIX-801, events
+FIX-804, commodities FIX-802) — those are legitimately AV-sourced. Generalized multi-provider
+composition + the per-run rate-budget for capped providers belong to **FIX-675** (see §4 Q3);
+premium-gated AV surface (realtime options/index) is out.
 
 ---
 
