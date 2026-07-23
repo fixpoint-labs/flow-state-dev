@@ -89,7 +89,9 @@ boundaries) — so scope creep is visible to the human at sign-off. (Process-lev
 follow-ups — deepening opportunities, already-rejected directions — go in §12.)
 
 End with the **size estimate**: Small (1 file / <100 LOC) · Medium (multi-file / 1
-PR / 100–500) · Large (multi-PR / >500). If Large, name the PR split.
+PR / 100–500) · Large (multi-PR / >500). If Large, declare the **PR plan** (the sub-PR
+DAG in §8) and record its *shape* as a decision here — which parts split into
+independent PRs vs. which are sequential.
 
 ---
 
@@ -116,6 +118,24 @@ Ordered, independently testable steps. For each: files to create / modify / **re
 (subtraction is part of the change — tenet 3), what changes, what to test, and
 dependencies on earlier steps. Map ~80%; leave the in-the-weeds 20% to the
 implementer.
+
+**PR plan (Large / multi-PR issues only).** When the change is large enough to split
+across PRs, declare a **PR plan**: a small table of sub-PRs and their dependencies.
+Independent = no unmet `depends_on`. The implementing lifecycle builds the independent
+sub-PRs in parallel (each its own branch/PR) and sequences the dependent ones. Keep it
+small — most issues are a single-node plan and skip this.
+
+| sub-PR | deliverables | depends_on |
+|---|---|---|
+| a | <what ships in this PR> | — |
+| b | <…> | — |
+| c | <…> | a, b |
+
+Conventions the lifecycle relies on: sub-PR branches are `fix/<ISSUE>-<id>`; a
+**dependent** sub-PR branches off its dependency so review can start before the dep
+merges (rebase on merge); the DAG must be acyclic. The plan's *shape* (how many PRs,
+what's independent vs. sequential) is a load-bearing decision — record it in Part I §6
+too (that's what the human signs off on); this table is the executable detail.
 
 ### 9. Edge cases & error handling
 

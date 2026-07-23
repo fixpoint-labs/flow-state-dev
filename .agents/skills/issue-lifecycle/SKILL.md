@@ -56,9 +56,42 @@ next sub-agent fetches it.
 |---|---|---|
 | **NEEDS_SPEC** — no spec / not yet in spec review | Dispatch a sub-agent: *run `fsd:create-spec <issue>`*. It researches, opens the spec PR, and returns Part I ("The Case") + open questions + spec PR link, then exits. | Surface Part I + open questions to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. |
 | **AWAITING_SPEC_APPROVAL** — spec PR open | On a **spec-PR review event**: dispatch a bounded sub-agent to run `fsd:create-spec` Step 6.5 for that batch (apply clear fixes, escalate debatable), returns what changed, exits. On **your approval**: advance. | End turn between events. Do not implement until the user signs off (the one required gate in). |
-| **NEEDS_IMPLEMENTATION** — spec approved | Dispatch a sub-agent: *run `fsd:implement-issue <issue>`*. It closes the spec PR, implements on the fix branch (its worktree, under the fleet), runs `fsd:review`, opens the impl PR, returns summary + key decisions + PR link, exits. | Record impl PR#; subscribe to it; end turn → PR_FEEDBACK. |
-| **PR_FEEDBACK** — impl PR open | On each **PR event** (new review comments / CI): dispatch a fresh bounded sub-agent to run `fsd:implement-issue` Step 10 for that batch — react, fix, reply, push — and exit. | End turn between events. When the PR is approved + green: surface **"ready to merge"** and stop. **Do not merge** — merge is the user's. |
+| **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `fsd:implement-issue <issue>`* — closes the spec PR, implements on `fix/<ISSUE>`, runs `fsd:review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
+| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `fsd:implement-issue` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); the issue is DONE only when every sub-PR is merged. |
 | **DONE** — impl PR merged | none | Update the cache to DONE; report completion. |
+
+## Multi-PR issues (PR plan)
+
+When the spec declares a **PR plan** (a DAG of sub-PRs — `fsd:create-spec` Large
+issues, Part II §8), the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK` phases generalize
+from one PR to the plan. The single spec-approval up front covers the whole plan; you
+still stop before merge on each sub-PR.
+
+Each invocation advances the plan by **one bounded step**:
+
+1. **Read** the plan (the §8 sub-PR table) and per-sub-PR status from the handle cache.
+2. **Independent ready** sub-PRs (no unmet `depends_on`, not yet built) → build in
+   **parallel**, each in its own worktree on branch `fix/<ISSUE>-<id>`: dispatch a
+   worktree-isolated worker (Agent tool `isolation: worktree`) that runs
+   `fsd:implement-issue` scoped to that sub-PR's deliverables — it implements the slice,
+   runs `fsd:review`, and opens the sub-PR. Same isolation the fleet uses across issues,
+   one level down. Cap parallelism to the VM (a few at a time).
+3. **Dependent ready** sub-PRs → branch off the dependency's branch so review can start
+   before the dep merges; rebase onto the dep when it merges. A dependency's **merge
+   event** re-enters the lifecycle and unblocks its dependents.
+4. Once **every** sub-PR in the plan is merged, the issue is DONE.
+
+**Handle-cache extension:** the `.orchestration/<ISSUE>.md` record adds one row per
+sub-PR — `id · depends_on · branch · PR# · status (pending / building / open / merged)`
+— alongside the issue-level fields. The coordinator holds only this table, never sub-PR
+content (same token discipline).
+
+**Optional team-backed burst.** When agent teams are enabled and the independent
+sub-PRs share interfaces that benefit from live coordination, the parallel build can
+run as a team (the DAG is the shared task board) instead of independent workers.
+Default is independent worktree workers — no team required.
+
+Single-PR issues are just a one-node plan: no change to their flow.
 
 ## Waking
 

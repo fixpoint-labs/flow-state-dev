@@ -279,7 +279,9 @@ How this workflow's research feeds the template:
   *removals* too, per tenet 3), edge cases, testing strategy (goal check + CI specs,
   informed by Agents A/E), documentation plan (from Agent G's Step 3G output),
   dependencies & open questions. Map ~80%; leave the in-the-weeds 20% to the
-  implementer.
+  implementer. **For a Large issue, the sequence includes a PR plan** — a small DAG of
+  sub-PRs (`id · deliverables · depends_on`) that `fsd:issue-lifecycle` builds in
+  parallel where independent; record its shape as a Part I §6 decision (per the template).
 - **The Step 3.5 verdict shapes Part I.** A "refine the substrate" or "build smaller"
   verdict changes what the Case argues for — reflect it in §1–§3, don't bury it.
 - **Write Part I last,** as a summary of Part II, not an outline of it. Before
@@ -296,6 +298,7 @@ Launch a `feature-dev:code-architect` sub-agent to review the spec for:
 - Consistency with existing architecture patterns
 - Missing edge cases or error scenarios
 - Whether the implementation sequence makes sense (dependencies, ordering)
+- For a Large / multi-PR issue: whether the **PR plan** is a valid DAG (acyclic, every `depends_on` names a real sub-PR), the sub-PRs marked independent genuinely have no shared unmet dependency, and each is independently shippable/reviewable
 - Whether the testing strategy is adequate
 - Whether **Part I §5's** usage examples are present when the public API surface changes materially — showing the change *in use* (the actual calling code plus its observable result, with a before/after when a call site moves), not just the signatures — or, when they're skipped, whether the one-line justification is stated and defensible
 - Any conflicts with the project's architectural constraints (check `docs/architecture/*.md`)

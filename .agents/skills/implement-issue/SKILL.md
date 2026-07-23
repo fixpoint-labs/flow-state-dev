@@ -70,7 +70,12 @@ If all clear, move to Step 3.
 ### Step 3: Set Up Branch
 
 1. Ensure main is up to date: `git checkout main && git pull`
-2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID
+2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID.
+   **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `fsd:issue-lifecycle` for one
+   node of the spec's PR plan.) Then use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement
+   **only that sub-PR's deliverables** (not the whole issue), branch off the dependency's
+   branch if it has one (else main), and open that sub-PR. Do **not** close the spec PR
+   per sub-PR — the lifecycle closes it once, when the plan starts.
 3. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
 
    ```bash
