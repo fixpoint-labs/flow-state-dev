@@ -21,7 +21,7 @@ Both disciplines are embedded into the implementer sub-agent prompt at dispatch 
 
 **Exceptions.** (a) Pure characterization/parity work — swapping an implementation while holding pre-existing tests green (see `tdd` → "When NOT to use TDD") — has no red-green cycle by design; the discipline there is that the parity tests already existed *before* the change and continue to pass, not that anything was ever red. (b) Trivial, mechanical edits with no behavioural surface — config values, docs, renames — don't need a test at all. Anything with observable behaviour (an item emitted, a return value, a state change, a symptom that's now fixed) gets the red gate; when in doubt, treat it as observable.
 
-**Meta-awareness — challenge the spec where the code contradicts it.** The spec did the hard 80% and passed review, but implementation is the first time its assumptions meet real code. At the step boundaries you judge most likely to expose a blind spot — not the trivial ones — run the **challenger** sub-agent (`./challenger-prompt.md`). It asks only whether the code reveals something the spec *misunderstood or didn't realize*; it does not re-litigate a reviewed spec or review quality/scope. On a real blind spot, **surface it**: escalate to the human when available, else take the best-judgment path, fold the correction into the spec, and flag it loudly as a spec deviation in the PR and Linear (never silently force-follow or deviate). A challenged blind spot is prime `distill-lessons` signal.
+**Meta-awareness — challenge the spec where the code contradicts it.** The spec set the direction and passed review, but implementation is the first time its assumptions meet real code. At the step boundaries you judge most likely to expose a blind spot — not the trivial ones — run the **challenger** sub-agent (`./challenger-prompt.md`). It asks only whether the code reveals something the spec *misunderstood or didn't realize*; it does not re-litigate a reviewed spec or review quality/scope. On a real blind spot, **surface it**: escalate to the human when available, else take the best-judgment path, fold the correction into the spec, and flag it loudly as a spec deviation in the PR and Linear (never silently force-follow or deviate). A challenged blind spot is prime `distill-lessons` signal.
 
 ## Workflow
 
@@ -59,7 +59,7 @@ Before starting work, check:
    - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/issue-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
-2. **Build Plan present?** A full-workflow spec is authored in two stages (`issue-spec`): Part I ("The Case") ships first in a **draft** spec PR; Part II ("The Build Plan") is authored only after the human promotes that PR to ready-for-review. If the spec is still **Part II-pending** (the `## Part II — The Build Plan` heading is marked *pending*, or the spec PR is still a **draft**), the Case hasn't been approved and there's no plan to implement → **stop** and tell the user to review the draft spec PR and mark it ready-for-review, which triggers the Build Plan; implement only once the full spec is present and signed off. Under `issue-lifecycle` / `issue-fleet` that sign-off is an **approving comment or GitHub Review from the user** on the spec PR — mirrored by the orchestrator to the `spec approved` label — which the orchestrator gates on before dispatching this skill; run standalone, your invocation is the approval — but still don't implement a Part II-pending spec. (Bugs and agent-brief issues have no two-stage spec — this check doesn't apply to them.)
+2. **Full spec present and signed off?** A full-workflow spec (`issue-spec`) carries Part I ("The Case") and Part II ("The Build Plan"), authored together and opened as one spec PR ready for review. Implement only once that spec is present and signed off. Under `issue-lifecycle` / `issue-fleet` the sign-off is an **approving comment or GitHub Review from the user** on the spec PR — mirrored by the orchestrator to the `spec approved` label — which the orchestrator gates on before dispatching this skill; run standalone, your invocation is the approval. (Bugs and agent-brief issues have no spec PR — this check doesn't apply to them.)
 
 3. **Dependencies resolved?** Check blocking issues:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
@@ -162,8 +162,8 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 
 #### 5B.1: Extract Tasks from Spec
 
-Parse the spec's "Implementation Sequence" into discrete, ordered tasks. For each task, note:
-- What to build (exact files, functions, types)
+Parse the spec's "Implementation Sequence" into discrete, ordered tasks. The spec is directional — it names the modules/layers and behaviors, not exact files and signatures — so the exact targets are the implementer's to settle. For each task, note:
+- What to build (the modules/layers involved and the behavior to land — the exact files, functions, and types are the implementer's to settle in the code)
 - What it depends on (which prior tasks must complete first)
 - How to test it (acceptance criteria from spec)
 - What NOT to build (scope boundaries)

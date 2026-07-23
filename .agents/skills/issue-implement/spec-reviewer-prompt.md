@@ -71,8 +71,7 @@ Agent tool (general-purpose):
     - Over-engineering beyond what the spec calls for?
 
     **Spec fidelity:**
-    - Do API signatures match the spec exactly?
-    - Do type definitions match?
+    - Does the implementation follow the spec's direction — the modules/layers it names and its Decisions? The spec is directional, so exact signatures and types are generally the implementer's to settle — **except where the spec locked a shape**: a call signature shown in Part I §5's usage examples, or a type/shape fixed by a §6 Decision, is spec-bound and human-approved, so an implementation that changed it fails. Verify the direction and Decisions are honored and any spec-locked call shape matches; don't demand a signature the spec left open.
     - Does the data flow match the spec's Technical Design?
 
     ## Report

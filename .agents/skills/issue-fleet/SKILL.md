@@ -54,8 +54,7 @@ even if more are queued. State the chosen N and the cap to the user.
    subscribed, and pass the branch/SHA to workers).
 2. **Refresh the table.** Fetch each issue's Linear state + PR status to derive its phase
    (reuse each issue's `.orchestration/<ISSUE>.md` handle cache) — **including each open spec
-   PR's `draft` flag, its comments, and its reviews**: a flip from `draft` to ready signals
-   building Part II, and an **approving human comment or GitHub Review** on the spec PR (a
+   PR's comments and reviews**: an **approving human comment or GitHub Review** on the spec PR (a
    "approved" comment, or a Review whose **latest state is `APPROVED` on the current head**
    — not any historical approval left stale by a later push or `CHANGES_REQUESTED` — from a
    human, not a bot, not a bot-authored comment/review body, and for a review, not the PR's own
@@ -106,14 +105,11 @@ even if more are queued. State the chosen N and the cap to the user.
 5. **Surface gates.** If an **epic** is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
    releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
-   for any issue **awaiting Case approval** (its spec PR is a
-   **draft**, Part I only), surface the **draft spec PR link** for a first-pass review and
-   note that **marking it ready-for-review triggers the Build Plan (Part II)** — the
-   fleet holds the *link*, not the spec text. For any issue **awaiting spec approval**
-   (spec PR now **ready**, Part I + II), surface it for the second-pass review and note
-   that **an approving comment or review on the spec PR** is the go-ahead to implement (a
-   plain "approved" comment, or an Approve-state review, from a human other than the PR's
-   author — the label is applied by the fleet, not the human). The *other*
+   for any issue **awaiting spec approval** (its spec PR is open, Part I + II), surface the
+   **spec PR link** for review and note that **an approving comment or review on the spec PR**
+   is the go-ahead to implement (a plain "approved" comment, or an Approve-state review, from a
+   human other than the PR's author — the label is applied by the fleet, not the human) — the
+   fleet holds the *link*, not the spec text. The *other*
    issues keep moving. For any issue **ready to merge**, surface it and stop there (merge
    is the user's).
 6. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
@@ -131,11 +127,9 @@ even if more are queued. State the chosen N and the cap to the user.
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
    delivered PR-activity events, so a spec- or epic-PR approval (either form) wakes the fleet
-   immediately (the reason the gates moved off labels, whose webhook never arrives). The one
-   remaining non-guaranteed transition is the
-   **draft→ready-for-review promotion** (advances Case review → Part II build): no
-   `ready_for_review` webhook is guaranteed, so the scout's table refresh (step 2) re-reads
-   each open spec PR's `draft` flag to catch it on the next wake. Schedule one fleet check-in
+   immediately (the reason the gates moved off labels, whose webhook never arrives). The
+   transitions webhooks *don't* cover — CI success and merge/close — are caught on the scout's
+   table refresh (step 2). Schedule one fleet check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. Stop the fleet once every issue is merged, closed, or dropped.
 

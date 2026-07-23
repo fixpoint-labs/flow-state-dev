@@ -15,7 +15,7 @@ Agent tool (general-purpose):
     ## Spec Context
 
     [Relevant sections from the spec that inform this task: Technical Design, Edge Cases, Testing Strategy.
-     Include API signatures, type definitions, data flow — anything the implementer needs.]
+     Include the spec's directional design — modules/layers, data flow, any diagram, and the Decisions that bind this task. The spec doesn't fix exact signatures and types; the implementer settles those.]
 
     ## Codebase Context
 
@@ -79,7 +79,7 @@ Agent tool (general-purpose):
     **Against the spec:**
     - Did I implement everything this task requires?
     - Did I handle the edge cases the spec mentions for this task?
-    - Did I follow the API signatures / type definitions from the spec exactly?
+    - Did I build the modules/layers the spec's direction calls for, in the order it sets? (The spec is directional — exact signatures and types are mine to settle, so long as they honor its Decisions and direction. Where it *did* lock a shape — a call signature in a Part I §5 usage example, or a type fixed by a §6 Decision — I match it exactly.)
 
     **Quality:**
     - Are names clear and consistent with the codebase?

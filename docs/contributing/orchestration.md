@@ -107,12 +107,11 @@ out-of-band chat approval:
 
 | Gate | Signal | Meaning | Blocks |
 |---|---|---|---|
-| **Build Plan** | spec PR `draft` → ready-for-review | The Case (Part I) holds | authoring Part II (the Build Plan) |
-| **Spec approval** | an approving comment or GitHub Review from a human on the spec PR | The full spec is signed off | implementing that issue |
+| **Spec approval** | an approving comment or GitHub Review from a human on the spec PR | The full spec (Part I + Part II) is signed off | implementing that issue |
 | **Epic objective** | an approving comment or GitHub Review from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold at NEEDS_SPEC) |
 
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
-feedback, upward comments) flows continuously and never blocks. The two spec gates are
+feedback, upward comments) flows continuously and never blocks. The spec-approval gate is
 per issue.
 
 **Why a comment or review, not a label — either drives; label and Linear mirror.** A
@@ -161,9 +160,7 @@ Both clauses are load-bearing — they exclude the coordinator's own footer-sign
 comments and every review bot, so only a genuine human sign-off — by comment or by
 review — trips the gate. **A substantive push after a comment-based approval re-opens the
 gate too** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
-as approving the state at that moment; new work needs fresh sign-off). The Build-Plan gate is
-**unchanged**: it's still the human promoting the draft spec PR to ready-for-review (caught on
-the heartbeat too, since a `ready_for_review` webhook isn't guaranteed to arrive either).
+as approving the state at that moment; new work needs fresh sign-off).
 
 The epic *issue's* Linear state is a second human-facing mirror of the objective gate, not
 the trigger — the **fleet writes that mirror** when the approving comment or review lands,
@@ -177,9 +174,8 @@ flowchart LR
     EO{{epic approved?}}
   end
   subgraph Issue[Per issue]
-    NS[NEEDS_SPEC] --> CASE[Part I draft PR]
-    CASE -->|draft→ready| P2[Part II built]
-    P2 -->|spec approved| IMPL[implement]
+    NS[NEEDS_SPEC] --> SPEC[spec PR: Case + Build Plan]
+    SPEC -->|spec approved| IMPL[implement]
     IMPL --> FB[PR feedback] --> MERGE([human merges])
   end
   EO -->|approved: release ramp| NS
@@ -241,16 +237,15 @@ are harness-native (not cloud-gated), but they poll very differently, and for PR
 
 **Cover the same signals the cloud path does** (this is where the naive comment-only loop
 fails): the watch must poll **PR comments *and* reviews *and* check-runs *and* PR meta**
-(`isDraft`/`state`/`mergedAt`). Two things the comment-only loop gets wrong:
+(`state`/`mergedAt`). Two things the comment-only loop gets wrong:
 
 - A `state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint —
   omit it and a local orchestrator goes deaf to the exact approval gate above.
-- The **`draft→ready-for-review` promotion** (and merge/close) is a *quiet* transition — no
-  comment, review, or check accompanies it. A watch that only polls activity endpoints never
-  sees it, so a local lifecycle waiting in `AWAITING_CASE_APPROVAL` for the human to promote a
-  draft spec PR would hang. `watch-pr` polls the PR-meta each tick so its **continuous 60s
+- **Merge/close** is a *quiet* transition — no comment, review, or check accompanies it. A
+  watch that only polls activity endpoints never sees it, so a local lifecycle waiting on the
+  impl PR to merge would hang. `watch-pr` polls the PR-meta each tick so its **continuous 60s
   cadence *is* the heartbeat for that transition** — which is why, locally, it substitutes for
-  the `send_later` draft-promotion heartbeat too, not just `subscribe_pr_activity`.
+  the `send_later` heartbeat too, not just `subscribe_pr_activity`.
 
 Also advance the comment `since` cursor **only after a successful fetch**: a swallowed
 transient `gh` failure that still moved the cursor would drop any comment posted during the
@@ -269,7 +264,7 @@ it starts (CI that already finished green, an approval already posted) is suppre
 fires. A coordinator that arms the Monitor *right after opening a PR* can therefore miss an
 already-green CI run, and locally there's no `send_later` heartbeat to re-read — the issue
 stalls in `PR_FEEDBACK` on a green PR. So on the wake that arms (or re-arms) a Monitor for a
-PR, the coordinator must **immediately re-derive that PR's current CI / review / draft state
+PR, the coordinator must **immediately re-derive that PR's current CI / review / merge state
 and act on it in the same wake** — exactly the re-derive-every-wake discipline; the Monitor is
 for subsequent changes, the current state is the coordinator's to read directly.
 
