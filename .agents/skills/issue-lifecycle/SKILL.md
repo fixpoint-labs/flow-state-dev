@@ -97,8 +97,8 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 | **AWAITING_CASE_APPROVAL** — spec PR is a **draft** (Part I only) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch, scoped to Part I (apply clear fixes, escalate debatable), returns what changed, exits. On the spec PR's **draft→ready-for-review promotion** (the human's signal the Case holds): dispatch a sub-agent to run `issue-spec` **Step 6.6** — author **Part II ("The Build Plan")**, append it, push to the same PR — returns what it added, exits. | End turn between events. The promotion is the trigger to build Part II → AWAITING_SPEC_APPROVAL once it's pushed. |
 | **AWAITING_SPEC_APPROVAL** — spec PR is **ready** (Part I + II) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (now covering Part II too), returns what changed, exits. When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review whose latest state is `APPROVED` on the current head, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical, and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — apply the `spec approved` label as the mirror and proceed the same way. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
 | **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
-| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); the issue is DONE only when every sub-PR is merged. |
-| **DONE** — impl PR merged | none | Update the cache to DONE; report completion. |
+| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
+| **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
 
 ## Linear status is a mirror you own
 
@@ -124,15 +124,15 @@ per-write lookup is needed:
 | Approving comment detected (→ NEEDS_IMPLEMENTATION) | **Spec Approved** | `dfe5f095-467b-4b08-9494-693b928d0b86` |
 | Implementation dispatched (`issue-implement` starts) | **In Development** | `53d6fd64-8136-42ea-b33c-65fd97d9dbf5` |
 | Impl PR opened (→ PR_FEEDBACK) | **In Review** | `91df31a4-b3fd-4a3a-afd8-1b0496e7956e` |
-| Impl PR merged (→ DONE) | **Done** | `f5983dd3-92a5-4a9a-84d8-23e775b7fa8f` |
+| Impl PR merged (→ DONE) — single-PR; **multi-PR: only after the assembled goal passes**, not on the last merge | **Done** | `f5983dd3-92a5-4a9a-84d8-23e775b7fa8f` |
 
 **Who writes it:** whichever agent effects or detects the transition, in the same step —
 the worker sets it for a transition it *causes* (it opened the PR); the orchestrator sets
 it inline (one cheap `save_issue` call) for a transition it *detects* on refresh (an
 approving comment or review, a merge). Set it **idempotently** — if the issue is already in the
 target state, leave it. On a multi-PR issue the status tracks the **whole** issue: In
-Review while any impl sub-PR is open, Done only when every sub-PR is merged (a spec PR
-never counts). If these IDs ever stop resolving (a workflow edit), re-fetch with
+Review while any impl sub-PR is open, Done only when every sub-PR is merged **and the
+assembled goal has passed** (a spec PR never counts). If these IDs ever stop resolving (a workflow edit), re-fetch with
 `list_issue_statuses` for team `flow-state` and update this table — don't guess.
 
 ## Multi-PR issues (PR plan)
@@ -154,7 +154,18 @@ Each invocation advances the plan by **one bounded step**:
 3. **Dependent ready** sub-PRs → branch off the dependency's branch so review can start
    before the dep merges; rebase onto the dep when it merges. A dependency's **merge
    event** re-enters the lifecycle and unblocks its dependents.
-4. Once **every** sub-PR in the plan is merged, the issue is DONE.
+4. Once **every** sub-PR in the plan is merged, run the spec's **end-to-end goal check on the
+   fully-assembled work** before marking the issue DONE. Each per-sub-PR `issue-implement` run
+   only proved its own slice (and any slice-level goal); the assembled goal is the proof no
+   single sub-PR could give, and the merge events are the only point it becomes runnable — so it
+   is required verification, not optional. Dispatch a bounded sub-agent to run it against the
+   merged result (a real model when the goal declares one; a model-free goal runs as-is) and
+   confirm PASS; **only then is the issue DONE.** If the spec's PR plan instead **designates a
+   specific integrating sub-PR to own the assembled goal**, that sub-PR's run proves it and this
+   step just confirms the verdict was recorded — don't double-run. If it fails, the issue isn't
+   done: file the gap (`issue-manager`) and open a **new fix PR** owned by the breaking slice —
+   the sub-PRs are already merged, so they can't be reopened (a merged PR's branch may be gone) —
+   and keep the issue out of DONE until that fix lands and the assembled goal re-passes.
 
 **Handle-cache extension:** the `.orchestration/<ISSUE>.md` record adds one row per
 sub-PR — `id · depends_on · branch · PR# · status (pending / building / open / merged)`
@@ -229,5 +240,10 @@ cloud vs. local" for how to detect the environment and the full fallback design.
   one worktree per issue).
 - This is the *coordinated, single-session, event-driven* lifecycle — one session
   shepherds the whole issue, start to merge-ready PR.
+- **Goal verification is part of done, not a gate.** `issue-implement` proves the goal on the
+  real path at completion (a real model when the goal declares one; model-free goals are valid);
+  a worker that skipped a model-backed goal to save credits hasn't finished. Same enforcement
+  rule — and the same narrow "no goal check applies" exception — as `issue-fleet` → Boundaries;
+  don't accept a cost-based skip.
 - Gates are fixed: **spec approval in, merge out.** Everything between runs without
   hand-holding, surfacing blockers when a sub-agent reports one.

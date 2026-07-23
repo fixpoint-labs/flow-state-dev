@@ -186,6 +186,12 @@ flowchart LR
   EO -.->|pending: hold| NS
 ```
 
+For a **single-PR** issue the goal is proven at implementation completion (before the PR opens),
+so `merge` is completion. For a **multi-PR** issue (a spec's PR plan), the diagram's single
+`merge → done` expands: the per-sub-PR runs only prove their slices, so **after the last sub-PR
+merges the assembled end-to-end goal runs, and only its PASS marks the issue done** — the last
+merge is not itself completion. See `issue-lifecycle` → Multi-PR issues for the exact step.
+
 ## How feedback flows (epic ↔ issues)
 
 ```mermaid

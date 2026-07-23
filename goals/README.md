@@ -2,7 +2,7 @@
 
 A goal is the real-world outcome a piece of work was meant to achieve, plus a runnable check that proves we got there. This directory is the library of them.
 
-Goals are **not** CI specs. CI specs (`*.spec.ts`) mock the LLM and run on every push; they prove the units still behave. A goal check uses a **real model** and the **real path**, runs **outside CI**, and is run **by hand** (by you or an agent) to confirm the feature actually works the way a user would experience it. A mocked spec can pass while the feature does nothing useful, because the mock fed the assertion the answer it wanted. The goal check removes that crutch.
+Goals are **not** CI specs. CI specs (`*.spec.ts`) mock the LLM and run on every push; they prove the units still behave. A goal check exercises the **real path** — on a **real model** when the goal is model-backed, or with no model at all when it isn't (see model-free goals below) — runs **outside CI**, and is run **by hand** (by you or an agent) to confirm the feature actually works the way a user would experience it. A mocked spec can pass while the feature does nothing useful, because the mock fed the assertion the answer it wanted. The goal check removes that crutch.
 
 See `tdd` → "Two kinds of test" for where this sits in the workflow.
 
@@ -46,7 +46,7 @@ A title (`<describe> › it <behaviour>`), then the fields, then a verdict log. 
 - **Input** — the fixture. State that it is **held-out**: swapping it for a different valid input must still pass a correct implementation. If the assertion only works for this exact input, it's hardcoded.
 - **Signal** — the observable pass/fail, with a threshold. An item emitted, a state value written, a return value, a side effect. Checkable without reading the model's mind.
 - **Anti-game** (required) — what a hollow pass would look like, and what the check must therefore **not** assert on. If you can't name a way to fake it, the goal is mechanism-shaped, not outcome-shaped — rework it. This is the most important field.
-- **Model** — the real model id (never a mock). Use `openai/gpt-5.4-mini` unless the goal needs a stronger one.
+- **Model** — for a model-backed goal, the real model id (never a mock); use `openai/gpt-5.4-mini` unless the goal needs a stronger one. For a **model-free** goal (real path, no LLM — e.g. suspend/resume, CRUD persistence), state `n/a` (or `none`) here — that is a valid, well-formed goal, not a malformed one, and it needs no model credential.
 - **Run** — the exact command.
 - **Verdict log** — a table, one row per run: date, commit, model, verdict, notes. This is what makes the goal a regression record. Append; don't overwrite.
 
@@ -72,9 +72,9 @@ pnpm tsx goals/<describe>/<it>/run.mts
 # (a goals/ sweep — pnpm goal:all — will be added once a few goals exist)
 ```
 
-Goal checks cost real model calls. Run them when you need the proof — finishing a feature, or re-checking for a regression — not on every change. They do not gate CI.
+A model-backed goal check costs real model calls, and that cost is the point — a goal proves the feature works for real, the way a mocked spec cannot. Run one when you need that proof: finishing a feature, or re-checking for a regression. Not on every change, and never in the red-green inner loop (the mocked CI specs drive development there). But at feature completion, running the goal is **required verification, not optional** — don't skip, defer, or push back on it to save credits; the spend is expected and authorized. They do not gate CI. (Some goals are intentionally **model-free** — their `goal.md` says `Model: n/a`, and they prove the real path with no model call, so they cost nothing and the credit/credential guidance below simply doesn't apply. Just run the `run.mts`.)
 
-**Credentials.** A goal check needs a model credential with **inference** access — a working `AI_GATEWAY_API_KEY` (Vercel AI Gateway), or a provider key the app's model resolver uses. Note that a gateway key can authenticate for *listing* models yet be rejected for *inference* (a 401 from `/v1/chat/completions`), so "the key is set" is not enough — the run has to actually generate. Some managed/CI containers only carry a listing-scope credential; run goal checks where a real inference credential is available.
+**Credentials.** A **model-backed** goal check needs a model credential with **inference** access — normally **already present in the environment** as `AI_GATEWAY_API_KEY` (Vercel AI Gateway) or a provider key the app's model resolver uses. **Check for it and run — don't assume it's absent.** (A model-free goal needs none — run its real path directly.) The credential being set is not quite proof, though: a gateway key can authenticate for *listing* models yet be rejected for *inference* (a 401 from `/v1/chat/completions`), so the run has to actually generate. If actually running the goal fails for lack of a working inference credential — a 401 on inference, or `fsdev run` erroring with `No provider available for "<provider>"` when no provider key is configured, or any unresolvable-credential error you hit *after* attempting the run, not a preemptive guess that it's absent — record the goal as **blocked** and surface it; don't silently skip it. (Some managed/CI containers carry only a listing-scope credential.)
 
 ## Adding a goal
 
