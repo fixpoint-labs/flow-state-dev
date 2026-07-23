@@ -11,6 +11,14 @@ A spec has two readers with opposite needs, so it has two parts and a hard divid
   work. The last 20% is the implementer's once they're in the code. It is allowed to
   be dense where density buys precision.
 
+**Authored in two stages, gated by the spec PR's draft state.** Part I is written and
+published first, as a **draft** spec PR (and the Linear lead). The human reviews the
+Case there. Marking the PR **ready for review** is the signal that the Case holds — and
+only then is Part II written and appended, so the Build Plan details the *approved* Case
+rather than a speculative one. Reviewers then get a second pass on Part II. This also
+means no Build-Plan tokens are spent on a Case that doesn't survive its first read (tenet
+3). See `fsd:create-spec` Steps 6 and 6.6.
+
 > **Anti-addenda rule.** When spec-PR review forces a major pivot, **re-draft the
 > affected sections.** Do not bolt on an "AUTHORITATIVE reconciliation" section that
 > contradicts the body — an incoherent spec produces an incoherent implementation
@@ -89,7 +97,9 @@ boundaries) — so scope creep is visible to the human at sign-off. (Process-lev
 follow-ups — deepening opportunities, already-rejected directions — go in §12.)
 
 End with the **size estimate**: Small (1 file / <100 LOC) · Medium (multi-file / 1
-PR / 100–500) · Large (multi-PR / >500). If Large, name the PR split.
+PR / 100–500) · Large (multi-PR / >500). If Large, declare the **PR plan** (the sub-PR
+DAG in §8) and record its *shape* as a decision here — which parts split into
+independent PRs vs. which are sequential.
 
 ---
 
@@ -116,6 +126,24 @@ Ordered, independently testable steps. For each: files to create / modify / **re
 (subtraction is part of the change — tenet 3), what changes, what to test, and
 dependencies on earlier steps. Map ~80%; leave the in-the-weeds 20% to the
 implementer.
+
+**PR plan (Large / multi-PR issues only).** When the change is large enough to split
+across PRs, declare a **PR plan**: a small table of sub-PRs and their dependencies.
+Independent = no unmet `depends_on`. The implementing lifecycle builds the independent
+sub-PRs in parallel (each its own branch/PR) and sequences the dependent ones. Keep it
+small — most issues are a single-node plan and skip this.
+
+| sub-PR | deliverables | depends_on |
+|---|---|---|
+| a | <what ships in this PR> | — |
+| b | <…> | — |
+| c | <…> | a, b |
+
+Conventions the lifecycle relies on: sub-PR branches are `fix/<ISSUE>-<id>`; a
+**dependent** sub-PR branches off its dependency so review can start before the dep
+merges (rebase on merge); the DAG must be acyclic. The plan's *shape* (how many PRs,
+what's independent vs. sequential) is a load-bearing decision — record it in Part I §6
+too (that's what the human signs off on); this table is the executable detail.
 
 ### 9. Edge cases & error handling
 
@@ -150,3 +178,35 @@ that need a decision before implementation, each with options and trade-offs.
 - **Already-rejected directions** — before listing a deliberate "won't do," check
   `docs/internal/out-of-scope/` and reference an existing rejection rather than
   restating it.
+
+---
+
+## Spec evolution *(the change story, not an audit log)*
+
+A short, reader-facing timeline of how this spec got to where it is — kept at the bottom,
+updated whenever the spec changes meaningfully. It is **not** a diff and **not** a
+changelog (commit history already carries those, in full). One line per meaningful turn:
+*what changed and why*, in plain terms a human skims in a few seconds. Its job is to let a
+reviewer coming to the spec late see the shape of the debate that produced it — which is
+exactly what the anti-addenda rule strips out of the body.
+
+- The first entry is the **Case** being drafted.
+- The second is the **Build Plan** being added (on promotion to ready-for-review).
+- Each later entry is a **review-driven pivot** — the same rewrite the anti-addenda rule
+  demands in the body, recorded here as a one-line "what/why" so the evolution stays
+  legible without leaving reconciliation scars in the design.
+
+Format — **newest last**, each entry one line:
+
+`- **<stage / trigger>** — <what changed>, because <why>.`
+
+Example:
+
+- **Case drafted** — framed the problem as resume-after-disconnect; chose sequence-based replay over full re-send.
+- **Build Plan added** — mapped the `sse.ts` seam; split into 2 PRs (engine, then client).
+- **After Case review** — dropped multi-region scope; a reviewer flagged it as a separate concern.
+- **After Build-Plan review** — swapped the in-memory cursor for the store's sequence, per reviewer.
+
+Keep it to meaningful turns. Typo fixes and wording nits don't earn a line. If the spec
+was authored in one pass with no pivots, two entries (Case, Build Plan) is the whole
+timeline — that's fine.

@@ -59,18 +59,25 @@ Before starting work, check:
    - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/create-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
-2. **Dependencies resolved?** Check blocking issues:
+2. **Build Plan present?** A full-workflow spec is authored in two stages (`fsd:create-spec`): Part I ("The Case") ships first in a **draft** spec PR; Part II ("The Build Plan") is authored only after the human promotes that PR to ready-for-review. If the spec is still **Part II-pending** (the `## Part II — The Build Plan` heading is marked *pending*, or the spec PR is still a **draft**), the Case hasn't been approved and there's no plan to implement → **stop** and tell the user to review the draft spec PR and mark it ready-for-review, which triggers the Build Plan; implement only once the full spec is present and signed off. (Bugs and agent-brief issues have no two-stage spec — this check doesn't apply to them.)
+
+3. **Dependencies resolved?** Check blocking issues:
    - If blockers are still "In Progress" or "Todo" → tell the user what's blocking and stop
    - If blockers are "Done" but code isn't on main → check if there's a merged PR. If not, flag it
 
-3. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
+4. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1 surfaced substantive spec-PR review comments the spec text never addressed → present them to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it
 
 If all clear, move to Step 3.
 
 ### Step 3: Set Up Branch
 
 1. Ensure main is up to date: `git checkout main && git pull`
-2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID
+2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID.
+   **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `fsd:issue-lifecycle` for one
+   node of the spec's PR plan.) Then use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement
+   **only that sub-PR's deliverables** (not the whole issue), branch off the dependency's
+   branch if it has one (else main), and open that sub-PR. Do **not** close the spec PR
+   per sub-PR — the lifecycle closes it once, when the plan starts.
 3. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
 
    ```bash
@@ -356,7 +363,7 @@ Process each comment in its bucket:
 **Non-actionable code feedback (no change is the right call):**
 
 1. Reply on the thread explaining the decision. Be direct and concrete. Cite the spec, a BP rule (BP-007–BP-016), an architecture doc, or a scope boundary that justifies it.
-2. If the suggestion is a real follow-up that just isn't this PR's job, offer to file a Linear issue and link it in the reply.
+2. If the suggestion is a real follow-up that just isn't this PR's job, dispatch the **`issue-manager`** agent to file a Linear issue for it (related to this one, in the same project; it duplicate-checks and wires relations) and link it in the reply.
 
 **Non-code conversation:**
 

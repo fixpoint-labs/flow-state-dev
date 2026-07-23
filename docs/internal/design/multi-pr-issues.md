@@ -1,7 +1,7 @@
 # Design — Multi-PR issues (+ agent-memory & teams positioning)
 
 **Date:** 2026-07-23
-**Status:** design for review — nothing built yet.
+**Status:** implemented — `create-spec` emits the PR plan; `issue-lifecycle` advances the DAG.
 
 Raised together: (1) persistent agent memory, (2) agent teams, (3) splitting one
 issue into multiple PRs. (1) and (2) are positioning decisions; (3) is the new
@@ -87,16 +87,19 @@ Reused: worktree-worker isolation (the `issue-worker` pattern), `implement-issue
 sub-PR, `fsd:review` per sub-PR, the event-driven lifecycle. **New** surface is only:
 (a) the PR-plan DAG in the spec, and (b) the DAG-advancing logic in the lifecycle.
 
-### Open questions to settle at build time
+### Build-time questions — resolved
 
-- **DAG representation** in the spec — a small table or fenced block in Part II, with
-  the plan's shape mirrored into Part I's decisions.
-- **Branch/PR naming** for sub-PRs (`fix/FIX-123-a`, `-b`, …) and how they target
-  main vs. a dep branch.
-- **Dependent builds:** branch-off-dep (review early, rebase on merge) vs.
-  wait-for-merge. Leaning branch-off-dep.
-- **DAG state** location — extend the lifecycle's compact handle cache with per-sub-PR
-  status; never hold sub-PR content at the coordinator level.
+- **DAG representation:** a small `id · deliverables · depends_on` table in Part II §8
+  (spec template), with the plan's shape recorded as a Part I §6 decision.
+- **Branch/PR naming:** sub-PR branches are `fix/<ISSUE>-<id>`.
+- **Dependent builds:** branch-off-dep (review early, rebase on merge). A dependency's
+  merge event re-enters the lifecycle and unblocks its dependents.
+- **DAG state:** the lifecycle's `.orchestration/<ISSUE>.md` handle cache gains one row
+  per sub-PR (`id · depends_on · branch · PR# · status`); never sub-PR content.
+- **Where the logic lives:** `create-spec` (Agent E validates the DAG) + `spec-template`
+  (§8 PR plan, §6 decision) + `issue-lifecycle` ("Multi-PR issues" section) +
+  `implement-issue` (Step 3 sub-PR scoping). Independent sub-PRs build as parallel
+  worktree workers by default; team-backed burst is an opt-in.
 
 ## Verification
 
