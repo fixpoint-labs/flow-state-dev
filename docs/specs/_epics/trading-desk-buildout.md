@@ -135,7 +135,7 @@ handles as PRs open.
 | **FIX-801** | Backlog | — | — | ETF profile & holdings |
 | **FIX-802** | Backlog | — | — | macro & commodities (FRED fallback) |
 | **FIX-803** | Backlog | — | — | technical-indicators **evaluation** (spike when appropriate) |
-| **FIX-804** | Backlog | — | — | forward corporate events |
+| **FIX-804** | Backlog | — | — | corporate events: forward earnings calendar + dividends (incl. declared); **historical** splits only |
 
 Epic PR (this doc, never merged): [#880](https://github.com/fixpoint-labs/flow-state-dev/pull/880).
 
