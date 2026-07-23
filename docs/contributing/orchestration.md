@@ -216,19 +216,31 @@ are harness-native (not cloud-gated), but they poll very differently, and for PR
   main watch.
 
 **Cover the same signals the cloud path does** (this is where the naive comment-only loop
-fails): the watch must poll **PR comments *and* reviews *and* check-runs** — a
-`state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint, so
-a comment-only loop makes a local orchestrator deaf to the exact approval gate above. The
-`draft→ready-for-review` flip and merge/close are lower-frequency; a Monitor tick can catch
-them too, or a low-frequency `CronCreate` backstop can.
+fails): the watch must poll **PR comments *and* reviews *and* check-runs *and* PR meta**
+(`isDraft`/`state`/`mergedAt`). Two things the comment-only loop gets wrong:
 
-Two caveats to state to the user up front, not discover later: a `Monitor` (like a
-`CronCreate` job) is **session-only** — it dies when the session ends, unlike a cloud
-session's server-side routines. A local fleet's "still watching" guarantee is therefore
-weaker than a cloud one's; say so rather than imply parity. *(This fallback is the
-recommended design but hasn't been confirmed against a live local run yet — verify the
-`watch-pr` Monitor actually emits and re-enters the loop the first time a fleet/lifecycle
-runs locally, before trusting it unattended.)*
+- A `state: APPROVED` review lives at `pulls/{n}/reviews`, *not* at either comment endpoint —
+  omit it and a local orchestrator goes deaf to the exact approval gate above.
+- The **`draft→ready-for-review` promotion** (and merge/close) is a *quiet* transition — no
+  comment, review, or check accompanies it. A watch that only polls activity endpoints never
+  sees it, so a local lifecycle waiting in `AWAITING_CASE_APPROVAL` for the human to promote a
+  draft spec PR would hang. `watch-pr` polls the PR-meta each tick so its **continuous 60s
+  cadence *is* the heartbeat for that transition** — which is why, locally, it substitutes for
+  the `send_later` draft-promotion heartbeat too, not just `subscribe_pr_activity`.
+
+Also advance the comment `since` cursor **only after a successful fetch**: a swallowed
+transient `gh` failure that still moved the cursor would drop any comment posted during the
+failed interval outside the next window.
+
+Two caveats to state to the user up front, not discover later. **(1) Session-only.** A
+`Monitor` (like a `CronCreate` job) dies when the session ends, unlike a cloud session's
+server-side routines — a local fleet's "still watching" guarantee is weaker; say so rather
+than imply parity. The one thing the Monitor *can't* self-heal is its own process dying, so an
+unattended local run should still arm a low-frequency `CronCreate` backstop that re-checks
+state and re-arms the watch. **(2) Unproven.** This fallback is the recommended design but
+hasn't been confirmed against a live local run yet — verify the `watch-pr` Monitor actually
+emits and re-enters the loop the first time a fleet/lifecycle runs locally, before trusting it
+unattended.
 
 ## Token discipline (why it stays cheap)
 
