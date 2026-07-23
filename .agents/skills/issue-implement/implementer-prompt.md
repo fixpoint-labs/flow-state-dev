@@ -234,7 +234,10 @@ loop produce hours of speculative code changes.
      user-visible AND your task contains an isolated, runnable repro,
      confirm the fix through the real path — `fsdev run` against a real
      model — not only the mocked regression spec, and report it as the
-     goal verdict. If the symptom only reproduces once later tasks land
+     goal verdict. Don't skip a runnable slice-level confirmation to save
+     API credits — the spend is the point, and the credential is normally
+     in the env (e.g. `AI_GATEWAY_API_KEY`); attempt the run. If the
+     symptom only reproduces once later tasks land
      and integration is done, do NOT run it; say the assembled proof is
      deferred to the orchestrator (it runs it in Step 5B.4). Pure
      type/unit regression → "N/A — type/unit-only." Never invent a PASS
