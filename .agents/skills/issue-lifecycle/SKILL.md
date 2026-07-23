@@ -41,10 +41,14 @@ On each invocation, reconstruct the phase from a **small** read:
 - **Durable truth:** the Linear issue state + whether a spec PR / impl PR exist and
   their status (open / review / CI / merged). Fetch these compactly (Linear MCP; the
   GitHub `pull_request_read` methods `get`, `get_check_runs`, `get_review_comments`).
-  **The spec PR's `draft` flag is load-bearing:** `draft: true` = the Case (Part I) is
-  under first-pass review (AWAITING_CASE_APPROVAL); `draft: false` = the human promoted
-  it, so Part II should exist or be building (AWAITING_SPEC_APPROVAL). Read it from
-  `pull_request_read` `get`.
+  **Two spec-PR signals are load-bearing, both read from `pull_request_read` `get`:**
+  - The **`draft` flag** — `draft: true` = the Case (Part I) is under first-pass review
+    (AWAITING_CASE_APPROVAL); `draft: false` = the human promoted it, so Part II should
+    exist or be building (AWAITING_SPEC_APPROVAL).
+  - The **`spec approved` label** on the spec PR — the human's durable sign-off on the
+    full spec. Its presence is the gate to advance to NEEDS_IMPLEMENTATION (only once the
+    PR is ready and Part II is present; a `spec approved` label on a still-draft Case is
+    premature — surface it, don't implement).
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
   ID, spec PR#, impl PR#, branch, worktree path, current phase, and the last action
@@ -60,7 +64,7 @@ next sub-agent fetches it.
 |---|---|---|
 | **NEEDS_SPEC** — no spec / not yet in spec review | Dispatch a sub-agent: *run `fsd:create-spec <issue>`* (Stage 1). It researches, drafts **Part I ("The Case")**, opens the spec PR **as a draft** (Part I only), and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the **draft** spec PR to the user for a first-pass review (and note that marking it ready triggers Part II); record handles; end turn → AWAITING_CASE_APPROVAL. |
 | **AWAITING_CASE_APPROVAL** — spec PR is a **draft** (Part I only) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `fsd:create-spec` Step 6.5 for that batch, scoped to Part I (apply clear fixes, escalate debatable), returns what changed, exits. On the spec PR's **draft→ready-for-review promotion** (the human's signal the Case holds): dispatch a sub-agent to run `fsd:create-spec` **Step 6.6** — author **Part II ("The Build Plan")**, append it, push to the same PR — returns what it added, exits. | End turn between events. The promotion is the trigger to build Part II → AWAITING_SPEC_APPROVAL once it's pushed. |
-| **AWAITING_SPEC_APPROVAL** — spec PR is **ready** (Part I + II) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `fsd:create-spec` Step 6.5 for that batch (now covering Part II too), returns what changed, exits. On **your approval**: advance. | End turn between events. Do not implement until the user signs off on the full spec (the one required gate in). |
+| **AWAITING_SPEC_APPROVAL** — spec PR is **ready** (Part I + II) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `fsd:create-spec` Step 6.5 for that batch (now covering Part II too), returns what changed, exits. When the **`spec approved` label is applied** to the spec PR (the human's durable sign-off): advance. | End turn between events. The label is the one required gate in — don't implement without it. |
 | **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `fsd:implement-issue <issue>`* — closes the spec PR, implements on `fix/<ISSUE>`, runs `fsd:review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `fsd:implement-issue` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); the issue is DONE only when every sub-PR is merged. |
 | **DONE** — impl PR merged | none | Update the cache to DONE; report completion. |
@@ -102,12 +106,13 @@ Single-PR issues are just a one-node plan: no change to their flow.
 
 Subscribe to both PRs' activity so review/CI events re-enter this loop
 (`subscribe_pr_activity`). As a fallback heartbeat for transitions webhooks don't
-cover — CI success, merge, spec approval you gave elsewhere, and **the spec PR's
-draft→ready-for-review promotion** — schedule a check-in (`send_later`, ~30–60 min)
-and re-arm it while the issue is live; stop once the impl PR is merged or closed. On
-each wake in AWAITING_CASE_APPROVAL, re-read the spec PR's `draft` flag: a flip to
-`false` is the promotion, whether or not a `ready_for_review` webhook arrived. Never
-poll with `sleep`.
+cover — CI success, merge, **the spec PR's draft→ready-for-review promotion**, and
+**the `spec approved` label being applied** — schedule a check-in (`send_later`,
+~30–60 min) and re-arm it while the issue is live; stop once the impl PR is merged or
+closed. On each wake, re-read the two spec-PR signals rather than trusting a webhook
+arrived: in AWAITING_CASE_APPROVAL, a `draft` flip to `false` is the promotion; in
+AWAITING_SPEC_APPROVAL, the `spec approved` label present is the go-ahead. Never poll
+with `sleep`.
 
 ## Token discipline (the point of this skill)
 

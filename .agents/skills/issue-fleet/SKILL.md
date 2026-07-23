@@ -48,10 +48,11 @@ even if more are queued. State the chosen N and the cap to the user.
    (compact: the issue list and per-issue handle-cache pointers).
 2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
    status to derive its phase (reuse each issue's `.orchestration/<ISSUE>.md`
-   handle cache) — **including each open spec PR's `draft` flag**, since a flip from
-   `draft` to ready is the signal to build Part II. These read-only status/handle fetches
-   are the mechanical tier — use the **`scout`** agent (Haiku), not a full worker. Do
-   **not** re-dispatch the worktree workers just to read state.
+   handle cache) — **including each open spec PR's `draft` flag and its labels**: a flip
+   from `draft` to ready signals building Part II, and the **`spec approved` label**
+   signals moving to implementation. These read-only status/handle fetches are the
+   mechanical tier — use the **`scout`** agent (Haiku), not a full worker. Do **not**
+   re-dispatch the worktree workers just to read state.
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
@@ -75,15 +76,17 @@ even if more are queued. State the chosen N and the cap to the user.
    **draft**, Part I only), surface the **draft spec PR link** for a first-pass review and
    note that **marking it ready-for-review triggers the Build Plan (Part II)** — the
    fleet holds the *link*, not the spec text. For any issue **awaiting spec approval**
-   (spec PR now **ready**, Part I + II), surface it for the second-pass review and the
-   final sign-off to implement. The *other* issues keep moving. For any issue **ready to
-   merge**, surface it and stop there (merge is the user's).
+   (spec PR now **ready**, Part I + II), surface it for the second-pass review and note
+   that **applying the `spec approved` label** is the go-ahead to implement. The *other*
+   issues keep moving. For any issue **ready to merge**, surface it and stop there (merge
+   is the user's).
 6. **End the turn.** Subscribe to **all live PRs — spec and impl** (`subscribe_pr_activity`):
    a spec PR's review activity during Case/spec review must wake the fleet, not wait for
-   the heartbeat. A spec PR's **draft→ready-for-review promotion** is also a waking signal
-   — it advances that issue from Case review to the Part II build; since a `ready_for_review`
-   webhook may not arrive, the scout's table refresh (step 2) re-reads each draft spec PR's
-   `draft` flag so a flip to `false` is caught on the next wake. Schedule one fleet check-in
+   the heartbeat. Two spec-PR transitions are also waking signals: a **draft→ready-for-review
+   promotion** (advances Case review → Part II build) and the **`spec approved` label**
+   (advances → implementation). Since neither a `ready_for_review` nor a `labeled` webhook is
+   guaranteed to arrive, the scout's table refresh (step 2) re-reads each open spec PR's
+   `draft` flag and labels so both are caught on the next wake. Schedule one fleet check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. Stop the fleet once every issue is merged, closed, or dropped.
 
@@ -152,8 +155,8 @@ the set or an alignment edit could ripple.
 ## Gates & autonomy
 
 - **Spec-approval gate is per issue.** Each issue independently waits for the user's
-  sign-off before implementing; approvals are independent, so issue B isn't blocked
-  by issue A's pending spec.
+  sign-off — the **`spec approved` label** on its spec PR — before implementing;
+  approvals are independent, so issue B isn't blocked by issue A's pending spec.
 - **Stop before merge**, per issue. The fleet never merges.
 - A worker that reports a **blocker** (dependency not landed, ambiguous spec review,
   a challenger-surfaced spec blind spot) surfaces to the user for that issue; the
