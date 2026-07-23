@@ -34,15 +34,24 @@ modest — **~3–4 active issues** is a sane default; go higher only for light 
 If disk or memory gets tight, cap the number of *simultaneously implementing* issues
 even if more are queued. State the chosen N and the cap to the user.
 
+> **Working memory is session-only — never commit it.** The fleet board and the
+> per-issue handle caches live in the **gitignored `.orchestration/`** directory.
+> Never `git add`, commit, or open a PR for these files. Commit only real issue work,
+> and only inside each issue's own worktree/branch. A PR whose diff is a board /
+> status / scratch file is a bug — do not open it.
+
 ## The loop (each invocation)
 
 1. **Resolve the set.** Take the issue IDs from the argument, or propose a set (you
    may compose `fsd:plan-dispatch` / `fsd:linear-triage` for selection) and confirm
-   with the user. Record the set + chosen N in `.agents/orchestration/fleet.md`
+   with the user. Record the set + chosen N in `.orchestration/fleet.md`
    (compact: the issue list and per-issue handle-cache pointers).
 2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
-   status to derive its phase (reuse each issue's `.agents/orchestration/<ISSUE>.md`
-   handle cache). Do **not** re-dispatch workers just to read state.
+   status to derive its phase (reuse each issue's `.orchestration/<ISSUE>.md`
+   handle cache) — **including each open spec PR's `draft` flag**, since a flip from
+   `draft` to ready is the signal to build Part II. These read-only status/handle fetches
+   are the mechanical tier — use the **`scout`** agent (Haiku), not a full worker. Do
+   **not** re-dispatch the worktree workers just to read state.
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
@@ -62,16 +71,83 @@ even if more are queued. State the chosen N and the cap to the user.
    with `isolation: worktree` and the same prompt.)
 4. **Collect compact status** and update the table. Never fold a worker's full output
    in — one status line per issue.
-5. **Surface gates.** For any issue now **awaiting spec approval**, surface its **spec
-   PR link** (the PR description leads with Part I — the user reviews it there) and note
-   it's blocked on their sign-off; the fleet holds the *link*, not the spec text. The
-   *other* issues keep moving. For any issue **ready to merge**, surface it and stop
-   there (merge is the user's).
+5. **Surface gates.** For any issue **awaiting Case approval** (its spec PR is a
+   **draft**, Part I only), surface the **draft spec PR link** for a first-pass review and
+   note that **marking it ready-for-review triggers the Build Plan (Part II)** — the
+   fleet holds the *link*, not the spec text. For any issue **awaiting spec approval**
+   (spec PR now **ready**, Part I + II), surface it for the second-pass review and the
+   final sign-off to implement. The *other* issues keep moving. For any issue **ready to
+   merge**, surface it and stop there (merge is the user's).
 6. **End the turn.** Subscribe to **all live PRs — spec and impl** (`subscribe_pr_activity`):
-   a spec PR's review activity during `AWAITING_SPEC_APPROVAL` must wake the fleet, not
-   wait for the heartbeat. Schedule one fleet check-in (`send_later`, ~30–60 min) as the
-   backstop and re-arm while any issue is live. Re-enter on PR events or the check-in.
-   Stop the fleet once every issue is merged, closed, or dropped.
+   a spec PR's review activity during Case/spec review must wake the fleet, not wait for
+   the heartbeat. A spec PR's **draft→ready-for-review promotion** is also a waking signal
+   — it advances that issue from Case review to the Part II build; since a `ready_for_review`
+   webhook may not arrive, the scout's table refresh (step 2) re-reads each draft spec PR's
+   `draft` flag so a flip to `false` is caught on the next wake. Schedule one fleet check-in
+   (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
+   on PR events or the check-in. Stop the fleet once every issue is merged, closed, or dropped.
+
+## Intake — filing & queueing discovered issues
+
+Work surfaces new issues: a worker (or the spec/impl phases) hits a missing piece, a
+follow-up, or a blocker. Don't drop it and don't scope-creep it into the current issue
+— **file it** through the **`issue-manager`** agent (related to its source issue, in
+the current project; it duplicate-checks, writes it PM-shaped, wires relations, and
+returns a ready/blocked verdict).
+
+Then decide whether it joins the fleet:
+
+- **Related and unblocked** (nothing it's blocked-by is still open/in-progress) → it
+  *may be added to the active set*, up to the concurrency cap, entering at NEEDS_SPEC.
+  It still hits its own **spec-approval gate** before any implementation — so this
+  starts a *spec*, not unreviewed code. Surface each addition to the user.
+- **Blocked** → track it (a row in the fleet record, marked blocked-by); pull it into
+  the active set when its blocker merges (a merge event re-enters the fleet).
+- Over the cap → queue it; admit it when a slot frees.
+
+This is how discovered work flows into the loop without a human re-filing it — while
+the spec-approval gate keeps a human in the loop before anything is built.
+
+## Cross-spec coherence (gated on your approval)
+
+A fleet produces several specs at once, each authored and reviewed in isolation. Each can
+be locally excellent while the *set* is incoherent — two specs claim the same surface, one
+decides a shape a sibling contradicts, one assumes what another removes. Per-spec review
+can't see that; a batch-level pass can. Incoherence is the failure this project guards
+against first (tenet 1), so once the fleet's specs exist, the set gets one coherence pass
+before any of them is built.
+
+**The gate — never align to an unvalidated spec.** Cross-aligning specs only helps if each
+is already sound; aligning a good spec to a still-wrong one spreads the flaw. So this pass
+runs only when **both** hold:
+
+1. Every spec the fleet planned to open is open **and has cleared its own spec-approval
+   gate** (Part I + II signed off), and
+2. **You have approved running the cross-spec pass.** The fleet surfaces "all N specs are
+   open and approved — run the cross-spec coherence pass?" and waits. It does **not** run
+   automatically.
+
+Once both hold:
+
+1. **Dispatch `fsd:cross-spec-review`** over the spec set (it forks into its own sub-agent,
+   reads every spec in *its* context, and returns a compact ranked **conflict report** —
+   the fleet holds the report, never the spec texts). Read-only.
+2. **Walk you through the decisions.** For each conflict the report marks *decision-needed*,
+   surface it with the trade-off (`AskUserQuestion`) — the fleet owns all user interaction;
+   the review sub-agent never prompts. Conflicts the docs already settle are applied without
+   a prompt (noted, not asked).
+3. **Route the alignment.** For each spec that must change to land a decision, pick the
+   cheaper channel:
+   - **Direct** — dispatch that issue's `issue-worker` to update its spec (repo doc +
+     Linear in sync, per `fsd:create-spec`) with the agreed change.
+   - **PR comment** — when a direct update isn't warranted yet, leave a comment on that
+     spec PR describing the required alignment, to be picked up in its review rounds.
+4. **Re-review the aligned specs** (an alignment edit is a spec change like any other) and
+   keep the **stop-before-implement** gate on every issue. An issue whose spec changed
+   returns to spec review before it implements.
+
+Run this once per batch when the set stabilizes; re-run only if a later approved spec joins
+the set or an alignment edit could ripple.
 
 ## Gates & autonomy
 
