@@ -48,20 +48,21 @@ that is already in place:
   the chosen host is *packaged* (an `Agent` wrapper or not) is a second design question that
   sequences behind 923 (FIX-929);
 - **assignment and dispatch validation agrees with whatever host model 923 lands** — one
-  `validateAssignee` gate whose rule is **finalized by 923's outcome** (FIX-924, held until
-  923 decides — no longer "ship strict now"); runtime identities layer on a known class
-  *only if* 923 chooses the class+identity shape (FIX-641); the dispatch surface also grows a
-  task→tool assignment axis (FIX-925) and an enqueue-count cap so on-demand can't over-spawn
-  (FIX-931);
+  `validateAssignee` gate whose rule is **finalized by 923's outcome** (FIX-924). FIX-924's
+  spec PR #865 already carries `spec approved`, **but the label alone does not release it**:
+  a Linear **`blocked-by FIX-923`** relation holds it, and it must **not** be implemented
+  until 923's host-model decision lands and 923 finalizes the `validateAssignee` rule.
+  Runtime identities layer on a known class *only if* 923 chooses the class+identity shape
+  (FIX-641); the dispatch surface also grows a task→tool assignment axis (FIX-925) and an
+  enqueue-count cap so on-demand can't over-spawn (FIX-931);
 - **workers can receive the right context** — inherit the parent conversation when they
   need it, **bounded by default** (FIX-920), and expose shared task resources / a blackboard
   so workers can hand results back (FIX-921, the output half). Proactive ambient-context
   pruning is a *related neighbor outside this epic* (FIX-482, `relates-to`): 920's
   bounded-by-default inheritance removes the hard dependency, so the epic does not need it
   in-scope;
-- **the delegation plumbing bugs and substrate underneath are closed** — `agent-ref`
-  agents can fan out mid-drain (FIX-927), and the block-state declaration surface the
-  block-based workers sit on is consolidated (FIX-917, a **core member** of the substrate);
+- **the delegation plumbing bugs underneath are closed** — `agent-ref` agents can fan out
+  mid-drain (FIX-927); the delegation-surface helpers get a memoize/dedup polish (FIX-928);
 - **the surface is documented** — one authoring guide plus a canonical worked example once
   the shape settles (FIX-932).
 
@@ -72,14 +73,17 @@ between overlapping context seams, and writing it down.
 
 **What ramps when the objective is approved.** Per the objective gate
 (`orchestration.md` §Gates), applying `epic approved` releases the epic's sub-issues from
-NEEDS_SPEC so they can ramp. There is **no adjacent-optional carve-out** — with FIX-482
-moved out to a related neighbor and FIX-917 confirmed as a core member of the substrate,
-every remaining sub-issue is in-scope. What actually paces the work is not the gate but the
-**sequencing spine**: even after `epic approved`, most of the set holds behind **FIX-923**,
-the keystone. FIX-924 / FIX-641 / FIX-929 / FIX-931 wait on 923's decision; FIX-920 /
-FIX-927 / FIX-928 / FIX-925 / FIX-917 can move independently; FIX-921 is late / low-priority
-and FIX-932 (docs) lands last. Approving the objective authorizes the set; 923 unblocks the
-part of it that depends on the host model.
+NEEDS_SPEC so they can ramp. Two issues that predate the epic — FIX-482
+(`utility.contextSelector`) and FIX-917 (block-state 4-key consolidation) — have both been
+moved **out** to related neighbors, so they are not in this set; every remaining sub-issue
+is in-scope. What actually paces the work is not the gate but the **sequencing spine**: even
+after `epic approved`, most of the set holds behind **FIX-923**, the keystone. FIX-924 /
+FIX-641 / FIX-929 / FIX-931 wait on 923's decision (FIX-924 by an explicit `blocked-by`
+relation, not merely by its `spec approved` label); FIX-920 / FIX-927 / FIX-928 / FIX-925
+can move independently; FIX-921 is late / low-priority and FIX-932 (docs) lands last.
+FIX-933 (spend cap) is filed but **deferred to backlog** — not part of the first pass.
+Approving the objective authorizes the set; 923 unblocks the part of it that depends on the
+host model.
 
 **Holistic-necessity check (does the *set* overbuild even if each issue earns its place?).**
 
@@ -91,34 +95,33 @@ part of it that depends on the host model.
 - **The build load is honest about what is a build vs. a recommendation.** FIX-923 and
   FIX-929 are **spikes** — 923 produces a host-model recommendation, 929 a host-packaging
   design; neither ships code as its deliverable. FIX-932 is **docs**. The actual *build*
-  issues are FIX-920, FIX-927, FIX-641, FIX-924, FIX-917, FIX-925, FIX-928, FIX-931, and
-  FIX-921. They share the same files (`worker-materializer.ts`, `worker-step.ts`, the
-  `TaskInit` / `keyedRouter` dispatch, the delegation-surface helpers) and carry hard
-  sequencing dependencies (923 gates 641 / 929 / 931 and finalizes 924; 927 and 925 are
-  one-surface changes on the same materializer / dispatch path). Rolling them up is correct,
-  and it does **not** overbuild *as delegation* — no issue adds surface another makes
-  redundant once the host model is fixed.
-- **FIX-917 (block-state 4-key consolidation) is a core member, not a ride-along.** It
-  predates the epic, but the human confirmed it is part of the substrate the block-based
-  workers sit on — so it is treated as core, with no "includable-or-separable" caveat. It
-  sequences independently of 923 (it touches the state-schema surface, not the delegation
-  dispatch), but it is in-scope and ramps with the set.
+  issues are FIX-920, FIX-927, FIX-641, FIX-924, FIX-925, FIX-928, and FIX-931. They share
+  the same files (`worker-materializer.ts`, `worker-step.ts`, the `TaskInit` / `keyedRouter`
+  dispatch, the delegation-surface helpers) and carry hard sequencing dependencies (923
+  gates 641 / 929 / 931 and finalizes 924; 927 and 925 are one-surface changes on the same
+  materializer / dispatch path). Rolling them up is correct, and it does **not** overbuild
+  *as delegation* — no issue adds surface another makes redundant once the host model is
+  fixed. FIX-933 (spend cap) is filed as a sibling guard to FIX-931 but is **deferred to
+  backlog**, explicitly out of the first pass, so it does not load the build now.
 - **FIX-921 is deliberately late and low-priority.** It is the *output* half of worker
   context supply (skills define resources / a task blackboard) and it has a workaround
   today, so it is sequenced after the load-bearing work rather than cut — real, but not on
   the critical path.
-- **FIX-482 was pulled out, shrinking the set.** `utility.contextSelector` is general
-  context-pruning infrastructure for *any* LLM block, not delegation machinery; 920's
-  bounded-by-default inheritance removes the one hard dependency, so 482 is now a
-  `relates-to` neighbor, not a sub-issue. The LLM-summarization single-owner reconciliation
-  (482's `strategy: "llm"` vs. the flow-policy `compact` stub) **travels out with it** — it
-  is parked as a related concern on 482, and 920's bounded default means the epic does not
+- **Two predecessors were pulled out, shrinking the set.** FIX-482
+  (`utility.contextSelector`) is general context-pruning infrastructure for *any* LLM block,
+  not delegation machinery; 920's bounded-by-default inheritance removes the one hard
+  dependency, so it is a `relates-to` neighbor, not a sub-issue. FIX-917 (block-state 4-key
+  consolidation) is a block-state ergonomic fast-follow to FIX-914 — adjacent to the
+  block-based worker surface but not itself delegation substrate, and lower priority — so it
+  too moved out to a related neighbor. The LLM-summarization single-owner reconciliation
+  (482's `strategy: "llm"` vs. the flow-policy `compact` stub) **travels out with 482** — it
+  is parked as a related concern there, and 920's bounded default means the epic does not
   need it resolved in-scope.
 
   Net: the set is one shipped foundation, a keystone decision spike plus a host-packaging
-  design spike, a cluster of build issues on one surface, a late output-side issue, and a
-  docs pass — coherent as *delegation substrate*, with the one genuinely general utility
-  (482) moved out.
+  design spike, a cluster of build issues on one surface, a late output-side issue, a docs
+  pass, and one deferred-to-backlog spend guard — coherent as *delegation substrate*, with
+  the two general/adjacent predecessors (482, 917) moved out.
 
 ---
 
@@ -136,10 +139,11 @@ among the remaining work** because its outcome:
   923's on-demand path; both its **issue-text refresh and its build happen after 923 is
   solid**, so it aligns to 923's chosen shape (class+identity vs. fallback-first — see Q1 in
   §4) rather than pre-committing;
-- **finalizes FIX-924's validation rule** — 924 is **held until 923 is decided** (no longer
-  "ship strict now and relax later"). Its `validateAssignee` rule is whatever 923 lands: if
-  on-demand wins, the rule becomes "reject a *typo'd named-agent reference*, allow an
-  *explicit ad-hoc / general* dispatch"; if pre-defined-only wins, it stays strict;
+- **finalizes FIX-924's validation rule** — 924 is **held by a `blocked-by FIX-923`
+  relation** (no longer "ship strict now and relax later," and not released by its
+  `spec approved` label). Its `validateAssignee` rule is whatever 923 lands: if on-demand
+  wins, the rule becomes "reject a *typo'd named-agent reference*, allow an *explicit ad-hoc
+  / general* dispatch"; if pre-defined-only wins, it stays strict;
 - **gates FIX-929** — the host-*packaging* design spike (Agent vs. AgentController) can only
   decide how to wrap the host once 923 has decided what the host *is*;
 - **gates FIX-931** — the enqueue-count cap is load-bearing specifically *because* on-demand
@@ -149,9 +153,9 @@ Spine: **918 (shipped foundation) → FIX-923 keystone (in review) → { FIX-641
 FIX-924 rule-widening, FIX-929 host-packaging design, FIX-931 enqueue cap }**. Building on
 918's surface **largely independently of 923** (they can progress in parallel): **FIX-920**
 (context inherit), **FIX-927** (mid-drain fan-out bug), **FIX-928** (surface polish),
-**FIX-925** (task→tool assignment). **FIX-917** (block-state) is independent of the
-delegation dispatch entirely. **FIX-921** (task blackboard / resources) is late and
-low-priority. **FIX-932** (docs) lands last, once the surface settles.
+**FIX-925** (task→tool assignment). **FIX-921** (task blackboard / resources) is late and
+low-priority. **FIX-932** (docs) lands last, once the surface settles. **FIX-933** (spend
+cap) is a deferred backlog sibling to FIX-931, not sequenced into the first pass.
 
 ### 2b. The shared assignee / identity / dispatch gate (923 ↔ 924 ↔ 641 ↔ 925 ↔ 927 ↔ 931)
 
@@ -161,8 +165,11 @@ must not disagree:
 
 - **FIX-924 centralizes validation in one `validateAssignee` gate** (the roster is assembled
   in `buildWorkerRoster`, near `agentPurpose`) so context, validation, and dispatch cannot
-  drift. Its rule is **finalized by FIX-923** (held until 923 decides), so 923's outcome is
-  a *one-function widening* of a single gate rather than a scatter of edits.
+  drift. Its rule is **finalized by FIX-923**, and a Linear **`blocked-by FIX-923`** relation
+  holds it: even though spec PR #865 carries `spec approved`, that label does **not** release
+  it for implementation — the blocked-by relation does, once 923 decides the rule. So 923's
+  outcome is a *one-function widening* of a single gate rather than a scatter of edits, and
+  924 cannot ramp ahead of it.
 - **FIX-641's runtime identity** — *if* 923 chooses the class+identity shape — rides on a
   **known class** (`assignee` stays the routing key; `identity` is orthogonal to roster
   validation).
@@ -183,6 +190,8 @@ must not disagree:
   bounded at enqueue. 931 adds a `maxPendingTasks`-style **rejection at `addTask`**, enforced
   in the same `validateAssignee` gate. It **owns the old "concurrency cap" open question**;
   **gated on 923's on-demand decision** (a cap only matters once the host can spawn freely).
+  Its **spend-based sibling is FIX-933** — 931 caps the task *count*, 933 caps cumulative
+  *spend* — filed but deferred to backlog (see §4 Q3).
 
 Net: one dispatch surface, one validation gate, several axes (agent vs. tool, valid vs.
 ad-hoc, under vs. over the enqueue cap) — all finalized by 923's host-model choice.
@@ -230,18 +239,7 @@ from one place — and needs no approval gate or implementation here.
 helpers (`delegation-surface.ts`, `library.ts`). Pure cleanup of what 918 shipped;
 independent of the host-model work and can land anytime now that 918 is merged.
 
-### 2e. Block-state substrate (FIX-917) — a core member
-
-Consolidate the four top-level state-schema keys (`stateSchema`, `parentStateSchema`,
-`sequencerStateSchema`, `targetStateSchemas`) into one `state` key with sub-keys
-(`own`/`parent`/`sequencer`/`targets`), and warn on silent suspend-reset of a
-non-sequencer block's own state. This is the substrate the block-based workers sit on; the
-human confirmed it is **part of the delegation substrate** even though it predates the epic,
-so it is a **core member** (no adjacent-optional caveat). It sequences **independently of
-FIX-923** — it touches the state-schema surface, not the delegation dispatch — but it is
-in-scope and ramps with the set.
-
-### 2f. Host-model packaging design (FIX-929) — sequences after 923
+### 2e. Host-model packaging design (FIX-929) — sequences after 923
 
 Once FIX-923 decides *what* the delegation host is, FIX-929 is a **design spike** on how to
 *package* it: **Agent vs. AgentController (`skillController`)** — does the delegation host
@@ -252,7 +250,7 @@ question is specifically "does the delegation host need an Agent wrapper," bound
 host 923 lands. It **sequences after 923** (you cannot package a host whose shape is
 undecided).
 
-### 2g. Delegation authoring docs (FIX-932) — lands last
+### 2f. Delegation authoring docs (FIX-932) — lands last
 
 A delegation **authoring guide plus a canonical worked example**. **Blocked-by
 923 / 641 / 920 / 924** — it documents the settled surface, so it lands **late**, once the
@@ -264,30 +262,32 @@ host model, identities, context inheritance, and validation rule have all stoppe
 
 The durable audit log of every issue under this epic (**13 sub-issues under FIX-930**).
 Refreshed from the fleet's status table (a projection, not a second live source). With
-FIX-482 moved out and FIX-917 confirmed core, there is **no adjacent-optional class** —
-every row below is a sub-issue in-scope; the **Role** column carries the sequencing story.
+FIX-482 and FIX-917 both moved out to related neighbors, there is **no adjacent-optional
+class** — every row below is a sub-issue in-scope; the **Role** column carries the
+sequencing story (and marks FIX-933 as a deferred backlog guard).
 
 | Issue | Title | Role in epic | Spec PR | Impl PR |
 |---|---|---|---|---|
 | FIX-918 | Remove skill pattern/fork modes; board-commanded agent-team delegation | **Shipped foundation** — the surface the set builds on · **Done, no pending gates** | [#850](https://github.com/fixpoint-labs/flow-state-dev/pull/850), [#855](https://github.com/fixpoint-labs/flow-state-dev/pull/855) (merged) | [#854](https://github.com/fixpoint-labs/flow-state-dev/pull/854) (merged) |
 | FIX-923 | Research: delegation host model (manager/IC + on-demand vs pre-defined) | **Keystone (decision spike)** — its gate decides the host model; gates 641 / 924 / 929 / 931 · **human reviewing now** | [#864](https://github.com/fixpoint-labs/flow-state-dev/pull/864) (draft — Part I) | — (no build; deliverable is a recommendation) |
-| FIX-924 | Roster-aware task assignment: validate assignee at creation | Validation gate — **held until 923 decides** its rule (strict vs. widen-for-ad-hoc) | [#865](https://github.com/fixpoint-labs/flow-state-dev/pull/865) (`spec approved`) | — |
+| FIX-924 | Roster-aware task assignment: validate assignee at creation | Validation gate — **`blocked-by FIX-923`**; PR #865 has `spec approved` but the **blocked-by relation, not the label, releases it** (rule finalized when 923 decides) | [#865](https://github.com/fixpoint-labs/flow-state-dev/pull/865) (`spec approved`, blocked-by 923) | — |
 | FIX-641 | Dynamic worker identities — runtime-bound personas of a worker class | 923's on-demand build — **issue-text refresh + build both after 923 is solid** | — | — |
 | FIX-929 | Agent vs AgentController (skillController) — host-packaging design | **Design spike** — how to package the host 923 lands; scoped to the delegation host only · **sequences after 923** | — | — |
-| FIX-931 | Over-spawning guard: cap total ENQUEUED tasks (`maxPendingTasks` at `addTask`) | Owns the concurrency-cap question; enforced in 924's `validateAssignee` gate · **gated on 923's on-demand decision** | — | — |
+| FIX-931 | Over-spawning guard: cap total ENQUEUED tasks (`maxPendingTasks` at `addTask`) | Owns the concurrency-cap question; enforced in 924's `validateAssignee` gate · **gated on 923's on-demand decision** · task-count sibling of FIX-933 | — | — |
 | FIX-920 | Re-introduce fork-like sub-execution via a task context-supply mode | Context source (inherit) — **ships bounded by default** (`history: { limit: { turns: N } }`); builds on 918's `agents:` parser, **not gated on 923** | [#853](https://github.com/fixpoint-labs/flow-state-dev/pull/853) (ready) | — |
 | FIX-927 | agent-ref agents can't carry board-scoped taskTools for mid-drain fan-out | Delegation plumbing bug — one-field `boardTaskTools` threading; **sequences independently** | — | — |
 | FIX-928 | Memoize / dedup the delegation-surface helpers | Polish of 918's surface (`delegation-surface.ts`, `library.ts`); independent, anytime after 918 · Medium | — | — |
 | FIX-925 | Assign a task board task directly to a tool | Extends the dispatch surface (agent-vs-tool participant kind in `worker-step.ts`) 924 / 927 touch — a task-assignment axis | — | — |
-| FIX-917 | Block state fast-follows: consolidate 4-key schema, warn on suspend-reset | **Core substrate member** — block-based workers sit on it; sequences independently of 923 | [#866](https://github.com/fixpoint-labs/flow-state-dev/pull/866) (ready) | — |
 | FIX-921 | Skills define resources / task blackboard | **Output half** of worker context supply (920 = input/inherit); has a workaround → **late / low-priority** | — | — |
 | FIX-932 | Delegation authoring guide + canonical worked example (docs) | **Blocked-by 923 / 641 / 920 / 924** — documents the settled surface; **lands last** | — | — |
+| FIX-933 | Cost/budget ceiling for delegated work — spend cap to bound runaway delegation | **Deferred (Backlog / Low)** — spend-based sibling guard to FIX-931 (931 caps task *count*, 933 caps *spend*); `relates-to` FIX-931; **not in the epic's first pass** | — | — |
 
 FIX-918 leads the index as the **already-shipped foundation** (Done, both spec PRs and the
-impl PR merged — no pending gates); the remaining rows are the follow-on work that builds on
-its surface.
+impl PR merged — no pending gates); the middle rows are the follow-on work that builds on
+its surface; FIX-933 trails as a **deferred backlog guard**, filed so it isn't lost but not
+scheduled into the first pass.
 
-**Related, outside the epic (`relates-to` FIX-930, not a sub-issue):**
+**Related, outside the epic (`relates-to` FIX-930, not sub-issues):**
 
 - **FIX-482 — `utility.contextSelector`.** General goal-aware context-pruning for *any* LLM
   block. Moved out: not delegation-specific, and 920's bounded-by-default inheritance
@@ -295,12 +295,18 @@ its surface.
   inherited context (inherit → prune). The **LLM-summarization single-owner** concern
   (482's `strategy: "llm"` vs. flow-policy's `compact` stub) is parked with 482 as a related
   concern — the epic does not need it resolved in-scope.
+- **FIX-917 — block-state 4-key consolidation.** A block-state ergonomic fast-follow to
+  FIX-914 — consolidate the four top-level state-schema keys into one `state` key and warn on
+  silent suspend-reset. Adjacent to the block-based worker surface but **not part of the
+  delegation substrate**, and lower priority; the human reviewed it and moved it out. Its
+  spec PR #866 is **not an epic concern** — it rides with the FIX-914 block-state work, not
+  this set.
 
 **Index notes.**
 
 - **FIX-920 spec (#853) carries pre-918 vocabulary.** Its text still references `workers:` /
   `WorkerSpec`, which predate FIX-918's rename to `agents:`. Same class of stale-text flag as
-  FIX-641's issue text (see §4 Q4) — the spec needs a post-918 vocabulary refresh at its own
+  FIX-641's issue text (see §4 Q5) — the spec needs a post-918 vocabulary refresh at its own
   review; the code dependency it points at is the `agents:` parser, not a `workers:` parser.
 - **FIX-641 issue text** carries pre-918 vocabulary (`packages/skills`, `WorkerSpec`,
   `agent-ref`/FIX-450); refresh it when 641 is picked up after 923, so the refreshed shape
@@ -313,7 +319,8 @@ its surface.
 Questions above any one issue, for the human / raised by review. None block the epic
 *direction*; they are decisions to land at the objective gate and the per-issue approval
 gates. The set is deliberately small now: the live decision (Q1) sits with the keystone
-spike, two are explicitly deferred (Q2, Q3), and one is housekeeping (Q4).
+spike, one is a state clarification review raised (Q2), two are explicitly deferred (Q3,
+Q4), and one is housekeeping (Q5).
 
 1. **FIX-923 Decision-5 fork — the live decision the human is reviewing now:
    fallback-first vs. class+identity personas.**
@@ -331,18 +338,27 @@ spike, two are explicitly deferred (Q2, Q3), and one is housekeeping (Q4).
    dimension** (b). FIX-924's rule and FIX-641's build both hinge on which wins.
    *Needs the human at 923's approval gate — do not pre-decide here.*
 
-2. **Total cost / budget cap (deferred, human-flagged).** Distinct from and **broader than**
-   FIX-931's enqueue cap: a **spend ceiling** so a runaway epic can't blow a budget, not just
-   a count of pending tasks. Explicitly **"later"** — captured here as a future cross-cutting
-   concern **related to FIX-931**, not yet an issue. Recorded so it is not lost.
+2. **FIX-924 is blocked, not merely spec-approved (review-raised, now resolved in Linear).**
+   #865 carries `spec approved`, which by itself would signal "ready to implement." A Linear
+   **`blocked-by FIX-923`** relation has been set on FIX-924 to hold it: it must **not** be
+   ramped off the `spec approved` label alone, because its `validateAssignee` rule is only
+   finalized once 923's host-model decision lands. Recorded so the fleet does not read the
+   label as a release signal — the blocked-by relation is what releases 924.
 
-3. **On-demand FLOOR (GAP B, deferred).** *If* 923 chooses on-demand, the
+3. **Total cost / budget cap — now filed as FIX-933 (deferred, Backlog / Low).** The spend
+   ceiling that was previously only epic prose is now a sub-issue of FIX-930:
+   **FIX-933** — a configurable budget ceiling so a runaway delegated run can't blow a spend
+   budget, distinct from and **broader than** FIX-931's enqueue cap (931 caps the *count* of
+   pending tasks; 933 caps cumulative *spend*). `relates-to` FIX-931. Explicitly **deferred**
+   — captured so it isn't lost, not scheduled into the epic's first pass.
+
+4. **On-demand FLOOR (GAP B, deferred).** *If* 923 chooses on-demand, the
    uniform-fallback / accept-explicit-ad-hoc path **plus host-as-IC wiring** have **no
    implementation issue yet**. Decide *then* whether to rescope FIX-641 to cover it or file a
    new issue. **Deferred until 923 lands** — there is nothing to decide until the host model
    is chosen.
 
-4. **Stale pre-918 vocabulary — FIX-920 spec (#853) and FIX-641's text.** Both carry
+5. **Stale pre-918 vocabulary — FIX-920 spec (#853) and FIX-641's text.** Both carry
    `workers:` / `WorkerSpec` vocabulary that predates the `agents:` rename. **Refresh at each
    issue's own review**, not in this epic-spec — this doc does not edit issue/spec text;
    surfaced so the fleet / human reconcile it at the respective gates.
