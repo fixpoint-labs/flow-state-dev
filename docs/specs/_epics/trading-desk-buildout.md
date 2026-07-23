@@ -1,4 +1,4 @@
-# Epic — Trading desk buildout: Alpha Vantage data layer + multi-strategy capital sleeves
+# Epic — Trading desk: Alpha Vantage data layer
 
 > **Coordination artifact, not an implementing spec.** The issues under this epic do
 > **not** derive from this doc — they *reference and align* to it. This is the shared
@@ -13,49 +13,43 @@
 
 ## 1. Purpose & objective *(the `epic approved` sign-off surface)*
 
-**Why this body of work.** The trading-desk lab reasons on a thin live data layer and
-models a single book with a single risk posture. Two limits fall out of that. First, several
+**Why this body of work.** The trading-desk lab reasons on a thin live data layer. Several
 data tools have only one provider, so when that provider has no key or fails the analyst
 reasons on nothing instead of a second source — and the desk has no market-wide discovery
-input at all, only per-ticker lookups. Second, the book is one undifferentiated capital pool
-with one posture, which cannot describe how a real conservative-but-opportunistic book runs
-(a defensive core alongside a small, capital-capped aggressive sleeve).
+input at all, only per-ticker lookups. Two stubbed tools (earnings-call transcripts, analyst
+estimates) were scaffolded against a provider that was never finished, so they return
+"unavailable" in live mode even with a key configured.
 
-This epic groups the set of issues that close both gaps so their **cross-cutting calls are
-made together rather than in a vacuum** — chiefly the Alpha Vantage (AV) provider that a
-whole family of data features shares, its 25-request/day budget discipline that every AV
-consumer must respect, and the provenance/fallback convention they all plug into.
+This epic adds **Alpha Vantage (AV)** — a NASDAQ-licensed source broad enough to close these
+gaps — and groups the family of features that share it so their **cross-cutting calls are
+made together rather than in a vacuum**: one provider module, one daily-budget discipline,
+and one fallback/provenance convention that every AV consumer plugs into.
 
-**Outcome we are signing off on.** Two connected threads that together move the desk toward
-broad, budget-disciplined inputs and a segmented book:
+**Outcome we are signing off on.** A shared `alpha-vantage` provider foundation
+(**FIX-798**, the keystone) whose fetches fail cleanly — including AV's habit of returning
+rate-limit messages as HTTP-200 bodies — so callers degrade to their next source, with a
+documented **daily-budget discipline** that stops spending once the day's 25-request budget
+is gone and steps aside on a paid tier. On that foundation, the family of AV-fed features:
 
-- **An Alpha Vantage data layer.** A shared `alpha-vantage` provider foundation (**FIX-798**,
-  the keystone) whose fetches fail cleanly — including AV's habit of returning rate-limit
-  messages as HTTP-200 bodies — so callers degrade to their next source, with a documented
-  **daily-budget discipline** that stops spending once the day's 25-request budget is gone
-  and steps aside on a paid tier. On that foundation, the family of AV-fed features: a
-  market-wide movers feed for candidate generation (**FIX-800**), ticker-scored news
-  sentiment (**FIX-799**), ETF profile & holdings look-through (**FIX-801**), macro &
-  commodities series (**FIX-802**), forward corporate events (**FIX-804**), and an
-  **evaluation** of whether to use AV's server-side technical indicators at all (**FIX-803**,
-  a decision issue, not necessarily a build).
-- **A segmented book.** Multi-strategy **capital sleeves** (**FIX-771**): the user declares
-  strategies once — each with a capital allotment, posture, objective, and eligibility rules
-  — and an analysis run answers *per strategy* whether a trade fits and whether capital is
-  free to deploy it, with a v1 funding-source list and per-sleeve utilization in the
-  household view.
+- a market-wide **movers feed** for candidate generation (**FIX-800**),
+- ticker-scored **news sentiment** (**FIX-799**),
+- **ETF profile & holdings** look-through (**FIX-801**),
+- **macro & commodities** series (**FIX-802**),
+- forward **corporate events** — earnings calendar + splits/dividends (**FIX-804**),
+- and an **evaluation** of whether to use AV's server-side technical indicators at all
+  (**FIX-803**) — a spike run at the appropriate time to decide relevance, not a committed
+  build.
 
 This is **mostly additive feature work on an existing desk**, not a new subsystem: one new
-provider module plus budget discipline, a set of tools that consume it, and a capital-model
-change layered on the already-shipped durable mandate and per-run posture.
+provider module plus budget discipline, and a set of tools that consume it.
 
 **What ramps when the objective is approved.** Per the objective gate
 (`orchestration.md` §Gates), applying `epic approved` releases the epic's Backlog sub-issues
-(FIX-799 / 801 / 802 / 803 / 804) from NEEDS_SPEC so they can be specced. FIX-798, FIX-800,
-and FIX-771 **predate the epic** — they are already In Review with open spec PRs, so the
-epic wraps them for coordination and does **not** roll them back. What actually paces the AV
-work is not the gate but the **sequencing spine**: everything AV-fed sits behind **FIX-798**,
-the provider foundation. FIX-771 is independent of the AV work and runs in parallel.
+(FIX-799 / 801 / 802 / 803 / 804) from NEEDS_SPEC so they can be specced. FIX-798 and FIX-800
+**predate the epic** — already In Review with open spec PRs — so the epic wraps them for
+coordination and does **not** roll them back. What actually paces the work is not the gate
+but the **sequencing spine**: everything AV-fed sits behind **FIX-798**, the provider
+foundation.
 
 **Holistic-necessity check (does the *set* overbuild even if each issue earns its place?).**
 
@@ -67,20 +61,16 @@ the provider foundation. FIX-771 is independent of the AV work and runs in paral
 - **FIX-803 is an evaluation, not a guaranteed build.** Its deliverable is a decision on
   whether AV's server-side technical indicators are worth wiring; it may close with a "no,
   keep computing client-side" and no code. It is in the set because that decision belongs
-  with the rest of the AV budget/provenance calls, not because it commits a build.
-- **FIX-771 is a build, but a self-contained one on an already-shipped base.** Its
-  dependencies (Postgres model layer, durable mandate, per-run posture, portfolio-fit,
-  thesis records, household view) have all shipped; it threads sleeves through them. It does
-  not touch the AV layer.
-- **FIX-902 is deliberately out.** The opportunity scanner consumes the movers feed but is a
-  distinct screening/strategy layer; it is tracked as a related neighbor and specced later
-  against real data contracts, not folded in now (tenet 2 — don't pull in speculative
-  downstream surface).
+  with the rest of the AV budget/provenance calls; it is spiked when the appropriate time
+  comes, not committed up front.
+- **FIX-902 (scanner) is deliberately out.** It consumes the movers feed but is a distinct
+  screening/strategy layer; tracked as a related neighbor and specced later against real
+  data contracts (tenet 2 — don't pull in speculative downstream surface).
 
-Net: one provider foundation, its family of six data consumers (one of them an evaluation),
-and one independent capital-model feature — coherent as *trading-desk buildout*, with the
-downstream scanner (FIX-902) held out. See §4 for the one honest wrinkle: the set spans two
-Linear milestones and could be split into two tighter epics if preferred.
+Net: one provider foundation and its family of six data consumers (one of them an
+evaluation) — a tightly-coupled, self-contained set. The capital-sleeves work (FIX-771),
+originally grouped here, is a distinct capital-model concern in a different milestone and now
+stands alone.
 
 ---
 
@@ -97,8 +87,7 @@ now (spec PR #851). Spine:
 FIX-801 ETF, FIX-802 macro, FIX-803 indicators-eval, FIX-804 events }.** FIX-800 is already
 in spec review and can implement as soon as FIX-798 lands; the four Backlog consumers ramp
 after `epic approved` and align to FIX-798's provider/budget shape rather than pre-committing
-their own. **FIX-771 (capital sleeves) is off the spine** — independent of AV, in review now
-(spec PR #803), runs in parallel.
+their own; FIX-803 is spiked when its turn comes.
 
 ### 2b. The shared AV surface — one provider, one budget, one fallback convention
 
@@ -121,17 +110,6 @@ each reinvent them:
 **Deliberately out of the AV layer:** making AV a *preferred/primary* source anywhere (that's
 the FIX-675 data-quality bake-off), and any premium-gated AV surface (realtime options/index).
 
-### 2c. The capital-model surface (FIX-771) — one policy model, not two
-
-FIX-771 lives on a different surface entirely: the durable **portfolio mandate** becomes the
-container for declared strategies (sleeves), and the per-run **risk posture** is reused per
-sleeve. The long-horizon direction here is *one* policy model — strategies are not a second
-parallel config but live on the mandate already shipped. Per-sleeve fit + capital-availability
-routing at analysis time, a v1 funding-source list (the *scored* displacement ranking is a
-later upgrade that needs the thesis re-validation loop, FIX-763), and per-sleeve utilization
-in the household view. This thread shares no code with the AV layer; its coherence with the
-rest of the epic is at the level of "the same desk," not the same surface (see §4).
-
 ---
 
 ## 3. Running index
@@ -139,16 +117,15 @@ rest of the epic is at the level of "the same desk," not the same surface (see �
 Durable audit log of every issue under the epic and its PRs. Refreshed from the fleet's
 handles as PRs open.
 
-| Issue | Thread | State | Spec PR | Impl PR | Notes |
-|---|---|---|---|---|---|
-| **FIX-798** | AV foundation | In Review | [#851](https://github.com/fixpoint-labs/flow-state-dev/pull/851) | — | keystone; blocks the AV family |
-| **FIX-800** | AV data | In Review | [#802](https://github.com/fixpoint-labs/flow-state-dev/pull/802) | — | movers feed; blocked-by FIX-798 |
-| **FIX-799** | AV data | Backlog | — | — | news sentiment; holds at NEEDS_SPEC until `epic approved` |
-| **FIX-801** | AV data | Backlog | — | — | ETF profile & holdings |
-| **FIX-802** | AV data | Backlog | — | — | macro & commodities (FRED fallback) |
-| **FIX-803** | AV data | Backlog | — | — | technical-indicators **evaluation** (decision) |
-| **FIX-804** | AV data | Backlog | — | — | forward corporate events |
-| **FIX-771** | Capital model | In Review | [#803](https://github.com/fixpoint-labs/flow-state-dev/pull/803) | — | multi-strategy sleeves; independent of AV |
+| Issue | State | Spec PR | Impl PR | Notes |
+|---|---|---|---|---|
+| **FIX-798** | In Review | [#851](https://github.com/fixpoint-labs/flow-state-dev/pull/851) | — | keystone; blocks the AV family |
+| **FIX-800** | In Review | [#802](https://github.com/fixpoint-labs/flow-state-dev/pull/802) | — | movers feed; blocked-by FIX-798 |
+| **FIX-799** | Backlog | — | — | news sentiment; released to spec on `epic approved` |
+| **FIX-801** | Backlog | — | — | ETF profile & holdings |
+| **FIX-802** | Backlog | — | — | macro & commodities (FRED fallback) |
+| **FIX-803** | Backlog | — | — | technical-indicators **evaluation** (spike when appropriate) |
+| **FIX-804** | Backlog | — | — | forward corporate events |
 
 Epic PR (this doc, never merged): [#880](https://github.com/fixpoint-labs/flow-state-dev/pull/880).
 
@@ -156,17 +133,9 @@ Epic PR (this doc, never merged): [#880](https://github.com/fixpoint-labs/flow-s
 
 ## 4. Open cross-cutting questions
 
-1. **Two threads, two milestones — one epic or two?** The set spans two Linear milestones:
-   the AV work sits in **Data & Providers** (FIX-798 and family), FIX-771 sits in **Portfolio
-   Management (system of record)**. They share no code and only loosely share a story ("a
-   fuller desk"). This epic is deliberately the **umbrella** the human asked for (FIX-771 was
-   a founding member of the set). If tighter epics are preferred, the clean split is: an
-   **"Alpha Vantage data layer"** epic (FIX-798 + 799/800/801/802/803/804 — a tightly-coupled,
-   self-contained set) and **FIX-771** standing alone or under a portfolio epic. Flagged for
-   the `epic approved` decision; no action taken unless you want the split.
-2. **Is FIX-803 a build or a close?** It is framed as an evaluation with a recommendation
-   leaning negative. If the eval concludes "don't wire AV indicators," it closes with a
-   decision and no code, and the epic's build load drops by one. Resolve during its spec.
-3. **Where does FIX-902 (scanner) attach later?** Held out as a downstream neighbor. Once
+1. **Is FIX-803 a build or a close?** It is framed as an evaluation with a recommendation
+   leaning negative. Spike it at the appropriate time; if the eval concludes "don't wire AV
+   indicators," it closes with a decision and no code, and the epic's build load drops by one.
+2. **Where does FIX-902 (scanner) attach later?** Held out as a downstream neighbor. Once
    FIX-800 (and optionally FIX-799) land with real data contracts, decide whether the
    scanner becomes its own epic or a fast-follow — not part of this set's sign-off.
