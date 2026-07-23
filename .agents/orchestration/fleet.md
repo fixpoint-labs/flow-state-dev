@@ -25,7 +25,9 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 - FIX-917 dead-key rejection (BP-030): agent a0c64c00a15eba49c — DONE (§6/§8/§9 runtime dead-key throw, thread replied).
 - Cross-spec review: agent ab963c9f — DONE (see CROSS-SPEC REVIEW section).
 - Cross-spec soft-tweak fold-ins (user said continue → do it): FIX-920 drain-mode note = agent acf2a5e2833483b94 DONE (15de5e9b, §3.6 KD5 + §6); FIX-924 error vocab worker→agent = agent a1fd8b29eaa12602e DONE (303d3dcc).
-- FIX-917 durable:false sequencer predicate fix (Codex line-281, valid correctness): agent a81048e0eb04ac298. RUNNING.
+- FIX-917 durable:false sequencer predicate fix (Codex line-281, valid correctness): agent a81048e0eb04ac298. DONE (§7/§6/§9/§8, thread replied).
+- ALL FOUR SPECS FINAL + at AWAITING_SPEC_APPROVAL. No workers running. Fleet idle pending user approvals + backstop trig_01RYq12rZkKpd6mkdopHdiuJ (~02:32Z).
+- FIX-917 now treated FINAL: further Codex rounds that aren't silent-loss/correctness class → batch to implementation, don't fold, tell user.
 - TREADMILL CALL: after this durable:false fix, treat FIX-917 spec as FINAL. Further Codex rounds that are not silent-loss/correctness class → batch to implementation, tell user, stop folding.
 - All four specs at AWAITING_SPEC_APPROVAL. Backstop check-in trig_01RYq12rZkKpd6mkdopHdiuJ (~02:32Z).
 - WATCH: Codex re-reviews on each push (treadmill). Findings so far all valid+converging (P1 refuted, P2 changeset, predicate, dead-key). If future rounds nitpick/repeat, STOP folding and tell user spec is good enough.
