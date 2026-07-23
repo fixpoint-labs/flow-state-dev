@@ -198,7 +198,11 @@ continuous tick polls the PR's **`draft`/`state`** meta as well as comments/revi
 quiet **`draft→ready-for-review` promotion** wakes the loop even when nothing else lands — the
 one transition the cloud path leans on the `send_later` heartbeat for. (For an *unattended*
 local run, still add a low-frequency `CronCreate` backstop against the Monitor subprocess
-dying.) See [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment:
+dying.) **Arming a Monitor is *not* idempotent** (unlike `subscribe_pr_activity`), so — unlike
+the cloud subscription, which you re-assert every wake — **store the PR's Monitor handle in the
+issue's `.orchestration/<ISSUE-ID>.md` cache and re-arm only when it's missing or dead**; a
+re-arm on every re-entry would stack duplicate poll subprocesses, wake notifications, and API
+traffic. See [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Environment:
 cloud vs. local" for how to detect the environment and the full fallback design.
 
 ## Token discipline (the point of this skill)
