@@ -22,10 +22,10 @@ import { createSkillsLibrary } from "../../src/skills/library";
 import {
   buildDelegationGuidance,
   collectAgentSources,
-  snapshotSources,
   type DelegationAgentSource,
 } from "../../src/skills/delegation-surface";
 import { specsCollide } from "../../src/skills/internal/agent-key-reconcile";
+import { snapshotSources } from "../../src/skills/internal/delegation-memo";
 import { workerInputSchema } from "../../src/skills/worker-materializer";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";

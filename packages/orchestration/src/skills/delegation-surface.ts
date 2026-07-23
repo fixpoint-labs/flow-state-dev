@@ -25,7 +25,6 @@
  */
 
 import { handler, sequencer } from "@flow-state-dev/core";
-import { deepEqual } from "@flow-state-dev/core/helpers";
 import type {
   AgentRegistry,
   AgentSpec,
@@ -51,6 +50,7 @@ import { getCollection } from "./internal/get-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { materializeWorker } from "./worker-materializer";
 import { specsCollide } from "./internal/agent-key-reconcile";
+import { resolveDelegationBuild } from "./internal/delegation-memo";
 import {
   buildTaskToolsList,
   createTaskToolsCapability,
@@ -306,80 +306,6 @@ function buildRunBoardTool(
 }
 
 // ---------------------------------------------------------------------------
-// Per-execution memo (FIX-928)
-// ---------------------------------------------------------------------------
-
-/**
- * Structural projection of the resolved source list — the memo key. Captures
- * source IDENTITY (which skills are live, each `$ARGUMENTS` input, each agent-key
- * set), NOT each agent's full spec body. That draws the accepted-staleness line:
- * a mid-turn edit to an existing agent's body under an unchanged key on a live
- * skill is not observed until identity changes (FIX-928, §6 decision 2).
- */
-export type SourceSnapshot = Array<{
-  skill: string;
-  input: string | undefined;
-  agentKeys: string[];
-}>;
-
-/** Canonical, order-independent projection compared with `deepEqual`. */
-export function snapshotSources(sources: DelegationAgentSource[]): SourceSnapshot {
-  return sources
-    .map((s) => ({
-      skill: s.skillName,
-      input: s.input,
-      agentKeys: Object.keys(s.agents).sort(),
-    }))
-    .sort((a, b) => a.skill.localeCompare(b.skill));
-}
-
-interface DelegationMemoEntry {
-  /** Snapshot of the resolved source list this build was keyed on. */
-  snapshot: SourceSnapshot;
-  tools: GeneratorTool[];
-  /** Roster text, or null when the roster contributes nothing. */
-  guidance: string | null;
-}
-
-/**
- * Per-execution, module-scoped memo. The key is the generator's execution
- * `BlockContext` — a single object closed over by `resolveTools`/the context
- * resolver and reused across every step of one execution, and freshly created
- * per execution (see `core/src/blocks/generator.ts` prepareStep). So keying on
- * it gives per-execution memoization that GCs with the execution and never
- * leaks across executions. NOT `surfaceDeps` — that is per-binding-config and
- * shared across executions.
- */
-const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
-
-/**
- * Resolve (and memoize) the delegation build for this execution step. The
- * per-step eligibility walk (`collectAgentSources`, including its live-manifest
- * disable read) runs every call — matching `binding-reader.ts`'s deliberate
- * never-memoize policy on the same activation store — and its OUTPUT is
- * snapshotted. The expensive downstream build (the `materializeWorker` loop, the
- * task tools, the board, the `runBoard` sequencer, and the roster string) is
- * rebuilt only when that snapshot changes. Both the tools resolver and the
- * guidance resolver call this, so the roster is walked-and-built once per
- * snapshot and shared between them (D1).
- */
-async function resolveDelegationBuild(
-  ctx: BlockContext,
-  deps: DelegationSurfaceDeps,
-): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
-  const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
-  const snapshot = snapshotSources(sources);
-  const cached = delegationMemo.get(ctx as object);
-  if (cached && deepEqual(cached.snapshot, snapshot)) {
-    return { tools: cached.tools, guidance: cached.guidance };
-  }
-  const tools = sources.length === 0 ? [] : await buildTools(ctx, deps, sources);
-  const guidance = buildGuidance(sources);
-  delegationMemo.set(ctx as object, { snapshot, tools, guidance });
-  return { tools, guidance };
-}
-
-// ---------------------------------------------------------------------------
 // The surface builder — invoked per generator execution
 // ---------------------------------------------------------------------------
 
@@ -404,8 +330,11 @@ export async function buildDelegationTools(
  * activation whose agent key collides with a divergent spill from another active
  * skill is skipped with a warning instead (a model-driven activation must not
  * crash the turn). Called only when `sources.length > 0`.
+ *
+ * Exported for `internal/delegation-memo.ts`, which is the only other caller —
+ * the memo wraps this build behind its per-execution cache.
  */
-async function buildTools(
+export async function buildTools(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
   sources: DelegationAgentSource[],
@@ -526,8 +455,11 @@ const DELEGATION_PLAYBOOK = [
 /**
  * Build the roster text from an already-resolved source list. Returns `null`
  * (contributes nothing) when no bound skill declares agents.
+ *
+ * Exported for `internal/delegation-memo.ts`, which is the only other caller —
+ * the memo wraps this build behind its per-execution cache.
  */
-function buildGuidance(sources: DelegationAgentSource[]): string | null {
+export function buildGuidance(sources: DelegationAgentSource[]): string | null {
   if (sources.length === 0) return null;
   // Dedupe by agent key — two skills sharing an agent list it once,
   // mirroring the board's participant registry.
