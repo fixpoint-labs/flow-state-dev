@@ -33,7 +33,9 @@ is gone and steps aside on a paid tier. On that foundation, the family of AV-fed
 - ticker-scored **news sentiment** (**FIX-799**),
 - **ETF profile & holdings** look-through (**FIX-801**),
 - **macro & commodities** series (**FIX-802**),
-- forward **corporate events** — earnings calendar + splits/dividends (**FIX-804**),
+- **corporate events** — a forward earnings calendar and dividends (AV includes declared
+  future payouts), plus **historical** splits (AV's SPLITS endpoint is historical-only, so no
+  future-splits path) (**FIX-804**),
 - and an **evaluation** of whether to use AV's server-side technical indicators at all
   (**FIX-803**) — a spike run at the appropriate time to decide relevance, not a committed
   build.
@@ -80,7 +82,8 @@ now (spec PR #851). Spine:
 
 **FIX-798 (keystone, in review) → { FIX-800 movers (in review), FIX-799 news-sentiment,
 FIX-801 ETF, FIX-802 macro, FIX-803 indicators-eval, FIX-804 events }.** FIX-800 is already
-in spec review and can implement as soon as FIX-798 lands; the four Backlog consumers ramp
+in spec review and can implement once **both** its own `spec approved` gate lands (the
+per-issue gate always stands) **and** FIX-798 has landed; the four Backlog consumers ramp
 after `epic approved` and align to FIX-798's provider/budget shape rather than pre-committing
 their own; FIX-803 is spiked when its turn comes.
 
