@@ -118,6 +118,18 @@ tick and costs a full turn whether or not anything changed. For watching a PR, `
    Pass this as the `Monitor` `command` with `persistent: true` and a specific `description`
    (e.g. `"PR #<N> comments, reviews, CI, state"`). Each printed line becomes one notification.
 
+   **The Monitor reports *changes after* it arms — read the current state once, at arm time.**
+   Priming (above) suppresses everything already true when the loop starts, *including a CI run
+   that already finished green or an approval already posted.* That's correct for a human
+   watcher, but a dangerous trap for an **orchestrator that arms the Monitor right after opening
+   a PR**: fast CI can complete *before* the Monitor starts, get primed into history, and never
+   emit — and locally there's no `send_later` heartbeat to re-read readiness, so the issue
+   stalls in PR_FEEDBACK on an already-green PR until an unrelated event or a manual nudge. So
+   whoever arms the Monitor must **immediately do a one-shot readiness read of the PR's current
+   CI / reviews / draft-state in the same wake and act on it** — the Monitor covers only what
+   changes *next*; the state at arm time is the caller's to evaluate directly, not the
+   Monitor's to replay.
+
 3. **Tell the user what's covered — and what isn't.** Covered: new PR comments, new inline
    review comments, new/updated **reviews including approvals and change-requests**, completed
    CI check conclusions, and the **`draft→ready-for-review` / merge / close** state transitions

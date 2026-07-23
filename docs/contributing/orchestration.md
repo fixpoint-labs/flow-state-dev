@@ -257,6 +257,16 @@ local fleet/lifecycle must **track each PR's Monitor handle in its `.orchestrati
 re-arm only when it's missing or dead** — the "re-assert every wake" discipline is for the
 cloud subscription, not for local Monitors.
 
+**Read current state at arm time — the Monitor only reports what changes *next*.** The Monitor
+primes its snapshot so it emits only post-arm activity — which means anything already true when
+it starts (CI that already finished green, an approval already posted) is suppressed and never
+fires. A coordinator that arms the Monitor *right after opening a PR* can therefore miss an
+already-green CI run, and locally there's no `send_later` heartbeat to re-read — the issue
+stalls in `PR_FEEDBACK` on a green PR. So on the wake that arms (or re-arms) a Monitor for a
+PR, the coordinator must **immediately re-derive that PR's current CI / review / draft state
+and act on it in the same wake** — exactly the re-derive-every-wake discipline; the Monitor is
+for subsequent changes, the current state is the coordinator's to read directly.
+
 Two caveats to state to the user up front, not discover later. **(1) Session-only.** A
 `Monitor` (like a `CronCreate` job) dies when the session ends, unlike a cloud session's
 server-side routines — a local fleet's "still watching" guarantee is weaker; say so rather
