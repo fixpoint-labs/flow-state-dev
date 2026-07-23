@@ -84,7 +84,12 @@ even if more are queued. State the chosen N and the cap to the user.
    up to the cap. (Where the harness lacks custom agents, fall back to the Agent tool
    with `isolation: worktree` and the same prompt.)
 4. **Collect compact status** and update the table. Never fold a worker's full output
-   in — one status line per issue.
+   in — one status line per issue. Then **write the Linear-status mirror** for any phase
+   transition this refresh surfaced (Linear auto-status is off; the mapping + state IDs
+   live in `fsd:issue-lifecycle` → "Linear status is a mirror you own"). Workers set the
+   mirror for transitions they effect (they opened the PR); the fleet sets it inline for
+   the `spec approved`-label and merge transitions it detects. Idempotent — skip if the
+   issue is already in the target state.
 5. **Surface gates.** If an **epic** is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that applying **`epic approved`** releases the epic's
    issues to start — until then they hold at NEEDS_SPEC. Then, per issue: for any issue
@@ -146,6 +151,20 @@ The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, wor
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.
+- **Distill the batch.** An epic is a *set of related PRs that just finished* — the sample
+  size where a recurring rework class becomes visible (three of five issues carrying the
+  same `design-off` feedback is a signal one issue alone can't show). At epic wrap, dispatch
+  **one bounded sub-agent** (worktree, like `epic-agent`) to run **`fsd:distill-lessons` in
+  loop mode** over the epic's spec + impl PRs: append the cycle-ledger rows and open a
+  **draft** "lessons" PR carrying the ledger rows (factual) plus any *proposed* tenet/BP
+  sharpening. Keep it **draft** — `distill-lessons` writes to the grounding only after your
+  review, so the PR is a proposal you approve, not auto-landed lessons. It's a fresh PR
+  against the default branch touching `docs/`, separate from the epic PR (which closes
+  unmerged). The fleet holds only the PR handle and surfaces it; it never reads or applies
+  the lessons itself. This is also where the Fable-escalation trial is *measured* — the
+  ledger's `design-off` trend is the evidence it's earning its cost. Skip for a batch with
+  no epic, or one with no rework worth measuring — this is the loop-measurement payoff, not
+  ceremony for every fleet.
 
 ## Intake — filing & queueing discovered issues
 
@@ -198,7 +217,13 @@ Once both hold:
 2. **Walk you through the decisions.** For each conflict the report marks *decision-needed*,
    surface it with the trade-off (`AskUserQuestion`) — the fleet owns all user interaction;
    the review sub-agent never prompts. Conflicts the docs already settle are applied without
-   a prompt (noted, not asked).
+   a prompt (noted, not asked). For a conflict the report marks **`fable-candidate`**, the
+   walkthrough asks two things, not one: the decision itself, **and** whether to spend a
+   **Fable** adjudication on it first (`AskUserQuestion`, with the rough cost). Only on an
+   explicit yes does the fleet dispatch a Fable sub-agent on the slice the report handed up;
+   its recommendation comes back as that conflict's resolution (marked `adjudicated: Fable`),
+   still decision-needed — Fable advises, you decide. On no, you decide it directly. Fable is
+   never spawned without that yes (see `AGENTS.md` → model tiering, upward escalation).
 3. **Route the alignment.** For each spec that must change to land a decision, pick the
    cheaper channel:
    - **Direct** — dispatch that issue's `issue-worker` to update its spec (repo doc +

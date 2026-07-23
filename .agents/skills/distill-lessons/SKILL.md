@@ -20,6 +20,29 @@ got better.
   it is most expensive. Higher-value, and what keeps the loop compounding instead of
   the BP list bloating. Run this every N cycles or on demand.
 
+### The bias: sharpen the grounding, don't grow a registry
+
+`docs/philosophy.md` now settles the grounding's shape, and it changes this skill's
+default output. The lasting layer is the **tenets**; best practices are the *volatile,
+few* tier; and **"most situational guidance is worked out per spec — reason from the
+tenets plus the handful of established BPs, and name the 1–5 that fit *this* change. You
+are not meant to consult, or grow, a large global registry."** So a distilled lesson
+almost never becomes a *new* BP. In descending preference, a lesson lands as:
+
+1. a **sharpened tenet** (only for a true philosophy gap — tenet 3 governs the grounding
+   too: *"if it grows into a checklist, it has failed"*; sharpening a tenet is as gated as
+   adding a BP, not a default),
+2. a **sharpened existing BP** so it actually catches the class,
+3. **per-spec guidance** — a lesson `fsd:create-spec` reasons to *for this class of
+   change*, carried in the spec, not the registry (the common home now),
+4. **one checklist line** in a skill so the loop catches the class structurally, or
+5. — rarely, and only past the Step-3 gate — a **new BP**.
+
+Steps 4–7 below still describe how to author a BP, but that is the *last-resort branch*.
+Reach for it only after 1–4 don't fit. Weigh the doc's detail accordingly: the machinery
+is heavy because authoring a shared standard is rare and exacting, not because it's the
+expected outcome.
+
 ### Measuring the loop — the cycle-ledger (auto-derived)
 
 The loop's dominant cost is **review rework**: spec and implementation PRs that take
@@ -137,23 +160,26 @@ If two or more candidates are facets of one underlying principle, merge them.
 
 ### 4. Shape the survivors
 
-Assign each survivor a home — and prefer the lightest one that fits:
+Assign each survivor a home — **prefer the lightest one that fits**, in the ladder order
+from "The bias" above. Reach down the list only when the one above genuinely doesn't fit:
 
-- **Universal principle** → a new BP in the **Universal Practices** section of
-  `best-practices.md`, written at full generality, `Scope: Universal`. Mirror its
-  one-liner into the `CLAUDE.md` "Best practices" Universal list (the always-loaded
-  surface).
-- **Use-case-specific** → a new BP in the matching
-  `best-practices/<category>.md` file (process / blocks / generators / resources /
-  react / engine — add a new category file only if none fits), with a `Scope:`
-  line that *names the situation it applies to*. Add its index row to the
-  Situational index in `best-practices.md` **and** the situational list in
-  `CLAUDE.md`. Or, for a niche lesson, a note appended to the closest existing BP,
-  or an example inside a relevant skill — a niche lesson rarely earns its own BP.
-- **Already-covered-but-fuzzy** → an edit that sharpens the existing BP, not a
-  new number.
-- **Drop / defer** → record it in the PR or a short note, not the BP doc. This is
-  the most common outcome and that's correct.
+- **Philosophy gap** → a **sharpened tenet** in `docs/philosophy.md` — only when the class
+  is a true grounding gap (often surfaced by `fsd:audit-coherence`) and no tenet already
+  covers it. Gated like any grounding change; keep the tenet deep, not a checklist.
+- **Already-covered-but-fuzzy** → an edit that **sharpens the existing BP** (or tenet), not
+  a new number. A near-duplicate weakens both.
+- **Situational, worked per spec** → **guidance `fsd:create-spec` reasons to for this class
+  of change**, carried in the spec rather than a standing entry. The common home — this is
+  the "reason from the tenets per spec, don't grow the registry" path.
+- **Structural** → **one checklist line** in a skill (`create-spec` / `implement-issue` / a
+  review prompt) so the loop catches the class before review does.
+- **Drop / defer** → record it in the PR or a short note, not the BP doc. This is the most
+  common outcome and that's correct.
+- **New BP (last resort)** → only when the lesson is a genuinely reusable standard that
+  none of the above expresses, and it clears the Step-3 gate. Home it per the
+  BP-authoring branch (Steps 5–7): **Universal** → `best-practices.md` Universal section +
+  the `CLAUDE.md` mirror; **use-case-specific** → the matching `best-practices/<category>.md`
+  + both indexes. If you're reaching here more than rarely, re-read "The bias."
 
 State, for the record, which candidates you dropped and why — the discipline of
 cutting is the point.
@@ -221,7 +247,8 @@ apply it. Only then write.
 - **Sharpen before you add.** A near-duplicate of an existing BP weakens both.
   Edit the original.
 - **The meta-lesson is the highest-value one.** Watch for the pattern where you
-  *had* the right discipline (necessity check, compose-don't-build, fix-at-the-
-  right-layer) and applied it to the headline but not the glue. Those produce the
-  most universal rules, because they're about *consistency of judgment*, not a new
-  fact.
+  *had* the right discipline — a tenet you already hold: earn every addition (tenet 3),
+  compose over features (tenet 2), fix at the owning layer (tenet 5) — and applied it to
+  the headline but not the glue. Those are the highest-value catches, because they're
+  about *consistency of judgment* against the tenets, not a new fact — and the fix is
+  almost always to sharpen how a tenet or skill is applied, not to mint a BP.
