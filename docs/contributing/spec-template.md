@@ -17,7 +17,7 @@ Case there. Marking the PR **ready for review** is the signal that the Case hold
 only then is Part II written and appended, so the Build Plan details the *approved* Case
 rather than a speculative one. Reviewers then get a second pass on Part II. This also
 means no Build-Plan tokens are spent on a Case that doesn't survive its first read (tenet
-3). See `fsd:create-spec` Steps 6 and 6.6.
+3). See `issue-spec` Steps 6 and 6.6.
 
 > **Anti-addenda rule.** When spec-PR review forces a major pivot, **re-draft the
 > affected sections.** Do not bolt on an "AUTHORITATIVE reconciliation" section that
@@ -77,7 +77,7 @@ type change, bug fix restoring documented behavior).
 
 *(Review feedback that's too in-the-weeds to belong in the spec's prose is recorded
 under a "Review notes for the implementer" heading rather than rewritten into the
-design — see `fsd:create-spec` Step 6.5.)*
+design — see `issue-spec` Step 6.5.)*
 
 ### 6. Decisions & rules — the sign-off surface
 
@@ -156,7 +156,7 @@ Fallback behaviors. Walk the second-path checklist (BP-035) for the changed surf
   about), OR an explicit "no goal check applies" with a one-line justification
   (docs-only, pure type/schema/internal refactor, config plumbing).
 - **CI specs** (mocked, deterministic) — the behaviours to test in observable terms.
-- **Discipline:** `fsd:tdd` (features) or `fsd:diagnose` (bugs) — name the seam.
+- **Discipline:** `tdd` (features) or `diagnose` (bugs) — name the seam.
 
 ### 11. Documentation plan
 
@@ -172,7 +172,7 @@ that need a decision before implementation, each with options and trade-offs.
 **Follow-ups (flagged, not built):**
 - **Deepening opportunities** the area surfaced — shallow handlers, capability-shaped
   wiring, patterns that strain a tenet — as follow-ups for
-  `fsd:improve-codebase-architecture`. Flagging keeps them visible without expanding
+  `improve-codebase-architecture`. Flagging keeps them visible without expanding
   scope. (Opportunistic in-scope alignment still happens per the philosophy's
   "align as you go"; this is for what's genuinely out of scope.)
 - **Already-rejected directions** — before listing a deliberate "won't do," check

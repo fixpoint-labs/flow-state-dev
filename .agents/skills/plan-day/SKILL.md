@@ -1,5 +1,5 @@
 ---
-name: fsd:plan_day
+name: plan-day
 description: Identify unblocked Linear tasks based on what's on main and in open PRs, prioritize up to 8 for today, clean stale todos, and generate a work plan for each as a file in agents/todos/.
 argument-hint: "[optional focus area or filter]"
 ---
@@ -156,11 +156,11 @@ After the list, include:
 
 These todo files are designed to be consumed by agents in worktree sessions:
 
-1. **`fsd:plan_day`** creates/updates them (this skill)
+1. **`plan-day`** creates/updates them (this skill)
 2. User picks a task and starts a worktree session
 3. The agent reads the todo file for full context
 4. Work is completed as a PR
-5. Next `fsd:plan_day` run cleans the completed todo
+5. Next `plan-day` run cleans the completed todo
 
 ## Guidelines
 

@@ -1,8 +1,8 @@
 ---
-name: fsd:audit-coherence
+name: audit-coherence
 context: fork
 agent: general-purpose
-description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from fsd:improve-codebase-architecture (deepening) and fsd:second-look (per-feature retrospective). Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
+description: Sweep the codebase (or a slice of it) for INCOHERENCE — patterns that conflict with each other, drift from docs/philosophy.md, or disagree where no tenet disambiguates. Distinct from improve-codebase-architecture (deepening) and second-look (per-feature retrospective). Produces a ranked findings table that feeds pruning PRs and philosophy/BP refinement. Read-only; proposes, does not edit.
 argument-hint: "<optional scope, e.g. a package, a subsystem, or 'streaming'>"
 ---
 
@@ -14,9 +14,9 @@ This skill hunts it directly.
 
 This is not a bug hunt, not a deepening pass, and not a per-feature retrospective:
 
-- **`fsd:improve-codebase-architecture`** finds *deepening* opportunities (shallow
+- **`improve-codebase-architecture`** finds *deepening* opportunities (shallow
   modules, capability-shaped wiring). That's "could this be better?"
-- **`fsd:second-look`** re-examines *one* feature/PR for overbuild.
+- **`second-look`** re-examines *one* feature/PR for overbuild.
 - **This skill** asks "do the parts *agree with each other and with what we say we
   believe*?" — coherence, at the codebase scale.
 
@@ -50,7 +50,7 @@ Hunt all three. They differ in where the fix lands.
    it; don't assume either wins). This is the highest-value find: it means the
    grounding itself has a hole. Fix: propose the tenet or contract that would settle
    it, then the code change. (This is the feedback path that makes the philosophy
-   improve — route it to `fsd:distill-lessons`.)
+   improve — route it to `distill-lessons`.)
 
 ## Workflow
 
@@ -58,7 +58,7 @@ Hunt all three. They differ in where the fix lands.
    - **Codebase slice** (a package, subsystem, or theme like "streaming" / "state").
      No argument → propose a scope rather than boiling the ocean; a focused audit that
      finds real conflicts beats a shallow whole-repo pass.
-   - **A change** (a PR, branch, or working diff) — how `fsd:review` runs this skill as
+   - **A change** (a PR, branch, or working diff) — how `review` runs this skill as
      its **coherence lens**. Read the spec's Part I ("The Case") and the *shape* of the
      diff, and judge whether the solution coheres with the tenets it claims and the
      patterns it sits beside. This is the apex review question — the "directionally-right
@@ -68,7 +68,7 @@ Hunt all three. They differ in where the fix lands.
    The three kinds of incoherence below apply in both shapes.
 2. **Map the patterns in scope.** For the target area, enumerate the recurring
    shapes: how blocks are composed, how state is modeled, how errors are handled, how
-   resources are wired, naming conventions, boundary rules. Use `fsd:zoom-out` shape
+   resources are wired, naming conventions, boundary rules. Use `zoom-out` shape
    if the area is unfamiliar. Fan out with `Explore` sub-agents for a wide scope.
 3. **Find the disagreements.** For each pattern, look for a second place that does it
    differently. For each tenet, look for code that strains it. For each architecture
@@ -91,8 +91,8 @@ A ranked findings table, most-consequential first. For each:
 - **Proposed resolution** — converge to which shape, what to delete, or (for a gap)
   which tenet/contract to add or sharpen. Bias to subtract (tenet 3) and to refine an
   existing primitive over adding one (tenet 2). Never propose averaging.
-- **Where the fix routes** — a pruning/refactor PR, or `fsd:distill-lessons` (for a
-  philosophy gap → grounding change), or `fsd:improve-codebase-architecture` (if the
+- **Where the fix routes** — a pruning/refactor PR, or `distill-lessons` (for a
+  philosophy gap → grounding change), or `improve-codebase-architecture` (if the
   clean fix is actually a deepening).
 
 End with a one-line **coherence read** of the scope: is it broadly coherent with a

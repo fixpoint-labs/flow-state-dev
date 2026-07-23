@@ -337,6 +337,49 @@ describe("parseSkillMd — delegation agents", () => {
     );
     expect(() => parseSkillMd(text)).toThrow(/agent key/);
   });
+
+  // FIX-920 — context-supply sub-key
+  it("parses `context-supply: conversation` into contextSupply", () => {
+    const text = withFrontmatter(
+      [
+        `agents:`,
+        `  summarizer:`,
+        `    prompt: Summarize the discussion.`,
+        `    context-supply: conversation`,
+      ].join("\n"),
+    );
+    const { state } = parseSkillMd(text);
+    expect(state.agents?.summarizer?.contextSupply).toBe("conversation");
+  });
+
+  it("leaves contextSupply undefined when context-supply is absent", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  a:`, `    prompt: hi`].join("\n"),
+    );
+    const { state } = parseSkillMd(text);
+    expect(state.agents?.a?.contextSupply).toBeUndefined();
+  });
+
+  it("rejects an unknown context-supply value fail-loud", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  a:`, `    prompt: hi`, `    context-supply: everything`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(/context-supply/);
+  });
+
+  it("rejects context-supply on an agent-ref agent", () => {
+    // agent-ref agents own their own context (workforce materializer); the
+    // orchestration history slot can't reach them, so fail loud not no-op.
+    const text = withFrontmatter(
+      [
+        `agents:`,
+        `  vet:`,
+        `    agent-ref: shared`,
+        `    context-supply: conversation`,
+      ].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(/context-supply/);
+  });
 });
 
 describe("parseSkillMd — removed pattern/fork/workers/block-ref frontmatter (FIX-918)", () => {
@@ -408,5 +451,25 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
     expect(reparsed.state.agents?.synth?.prompt).toBe(
       parsed.state.agents?.synth?.prompt,
     );
+  });
+
+  // FIX-920 — context-supply must survive a serialize → parse round-trip.
+  // Uses prompt-ref (not an inline `prompt:`) so the whole-map assertion isn't
+  // tripped by the pre-existing block-scalar trailing-newline quirk on inline
+  // prompts; the point here is that `contextSupply` round-trips.
+  it("round-trips `context-supply: conversation`", () => {
+    const text = withFrontmatter(
+      [
+        `agents:`,
+        `  summarizer:`,
+        `    prompt-ref: ./reference/summarizer.md`,
+        `    context-supply: conversation`,
+      ].join("\n"),
+    );
+    const parsed = parseSkillMd(text);
+    const out = serializeSkillMd(parsed.state, parsed.body);
+    const reparsed = parseSkillMd(out);
+    expect(reparsed.state.agents?.summarizer?.contextSupply).toBe("conversation");
+    expect(reparsed.state.agents).toEqual(parsed.state.agents);
   });
 });

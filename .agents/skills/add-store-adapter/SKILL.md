@@ -1,5 +1,5 @@
 ---
-name: fsd:add-store-adapter
+name: add-store-adapter
 description: Create a new persistence store adapter package implementing all StoreRegistry interfaces. Produces a complete package with factory, individual stores, schema initialization, and tests.
 argument-hint: "<database name, e.g. 'mongodb' or 'dynamodb'>"
 ---

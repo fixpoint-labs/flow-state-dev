@@ -1,5 +1,5 @@
 ---
-name: fsd:verify-trading-desk
+name: verify-trading-desk
 description: Verify a trading-desk analysis change by running the real analyze pipeline headlessly and reading a machine-readable RunSummary — no browser, no custom harness. Use after changing desk analysis logic (a block, generator, orchestration step, scoring math, prompt, capability) when you need to confirm the real path produced a decision, not just that unit tests pass. Drives raw `fsdev run` for analyze + the zero-model runSummary read action.
 argument-hint: "[what you changed, e.g. 'reweighted the lens convergence' or 'new macro tool']"
 ---

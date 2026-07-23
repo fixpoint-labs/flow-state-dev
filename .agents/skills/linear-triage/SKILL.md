@@ -1,5 +1,5 @@
 ---
-name: fsd:linear-triage
+name: linear-triage
 description: Review Linear issues and propose prioritization changes, surface missing or stale tasks, and sequence work for parallel agent execution with human review gates.
 argument-hint: "[team-key or filter]"
 ---
@@ -63,7 +63,7 @@ Tasks that should exist based on the project plans, architecture docs, or per-pa
 - Why it's needed
 - Where it fits in the sequence
 
-For any missing issue you propose creating, follow the **agent-brief template** at `docs/contributing/agent-brief-template.md` for the issue body — unless the work is complex enough that it'll need its own `fsd:create-spec` pass, in which case keep the missing-issue body lightweight (PM lens only) and note that a spec will follow.
+For any missing issue you propose creating, follow the **agent-brief template** at `docs/contributing/agent-brief-template.md` for the issue body — unless the work is complex enough that it'll need its own `issue-spec` pass, in which case keep the missing-issue body lightweight (PM lens only) and note that a spec will follow.
 
 #### Stale or Irrelevant Issues
 Issues that appear outdated, duplicated, or no longer relevant given what's shipped or changed. For each, explain why it may be stale.

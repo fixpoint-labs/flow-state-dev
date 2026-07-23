@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSpec } from "@flow-state-dev/core";
-import { materializeWorker, buildUserMessage } from "../../src/skills/worker-materializer";
+import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
+import {
+  materializeWorker,
+  buildUserMessage,
+  CONVERSATION_HISTORY_TURNS,
+} from "../../src/skills/worker-materializer";
 import type { WorkerMaterializationDeps } from "../../src/skills/worker-materializer";
 import { skillFileKey } from "../../src/skills/collection";
 import { createMockSkillsCollection } from "./mocks";
@@ -142,6 +147,103 @@ describe("materializeWorker — prompt-driven branches", () => {
     );
     const cfg = (block as { config?: { uses?: unknown } }).config;
     expect(cfg?.uses).toBeUndefined();
+  });
+});
+
+describe("materializeWorker — contextSupply (FIX-920)", () => {
+  // The history-visible warning dedupes per (skill, agent) key for the process
+  // lifetime, so reset the shared warn-once ledger before each case.
+  beforeEach(() => __resetDeprecationWarningsForTests());
+
+  it("wires a bounded history slot for a conversation agent", async () => {
+    // `conversation` inherits the parent conversation up to dispatch — but
+    // bounded by default (epic FIX-930), using the real ItemQuery.limit shape
+    // `{ limit: { turns: N } }`, NOT the full 50-turn window.
+    const block = await materializeWorker(
+      "summarizer",
+      { prompt: "Summarize the discussion.", contextSupply: "conversation" },
+      deps(),
+    );
+    const history = (block as { config?: { history?: unknown } }).config?.history;
+    expect(history).toEqual({ limit: { turns: CONVERSATION_HISTORY_TURNS } });
+  });
+
+  it("rejects context-supply \"isolated\" — there is no sentinel; omit for the default", async () => {
+    // The public surface is `contextSupply?: "conversation"`. Isolation is the
+    // default, expressed by omitting the field, so a leftover `"isolated"` value
+    // must fail loud rather than silently no-op.
+    await expect(
+      materializeWorker(
+        "summarizer",
+        { prompt: "x", contextSupply: "isolated" as unknown as "conversation" },
+        deps(),
+      ),
+    ).rejects.toThrow(/context-supply/i);
+  });
+
+  it("sets no history slot when contextSupply is absent (default isolated)", async () => {
+    const block = await materializeWorker("summarizer", { prompt: "x" }, deps());
+    expect((block as { config?: { history?: unknown } }).config?.history).toBeUndefined();
+  });
+
+  it("keeps output itemVisibility history:false regardless of contextSupply", async () => {
+    // Input inheritance and output isolation are independent axes — a
+    // conversation agent still keeps its own steps out of host history.
+    const conv = await materializeWorker(
+      "a",
+      { prompt: "x", contextSupply: "conversation" },
+      deps(),
+    );
+    expect(
+      (conv as { config?: { itemVisibility?: { client: boolean; history: boolean } } }).config
+        ?.itemVisibility,
+    ).toEqual({ client: true, history: false });
+    const iso = await materializeWorker(
+      "b",
+      { prompt: "x" }, // absent contextSupply = isolated (the default)
+      deps(),
+    );
+    expect(
+      (iso as { config?: { itemVisibility?: { client: boolean; history: boolean } } }).config
+        ?.itemVisibility,
+    ).toEqual({ client: true, history: false });
+  });
+
+  it("rejects contextSupply on an agent-ref agent (parser-bypassed spec)", async () => {
+    // The materializer is the authoritative guard: programmatic/persisted specs
+    // skip parseAgentSpec, so the agentRef rejection must live here too.
+    await expect(
+      materializeWorker(
+        "vet",
+        { agentRef: "research-veteran", contextSupply: "conversation" } as AgentSpec,
+        deps(),
+      ),
+    ).rejects.toThrow(/context-supply.*prompt\/prompt-ref|agent-ref agents own their own context/i);
+  });
+
+  it("rejects an out-of-enum contextSupply value rather than silently running isolated", async () => {
+    await expect(
+      materializeWorker(
+        "a",
+        { prompt: "x", contextSupply: "converstaion" as unknown as "conversation" },
+        deps(),
+      ),
+    ).rejects.toThrow(/context-supply/i);
+  });
+
+  it("warns when a conversation agent also declares history-visible output", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await materializeWorker(
+      "a",
+      {
+        prompt: "x",
+        contextSupply: "conversation",
+        itemVisibility: { client: true, history: true },
+      },
+      deps(),
+    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no longer isolated"));
+    warn.mockRestore();
   });
 });
 

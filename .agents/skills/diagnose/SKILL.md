@@ -1,6 +1,6 @@
 ---
-name: fsd:diagnose
-description: Disciplined diagnosis loop for hard bugs and performance regressions in the @flow-state-dev repo. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says "diagnose this" / "debug this", reports a bug, says something is broken/throwing/failing, or describes a performance regression. For flow execution failures specifically, prefer `fsd:debug-flow`.
+name: diagnose
+description: Disciplined diagnosis loop for hard bugs and performance regressions in the @flow-state-dev repo. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says "diagnose this" / "debug this", reports a bug, says something is broken/throwing/failing, or describes a performance regression. For flow execution failures specifically, prefer `debug-flow`.
 ---
 
 # Diagnose
@@ -21,9 +21,9 @@ Before diagnosing, orient yourself:
 
 | Symptom | Use |
 |---------|-----|
-| Flow execution misbehaves (wrong items, failed block, schema mismatch in a `.step()` chain, generator/tool errors during a run) | **`fsd:debug-flow`** — it has the NDJSON trace reader, `fsdev block` isolation workflow, and the FSD failure-pattern lookup table. |
+| Flow execution misbehaves (wrong items, failed block, schema mismatch in a `.step()` chain, generator/tool errors during a run) | **`debug-flow`** — it has the NDJSON trace reader, `fsdev block` isolation workflow, and the FSD failure-pattern lookup table. |
 | Anything else (typecheck regression, build break, store adapter bug, devtool UI bug, CLI bug, perf regression, flaky test, package boundary violation) | **This skill.** |
-| Mixed — flow is broken *and* the root cause is upstream (e.g. a core builder regression breaking many flows) | Start here for the discipline; use `fsd:debug-flow` inside Phase 1 to build the loop. |
+| Mixed — flow is broken *and* the root cause is upstream (e.g. a core builder regression breaking many flows) | Start here for the discipline; use `debug-flow` inside Phase 1 to build the loop. |
 
 ## Phase 1 — Build a feedback loop
 
@@ -55,7 +55,7 @@ Loops that work well in this repo, fastest-to-slowest signal:
    pnpm --filter @flow-state-dev/cli fsdev run <flowKind> <action> \
      -i '<json>' --flow-dir <path> > /tmp/run.ndjson 2> /tmp/run.log
    ```
-   For deep flow analysis, hand off to **`fsd:debug-flow`** — it has the NDJSON event-type reader and failure-pattern table.
+   For deep flow analysis, hand off to **`debug-flow`** — it has the NDJSON event-type reader and failure-pattern table.
 5. **Persistent session replay.** `fsdev run -s <session-id>` reuses session state across invocations; `--seed-session / --seed-user / --seed-project` pre-populate state. Use this to reproduce bugs that only appear after specific state.
 6. **DevTool / kitchen-sink browser run** for UI-layer bugs (React hooks, renderers, devtool itself). `fsdev dev` for the live devtool; the kitchen-sink app under `apps/` for SSR/streaming assertions. Watch the browser console *and* the server stderr.
 7. **Replay a captured trace.** Save a real NDJSON stream or HTTP request to disk; replay it through the code path in isolation (e.g. by feeding it to a unit test fixture).
@@ -142,7 +142,7 @@ If a correct seam exists:
 
 **FSD test placement** — match the existing convention:
 
-- Block / pattern unit tests live next to the source: `packages/<pkg>/src/.../foo.ts` → `packages/<pkg>/src/.../foo.spec.ts`. See the `fsd:write-block-tests` skill for the mock-context idiom.
+- Block / pattern unit tests live next to the source: `packages/<pkg>/src/.../foo.ts` → `packages/<pkg>/src/.../foo.spec.ts`. See the `write-block-tests` skill for the mock-context idiom.
 - Cross-package or flow-level regressions belong in `packages/integration-tests/` (Tier 1 suite). Add a flow there when the bug needs more than one package to reproduce.
 - Generator output-schema bugs: add a `makeSchemaStrict` walker assertion (see `labs/trading-desk/test/output-schemas-strict.spec.ts`). BP-016 requires this guard for any schema that's reachable from a generator output.
 - **Verification per CLAUDE.md:** if the change is flow-logic, the default verification is `fsdev run`, not `pnpm test`. Reach for `pnpm test` for unit-level changes; reach for the browser for UI-layer changes.
@@ -163,6 +163,6 @@ Required before declaring done:
 **Then ask: what would have prevented this bug?** If the answer involves architectural change (no good test seam, tangled callers, hidden coupling between packages, missing capability), capture the specifics — the right place depends on scope:
 
 - **Implementation-level concern** (BP violation, missing test seam, recurring pattern bug): consider whether it warrants a new BP (in its home per the update policy — universal in `docs/contributing/best-practices.md`, situational in `docs/contributing/best-practices/<category>.md`), or a follow-up Linear issue.
-- **Architecture-level concern** (documented contract is ambiguous or wrong, cross-package drift, missing seam): update the relevant `docs/architecture/<area>.md` in the same change set, and consider whether `fsd:improve-codebase-architecture` should run on the area afterwards.
+- **Architecture-level concern** (documented contract is ambiguous or wrong, cross-package drift, missing seam): update the relevant `docs/architecture/<area>.md` in the same change set, and consider whether `improve-codebase-architecture` should run on the area afterwards.
 
 Make the recommendation **after** the fix is in, not before — you have more information now than when you started.

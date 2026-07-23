@@ -136,6 +136,10 @@ export { resolveTracingLevel } from "./helpers/tracing-level";
 export type { TracingLevel } from "./helpers/tracing-level";
 export { transientSlot } from "./helpers/transient-slot";
 export {
+  warnOnceDev,
+  __resetDeprecationWarningsForTests,
+} from "./helpers/deprecation";
+export {
   buildBlockInstanceId,
   blockPathBranch,
   blockPathIteration,

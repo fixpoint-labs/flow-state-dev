@@ -1,0 +1,4 @@
+---
+---
+
+Internal (skills): add `watch-pr` — a local substitute for the cloud-only `subscribe_pr_activity`. It arms a persistent `Monitor` poll loop (comments + inline review comments + **reviews, incl. approvals** + completed CI check-runs) so the model wakes only on real PR activity rather than on a timer. Supersedes the earlier `CronCreate` recommendation for the local fallback in `docs/contributing/orchestration.md` → "Environment: cloud vs. local": `Monitor` polls in a subprocess (cost tracks actual events; deterministic), whereas `CronCreate` costs a full model turn every tick. `issue-fleet` / `issue-lifecycle` now point their local-fallback note at `watch-pr`. Note the corrected coverage: a `state: APPROVED` review lives at `pulls/{n}/reviews`, not either comment endpoint, so a comment-only watcher would leave a local orchestrator deaf to the approval gate.

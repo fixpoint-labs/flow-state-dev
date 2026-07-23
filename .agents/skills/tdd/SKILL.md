@@ -1,5 +1,5 @@
 ---
-name: fsd:tdd
+name: tdd
 description: Test-driven development for FSD blocks, patterns, capabilities, and flows using a strict red-green-refactor loop with vertical (tracer-bullet) slices. Use when building a new block / pattern / capability / flow, fixing a bug, or any time the user mentions "red-green-refactor", "TDD", "tracer bullet", or "test-first".
 ---
 
@@ -77,7 +77,7 @@ Before writing any code:
 - [ ] **State the goal** as an observable real-world outcome, and the **goal check** that will prove it (real model, out of CI — see "Two kinds of test"). The goal frames everything below: the behaviours you test are the steps to it, the goal check is how you confirm you arrived. If this is one of the no-goal-check cases (pure refactor, docs-only, exploratory UI/prose, diagnose-driven bug — see "Verify the goal"), state that no goal check applies and why, rather than inventing a hollow one.
 - [ ] Identify which FSD construct you're building: block (which kind?), pattern, capability, flow action
 - [ ] Identify the public surface: `inputSchema`, `outputSchema`, emitted item types, state scope reads/writes, lifecycle hooks
-- [ ] Identify deepening opportunities (see `fsd:improve-codebase-architecture`) — small interface, deep implementation
+- [ ] Identify deepening opportunities (see `improve-codebase-architecture`) — small interface, deep implementation
 - [ ] List the **behaviours** to test (not implementation steps). Behaviours are observable through: items emitted to the stream, state ops applied to scopes, return values from `.execute`, retry/rescue triggers
 - [ ] Decide which seam each test exercises (see [tests.md](tests.md)): vitest mock context, `fsdev block`, `fsdev run` with NDJSON, or `packages/integration-tests/`
 - [ ] Confirm with the user which behaviours matter most
@@ -131,7 +131,7 @@ After all tests pass, look for:
 - [ ] Handlers that just return their input → replace with `.tap()` (BP-012, BP-014)
 - [ ] Wrapper sequencers gating a single step → replace with `.stepIf` / `.workIf` / `.tapIf` (BP-036)
 - [ ] Generator output schemas with `z.optional` / `z.default` / `z.record` / heterogeneous `z.union` → collapse to fixed + nullable (BP-016)
-- [ ] Shallow modules in the broader area → use `fsd:improve-codebase-architecture` for deepening
+- [ ] Shallow modules in the broader area → use `improve-codebase-architecture` for deepening
 - [ ] Run tests after each refactor step. **Never refactor while red.** Get to green first.
 
 After the refactor:
@@ -171,4 +171,4 @@ TDD is the default for new blocks, patterns, capabilities, and flow actions. Ski
 - The work is purely refactoring with existing tests covering the behaviour — the existing tests are the safety net; don't pretend to TDD a non-functional change.
 - The work is documentation-only.
 - The change is in `apps/docs` or `apps/kitchen-sink` and is exploratory UI/prose work.
-- You're debugging a specific bug via `fsd:diagnose` — diagnose's Phase 5 already covers the "regression test before the fix" discipline, which is TDD-shaped but framed around the bug, not the feature.
+- You're debugging a specific bug via `diagnose` — diagnose's Phase 5 already covers the "regression test before the fix" discipline, which is TDD-shaped but framed around the bug, not the feature.

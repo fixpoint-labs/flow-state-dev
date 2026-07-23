@@ -16,14 +16,14 @@ inherit these unless told otherwise).
 
 ## Conventions (the real sources — `linear-practices.md` is not a file)
 
-- **Duplicate-check first** (as `fsd:quick-fix` does): search Linear for an existing
+- **Duplicate-check first** (as `adhoc-quick-fix` does): search Linear for an existing
   issue covering this. If a likely duplicate or closely-related issue exists, **don't
   create a second one** — relate to it (or comment) and report that instead.
-- **Write it PM-shaped** (the issue-reframe lens in `fsd:create-spec` Step 7): the
+- **Write it PM-shaped** (the issue-reframe lens in `issue-spec` Step 7): the
   issue states the *problem / opportunity*, *who benefits and how*, the *desired
   outcome* (observable), and high-level *scope boundaries* — not solution detail, file
-  paths, or a spec. The spec comes later via `fsd:create-spec`.
-- **Prioritization / sequencing** conventions live in `fsd:linear-triage` — follow its
+  paths, or a spec. The spec comes later via `issue-spec`.
+- **Prioritization / sequencing** conventions live in `linear-triage` — follow its
   lens when setting priority.
 
 ## What you do

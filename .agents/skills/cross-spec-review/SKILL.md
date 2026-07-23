@@ -1,8 +1,8 @@
 ---
-name: fsd:cross-spec-review
+name: cross-spec-review
 context: fork
 agent: general-purpose
-description: Review a SET of specs against each other for mutual coherence — the coherence lens (fsd:audit-coherence) raised from one change to a batch of specs a fleet produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency or PR-plan collisions. Read-only — returns a ranked conflict report to the caller (the fleet), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
+description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to a batch of specs a fleet produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency or PR-plan collisions. Read-only — returns a ranked conflict report to the caller (the fleet), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
 argument-hint: "<the spec set — issue IDs or spec PR#s, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
@@ -14,17 +14,17 @@ while the *set* is incoherent: two specs claim the same surface, one decides a s
 sibling contradicts, one assumes behavior another spec is removing. That mutual
 incoherence is invisible to per-spec review, and it is the single failure this project
 guards against (`docs/philosophy.md`, "the two failures"; tenet 1). This skill is the
-coherence lens (`fsd:audit-coherence`) pointed at a *batch of specs* instead of the code.
+coherence lens (`audit-coherence`) pointed at a *batch of specs* instead of the code.
 
 **Output is a report only.** No edits, no PR comments, no Linear changes. The caller —
-normally `fsd:issue-fleet` — owns the user walkthrough and the alignment; this skill just
+normally `issue-fleet` — owns the user walkthrough and the alignment; this skill just
 finds the conflicts and hands them back.
 
 > **When an epic-spec already coordinates the set** (see
 > [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)),
 > coherence is mostly built in *up front*, so this skill narrows to a **conformance check**
 > with a reduced procedure:
-> 1. **Read the current epic-spec first** — from the same source order `fsd:create-spec`
+> 1. **Read the current epic-spec first** — from the same source order `issue-spec`
 >    uses: the `epic/<name>` branch head while the epic PR is open (else the Epic issue's
 >    attached Linear document), plus the epic PR thread. The epic-agent may have folded in
 >    feedback the issue specs haven't picked up yet; skip this and you can report "clean"
@@ -41,17 +41,17 @@ Aligning specs to each other only helps if each is already sound; cross-aligning
 that's still wrong propagates the flaw into its siblings. So the precondition is:
 
 - Every spec in the set has cleared its own spec-approval gate (Part I + Part II present
-  and signed off — see `fsd:create-spec`), **and**
+  and signed off — see `issue-spec`), **and**
 - The user has explicitly approved running the cross-spec pass.
 
-The fleet enforces this gate (it invokes this skill; see `fsd:issue-fleet` → "Cross-spec
+The fleet enforces this gate (it invokes this skill; see `issue-fleet` → "Cross-spec
 coherence"). If invoked standalone, confirm both conditions before reading anything.
 
 ## What you're given
 
 The **spec set** — a list of issue IDs / spec PR#s. For each, read the current spec text
 (the spec PR head copy while the PR is open, else the Linear document — same reconciliation
-rule as `fsd:implement-issue` Step 1). Read the whole spec, both parts: Part I carries the
+rule as `issue-implement` Step 1). Read the whole spec, both parts: Part I carries the
 scope and decisions; Part II carries the API surface, sequence, and PR plan where most
 collisions live.
 
@@ -77,7 +77,7 @@ Sweep every pair (and, where relevant, the whole set) for:
   directions at once, or several specs each add a near-duplicate primitive that should be
   one. Name it — this is the coherence auditor's core job at batch altitude.
 
-Reuse `fsd:audit-coherence`'s judgment for *what counts as* incoherence; the only
+Reuse `audit-coherence`'s judgment for *what counts as* incoherence; the only
 difference here is the unit is a set of specs, not a code slice. Where the docs
 (`docs/philosophy.md` → architecture → best-practices) settle which of two conflicting
 choices is right, say which wins and why; where nothing disambiguates, flag it as a
@@ -125,7 +125,7 @@ in spec detail that belongs in the specs, not here — tighten to the conflicts.
   update a spec directly, or leaving a PR comment on the spec PR to be picked up in its
   review rounds) after the user decides.
 - **Mutual coherence only.** Whether any single spec is *good* is that spec's own review
-  (`fsd:create-spec` review, `fsd:review`). You assume each is already validated — you check
+  (`issue-spec` review, `review`). You assume each is already validated — you check
   only whether they agree with each other.
 - **Not a merge gate.** Your report feeds decisions; the stop-before-implement gate on each
   issue still belongs to the fleet.
