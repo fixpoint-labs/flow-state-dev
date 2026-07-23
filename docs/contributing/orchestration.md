@@ -16,7 +16,7 @@ restating the shared concepts. When a concept here changes, it changes here.
   advanced one bounded step per event. See `fsd:issue-lifecycle`.
 - **Epic** *(optional)* — a coordination layer above a *set* of related issues so
   cross-cutting decisions aren't made in a vacuum. An epic is a **Linear parent issue
-  with the `epic` label (Kind group)**; the work items are its **sub-issues**. Its artifact is the
+  with the `Epic` label (Kind group)**; the work items are its **sub-issues**. Its artifact is the
   **epic-spec** (attached to the epic issue, exactly as a spec attaches to a work issue).
   Owned by the fleet, authored by the `epic-agent`. See "The epic-spec" below.
 - **Worker sub-agents** — token-isolated agents the fleet/lifecycle dispatch so heavy
