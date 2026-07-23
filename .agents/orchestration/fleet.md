@@ -22,7 +22,8 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 - Cross-spec design review (920/917/923/924 interactions): agent ab963c9f4375e4534 — RUNNING (read-only, returns to fleet).
 - FIX-917 review-response: agent a7c5fac94b420145e — DONE (P1 refuted, P2 minor set).
 - FIX-917 predicate fold-in: agent a76bb0f4945e926ca — DONE (a1e78e34: §7 warn-on-dirty+non-sequencer, Decision 4, §12 Q3 resolved, §3/§8/§9 synced, both threads replied).
-- FIX-917 dead-key rejection (BP-030): agent a0c64c00a15eba49c — RUNNING (Codex r3635062826: hard-rename must reject removed legacy keys loudly at runtime, not TS-only).
+- FIX-917 dead-key rejection (BP-030): agent a0c64c00a15eba49c — DONE (§6/§8/§9 runtime dead-key throw, thread replied).
+- Cross-spec review: agent ab963c9f — DONE (see CROSS-SPEC REVIEW section).
 - All four specs at AWAITING_SPEC_APPROVAL. Backstop check-in trig_01RYq12rZkKpd6mkdopHdiuJ (~02:32Z).
 - WATCH: Codex re-reviews on each push (treadmill). Findings so far all valid+converging (P1 refuted, P2 changeset, predicate, dead-key). If future rounds nitpick/repeat, STOP folding and tell user spec is good enough.
 
@@ -44,3 +45,18 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 ## Dependencies / sequencing
 - FIX-920 unblocked (FIX-918 Done). Parked at spec-approval gate.
 - FIX-923 (research) informs FIX-924 (impl). Specs can proceed in parallel; gate 924's IMPLEMENT phase on 923 acceptance.
+
+## CROSS-SPEC REVIEW (agent ab963c9f, done) — all 4 grounded vs origin/main
+Verdict: ALL FOUR safe to approve independently. No spec has a self-blocking contradiction.
+Interactions (ranked):
+1. 924↔923 (valid-assignee def): NOT a blocker. 924 strict checkAssignee is coherent; 923 D5 widens it later via ONE edit. Rec: ship 924 strict now, ratify 923 D5 same sitting.
+2. 920↔923 (drain-mode): 920 `conversation` defined vs blocking drain; 923 D7 = don't bake blocking assumptions in. SOFT ASK: 920 add 1 line scoping inheritance boundary + "revisit under FIX-901".
+3. 920↔923/641 (contextSupply=how-much vs identity=who): both flow thru materializeWorker; no spec owns whether ad-hoc identity worker can be `conversation`. Flag for FIX-641.
+4. 920↔924: shared file cluster but disjoint concerns — parallel-implementable, trivial merge.
+5. 924 vocab: error says "worker", guidance says "agent". SOFT ASK: 924 error → "agent".
+6. 920 `contextSupply` naming: already dodges contextMode 3-way collision. OK.
+7. 917: CONFIRMED independent — shares no surface with delegation trio.
+Recommended APPROVAL order (one sitting): ratify 923 D5+D7 FIRST → 924 → 920 & 917 any order. 923 = linchpin.
+Recommended IMPL order: 917 anytime (isolated, quiet window) · 924 now on merged-918 · 920 parallel w/ 924 (rebase branch first) · FIX-641 after 923.
+Two soft pre-approval spec tweaks: (a) 920 drain-mode note; (b) 924 error vocab → "agent". All else coordinate-at-implement.
+Reminder: FIX-920 branch cut pre-918 merge-base — rebase onto origin/main before impl (line refs already match main).
