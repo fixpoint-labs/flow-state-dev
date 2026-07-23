@@ -12,7 +12,7 @@
 
 **Plain-language summary.** The trading desk started life as a one-shot demo: give it a ticker and a date, and five agent teams argue their way to a Buy/Hold/Sell call. That's a good story, but it reasons about a stock in a vacuum. It doesn't know what you already own, what you're trying to do with your money, or whether you even have cash to act on its verdict. This epic is the arc that turns the desk from *"analyze a stock"* into *"manage a book"* — a durable, multi-account, multi-asset portfolio with stated intent, a live transaction ledger as its source of truth, and analysis that answers **"is this trade right for my book, and can I afford it"** rather than just "is this a good stock in the abstract."
 
-**Why this body of work.** Every capability here exists to close the gap between an isolated stock verdict and a portfolio decision. A verdict is only actionable against a book: you need to know the book (a live ledger), the book's intent (a mandate: goals, allocation targets, risk posture, strategy sleeves), the book's memory (per-position theses and a loop that revisits them), and the book's shape across every asset it actually holds (not just equities). Ship those and the desk becomes a system of record — the durable substrate a real portfolio-management product, or a serious personal book, is built on.
+**Why this body of work.** Every capability here closes one gap: a stock verdict is only actionable against a book. Absent the book, its intent, its memory, and its full asset shape, the desk is giving advice into a vacuum. Supplying those turns it into a system of record — the durable substrate a real portfolio-management product, or a serious personal book, is built on. The observable outcome below names the four axes concretely.
 
 **Observable outcome (the end state this epic is done against).**
 
@@ -22,13 +22,15 @@
 - The book has **memory and a conscience**: every position carries a durable thesis (entry rationale, invalidation conditions), and a review loop re-validates theses and flags drift over time.
 - Every one of these is **inspectable** in the DevTool UI — the project's central thesis (no black boxes) holds at portfolio altitude, not just at analysis altitude.
 
+**Evidence path (BP-003).** Each constituent issue's spec carries its own goal check; the end-to-end proof the whole arc is done against is a `fsdev run` of the analyze action over a seeded multi-account, multi-sleeve book, read back through the `runSummary` action (`verify-trading-desk`).
+
 **Holistic necessity check** *(the `issue-spec` Step 3.5 lens, raised to the whole set).* Each issue earns its place; the honest question is whether the *arc* overbuilds. Assessment:
 
 - **The core arc is coherent and non-redundant.** Ledger → mandate → portfolio-aware decision → multi-asset → review loop is a single dependency spine where each layer is load-bearing for the next. Nothing in the spine is speculative.
 - **Two deliberate restraints are already baked in.** The mandate is the *single* container for all durable intent (posture and sleeves extend it rather than spawning parallel resources), and every portfolio-aware refinement is a *deterministic projection of one LLM decision* rather than a second model call. These keep the arc from ballooning into a policy engine.
 - **Where the set risks over-reach, and the call.** The ledger-correctness tail (currency-in-fingerprint, void/in-flight serialization, OFX proceeds-unknown correction — FIX-880/879/878, all Backlog/Low) is genuine correctness debt but is *not* core to the arc; it should stay low-priority and not gate the intelligence work. The scored/ranked displacement judgment and per-sleeve cash sub-ledger are explicitly deferred (they need the review loop and a shadow ledger respectively). This is the right 80/20 line: ship listing before ranking, account-anchored caps before sub-ledgers, equity-first before all-asset.
 
-**The one boundary question the human should settle at sign-off:** whether market-intelligence work (opportunity scanner FIX-902/937, Alpha Vantage data layer FIX-934, MCP control surface FIX-768) belongs in *this* epic or a sibling one. This spec draws the line at the **system of record itself** and treats those as adjacent — see §4. Confirm or redraw.
+**The one boundary question the human should settle at sign-off:** whether market-intelligence work belongs in *this* epic or a sibling one. This spec draws the line at the **system of record itself** and treats that work as adjacent; the specifics and recommendation are §4 Q1. Confirm or redraw.
 
 ---
 
@@ -54,13 +56,13 @@ flowchart LR
   COMMIT --> ECHO["echo onto memo · decisionSnapshot · RunSummary · UI"]
 ```
 
-### T3 — Relational truth in `app.*`; resources for policy and computed views
+### T3 — Relational truth in `app.*`; flat documents and policy as resources; computed views never frozen
 
-Domain facts that are relational and query-heavy — accounts, holdings, the transaction ledger, per-position theses — live in **Postgres `app.*` tables** (FIX-772 is the substrate that gates every query-heavy consumer). The **mandate** (policy/intent) is a user-scoped **resource**. Computed views — household aggregation, sleeve utilization, portfolio health — are **derived at read time and never frozen**, so they always reflect the current book. The dividing line: facts and policy are stored; exposure and utilization are computed.
+The dividing line is **shape, not importance**. Data with foreign keys and cross-account rollups — accounts, holdings, the transaction ledger — earned **Postgres `app.*` tables** (FIX-772 is the substrate that gates every query-heavy consumer). Flat `household × key` documents and durable **policy** stay **FSD resources**: the **mandate** (intent) and **per-position theses** (FIX-760 — a flat `household × ticker` document with no join, and agent-facing state the analysis seed reads) are user-scoped resources, which also buys the live client read path for free. Computed views — household aggregation, sleeve utilization, portfolio health — are **derived at read time and never frozen**, so they always reflect the current book. So: relational facts are tabled, flat facts and policy are resources, exposure is computed.
 
 ### T4 — The ledger is the system of record; ingestion is idempotent and correction-safe
 
-Holdings are **derived from the transaction ledger**, not stored independently. Every ingestion path — OFX/CSV/tax-lot file import, Plaid live sync — is **idempotent by content fingerprint** (FIX-774's contract), so re-importing is a no-op. Corrections are **void-and-reimport**, not in-place edits (FIX-878). Corporate actions (splits) **rebase FIFO lots** rather than being patched (FIX-876). Each position has **exactly one owning account** (kills double-counting and cash-attribution ambiguity). Prices persist with an **as-of** so the book values without a live refresh (FIX-823). The correctness tail (currency in the fingerprint FIX-880, void/in-flight serialization FIX-879) hardens this contract but does not block the intelligence layers above it.
+Holdings are **derived from the transaction ledger**, not stored independently. Every ingestion path — OFX/CSV/tax-lot file import, Plaid live sync — is **idempotent by content fingerprint** (FIX-774's contract), so re-importing is a no-op. Corrections are **void-and-reimport**, not in-place edits (FIX-878). Corporate actions (splits) **rebase FIFO lots** rather than being patched (FIX-876). Each position has **exactly one owning account** (kills double-counting and cash-attribution ambiguity). Prices persist with an **as-of** so the book values without a live refresh (FIX-823). The correctness tail (currency in the fingerprint FIX-880, void/in-flight serialization FIX-879) hardens this contract but does not block the intelligence layers above it. Holdings are **full-recompute-on-ingest** today (`materializePositions` re-derives), so every ingestion path must batch a window into a *single* ingest call rather than firing per transaction — FIX-853's Plaid sync especially, where per-event materialization goes super-linear as history grows.
 
 ### T5 — Equity-first, multi-asset by extension — never silent mis-handling
 
@@ -96,11 +98,13 @@ flowchart TD
   SLV -.aggressive-sleeve executor.-> OPT
 ```
 
+> The DAG is the **structural spine** — it owns the dependency *edges*; §3's index owns per-issue status and PR handles. Its issue IDs are low-churn (the spine rarely changes), so they stay rather than collapsing to cluster nodes.
+
 ---
 
 ## 3. Running index
 
-The durable audit log of every issue under the epic — for humans and issue agents to navigate from one place. A **projection**, refreshed from the fleet's live handles (spec/impl PR numbers filled as they open). 21 issues; ~12 shipped, ~9 open. Milestone progress ≈ 58%.
+The durable audit log of every issue under the epic — for humans and issue agents to navigate from one place. A **projection**: the hand-maintained value is the **Spec/Impl PR** columns; **Status is Linear-derived** (the Epic-parent query owns it — do not hand-edit, it will drift). 21 issues.
 
 | Issue | Title (abbrev.) | Cluster | Status | Spec / Impl PR |
 |---|---|---|---|---|
@@ -137,9 +141,8 @@ Raised by the necessity check and by the constituent specs. None blocks the obje
 1. **Epic boundary — is market intelligence in or out?** Opportunity scanner (FIX-902/937), Alpha Vantage data layer (FIX-934), and the MCP control surface (FIX-768) are theme-adjacent but arguably a *distinct* spine (candidate generation & data breadth, vs. the system of record itself). **Recommendation:** keep this epic scoped to the system of record; open a sibling epic for market intelligence if that work coordinates enough to warrant one. **Owner to confirm.**
 2. **Graduate to a dedicated Linear project ("Spine B")?** The milestone description already flags this set as large enough for its own project, held as a milestone only because project creation needs explicit approval. This epic-spec gives the coordination layer without the project; whether to also graduate the project is the maintainer's call.
 3. **The per-sleeve rubric coupling (FIX-776 ↔ FIX-771).** T1 says the rubric weighting should extend the sleeve schema (`weightingProfile`), which couples FIX-776 to the FIX-771 schema. Confirm the rubric lives on the sleeve (one policy model) rather than as a standalone profile store, and sequence FIX-776 after FIX-771's schema stabilizes.
-4. **Scored displacement is the shared upgrade point.** FIX-771 ships funding-source as an *unscored incumbent list*; the scored/ranked "which holding is weakest" judgment needs the thesis re-validation loop (FIX-763). Both name this as the coordination seam — keep them sequenced so the upgrade lands once, in FIX-763, and FIX-771 doesn't grow a throwaway scorer.
-5. **First-class "unsleeved" pool?** FIX-771 leaves the residual (unsleeved) capital implicit. Whether it should become a first-class named sleeve is deferred; recommend implicit for v1 and revisit if per-sleeve cash sub-ledgers land.
-6. **When does the per-sleeve cash sub-ledger become necessary?** Account-anchored hard caps are the honest v1 (no intra-account partition). A shadow sub-ledger is deferred; name the trigger that makes it necessary (intra-account sleeves, or cash-attribution disputes) rather than building it speculatively.
+4. **Scored displacement is the shared upgrade point.** FIX-771 ships funding-source as an *unscored incumbent list*; the scored/ranked "which holding is weakest" judgment needs the thesis re-validation loop (FIX-763). Both name this as the coordination seam — keep them sequenced so the upgrade lands once, in FIX-763, and FIX-771 doesn't grow a throwaway scorer. When FIX-763 is specced, pin whether drift detection is deterministic arithmetic (cheap, fits T2) or a per-position model re-analysis (needs batching) — very different cost shapes.
+5. **Sleeve cash model.** Two deferred sub-decisions on the same seam: (a) whether the residual *unsleeved* capital becomes a first-class named sleeve (recommend implicit for v1), and (b) when a per-sleeve cash **sub-ledger** becomes necessary. Account-anchored hard caps are the honest v1 (no intra-account partition); name the trigger for the sub-ledger — intra-account sleeves, or cash-attribution disputes — rather than building it speculatively.
 
 ---
 
