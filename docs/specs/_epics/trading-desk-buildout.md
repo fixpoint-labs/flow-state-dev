@@ -118,16 +118,20 @@ genuinely new primitives (ETF look-through, events calendar). Each issue states 
 inheritance explicitly when it ramps. This keeps FIX-798's shared surface thin and is why the
 family is one epic rather than six standalone tools.
 
-**Deliberately out of the AV layer:** making AV the *preferred* source for data an existing
-provider already covers — displacing Finnhub / FRED / Yahoo / Massive is the FIX-675
-bake-off's call, not this epic's. This does **not** restrict AV being the *sole* source for
-genuinely new primitives that have no existing tool — movers (FIX-800), ETF look-through
-(FIX-801), events (FIX-804). **FIX-799 (news) and FIX-802 (commodities/macro) are
-*supplements*, not new primitives**: commodities are already partly covered (FRED WTI via
-`get_macro_indicators`, Massive CL/GC via `get_futures_curve`) and news by Finnhub, so AV
-extends them for uncovered gaps or as a fallback rather than bypassing the existing source
-order. Generalized multi-provider composition + the per-run rate-budget for capped providers
-belong to **FIX-675** (see §4 Q3); premium-gated AV surface (realtime options/index) is out.
+**Deliberately out of the AV layer:** making AV the *preferred* source for any datum an
+existing tool already covers — displacing Finnhub / FRED / Yahoo / Massive is the FIX-675
+bake-off's call, not this epic's. **The rule, per consumer: AV is the *sole* source only for
+data points no existing tool covers; everywhere an existing path exists, AV is a
+supplement / fallback, never a replacement.** The epic does **not** pre-classify whole issues
+as AV-only, because most bundle both kinds of datum — each consumer's spec makes the call
+datum by datum. Known overlaps to respect (non-exhaustive): FIX-804's earnings calendar and
+dividends are new, but **historical splits already have a Yahoo backfill path**
+(`backfillSplits` in `portfolio-writes.ts`); FIX-802's commodities are partly covered (FRED
+WTI via `get_macro_indicators`, Massive CL/GC via `get_futures_curve`); FIX-799's news extends
+Finnhub. The clearly-new primitives with no existing tool are the market-wide movers feed
+(FIX-800) and ETF holdings look-through (FIX-801). Generalized multi-provider composition +
+the per-run rate-budget for capped providers belong to **FIX-675** (see §4 Q3); premium-gated
+AV surface (realtime options/index) is out.
 
 ---
 
