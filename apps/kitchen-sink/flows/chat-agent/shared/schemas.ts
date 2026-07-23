@@ -112,7 +112,10 @@ export const selectedModelSchema = z
  * {@link selectedModelSchema} on `setSelectedModel`.
  */
 export const persistedSelectedModelSchema = z.preprocess(
-  (value) => coalesceKitchenSinkModel(value as string | null | undefined),
+  (value) =>
+    typeof value === "string" || value == null
+      ? coalesceKitchenSinkModel(value)
+      : value,
   z.enum(KITCHEN_SINK_MODELS),
 );
 

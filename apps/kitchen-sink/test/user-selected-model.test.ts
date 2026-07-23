@@ -82,6 +82,14 @@ describe("persisted user selectedModel", () => {
     ).toBe(DEFAULT_KITCHEN_SINK_MODEL);
   });
 
+  it("rejects malformed non-string persisted state instead of silently defaulting", () => {
+    // A stale *string* id is tolerated (coalesced above); a corrupt non-string
+    // value is a different failure class and should surface loudly, not be
+    // masked as the default.
+    expect(() => persistedSelectedModelSchema.parse(42)).toThrow();
+    expect(() => persistedSelectedModelSchema.parse({})).toThrow();
+  });
+
   it("loads stale ids from the user store and coalesces at generator read time", async () => {
     assistantFixture.reset();
     observeFixture.reset();
