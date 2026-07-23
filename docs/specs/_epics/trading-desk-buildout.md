@@ -16,9 +16,7 @@
 **Why this body of work.** The trading-desk lab reasons on a thin live data layer. Several
 data tools have only one provider, so when that provider has no key or fails the analyst
 reasons on nothing instead of a second source — and the desk has no market-wide discovery
-input at all, only per-ticker lookups. Two stubbed tools (earnings-call transcripts, analyst
-estimates) were scaffolded against a provider that was never finished, so they return
-"unavailable" in live mode even with a key configured.
+input at all, only per-ticker lookups.
 
 This epic adds **Alpha Vantage (AV)** — a NASDAQ-licensed source broad enough to close these
 gaps — and groups the family of features that share it so their **cross-cutting calls are
@@ -58,11 +56,8 @@ foundation.
   FIX-798 introduces. Deciding them apart would let each invent its own budget accounting and
   fallback behavior; grouping them fixes those once. No AV consumer adds surface another
   makes redundant.
-- **FIX-803 is an evaluation, not a guaranteed build.** Its deliverable is a decision on
-  whether AV's server-side technical indicators are worth wiring; it may close with a "no,
-  keep computing client-side" and no code. It is in the set because that decision belongs
-  with the rest of the AV budget/provenance calls; it is spiked when the appropriate time
-  comes, not committed up front.
+- **FIX-803 is an evaluation, not a guaranteed build** (see §4 Q1) — it belongs in the set
+  because that decision sits with the rest of the AV calls, but may close with no code.
 - **FIX-902 (scanner) is deliberately out.** It consumes the movers feed but is a distinct
   screening/strategy layer; tracked as a related neighbor and specced later against real
   data contracts (tenet 2 — don't pull in speculative downstream surface).
@@ -107,8 +102,20 @@ each reinvent them:
   source, and every AV-sourced datum carries the same provenance tag. FIX-798 defines this;
   consumers inherit it.
 
-**Deliberately out of the AV layer:** making AV a *preferred/primary* source anywhere (that's
-the FIX-675 data-quality bake-off), and any premium-gated AV surface (realtime options/index).
+### 2c. Consumers inherit, they don't reinvent
+
+Each AV consumer extends an *existing* tool's fallback chain rather than standing up a
+parallel pipeline — **FIX-799** behind the Finnhub news tools (`search_news` /
+`get_market_news` / `get_macro_news`), **FIX-802** as a commodities *supplement* with FRED
+still owning rates/liquidity (`get_macro_indicators`) — while **FIX-801** / **FIX-804** add
+genuinely new primitives (ETF look-through, events calendar). Each issue states its
+inheritance explicitly when it ramps. This keeps FIX-798's shared surface thin and is why the
+family is one epic rather than six standalone tools.
+
+**Deliberately out of the AV layer:** making AV a *preferred/primary* source anywhere, and
+generalized multi-provider composition + the per-run rate-budget for capped providers — both
+belong to **FIX-675** (see §4 Q3), not this epic; plus any premium-gated AV surface (realtime
+options/index).
 
 ---
 
@@ -133,9 +140,28 @@ Epic PR (this doc, never merged): [#880](https://github.com/fixpoint-labs/flow-s
 
 ## 4. Open cross-cutting questions
 
-1. **Is FIX-803 a build or a close?** It is framed as an evaluation with a recommendation
-   leaning negative. Spike it at the appropriate time; if the eval concludes "don't wire AV
-   indicators," it closes with a decision and no code, and the epic's build load drops by one.
+Q3 and Q4 are load-bearing for the whole family and **resolve in FIX-798's spec (PR #851)** —
+flagged here so consumers don't each answer them differently.
+
+1. **Is FIX-803 a build or a close?** Framed as an evaluation leaning negative. Spike it at
+   the appropriate time; if it concludes "don't wire AV indicators," it closes with a decision
+   and no code, and the build load drops by one.
 2. **Where does FIX-902 (scanner) attach later?** Held out as a downstream neighbor. Once
-   FIX-800 (and optionally FIX-799) land with real data contracts, decide whether the
-   scanner becomes its own epic or a fast-follow — not part of this set's sign-off.
+   FIX-800 (and optionally FIX-799) land with real data contracts, decide whether the scanner
+   is its own epic or a fast-follow — not part of this set's sign-off.
+3. **FIX-798's daily-budget vs FIX-675's deferred rate-budget.** `labs/trading-desk/CLAUDE.md`
+   defers the per-run rate-budget for capped providers to **FIX-675** (multi-provider
+   composition). This epic makes AV daily-budget accounting FIX-798's keystone. Reconcile so
+   implementers don't fork two budget systems: FIX-798 should build the AV-specific budget
+   *substrate* that FIX-675 later generalizes, not a parallel one. Settle the boundary in
+   FIX-798's spec.
+4. **A durable day-scoped cache is effectively a fourth shared pillar.** The desk's only cache
+   today is `lib/cache.ts` — 120s TTL, in-memory, process-scoped. AV's 25 req/day on
+   mostly daily-or-slower data (movers, macro, events) burns the budget on repeat reads
+   without a durable, cadence-keyed day-cache (or scheduled prefetch). Its design is deferred
+   to FIX-798's spec; because every consumer depends on it, it can't be solved per-tool.
+5. **Do the two FMP-stubbed tools belong to this epic?** `get_earnings_transcript` and
+   `get_analyst_estimates` are scaffolded against **FMP** (`lib/providers/fmp.ts`, PR2
+   pending) — not AV, and AV is a poor fit for analyst *estimates*. Finishing FMP-PR2 is the
+   simpler path, so they were dropped from the §1 motivation. FIX-798's stub-completion scope
+   should be revisited against FMP-PR2 rather than reaching for AV.
