@@ -14,7 +14,7 @@ You'll be given a Linear issue ID (and possibly a note on its current phase). Ru
 `issue-lifecycle` for that issue and advance it **as far as it can go without waiting on
 something external** (a human gate not yet given, CI, a review, a dependency PR) — then stop:
 
-- needs a spec → run the issue-spec step, open the spec PR, stop (now awaiting Case approval).
+- needs a spec → run the issue-spec step, open the spec PR (ready for review), stop (now awaiting spec approval).
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round (apply clear fixes, escalate debatable), stop.
 - **spec approved** (the approval is already present when you're dispatched, or you detect it
