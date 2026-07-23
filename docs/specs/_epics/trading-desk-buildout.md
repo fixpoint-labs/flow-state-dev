@@ -150,7 +150,7 @@ handles as PRs open.
 | **FIX-804** | AV data | Backlog | — | — | forward corporate events |
 | **FIX-771** | Capital model | In Review | [#803](https://github.com/fixpoint-labs/flow-state-dev/pull/803) | — | multi-strategy sleeves; independent of AV |
 
-Epic PR (this doc, never merged): _added on PR creation._
+Epic PR (this doc, never merged): [#880](https://github.com/fixpoint-labs/flow-state-dev/pull/880).
 
 ---
 
