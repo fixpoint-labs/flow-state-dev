@@ -15,7 +15,9 @@ restating the shared concepts. When a concept here changes, it changes here.
 - **Issue lifecycle** — one issue from spec to merge-ready PR, as a state machine
   advanced one bounded step per event. See `fsd:issue-lifecycle`.
 - **Epic** *(optional)* — a coordination layer above a *set* of related issues so
-  cross-cutting decisions aren't made in a vacuum. Its artifact is the **epic-spec**.
+  cross-cutting decisions aren't made in a vacuum. An epic is a **Linear parent issue
+  with the `Epic` label (Kind group)**; the work items are its **sub-issues**. Its artifact is the
+  **epic-spec** (attached to the epic issue, exactly as a spec attaches to a work issue).
   Owned by the fleet, authored by the `epic-agent`. See "The epic-spec" below.
 - **Worker sub-agents** — token-isolated agents the fleet/lifecycle dispatch so heavy
   work happens in *their* context and only a compact summary returns:
@@ -36,7 +38,9 @@ flowchart TD
   IW -->|runs| IL[issue-lifecycle step]
   IL --> CS[create-spec] & II[implement-issue]
   II --> SI[spec-implementer] & RV[review lenses]
-  EA -->|reads/writes| ES[(epic-spec<br/>epic/&lt;name&gt; branch<br/>+ Linear project doc)]
+  EA -->|reads/writes| ES[(epic-spec<br/>epic/&lt;name&gt; branch + epic PR<br/>+ Linear Epic issue doc)]
+  EPIC[[Linear Epic issue · Kind: Epic]] -.->|parent of| ISS[work issues = sub-issues]
+  EA -->|creates / attaches spec| EPIC
 ```
 
 ## The two coordination stores (we keep both — they are not duplicates)
@@ -44,7 +48,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Fleet status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear project doc) |
+| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
 
 They overlap in *content* (both know the PR numbers) but differ in *purpose and
 audience*: the table is private and ephemeral; the index is public and durable. The
@@ -53,10 +57,20 @@ source.
 
 ## The epic-spec (canonical artifact)
 
-An **epic-spec** is a coordination artifact for a set of related issues (usually one
-Linear project). It exists so decisions aren't made in a vacuum. It is **not** an
-implementing spec, and issues do **not** derive from it — they *reference and align* to
-it.
+An **epic-spec** is a coordination artifact for a set of related issues. It exists so
+decisions aren't made in a vacuum. It is **not** an implementing spec, and issues do
+**not** derive from it — they *reference and align* to it.
+
+The epic itself is a **Linear parent issue tagged with the `Epic` label (Kind group)**, and
+the work items are its **sub-issues**. That makes Linear the durable state manager for the
+whole set — one query on the epic issue returns its state plus every sub-issue's state — and
+makes discovery native: a work issue's epic is simply its **parent** (no registry to parse).
+The `Epic` label lets humans filter epic issues off the working board (they're containers,
+not work), and forces the set to crystallize *what it's trying to achieve*. The fleet creates the epic
+issue and parents the set's issues under it (via the `epic-agent`; `issue-manager`
+conventions for relations apply). **Re-parenting respects Linear's one-parent rule** — an
+issue that already has a functional parent is linked with `relates-to` and flagged, never
+silently detached.
 
 **Contents:**
 
@@ -76,10 +90,11 @@ it.
   of the *epic*; closes **unmerged** when the epic wraps.
 - **The epic branch is never deleted** (issue spec branches are; the epic branch is not) —
   it stays referenceable.
-- **Dual-synced to a Linear *project* document** — same branch + Linear-document pattern
-  as issue specs (BP-037), one altitude up (project instead of issue). Discovery is by
-  listing the project's documents, **not** by parsing free-text — a project may carry more
-  than one epic.
+- **Dual-synced to the Linear *Epic issue's* document** — same branch + Linear-document
+  pattern as issue specs (BP-037), one altitude up: the epic-spec attaches to the epic
+  issue exactly as a spec attaches to a work issue. **Discovery is native** — a work issue's
+  epic is its **parent** (check `issue.parent`; does it carry the `Epic` Kind label?). No registry, no
+  free-text parsing.
 - **Authored/maintained by the `epic-agent`**, dispatched by the fleet. The agent **never
   starts over**: each dispatch it reads the current epic-spec (the doc + PR thread are its
   durable memory) and applies one bounded update. No private `memory:` — the state is the
@@ -99,6 +114,13 @@ out-of-band chat approval:
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
 feedback, upward comments) flows continuously and never blocks. The two spec gates are
 per issue.
+
+**The PR label drives; Linear mirrors.** All three gates are GitHub signals because the
+coordinator wakes on PR webhooks — Claude can't react to Linear events. The epic *issue's*
+Linear state is a human-facing mirror of the objective gate, not the trigger — the
+**fleet writes that mirror** when the label lands, so it doesn't drift. (The epic issue
+itself is tagged with the **`Epic` label under Linear's "Kind" group** — that's what
+marks a Linear issue as an epic and keeps it filterable off the working board.)
 
 ```mermaid
 flowchart LR
