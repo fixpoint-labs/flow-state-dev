@@ -154,7 +154,16 @@ Each invocation advances the plan by **one bounded step**:
 3. **Dependent ready** sub-PRs → branch off the dependency's branch so review can start
    before the dep merges; rebase onto the dep when it merges. A dependency's **merge
    event** re-enters the lifecycle and unblocks its dependents.
-4. Once **every** sub-PR in the plan is merged, the issue is DONE.
+4. Once **every** sub-PR in the plan is merged, run the spec's **end-to-end goal check on the
+   fully-assembled work** before marking the issue DONE. Each per-sub-PR `issue-implement` run
+   only proved its own slice (and any slice-level goal); the assembled goal is the proof no
+   single sub-PR could give, and the merge events are the only point it becomes runnable — so it
+   is required verification, not optional. Dispatch a bounded sub-agent to run it against the
+   merged result (a real model when the goal declares one; a model-free goal runs as-is) and
+   confirm PASS; **only then is the issue DONE.** If the spec's PR plan instead **designates a
+   specific integrating sub-PR to own the assembled goal**, that sub-PR's run proves it and this
+   step just confirms the verdict was recorded — don't double-run. If it fails, the issue isn't
+   done: file the gap (`issue-manager`) and re-open the sub-PR that owns the break.
 
 **Handle-cache extension:** the `.orchestration/<ISSUE>.md` record adds one row per
 sub-PR — `id · depends_on · branch · PR# · status (pending / building / open / merged)`
