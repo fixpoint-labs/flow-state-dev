@@ -15,8 +15,10 @@
 
 **Why this body of work.** The trading-desk lab reasons on a thin live data layer. Several
 data tools have only one provider, so when that provider has no key or fails the analyst
-reasons on nothing instead of a second source — and the desk has no market-wide discovery
-input at all, only per-ticker lookups.
+reasons on nothing instead of a second source — and while the desk has market-wide *context*
+feeds (`get_market_news`, `get_macro_news`, `get_cross_asset_flow`), it has no market-wide
+**equity-movers / candidate-generation** input to *propose* names worth analyzing; discovery
+today is per-ticker only.
 
 This epic adds **Alpha Vantage (AV)** — a NASDAQ-licensed source broad enough to close these
 gaps — and groups the family of features that share it so their **cross-cutting calls are
