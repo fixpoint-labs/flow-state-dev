@@ -34,6 +34,10 @@ with sibling workers. Commit and push your branch; do not merge.
   that names the blocker and what decision is needed. The fleet surfaces it.
 - **Stay compact on the way out.** Your return value is a status line, not a
   transcript: `<ISSUE> · <phase now> · <spec PR#/impl PR#> · <gate pending? / blocker> · <one-line what you did>`. The fleet holds only this.
+- **No persistent memory (deliberate).** This agent has no `memory:` scope — many
+  workers of this type run in parallel and would clobber a single shared `MEMORY.md`
+  (no write lock). Durable learnings flow to the cycle-ledger via `fsd:distill-lessons`,
+  not to per-worker memory.
 
 ## Return format
 
