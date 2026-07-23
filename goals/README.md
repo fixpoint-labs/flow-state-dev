@@ -72,9 +72,9 @@ pnpm tsx goals/<describe>/<it>/run.mts
 # (a goals/ sweep — pnpm goal:all — will be added once a few goals exist)
 ```
 
-Goal checks cost real model calls. Run them when you need the proof — finishing a feature, or re-checking for a regression — not on every change. They do not gate CI.
+Goal checks cost real model calls, and that cost is the point — a goal proves the feature works for real, the way a mocked spec cannot. Run one when you need that proof: finishing a feature, or re-checking for a regression. Not on every change (the mocked CI specs drive the inner loop), and never during development. But at feature completion, running the goal is **required verification, not optional** — don't skip, defer, or push back on it to save credits; the spend is expected and authorized. They do not gate CI.
 
-**Credentials.** A goal check needs a model credential with **inference** access — a working `AI_GATEWAY_API_KEY` (Vercel AI Gateway), or a provider key the app's model resolver uses. Note that a gateway key can authenticate for *listing* models yet be rejected for *inference* (a 401 from `/v1/chat/completions`), so "the key is set" is not enough — the run has to actually generate. Some managed/CI containers only carry a listing-scope credential; run goal checks where a real inference credential is available.
+**Credentials.** A goal check needs a model credential with **inference** access — normally **already present in the environment** as `AI_GATEWAY_API_KEY` (Vercel AI Gateway) or a provider key the app's model resolver uses. **Check for it and run — don't assume it's absent.** The credential being set is not quite proof, though: a gateway key can authenticate for *listing* models yet be rejected for *inference* (a 401 from `/v1/chat/completions`), so the run has to actually generate. If a real generation attempt fails for lack of a working inference credential — a genuine 401 on inference, not a preemptive guess — record the goal as **blocked** and surface it; don't silently skip it. (Some managed/CI containers carry only a listing-scope credential.)
 
 ## Adding a goal
 

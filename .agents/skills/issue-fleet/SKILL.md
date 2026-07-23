@@ -316,6 +316,13 @@ step. So:
   tracked and ordered by the fleet, never a reason to idle.
 - **Spec-approval gate is per issue.** Approvals are independent — issue B isn't blocked by
   issue A's pending spec.
+- **Goal verification is part of done, not a gate.** An issue's implementation isn't finished
+  until its goal is proven on a real model (`issue-implement` runs it at completion). A worker
+  that reports it skipped the goal to save API credits has **not** finished — the credit spend is
+  the point, and the inference credential is normally in the env. Send it back to run the goal;
+  don't accept a cost-based skip. (A genuine "no goal check applies" — docs/refactor/config — or a
+  real inference-credential failure is the only acceptable non-run, and it must be stated, not
+  silent.)
 - **Stop before merge**, per issue. The fleet never merges — that is the one gate *out*.
 
 ## Token & depth discipline

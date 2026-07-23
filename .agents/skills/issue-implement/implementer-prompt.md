@@ -172,7 +172,9 @@ Correct order:
    goal check that is runnable after this task in isolation — if so, run
    it against a **real** model (`fsdev run`, or `pnpm tsx
    goals/<describe>/<it>/run.mts`) and report the command and PASS/FAIL
-   verdict. Otherwise (pure
+   verdict. Don't skip a runnable slice check to save API credits — the
+   spend is the point, and the inference credential is normally already in
+   the env (e.g. `AI_GATEWAY_API_KEY`); check for it and run. Otherwise (pure
    plumbing, or a slice whose only proof is end-to-end), say the goal
    proof is deferred to the orchestrator. Never invent a PASS verdict for
    a check you couldn't run.

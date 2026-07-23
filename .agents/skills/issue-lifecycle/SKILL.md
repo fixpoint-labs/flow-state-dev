@@ -229,5 +229,11 @@ cloud vs. local" for how to detect the environment and the full fallback design.
   one worktree per issue).
 - This is the *coordinated, single-session, event-driven* lifecycle — one session
   shepherds the whole issue, start to merge-ready PR.
+- **Goal verification is part of done, not a gate.** Before the impl PR is ready, the goal is
+  proven on a real model (`issue-implement` runs it at completion — real API credits, by design).
+  A worker reporting it skipped the goal to save credits hasn't finished; the credential is
+  normally in the env, so send it back to run the goal rather than accept a cost-based skip. The
+  only acceptable non-run is a stated "no goal check applies" (docs/refactor/config) or a real
+  inference-credential failure — never a silent one.
 - Gates are fixed: **spec approval in, merge out.** Everything between runs without
   hand-holding, surfacing blockers when a sub-agent reports one.
