@@ -4,6 +4,7 @@ import { materializeAgent } from "../src/materialize-agent";
 import { defineAgent } from "../src/define-agent";
 import { defineCapability } from "@flow-state-dev/core";
 import type { Agent, MaterializeAgentOptions } from "@flow-state-dev/core";
+import { taskTools as taskToolsSingleton } from "@flow-state-dev/orchestration";
 
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return defineAgent({
@@ -280,6 +281,62 @@ describe("materializeAgent", () => {
       const names = (inspectGenerator(block).uses ?? []).map((u: any) => u?.name);
       expect(names).toContain("keyedCap");
       expect(names).toContain("refCap");
+    });
+  });
+
+  describe("board-scoped taskTools (FIX-927)", () => {
+    it("prefers opts.boardTaskTools over the singleton for a taskTools worker", () => {
+      // Distinct sentinel — createTaskToolsCapability/defineCapability return a
+      // fresh object, so identity (`!==` singleton) is the observable contract.
+      const boardTaskTools = defineCapability({ name: "boardTaskTools" });
+      const block = materializeAgent(
+        makeAgent({ allowedTools: ["taskTools"] }),
+        makeOpts({ boardTaskTools }),
+      ) as any;
+      const uses = inspectGenerator(block).uses ?? [];
+      expect(uses).toContain(boardTaskTools);
+      expect(uses).not.toContain(taskToolsSingleton);
+    });
+
+    it("falls back to the singleton when no boardTaskTools is supplied", () => {
+      const block = materializeAgent(
+        makeAgent({ allowedTools: ["taskTools"] }),
+        makeOpts(),
+      ) as any;
+      const uses = inspectGenerator(block).uses ?? [];
+      expect(uses).toContain(taskToolsSingleton);
+    });
+
+    it("adds no taskTools capability when the agent does not declare taskTools", () => {
+      const boardTaskTools = defineCapability({ name: "boardTaskTools" });
+      const block = materializeAgent(
+        makeAgent(), // no allowedTools
+        makeOpts({ boardTaskTools }),
+      ) as any;
+      const uses = inspectGenerator(block).uses ?? [];
+      expect(uses).not.toContain(boardTaskTools);
+      expect(uses).not.toContain(taskToolsSingleton);
+    });
+
+    it("warns when a worker declares taskTools but no boardTaskTools was supplied", () => {
+      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      materializeAgent(makeAgent({ allowedTools: ["taskTools"] }), makeOpts());
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining("boardTaskTools was supplied"),
+      );
+      spy.mockRestore();
+    });
+
+    it("does not warn for a standalone taskTools agent (no board is legitimate)", () => {
+      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      materializeAgent(
+        makeAgent({ allowedTools: ["taskTools"] }),
+        makeOpts({ shape: "standalone", skillName: undefined, workerKey: undefined }),
+      );
+      expect(spy).not.toHaveBeenCalledWith(
+        expect.stringContaining("boardTaskTools was supplied"),
+      );
+      spy.mockRestore();
     });
   });
 

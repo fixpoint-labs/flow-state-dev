@@ -93,10 +93,35 @@ function buildAgentGenerator(
     agent.usesCapabilities,
     opts.capabilityCatalog,
   );
+  // A worker that declares taskTools for mid-drain fan-out needs them bound to
+  // the active drain board (opts.boardTaskTools), not the process-wide singleton
+  // which looks at no board. Fall back to the singleton when no board capability
+  // was supplied (standalone / non-delegation callers keep working unchanged).
   const uses = [
     ...resolvedUses,
-    ...(usesTaskTools ? [taskToolsCapability] : []),
+    ...(usesTaskTools ? [opts.boardTaskTools ?? taskToolsCapability] : []),
   ];
+
+  // Dev-only signal: a worker declaring taskTools with no board capability falls
+  // back to the empty singleton, which fails at drain with `no_delegation_board`.
+  // Surface it at materialization time instead. Scoped to workers (standalone
+  // agents legitimately have no board) and silenced in production. Env is read
+  // off globalThis so this package needs no node type dependency.
+  const nodeEnv = (
+    globalThis as { process?: { env?: Record<string, string | undefined> } }
+  ).process?.env?.NODE_ENV;
+  if (
+    nodeEnv !== "production" &&
+    opts.shape === "worker" &&
+    usesTaskTools &&
+    !opts.boardTaskTools
+  ) {
+    console.warn(
+      `[workforce] agent "${agent.name}": worker declares taskTools but no ` +
+        `boardTaskTools was supplied — fan-out tools will target the empty ` +
+        `singleton board (no_delegation_board at drain).`,
+    );
+  }
 
   if (agent.usesSkills?.length) {
     console.warn(
