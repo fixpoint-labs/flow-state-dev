@@ -63,7 +63,15 @@ What the epic-spec contains:
 
 You're given: the **epic name / scope**, the **Linear project**, the **current PR
 handles** (from the fleet's table), and optionally **feedback to fold** (upward comments
-on the epic PR, review comments). Take the single action the dispatch calls for:
+on the epic PR, review comments).
+
+**You never start over.** On any dispatch after the first, **read the current epic-spec
+from the epic branch first** — that doc (plus the epic PR comment thread) *is* your durable
+memory; you resume from it and apply one bounded update. You hold no separate persistent
+memory of your own (no `memory:` scope), deliberately: the epic-spec is the state, and it's
+visible to humans and issue agents rather than hidden in a private MEMORY.md.
+
+Take the single action the dispatch calls for:
 
 - **Create** the epic-spec (first dispatch): **lead with the purpose & objective** (the
   gated sign-off surface — abstract "why + intended outcome"), then draft themes +

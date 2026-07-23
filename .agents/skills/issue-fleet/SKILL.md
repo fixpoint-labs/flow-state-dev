@@ -110,12 +110,14 @@ The fleet coordinates the epic; the **`epic-agent`** sub-agent does the writing:
 - **Gate on the objective — the one epic-level sign-off.** The epic-spec leads with a
   **purpose & objective** (abstract: why the whole effort, what outcome). Surface *that* to
   the user for a **directional sign-off** — the **`epic approved` label** on the epic PR —
-  and **hold ramping the epic's issues until it's applied.** This is the holistic
-  anti-over-engineering check the per-issue gates can't do: each issue may earn its place
-  while the whole set overbuilds, so we align on *why* before sinking the work in. It's
-  abstract — outcome and scope, not detail. It is the **only** epic-level gate: the epic's
-  *direction* (themes, decisions, index) stays ungated and evolves via feedback. Distinct
-  from each issue's own `spec approved` gate, which still applies per issue. (Re-read the
+  and **hold the epic's issues at NEEDS_SPEC — don't dispatch workers to advance them —
+  until the label is applied.** That initial ramp is the *only* thing this gate blocks.
+  This is the holistic anti-over-engineering check the per-issue gates can't do: each issue
+  may earn its place while the whole set overbuilds, so we align on *why* before sinking the
+  work in. It's abstract — outcome and scope, not detail. It is the **only** epic-level
+  gate: once approved, the epic's *direction* (themes, feedback) and issues' *upward
+  comments* flow continuously and never block; each issue still passes its own `spec
+  approved` gate before implementing. (Re-read the
   epic PR's labels on each table refresh, like the spec-PR labels, so a missed `labeled`
   webhook is still caught.)
 - **Own the epic PR subscription; fan feedback down.** Subscribe to the epic PR
@@ -132,8 +134,8 @@ The fleet coordinates the epic; the **`epic-agent`** sub-agent does the writing:
   hub linking to everything under the epic. Cheap: it refreshes when the epic-agent next
   runs, not on every PR open.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
-  deleted** and stays listed on the project for later reference. No approval gate governs any
-  of this — the epic shapes the issue specs continuously; it never blocks them.
+  deleted** and stays listed on the project for later reference. Closing needs no sign-off
+  (the objective gate above is the only gate).
 
 ## Intake — filing & queueing discovered issues
 
