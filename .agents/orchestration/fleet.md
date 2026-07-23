@@ -28,6 +28,12 @@ Note: coordination PR #862 closed-without-merge by user (deliberate — record i
 - FIX-917 durable:false sequencer predicate fix (Codex line-281, valid correctness): agent a81048e0eb04ac298. DONE (§7/§6/§9/§8, thread replied).
 - ALL FOUR SPECS FINAL + at AWAITING_SPEC_APPROVAL. No workers running. Fleet idle pending user approvals + backstop trig_01RYq12rZkKpd6mkdopHdiuJ (~02:32Z).
 - FIX-917 now treated FINAL: further Codex rounds that aren't silent-loss/correctness class → batch to implementation, don't fold, tell user.
+- TREADMILL STOP called (Codex round 5, r3635125997 line 195 "transient slots"). NOT folded. Rationale: transientSlot() resets on resume BY DESIGN — warning would be a false positive (noise), not silent-loss. Recommendation for implementation: scope transient slots OUT of the dirty-check (dirty = non-transient own-state keys only), with a one-line note. #866 = FINAL at design altitude; no more re-push.
+
+## FIX-917 IMPLEMENTATION-PHASE NOTES (address when implementing, not in spec)
+- Transient slots: exclude from dirty-detection (transient reset is intended). Confirm vs sequencer.ts:285-290 / state-and-scopes.md:64-68.
+- Cursor deferred batch: reuse isTraceObservabilityEnabled()+logRuntimeEvent (not raw NODE_ENV); StateContainer.getVersion() O(1) dirty prefilter after replay/resume early-returns (~2657-2710); config/runtime dual-shape = doc as temp debt or push config.state to engine; defer DevTool trace note; capability asymmetry (blocks state.* vs caps flat) doc-or-helper; Decision-2 consumer-check = hard gate before coding; §12 Q2 sequencer state.own decide at sign-off.
+- Rebase spec/FIX-917 onto post-918 origin/main before implementing (currently 105 behind).
 - TREADMILL CALL: after this durable:false fix, treat FIX-917 spec as FINAL. Further Codex rounds that are not silent-loss/correctness class → batch to implementation, tell user, stop folding.
 - All four specs at AWAITING_SPEC_APPROVAL. Backstop check-in trig_01RYq12rZkKpd6mkdopHdiuJ (~02:32Z).
 - WATCH: Codex re-reviews on each push (treadmill). Findings so far all valid+converging (P1 refuted, P2 changeset, predicate, dead-key). If future rounds nitpick/repeat, STOP folding and tell user spec is good enough.
