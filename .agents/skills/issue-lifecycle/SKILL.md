@@ -50,12 +50,15 @@ On each invocation, reconstruct the phase from a **small** read:
   - An **approving comment or GitHub Review from a human** on the spec PR (from the PR's
     comments — `pull_request_read` `get_comments` — or its reviews — `get_reviews`) — the
     human's durable sign-off on the full spec: either a comment saying "approved" authored
-    by a human (not a bot, not a bot-authored comment), or a Review with `state: APPROVED`
-    authored by a human who is not the PR's own author (GitHub already blocks a PR author
-    from approving their own PR, but check `review.user != pr.user` explicitly rather than
-    depend on that alone — and exclude bot reviews, e.g. Cursor Bugbot / Codex leave Review
-    submissions with a `state`, not just comments); the detection rule is in
-    [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A comment or a
+    by a human (not a bot, not a bot-authored comment), or a Review whose **latest state is
+    `APPROVED` on the current head** authored by a human who is not the PR's own author (GitHub
+    already blocks a PR author from approving their own PR, but check `review.user != pr.user`
+    explicitly rather than depend on that alone — and exclude bot reviews, e.g. Cursor Bugbot /
+    Codex leave Review submissions with a `state`, not just comments). **Not any historical
+    `APPROVED`:** the reviews list is chronological, so collapse to each human's latest review,
+    require no outstanding `CHANGES_REQUESTED`, and confirm the approving review's `commit_id`
+    is the current head — a push after an approval re-opens the gate. The full detection rule is
+    in [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A comment or a
     review submission is the gate because either *wakes* the lifecycle — a `labeled` webhook
     doesn't arrive, but both of these do. On detecting either, **mirror it to the
     `spec approved` label** (a durable, filterable record) in the same step. Its presence is

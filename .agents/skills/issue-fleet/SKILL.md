@@ -56,10 +56,11 @@ even if more are queued. State the chosen N and the cap to the user.
    (reuse each issue's `.orchestration/<ISSUE>.md` handle cache) — **including each open spec
    PR's `draft` flag, its comments, and its reviews**: a flip from `draft` to ready signals
    building Part II, and an **approving human comment or GitHub Review** on the spec PR (a
-   "approved" comment, or a Review with `state: APPROVED`, from a human — not a bot, not a
-   bot-authored comment/review body, and for a review, not the PR's own author; rule in
-   [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates) signals moving to
-   implementation. **If an epic is active,** fetch the **epic issue and its sub-issues in one
+   "approved" comment, or a Review whose **latest state is `APPROVED` on the current head**
+   — not any historical approval left stale by a later push or `CHANGES_REQUESTED` — from a
+   human, not a bot, not a bot-authored comment/review body, and for a review, not the PR's own
+   author; full rule in [`orchestration.md`](../../../docs/contributing/orchestration.md) →
+   Gates) signals moving to implementation. **If an epic is active,** fetch the **epic issue and its sub-issues in one
    Linear query** (parent→children — the point of the parent model) rather than N independent
    fetches, and check the epic PR for an **approving human comment or review**; resolve the epic
    branch handle (branch + head SHA) **once here** and pass it to workers in step 3 so they don't
