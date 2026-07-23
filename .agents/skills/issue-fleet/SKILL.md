@@ -177,6 +177,16 @@ The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, wor
   ledger's `design-off` trend is the evidence it's earning its cost. Skip for a batch with
   no epic, or one with no rework worth measuring — this is the loop-measurement payoff, not
   ceremony for every fleet.
+- **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
+  way code does — the same concept re-explained across pages, guides swollen into walls of text,
+  navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch
+  **one bounded sub-agent** (worktree, like `epic-agent`) to run **`fsd:polish-docs`** scoped to
+  the docs the batch touched: it consolidates, streamlines, and re-arranges for readability, then
+  opens a **draft** docs-cleanup PR against the default branch. Keep it **draft** — bold
+  rearrangement is exactly what a human should eyeball before merge. The fleet holds only the PR
+  handle and surfaces it; it never reads or applies the edits itself. Separate from the "lessons"
+  PR (grounding) and the epic PR (which closes unmerged). Skip only for a batch that touched no
+  docs.
 
 ## Intake — filing & queueing discovered issues
 
