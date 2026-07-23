@@ -172,6 +172,8 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `issue-fleet`             | Coordinate MULTIPLE issues in parallel, each in its own git worktree/branch; composes `issue-lifecycle` per issue via worktree-isolated workers; holds only a compact status table |
 | `cross-spec-review`       | Review a fleet's BATCH of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the fleet |
 
+> **How the orchestration fits together** — the fleet/epic/issue lifecycles, the roles, the gates (draft→ready, `spec approved`, `epic approved`), and the epic-spec — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
+
 
 ### Development skills
 

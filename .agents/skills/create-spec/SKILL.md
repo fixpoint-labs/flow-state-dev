@@ -66,6 +66,7 @@ Use the Linear MCP tools to fetch the full issue:
 3. Fetch any parent issue or sub-tasks to understand the broader context
 4. Fetch blocking issues to understand what this depends on and what state those dependencies are in
 5. `list_comments` to read any discussion or decisions already made on the issue
+6. **Look for an epic** (optional context, never a dependency). Check the issue's Linear **project documents** for an epic-spec. Under `fsd:issue-fleet` the fleet passes the epic handle, so you needn't re-fetch; standalone, `git fetch origin epic/<name>` (the branch is never deleted — no fallback needed). If one applies, **align** to its themes and longer-horizon direction (a reference, not a parent contract — you still make local calls), cite it in Part I §2, and carry the epic PR link. If you spot a **cross-cutting concern**, **comment up on the epic PR** (non-blocking) instead of deciding it here. No epic → proceed unchanged. See [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md).
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
 

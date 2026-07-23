@@ -42,23 +42,35 @@ even if more are queued. State the chosen N and the cap to the user.
 
 ## The loop (each invocation)
 
-1. **Resolve the set.** Take the issue IDs from the argument, or propose a set (you
-   may compose `fsd:plan-dispatch` / `fsd:linear-triage` for selection) and confirm
-   with the user. Record the set + chosen N in `.orchestration/fleet.md`
-   (compact: the issue list and per-issue handle-cache pointers).
+1. **Resolve the set (and the epic, if any).** Take the issue IDs from the argument, or
+   propose a set (you may compose `fsd:plan-dispatch` / `fsd:linear-triage` for selection)
+   and confirm with the user. Record the set + chosen N in `.orchestration/fleet.md`
+   (compact: the issue list and per-issue handle-cache pointers). If the set shares a
+   Linear project with **cross-cutting concerns**, discover or create its **epic** now —
+   see [Epic coordination](#epic-coordination-optional--when-the-set-shares-cross-cutting-concerns) —
+   and **record the epic handle (name · `epic/<name>` branch · epic PR# · project doc) in
+   `.orchestration/fleet.md` alongside the set**, so it survives across wakes (the next
+   refresh needs it to re-read `epic approved`, keep the epic PR subscribed, and pass the
+   branch/SHA to workers).
 2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
    status to derive its phase (reuse each issue's `.orchestration/<ISSUE>.md`
    handle cache) — **including each open spec PR's `draft` flag and its labels**: a flip
    from `draft` to ready signals building Part II, and the **`spec approved` label**
-   signals moving to implementation. These read-only status/handle fetches are the
-   mechanical tier — use the **`scout`** agent (Haiku), not a full worker. Do **not**
-   re-dispatch the worktree workers just to read state.
+   signals moving to implementation. **If an epic is active,** also read the epic PR's
+   **`epic approved` label** and resolve the epic branch handle (branch + head SHA) **once
+   here** — pass it to workers in step 3 so they don't each re-fetch it. These read-only
+   status/handle fetches are the mechanical tier — use the **`scout`** agent (Haiku), not a
+   full worker. Do **not** re-dispatch the worktree workers just to read state.
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
    `.claude/agents/issue-worker.md`, which declares `isolation: worktree` (its own
    worktree/branch) and has no `AskUserQuestion` (it never prompts; it returns
-   blockers for the fleet to surface):
+   blockers for the fleet to surface). **Epic gate:** if the issue is under an epic whose
+   **`epic approved`** label is not yet applied, hold it at NEEDS_SPEC — do **not** dispatch
+   a worker to advance it (that's the objective gate; see Epic coordination). When you do
+   dispatch, pass the resolved **epic handle** (branch + SHA) from step 2 so `fsd:create-spec`
+   can align without re-fetching:
 
    ```
    Agent tool (agentType: issue-worker):
@@ -72,7 +84,10 @@ even if more are queued. State the chosen N and the cap to the user.
    with `isolation: worktree` and the same prompt.)
 4. **Collect compact status** and update the table. Never fold a worker's full output
    in — one status line per issue.
-5. **Surface gates.** For any issue **awaiting Case approval** (its spec PR is a
+5. **Surface gates.** If an **epic** is awaiting its objective sign-off, surface the epic
+   PR (its purpose/objective) and note that applying **`epic approved`** releases the epic's
+   issues to start — until then they hold at NEEDS_SPEC. Then, per issue: for any issue
+   **awaiting Case approval** (its spec PR is a
    **draft**, Part I only), surface the **draft spec PR link** for a first-pass review and
    note that **marking it ready-for-review triggers the Build Plan (Part II)** — the
    fleet holds the *link*, not the spec text. For any issue **awaiting spec approval**
@@ -80,15 +95,46 @@ even if more are queued. State the chosen N and the cap to the user.
    that **applying the `spec approved` label** is the go-ahead to implement. The *other*
    issues keep moving. For any issue **ready to merge**, surface it and stop there (merge
    is the user's).
-6. **End the turn.** Subscribe to **all live PRs — spec and impl** (`subscribe_pr_activity`):
-   a spec PR's review activity during Case/spec review must wake the fleet, not wait for
-   the heartbeat. Two spec-PR transitions are also waking signals: a **draft→ready-for-review
+6. **End the turn.** Subscribe to **all live PRs — spec, impl, and the epic PR (when
+   active)** (`subscribe_pr_activity`): a spec PR's review activity during Case/spec review
+   must wake the fleet, not wait for the heartbeat, and epic PR activity must too (so
+   feedback can fan down and the `epic approved` label is caught). Two spec-PR transitions are also waking signals: a **draft→ready-for-review
    promotion** (advances Case review → Part II build) and the **`spec approved` label**
    (advances → implementation). Since neither a `ready_for_review` nor a `labeled` webhook is
    guaranteed to arrive, the scout's table refresh (step 2) re-reads each open spec PR's
    `draft` flag and labels so both are caught on the next wake. Schedule one fleet check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. Stop the fleet once every issue is merged, closed, or dropped.
+
+## Epic coordination (optional — when the set shares cross-cutting concerns)
+
+When the set belongs to one body of work (usually a Linear project) with **cross-cutting
+concerns** — shared surface, naming, sequencing, common direction — stand up an
+**epic-spec** so those decisions aren't made in a vacuum. A batch of unrelated issues
+needs none; skip it (tenets 2/3). **The epic-spec, its conventions, the objective gate,
+and the index-vs-table distinction are defined in
+[`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)** — read
+it; below is only the *fleet's* operating procedure.
+
+The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
+`AskUserQuestion`) writes:
+
+- **Discover, then create.** List the Linear **project's documents** for an existing
+  epic-spec; reuse it if one covers this set. Otherwise dispatch `epic-agent` to author it
+  (`epic/<name>` branch + never-merged epic PR + attached project document) and return the
+  handles. The fleet holds only handles (epic name, branch, epic PR#), never the spec text.
+- **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
+  **`epic approved`** sign-off and hold the epic's issues at NEEDS_SPEC until it lands
+  (loop step 3). It's the *only* epic-level gate; direction stays ungated.
+- **Own the subscription; fan feedback down.** Route epic PR review/human feedback **down**
+  to the aligned issue workers (sub-agents can't subscribe; the fleet does, same as a
+  spec-PR event). When an epic comment is **heavy or its fan-out target is unclear** ("which
+  issues does this touch?"), offload the *read* to **`scout`** — it returns the target
+  issues; you route — rather than pulling the content into the coordinator's context. Then
+  re-dispatch `epic-agent` to **fold** the feedback into the epic-spec **and** refresh its
+  running index from the PR handles in your table — one update pass, not a separate mode.
+- **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
+  deleted** and stays discoverable via the project document. Closing needs no sign-off.
 
 ## Intake — filing & queueing discovered issues
 
