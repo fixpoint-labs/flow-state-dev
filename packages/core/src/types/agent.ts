@@ -115,6 +115,14 @@ export interface MaterializeAgentOptions {
   shape: "worker" | "standalone";
   workerKey?: string;
   skillName?: string;
+  /**
+   * Board-bound `taskTools` capability for a worker-shaped agent that itself
+   * declares `taskTools` (mid-drain fan-out). When set, the agent's `taskTools`
+   * resolve against the active drain board rather than the process-wide
+   * singleton (which looks at no board). When unset, the singleton is used —
+   * standalone agents and non-delegation callers are unaffected.
+   */
+  boardTaskTools?: DefinedCapability;
 }
 
 /** Function shape for materializing an Agent into a BlockDefinition. */

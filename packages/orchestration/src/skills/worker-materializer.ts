@@ -171,6 +171,10 @@ export async function materializeWorker(
       shape: "worker",
       workerKey: agentKey,
       skillName: deps.skillName,
+      // Mirror the inline branch: hand the agent-ref worker the same board-bound
+      // taskTools so mid-drain fan-out lands on the active drain board rather
+      // than the empty singleton (which fails with `no_delegation_board`).
+      boardTaskTools: deps.boardTaskTools,
     });
   }
 
