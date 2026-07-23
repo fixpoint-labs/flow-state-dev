@@ -3,6 +3,11 @@
 **Date:** 2026-07-23
 **Status:** implemented — `create-spec` emits the PR plan; `issue-lifecycle` advances the DAG.
 
+> **Historical naming note:** skill names below reflect what they were called when this
+> was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
+> `issue-implement`. Don't invoke the old names — this doc is a point-in-time design
+> record, not current reference.
+
 Raised together: (1) persistent agent memory, (2) agent teams, (3) splitting one
 issue into multiple PRs. (1) and (2) are positioning decisions; (3) is the new
 architecture. They interrelate — teams' natural home turns out to be (3).

@@ -5,6 +5,13 @@
 **Status:** IN PROGRESS — one PR (docs-only). WS-1 (philosophy) drafted; grilling
 through the remaining workstreams with the user.
 
+> **Historical naming note:** skill names below reflect what they were called when this
+> was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
+> `issue-implement`, `quick-fix` → `adhoc-quick-fix`, `create-issue-and-commit` →
+> `adhoc-commit-as-new-issue`, and `dispatch-remote` / `plan-dispatch` (in the "Planning /
+> Linear family" list) have been **removed**. Don't invoke the old names — this doc is a
+> point-in-time design record, not current reference.
+
 > This is the blueprint. It proposes the target system and the sequence to get
 > there. Nothing below is built yet — the point is to agree the *shape* before
 > churning the harness. Read §1 (the diagnosis) and §3 (the one-page target),

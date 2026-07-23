@@ -3,6 +3,12 @@
 **Date:** 2026-07-22
 **Status:** implemented (this PR)
 
+> **Historical naming note:** skill names below reflect what they were called when this
+> was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
+> `issue-implement`, and `dispatch-remote` (mentioned in "Relationship to existing
+> skills" below) has been **removed** along with `plan-dispatch`. Don't invoke the old
+> names — this doc is a point-in-time design record, not current reference.
+
 ## Why
 
 We can shepherd an issue end-to-end (spec → approval → implement → PR feedback) and,
