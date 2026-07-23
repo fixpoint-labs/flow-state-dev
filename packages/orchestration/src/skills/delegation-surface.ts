@@ -310,6 +310,28 @@ function buildRunBoardTool(
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolve the delegation build for this execution step. Re-walks eligibility
+ * (`collectAgentSources`, including its live-manifest disable read) on every
+ * call — that walk is never memoized — then hands the per-execution memo
+ * (`internal/delegation-memo.ts`) the resolved sources plus a closure over
+ * the actual build (`buildTools`/`buildGuidance`); the memo invokes the
+ * closure only when the resolved source list has changed since the last
+ * call for this execution. Both `buildDelegationTools` and
+ * `buildDelegationGuidance` call this, so the roster is walked and built
+ * once per snapshot and shared between them (D1).
+ */
+async function resolveBuild(
+  ctx: BlockContext,
+  deps: DelegationSurfaceDeps,
+): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
+  const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
+  return resolveDelegationBuild(ctx, sources, async () => ({
+    tools: await buildTools(ctx, deps, sources),
+    guidance: buildGuidance(sources),
+  }));
+}
+
+/**
  * Build the delegation tool surface for one generator execution. Returns `[]`
  * when no bound skill declares agents. Memoized per execution via
  * `resolveDelegationBuild` — the tools materialize once per turn and are reused
@@ -319,7 +341,7 @@ export async function buildDelegationTools(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
 ): Promise<GeneratorTool[]> {
-  return (await resolveDelegationBuild(ctx, deps)).tools;
+  return (await resolveBuild(ctx, deps)).tools;
 }
 
 /**
@@ -330,11 +352,8 @@ export async function buildDelegationTools(
  * activation whose agent key collides with a divergent spill from another active
  * skill is skipped with a warning instead (a model-driven activation must not
  * crash the turn). Called only when `sources.length > 0`.
- *
- * Exported for `internal/delegation-memo.ts`, which is the only other caller —
- * the memo wraps this build behind its per-execution cache.
  */
-export async function buildTools(
+async function buildTools(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
   sources: DelegationAgentSource[],
@@ -455,11 +474,8 @@ const DELEGATION_PLAYBOOK = [
 /**
  * Build the roster text from an already-resolved source list. Returns `null`
  * (contributes nothing) when no bound skill declares agents.
- *
- * Exported for `internal/delegation-memo.ts`, which is the only other caller —
- * the memo wraps this build behind its per-execution cache.
  */
-export function buildGuidance(sources: DelegationAgentSource[]): string | null {
+function buildGuidance(sources: DelegationAgentSource[]): string | null {
   if (sources.length === 0) return null;
   // Dedupe by agent key — two skills sharing an agent list it once,
   // mirroring the board's participant registry.
@@ -481,5 +497,5 @@ export function buildGuidance(sources: DelegationAgentSource[]): string | null {
  */
 export function buildDelegationGuidance(deps: DelegationSurfaceDeps) {
   return async (_input: unknown, ctx: BlockContext): Promise<string | null> =>
-    (await resolveDelegationBuild(ctx, deps)).guidance;
+    (await resolveBuild(ctx, deps)).guidance;
 }
