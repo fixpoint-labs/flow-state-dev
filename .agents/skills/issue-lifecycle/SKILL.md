@@ -41,20 +41,26 @@ On each invocation, reconstruct the phase from a **small** read:
 - **Durable truth:** the Linear issue state + whether a spec PR / impl PR exist and
   their status (open / review / CI / merged). Fetch these compactly (Linear MCP; the
   GitHub `pull_request_read` methods `get`, `get_check_runs`, `get_comments` — the
-  approval-comment read — and `get_review_comments`).
+  approval-comment read — `get_reviews` — the approval-review read — and
+  `get_review_comments` for inline diff threads).
   **Two spec-PR signals are load-bearing, read from different calls:**
   - The **`draft` flag** (from `pull_request_read` `get`) — `draft: true` = the Case (Part I)
     is under first-pass review (AWAITING_CASE_APPROVAL); `draft: false` = the human promoted
     it, so Part II should exist or be building (AWAITING_SPEC_APPROVAL).
-  - An **approving comment from a human** on the spec PR (from the PR's comments —
-    `pull_request_read` `get_comments`) — the human's durable sign-off on
-    the full spec (a comment saying "approved", authored by a human, not a bot and not a
-    bot-authored comment; the detection rule is in
-    [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates). A comment is
-    the gate because it *wakes* the lifecycle — a `labeled` webhook doesn't arrive, a comment
-    does. On detecting it, **mirror it to the `spec approved` label** (a durable, filterable
-    record) in the same step. Its presence is the gate to advance to NEEDS_IMPLEMENTATION —
-    and what authorizes the lifecycle to **close the spec PR** (unmerged) at that transition
+  - An **approving comment or GitHub Review from a human** on the spec PR (from the PR's
+    comments — `pull_request_read` `get_comments` — or its reviews — `get_reviews`) — the
+    human's durable sign-off on the full spec: either a comment saying "approved" authored
+    by a human (not a bot, not a bot-authored comment), or a Review with `state: APPROVED`
+    authored by a human who is not the PR's own author (GitHub already blocks a PR author
+    from approving their own PR, but check `review.user != pr.user` explicitly rather than
+    depend on that alone — and exclude bot reviews, e.g. Cursor Bugbot / Codex leave Review
+    submissions with a `state`, not just comments); the detection rule is in
+    [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A comment or a
+    review submission is the gate because either *wakes* the lifecycle — a `labeled` webhook
+    doesn't arrive, but both of these do. On detecting either, **mirror it to the
+    `spec approved` label** (a durable, filterable record) in the same step. Its presence is
+    the gate to advance to NEEDS_IMPLEMENTATION — and what authorizes the lifecycle to
+    **close the spec PR** (unmerged) at that transition
     (only once the PR is ready and Part II is present; an approval on a still-draft Case is
     premature — surface it, don't implement).
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
@@ -72,7 +78,7 @@ next sub-agent fetches it.
 |---|---|---|
 | **NEEDS_SPEC** — no spec / not yet in spec review | Dispatch a sub-agent: *run `issue-spec <issue>`* (Stage 1). It researches, drafts **Part I ("The Case")**, opens the spec PR **as a draft** (Part I only), and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the **draft** spec PR to the user for a first-pass review (and note that marking it ready triggers Part II); record handles; end turn → AWAITING_CASE_APPROVAL. |
 | **AWAITING_CASE_APPROVAL** — spec PR is a **draft** (Part I only) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch, scoped to Part I (apply clear fixes, escalate debatable), returns what changed, exits. On the spec PR's **draft→ready-for-review promotion** (the human's signal the Case holds): dispatch a sub-agent to run `issue-spec` **Step 6.6** — author **Part II ("The Build Plan")**, append it, push to the same PR — returns what it added, exits. | End turn between events. The promotion is the trigger to build Part II → AWAITING_SPEC_APPROVAL once it's pushed. |
-| **AWAITING_SPEC_APPROVAL** — spec PR is **ready** (Part I + II) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (now covering Part II too), returns what changed, exits. When an **approving human comment is posted** on the spec PR (the durable sign-off — "approved", from a human, not a bot; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, then **close the spec PR** (unmerged, delete the branch) with a comment pointing to the Linear document as the canonical spec, and advance. If the user conveys sign-off **in-session** instead of commenting, that in-session sign-off satisfies the gate (the comment channel exists for the *async* wake; a live sign-off needs none) — record it by applying the `spec approved` label yourself as the mirror, then proceed. | End turn between events. **Human sign-off** is the one required gate in — normally an approving comment (which also wakes this loop), or an explicit in-session sign-off; don't implement without one. |
+| **AWAITING_SPEC_APPROVAL** — spec PR is **ready** (Part I + II) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (now covering Part II too), returns what changed, exits. When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review with `state: APPROVED`, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, then **close the spec PR** (unmerged, delete the branch) with a comment pointing to the Linear document as the canonical spec, and advance. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate (the comment/review channel exists for the *async* wake; a live sign-off needs none) — record it by applying the `spec approved` label yourself as the mirror, then proceed. | End turn between events. **Human sign-off** is the one required gate in — normally an approving comment or review (either also wakes this loop), or an explicit in-session sign-off; don't implement without one. |
 | **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); the issue is DONE only when every sub-PR is merged. |
 | **DONE** — impl PR merged | none | Update the cache to DONE; report completion. |
@@ -106,7 +112,7 @@ per-write lookup is needed:
 **Who writes it:** whichever agent effects or detects the transition, in the same step —
 the worker sets it for a transition it *causes* (it opened the PR); the orchestrator sets
 it inline (one cheap `save_issue` call) for a transition it *detects* on refresh (an
-approving comment, a merge). Set it **idempotently** — if the issue is already in the
+approving comment or review, a merge). Set it **idempotently** — if the issue is already in the
 target state, leave it. On a multi-PR issue the status tracks the **whole** issue: In
 Review while any impl sub-PR is open, Done only when every sub-PR is merged (a spec PR
 never counts). If these IDs ever stop resolving (a workflow edit), re-fetch with
@@ -156,9 +162,9 @@ draft→ready-for-review promotion** (still label-like: no guaranteed `ready_for
 webhook) — schedule a check-in (`send_later`, ~30–60 min) and re-arm it while the issue is
 live; stop once the impl PR is merged or closed. On each wake, re-read the two spec-PR
 signals rather than trusting a webhook arrived: in AWAITING_CASE_APPROVAL, a `draft` flip to
-`false` is the promotion; in AWAITING_SPEC_APPROVAL, an approving human comment on the spec
-PR is the go-ahead (check the PR's comments — a small read; not a label). Never poll with
-`sleep`.
+`false` is the promotion; in AWAITING_SPEC_APPROVAL, an approving human comment or review on
+the spec PR is the go-ahead (check the PR's comments and reviews — both small reads; not a
+label). Never poll with `sleep`.
 
 ## Token discipline (the point of this skill)
 

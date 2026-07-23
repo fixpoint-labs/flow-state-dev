@@ -50,30 +50,31 @@ even if more are queued. State the chosen N and the cap to the user.
    see [Epic coordination](#epic-coordination-optional--when-the-set-shares-cross-cutting-concerns) —
    and **record the epic handle (epic issue ID · name · `epic/<name>` branch · epic PR#) in
    `.orchestration/fleet.md` alongside the set**, so it survives across wakes (the next
-   refresh needs it to re-check the epic PR for its approving comment, keep the epic PR
+   refresh needs it to re-check the epic PR for its approving comment or review, keep the epic PR
    subscribed, and pass the branch/SHA to workers).
 2. **Refresh the table.** Fetch each issue's Linear state + PR status to derive its phase
    (reuse each issue's `.orchestration/<ISSUE>.md` handle cache) — **including each open spec
-   PR's `draft` flag and its comments**: a flip from `draft` to ready signals building Part II,
-   and an **approving human comment** on the spec PR (a "approved" comment from a human — not a
-   bot, not a bot-authored comment; rule in
+   PR's `draft` flag, its comments, and its reviews**: a flip from `draft` to ready signals
+   building Part II, and an **approving human comment or GitHub Review** on the spec PR (a
+   "approved" comment, or a Review with `state: APPROVED`, from a human — not a bot, not a
+   bot-authored comment/review body, and for a review, not the PR's own author; rule in
    [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates) signals moving to
    implementation. **If an epic is active,** fetch the **epic issue and its sub-issues in one
    Linear query** (parent→children — the point of the parent model) rather than N independent
-   fetches, and check the epic PR for an **approving human comment**; resolve the epic branch
-   handle (branch + head SHA) **once here** and pass it to workers in step 3 so they don't each
-   re-fetch it. These read-only fetches — including scanning a PR's comments for a human
-   approval — are the mechanical tier: use the **`scout`** agent (Haiku), not a full worker. Do
-   **not** re-dispatch the worktree workers just to read state. When scout reports an approving
-   comment, **mirror it to the `spec approved` / `epic approved` label** so the sign-off stays
-   filterable (loop step 4/5).
+   fetches, and check the epic PR for an **approving human comment or review**; resolve the epic
+   branch handle (branch + head SHA) **once here** and pass it to workers in step 3 so they don't
+   each re-fetch it. These read-only fetches — including scanning a PR's comments and reviews for
+   a human approval — are the mechanical tier: use the **`scout`** agent (Haiku), not a full
+   worker. Do **not** re-dispatch the worktree workers just to read state. When scout reports an
+   approving comment or review, **mirror it to the `spec approved` / `epic approved` label** so
+   the sign-off stays filterable (loop step 4/5).
 3. **Advance where there's a pending action.** For each issue that has a next bounded
    action (needs spec, has unhandled PR events, spec just approved, …) and is within
    the concurrency cap, dispatch an **`issue-worker`** — the custom agent at
    `.claude/agents/issue-worker.md`, which declares `isolation: worktree` (its own
    worktree/branch) and has no `AskUserQuestion` (it never prompts; it returns
    blockers for the fleet to surface). **Epic gate:** if the issue is under an epic whose
-   epic PR has **no approving comment yet** (step 2 didn't detect one, and the `epic approved`
+   epic PR has **no approving comment or review yet** (step 2 didn't detect one, and the `epic approved`
    mirror label is absent), hold it at NEEDS_SPEC — do **not** dispatch a worker to advance it
    (that's the objective gate; see Epic coordination). When you do
    dispatch, pass the resolved **epic handle** (branch + SHA) from step 2 so `issue-spec`
@@ -98,24 +99,26 @@ even if more are queued. State the chosen N and the cap to the user.
    also applies the `spec approved` / `epic approved` label as the durable mirror. Idempotent —
    skip if the issue is already in the target state (and the label already present).
 5. **Surface gates.** If an **epic** is awaiting its objective sign-off, surface the epic
-   PR (its purpose/objective) and note that an **approving comment on the epic PR** releases
-   the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue: for any
-   issue **awaiting Case approval** (its spec PR is a
+   PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
+   releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
+   for any issue **awaiting Case approval** (its spec PR is a
    **draft**, Part I only), surface the **draft spec PR link** for a first-pass review and
    note that **marking it ready-for-review triggers the Build Plan (Part II)** — the
    fleet holds the *link*, not the spec text. For any issue **awaiting spec approval**
    (spec PR now **ready**, Part I + II), surface it for the second-pass review and note
-   that **an approving comment on the spec PR** is the go-ahead to implement (a plain
-   "approved" comment — the label is applied by the fleet, not the human). The *other*
+   that **an approving comment or review on the spec PR** is the go-ahead to implement (a
+   plain "approved" comment, or an Approve-state review, from a human other than the PR's
+   author — the label is applied by the fleet, not the human). The *other*
    issues keep moving. For any issue **ready to merge**, surface it and stop there (merge
    is the user's).
 6. **End the turn.** Subscribe to **all live PRs — spec, impl, and the epic PR (when
    active)** (`subscribe_pr_activity`): a spec PR's review activity during Case/spec review
    must wake the fleet, not wait for the heartbeat, and epic PR activity must too (so feedback
-   can fan down and an approving comment on the epic PR is caught). **The two sign-off gates
-   now ride that stream** — an approving comment is a delivered PR-activity event, so a spec-
-   or epic-PR approval wakes the fleet immediately (the reason the gates moved off labels,
-   whose webhook never arrives). The one remaining non-guaranteed transition is the
+   can fan down and an approving comment or review on the epic PR is caught). **The two
+   sign-off gates now ride that stream** — both a comment and a review submission are
+   delivered PR-activity events, so a spec- or epic-PR approval (either form) wakes the fleet
+   immediately (the reason the gates moved off labels, whose webhook never arrives). The one
+   remaining non-guaranteed transition is the
    **draft→ready-for-review promotion** (advances Case review → Part II build): no
    `ready_for_review` webhook is guaranteed, so the scout's table refresh (step 2) re-reads
    each open spec PR's `draft` flag to catch it on the next wake. Schedule one fleet check-in
@@ -146,13 +149,13 @@ The fleet coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, wor
   document), and returns the handles. The fleet holds only handles (epic issue ID, name,
   branch, epic PR#), never the spec text.
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
-  **approving comment** sign-off and hold the epic's issues at NEEDS_SPEC until it lands
-  (loop step 3). It's the *only* epic-level gate; direction stays ungated. When an approving
-  human comment lands on the epic PR, **the fleet writes both mirrors** — it applies the
-  `epic approved` label (durable, filterable record) *and* moves the Epic *issue's* Linear
-  state to reflect "objective approved" (the comment is the trigger; the label and Linear
-  state are human-facing mirrors, and the fleet owns keeping them in step so they don't
-  drift).
+  **approving comment or review** sign-off and hold the epic's issues at NEEDS_SPEC until it
+  lands (loop step 3). It's the *only* epic-level gate; direction stays ungated. When an
+  approving human comment or review lands on the epic PR, **the fleet writes both mirrors**
+  — it applies the `epic approved` label (durable, filterable record) *and* moves the Epic
+  *issue's* Linear state to reflect "objective approved" (the comment or review is the
+  trigger; the label and Linear state are human-facing mirrors, and the fleet owns keeping
+  them in step so they don't drift).
 - **Own the subscription; fan feedback down.** Route epic PR review/human feedback **down**
   to the aligned issue workers (sub-agents can't subscribe; the fleet does, same as a
   spec-PR event). When an epic comment is **heavy or its fan-out target is unclear** ("which
@@ -262,8 +265,8 @@ the set or an alignment edit could ripple.
 ## Gates & autonomy
 
 - **Spec-approval gate is per issue.** Each issue independently waits for the user's
-  sign-off — an **approving comment** on its spec PR, which the fleet mirrors to the
-  `spec approved` label — before implementing; approvals are independent, so issue B isn't
+  sign-off — an **approving comment or review** on its spec PR, which the fleet mirrors to
+  the `spec approved` label — before implementing; approvals are independent, so issue B isn't
   blocked by issue A's pending spec.
 - **Stop before merge**, per issue. The fleet never merges.
 - A worker that reports a **blocker** (dependency not landed, ambiguous spec review,
