@@ -34,14 +34,20 @@ modest — **~3–4 active issues** is a sane default; go higher only for light 
 If disk or memory gets tight, cap the number of *simultaneously implementing* issues
 even if more are queued. State the chosen N and the cap to the user.
 
+> **Working memory is session-only — never commit it.** The fleet board and the
+> per-issue handle caches live in the **gitignored `.orchestration/`** directory.
+> Never `git add`, commit, or open a PR for these files. Commit only real issue work,
+> and only inside each issue's own worktree/branch. A PR whose diff is a board /
+> status / scratch file is a bug — do not open it.
+
 ## The loop (each invocation)
 
 1. **Resolve the set.** Take the issue IDs from the argument, or propose a set (you
    may compose `fsd:plan-dispatch` / `fsd:linear-triage` for selection) and confirm
-   with the user. Record the set + chosen N in `.agents/orchestration/fleet.md`
+   with the user. Record the set + chosen N in `.orchestration/fleet.md`
    (compact: the issue list and per-issue handle-cache pointers).
 2. **Refresh the table.** For each issue, cheaply fetch its Linear state + PR
-   status to derive its phase (reuse each issue's `.agents/orchestration/<ISSUE>.md`
+   status to derive its phase (reuse each issue's `.orchestration/<ISSUE>.md`
    handle cache). These read-only status/handle fetches are the mechanical tier — use
    the **`scout`** agent (Haiku), not a full worker. Do **not** re-dispatch the
    worktree workers just to read state.

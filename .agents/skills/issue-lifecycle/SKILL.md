@@ -41,7 +41,8 @@ On each invocation, reconstruct the phase from a **small** read:
 - **Durable truth:** the Linear issue state + whether a spec PR / impl PR exist and
   their status (open / review / CI / merged). Fetch these compactly (Linear MCP; the
   GitHub `pull_request_read` methods `get`, `get_check_runs`, `get_review_comments`).
-- **Handle cache:** a compact record at `.agents/orchestration/<ISSUE-ID>.md` — issue
+- **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
+  session-only** directory — never `git add`/commit/PR it) — issue
   ID, spec PR#, impl PR#, branch, worktree path, current phase, and the last action
   taken. A few lines. Update it at the end of every step. It is a cache of handles,
   not a log of content.

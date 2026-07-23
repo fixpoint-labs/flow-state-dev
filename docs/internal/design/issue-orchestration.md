@@ -22,7 +22,8 @@ phase into a sub-agent whose context is discarded once it returns a compact summ
   single next action and ends the turn. Waiting (spec approval, CI, review) happens
   *between* invocations — the session idles at ~zero context and re-enters on a PR
   event / user message / scheduled check-in, re-deriving phase from Linear + PR
-  state (durable truth) plus a compact handle cache (`.agents/orchestration/<ISSUE>.md`).
+  state (durable truth) plus a compact handle cache (`.orchestration/<ISSUE>.md`, a
+  gitignored session-only directory — never committed).
 - **Fleet = same discipline, one level up.** `issue-fleet` holds a per-issue status
   table only; each issue's worker is a **worktree-isolated** sub-agent that advances
   one step and returns one status line. Workers are the token sink and are isolated.

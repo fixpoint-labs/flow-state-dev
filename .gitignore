@@ -20,6 +20,9 @@ docs/superpowers/*
 packages/devtool/dist-client/*
 .claude/**/_drafts/*
 .claude/worktrees/
+# Orchestration working memory — session-only, never commit (fleet board, handle caches)
+/.orchestration/
+.agents/orchestration/
 agents/**/_drafts/*
 agents/todos/*
 docs/internal/design-memos/*
