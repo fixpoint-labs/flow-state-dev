@@ -139,10 +139,11 @@ generator({ uses: [skills.with({ active: ["research-lead"] })] });
 
 An inline agent may set `context-supply: conversation` to inherit the parent
 conversation up to the point it is dispatched (fork-like), bounded to the last
-several turns by default, while its own steps stay out of the host's history
-(output keeps `history: false`). Omitting the field, or `isolated`, is the
-default: the agent sees only its task input. It applies to `prompt` / `prompt-ref`
-agents; setting it on an `agent-ref` agent fails loud. See
+several turns by default (a turn count, not a token budget), while its own steps
+stay out of the host's history (output keeps `history: false`). Omitting the
+field is the default: the agent is isolated and sees only its task input — there
+is no `isolated` value to set. It applies to `prompt` / `prompt-ref` agents;
+setting it on an `agent-ref` agent fails loud. See
 [Context supply](https://flow-state.dev/docs/orchestration/context-supply).
 
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned

@@ -16,6 +16,7 @@
 
 import {
   generator,
+  warnOnceDev,
   type GeneratorTool,
 } from "@flow-state-dev/core";
 import type {
@@ -94,6 +95,10 @@ type WorkerInput = TaskWorkerInput;
  * `ItemQuery.limit` shape (`{ limit: { turns: N } }`, not `{ turns: N }`). This
  * caps the token / latency cost of feeding prior conversation into a delegated
  * agent; a per-agent override is a documented future extension.
+ *
+ * Note the bound is a **turn** count, not a token budget: N whole turns of very
+ * long messages can still be a lot of tokens. It caps how many turns flow in,
+ * not their size.
  */
 export const CONVERSATION_HISTORY_TURNS = 8;
 
@@ -115,15 +120,13 @@ export async function materializeWorker(
   // out-of-enum value (which would otherwise fall through the `=== "conversation"`
   // check below and silently run isolated) and (b) `contextSupply` on an
   // `agentRef` agent (whose context is owned by the workforce materializer, not
-  // reachable from this history slot).
+  // reachable from this history slot). `"conversation"` is the only value;
+  // isolation is the default, expressed by omitting the field (no sentinel).
   if (spec.contextSupply !== undefined) {
-    if (
-      spec.contextSupply !== "isolated" &&
-      spec.contextSupply !== "conversation"
-    ) {
+    if (spec.contextSupply !== "conversation") {
       throw new Error(
         `Agent '${agentKey}': invalid context-supply '${String(spec.contextSupply)}' ` +
-          `— expected "isolated" or "conversation".`,
+          `— the only value is "conversation"; omit the field for the default (isolated).`,
       );
     }
     if (spec.agentRef !== undefined) {
@@ -196,7 +199,11 @@ export async function materializeWorker(
   // history-visible, that isolation is defeated: warn, don't silently proceed.
   const inheritsConversation = spec.contextSupply === "conversation";
   if (inheritsConversation && spec.itemVisibility?.history === true) {
-    console.warn(
+    // `buildDelegationTools` re-materializes every worker on each generator
+    // execution, so a raw console.warn here fires once per step. Collapse it to
+    // one emission per (skill, agent) config via the shared warn-once helper.
+    warnOnceDev(
+      `skills:context-supply-history-visible:${deps.skillName}:${agentKey}`,
       `[skills] agent "${agentKey}": context-supply "conversation" with ` +
         `history-visible output — the sub-work re-enters host history, so it is ` +
         `no longer isolated.`,

@@ -7,11 +7,9 @@ description: How a delegated agent inherits prior conversation — the fork-like
 
 # Context supply
 
-When a skill hands work to one of its agents, that agent runs as its own generator with its own conversation. By default it sees only the task it was given. It does not see the discussion that led up to the task.
+When a skill hands work to one of its agents, that agent runs as its own generator with its own conversation. By default it sees only the task it was given, not the discussion that led up to it.
 
-Sometimes that is exactly wrong. The agent needs to know what was already said, but you still don't want its step-by-step work piling up in the main agent's memory. Getting both at once is what people usually call "forking" a conversation: inherit everything up to now, do a pile of work, hand back only the answer.
-
-In some skill systems forking is a mode you flip on a skill. Here it is not. Forking is a property of how you delegate, set by one field on the agent you delegate to. This page explains the two levers that decide what a delegated agent inherits, and how to get fork-like behavior from them.
+Sometimes that is wrong: the agent needs to know what was already said, but you still don't want its step-by-step work piling up in the main agent's memory. Inherit everything up to now, do a pile of work, hand back only the answer — that is what people call "forking" a conversation. Here forking isn't a mode you flip on a skill; it's one field on the agent you delegate to. This page covers the two levers that decide what a delegated agent inherits.
 
 ## What "fork" usually means
 
@@ -35,7 +33,7 @@ A third, related lever, [flow policy](./flow-policy), governs a different kind o
 
 ## Fork-like: a conversation-supply agent
 
-Set `context-supply: conversation` on an agent and it inherits the parent conversation up to the point it was dispatched, then diverges on its own. Leave the field off (or set `isolated`) and it sees only its task input, which is the default.
+Set `context-supply: conversation` on an agent and it inherits the parent conversation up to the point it was dispatched, then diverges on its own. Leave the field off and it sees only its task input, which is the default. There is no `isolated` value to set: omitting the field is how you get isolation.
 
 ```yaml
 agents:
@@ -44,12 +42,12 @@ agents:
     context-supply: conversation   # inherit the conversation so far
   extractor:
     prompt: Pull the action items out of the task you are given.
-    # no context-supply -> isolated: sees only its task input
+    # no context-supply -> isolated (the default): sees only its task input
 ```
 
 The `summarizer` above is fork-like. It reads the conversation that already happened, produces a brief, and only that brief re-enters the host's history. Its own reasoning stays out, because output isolation (`itemVisibility.history: false`) is unchanged by the input lever. Inherit in, isolate out.
 
-The inherited window is **bounded by default**. A conversation agent inherits the last several whole turns, not the entire session. Full, unbounded inheritance is the failure mode discussed below, so the default caps it; a per-agent bound is a planned extension.
+The inherited window is **bounded by default**. A conversation agent inherits the last several whole turns, not the entire session. The bound counts whole turns, not tokens, so a handful of very long turns can still be a lot of context. Full, unbounded inheritance is the failure mode discussed below, so the default caps it; a per-agent bound is a planned extension.
 
 ### The low-level equivalent
 

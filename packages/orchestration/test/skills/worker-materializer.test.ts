@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSpec } from "@flow-state-dev/core";
+import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
 import {
   materializeWorker,
   buildUserMessage,
@@ -150,6 +151,10 @@ describe("materializeWorker — prompt-driven branches", () => {
 });
 
 describe("materializeWorker — contextSupply (FIX-920)", () => {
+  // The history-visible warning dedupes per (skill, agent) key for the process
+  // lifetime, so reset the shared warn-once ledger before each case.
+  beforeEach(() => __resetDeprecationWarningsForTests());
+
   it("wires a bounded history slot for a conversation agent", async () => {
     // `conversation` inherits the parent conversation up to dispatch — but
     // bounded by default (epic FIX-930), using the real ItemQuery.limit shape
@@ -163,13 +168,17 @@ describe("materializeWorker — contextSupply (FIX-920)", () => {
     expect(history).toEqual({ limit: { turns: CONVERSATION_HISTORY_TURNS } });
   });
 
-  it("sets no history slot for an isolated agent", async () => {
-    const block = await materializeWorker(
-      "summarizer",
-      { prompt: "Summarize the discussion.", contextSupply: "isolated" },
-      deps(),
-    );
-    expect((block as { config?: { history?: unknown } }).config?.history).toBeUndefined();
+  it("rejects context-supply \"isolated\" — there is no sentinel; omit for the default", async () => {
+    // The public surface is `contextSupply?: "conversation"`. Isolation is the
+    // default, expressed by omitting the field, so a leftover `"isolated"` value
+    // must fail loud rather than silently no-op.
+    await expect(
+      materializeWorker(
+        "summarizer",
+        { prompt: "x", contextSupply: "isolated" as unknown as "conversation" },
+        deps(),
+      ),
+    ).rejects.toThrow(/context-supply/i);
   });
 
   it("sets no history slot when contextSupply is absent (default isolated)", async () => {
@@ -191,7 +200,7 @@ describe("materializeWorker — contextSupply (FIX-920)", () => {
     ).toEqual({ client: true, history: false });
     const iso = await materializeWorker(
       "b",
-      { prompt: "x", contextSupply: "isolated" },
+      { prompt: "x" }, // absent contextSupply = isolated (the default)
       deps(),
     );
     expect(

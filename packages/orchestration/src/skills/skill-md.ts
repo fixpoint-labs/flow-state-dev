@@ -274,10 +274,10 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
       );
     }
     const cs = obj["context-supply"];
-    if (cs !== "isolated" && cs !== "conversation") {
+    if (cs !== "conversation") {
       throw new Error(
-        `SKILL.md agent \`${key}\`: \`context-supply\` must be "isolated" or "conversation" ` +
-          `(got ${JSON.stringify(cs)})`,
+        `SKILL.md agent \`${key}\`: \`context-supply\`'s only value is "conversation" ` +
+          `— omit the field for the default (isolated) (got ${JSON.stringify(cs)})`,
       );
     }
     spec.contextSupply = cs;
