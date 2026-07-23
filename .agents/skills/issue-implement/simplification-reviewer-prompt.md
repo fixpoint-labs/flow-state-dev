@@ -47,7 +47,7 @@ Agent tool (Plan):
     - Multiple blocks duplicating capability-shaped wiring → could be a capability
     - `.step()` chains with many tiny intermediate connector handlers → could be a pattern factory
     - Shallow modules whose interface is nearly as complex as their implementation
-    - Surface these as observations for `fsd:improve-codebase-architecture` follow-up rather than as must-fix issues
+    - Surface these as observations for `improve-codebase-architecture` follow-up rather than as must-fix issues
 
     **YAGNI violations:**
     - Features or parameters that support future use cases not in the spec

@@ -1,5 +1,5 @@
 ---
-name: fsd:distill-lessons
+name: distill-lessons
 description: Reflect on a completed, reviewed, or reworked change, extract the transferable lessons (not project trivia), and propose best-practice updates. Use after a PR was reworked or heavily reviewed, after a hard bug, or after a design you reversed — especially to learn from your OWN work being changed. Part of the self-testing-and-improving loop. Gates hard against best-practice bloat; writes to docs/contributing/best-practices.md only after user review.
 argument-hint: "<what to reflect on, e.g. 'PR #651' or 'the FIX-788 rework' or 'this session'>"
 ---

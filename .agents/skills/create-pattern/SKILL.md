@@ -1,5 +1,5 @@
 ---
-name: fsd:create-pattern
+name: create-pattern
 description: Create a new composable pattern — a multi-block sequencer composition that solves a recurring agentic architecture problem. Produces the pattern factory, internal blocks, tests, and documentation.
 argument-hint: "<pattern name and purpose, e.g. 'debate pattern where two LLMs argue opposing positions'>"
 ---

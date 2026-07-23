@@ -22,7 +22,7 @@ is marked `Superseded` and links its replacement; it is never deleted.
 
 Update policy:
 
-- A practice is established by **user review** (see the `fsd:distill-lessons`
+- A practice is established by **user review** (see the `distill-lessons`
   skill). Add it in the same change set as the code/docs adopting it.
 - Number sequentially after the last existing BP (currently BP-039). Append;
   never overwrite or renumber.
@@ -166,7 +166,7 @@ Update policy:
   - Prefer the smallest design that meets the spec. No speculative configurability, abstraction, or "flexibility" without a present consumer (YAGNI). If 200 lines could be 50, write 50.
   - Subtract as you go: a change that supersedes an old path deletes it in the same PR — don't leave old and new side by side. (Your change's orphans, not pre-existing dead code unasked-for.)
   - Minimize public surface: every exported symbol, option, and config key is a permanent maintenance contract. Prefer a sensible default over a new knob; don't export what callers don't need; don't add a package or dependency without a clear earn.
-  - Same instinct at two altitudes: the spec-time necessity gate (`fsd:create-spec` Step 3.5) and the architecture-deepening pass (`fsd:improve-codebase-architecture`) — reach for them.
+  - Same instinct at two altitudes: the spec-time necessity gate (`issue-spec` Step 3.5) and the architecture-deepening pass (`improve-codebase-architecture`) — reach for them.
 - Why: An already-large framework stays maintainable only if new surface earns its keep and superseded surface is removed, not accumulated.
 
 ---

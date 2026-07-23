@@ -155,10 +155,10 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 | Skill                     | Purpose                                                    |
 | ------------------------- | ---------------------------------------------------------- |
-| `create-spec`             | Research and write implementation specs for Linear issues  |
-| `implement-issue`         | Implement a Linear issue from its spec document            |
-| `quick-fix`               | Log a bug to Linear and fix it immediately                 |
-| `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
+| `issue-spec`              | Research and write implementation specs for Linear issues  |
+| `issue-implement`         | Implement a Linear issue from its spec document            |
+| `adhoc-quick-fix`         | Log a bug to Linear and fix it immediately                 |
+| `adhoc-commit-as-new-issue` | Create a Linear issue for work already done, commit and PR |
 | `debug-flow`              | Debug flow execution via CLI traces and NDJSON logs        |
 | `linear-triage`           | Review and prioritize Linear issues                        |
 | `plan-day`                | Identify unblocked tasks and generate a daily work plan    |

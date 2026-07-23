@@ -1,5 +1,5 @@
 ---
-name: fsd:improve-codebase-architecture
+name: improve-codebase-architecture
 description: Find deepening opportunities in the @flow-state-dev repo, informed by FSD's existing domain vocabulary (block, generator, sequencer, router, pattern, capability, scope, item) and authority hierarchy (docs/architecture > docs/contributing/best-practices.md > AGENTS.md). Use when the user wants to improve architecture, find refactoring opportunities, consolidate shallow blocks or thin handlers, or make a package more testable and AI-navigable. Respects existing best practices (BP-001–BP-039) — suggestions that would contradict a BP should explicitly justify revisiting it.
 ---
 

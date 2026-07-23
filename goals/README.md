@@ -4,7 +4,7 @@ A goal is the real-world outcome a piece of work was meant to achieve, plus a ru
 
 Goals are **not** CI specs. CI specs (`*.spec.ts`) mock the LLM and run on every push; they prove the units still behave. A goal check uses a **real model** and the **real path**, runs **outside CI**, and is run **by hand** (by you or an agent) to confirm the feature actually works the way a user would experience it. A mocked spec can pass while the feature does nothing useful, because the mock fed the assertion the answer it wanted. The goal check removes that crutch.
 
-See `fsd:tdd` → "Two kinds of test" for where this sits in the workflow.
+See `tdd` → "Two kinds of test" for where this sits in the workflow.
 
 ## Why a library
 

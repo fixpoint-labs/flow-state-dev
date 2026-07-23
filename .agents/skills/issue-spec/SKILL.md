@@ -1,5 +1,5 @@
 ---
-name: fsd:create-spec
+name: issue-spec
 description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, then publish the spec as a versioned doc at docs/specs/<ISSUE-ID>.md opened as a spec PR for automated review and mirrored to the Linear issue (repo and Linear kept in sync).
 argument-hint: "<Linear issue ID or identifier, e.g. FSD-142>"
 ---
@@ -12,7 +12,7 @@ You are a specification research and authoring agent. Given a Linear issue, your
 
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
 
-**The spec lives in two synced places.** It is authored as a versioned doc at `docs/specs/<ISSUE-ID>.md` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. The two copies are the same content and must be kept in sync — see Step 6. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. The spec PR is never merged — `fsd:implement-issue` closes it (unmerged, branch deleted) when implementation starts, and the Linear document carries the spec from then on.
+**The spec lives in two synced places.** It is authored as a versioned doc at `docs/specs/<ISSUE-ID>.md` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. The two copies are the same content and must be kept in sync — see Step 6. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. The spec PR is never merged — `issue-implement` closes it (unmerged, branch deleted) when implementation starts, and the Linear document carries the spec from then on.
 
 This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
 
@@ -20,18 +20,18 @@ This split has a consequence: **after writing the spec, you must reframe the iss
 
 ## Companion skills
 
-The spec is the input to `fsd:implement-issue`, which auto-routes based on the Linear category label:
+The spec is the input to `issue-implement`, which auto-routes based on the Linear category label:
 
-- **Bug** → implementation follows `fsd:diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
-- **Feature / Enhancement** → implementation follows `fsd:tdd` (red-green-refactor with vertical tracer-bullet slices).
+- **Bug** → implementation follows `diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
+- **Feature / Enhancement** → implementation follows `tdd` (red-green-refactor with vertical tracer-bullet slices).
 
 Shape the spec's Testing Strategy (section 7) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
 
 Other skills the spec author should reach for when relevant:
 
-- **`fsd:zoom-out`** — when sub-agents land in an unfamiliar area of the codebase during Step 2. Asks for a terse map in FSD vocabulary (flow / actions / blocks / capabilities / scopes / items / boundaries / callers). Faster than re-reading the docs cold.
-- **`fsd:prototype`** — when a design question can't be answered from existing code alone. If you find yourself unable to decide between two block shapes / capability surfaces / state models in Step 4 (Synthesize), pause and run a LOGIC prototype against the candidate. For UI questions about devtool / kitchen-sink / renderer changes, run a UI prototype. The prototype's NOTES.md becomes input to the spec; don't ship a spec that hand-waves through a question a one-day prototype would have answered.
-- **`fsd:improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in section 8 (Non-Goals) as a follow-up flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `fsd:improve-codebase-architecture`."*
+- **`zoom-out`** — when sub-agents land in an unfamiliar area of the codebase during Step 2. Asks for a terse map in FSD vocabulary (flow / actions / blocks / capabilities / scopes / items / boundaries / callers). Faster than re-reading the docs cold.
+- **`prototype`** — when a design question can't be answered from existing code alone. If you find yourself unable to decide between two block shapes / capability surfaces / state models in Step 4 (Synthesize), pause and run a LOGIC prototype against the candidate. For UI questions about devtool / kitchen-sink / renderer changes, run a UI prototype. The prototype's NOTES.md becomes input to the spec; don't ship a spec that hand-waves through a question a one-day prototype would have answered.
+- **`improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in section 8 (Non-Goals) as a follow-up flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `improve-codebase-architecture`."*
 
 ## Workflow
 
@@ -56,12 +56,12 @@ Launch two sub-agents in parallel:
 #### Agent A: Codebase Analysis
 Launch a `feature-dev:code-explorer` sub-agent to:
 - Trace the relevant code paths that this issue touches
-- Map the current architecture for the affected area (packages, modules, key abstractions). If the area is genuinely unfamiliar, ask for the map in `fsd:zoom-out` shape first (package / flow / actions / block kinds / capabilities / scopes / items / package boundaries / callers) before diving deeper
+- Map the current architecture for the affected area (packages, modules, key abstractions). If the area is genuinely unfamiliar, ask for the map in `zoom-out` shape first (package / flow / actions / block kinds / capabilities / scopes / items / package boundaries / callers) before diving deeper
 - Identify existing patterns and conventions that the implementation must follow
 - Find related code that might be affected by or inform the implementation
 - Read relevant architecture docs (`docs/architecture/*.md`) and best practices
 - Check `AGENTS.md` for any implementation guardrails
-- Surface any **deepening opportunities** the analysis reveals — shallow handlers, repeated capability-shaped wiring, BP-violating patterns in the area being touched. These do not block the spec; they go in the Non-Goals section as follow-up flags to be handled later via `fsd:improve-codebase-architecture`
+- Surface any **deepening opportunities** the analysis reveals — shallow handlers, repeated capability-shaped wiring, BP-violating patterns in the area being touched. These do not block the spec; they go in the Non-Goals section as follow-up flags to be handled later via `improve-codebase-architecture`
 
 #### Agent B: Dependency & PR Context
 Launch an `Explore` sub-agent to:
@@ -234,7 +234,7 @@ Before drafting, check whether the research has surfaced a **design question tha
 - A state model that "looks fine on paper" but you can't tell whether scope boundaries handle edge cases correctly
 - A UI choice for devtool / kitchen-sink / renderer changes where the answer needs to be seen, not described
 
-If yes, **stop drafting and run `fsd:prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
+If yes, **stop drafting and run `prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
 
 If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without a prototype.
 
@@ -287,17 +287,17 @@ Once design questions are resolved, draft the implementation spec. The spec must
    - Fallback behaviors
 
 7. **Testing Strategy**
-   - **Goal & goal check (required).** State the work's **goal** as an observable real-world outcome (not "add a block" — the effect a user would care about), and specify the **goal check** that proves it: a real-LLM, out-of-CI script — `fsdev run` against a real model, or a `run.mts` in the root `goals/` library (`goals/<describe>/<it>/`, see `goals/README.md`) — that exercises the real path and prints PASS/FAIL on the goal. Name its pass/fail signal here so the implementer can build it. CI specs (mocked, deterministic, run every push) and the goal check (real model, run by hand to validate the work) are both required and do different jobs — see `fsd:tdd` → "Two kinds of test". A spec whose only verification is mocked specs has not said how anyone will know the goal was actually met.
-   - **When a goal check doesn't apply.** Some work has no observable runtime outcome a real model could exercise — docs-only changes, pure type-safety / schema / internal refactors, config or build plumbing. For those, state explicitly that no goal check applies with a one-line justification, rather than padding a hollow check. (Bugs are verified through `fsd:diagnose`'s real-path confirmation, not a separate goal check.) The escape hatch is "no observable behaviour to prove," not "a real run is inconvenient" — if there's a user-visible outcome, the goal check is required.
-   - Name the implementation discipline that will apply: **`fsd:tdd`** (red-green-refactor with tracer bullets) for features/enhancements; **`fsd:diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test) for bugs. `fsd:implement-issue` auto-routes by Linear category label — but the spec should match the discipline it'll be executed with.
+   - **Goal & goal check (required).** State the work's **goal** as an observable real-world outcome (not "add a block" — the effect a user would care about), and specify the **goal check** that proves it: a real-LLM, out-of-CI script — `fsdev run` against a real model, or a `run.mts` in the root `goals/` library (`goals/<describe>/<it>/`, see `goals/README.md`) — that exercises the real path and prints PASS/FAIL on the goal. Name its pass/fail signal here so the implementer can build it. CI specs (mocked, deterministic, run every push) and the goal check (real model, run by hand to validate the work) are both required and do different jobs — see `tdd` → "Two kinds of test". A spec whose only verification is mocked specs has not said how anyone will know the goal was actually met.
+   - **When a goal check doesn't apply.** Some work has no observable runtime outcome a real model could exercise — docs-only changes, pure type-safety / schema / internal refactors, config or build plumbing. For those, state explicitly that no goal check applies with a one-line justification, rather than padding a hollow check. (Bugs are verified through `diagnose`'s real-path confirmation, not a separate goal check.) The escape hatch is "no observable behaviour to prove," not "a real run is inconvenient" — if there's a user-visible outcome, the goal check is required.
+   - Name the implementation discipline that will apply: **`tdd`** (red-green-refactor with tracer bullets) for features/enhancements; **`diagnose`** (build feedback loop → reproduce → hypothesise → instrument → fix + regression test) for bugs. `issue-implement` auto-routes by Linear category label — but the spec should match the discipline it'll be executed with.
    - For features (TDD): list **behaviours** to test in observable terms (items emitted, state changes, return values, lifecycle hooks fired) — not implementation steps. Each behaviour becomes a tracer-bullet cycle.
    - For bugs (diagnose): name the **seam where the feedback loop will live** (vitest spec at which level, `fsdev block` for single-block isolation, `fsdev run` with NDJSON capture for flow-level, `packages/integration-tests/` for cross-package). Name the regression test seam — Phase 5 of diagnose requires a correct seam, and the spec is where that decision happens.
-   - Existing test files to reference for patterns. For block / pattern / capability tests, the `fsd:write-block-tests` skill encodes the mock-context idiom.
+   - Existing test files to reference for patterns. For block / pattern / capability tests, the `write-block-tests` skill encodes the mock-context idiom.
 
 8. **Non-Goals**
    - Explicit list of what this spec does NOT cover
    - Phase 2 / follow-up items (prevents scope creep)
-   - **Deepening opportunities flagged by Agent A** (shallow handlers, capability-shaped wiring, BP-violating patterns in the area being touched) — list them here as follow-ups to be handled later via `fsd:improve-codebase-architecture`. Including them in Non-Goals makes them visible without expanding scope.
+   - **Deepening opportunities flagged by Agent A** (shallow handlers, capability-shaped wiring, BP-violating patterns in the area being touched) — list them here as follow-ups to be handled later via `improve-codebase-architecture`. Including them in Non-Goals makes them visible without expanding scope.
    - **Already-rejected directions** — before adding anything to Non-Goals as a deliberate "won't do," check `docs/internal/out-of-scope/` for an existing rejection. If one matches, reference it rather than restating the reasoning here.
 
 9. **Documentation Plan**
@@ -407,7 +407,7 @@ The spec PR will draw automated review (the same bots that review code PRs). Tre
 
 - **Apply clear, obvious fixes and improvements directly** — factual corrections, missed edge cases, broken references, tightening, a better-scoped approach the reviewer is plainly right about. Update **both** the repo `docs/specs/<ISSUE-ID>.md` and the Linear document (keep them in sync), and reply on the thread noting the fix.
 - **Escalate debatable feedback to the user.** When a suggestion is a judgment call, a scope change, or a direction the reviewer and the spec could each reasonably defend, don't silently accept it — surface it with the trade-off (use `AskUserQuestion` for a crisp choice) and let the user decide.
-- The spec PR is done when review is addressed and the user has signed off on the direction; `fsd:implement-issue` then proceeds from the agreed spec and closes the spec PR unmerged as part of its branch setup. Don't merge or close the spec PR yourself.
+- The spec PR is done when review is addressed and the user has signed off on the direction; `issue-implement` then proceeds from the agreed spec and closes the spec PR unmerged as part of its branch setup. Don't merge or close the spec PR yourself.
 
 ### Step 7: Reframe the Issue Description
 
@@ -439,7 +439,7 @@ This step is required, not optional. The spec now exists as the authoritative so
 - Anything labeled "design" or "approach" — that's spec territory
 - Long checklists of work items (the spec's Implementation Sequence covers this; the issue's acceptance criteria should be outcome-shaped, not task-shaped)
 
-**Note for borderline issues.** Not every issue warrants a separate spec document. If the work is small enough that the full create-spec workflow would be overkill but still requires agent-ready clarity, the **agent-brief template** at `docs/contributing/agent-brief-template.md` is the right shape for the issue body itself. In that case you're not running create-spec at all — the brief IS the contract. Use create-spec when the implementation needs research, multiple sub-agents, or a documentation plan; use the agent-brief template directly when the issue fits on one screen and the contract is local.
+**Note for borderline issues.** Not every issue warrants a separate spec document. If the work is small enough that the full issue-spec workflow would be overkill but still requires agent-ready clarity, the **agent-brief template** at `docs/contributing/agent-brief-template.md` is the right shape for the issue body itself. In that case you're not running issue-spec at all — the brief IS the contract. Use issue-spec when the implementation needs research, multiple sub-agents, or a documentation plan; use the agent-brief template directly when the issue fits on one screen and the contract is local.
 
 **7.4. What's legitimately allowed to stay even though it's specific:**
 

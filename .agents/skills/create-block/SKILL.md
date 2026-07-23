@@ -1,5 +1,5 @@
 ---
-name: fsd:create-block
+name: create-block
 description: Create a new block (handler, generator, utility, or router) following project conventions. Produces the block file, exports, and a matching test file.
 argument-hint: "<block kind and purpose, e.g. 'handler that validates email addresses' or 'utility generator for sentiment analysis'>"
 ---

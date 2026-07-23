@@ -1,5 +1,5 @@
 ---
-name: fsd:add-flow
+name: add-flow
 description: Create a new flow definition with actions, scopes, resources, and capabilities. Produces the flow file, action blocks, and server registration.
 argument-hint: "<flow kind and purpose, e.g. 'research assistant flow with chat and summarize actions'>"
 ---

@@ -1,5 +1,5 @@
 ---
-name: fsd:debug-flow
+name: debug-flow
 description: Debug flow execution by running flows via the CLI, analyzing NDJSON traces and stderr logs, isolating failing blocks, and diagnosing root causes.
 argument-hint: "<flow-kind> <action> [description of the problem]"
 ---

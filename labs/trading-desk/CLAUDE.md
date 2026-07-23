@@ -1587,7 +1587,7 @@ sequencer composition) rather than LLM behavior.
 
 When you change analysis logic, verify it the way `pnpm test` can't — a real run
 with a machine-readable result, not the browser. There is **no wrapper script**:
-drive `fsdev run` directly. Use the **`fsd:verify-trading-desk`** skill, which
+drive `fsdev run` directly. Use the **`verify-trading-desk`** skill, which
 encodes the full workflow, the record→replay cost ladder, and the `RunSummary`
 field reference. The short version, run from this directory (`fsdev` config
 search is cwd-only):
