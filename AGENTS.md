@@ -141,7 +141,7 @@ Three tiers, picked by what kind of regression you want to catch:
 |---|---|---|
 | Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock`, `testRouter`, `testSequencer` | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
 | Flow integration | `packages/integration-tests/src/scenarios/*.test.ts` via `testFlow` | A regression that only emerges from full `runAction` composition: pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume across runs. |
-| Tier 2/3 (Playwright UI, real-LLM smoke) | Not yet on main | UI rendering, real-network behavior. Out of scope for most changes. |
+| UI e2e (Playwright) | `apps/kitchen-sink/e2e/*.spec.ts` — built in test mode and run in CI (LLMs mocked) | Browser-only regressions the lower tiers can't see: SSE→React desync, hydration, the DevTool embed, prompt-input plumbing. Deliberately small (see `docs/testing/end-to-end-tests.md`) — not a coverage tier. Out of scope for most changes. |
 
 **Reach for `packages/integration-tests/` when**:
 
