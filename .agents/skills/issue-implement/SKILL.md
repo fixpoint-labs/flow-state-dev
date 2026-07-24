@@ -71,14 +71,20 @@ If all clear, move to Step 3.
 
 ### Step 3: Set Up Branch
 
-1. Ensure main is up to date: `git checkout main && git pull`
-2. Create the branch: `fix/{ISSUE-ID}` (e.g., `fix/FIX-123`) — lowercase the ID.
+1. **Create the branch on fresh `origin/main`** (worktree-safe — see
+   [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching):
+   `git fetch origin main && git checkout -B fix/{ISSUE-ID} origin/main` — lowercase the ID.
+   The `-B ... origin/main` form works identically in the coordinator's checkout or a worker's
+   worktree and never occupies the shared `main` ref (which parallel workers would collide on).
+   This runs only when *creating* the branch — the re-entry guard above sends an in-flight impl
+   PR straight to Step 10, so you never reset a branch that already carries pushed commits.
    **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one
    node of the spec's PR plan.) Then use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement
-   **only that sub-PR's deliverables** (not the whole issue), branch off the dependency's
-   branch if it has one (else main), and open that sub-PR. Do **not** close the spec PR
+   **only that sub-PR's deliverables** (not the whole issue), and base it on the dependency's
+   branch if it has one (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
+   — else on `origin/main` as above — then open that sub-PR. Do **not** close the spec PR
    per sub-PR — the lifecycle closes it once, when the plan starts.
-3. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
+2. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
 
    ```bash
    gh pr close {spec-pr} --delete-branch \
@@ -86,7 +92,7 @@ If all clear, move to Step 3.
    ```
 
    Skip if there's no spec PR (bug without a spec, agent-brief issue) or it's already closed. From this point on, the Linear document is the only live copy — any mid-implementation spec edit happens there.
-4. Update the Linear issue state to "In Development" using `save_issue`
+3. Update the Linear issue state to "In Development" using `save_issue`
 
 ### Step 4: Determine Category and Complexity
 
@@ -287,6 +293,8 @@ After the PR is open, the skill's job is not finished — every re-invocation fa
 ### Step 10: Respond to PR Feedback
 
 Once the PR is open, this skill owns it until it merges. Whenever the skill is re-invoked with PR activity (new comments, new review, change requests), run this loop. The "never leave a code-related comment unresponded to" rule applies across re-invocations: a comment from yesterday is still a new comment if it doesn't yet have an `eyes` reaction from us.
+
+**Get onto the PR branch first.** Under the fleet each feedback round runs in a *fresh* worktree, so don't assume you're still on `fix/{ISSUE-ID}` — check out the PR head from origin before making any change or `git push` (do **not** re-base it on `main`; that would drop the PR's commits): after `gh pr view {PR} --json headRefName` (Step 10.1), `git fetch origin {headRefName} && git checkout -B {headRefName} origin/{headRefName}`.
 
 #### 10.1: Enumerate every comment and review on the PR
 

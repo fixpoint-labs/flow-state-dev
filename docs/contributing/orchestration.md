@@ -100,6 +100,45 @@ silently detached.
   durable memory) and applies one bounded update. No private `memory:` — the state is the
   visible doc.
 
+## Worktree branching (base every issue branch on fresh `origin/main`)
+
+A worktree worker (`issue-worker`, `epic-agent`, or any `isolation: worktree` sub-agent)
+does **not** start from a clean checkout of the default branch. The harness spins its
+worktree off the **coordinator session's current checkout** — the fleet/lifecycle branch.
+That branch drifts behind `main` as sibling PRs merge, and it carries coordinator-only
+state (the `.orchestration/` working memory is gitignored, but the branch HEAD is still
+whatever the coordinator sat on). Building an issue branch straight on top of that inherits
+stale code and, if the coordinator branch ever diverges, puts unrelated commits under the
+issue's PR.
+
+So **every issue branch is (re)based on freshly-fetched `origin/main` at creation**, not on
+the branch the worktree was spun off. Use the worktree-safe form:
+
+```bash
+git fetch origin main
+git checkout -B <branch> origin/main        # e.g. spec/<ISSUE-ID> or fix/<ISSUE-ID>
+```
+
+- **Never `git checkout main`.** The shared `main` ref can be checked out in only one
+  worktree at a time, so parallel workers racing on it collide
+  (`fatal: 'main' is already checked out at ...`). `checkout -B <branch> origin/main`
+  bases off the remote-tracking ref without ever occupying `main`, so any number of
+  workers can run it at once.
+- **Only at branch *creation*.** `-B` resets the branch to `origin/main`, discarding any
+  commits already on it — so run it only when first authoring the spec or first
+  implementing. On **re-entry** to an existing branch (a spec-review round, a PR-feedback
+  round — each a fresh worktree under the fleet), *fetch and check out the existing branch*
+  instead: `git fetch origin <branch> && git checkout -B <branch> origin/<branch>`. The
+  skills' re-entry guards (an in-flight impl PR jumps straight to PR-feedback) keep these
+  paths apart.
+- **Exception — a dependent sub-PR** bases on its dependency's branch, not `main`, so review
+  can start before the dep merges: `git fetch origin <dep branch> && git checkout -B <sub-PR
+  branch> origin/<dep branch>` (rebase onto the dep when it merges). See `issue-lifecycle` →
+  Multi-PR issues.
+
+This lives here so `issue-spec` and `issue-implement` share one guarantee rather than each
+half-solving it.
+
 ## Gates (three native GitHub signals)
 
 Coherence and sign-off run on signals the coordinator can read on any wake, not on
