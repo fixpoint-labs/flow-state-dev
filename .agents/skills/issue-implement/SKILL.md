@@ -78,12 +78,12 @@ If all clear, move to Step 3.
    worktree and never occupies the shared `main` ref (which parallel workers would collide on).
    This runs only when *creating* the branch — the re-entry guard above sends an in-flight impl
    PR straight to Step 10, so you never reset a branch that already carries pushed commits.
-   **Scoped to a sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one
-   node of the spec's PR plan.) Then use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement
-   **only that sub-PR's deliverables** (not the whole issue), and base it on the dependency's
-   branch if it has one (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
-   — else on `origin/main` as above — then open that sub-PR. Do **not** close the spec PR
-   per sub-PR — the lifecycle closes it once, when the plan starts.
+   - **Sub-PR of a multi-PR plan?** (Invoked by `issue-lifecycle` for one node of the spec's
+     PR plan.) Use branch `fix/{ISSUE-ID}-{sub-PR id}`, implement **only that sub-PR's
+     deliverables** (not the whole issue), and base it on the dependency's branch if it has one
+     (`git fetch origin {dep branch} && git checkout -B fix/{ISSUE-ID}-{sub-PR id} origin/{dep branch}`)
+     — else on `origin/main` as above — then open that sub-PR. Do **not** close the spec PR
+     per sub-PR — the lifecycle closes it once, when the plan starts.
 2. **Close the spec PR — never merge it.** The spec PR exists to collect review; merging it would accumulate point-in-time spec docs on main that go stale the moment implementation deviates. The Linear document (reconciled in Step 1) is the durable copy, and the closed PR keeps the review history findable. Close with a comment and delete the branch:
 
    ```bash
@@ -294,16 +294,20 @@ After the PR is open, the skill's job is not finished — every re-invocation fa
 
 Once the PR is open, this skill owns it until it merges. Whenever the skill is re-invoked with PR activity (new comments, new review, change requests), run this loop. The "never leave a code-related comment unresponded to" rule applies across re-invocations: a comment from yesterday is still a new comment if it doesn't yet have an `eyes` reaction from us.
 
-**Get onto the PR branch first.** Under the fleet each feedback round runs in a *fresh* worktree, so don't assume you're still on `fix/{ISSUE-ID}` — check out the PR head from origin before making any change or `git push` (do **not** re-base it on `main`; that would drop the PR's commits): after `gh pr view {PR} --json headRefName` (Step 10.1), `git fetch origin {headRefName} && git checkout -B {headRefName} origin/{headRefName}`.
-
 #### 10.1: Enumerate every comment and review on the PR
 
-Use `gh` to read everything attached to the PR. There are three distinct comment surfaces — you must check all three, and always `--paginate` (these endpoints return 30 items per page by default; a busy PR silently loses the rest):
+**First, get onto the PR branch.** Under the fleet each feedback round runs in a *fresh* worktree, so don't assume you're still on `fix/{ISSUE-ID}`. Run `gh pr view` for the identifiers, extract `headRefName`, then check out the PR head from origin before enumerating (and before any later change or `git push`) — do **not** re-base it on `main`, that would drop the PR's commits:
 
 ```bash
 # repo identifiers (use jq to extract from the PR URL or run once and cache)
 gh pr view {PR} --json url,headRefName,number,reviewDecision,baseRefName
+# get onto the PR head in this fresh worktree
+git fetch origin {headRefName} && git checkout -B {headRefName} origin/{headRefName}
+```
 
+Then read everything attached to the PR. There are three distinct comment surfaces — you must check all three, and always `--paginate` (these endpoints return 30 items per page by default; a busy PR silently loses the rest):
+
+```bash
 # 1) inline review comments (attached to specific lines of code)
 gh api --paginate repos/{owner}/{repo}/pulls/{PR}/comments
 

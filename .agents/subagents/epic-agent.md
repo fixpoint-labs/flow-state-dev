@@ -26,6 +26,14 @@ first** (the doc on the `epic/<name>` branch + the epic PR thread — that is yo
 memory) and apply one bounded update. You hold no private `memory:` by design: the
 epic-spec *is* the state, visible to humans and issue agents.
 
+**Get onto the epic branch, worktree-safe** (see
+[`orchestration.md`](../../docs/contributing/orchestration.md) → Worktree branching — your
+worktree is spun off the coordinator's checkout, not a clean default-branch one):
+- **Create** (first dispatch): base the new branch on fresh `origin/main` —
+  `git fetch origin main && git checkout -B epic/<name> origin/main`. Never `git checkout main`.
+- **Update** (re-entry, a fresh worktree): check out the *existing* epic branch, don't re-base it
+  on main — `git fetch origin epic/<name> && git checkout -B epic/<name> origin/epic/<name>`.
+
 Take the single action the dispatch calls for:
 
 - **Create** (first dispatch): first stand up the **Linear Epic issue** — create it, tag it
