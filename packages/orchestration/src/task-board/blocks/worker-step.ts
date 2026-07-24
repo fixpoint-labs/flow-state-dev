@@ -25,12 +25,18 @@
  *   and stay reusable; only their pattern-side registry entry is
  *   pre-adapted.
  *
- * Registry-miss errors (assignee absent, or no assignee on the task)
- * throw out of the router. The error propagates up through the
- * sequencer's `.rescue()` to `recordError`, which writes
+ * Registry-miss handling depends on whether a `defaultWorker` is
+ * configured. Without one, a miss (unknown assignee, or no assignee on
+ * the task) throws out of the router; the error propagates up through
+ * the sequencer's `.rescue()` to `recordError`, which writes
  * `collection.fail` against the worker's per-state `currentTaskId` —
  * exactly the offending task, never a sibling's concurrently-claimed
- * work.
+ * work. With a `defaultWorker`, a miss instead routes to that worker
+ * via the `keyedRouter` `fallback` slot (FIX-940): an unknown assignee
+ * falls through natively (no entry under that key), and an *absent*
+ * assignee is steered to the fallback through a reserved sentinel route
+ * (the one case `keyedRouter` can't infer, since `select` must return a
+ * string).
  */
 import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
@@ -128,10 +134,28 @@ export async function packWorkerInput(
   };
 }
 
+/**
+ * Reserved `select` return value that steers a task with **no** assignee
+ * to the router's `fallback` (the default worker). It can never collide
+ * with a real registry key: agent/assignee keys must match
+ * `/^[a-z0-9][a-z0-9_-]*$/`, so a leading underscore is unrepresentable.
+ * Only used when a `defaultWorker` is configured; without one an absent
+ * assignee still throws (I2).
+ */
+const ABSENT_ASSIGNEE_ROUTE = "__no_assignee__";
+
 export interface BuildWorkerStepOptions {
   /** Block-name prefix for the synthesised router (registry path only). */
   name: string;
   workers: TaskWorker | TaskWorkerRegistry;
+  /**
+   * Optional default worker (the delegation floor, FIX-940). Registry
+   * path only: wired as the `keyedRouter` `fallback`, it runs any task
+   * whose `assignee` is unknown or absent. Omit it and a registry miss
+   * throws exactly as before (I2). Declared workers are never routed
+   * through it — the floor is reached only on a genuine miss (I1/I3).
+   */
+  defaultWorker?: TaskWorker;
   /**
    * Resolves the active board's collection from a block context.
    * `packWorkerInput` calls this on every claim so dep outputs can be
@@ -178,7 +202,7 @@ export interface BuildWorkerStepOptions {
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
 ) {
-  const { name, workers, collection: collectionFactory, resolveFlowPolicy } = options;
+  const { name, workers, collection: collectionFactory, resolveFlowPolicy, defaultWorker } = options;
 
   const packOpts = (ctx: BlockContext) => {
     if (resolveFlowPolicy === undefined) return { ctx };
@@ -205,13 +229,28 @@ export function buildWorkerStep(
     );
   }
 
+  // Pre-connect the default worker with the SAME Task → TaskWorkerInput
+  // adaptation the registry entries get, so a floor-routed task carries
+  // deps/priorWork identically. Passed as the router `fallback` (FIX-940).
+  const connectedFallback =
+    defaultWorker !== undefined
+      ? defaultWorker.connectInput<Task>(async (task, ctx) =>
+          packWorkerInput(task, await collectionFactory(ctx), packOpts(ctx))
+        )
+      : undefined;
+
   return utility.keyedRouter({
     name: `${name}-worker-router`,
     inputSchema: taskSchema,
     outputSchema: z.unknown(),
     blocks: connectedWorkers,
+    ...(connectedFallback !== undefined ? { fallback: connectedFallback } : {}),
     select: (task: Task) => {
       if (task.assignee === undefined) {
+        // A present-but-unknown assignee routes to `fallback` natively;
+        // an absent one has no key, so steer it explicitly — but only
+        // when a floor exists. With no floor, keep throwing (I2).
+        if (connectedFallback !== undefined) return ABSENT_ASSIGNEE_ROUTE;
         throw new Error(
           `[task-board] task "${task.id}" has no assignee, but a worker registry was supplied`
         );

@@ -119,9 +119,10 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     name: "addTask",
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
-      "Set assignee to an agent, deps to task ids that must finish first, and input " +
-      "to a structured payload for the agent. Execute the plan by calling runBoard once " +
-      "all tasks are assigned.",
+      "assignee optionally names an agent; leave it unset (or name no agent) to run the task " +
+      "on a capable default worker. Set deps to task ids that must finish first, and input " +
+      "to a structured payload for the worker. Execute the plan by calling runBoard once " +
+      "all tasks are added.",
     inputSchema: z.object({
       goal: z.string(),
       assignee: z.string().optional(),

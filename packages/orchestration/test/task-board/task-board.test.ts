@@ -449,6 +449,126 @@ describe("taskBoard - worker registry routing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Default worker (the delegation floor, FIX-940) — the three invariants:
+//   I1 — a genuine miss (unknown OR absent assignee) routes to the floor.
+//   I2 — no defaultWorker → a miss still fails per onError (regression guard).
+//   I3 — a declared assignee never touches the floor.
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - default worker (the floor)", () => {
+  it("I1: routes an unknown assignee to the floor; output is recorded", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "floor-unknown",
+      collection: { collectionId: "floor-unknown" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [
+        { id: "u", goal: "unclaimed", assignee: "nobody", input: { topic: "u" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    // Before FIX-940 this task would error out of the registry router.
+    expect(final.get("u")).toBe("completed");
+    expect(trace).toEqual(["floor:u"]);
+  });
+
+  it("I1: routes an absent assignee to the floor; output is recorded", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "floor-absent",
+      collection: { collectionId: "floor-absent" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [{ id: "a", goal: "no assignee", input: { topic: "a" } }],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("completed");
+    expect(trace).toEqual(["floor:a"]);
+  });
+
+  it("I3: a declared assignee runs its own worker, never the floor", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "floor-declared",
+      collection: { collectionId: "floor-declared" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [{ id: "d", goal: "declared", assignee: "only", input: { topic: "d" } }],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("d")).toBe("completed");
+    // The declared worker ran; the floor was never invoked.
+    expect(trace).toEqual(["only:d"]);
+  });
+
+  it("rosterless: an empty registry drains every task onto the floor", async () => {
+    // The headline "no roster at all" path: the board's ONLY worker is the
+    // floor. An empty `{}` registry + defaultWorker must still drain unassigned
+    // and unknown-assignee tasks to completion.
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "rosterless",
+      collection: { collectionId: "rosterless" },
+      concurrency: 2,
+      dispatcher: "fifo",
+      workers: {},
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [
+        { id: "a", goal: "no assignee", input: { topic: "a" } },
+        { id: "b", goal: "unknown assignee", assignee: "nobody", input: { topic: "b" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("completed");
+    expect(final.get("b")).toBe("completed");
+    expect(trace.sort()).toEqual(["floor:a", "floor:b"]);
+  });
+
+  it("I2: with no defaultWorker, an absent assignee still fails the task", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "no-floor-absent",
+      collection: { collectionId: "no-floor-absent" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      // No defaultWorker — the miss must still error, exactly as before.
+      initialTasks: [
+        { id: "a", goal: "no assignee" },
+        { id: "y", goal: "ok", assignee: "only", input: { topic: "y" } },
+      ],
+      onError: "skip",
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("errored");
+    expect(final.get("y")).toBe("completed");
+    expect(trace).toEqual(["only:y"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CAS contention safety
 // ---------------------------------------------------------------------------
 

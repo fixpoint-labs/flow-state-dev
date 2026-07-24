@@ -88,12 +88,20 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
  * the caller's freshly resolved `sources`. When `sources` projects to the
  * same `SourceSnapshot` as the cached entry, the cached result is returned
  * without invoking `build`. Otherwise `build` runs and its result is cached
- * under the new snapshot. `build` is skipped entirely for an empty source
- * list (nothing to materialize).
+ * under the new snapshot.
+ *
+ * `build` is skipped for an empty source list ONLY when the floor is off
+ * (`floorOn === false`) — there is genuinely nothing to materialize. With the
+ * floor on (a rosterless `delegation: true` binding, FIX-940), an empty source
+ * list still has one thing to build — the default worker — so `build` runs and
+ * caches under the empty snapshot `[]`. Subsequent tool-loop steps with the
+ * same empty roster then hit that cached entry (deepEqual `[]` === `[]`), so the
+ * board and its floor are constructed exactly once per turn, not per step.
  */
 export async function resolveDelegationBuild(
   ctx: object,
   sources: readonly SnapshotSourceLike[],
+  floorOn: boolean,
   build: () => Promise<{ tools: GeneratorTool[]; guidance: string | null }>,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
   const snapshot = snapshotSources(sources);
@@ -101,7 +109,8 @@ export async function resolveDelegationBuild(
   if (cached && deepEqual(cached.snapshot, snapshot)) {
     return { tools: cached.tools, guidance: cached.guidance };
   }
-  const result = sources.length === 0 ? { tools: [], guidance: null } : await build();
+  const result =
+    sources.length === 0 && !floorOn ? { tools: [], guidance: null } : await build();
   delegationMemo.set(ctx, { snapshot, tools: result.tools, guidance: result.guidance });
   return result;
 }

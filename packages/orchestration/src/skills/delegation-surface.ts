@@ -71,6 +71,54 @@ export const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as c
 /** Board drain defaults — deliberate, not configurable until a consumer needs it. */
 const BOARD_CONCURRENCY = 4;
 
+/**
+ * Reserved worker key for the on-demand default worker — the delegation
+ * floor (FIX-940). Its leading underscore makes it unrepresentable as a
+ * declared agent key (`/^[a-z0-9][a-z0-9_-]*$/`). Combined with a skill
+ * name that can never contain an underscore (skill names match
+ * `/^[a-z0-9][a-z0-9-]*$/`), the floor's synthesised block name
+ * (`skillWorker_${FLOOR_SKILL_NAME}_${FLOOR_WORKER_KEY}`, i.e.
+ * `skillWorker_delegation___floor__`) is unreachable by any real
+ * `skillWorker_<skill>_<agentKey>`: no real skill name splits to leave an
+ * underscore-led agent-key segment. Used as the `materializeWorker` agent
+ * key; the floor is passed as the board's `defaultWorker` (the router
+ * fallback), not registered under this key in the participant registry.
+ */
+export const FLOOR_WORKER_KEY = "__floor__";
+
+/** Skill-name scope for the floor's synthesised block name (see FLOOR_WORKER_KEY). */
+const FLOOR_SKILL_NAME = "delegation";
+
+/**
+ * Synthetic baseline system prompt for the default worker. Generic and
+ * capable, with no identity or tools — the floor is the same kind of
+ * worker a declared inline agent is (FIX-641 later swaps this for an
+ * identity-bearing spec on the same `materializeWorker` seam).
+ */
+const DEFAULT_WORKER_PROMPT = [
+  "You are a capable, careful generalist worker on a delegation team.",
+  "You are handed one task at a time: read its goal, any input payload, and any upstream",
+  "results, then do the work and return a complete, self-contained result for that task.",
+  "Stay within the task's scope; don't ask follow-up questions — make a reasonable decision",
+  "and state any assumptions in your answer.",
+].join(" ");
+
+/** Materialize the default worker (the floor) from the synthetic baseline spec. */
+function materializeFloor(deps: DelegationSurfaceDeps): Promise<BlockDefinition> {
+  return materializeWorker(
+    FLOOR_WORKER_KEY,
+    { prompt: DEFAULT_WORKER_PROMPT },
+    {
+      catalog: deps.catalog,
+      skillName: FLOOR_SKILL_NAME,
+      // No tools, no identity. Model resolution reuses the existing chain:
+      // the library's `workerModelId` (deps.defaultModelId), then the
+      // neutral fallback inside materializeWorker — no new model knob.
+      ...(deps.defaultModelId !== undefined ? { defaultModelId: deps.defaultModelId } : {}),
+    },
+  );
+}
+
 /** One bound agent-declaring skill, from either the static or runtime path. */
 export interface DelegationAgentSource {
   skillName: string;
@@ -103,6 +151,17 @@ export interface DelegationSurfaceDeps {
   allowedNames?: string[];
   /** Whether this binding has a runtime activation path at all. */
   dynamicEligible: boolean;
+  /**
+   * Keep the delegation surface alive with an **empty** roster (FIX-940).
+   * Set when the binding opts the floor in explicitly (`delegation: true`)
+   * with no declared `agents:`, so a rosterless skill still installs the
+   * board + taskTools + runBoard, its only worker being the default floor.
+   * When false, an empty roster short-circuits to nothing, exactly as
+   * before. The floor itself is wired as the board's fallback whenever the
+   * surface builds (roster or rosterless) — this flag governs only whether
+   * an empty roster is still buildable.
+   */
+  floorOn: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,11 +305,15 @@ const runBoardOutputSchema = z.object({
 function buildRunBoardTool(
   boardCollection: () => Promise<TaskCollectionRef>,
   boardWorkers: Record<string, BlockDefinition>,
+  defaultWorker: BlockDefinition,
 ): GeneratorTool {
   const board = taskBoard({
     name: "delegation-board",
     collection: () => boardCollection(),
     workers: boardWorkers as never,
+    // The floor: any task whose assignee is unknown or absent runs here
+    // instead of erroring (FIX-940). Declared workers win their keys.
+    defaultWorker: defaultWorker as never,
     concurrency: BOARD_CONCURRENCY,
     dispatcher: "topological",
     onIdle: "complete-or-blocked",
@@ -297,7 +360,8 @@ function buildRunBoardTool(
       "Run your task board: executes every runnable task with its assigned agent — " +
       "independent tasks in parallel, dependency-gated tasks once their deps complete — " +
       "and returns the settled board with each task's output. Assign work first with addTask " +
-      "(assignee names an agent, deps order them, input carries a payload), then call this once.",
+      "(assignee optionally names an agent — an unnamed or unrecognized one runs on a default " +
+      "worker; deps order them; input carries a payload), then call this once.",
     inputSchema: z.object({}),
     outputSchema: runBoardOutputSchema,
   })
@@ -325,9 +389,9 @@ async function resolveBuild(
   deps: DelegationSurfaceDeps,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
   const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
-  return resolveDelegationBuild(ctx, sources, async () => ({
+  return resolveDelegationBuild(ctx, sources, deps.floorOn, async () => ({
     tools: await buildTools(ctx, deps, sources),
-    guidance: buildGuidance(sources),
+    guidance: buildGuidance(sources, deps.floorOn),
   }));
 }
 
@@ -351,7 +415,9 @@ export async function buildDelegationTools(
  * delegation skill must fail loud, not silently lose its team. A *runtime*
  * activation whose agent key collides with a divergent spill from another active
  * skill is skipped with a warning instead (a model-driven activation must not
- * crash the turn). Called only when `sources.length > 0`.
+ * crash the turn). Called when `sources.length > 0`, or when `deps.floorOn` (a
+ * rosterless `delegation: true` binding) — in which case the roster is empty and
+ * the default floor is the board's only worker.
  */
 async function buildTools(
   ctx: BlockContext,
@@ -436,11 +502,19 @@ async function buildTools(
     }
   }
 
-  if (Object.keys(boardWorkers).length === 0) return [];
+  // Empty roster: normally nothing to delegate to, so contribute no tools —
+  // UNLESS the floor is on (`delegation: true`), where the default worker IS
+  // the board and the surface must still install (FIX-940).
+  if (Object.keys(boardWorkers).length === 0 && !deps.floorOn) return [];
+
+  // The floor is wired as the board's fallback whenever the surface builds —
+  // roster+floor and rosterless alike (decision 3: unconditional when
+  // delegation installs). Declared workers still win their keys.
+  const defaultWorker = await materializeFloor(deps);
 
   return [
     ...(buildTaskToolsList() as GeneratorTool[]),
-    buildRunBoardTool(boardCollection, boardWorkers),
+    buildRunBoardTool(boardCollection, boardWorkers, defaultWorker),
   ];
 }
 
@@ -465,18 +539,26 @@ export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
 /** The static delegation playbook, prefixed to the live agent roster. */
 const DELEGATION_PLAYBOOK = [
   "You can delegate work to a team of agents. You have a private task board and the task tools.",
-  "Assign work as tasks: addTask each unit (assignee names an agent; deps name the task ids that",
-  "must finish first; input carries a structured payload), then call runBoard once. The board runs",
-  "your agents — independent tasks in parallel, dependency-gated tasks once their deps complete —",
-  "and returns each task's result. Synthesize the agents' results into your own answer.",
+  "Assign work as tasks: addTask each unit (assignee optionally names an agent — an unnamed or",
+  "unrecognized assignee runs on a capable default worker; deps name the task ids that must finish",
+  "first; input carries a structured payload), then call runBoard once. The board runs your workers —",
+  "independent tasks in parallel, dependency-gated tasks once their deps complete —",
+  "and returns each task's result. Synthesize the results into your own answer.",
 ].join(" ");
+
+/** One-line advisory that the board always has a default worker for unclaimed tasks. */
+const FLOOR_ADVISORY =
+  "A capable default worker handles any task whose assignee is unset or does not name one of your agents.";
 
 /**
  * Build the roster text from an already-resolved source list. Returns `null`
- * (contributes nothing) when no bound skill declares agents.
+ * (contributes nothing) when no bound skill declares agents AND the floor is
+ * off. With the floor on but an empty roster (rosterless `delegation: true`),
+ * the guidance leads with the floor rather than an empty "Your agents:" list;
+ * the floor advisory is appended in both roster states (FIX-940, decision 5).
  */
-function buildGuidance(sources: DelegationAgentSource[]): string | null {
-  if (sources.length === 0) return null;
+function buildGuidance(sources: DelegationAgentSource[], floorOn: boolean): string | null {
+  if (sources.length === 0 && !floorOn) return null;
   // Dedupe by agent key — two skills sharing an agent list it once,
   // mirroring the board's participant registry.
   const roster = new Map<string, string>();
@@ -485,7 +567,11 @@ function buildGuidance(sources: DelegationAgentSource[]): string | null {
       if (!roster.has(key)) roster.set(key, `- ${key}: ${agentPurpose(spec, source.files)}`);
     }
   }
-  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}`;
+  if (roster.size === 0) {
+    // Rosterless: no "Your agents:" list — the floor is the whole team.
+    return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY}`;
+  }
+  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}\n\n${FLOOR_ADVISORY}`;
 }
 
 /**

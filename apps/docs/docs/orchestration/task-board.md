@@ -192,7 +192,20 @@ const board = taskBoard({
 });
 ```
 
-A task whose `assignee` doesn't match any worker fails per `onError`.
+Assignee resolution follows one rule: a matched assignee runs on its own worker; an unmatched or omitted assignee falls to `defaultWorker` if one is configured; only with no `defaultWorker` does it fail per `onError`.
+
+```ts
+const board = taskBoard({
+  name: "research",
+  collection: { collectionId: "r" },
+  workers: { "market-analyst": marketAnalyst },
+  // Optional fallback: any task whose assignee is unset or unmatched runs here
+  // instead of failing. Reached only on a miss — declared workers are untouched.
+  defaultWorker: genericWorker,
+});
+```
+
+Defaults: no `defaultWorker` unless configured. This is what the skills delegation surface uses to give every board an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in explicitly.
 
 ## Concurrency and error handling
 

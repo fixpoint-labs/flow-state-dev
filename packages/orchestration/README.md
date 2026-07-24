@@ -75,6 +75,8 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 `{ drain, collectionId, capability, backing, hasIdlessInitialTasks }`.
 Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
+`defaultWorker` (optional fallback for a task whose assignee is unmatched or
+omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
 `onError`, and `maxIterations` (loop-cap, default 10000). Per-task retries are set
@@ -117,9 +119,13 @@ generator({
 });
 ```
 
-A skill that declares an `agents:` field turns on **delegation**. An agent is a
-prompt-driven teammate — defined inline (`prompt` / `prompt-ref`) inside the skill,
-or referenced from the registry (`agent-ref`). Binding the skill installs a private
+A skill that declares an `agents:` field turns on **delegation** (or force it on
+with `delegation: true` even with no `agents:`). An agent is a prompt-driven
+teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
+from the registry (`agent-ref`). Every delegation board also gets an on-demand
+**default worker**: it materializes on demand and runs any task whose assignee is
+unset or unrecognized, so a task with no named agent still runs — and an empty
+roster still delegates. Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 `listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
