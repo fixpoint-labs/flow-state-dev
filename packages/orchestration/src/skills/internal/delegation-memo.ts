@@ -87,21 +87,27 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
  * Resolve (and memoize) the delegation build for this execution step, given
  * the caller's freshly resolved `sources`. When `sources` projects to the
  * same `SourceSnapshot` as the cached entry, the cached result is returned
- * without invoking `build`. Otherwise `build` runs and its result is cached
- * under the new snapshot.
+ * without invoking `build`. Otherwise `build` runs exactly once and its result
+ * is cached under the new snapshot.
  *
- * `build` is skipped for an empty source list ONLY when the floor is off
- * (`allowEmptyRoster === false`) — there is genuinely nothing to materialize. With the
- * floor on (a rosterless `delegation: true` binding, FIX-940), an empty source
- * list still has one thing to build — the default worker — so `build` runs and
- * caches under the empty snapshot `[]`. Subsequent tool-loop steps with the
- * same empty roster then hit that cached entry (deepEqual `[]` === `[]`), so the
- * board and its floor are constructed exactly once per turn, not per step.
+ * `build` runs for EVERY changed snapshot, including an empty one. This module
+ * deliberately has no opinion about what an empty roster means — that is the
+ * surface's call, and `buildTools`/`buildGuidance` already return `[]`/`null`
+ * for a roster with nothing in it. An earlier version short-circuited an empty
+ * source list here, which silently skipped the build closure; anything the
+ * closure owns besides the build itself — notably the surface's warning that a
+ * manifest's agent keys were all rejected — was then lost precisely in the case
+ * that most needed reporting (FIX-940 review round 3). Keeping the one
+ * invocation path means a diagnostic in the closure inherits this memo for
+ * free: emitted once per distinct snapshot, never once per tool-loop step.
+ *
+ * The cost of building an empty roster is a couple of object allocations —
+ * `buildTools` returns before materializing a board or a floor — so there is no
+ * work to save by special-casing it.
  */
 export async function resolveDelegationBuild(
   ctx: object,
   sources: readonly SnapshotSourceLike[],
-  allowEmptyRoster: boolean,
   build: () => Promise<{ tools: GeneratorTool[]; guidance: string | null }>,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
   const snapshot = snapshotSources(sources);
@@ -109,8 +115,7 @@ export async function resolveDelegationBuild(
   if (cached && deepEqual(cached.snapshot, snapshot)) {
     return { tools: cached.tools, guidance: cached.guidance };
   }
-  const result =
-    sources.length === 0 && !allowEmptyRoster ? { tools: [], guidance: null } : await build();
+  const result = await build();
   delegationMemo.set(ctx, { snapshot, tools: result.tools, guidance: result.guidance });
   return result;
 }

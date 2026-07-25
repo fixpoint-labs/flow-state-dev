@@ -336,8 +336,13 @@ describe("delegation floor — reserved agent keys", () => {
 
   // The degenerate case: every declared key is illegal, and delegation was
   // DERIVED from the roster (allowEmptyRoster false) rather than forced on. The
-  // roster is empty, so no tools install — the guidance must not claim a board.
-  it("contributes no guidance when every key is rejected and the floor is off", async () => {
+  // roster is empty, so no tools install and the guidance must not claim a
+  // board — but the surface must not vanish SILENTLY either, or a corrupt
+  // out-of-band manifest is indistinguishable from a legitimately empty roster
+  // (the hardest version to debug: delegation simply isn't there). Exactly one
+  // warning — the diagnostic rides the same per-snapshot memo as the build, so
+  // repeated tool-loop steps don't spam it.
+  it("warns exactly once when every key is rejected and the floor is off", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const collection = createMockSkillsCollection();
@@ -347,6 +352,13 @@ describe("delegation floor — reserved agent keys", () => {
       const guidance = await buildDelegationGuidance(deps as never)(undefined, ctx);
       expect(tools).toEqual([]);
       expect(guidance).toBeNull();
+
+      // Both resolver entry points ran on the same ctx, so the memo must have
+      // collapsed them into a single diagnostic.
+      const rejections = warn.mock.calls.filter((c) =>
+        String(c[0]).includes("__no_assignee__"),
+      );
+      expect(rejections).toHaveLength(1);
     } finally {
       warn.mockRestore();
     }

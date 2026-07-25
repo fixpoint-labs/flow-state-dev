@@ -436,9 +436,11 @@ async function resolveBuild(
   // Validate BEFORE the memo so the snapshot keys on the roster that is actually
   // built, and both builders below see the identical list.
   const { sources, rejected } = validateAgentKeys(collected);
-  return resolveDelegationBuild(ctx, sources, deps.allowEmptyRoster, async () => {
-    // Warn inside the build closure, so a corrupt manifest reports once per
-    // snapshot rather than on every step of the tool loop.
+  return resolveDelegationBuild(ctx, sources, async () => {
+    // Warn inside the build closure so a corrupt manifest reports once per
+    // snapshot rather than on every step of the tool loop. The memo invokes
+    // this closure for every changed snapshot INCLUDING an empty one, so a
+    // roster validated down to nothing still reports why it vanished.
     for (const { skillName, key } of rejected) {
       console.warn(
         `[skills] delegation agent key "${key}" (skill "${skillName}") is not a legal agent ` +
