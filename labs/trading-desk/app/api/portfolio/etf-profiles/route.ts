@@ -134,9 +134,11 @@ export async function GET(req: NextRequest) {
   // zero fetches, Decision 5), and not a flagged inconsistent-history row.
   // Mutual funds are never eligible (assetType !== "etf" — the endpoint is
   // ETF-only, Non-goals). `isEtfProfileFetchCandidate` is the single
-  // definition of this predicate — the analysis seed's `heldFundTickers` and
-  // the Health UI's eligibility-refetch signature both read it too, so all
-  // three agree on exactly the set this route will ever fetch.
+  // definition of this FETCH-eligibility predicate — the Health UI's
+  // eligibility-refetch signature reads it too, so both agree on exactly the
+  // set this route will ever fetch. (The analysis seed's READ set is
+  // deliberately broader than this — see the predicate's own docblock for
+  // why fetch-eligibility and read-eligibility are different questions.)
   const eligibleTickers = [
     ...new Set(
       holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),

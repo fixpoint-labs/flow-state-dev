@@ -201,6 +201,78 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });
 
+  it("reads a cached profile for a MISTYPED-equity holding, letting the stored profile override a stale classification (Codex review, FIX-801 sub-PR c)", async () => {
+    // SPY is held as `assetType: "equity"` — stale/mistyped, not yet
+    // corrected by the classifications route. Its profile was already
+    // warmed (fetched earlier by this household before the mistype, or by
+    // another household, since `app.etf_profiles` is global reference
+    // data). The seed's read set must NOT be filtered by fetch-eligibility
+    // (`isEtfProfileFetchCandidate` requires `assetType === "etf"`, which a
+    // mistyped-equity row fails) — narrowing the read would mean this
+    // ticker is never even looked up, so the pure leaf's fund-detection
+    // oracle (`resolveTickerIsFund`, layer 1b) never gets the chance to let
+    // the stored profile override the stale tag, and SPY would wrongly
+    // report as a direct single-name holding instead of doing look-through.
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 0,
+      holdings: [
+        { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+    ]);
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "SPY",
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "AAPL", weight: 0.925 },
+            { ticker: "MSFT", weight: 0.07 },
+          ],
+          nameCoverage: 0.995,
+          sectors: [
+            { sector: "Technology", weight: 0.3 },
+            { sector: "Financial Services", weight: 0.66 },
+          ],
+          sectorCoverage: 0.96,
+          netExpenseRatio: 0.0945,
+          inceptionDate: "1993-01-22",
+        },
+        refusalReason: null,
+      },
+    ]);
+
+    const result = await testBlock(seedSession, { input: { ...baseInput, ticker: "AAPL" }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: {
+        health: {
+          lookThrough: { maxPosition: { ticker: string; weightPct: number } | null; coveragePct: number | null } | null;
+        } | null;
+      } | null;
+    };
+    const lookThrough = sessionState.portfolio?.health?.lookThrough;
+    // The load-bearing assertion: look-through fired for SPY DESPITE its
+    // stale `assetType: "equity"` tag — the stored profile was found and
+    // won the evidence-ordering question. Same expected numbers as the
+    // correctly-typed sibling test above (AAPL direct 10,000 + 92.5% of SPY
+    // 55,500 = 65,500 of 70,000 NAV).
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.maxPosition?.ticker).toBe("AAPL");
+    expect(lookThrough?.maxPosition?.weightPct).toBeGreaterThan(100 / 7);
+    expect(lookThrough?.coveragePct).not.toBeNull();
+    expect(fetchEtfProfileMock).not.toHaveBeenCalled();
+  });
+
   it("leaves the look-through axis null when a fund is held but its profile has never been fetched — no budget spent finding out", async () => {
     await seedAccount(repoState.repo!, {
       accountId: ACCOUNT_ID,

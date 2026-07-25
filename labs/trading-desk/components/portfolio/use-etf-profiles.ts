@@ -22,12 +22,14 @@ import type {
  *
  * **The eligibility-refetch fix.** The route's own fetch set (Decision 5) is
  * narrowed to funds that are BOTH priced and fetch-eligible
- * (`isEtfProfileFetchCandidate` — the same predicate the route and the
- * analysis seed's `heldFundTickers` use, so all three agree on exactly the
- * same set) — and both of those inputs settle asynchronously after holdings
- * load. `useApiQuery`'s stable-URL query only re-runs when its URL changes,
- * so a fund whose eligibility resolves late is otherwise missed for the whole
- * session:
+ * (`isEtfProfileFetchCandidate` — the SAME predicate the route fetches
+ * against, so this hook's `sig` param and the route's actual fetch set agree)
+ * — and both of those inputs settle asynchronously after holdings load.
+ * (The analysis seed's read set is DELIBERATELY broader than this predicate
+ * — see `isEtfProfileFetchCandidate`'s own docblock for why fetch-eligibility
+ * and read-eligibility are different questions.) `useApiQuery`'s stable-URL
+ * query only re-runs when its URL changes, so a fund whose eligibility
+ * resolves late is otherwise missed for the whole session:
  *   - **Prices.** On a cold mount the route runs before any quote exists,
  *     skips every fund as unpriced, and returns nothing.
  *   - **Classifications.** A ticker-shaped ETF imported with no type hint
@@ -59,11 +61,12 @@ import type {
  * signature and trigger a needless refetch.
  *
  * Uses `isEtfProfileFetchCandidate`, the SAME predicate the route fetches
- * against and the seed's `heldFundTickers` reads — not a looser "is this
- * fund-shaped" check. A holding the route will never fetch (a mutual fund, a
- * curated bond ETF, a flagged inconsistent-history row) must not change this
- * signature either, or a household holding one would trigger a spurious
- * refetch/cache-bust for a ticker that was never going to be warmed.
+ * against — not a looser "is this fund-shaped" check. A holding the route
+ * will never fetch (a mutual fund, a curated bond ETF, a flagged
+ * inconsistent-history row) must not change this signature either, or a
+ * household holding one would trigger a spurious refetch/cache-bust for a
+ * ticker that was never going to be warmed. (The seed's own read set is
+ * deliberately NOT filtered by this predicate — see its docblock.)
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,

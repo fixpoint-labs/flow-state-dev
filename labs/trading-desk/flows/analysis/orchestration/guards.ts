@@ -52,7 +52,7 @@ import {
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
 import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
-import { isEtfProfileFetchCandidate, toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
+import { toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/db/portfolio-db";
 import { toAccountStates } from "@/db/repository";
@@ -212,26 +212,36 @@ export const seedSession = handler({
     }
     // Stored ETF profiles (FIX-801), read-only from `app.etf_profiles` — the
     // seed NEVER fetches (Decision 1: fetching is the Portfolio pane's job,
-    // via `GET /api/portfolio/etf-profiles`). `heldFundTickers` uses the SAME
-    // `isEtfProfileFetchCandidate` predicate the route fetches against (ETF
-    // only, no curated bond ETF, no inconsistent-history row) — a ticker the
-    // route would never fetch (a mutual fund, a bond ETF) is never worth a
-    // lookup here either. A run therefore sees look-through only for funds
-    // the pane has already warmed; a fund nobody has viewed reads as an
-    // absent map entry, and the leaf treats that exactly like "no stored
-    // profile" (opaque, not fetched). A read failure must not fail the run —
-    // degrade to an empty map, same discipline as the classifications read
-    // above.
-    const heldFundTickers = [
-      ...new Set(
-        scoped.flatMap((a) =>
-          a.holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
-        ),
-      ),
+    // via `GET /api/portfolio/etf-profiles`).
+    //
+    // `heldTickersForProfileLookup` is DELIBERATELY BROADER than
+    // `isEtfProfileFetchCandidate` (the route's fetch predicate) — it reads
+    // EVERY held ticker's profile, not just the currently fetch-eligible ones.
+    // `app.etf_profiles` is global reference data, and the pure leaf's
+    // fund-detection oracle (`resolveTickerIsFund` in `etf-look-through.ts`)
+    // is explicitly designed to let a STORED PROFILE override a stale/
+    // mistyped local `assetType` — its layer 1b runs BEFORE a held ticker's
+    // own classification is trusted. A ticker still tagged `equity` locally
+    // (not yet corrected) but already correctly profiled — fetched earlier by
+    // this household, or by another household, since the table is global —
+    // needs to be IN this query for the oracle to ever see that evidence.
+    // Narrowing the read to fetch-eligible tickers would silently defeat the
+    // override: the ticker would never even be looked up, so a mistyped
+    // holding would report as a direct name instead of doing look-through
+    // (wrong effective exposure and concentration numbers) even though the
+    // data to correct it was already sitting in the table (Codex review,
+    // FIX-801 sub-PR c — a real correctness bug, not the fetch-side
+    // eligibility mismatch the shared predicate above already fixes). Fetch
+    // eligibility and READ eligibility are different questions on purpose:
+    // fetching costs a shared, budgeted Alpha Vantage unit and must stay
+    // strict; reading is a free indexed lookup and should stay permissive so
+    // the override case can work at all.
+    const heldTickersForProfileLookup = [
+      ...new Set(scoped.flatMap((a) => a.holdings.map((h) => h.ticker.toUpperCase()))),
     ];
     const etfProfiles: Map<string, FundProfileInput> = new Map();
     try {
-      const rows = await repo.getEtfProfiles(heldFundTickers);
+      const rows = await repo.getEtfProfiles(heldTickersForProfileLookup);
       for (const [ticker, profile] of toFundProfileMap(rows)) etfProfiles.set(ticker, profile);
     } catch (err) {
       console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
