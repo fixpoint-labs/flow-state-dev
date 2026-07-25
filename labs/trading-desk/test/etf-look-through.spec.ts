@@ -263,6 +263,65 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(out.residual.marketValue).toBeCloseTo(100_000);
     expect(out.hasAttribution).toBe(false);
   });
+
+  it("a non-finite (Infinity/NaN) constituent weight is treated as zero, never leaked into the name axis's accumulated mass (Codex review round 7)", () => {
+    // Mirrors the round-6 zero-weight fixture — the null-ticker row alone
+    // accounts for the full $100k, so these rows' weight VALUES don't change
+    // the correct result, only whether they're handled safely. Before this
+    // fix, `slice = c.weight * mv` was computed straight off the stored
+    // profile's weight with no validation: Infinity would flow through
+    // `slice > 0` (true) into `pushSource`, producing a phantom position
+    // with an Infinite marketValue and wrongly flipping `hasAttribution`;
+    // NaN would NaN-poison whichever accumulator it touched. `safeWeight`
+    // now clamps any non-finite (or out-of-[0,1]-range) weight to 0 before
+    // it enters ANY accumulation.
+    const positions = [fund("THIN", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "THIN",
+        profile({
+          nameCoverage: 1,
+          constituents: [
+            { ticker: null, weight: 1 },
+            { ticker: "INFCO", weight: Number.POSITIVE_INFINITY },
+            { ticker: "NANCO", weight: Number.NaN },
+          ],
+          sectorCoverage: 0.2, // fails — keep this test focused on names
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // no phantom Infinity/NaN position
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(Number.isFinite(out.residual.marketValue)).toBe(true);
+    expect(out.hasAttribution).toBe(false);
+  });
+
+  it("a non-finite sector weight never produces an Infinite/NaN sectorExposure entry (Codex review round 7)", () => {
+    // The sector axis's `add(sectorMass, s.sector, slice)` was previously
+    // UNCONDITIONAL — unlike the name axis's pushSource, nothing gated it
+    // even after the round-6 zero-weight fix, so an Infinity/NaN sector
+    // weight flowed straight into the accumulated sectorMass.
+    const positions = [fund("BADSECTOR", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "BADSECTOR",
+        profile({
+          nameCoverage: 0.2, // fails — keep this test focused on sectors
+          constituents: [],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: Number.POSITIVE_INFINITY }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    const tech = out.sectorExposure.find((s) => s.bucket === "Technology");
+    expect(tech?.marketValue).toBeCloseTo(0);
+    expect(tech?.pct).not.toBeNull();
+    expect(Number.isFinite(tech?.pct as number)).toBe(true);
+    expect(out.hasAttribution).toBe(false);
+  });
 });
 
 describe("computeLookThroughExposure — Decision 4: effective-position interval", () => {

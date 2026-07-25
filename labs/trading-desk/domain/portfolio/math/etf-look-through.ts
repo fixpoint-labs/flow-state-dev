@@ -328,6 +328,21 @@ function add(map: Map<string, number>, key: string, amount: number): void {
 }
 
 /**
+ * Defensively validate a stored profile row's `weight` before it enters ANY
+ * accumulation — a corrupted `etf_profiles` row (hand-edited, migrated, or
+ * otherwise bypassing sub-PR a's own write-time `parseFraction` guard) must
+ * never propagate a non-finite or out-of-[0,1]-range value into either axis's
+ * mass, same "no NaN/Infinity output" contract the market-value guard already
+ * enforces on `investedNav`/positions (Codex review round 7, FIX-801). An
+ * invalid weight contributes NOTHING — mirrors the fetcher's own defense
+ * (`lib/providers/etf-profile.ts`'s `parseFraction`, sub-PR a), which this
+ * leaf must not assume held for every row it will ever see.
+ */
+function safeWeight(weight: number): number {
+  return Number.isFinite(weight) && weight >= 0 && weight <= 1 ? weight : 0;
+}
+
+/**
  * Compute the look-through exposure axis from a household's positions and
  * its fund profiles. Returns `null` when `investedNav` is not usable (≤ 0 or
  * null — the guarded-division rule every leaf in this domain follows) or
@@ -422,7 +437,7 @@ export function computeLookThroughExposure(
     let fundShare = 0;
     for (const c of fp.constituents) {
       if (c.ticker === null) continue;
-      if (resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) fundShare += c.weight;
+      if (resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) fundShare += safeWeight(c.weight);
     }
     if (fundShare * 100 >= FUND_OF_FUNDS_THRESHOLD_PCT) {
       nameResidualMass += mv;
@@ -443,7 +458,7 @@ export function computeLookThroughExposure(
       });
     } else {
       for (const c of fp.constituents) {
-        const slice = c.weight * mv;
+        const slice = safeWeight(c.weight) * mv;
         if (c.ticker === null || resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) {
           nameResidualMass += slice; // non-attributable line, or routed away from the name axis
         } else if (slice > 0) {
@@ -473,7 +488,7 @@ export function computeLookThroughExposure(
       });
     } else {
       for (const s of fp.sectors) {
-        const slice = s.weight * mv;
+        const slice = safeWeight(s.weight) * mv;
         add(sectorMass, s.sector, slice);
         // Same "real attribution, not just a passing gate" rule as the name
         // axis above — a zero-weight row adds nothing real.
