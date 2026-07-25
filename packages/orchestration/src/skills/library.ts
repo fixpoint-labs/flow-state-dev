@@ -145,7 +145,10 @@ export interface SkillsBindingConfig {
    *
    * Whenever the surface installs — rosterless or roster-carrying — the default
    * worker is wired as the board's fallback, so a task whose `assignee` is unset
-   * or unrecognized runs on it instead of erroring.
+   * runs on it instead of erroring. With agents declared, an assignee naming
+   * none of them is rejected by `addTask` up front (FIX-924), so the floor is
+   * reached deliberately rather than by a typo; a rosterless board has nothing
+   * to validate against and accepts any assignee.
    */
   delegation?: boolean;
   /**

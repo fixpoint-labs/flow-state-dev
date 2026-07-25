@@ -3,9 +3,13 @@ import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   taskTools,
+  buildTaskToolsList,
+  checkAssignee,
   createTaskToolsCapability,
+  defaultOwnStateResolver,
   delegationBoardSchema,
   DELEGATION_BOARD_FIELD,
+  type WorkerRoster,
 } from "../../src/skills/task-tools-capability";
 import type { GeneratorTool } from "@flow-state-dev/core";
 
@@ -225,5 +229,180 @@ describe("taskTools — unknown task ids", () => {
       error: "task_not_found",
       taskId: "ghost",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Assignee validation (FIX-924)
+// ---------------------------------------------------------------------------
+
+/**
+ * A two-agent roster standing in for what the delegation surface derives from
+ * its board worker registry.
+ */
+const testRoster: WorkerRoster = {
+  has: (a) => a === "researcher" || a === "writer",
+  describe: () => "researcher (Researches sources), writer (Drafts prose)",
+};
+
+/** The roster-carrying tools, as the delegation surface builds them. */
+function rosterTool(name: string): GeneratorTool {
+  const tool = buildTaskToolsList(defaultOwnStateResolver, testRoster).find(
+    (t) => (t as { config?: { name?: string } }).config?.name === name,
+  );
+  if (!tool) throw new Error(`tool not found: ${name}`);
+  return tool as GeneratorTool;
+}
+
+/** Read the live board record off a mock ctx. */
+function boardOf(ctx: unknown): Record<string, { assignee?: string }> {
+  return (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
+    DELEGATION_BOARD_FIELD
+  ] as Record<string, { assignee?: string }>;
+}
+
+const seededTask = (assignee?: string) => ({
+  a: {
+    id: "a",
+    goal: "x",
+    status: "pending",
+    attempts: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    ...(assignee !== undefined ? { assignee } : {}),
+  },
+});
+
+describe("checkAssignee — the single assignment gate", () => {
+  it("accepts an assignee that names a declared agent", () => {
+    expect(checkAssignee("researcher", testRoster)).toBeUndefined();
+  });
+
+  it("accepts an absent assignee, so the default worker stays reachable by intent", () => {
+    // The floor (FIX-940) is reached by deliberately omitting the assignee.
+    // Closing that would break rosterless delegation, not just typos.
+    expect(checkAssignee(undefined, testRoster)).toBeUndefined();
+  });
+
+  it("is inert with no roster, so a roster-less consumer behaves as before", () => {
+    expect(checkAssignee("anyone-at-all", undefined)).toBeUndefined();
+  });
+
+  it("rejects an unknown assignee, naming it and the agents that do exist", () => {
+    const result = checkAssignee("reseacher", testRoster);
+    // The message has to carry both halves or the model can't self-correct:
+    // what it got wrong, and what it could have said instead.
+    expect(result?.ok).toBe(false);
+    expect(result?.error).toContain("unknown_assignee");
+    expect(result?.error).toContain('"reseacher"');
+    expect(result?.error).toContain("researcher (Researches sources)");
+    expect(result?.error).toContain("writer (Drafts prose)");
+  });
+
+  it("matches exactly — a case variant of a real agent is still unknown", () => {
+    expect(checkAssignee("Researcher", testRoster)?.ok).toBe(false);
+  });
+});
+
+describe("taskTools — assignee validation with a roster", () => {
+  it("addTask rejects a typo'd assignee and creates no task", async () => {
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(
+      rosterTool("addTask"),
+      { goal: "Find sources", assignee: "reseacher" },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(false);
+    expect((result as { error: string }).error).toContain("unknown_assignee");
+    // The whole point of failing at creation: no phantom task is left behind
+    // to blow up later when the board drains.
+    expect(Object.keys(boardOf(ctx))).toEqual([]);
+  });
+
+  it("addTask accepts a declared agent", async () => {
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(
+      rosterTool("addTask"),
+      { goal: "Find sources", assignee: "researcher" },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(Object.values(boardOf(ctx))[0]?.assignee).toBe("researcher");
+  });
+
+  it("addTask accepts an unassigned task even with a roster (it runs on the floor)", async () => {
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(rosterTool("addTask"), { goal: "anything" }, ctx);
+    expect((result as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("assignTask rejects an unknown assignee and leaves the task's assignee unchanged", async () => {
+    const ctx = buildDelegationCtx({ preTasks: seededTask("researcher") });
+    const result = await runForTest(
+      rosterTool("assignTask"),
+      { taskId: "a", assignee: "ghostwriter" },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(false);
+    expect(boardOf(ctx).a?.assignee).toBe("researcher");
+  });
+
+  it("assignTask reports an unknown TASK before an unknown assignee", async () => {
+    // Both are wrong; the missing task is the more fundamental error and the
+    // one the model must fix first.
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(
+      rosterTool("assignTask"),
+      { taskId: "ghost", assignee: "nobody" },
+      ctx,
+    );
+    expect((result as { error: string }).error).toBe("task_not_found");
+  });
+
+  it("updateTask rejects an unknown assignee in the patch", async () => {
+    const ctx = buildDelegationCtx({ preTasks: seededTask("researcher") });
+    const result = await runForTest(
+      rosterTool("updateTask"),
+      { taskId: "a", patch: { assignee: "nobody" } },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(false);
+    expect((result as { error: string }).error).toContain("unknown_assignee");
+    expect(boardOf(ctx).a?.assignee).toBe("researcher");
+  });
+
+  it("updateTask leaves the gate inert for a patch that doesn't touch assignee", async () => {
+    const ctx = buildDelegationCtx({ preTasks: seededTask("researcher") });
+    const result = await runForTest(
+      rosterTool("updateTask"),
+      { taskId: "a", patch: { priority: 5 } },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+describe("taskTools — no roster supplied (back-compat)", () => {
+  it("addTask accepts any assignee, exactly as before roster validation", async () => {
+    // The standalone `taskTools` singleton knows no workers, so it has nothing
+    // to validate against and must not start rejecting (BP-030).
+    const ctx = buildDelegationCtx();
+    const result = await runForTest(
+      findTool("addTask"),
+      { goal: "x", assignee: "whoever" },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(true);
+    expect(Object.values(boardOf(ctx))[0]?.assignee).toBe("whoever");
+  });
+
+  it("assignTask accepts any assignee", async () => {
+    const ctx = buildDelegationCtx({ preTasks: seededTask() });
+    const result = await runForTest(
+      findTool("assignTask"),
+      { taskId: "a", assignee: "whoever" },
+      ctx,
+    );
+    expect((result as { ok: boolean }).ok).toBe(true);
   });
 });

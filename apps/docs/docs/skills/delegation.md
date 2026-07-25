@@ -69,11 +69,11 @@ A skill that declares no `agents:` and does not set `delegation: true` installs 
 
 ## Default worker (the floor)
 
-Every delegation board has a **default worker** — a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared agent, that agent runs it, exactly as before. When the `assignee` is unset or names no declared agent, the task runs on the default worker instead of erroring.
+Every delegation board has a **default worker** — a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared agent, that agent runs it. When the `assignee` is unset, the task runs on the default worker instead of erroring.
 
 That gives you two ways to reach it:
 
-- **Roster plus floor.** A skill declares some agents and also delegates a task with no assignee (or an assignee it never declared). The named agents run their tasks; the floor catches the rest.
+- **Roster plus floor.** A skill declares some agents and also delegates a task with no assignee. The named agents run their tasks; the floor catches the unassigned ones.
 - **No roster at all.** Turn delegation on with `delegation: true` and declare no `agents:`. Every task runs on the floor. This is delegation without hand-writing a roster first — you plan tasks and drain, and a capable worker handles each one.
 
 ```ts
@@ -84,13 +84,28 @@ const coordinator = generator({
 // addTask({ goal }) with no assignee runs on the default worker; runBoard drains it.
 ```
 
-The floor is the same kind of worker a declared inline agent is, so a named agent is really a specialization on top of it. Named workers are unaffected: a declared assignee never touches the floor. One caveat to know: a mistyped assignee (say `"reseacher"`) is treated as a miss and runs the generic floor rather than erroring. Strict rejection of unknown assignees is a later opt-in; today the floor always catches.
+The floor is the same kind of worker a declared inline agent is, so a named agent is really a specialization on top of it. Named workers are unaffected: a declared assignee never touches the floor.
+
+Note what the floor does *not* catch. Once a skill declares agents, an assignee that names none of them is rejected when the task is added, not quietly run on the floor (see below). So the floor is reached by leaving the assignee unset, which is a deliberate "anyone can do this" — not by mistyping a specialist's name, which is a mistake worth hearing about. A board with no declared agents has no roster to check against, so it accepts any assignee and everything lands on the floor.
 
 ## What the executive gets
 
 Two things land on the generator when an agent-declaring skill is active: the tools to plan work on the board, and the tool to run it.
 
-**`taskTools` — the planning ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator plan multi-step work on its private board. `addTask` takes a `goal`, an optional `assignee` (an agent key — leave it unset, or name no declared agent, to run the task on the default worker), `deps` (task ids that must complete first), and an optional structured `input` payload the worker receives.
+**`taskTools` — the planning ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator plan multi-step work on its private board. `addTask` takes a `goal`, an optional `assignee` (an agent key — leave it unset to run the task on the default worker), `deps` (task ids that must complete first), and an optional structured `input` payload the worker receives.
+
+Assignment is checked as the task is created. `addTask`, `assignTask`, and `updateTask` reject an `assignee` that isn't one of the declared agents, and say which agents exist:
+
+```
+addTask({ goal: "Find sources", assignee: "reseacher" })
+→ { ok: false,
+    error: 'unknown_assignee: "reseacher" is not an agent on this board.
+            Available: researcher (Researches sources), writer (Drafts prose).
+            Name one of these exactly, or leave assignee unset to run the task
+            on the default worker.' }
+```
+
+No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree. This is a recoverable tool result, not a thrown error — it doesn't end the turn.
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 
