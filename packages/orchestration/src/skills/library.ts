@@ -132,8 +132,20 @@ export interface SkillsBindingConfig {
     field: string;
   };
   /**
-   * Force-off delegation even when a bound skill declares `agents:`. Delegation
-   * is otherwise derived automatically from the presence of `agents:` (FIX-918).
+   * Explicit override of the default delegation-install rule (install iff a
+   * bound skill declares `agents:`, FIX-918):
+   *
+   * - `false` — force-OFF, even when a bound skill declares `agents:`.
+   * - `true` — force-ON, even when NO skill declares `agents:` (FIX-940). The
+   *   full surface installs (board + taskTools + runBoard) with an empty roster;
+   *   its only worker is the on-demand default floor, so a skill can delegate
+   *   without hand-writing a roster. When agents ARE declared, `true` is
+   *   redundant with the default (they behave identically).
+   * - omitted — derived from the presence of `agents:`.
+   *
+   * Whenever the surface installs — rosterless or roster-carrying — the default
+   * worker is wired as the board's fallback, so a task whose `assignee` is unset
+   * or unrecognized runs on it instead of erroring.
    */
   delegation?: boolean;
   /**
@@ -405,6 +417,12 @@ export function createSkillsLibrary(
     // skills are first-class. Static wiring errors still fail loud at build
     // time via the validation pass below.
     const delegationOn = cfg.delegation !== false;
+    // `delegation: true` is the explicit rosterless opt-in (FIX-940): the floor
+    // keeps the surface installed with an empty roster, and it stays installed
+    // even if the roster later empties mid-turn. Merely deriving delegation from
+    // a declared roster does NOT set this — an emptied derived roster tears the
+    // surface down as before.
+    const allowEmptyRoster = cfg.delegation === true;
     const staticAgentSkills = delegationOn
       ? active
           .map((name) => ({ name, entry: index.get(name)! }))
@@ -485,7 +503,7 @@ export function createSkillsLibrary(
           // it defaults to an empty record) (FIX-928, D4).
           true);
     const delegationPossible =
-      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible);
+      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible || allowEmptyRoster);
     if (delegationPossible) {
       ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
     }
@@ -519,6 +537,7 @@ export function createSkillsLibrary(
         bundledAgentIndex: buildBundledAgentIndex(index),
         ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
         dynamicEligible: dynamicAgentEligible,
+        allowEmptyRoster,
       };
       // Static tools (catalog superset + load tool) are known now; the
       // taskTools and runBoard resolve per execution.

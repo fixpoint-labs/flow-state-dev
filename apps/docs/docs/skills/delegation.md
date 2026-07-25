@@ -48,10 +48,15 @@ Per-agent tuning on an inline agent: `tools` (catalog keys the agent may call it
 
 By default the delegation board is the generator's own **own-state** — a state container scoped to the one generator that installed it, never shared with or namespaced against any other block. The board is private: your tasks run against it, and nothing else can see it.
 
-Force delegation off even though the skill declares agents:
+The `delegation` flag overrides the default install rule (install when the skill declares `agents:`) in either direction:
 
 ```ts
+// Force it OFF even though the skill declares agents.
 skills.with({ active: ["research-lead"], delegation: false });
+
+// Force it ON even though the skill declares NO agents. The full surface
+// installs, and the only worker is the default floor (see below).
+skills.with({ active: ["coordinator"], delegation: true });
 ```
 
 The delegation surface also injects a **guidance context** — a short capability-supplied prompt fragment that tells the model it has a board and a roster of agents, lists the current agents by name, and reminds it to assign tasks and drain. It means the skill body doesn't have to hand-write "how to delegate" boilerplate; it carries only skill-specific content (purpose, when to delegate, what "done" looks like). Turn it off with `guidance: false` if you'd rather write the orchestration instructions yourself:
@@ -60,13 +65,32 @@ The delegation surface also injects a **guidance context** — a short capabilit
 skills.with({ active: ["research-lead"], guidance: false });
 ```
 
-A skill that declares no `agents:` installs none of this — no board, no `taskTools`, no `runBoard`, no guidance. Ordinary inline skills carry zero delegation overhead.
+A skill that declares no `agents:` and does not set `delegation: true` installs none of this — no board, no `taskTools`, no `runBoard`, no guidance. Ordinary inline skills carry zero delegation overhead.
+
+## Default worker (the floor)
+
+Every delegation board has a **default worker** — a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared agent, that agent runs it, exactly as before. When the `assignee` is unset or names no declared agent, the task runs on the default worker instead of erroring.
+
+That gives you two ways to reach it:
+
+- **Roster plus floor.** A skill declares some agents and also delegates a task with no assignee (or an assignee it never declared). The named agents run their tasks; the floor catches the rest.
+- **No roster at all.** Turn delegation on with `delegation: true` and declare no `agents:`. Every task runs on the floor. This is delegation without hand-writing a roster first — you plan tasks and drain, and a capable worker handles each one.
+
+```ts
+// A rosterless coordinator: no agents declared, floor on.
+const coordinator = generator({
+  uses: [skills.with({ active: ["coordinator"], delegation: true })],
+});
+// addTask({ goal }) with no assignee runs on the default worker; runBoard drains it.
+```
+
+The floor is the same kind of worker a declared inline agent is, so a named agent is really a specialization on top of it. Named workers are unaffected: a declared assignee never touches the floor. One caveat to know: a mistyped assignee (say `"reseacher"`) is treated as a miss and runs the generic floor rather than erroring. Strict rejection of unknown assignees is a later opt-in; today the floor always catches.
 
 ## What the executive gets
 
 Two things land on the generator when an agent-declaring skill is active: the tools to plan work on the board, and the tool to run it.
 
-**`taskTools` — the planning ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator plan multi-step work on its private board. `addTask` takes a `goal`, an `assignee` (an agent key), `deps` (task ids that must complete first), and an optional structured `input` payload the agent receives.
+**`taskTools` — the planning ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator plan multi-step work on its private board. `addTask` takes a `goal`, an optional `assignee` (an agent key — leave it unset, or name no declared agent, to run the task on the default worker), `deps` (task ids that must complete first), and an optional structured `input` payload the worker receives.
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 

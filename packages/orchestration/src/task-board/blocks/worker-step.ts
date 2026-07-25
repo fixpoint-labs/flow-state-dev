@@ -25,12 +25,18 @@
  *   and stay reusable; only their pattern-side registry entry is
  *   pre-adapted.
  *
- * Registry-miss errors (assignee absent, or no assignee on the task)
- * throw out of the router. The error propagates up through the
- * sequencer's `.rescue()` to `recordError`, which writes
+ * Registry-miss handling depends on whether a `defaultWorker` is
+ * configured. Without one, a miss (unknown assignee, or no assignee on
+ * the task) throws out of the router; the error propagates up through
+ * the sequencer's `.rescue()` to `recordError`, which writes
  * `collection.fail` against the worker's per-state `currentTaskId` —
  * exactly the offending task, never a sibling's concurrently-claimed
- * work.
+ * work. With a `defaultWorker`, a miss instead routes to that worker
+ * via the `keyedRouter` `fallback` slot (FIX-940): an unknown assignee
+ * falls through natively (no entry under that key), and an *absent*
+ * assignee is steered to the fallback through a reserved sentinel route
+ * (the one case `keyedRouter` can't infer, since `select` must return a
+ * string).
  */
 import { utility } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
@@ -128,10 +134,41 @@ export async function packWorkerInput(
   };
 }
 
+/**
+ * Reserved `select` return value that steers a task with **no** assignee
+ * to the router's `fallback` (the default worker). Only used when a
+ * `defaultWorker` is configured; without one an absent assignee still
+ * throws (I2).
+ *
+ * It cannot collide with a delegation board's registry key: agent keys must
+ * match `/^[a-z0-9][a-z0-9_-]*$/`, so a leading underscore is unrepresentable.
+ * That constraint is enforced in `skills/skill-md.ts` (`isValidAgentKey`, from
+ * `parseAgentsField` on the authoring path) and re-checked in
+ * `skills/delegation-surface.ts` `buildTools` before a key becomes a registry
+ * entry — the live-manifest read there bypasses the parser. Relaxing the
+ * pattern to admit a leading underscore would let a declared agent shadow this
+ * sentinel; both sites name this constant so the change trips over it.
+ *
+ * A caller outside the skills layer may pass any registry it likes, so this is
+ * a *delegation* guarantee, not a board-wide one. A board whose registry
+ * genuinely contains this key would route unassigned tasks there instead of to
+ * `defaultWorker` — no crash, and no such caller exists (blackboard and the
+ * patterns registries pass no `defaultWorker` at all).
+ */
+const ABSENT_ASSIGNEE_ROUTE = "__no_assignee__";
+
 export interface BuildWorkerStepOptions {
   /** Block-name prefix for the synthesised router (registry path only). */
   name: string;
   workers: TaskWorker | TaskWorkerRegistry;
+  /**
+   * Optional default worker (the delegation floor, FIX-940). Registry
+   * path only: wired as the `keyedRouter` `fallback`, it runs any task
+   * whose `assignee` is unknown or absent. Omit it and a registry miss
+   * throws exactly as before (I2). Declared workers are never routed
+   * through it — the floor is reached only on a genuine miss (I1/I3).
+   */
+  defaultWorker?: TaskWorker;
   /**
    * Resolves the active board's collection from a block context.
    * `packWorkerInput` calls this on every claim so dep outputs can be
@@ -178,7 +215,7 @@ export interface BuildWorkerStepOptions {
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
 ) {
-  const { name, workers, collection: collectionFactory, resolveFlowPolicy } = options;
+  const { name, workers, collection: collectionFactory, resolveFlowPolicy, defaultWorker } = options;
 
   const packOpts = (ctx: BlockContext) => {
     if (resolveFlowPolicy === undefined) return { ctx };
@@ -198,20 +235,53 @@ export function buildWorkerStep(
   // adaptation through its `select`. The connectInput closure captures
   // the inbound `task` so dep-output resolution happens at runtime
   // against the live collection state.
-  const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
-  for (const [assignee, worker] of Object.entries(workers)) {
-    connectedWorkers[assignee] = worker.connectInput<Task>(async (task, ctx) =>
+  //
+  // Connect each worker IDENTITY exactly once and reuse the result. A block may
+  // legitimately appear more than once on a board — under two registry keys, or
+  // as both a registry worker and the `defaultWorker` ("route unknown assignees
+  // to my generalist, who is also on the roster"). `connectInput` rebuilds the
+  // definition from the same config, so calling it twice yields two DISTINCT
+  // objects carrying the SAME block name, which the router rejects as a
+  // duplicate route name — it could not tell them apart when validating a
+  // recorded router decision on resume. Reference-equal routes are explicitly
+  // tolerated, so connecting once makes every alias collapse to one route.
+  const connectedByWorker = new Map<TaskWorker, BlockDefinition<any, any>>();
+  const connectOnce = (worker: TaskWorker): BlockDefinition<any, any> => {
+    const existing = connectedByWorker.get(worker);
+    if (existing !== undefined) return existing;
+    const connected = worker.connectInput<Task>(async (task, ctx) =>
       packWorkerInput(task, await collectionFactory(ctx), packOpts(ctx))
     );
+    connectedByWorker.set(worker, connected);
+    return connected;
+  };
+
+  const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
+  for (const [assignee, worker] of Object.entries(workers)) {
+    connectedWorkers[assignee] = connectOnce(worker);
   }
+
+  // The default worker gets the SAME Task → TaskWorkerInput adaptation the
+  // registry entries get, so a floor-routed task carries deps/priorWork
+  // identically. Passed as the router `fallback` (FIX-940). When it aliases a
+  // registry worker this IS that same connected definition, which `keyedRouter`
+  // then recognises as an already-registered route rather than appending a
+  // duplicate.
+  const connectedFallback =
+    defaultWorker !== undefined ? connectOnce(defaultWorker) : undefined;
 
   return utility.keyedRouter({
     name: `${name}-worker-router`,
     inputSchema: taskSchema,
     outputSchema: z.unknown(),
     blocks: connectedWorkers,
+    ...(connectedFallback !== undefined ? { fallback: connectedFallback } : {}),
     select: (task: Task) => {
       if (task.assignee === undefined) {
+        // A present-but-unknown assignee routes to `fallback` natively;
+        // an absent one has no key, so steer it explicitly — but only
+        // when a floor exists. With no floor, keep throwing (I2).
+        if (connectedFallback !== undefined) return ABSENT_ASSIGNEE_ROUTE;
         throw new Error(
           `[task-board] task "${task.id}" has no assignee, but a worker registry was supplied`
         );

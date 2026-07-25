@@ -286,6 +286,17 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   workers: TaskWorker<TInput, TOutput> | TaskWorkerRegistry;
 
   /**
+   * Optional default worker — the **delegation floor** (FIX-940).
+   * Registry path only: wired as the worker router's `fallback`, it runs
+   * any task whose `assignee` is unknown or absent. Omit it and a
+   * registry miss still fails the task per `onError` exactly as before;
+   * declared workers are never routed through it (reached only on a
+   * genuine miss). Non-delegation consumers (blackboard, patterns) leave
+   * it unset.
+   */
+  defaultWorker?: TaskWorker;
+
+  /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
    * this many worker sequencers via `.forEach({ maxConcurrency })`.
    */
@@ -471,6 +482,7 @@ export function taskBoard<
     name,
     collection: collectionConfig,
     workers,
+    defaultWorker,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -558,6 +570,7 @@ export function taskBoard<
   const workerStep = buildWorkerStep({
     name,
     workers,
+    ...(defaultWorker !== undefined ? { defaultWorker } : {}),
     collection: collectionFactory,
     resolveFlowPolicy: createFlowPolicyResolver(runState),
   });

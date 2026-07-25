@@ -147,6 +147,49 @@ describe("utility.keyedRouter", () => {
     await expect(runForTest(block, { which: "anything-else" }, ctx)).resolves.toBe("X");
   });
 
+  // `blocks` is a caller-supplied plain object, so `blocks[key]` alone would
+  // resolve an inherited Object.prototype member as if it were a registered
+  // route. `select` is fed runtime data (a model's chosen name, a task's
+  // `assignee`), so these keys are reachable — they must miss like any other
+  // unknown key, not be dispatched as a non-block.
+  const PROTO_KEYS = ["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"];
+
+  it.each(PROTO_KEYS)(
+    "treats the Object.prototype member %s as an unregistered key (falls back)",
+    async (protoKey) => {
+      const alpha = handler({ name: "alpha", execute: () => "A" });
+      const otherwise = handler({ name: "otherwise", execute: () => "X" });
+
+      const block = utility.keyedRouter({
+        name: "proto-key-fallback",
+        blocks: { alpha },
+        fallback: otherwise,
+        select: (input: { which: string }) => input.which,
+      });
+
+      const ctx = createMockContext();
+      await expect(runForTest(block, { which: protoKey }, ctx)).resolves.toBe("X");
+    },
+  );
+
+  it.each(PROTO_KEYS)(
+    "raises the registered-key error for the Object.prototype member %s when there is no fallback",
+    async (protoKey) => {
+      const alpha = handler({ name: "alpha", execute: () => "A" });
+
+      const block = utility.keyedRouter({
+        name: "proto-key-throw",
+        blocks: { alpha },
+        select: (input: { which: string }) => input.which,
+      });
+
+      const ctx = createMockContext();
+      await expect(runForTest(block, { which: protoKey }, ctx)).rejects.toThrow(
+        new RegExp(`no block registered under key "${protoKey.replace("$", "\\$")}"`),
+      );
+    },
+  );
+
   it("propagates errors thrown from select() without wrapping", async () => {
     const alpha = handler({ name: "alpha", execute: () => "A" });
 

@@ -48,6 +48,7 @@ import { readActivations, type ActivationLocation } from "./activation-store";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
+import { isValidAgentKey } from "./skill-md";
 import { materializeWorker } from "./worker-materializer";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import { resolveDelegationBuild } from "./internal/delegation-memo";
@@ -70,6 +71,52 @@ export const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as c
 
 /** Board drain defaults — deliberate, not configurable until a consumer needs it. */
 const BOARD_CONCURRENCY = 4;
+
+/**
+ * Reserved worker key for the on-demand default worker — the delegation floor
+ * (FIX-940). Its leading underscore puts it (and the derived block name
+ * `skillWorker_delegation___floor__`) out of reach of any declared agent or
+ * skill — see `isValidAgentKey` in `skill-md.ts` for the rules and why they are
+ * load-bearing. Used as the `materializeWorker` agent key; the floor is passed
+ * as the board's `defaultWorker`, not registered in the participant registry.
+ */
+export const FLOOR_WORKER_KEY = "__floor__";
+
+/** Skill-name scope for the floor's synthesised block name (see FLOOR_WORKER_KEY). */
+const FLOOR_SKILL_NAME = "delegation";
+
+/**
+ * Synthetic baseline system prompt for the default worker. Generic and
+ * capable, with no identity or tools — the floor is the same kind of
+ * worker a declared inline agent is (FIX-641 later swaps this for an
+ * identity-bearing spec on the same `materializeWorker` seam).
+ *
+ * Exported so the out-of-CI goal check drives the floor on the prompt that
+ * actually ships rather than a copy that could drift from it.
+ */
+export const DEFAULT_WORKER_PROMPT = [
+  "You are a capable, careful generalist worker on a delegation team.",
+  "You are handed one task at a time: read its goal, any input payload, and any upstream",
+  "results, then do the work and return a complete, self-contained result for that task.",
+  "Stay within the task's scope; don't ask follow-up questions — make a reasonable decision",
+  "and state any assumptions in your answer.",
+].join(" ");
+
+/** Materialize the default worker (the floor) from the synthetic baseline spec. */
+function materializeFloor(deps: DelegationSurfaceDeps): Promise<BlockDefinition> {
+  return materializeWorker(
+    FLOOR_WORKER_KEY,
+    { prompt: DEFAULT_WORKER_PROMPT },
+    {
+      catalog: deps.catalog,
+      skillName: FLOOR_SKILL_NAME,
+      // No tools, no identity. Model resolution reuses the existing chain:
+      // the library's `workerModelId` (deps.defaultModelId), then the
+      // neutral fallback inside materializeWorker — no new model knob.
+      ...(deps.defaultModelId !== undefined ? { defaultModelId: deps.defaultModelId } : {}),
+    },
+  );
+}
 
 /** One bound agent-declaring skill, from either the static or runtime path. */
 export interface DelegationAgentSource {
@@ -103,6 +150,17 @@ export interface DelegationSurfaceDeps {
   allowedNames?: string[];
   /** Whether this binding has a runtime activation path at all. */
   dynamicEligible: boolean;
+  /**
+   * Keep the delegation surface alive with an **empty** roster (FIX-940).
+   * Set when the binding opts the floor in explicitly (`delegation: true`)
+   * with no declared `agents:`, so a rosterless skill still installs the
+   * board + taskTools + runBoard, its only worker being the default floor.
+   * When false, an empty roster short-circuits to nothing, exactly as
+   * before. The floor itself is wired as the board's fallback whenever the
+   * surface builds (roster or rosterless) — this flag governs only whether
+   * an empty roster is still buildable.
+   */
+  allowEmptyRoster: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,11 +304,15 @@ const runBoardOutputSchema = z.object({
 function buildRunBoardTool(
   boardCollection: () => Promise<TaskCollectionRef>,
   boardWorkers: Record<string, BlockDefinition>,
+  defaultWorker: BlockDefinition,
 ): GeneratorTool {
   const board = taskBoard({
     name: "delegation-board",
     collection: () => boardCollection(),
     workers: boardWorkers as never,
+    // The floor: any task whose assignee is unknown or absent runs here
+    // instead of erroring (FIX-940). Declared workers win their keys.
+    defaultWorker: defaultWorker as never,
     concurrency: BOARD_CONCURRENCY,
     dispatcher: "topological",
     onIdle: "complete-or-blocked",
@@ -297,7 +359,8 @@ function buildRunBoardTool(
       "Run your task board: executes every runnable task with its assigned agent — " +
       "independent tasks in parallel, dependency-gated tasks once their deps complete — " +
       "and returns the settled board with each task's output. Assign work first with addTask " +
-      "(assignee names an agent, deps order them, input carries a payload), then call this once.",
+      "(assignee optionally names an agent — an unnamed or unrecognized one runs on a default " +
+      "worker; deps order them; input carries a payload), then call this once.",
     inputSchema: z.object({}),
     outputSchema: runBoardOutputSchema,
   })
@@ -320,15 +383,118 @@ function buildRunBoardTool(
  * `buildDelegationGuidance` call this, so the roster is walked and built
  * once per snapshot and shared between them (D1).
  */
+/**
+ * Drop agent keys that could never have come through the SKILL.md parser, so
+ * the roster the coordinator is TOLD about and the roster that becomes board
+ * workers are the same list — one roster, not two.
+ *
+ * `parseAgentsField` rejects an illegal key on the authoring path, but
+ * `collectAgentSources` also reads `agents` straight off a live skill manifest
+ * whose state schema is `.passthrough()` and does not describe `agents`, so a
+ * manifest written out-of-band never passed through the parser. An unfiltered
+ * key would let a planted `__no_assignee__` shadow the absent-assignee sentinel
+ * (unassigned tasks would run on it instead of the floor), `__floor__` collide
+ * with the floor's own worker key, and `__proto__` hit the prototype setter
+ * instead of creating an own key — silently emptying the registry.
+ *
+ * A source whose every key is rejected is dropped entirely, not left behind as
+ * an empty husk: `sources.length === 0` is what makes `buildTools` contribute
+ * no tools and `buildGuidance` contribute no roster, and those two must agree.
+ * Filtering rather than throwing is deliberate — the key is unreachable through
+ * every supported authoring path, so this is defense against a corrupt
+ * manifest, and dropping the entry is what preserves the invariant.
+ */
+function validateAgentKeys(sources: DelegationAgentSource[]): {
+  sources: DelegationAgentSource[];
+  rejected: Array<{ skillName: string; key: string }>;
+} {
+  const rejected: Array<{ skillName: string; key: string }> = [];
+  const validated: DelegationAgentSource[] = [];
+
+  for (const source of sources) {
+    const entries = Object.entries(source.agents);
+    const legal = entries.filter(([key]) => isValidAgentKey(key));
+    if (legal.length === entries.length) {
+      validated.push(source);
+      continue;
+    }
+    for (const [key] of entries) {
+      if (!isValidAgentKey(key)) rejected.push({ skillName: source.skillName, key });
+    }
+    if (legal.length === 0) continue; // nothing survives — drop the source
+    validated.push({ ...source, agents: Object.fromEntries(legal) });
+  }
+
+  return { sources: validated, rejected };
+}
+
+/**
+ * Per-execution memo for the rejected-key diagnostic, deliberately SEPARATE
+ * from the build memo in `internal/delegation-memo.ts`.
+ *
+ * "What to build" and "what to warn about" have different identities, and
+ * modelling them as one is what made the diagnostic fragile twice over. Rejected
+ * keys are filtered out *before* the board, tools and guidance are computed, so
+ * they cannot change the built output — which cuts both ways:
+ *
+ *   - Folding them into the build snapshot would invalidate the board cache for
+ *     a purely diagnostic change, trading FIX-928's build-once property for a
+ *     log line.
+ *   - But keying the diagnostic on the BUILD snapshot loses reports, because a
+ *     roster that gains only an illegal key filters to an identical snapshot.
+ *
+ * So the diagnostic gets its own identity: the rejected set itself. Keyed on the
+ * execution ctx exactly like the build memo, so it GCs with the execution and a
+ * still-corrupt manifest re-reports on the next turn.
+ */
+const reportedRejections = new WeakMap<object, string>();
+
+/**
+ * Warn once per distinct rejected-key set per execution.
+ *
+ * The delimiters are U+0000 and U+0001, chosen because neither can occur in a
+ * skill name or an agent key, so the fingerprint is injective. Write them as
+ * unicode ESCAPES, never as literal control bytes: a literal NUL makes this
+ * whole module classify as binary, at which point ripgrep reports only
+ * "binary file matches" and every symbol in the file becomes ungreppable.
+ */
+function reportRejectedAgentKeys(
+  ctx: object,
+  rejected: ReadonlyArray<{ skillName: string; key: string }>,
+): void {
+  if (rejected.length === 0) return;
+  const fingerprint = rejected
+    .map(({ skillName, key }) => `${skillName}\u0000${key}`)
+    .sort()
+    .join("\u0001");
+  if (reportedRejections.get(ctx) === fingerprint) return;
+  reportedRejections.set(ctx, fingerprint);
+  for (const { skillName, key } of rejected) {
+    console.warn(
+      `[skills] delegation agent key "${key}" (skill "${skillName}") is not a legal agent ` +
+        `key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led names are ` +
+        `reserved by the delegation board.`,
+    );
+  }
+}
+
 async function resolveBuild(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
-  const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
-  return resolveDelegationBuild(ctx, sources, async () => ({
-    tools: await buildTools(ctx, deps, sources),
-    guidance: buildGuidance(sources),
-  }));
+  const collected = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
+  // Validate BEFORE the memo so the snapshot keys on the roster that is actually
+  // built, and both builders below see the identical list.
+  const { sources, rejected } = validateAgentKeys(collected);
+  // Reported on its own memo, outside the build closure: the build may legitimately
+  // be cached when only the rejected set changed, and the report must still land.
+  reportRejectedAgentKeys(ctx, rejected);
+  return resolveDelegationBuild(ctx, sources, async () => {
+    return {
+      tools: await buildTools(ctx, deps, sources),
+      guidance: buildGuidance(sources, deps.allowEmptyRoster),
+    };
+  });
 }
 
 /**
@@ -351,7 +517,9 @@ export async function buildDelegationTools(
  * delegation skill must fail loud, not silently lose its team. A *runtime*
  * activation whose agent key collides with a divergent spill from another active
  * skill is skipped with a warning instead (a model-driven activation must not
- * crash the turn). Called only when `sources.length > 0`.
+ * crash the turn). Called when `sources.length > 0`, or when
+ * `deps.allowEmptyRoster` (a rosterless `delegation: true` binding) — in which
+ * case the roster is empty and the default floor is the board's only worker.
  */
 async function buildTools(
   ctx: BlockContext,
@@ -400,6 +568,9 @@ async function buildTools(
 
   for (const source of sources) {
     for (const [agentKey, spec] of Object.entries(source.agents)) {
+      // Agent keys are already validated by `validateAgentKeys` in
+      // `resolveBuild`, so this registry and the guidance roster are built from
+      // the identical list.
       if (seenSpecs.has(agentKey)) {
         // Two skills sharing an agent key: an IDENTICAL spec dedupes into the
         // already-built board worker. A DIFFERENT spec under the same key is a
@@ -436,11 +607,19 @@ async function buildTools(
     }
   }
 
-  if (Object.keys(boardWorkers).length === 0) return [];
+  // Empty roster: normally nothing to delegate to, so contribute no tools —
+  // UNLESS the floor is on (`delegation: true`), where the default worker IS
+  // the board and the surface must still install (FIX-940).
+  if (Object.keys(boardWorkers).length === 0 && !deps.allowEmptyRoster) return [];
+
+  // The floor is wired as the board's fallback whenever the surface builds —
+  // roster+floor and rosterless alike (decision 3: unconditional when
+  // delegation installs). Declared workers still win their keys.
+  const defaultWorker = await materializeFloor(deps);
 
   return [
     ...(buildTaskToolsList() as GeneratorTool[]),
-    buildRunBoardTool(boardCollection, boardWorkers),
+    buildRunBoardTool(boardCollection, boardWorkers, defaultWorker),
   ];
 }
 
@@ -465,18 +644,26 @@ export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
 /** The static delegation playbook, prefixed to the live agent roster. */
 const DELEGATION_PLAYBOOK = [
   "You can delegate work to a team of agents. You have a private task board and the task tools.",
-  "Assign work as tasks: addTask each unit (assignee names an agent; deps name the task ids that",
-  "must finish first; input carries a structured payload), then call runBoard once. The board runs",
-  "your agents — independent tasks in parallel, dependency-gated tasks once their deps complete —",
-  "and returns each task's result. Synthesize the agents' results into your own answer.",
+  "Assign work as tasks: addTask each unit (assignee optionally names an agent — an unnamed or",
+  "unrecognized assignee runs on a capable default worker; deps name the task ids that must finish",
+  "first; input carries a structured payload), then call runBoard once. The board runs your workers —",
+  "independent tasks in parallel, dependency-gated tasks once their deps complete —",
+  "and returns each task's result. Synthesize the results into your own answer.",
 ].join(" ");
+
+/** One-line advisory that the board always has a default worker for unclaimed tasks. */
+const FLOOR_ADVISORY =
+  "A capable default worker handles any task whose assignee is unset or does not name one of your agents.";
 
 /**
  * Build the roster text from an already-resolved source list. Returns `null`
- * (contributes nothing) when no bound skill declares agents.
+ * (contributes nothing) when no bound skill declares agents AND the floor is
+ * off. With the floor on but an empty roster (rosterless `delegation: true`),
+ * the guidance leads with the floor rather than an empty "Your agents:" list;
+ * the floor advisory is appended in both roster states (FIX-940, decision 5).
  */
-function buildGuidance(sources: DelegationAgentSource[]): string | null {
-  if (sources.length === 0) return null;
+function buildGuidance(sources: DelegationAgentSource[], allowEmptyRoster: boolean): string | null {
+  if (sources.length === 0 && !allowEmptyRoster) return null;
   // Dedupe by agent key — two skills sharing an agent list it once,
   // mirroring the board's participant registry.
   const roster = new Map<string, string>();
@@ -485,7 +672,11 @@ function buildGuidance(sources: DelegationAgentSource[]): string | null {
       if (!roster.has(key)) roster.set(key, `- ${key}: ${agentPurpose(spec, source.files)}`);
     }
   }
-  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}`;
+  if (roster.size === 0) {
+    // Rosterless: no "Your agents:" list — the floor is the whole team.
+    return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY}`;
+  }
+  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}\n\n${FLOOR_ADVISORY}`;
 }
 
 /**

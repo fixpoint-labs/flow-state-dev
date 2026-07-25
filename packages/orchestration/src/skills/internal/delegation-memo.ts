@@ -87,9 +87,24 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
  * Resolve (and memoize) the delegation build for this execution step, given
  * the caller's freshly resolved `sources`. When `sources` projects to the
  * same `SourceSnapshot` as the cached entry, the cached result is returned
- * without invoking `build`. Otherwise `build` runs and its result is cached
- * under the new snapshot. `build` is skipped entirely for an empty source
- * list (nothing to materialize).
+ * without invoking `build`. Otherwise `build` runs exactly once and its result
+ * is cached under the new snapshot.
+ *
+ * `build` runs for EVERY changed snapshot, including an empty one. This module
+ * deliberately has no opinion about what an empty roster means — that is the
+ * surface's call, and `buildTools`/`buildGuidance` already return `[]`/`null`
+ * for a roster with nothing in it. An earlier version short-circuited an empty
+ * source list here; the branch bought nothing (`buildTools` returns before
+ * materializing a board or a floor, so the "saved" work is a couple of object
+ * allocations) while making `build` conditional in a way its callers could not
+ * see.
+ *
+ * That is the standing caution for this module: `build` is invoked when the
+ * snapshot changes, and on no other schedule. Anything that must happen on a
+ * DIFFERENT schedule does not belong inside the closure — the surface's
+ * rejected-agent-key warning is keyed on its own identity in
+ * `delegation-surface.ts` for exactly that reason, since a roster can gain an
+ * illegal key while filtering to a byte-identical snapshot here.
  */
 export async function resolveDelegationBuild(
   ctx: object,
@@ -101,7 +116,7 @@ export async function resolveDelegationBuild(
   if (cached && deepEqual(cached.snapshot, snapshot)) {
     return { tools: cached.tools, guidance: cached.guidance };
   }
-  const result = sources.length === 0 ? { tools: [], guidance: null } : await build();
+  const result = await build();
   delegationMemo.set(ctx, { snapshot, tools: result.tools, guidance: result.guidance });
   return result;
 }
