@@ -17,6 +17,7 @@ import { join } from "node:path";
 import {
   KITCHEN_SINK,
   actualModel,
+  answerText,
   assistantMessages,
   assistantText,
   goalTmpDir,
@@ -69,6 +70,10 @@ await runGoal(() => {
   const assistant = assistantText(capture.items);
   const output = String(capture.result.output ?? "");
   const needle = fixture.mustContain.toLowerCase();
+  // The graded surface is `answerText` (assistant messages + terminal output),
+  // the same helper `_template` and `structured-output` use. The two booleans
+  // below are only for the evidence line — reporting WHERE the answer landed is
+  // information `answerText` alone collapses.
   const inAssistant = assistant.toLowerCase().includes(needle);
   const inOutput = output.toLowerCase().includes(needle);
 
@@ -76,7 +81,7 @@ await runGoal(() => {
   // The check passes only when the held-out answer is actually present in the
   // answer text. An assistant message with no/other content does NOT pass — this
   // is the anti-game guard: emitting a message item is not enough.
-  if (!inAssistant && !inOutput) {
+  if (!answerText(capture).toLowerCase().includes(needle)) {
     failures.push(
       messages.length === 0
         ? "no assistant message emitted and output is empty"

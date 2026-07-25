@@ -4,7 +4,8 @@
  * suspension (asserting it survived as `pending`), approves it, and resumes the
  * same request to completion.
  *
- * Run via `tsx -e` from `apps/kitchen-sink` (by run.mts) so the app's `@/*`
+ * Copied into `apps/kitchen-sink` and run there as a real ESM file by run.mts
+ * (via `runHarness`) so the app's `@/*`
  * aliases and `@flow-state-dev/*` both resolve. Reports observations on a
  * single `__GOAL__<json>` line; run.mts owns the grading.
  *

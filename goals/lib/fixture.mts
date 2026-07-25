@@ -30,8 +30,3 @@ export function fixturePath(runUrl: string, name: string): string {
 export function loadFixture<T>(runUrl: string, name = "input.json"): T {
   return JSON.parse(readFileSync(fixturePath(runUrl, name), "utf8")) as T;
 }
-
-/** Read a non-JSON held-out fixture (an OFX export, an HTML filing) verbatim. */
-export function loadFixtureText(runUrl: string, name: string): string {
-  return readFileSync(fixturePath(runUrl, name), "utf8");
-}

@@ -1,6 +1,7 @@
 /**
- * Real-path driver for the generator tool-approval goal check. Run via `tsx -e`
- * from `apps/kitchen-sink` (by run.mts) so `@flow-state-dev/*` AND
+ * Real-path driver for the generator tool-approval goal check. Copied into
+ * `apps/kitchen-sink` and run there as a real ESM file by run.mts
+ * (via `runHarness`) so `@flow-state-dev/*` AND
  * `@ai-sdk/gateway` resolve from the app's node_modules — `goals/` is not that
  * app, and real inference needs the gateway.
  *

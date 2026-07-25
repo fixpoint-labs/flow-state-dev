@@ -1,6 +1,7 @@
 /**
- * Real-path driver for the audit-annotation goal check. Run via `tsx -e` from
- * `apps/kitchen-sink` (by run.mts) so `@flow-state-dev/*`, `@thought-fabric/core`,
+ * Real-path driver for the audit-annotation goal check. Copied into
+ * `apps/kitchen-sink` and run there as a real ESM file by run.mts
+ * (via `runHarness`) so `@flow-state-dev/*`, `@thought-fabric/core`,
  * and `zod` resolve from the app's node_modules — goals/ is not a package.
  *
  * Runs the REAL `biasAnalyzer` (the same one `apps/kitchen-sink`'s bias-check

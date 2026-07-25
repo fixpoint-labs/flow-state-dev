@@ -64,8 +64,3 @@ export function goalTmpDir(slug: string): string {
   mkdirSync(dir, { recursive: true });
   return dir;
 }
-
-/** A file inside this run's scratch directory. */
-export function goalTmpFile(slug: string, name: string): string {
-  return join(goalTmpDir(slug), name);
-}

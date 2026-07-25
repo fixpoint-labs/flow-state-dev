@@ -2,7 +2,8 @@
  * Process A of the cold-restart goal check: dispatch until the gate suspends,
  * against an ON-DISK store so the suspension outlives this process.
  *
- * Run via `tsx -e` from `apps/kitchen-sink` (by run.mts) so the app's `@/*`
+ * Copied into `apps/kitchen-sink` and run there as a real ESM file by run.mts
+ * (via `runHarness`) so the app's `@/*`
  * aliases and `@flow-state-dev/*` both resolve. Reports the ids the resume
  * process needs on a single `__GOAL__<json>` line.
  *

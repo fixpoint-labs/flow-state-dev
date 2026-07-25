@@ -17,6 +17,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { intentFreeEnv } from "./env.mts";
 
 /** The `{ command, events, result }` document `fsdev run --capture` writes. */
 export interface CaptureFile {
@@ -79,6 +80,23 @@ export interface RunFsdevOptions {
   env?: Record<string, string>;
   /** Suppress child stdio (default false — goals show the run). */
   silent?: boolean;
+  /**
+   * Strip `FSDEV_DEFAULT_MODEL` / `FSDEV_INTENT_*` before invoking. Default
+   * FALSE — deliberately the OPPOSITE of {@link runHarness}'s `keepIntents`.
+   *
+   * The two defaults differ because the two children differ. A harness builds
+   * its OWN bare resolver, which throws if the ladder is pinned, so stripping is
+   * the safe default there. `fsdev run` drives a real APP, whose configured
+   * intent ladder is exactly what most goals mean to exercise — stripping by
+   * default would silently change the model under test.
+   *
+   * Set this true only for a goal that shells out to an app expected to run
+   * ladder-free. And note the inverse hazard: if the goal ALSO called
+   * `stripIntentOverrides()` in-process, the child inherits that stripped parent
+   * env regardless of this flag — snapshot with `captureIntentOverrides()` and
+   * pass it back through `env`.
+   */
+  stripIntents?: boolean;
 }
 
 /**
@@ -98,10 +116,14 @@ export function runFsdev(options: RunFsdevOptions): number {
   if (options.quiet === true) args.push("--quiet");
 
   try {
+    const base =
+      options.stripIntents === true
+        ? intentFreeEnv(process.env)
+        : (process.env as Record<string, string>);
     execFileSync("pnpm", args, {
       cwd: options.app,
       stdio: options.silent === true ? "ignore" : "inherit",
-      env: options.env ? { ...process.env, ...options.env } : process.env,
+      env: options.env ? { ...base, ...options.env } : base,
     });
     return 0;
   } catch (err) {

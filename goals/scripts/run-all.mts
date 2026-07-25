@@ -71,10 +71,36 @@ function hasFile(path: string): boolean {
   }
 }
 
+const USAGE = `pnpm goal:all [options] [path-filter...]
+
+  --list         Show what would run; run nothing.
+  --model-free   Only goals whose goal.md declares Model: n/a / none.
+  --help         This message.
+
+  Any non-option argument is a substring matched against the goal's path.
+  With no filters, EVERY goal runs — including model-backed ones, which cost
+  real inference.`;
+
 const args = process.argv.slice(2);
+
+// Reject unknown options rather than ignoring them. A typo (`--modelfree`) or a
+// bare `--help` would otherwise fall through with both mode flags false and no
+// path filter, which selects the ENTIRE corpus and starts every model-backed
+// goal — a discovery command or a slip must never spend real inference.
+const KNOWN_OPTIONS = new Set(["--list", "--model-free", "--help"]);
+const unknown = args.filter((a) => a.startsWith("-") && !KNOWN_OPTIONS.has(a));
+if (unknown.length > 0) {
+  console.error(`Unknown option(s): ${unknown.join(", ")}\n\n${USAGE}`);
+  process.exit(2);
+}
+if (args.includes("--help")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+
 const listOnly = args.includes("--list");
 const modelFreeOnly = args.includes("--model-free");
-const filters = args.filter((a) => !a.startsWith("--"));
+const filters = args.filter((a) => !a.startsWith("-"));
 
 const all = discover(GOALS_ROOT).sort((a, b) => a.id.localeCompare(b.id));
 const selected = all.filter((goal) => {
@@ -114,8 +140,8 @@ for (const [index, goal] of runnable.entries()) {
   });
   const stdout = run.stdout ?? "";
   process.stdout.write(stdout);
-  const verdictLine =
-    stdout.split("\n").find((l) => l.startsWith("PASS —") || l.startsWith("PASS:")) ?? "";
+  // One verdict format, matching `goals/lib/verdict.mts`.
+  const verdictLine = stdout.split("\n").find((l) => l.startsWith("PASS —")) ?? "";
   results.push({
     id: goal.id,
     verdict: run.status === 0 ? "PASS" : "FAIL",

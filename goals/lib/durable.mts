@@ -1,10 +1,18 @@
 /**
  * Durable-execution scaffolding shared by the suspend/resume/crash-recovery goals.
  *
- * Four goals stand up the same in-memory durable runtime, five perform the same
- * "find the pending suspension and approve it" triple, and three declare the
- * same silent logger inline. None of that is the thing any of them proves — it
- * is the setup around it.
+ * Six goals hand-rolled this ceremony before the migration. Only TWO consume
+ * these helpers now — the `continue-interrupted-run` pair, which run in-process.
+ * The four suspension goals still hand-roll it inside their `harness.mts`,
+ * because a harness executes from `apps/kitchen-sink` and cannot import
+ * `goals/lib`.
+ *
+ * That is below the README's own "reach for a helper at the third goal" bar on
+ * consumer count, and it is kept deliberately: the duplication it removes is
+ * real and pre-existing, and `approvePending` encodes the listSuspended → find →
+ * suspend triple that was copy-pasted five times. If the harness-side copies are
+ * ever worth deduping, the place for it is an importable helper under
+ * `apps/kitchen-sink`, not here.
  */
 import {
   createCheckpointDurabilityProvider,

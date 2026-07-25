@@ -1,6 +1,7 @@
 /**
- * Real-path driver for the HTTP resume-endpoint goal check. Run via `tsx -e`
- * from `apps/kitchen-sink` (by run.mts) so `flowstate.getRouter()` resolves both
+ * Real-path driver for the HTTP resume-endpoint goal check. Copied into
+ * `apps/kitchen-sink` and run there as a real ESM file by run.mts
+ * (via `runHarness`) so `flowstate.getRouter()` resolves both
  * the app's `@/*` aliases and `@flow-state-dev/*` — only a file executed with
  * that app as cwd resolves both, and `goals/` is not that app.
  *

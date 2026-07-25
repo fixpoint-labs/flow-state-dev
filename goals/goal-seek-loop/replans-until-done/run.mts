@@ -40,6 +40,7 @@ import {
   DEFAULT_MODEL,
   KITCHEN_SINK,
   answerText,
+  captureIntentOverrides,
   goalAttempts,
   goalSessionId,
   goalTmpDir,
@@ -68,6 +69,13 @@ const fx = loadFixture<{
 
 // A bare `createModelResolver()` (no declared intents) rejects a pinned intent
 // ladder; clear it so the resolver auto-wires the gateway from the env.
+//
+// But `stripIntentOverrides()` mutates the PARENT env, and the second arm
+// below shells out to kitchen-sink deliberately WITHOUT `--model` so it runs on
+// the app's configured ladder. Left alone, that child would inherit the
+// stripped env and silently resolve a different model than the caller pinned.
+// So snapshot the ladder first and hand it back to that child explicitly.
+const CALLER_LADDER = captureIntentOverrides();
 stripIntentOverrides();
 
 /** The loop's terminal observability signal — the graded surface. */
@@ -309,6 +317,9 @@ function runPlanAndExecuteArm(): string[] {
     capture,
     quiet: true,
     silent: true,
+    // Restore the caller's intent ladder, which the in-process strip above
+    // removed from the parent env. This arm must run on the app's own ladder.
+    env: CALLER_LADDER,
   });
   if (exit !== 0) return [`plan-and-execute arm: fsdev run exited ${exit}`];
 
