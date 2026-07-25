@@ -206,6 +206,33 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(out.opaqueFunds).toEqual([]);
     expect(out.positions.find((p) => p.ticker === "XYZ")).toBeDefined();
   });
+
+  it("hasAttribution stays FALSE when the coverage floor clears but every constituent is non-attributable or itself a fund (Codex review round 3)", () => {
+    // ALLBOND's only constituent is BND — a known bond ETF (layer 2), so it
+    // resolves as a FUND, not a name, and its whole weight routes to
+    // residual. nameCoverage still clears the 85% floor (it's a coverage
+    // NUMBER, not an attribution count), so before the fix `hasAttribution`
+    // was wrongly set true even though nothing was actually attributed. The
+    // sector axis also fails here, so the correct overall read is "nothing
+    // was attributed" — hasAttribution must be false, not just the per-axis
+    // opaqueness.
+    const positions = [fund("ALLBOND", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "ALLBOND",
+        profile({
+          nameCoverage: 1,
+          constituents: [{ ticker: "BND", weight: 1 }],
+          sectorCoverage: 0.2, // fails the floor
+          sectors: [{ sector: "Fixed income", weight: 0.2 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // BND's slice went to residual, not attributed
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.hasAttribution).toBe(false);
+  });
 });
 
 describe("computeLookThroughExposure — Decision 4: effective-position interval", () => {
@@ -304,21 +331,25 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(out.residual.marketValue).toBeCloseTo(sleeveWeight * 100_000);
   });
 
-  it("a stored fund profile outweighs a stale/misclassified DIRECT holding classification (Codex review round 2)", () => {
+  it("a stored fund profile outweighs a stale/misclassified DIRECT holding classification, for BOTH the constituent-detection oracle and the direct-position routing decision (Codex review rounds 2 and 3)", () => {
     // VTI is held directly, but its imported assetType is still "equity"
     // (misclassified/stale) — a real scenario, not a contrived one. VTI ALSO
     // has a successful stored ETF profile (fetched because AOA's holdings
-    // include VTI). Before the fix, the oracle checked the held-ticker
-    // classification FIRST and returned early on "equity" — never reaching
-    // the stored profile — so AOA's 100%-VTI constituent slice was (wrongly)
-    // attributed to VTI as a NAME, stacking on top of VTI's own direct
-    // holding and reporting VTI as a ~100% single-name concentration
-    // instead of correctly recognizing AOA as a fund-of-funds.
+    // include VTI). Two DISTINCT bugs shared this one evidence-ordering root
+    // cause, fixed in two rounds: round 2 fixed how AOA's VTI CONSTITUENT
+    // slice gets judged (`resolveConstituentIsFund`); round 3 fixed how
+    // VTI's own DIRECT position gets routed (the main loop's `isFund` check)
+    // — both used to trust the stale "equity" classification over the
+    // stronger stored-profile evidence. With both fixed, VTI is recognized
+    // as a fund EVERYWHERE it appears — as AOA's constituent AND as its own
+    // direct holding — so it decomposes via its OWN profile into AAPL
+    // instead of ever reading as a name itself.
     const positions = [direct("VTI", 40_000, { assetType: "equity" }), fund("AOA", 60_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       ["AOA", profile({ nameCoverage: 1, constituents: [{ ticker: "VTI", weight: 1 }] })],
       // VTI's OWN successful stored profile — positive fund evidence that
-      // must outweigh its stale "equity" direct-holding classification.
+      // must outweigh its stale "equity" direct-holding classification,
+      // both as a constituent of AOA and as VTI's own direct position.
       ["VTI", profile({ nameCoverage: 1, constituents: [{ ticker: "AAPL", weight: 1 }] })],
     ]);
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
@@ -328,11 +359,33 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(out.opaqueFunds).toContainEqual(
       expect.objectContaining({ ticker: "AOA", axis: "both", reason: expect.stringContaining("fund-of-funds") }),
     );
-    // VTI's effective position is ONLY its own direct holding — AOA's $60k
-    // never stacks on top of it.
-    const vti = out.positions.find((p) => p.ticker === "VTI")!;
-    expect(vti.marketValue).toBeCloseTo(40_000);
-    expect(vti.sources).toEqual([{ from: "direct", marketValue: 40_000 }]);
+    // VTI itself never appears as a name — its own $40k direct position is
+    // decomposed via ITS OWN profile, same as if it had been a fund
+    // constituent, not attributed to "VTI" whole.
+    expect(out.positions.find((p) => p.ticker === "VTI")).toBeUndefined();
+    const aapl = out.positions.find((p) => p.ticker === "AAPL")!;
+    expect(aapl.marketValue).toBeCloseTo(40_000);
+    expect(aapl.sources).toEqual([{ from: "VTI", marketValue: 40_000 }]);
+  });
+
+  it("a direct holding alone (no other fund involved) is decomposed via its OWN stored profile when its classification is stale, instead of being attributed to itself (Codex review round 3)", () => {
+    // Isolates the round-3 fix from the AOA fund-of-funds complication above:
+    // VTI is the ONLY position, held directly as "equity" (stale), with a
+    // successful stored profile. Before the fix, the main loop's `if
+    // (!isFundAssetType(pos.assetType))` branch attributed VTI's whole value
+    // to itself unconditionally — never checking the stored profile — which
+    // could make a misclassified fund become `maxPosition` and fire a false
+    // single-name alert once ANOTHER fund's attribution also surfaces (so
+    // the overall result isn't nulled).
+    const positions = [direct("VTI", 100_000, { assetType: "equity" })];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      ["VTI", profile({ nameCoverage: 1, constituents: [{ ticker: "AAPL", weight: 1 }] })],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions.find((p) => p.ticker === "VTI")).toBeUndefined();
+    const aapl = out.positions.find((p) => p.ticker === "AAPL")!;
+    expect(aapl.marketValue).toBeCloseTo(100_000);
+    expect(aapl.sources).toEqual([{ from: "VTI", marketValue: 100_000 }]);
   });
 });
 

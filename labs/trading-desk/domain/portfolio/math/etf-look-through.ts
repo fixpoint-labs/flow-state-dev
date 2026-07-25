@@ -180,10 +180,14 @@ export type LookThroughExposure = {
   opaqueFunds: OpaqueFund[];
   flags: LookThroughFlag[];
   /** True once at least one fund cleared the coverage floor on EITHER axis
-   *  (names or sectors independently, Decision 4/7) and contributed
-   *  attributed mass. The caller (`summarizePortfolioHealth`) uses this —
-   *  not just a non-empty `positions` array — to decide `lookThrough: "none"`
-   *  vs `"partial"`, so a fund that is opaque on names but attributes on
+   *  (names or sectors independently, Decision 4/7) AND at least one REAL
+   *  slice was actually attributed on that axis — clearing the coverage
+   *  floor alone is not enough: coverage can clear using only
+   *  non-attributable rows (every constituent `null`-ticker or itself a
+   *  fund), in which case nothing is really attributed (Codex review round
+   *  3, FIX-801). The caller (`summarizePortfolioHealth`) uses this — not
+   *  just a non-empty `positions` array — to decide `lookThrough: "none"` vs
+   *  `"partial"`, so a fund that is opaque on names but attributes on
    *  sectors (or the reverse) still reads `"partial"` instead of having its
    *  lone successful axis silently discarded (Codex review, FIX-801). */
   hasAttribution: boolean;
@@ -333,14 +337,23 @@ export function computeLookThroughExposure(
     const mv = pos.marketValue as number;
     if (mv === 0) continue; // no mass to attribute either way
 
-    if (!isFundAssetType(pos.assetType)) {
+    const profile = fundProfiles.get(pos.ticker);
+    // Same evidence-ordering fix as `resolveConstituentIsFund` (Codex review
+    // round 3, FIX-801), applied to the DIRECT-holding routing decision: a
+    // held ticker's own `assetType` is trusted as "not a fund" only in the
+    // ABSENCE of a successful stored profile. A stale/misclassified direct
+    // holding (assetType still "equity") whose ticker ALSO has a successful
+    // stored fund profile — fetched because it's a constituent of ANOTHER
+    // fund the household holds — must be decomposed via ITS OWN profile
+    // below, not attributed whole to itself as a single name.
+    const isFund = isFundAssetType(pos.assetType) || (profile !== undefined && profile.payload !== null);
+    if (!isFund) {
       // A direct holding is unambiguously itself (§7).
       pushSource(pos.ticker, "direct", mv);
       add(sectorMass, pos.sectorBucket, mv);
       continue;
     }
 
-    const profile = fundProfiles.get(pos.ticker);
     if (!profile) {
       // Never fetched (or the caller didn't warm it) — opaque on both axes.
       nameResidualMass += mv;
@@ -381,13 +394,20 @@ export function computeLookThroughExposure(
         names: `holdings data incomplete (${(fp.nameCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
-      hasAttribution = true;
       for (const c of fp.constituents) {
         const slice = c.weight * mv;
         if (c.ticker === null || resolveConstituentIsFund(c.ticker, positionsByTicker, fundProfiles)) {
           nameResidualMass += slice; // non-attributable line, or routed away from the name axis
         } else {
           pushSource(c.ticker, pos.ticker, slice);
+          // `hasAttribution` must reflect a REAL name actually attributed —
+          // not just that the coverage NUMBER cleared the floor (Codex
+          // review round 3, FIX-801): coverage can clear using ONLY
+          // non-attributable rows (every constituent `null`-ticker or
+          // itself a fund), in which case every slice above routes to
+          // residual and nothing is pushed here — that must NOT read as
+          // attribution.
+          hasAttribution = true;
         }
       }
       // The unreported remainder (rows the profile never listed at all).
@@ -403,8 +423,13 @@ export function computeLookThroughExposure(
         sectors: `sector data incomplete (${(fp.sectorCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
-      hasAttribution = true;
-      for (const s of fp.sectors) add(sectorMass, s.sector, s.weight * mv);
+      for (const s of fp.sectors) {
+        const slice = s.weight * mv;
+        add(sectorMass, s.sector, slice);
+        // Same "real attribution, not just a passing gate" rule as the name
+        // axis above — a zero-weight row adds nothing real.
+        if (slice > 0) hasAttribution = true;
+      }
       sectorResidualMass += (1 - fp.sectorCoverage) * mv;
     }
   }
