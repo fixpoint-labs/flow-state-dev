@@ -620,7 +620,10 @@ function assertAuditorTaskPayloadIsolated(
         `is unproven even if the handoff code appears elsewhere on the task. ` +
         `Created payload: ${payload.slice(0, 400)}`,
     );
-  } else if (!JSON.stringify(auditor.input).toLowerCase().includes(HANDOFF.toLowerCase())) {
+    // EXACT, case-sensitive — see the note on the boundary check. "The value
+    // arrived, mutated" is not "the value arrived", and this file already grades
+    // its markers exactly.
+  } else if (!JSON.stringify(auditor.input).includes(HANDOFF)) {
     failures.push(
       `the auditor task (${auditor.id}) has a structured \`input\` that does not carry the ` +
         `handoff code "${HANDOFF}" — the researcher did not hand the auditor the value it was ` +
@@ -873,11 +876,23 @@ function assertHandoffReachedAuditorTurn(
         `its output does not evidence this.) Turn: ${JSON.stringify(turn.slice(0, 400))}`,
     ];
   }
-  if (!section.toLowerCase().includes(HANDOFF.toLowerCase())) {
+  // EXACT and case-sensitive, matching how this file grades its markers. A
+  // case-folded compare accepts a MUTATED payload: the auditor can emit its
+  // sign-off token from the uppercase value already in its system prompt, so
+  // every structural and terminal assertion would pass while the fixture's
+  // actual value never reached the worker intact. Detecting mutation as well as
+  // omission is the whole point of reading the boundary.
+  //
+  // Note the deliberate ASYMMETRY with the leak guards, which stay case-folded:
+  // proving a value ARRIVED demands the exact value, while detecting that a
+  // secret LEAKED should be as broad as possible, so a lowercased echo still
+  // trips. Those are two different questions, not one concept treated twice.
+  if (!section.includes(HANDOFF)) {
     return [
       `the auditor's rendered turn has an "Input:" section that does not carry the handoff ` +
-        `code "${HANDOFF}" — what reached the worker is not what the researcher was told to ` +
-        `pass. Input section: ${JSON.stringify(section.slice(0, 400))}`,
+        `code "${HANDOFF}" exactly — what reached the worker is not what the researcher was ` +
+        `told to pass (a case-mutated payload counts as not delivered). ` +
+        `Input section: ${JSON.stringify(section.slice(0, 400))}`,
     ];
   }
   return [];
@@ -1490,6 +1505,28 @@ const PROBES: readonly (readonly [string, () => boolean])[] = [
           auditorTurn: `Task: verify\n\n\n\nInput: ${HANDOFF}`,
         }),
       ).length === 0,
+  ],
+  // --- exact-value arrival (mutation, not just omission) ---
+  [
+    "mutation: a LOWERCASED code in the delivered Input: section FAILS",
+    () =>
+      assertHandoffReachedAuditorTurn(
+        goodItems({ auditorTurn: `Task: verify the code\n\nInput: ${HANDOFF.toLowerCase()}` }),
+      ).length > 0,
+  ],
+  [
+    "mutation: a LOWERCASED code in the created input FAILS at the localizer too",
+    () =>
+      assertAuditorTaskPayloadIsolated(
+        goodItems({ auditor: { input: HANDOFF.toLowerCase() } }),
+      ).length > 0,
+  ],
+  [
+    "mutation: the leak guards stay CASE-FOLDED (broad) — a lowercased secret still trips",
+    () =>
+      assertAuditorTaskPayloadIsolated(
+        goodItems({ auditor: { input: `${HANDOFF} ${SECRET.toLowerCase()}` } }),
+      ).length > 0,
   ],
   [
     "trailing-\\n: trailing newlines + a header manufacture a section — still FAILS",
