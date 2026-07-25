@@ -18,6 +18,12 @@ import {
 } from "@flow-state-dev/engine";
 import { createSkillsLibrary } from "@flow-state-dev/orchestration";
 import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
+// Deep source import on purpose: `agentPurpose` is what builds the coordinator's
+// live delegation roster, and it is not on the package's public export surface.
+// The leak guard below must run the REAL function — a local re-implementation
+// would keep passing if the roster rule changed. If this path ever moves, the
+// goal fails loudly at import, which is the intended failure mode.
+import { agentPurpose } from "../../../packages/orchestration/src/skills/delegation-surface.ts";
 import { z } from "zod";
 
 const MODEL = "openai/gpt-5.4-mini";
@@ -62,7 +68,40 @@ function extractCodes(text: string): Set<string> {
 // The team skill: two inline-prompt workers. The `researcher` declares
 // `tools: [taskTools]`, the shorthand that hands an inline worker the
 // board-scoped task tools (FIX-927) so it can enqueue follow-up work mid-drain.
+//
+// IMPORTANT — the FIRST NONEMPTY LINE of each prompt is copied verbatim into the
+// coordinator's delegation roster by `agentPurpose()`, so the coordinator reads
+// it BEFORE any task runs. Every marker must therefore live on a LATER line: a
+// secret on line 1 would let a coordinator that never synthesized the worker's
+// result still emit the marker straight from the roster. `assertNoRosterLeak`
+// enforces this against the real `agentPurpose`.
 // ---------------------------------------------------------------------------
+const RESEARCHER_PROMPT = [
+  "Researches the requested topic and reports its finding.", // roster line — generic
+  `Your secret code is ${SECRET}.`,
+  "When you receive a task, do BOTH of these, in order:",
+  '1. Call addTask to create ONE follow-up task with assignee "auditor",',
+  '   a short goal like "verify the code", and its input set to your',
+  `   secret code ${SECRET}.`,
+  `2. Then reply with exactly your secret code ${SECRET} and nothing else.`,
+].join("\n");
+
+const AUDITOR_PROMPT = [
+  "Verifies a code it is handed and returns the verified form.", // roster line — generic
+  "Your task Input contains a code.",
+  `Reply with that exact code immediately followed by the suffix ${SUFFIX},`,
+  "and nothing else. For example, if the Input code is ABC then you reply",
+  `ABC${SUFFIX}.`,
+].join("\n");
+
+/** Indent a prompt body so it nests under a YAML `prompt: |` block scalar. */
+function yamlBlock(body: string, indent: string): string {
+  return body
+    .split("\n")
+    .map((l) => `${indent}${l}`)
+    .join("\n");
+}
+
 const teamSkill: InitialSkill = {
   name: "code-team",
   skillMd: [
@@ -72,18 +111,10 @@ const teamSkill: InitialSkill = {
     "  researcher:",
     "    tools: [taskTools]",
     "    prompt: |",
-    `      You are the researcher. Your secret code is ${SECRET}.`,
-    "      When you receive a task, do BOTH of these, in order:",
-    `      1. Call addTask to create ONE follow-up task with assignee "auditor",`,
-    `         a short goal like "verify the code", and its input set to your`,
-    `         secret code ${SECRET}.`,
-    `      2. Then reply with exactly your secret code ${SECRET} and nothing else.`,
+    yamlBlock(RESEARCHER_PROMPT, "      "),
     "  auditor:",
     "    prompt: |",
-    "      You are the auditor. Your task Input contains a code.",
-    `      Reply with that exact code immediately followed by the suffix ${SUFFIX},`,
-    "      and nothing else. For example, if the Input code is ABC then you reply",
-    `      ABC${SUFFIX}.`,
+    yamlBlock(AUDITOR_PROMPT, "      "),
     "---",
     "",
     "Delegate to the researcher via addTask + runBoard.",
@@ -188,11 +219,44 @@ function coordinatorOutput(res: {
     .join("\n");
 }
 
+/** The roster lines the coordinator actually sees, via the real `agentPurpose`. */
+function rosterLines(): { agent: string; line: string }[] {
+  return [
+    { agent: "researcher", line: agentPurpose({ prompt: RESEARCHER_PROMPT } as never) },
+    { agent: "auditor", line: agentPurpose({ prompt: AUDITOR_PROMPT } as never) },
+  ];
+}
+
+/**
+ * Fail loudly if a graded marker reached the pre-task delegation roster. This is
+ * what keeps the roster leak from silently regressing when a prompt is edited.
+ */
+function assertNoRosterLeak(): string[] {
+  const failures: string[] = [];
+  for (const { agent, line } of rosterLines()) {
+    const lower = line.toLowerCase();
+    for (const [label, marker] of [
+      ["researcher secret", SECRET],
+      ["audit suffix", SUFFIX],
+    ] as const) {
+      if (lower.includes(marker.toLowerCase())) {
+        failures.push(
+          `setup invalid: the ${label} "${marker}" leaked into the "${agent}" delegation ` +
+            `roster line the coordinator sees BEFORE any task runs — it could emit the marker ` +
+            `without ever synthesizing the worker's result. Move it off the prompt's first ` +
+            `nonempty line. Roster line: ${JSON.stringify(line)}`,
+        );
+      }
+    }
+  }
+  return failures;
+}
+
 async function runGoalCheck(): Promise<string[]> {
   const failures: string[] = [];
 
-  // Honesty guard: neither secret nor suffix may appear in the coordinator's own
-  // prompt or the user turn, or "the answer carried them" would prove nothing.
+  // Honesty guard part 1: neither secret nor suffix may appear in the
+  // coordinator's own prompt or the user turn.
   const coordinatorContext = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
   if (
     coordinatorContext.includes(SECRET.toLowerCase()) ||
@@ -200,6 +264,17 @@ async function runGoalCheck(): Promise<string[]> {
   ) {
     return ["setup invalid: a secret/suffix leaked into the coordinator's own context"];
   }
+
+  // Honesty guard part 2 — the ROSTER leak. `agentPurpose()` copies each
+  // worker's first nonempty prompt line into the delegation roster the
+  // coordinator reads BEFORE any task runs. If a marker appears there, a
+  // coordinator that never synthesized the worker's result could still emit it
+  // from the roster and satisfy both graded checks. The A/B baseline cannot
+  // catch this (no team binding → no roster), so this guard is the only thing
+  // standing between that leak and a silent false pass. Runs the REAL
+  // agentPurpose, so a change to the roster rule fails here loudly.
+  const rosterLeak = assertNoRosterLeak();
+  if (rosterLeak.length > 0) return rosterLeak;
 
   // --- Delegation ON ---
   const on = await run("withTeam", "deleg-on");
@@ -262,7 +337,12 @@ async function runGoalCheck(): Promise<string[]> {
   }
 
   console.log(
-    `delegation ON terminal output:  ${JSON.stringify(onOutput.slice(0, 300))}\n` +
+    `pre-task roster the coordinator sees (must carry NO marker):\n    ` +
+      rosterLines()
+        .map(({ agent, line }) => `- ${agent}: ${line}`)
+        .join("\n    ") +
+      `\n` +
+      `delegation ON terminal output:  ${JSON.stringify(onOutput.slice(0, 300))}\n` +
       `  standalone secret "${SECRET}" present: ${onCodes.has(SECRET.toLowerCase())}\n` +
       `  fanned-out "${FANNED}" present:        ${onCodes.has(FANNED.toLowerCase())}\n` +
       `  worker stream outputs (corroboration):\n    ${workerOutputs.join("\n    ") || "(none)"}\n` +
