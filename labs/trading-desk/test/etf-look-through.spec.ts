@@ -199,6 +199,12 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
         profile({
           nameCoverage: LOOK_THROUGH_COVERAGE_FLOOR_PCT / 100,
           constituents: [{ ticker: "XYZ", weight: LOOK_THROUGH_COVERAGE_FLOOR_PCT / 100 }],
+          // Sector axis also needs to genuinely pass (both the floor AND
+          // reconciliation) for `opaqueFunds` to be empty — the bare
+          // `profile()` default (100% coverage, zero rows) no longer
+          // reconciles under the coverage-vs-rows check below.
+          sectorCoverage: LOOK_THROUGH_COVERAGE_FLOOR_PCT / 100,
+          sectors: [{ sector: "Technology", weight: LOOK_THROUGH_COVERAGE_FLOOR_PCT / 100 }],
         }),
       ],
     ]);
@@ -303,6 +309,14 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     // UNCONDITIONAL — unlike the name axis's pushSource, nothing gated it
     // even after the round-6 zero-weight fix, so an Infinity/NaN sector
     // weight flowed straight into the accumulated sectorMass.
+    //
+    // A second, valid "Technology" row is included alongside the corrupted
+    // "Bogus" row so `sectorCoverage` (0.9) reconciles against the actual
+    // safe-weighted row sum (0.9 + 0 = 0.9) — see the coverage-reconciliation
+    // check added below; a coverage figure that doesn't match its own rows'
+    // sum is now rejected as malformed rather than passed through, which
+    // would otherwise short-circuit this test before it reaches the
+    // Infinity-row leak this test exists to catch.
     const positions = [fund("BADSECTOR", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
@@ -310,17 +324,22 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
         profile({
           nameCoverage: 0.2, // fails — keep this test focused on sectors
           constituents: [],
-          sectorCoverage: 1,
-          sectors: [{ sector: "Technology", weight: Number.POSITIVE_INFINITY }],
+          sectorCoverage: 0.9,
+          sectors: [
+            { sector: "Technology", weight: 0.9 },
+            { sector: "Bogus", weight: Number.POSITIVE_INFINITY },
+          ],
         }),
       ],
     ]);
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    const bogus = out.sectorExposure.find((s) => s.bucket === "Bogus");
+    expect(bogus?.marketValue).toBeCloseTo(0);
+    expect(bogus?.pct).not.toBeNull();
+    expect(Number.isFinite(bogus?.pct as number)).toBe(true);
     const tech = out.sectorExposure.find((s) => s.bucket === "Technology");
-    expect(tech?.marketValue).toBeCloseTo(0);
-    expect(tech?.pct).not.toBeNull();
-    expect(Number.isFinite(tech?.pct as number)).toBe(true);
-    expect(out.hasAttribution).toBe(false);
+    expect(tech?.marketValue).toBeCloseTo(90_000);
+    expect(out.hasAttribution).toBe(true);
   });
 
   it("a non-finite nameCoverage/sectorCoverage never poisons the residual mass and reads as opaque, not a passing profile (Codex review round 7)", () => {
@@ -358,6 +377,119 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
       expect.objectContaining({ ticker: "CORRUPTCOVERAGE", axis: "sectors" }),
     );
     expect(out.hasAttribution).toBe(false);
+  });
+
+  it("a name axis whose declared coverage doesn't match its rows' summed weight is rejected as malformed, not decomposed into a false concentration (Codex review, coverage reconciliation)", () => {
+    // A duplicated constituent row — two 0.9-weight lines for the same
+    // ticker — sums to 1.8 while `nameCoverage` still says ~0.9. Before this
+    // fix the coverage floor check alone would have passed (0.9 >= 85%
+    // reads as 90%, well over the floor) and the loop below would have
+    // pushed AAPL via TWO `pushSource` calls, producing an ~180%-of-fund
+    // AAPL position — exactly the false single-name concentration alert
+    // this reconciliation exists to prevent. There's no way to tell from
+    // this data alone which row (if either) is real, so the whole NAME axis
+    // is rejected as malformed instead of guessing.
+    const positions = [fund("DUPROWS", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "DUPROWS",
+        profile({
+          nameCoverage: 0.9,
+          constituents: [
+            { ticker: "AAPL", weight: 0.9 },
+            { ticker: "AAPL", weight: 0.9 },
+          ],
+          sectorCoverage: 0.2, // fails — keep this test focused on names
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // no false ~180%-of-fund AAPL position
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.hasAttribution).toBe(false);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "DUPROWS", axis: "names" }),
+    );
+  });
+
+  it("a sector axis whose declared coverage doesn't match its rows' summed weight is rejected as malformed (Codex review, coverage reconciliation)", () => {
+    // Same failure mode as the name-axis case above, on the sector axis: a
+    // duplicated "Technology" row sums to double the declared coverage.
+    const positions = [fund("DUPSECTORS", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "DUPSECTORS",
+        profile({
+          nameCoverage: 0.2, // fails — keep this test focused on sectors
+          constituents: [],
+          sectorCoverage: 0.9,
+          sectors: [
+            { sector: "Technology", weight: 0.9 },
+            { sector: "Technology", weight: 0.9 },
+          ],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.sectorExposure).toEqual([]); // no false ~180%-weighted Technology bucket
+    expect(out.sectorResidual.marketValue).toBeCloseTo(100_000);
+    expect(out.hasAttribution).toBe(false);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "DUPSECTORS", axis: "sectors" }),
+    );
+  });
+
+  it("the inverse mismatch — declared coverage HIGHER than the rows' actual summed weight — is also rejected as malformed, not silently under-attributed (Codex review, coverage reconciliation)", () => {
+    // `nameCoverage` claims 90% but the only row sums to 10% — a missing or
+    // truncated row, not a "thin but honest" profile. Trusting the declared
+    // figure here would size the residual off a number the rows don't back
+    // up; reconciliation catches this direction of the mismatch too.
+    const positions = [fund("UNDERSUM", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "UNDERSUM",
+        profile({
+          nameCoverage: 0.9,
+          constituents: [{ ticker: "AAPL", weight: 0.1 }],
+          sectorCoverage: 0.2, // fails — keep this test focused on names
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]);
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.hasAttribution).toBe(false);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "UNDERSUM", axis: "names" }),
+    );
+  });
+
+  it("a coverage figure within tolerance of the rows' summed weight still passes (floating-point rounding, not a real mismatch)", () => {
+    // `nameCoverage: 0.995` matching a summed weight of 0.995 exactly is
+    // already covered elsewhere; this case checks a SMALL, sub-tolerance gap
+    // (declared 0.90 vs. summed 0.895) still passes reconciliation instead
+    // of being over-strict about ordinary floating-point-ish variance
+    // between a provider's rounded coverage figure and its per-row weights.
+    const positions = [fund("ROUNDING", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "ROUNDING",
+        profile({
+          nameCoverage: 0.9,
+          constituents: [{ ticker: "AAPL", weight: 0.895 }],
+          sectorCoverage: 0.2, // fails — keep this test focused on names
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([{ ticker: "AAPL", marketValue: 89_500, weightPct: 89.5, sources: [{ from: "ROUNDING", marketValue: 89_500 }] }]);
+    expect(out.hasAttribution).toBe(true);
+    expect(out.opaqueFunds).not.toContainEqual(
+      expect.objectContaining({ ticker: "ROUNDING", axis: "names" }),
+    );
   });
 });
 
@@ -442,6 +574,13 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
             { ticker: "AAPL", weight: 1 - sleeveWeight },
             { ticker: "SLEEVE", weight: sleeveWeight },
           ],
+          // Sector axis given genuinely reconciling data too, so the
+          // "stayed eligible" assertion below (no opaqueFunds entry at all
+          // for DIVERSIFIED) isn't accidentally riding on the bare
+          // `profile()` default's now-inconsistent 100%-coverage/zero-rows
+          // placeholder.
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
         }),
       ],
       ["SLEEVE", profile({ nameCoverage: 1, constituents: [{ ticker: "XYZ", weight: 1 }] })],
@@ -723,9 +862,16 @@ describe("computeLookThroughExposure — Decision 7: sector axis from the fund's
           nameCoverage: 1,
           constituents: [{ ticker: "AAPL", weight: 1 }],
           sectorCoverage: 1,
+          // A third row brings the declared 100% sectorCoverage back in line
+          // with what the rows actually sum to (0.3 + 0.13 + 0.57 = 1) —
+          // the fixture previously declared 100% coverage while its two rows
+          // summed to only 43%, which the coverage-reconciliation check
+          // below now (correctly) rejects as malformed. The extra row
+          // doesn't touch the Technology/Financial Services assertions.
           sectors: [
             { sector: "Technology", weight: 0.3 },
             { sector: "Financial Services", weight: 0.13 },
+            { sector: "Healthcare", weight: 0.57 },
           ],
         }),
       ],

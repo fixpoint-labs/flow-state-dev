@@ -60,6 +60,23 @@ export const LOOK_THROUGH_COVERAGE_FLOOR_PCT = 85;
  *  all-ETF allocation fund) sits far above it. */
 export const FUND_OF_FUNDS_THRESHOLD_PCT = 50;
 
+/** Tolerance (as a `[0, 1]` fraction) for reconciling a stored profile's
+ *  declared `nameCoverage`/`sectorCoverage` against the ACTUAL sum of that
+ *  axis's row weights. A profile can pass the floor check on a coverage
+ *  figure that doesn't match what its own rows sum to — e.g. a duplicated
+ *  constituent row (two 0.9-weight AAPL lines) — in which case the coverage
+ *  figure is not "thin," it's WRONG, and trusting it would both attribute a
+ *  name at more than its true weight (a false concentration alert) and,
+ *  separately, size the residual off a number that no longer means "the
+ *  unreported remainder." Beyond this tolerance the axis is rejected as
+ *  malformed rather than reconciled (see the NAME/SECTOR axis blocks below
+ *  for why "reconcile the residual" alone doesn't fix the per-row problem).
+ *  Mirrors sub-PR a's fetcher-level `COVERAGE_OVERAGE_EPSILON`
+ *  (`lib/providers/etf-profile.ts`) — same tolerance, same "over-summing
+ *  data is untrustworthy" precedent, applied here to a coverage-vs-rows
+ *  mismatch instead of a rows-only oversum (Codex review, FIX-801 sub-PR b). */
+const COVERAGE_RECONCILIATION_EPSILON = 0.01;
+
 /** One constituent holding, mirroring the fetcher's normalized shape
  *  (`EtfConstituent`). `ticker` null = AV's `"n/a"` row. `weight` a fraction
  *  in `[0, 1]` of the WHOLE fund. */
@@ -469,25 +486,50 @@ export function computeLookThroughExposure(
         names: `holdings data incomplete (${(safeNameCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
-      for (const c of fp.constituents) {
-        const slice = safeWeight(c.weight) * mv;
-        if (c.ticker === null || resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) {
-          nameResidualMass += slice; // non-attributable line, or routed away from the name axis
-        } else if (slice > 0) {
-          // The same "real attribution, not just a passing gate" rule the
-          // sector axis below already applies (Codex review round 6,
-          // FIX-801): an otherwise-attributable constituent with a ZERO
-          // weight contributes nothing real — pushing it anyway would
-          // create a phantom $0 position that could surface as
-          // `maxPosition` (the first-eligible-candidate case) and wrongly
-          // flip `hasAttribution` even though every other slice is
-          // genuinely residual.
-          pushSource(c.ticker, pos.ticker, slice);
-          hasAttribution = true;
+      // Reconcile the declared coverage against what the rows actually sum
+      // to BEFORE attributing anything. A mismatch beyond tolerance means
+      // the coverage figure is not describing these rows — most likely a
+      // duplicated/corrupted row (e.g. two 0.9-weight lines for the same
+      // ticker: rows sum to 1.8 while `nameCoverage` still says ~0.9).
+      // Reconciling only the RESIDUAL (deriving it from the actual sum
+      // instead of the declared coverage) would make the axis's total add
+      // up again, but it does nothing about the per-row attribution itself
+      // — that duplicated AAPL row would still get pushed as a ~180%-of-fund
+      // position via two `pushSource` calls, which is exactly the false
+      // single-name concentration alert this check exists to prevent. There
+      // is no way to know FROM THIS DATA which row (if either) is the real
+      // one, so the whole axis is rejected as malformed instead — the same
+      // "don't trust a self-inconsistent profile" call sub-PR a's fetcher
+      // already makes at write time for an over-summing payload (Codex
+      // review, FIX-801 sub-PR b).
+      const actualNameSum = fp.constituents.reduce((sum, c) => sum + safeWeight(c.weight), 0);
+      if (Math.abs(actualNameSum - safeNameCoverage) > COVERAGE_RECONCILIATION_EPSILON) {
+        nameResidualMass += mv;
+        opaqueByTicker.set(pos.ticker, {
+          ...opaqueByTicker.get(pos.ticker),
+          names: `holdings data malformed (declared ${(safeNameCoverage * 100).toFixed(1)}% coverage doesn't match ${(actualNameSum * 100).toFixed(1)}% summed constituent weight)`,
+        });
+      } else {
+        for (const c of fp.constituents) {
+          const slice = safeWeight(c.weight) * mv;
+          if (c.ticker === null || resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) {
+            nameResidualMass += slice; // non-attributable line, or routed away from the name axis
+          } else if (slice > 0) {
+            // The same "real attribution, not just a passing gate" rule the
+            // sector axis below already applies (Codex review round 6,
+            // FIX-801): an otherwise-attributable constituent with a ZERO
+            // weight contributes nothing real — pushing it anyway would
+            // create a phantom $0 position that could surface as
+            // `maxPosition` (the first-eligible-candidate case) and wrongly
+            // flip `hasAttribution` even though every other slice is
+            // genuinely residual.
+            pushSource(c.ticker, pos.ticker, slice);
+            hasAttribution = true;
+          }
         }
+        // The unreported remainder (rows the profile never listed at all).
+        nameResidualMass += (1 - safeNameCoverage) * mv;
       }
-      // The unreported remainder (rows the profile never listed at all).
-      nameResidualMass += (1 - safeNameCoverage) * mv;
     }
 
     // SECTOR axis — gated independently of names (Decision 4/7). Same coverage
@@ -501,14 +543,29 @@ export function computeLookThroughExposure(
         sectors: `sector data incomplete (${(safeSectorCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
-      for (const s of fp.sectors) {
-        const slice = safeWeight(s.weight) * mv;
-        add(sectorMass, s.sector, slice);
-        // Same "real attribution, not just a passing gate" rule as the name
-        // axis above — a zero-weight row adds nothing real.
-        if (slice > 0) hasAttribution = true;
+      // Same reconciliation as the name axis above, and for the same
+      // reason: a declared `sectorCoverage` that doesn't match what the
+      // rows actually sum to means the rows are self-inconsistent (e.g. a
+      // duplicated sector line), and reconciling only the residual would
+      // still let the duplicated slice double up inside `sectorMass` —
+      // reject the axis as malformed instead of half-trusting it.
+      const actualSectorSum = fp.sectors.reduce((sum, s) => sum + safeWeight(s.weight), 0);
+      if (Math.abs(actualSectorSum - safeSectorCoverage) > COVERAGE_RECONCILIATION_EPSILON) {
+        sectorResidualMass += mv;
+        opaqueByTicker.set(pos.ticker, {
+          ...opaqueByTicker.get(pos.ticker),
+          sectors: `sector data malformed (declared ${(safeSectorCoverage * 100).toFixed(1)}% coverage doesn't match ${(actualSectorSum * 100).toFixed(1)}% summed sector weight)`,
+        });
+      } else {
+        for (const s of fp.sectors) {
+          const slice = safeWeight(s.weight) * mv;
+          add(sectorMass, s.sector, slice);
+          // Same "real attribution, not just a passing gate" rule as the name
+          // axis above — a zero-weight row adds nothing real.
+          if (slice > 0) hasAttribution = true;
+        }
+        sectorResidualMass += (1 - safeSectorCoverage) * mv;
       }
-      sectorResidualMass += (1 - safeSectorCoverage) * mv;
     }
   }
 
