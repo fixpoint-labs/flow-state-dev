@@ -76,6 +76,10 @@ const USAGE = `pnpm goal:all [options] [path-filter...]
   --list         Show what would run; run nothing.
   --model-free   Only goals whose goal.md declares Model: n/a / none.
   --help         This message.
+  --timeout=<m>  Per-goal wall-clock cap in minutes (default 20). A goal that
+                 exceeds it is killed, recorded TIMEOUT, and the sweep goes on.
+                 Keep it above ~1 — `pnpm`+`tsx` startup alone can trip a
+                 smaller cap, marking a goal TIMEOUT after it printed PASS.
 
   Any non-option argument is a substring matched against the goal's path.
   With no filters, EVERY goal runs — including model-backed ones, which cost
@@ -87,8 +91,11 @@ const args = process.argv.slice(2);
 // bare `--help` would otherwise fall through with both mode flags false and no
 // path filter, which selects the ENTIRE corpus and starts every model-backed
 // goal — a discovery command or a slip must never spend real inference.
+const TIMEOUT_FLAG = "--timeout=";
 const KNOWN_OPTIONS = new Set(["--list", "--model-free", "--help"]);
-const unknown = args.filter((a) => a.startsWith("-") && !KNOWN_OPTIONS.has(a));
+const unknown = args.filter(
+  (a) => a.startsWith("-") && !KNOWN_OPTIONS.has(a) && !a.startsWith(TIMEOUT_FLAG),
+);
 if (unknown.length > 0) {
   console.error(`Unknown option(s): ${unknown.join(", ")}\n\n${USAGE}`);
   process.exit(2);
@@ -96,6 +103,26 @@ if (unknown.length > 0) {
 if (args.includes("--help")) {
   console.log(USAGE);
   process.exit(0);
+}
+
+/**
+ * Per-goal wall-clock cap. Without one, a wedged goal stalls the whole
+ * sequential sweep: `spawnSync` waits forever, so no later goal runs and no
+ * summary prints. That is not hypothetical — `trading-desk-portfolio/gate-non-equity`
+ * records in its verdict log that `fsdev run analysis` hangs in some containers,
+ * and it wedged a sweep here for 30 minutes before being killed by hand.
+ *
+ * 20 minutes is generous for the slowest legitimate goal (trading-desk-eval
+ * sweeps two full analyze runs plus judges) while still bounding a hang.
+ */
+const DEFAULT_TIMEOUT_MINUTES = 20;
+const timeoutArg = args.find((a) => a.startsWith(TIMEOUT_FLAG));
+const timeoutMinutes = timeoutArg
+  ? Number(timeoutArg.slice(TIMEOUT_FLAG.length))
+  : DEFAULT_TIMEOUT_MINUTES;
+if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) {
+  console.error(`Invalid ${TIMEOUT_FLAG}<minutes>: ${timeoutArg}\n\n${USAGE}`);
+  process.exit(2);
 }
 
 const listOnly = args.includes("--list");
@@ -128,7 +155,8 @@ if (runnable.length === 0) {
   process.exit(1);
 }
 
-const results: { id: string; verdict: "PASS" | "FAIL"; note: string }[] = [];
+type Verdict = "PASS" | "FAIL" | "TIMEOUT";
+const results: { id: string; verdict: Verdict; note: string }[] = [];
 
 for (const [index, goal] of runnable.entries()) {
   const header = `[${index + 1}/${runnable.length}] ${goal.id}`;
@@ -151,22 +179,38 @@ for (const [index, goal] of runnable.entries()) {
   const run = spawnSync("pnpm", ["tsx", join(goal.dir, "run.mts")], {
     cwd: GOALS_ROOT,
     stdio: ["ignore", "inherit", "inherit"],
+    timeout: timeoutMinutes * 60_000,
   });
 
-  // `status` is null when the child was killed by a signal; treat that as FAIL.
+  // A timeout is NOT the same verdict as a failure: the goal did not fail its
+  // assertions, it wedged. Reported separately so a hang can't be mistaken for
+  // a substrate regression. Still non-zero overall — a wedged goal proved
+  // nothing.
+  //
+  // CAVEAT: `spawnSync`'s timeout signals the direct child (`pnpm`). A wedged
+  // grandchild (tsx → fsdev → a stalled provider call) can outlive it and may
+  // need manual cleanup. Bounding the sweep is the goal here; full
+  // process-group teardown would need a different spawn strategy.
+  const timedOut = (run.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
+  const verdict: Verdict = timedOut ? "TIMEOUT" : run.status === 0 ? "PASS" : "FAIL";
   results.push({
     id: goal.id,
-    verdict: run.status === 0 ? "PASS" : "FAIL",
-    note:
-      run.status === 0
+    verdict,
+    note: timedOut
+      ? `exceeded ${timeoutMinutes}m — killed`
+      : run.status === 0
         ? ""
         : run.status === null
           ? `killed by signal ${run.signal ?? "unknown"}`
           : `exit ${run.status}`,
   });
+  if (timedOut) {
+    console.error(`\nTIMEOUT — ${goal.id} exceeded ${timeoutMinutes}m and was killed; continuing.`);
+  }
 }
 
-const failed = results.filter((r) => r.verdict === "FAIL");
+const failed = results.filter((r) => r.verdict !== "PASS");
+const timedOutCount = results.filter((r) => r.verdict === "TIMEOUT").length;
 
 console.log(`\n${"=".repeat(80)}\nGOAL SWEEP SUMMARY\n${"=".repeat(80)}`);
 for (const result of results) {
@@ -180,6 +224,7 @@ if (missingRunner.length > 0) {
 }
 console.log(
   `\n${results.length - failed.length}/${results.length} passed` +
+    (timedOutCount > 0 ? `, ${timedOutCount} timed out` : "") +
     (missingRunner.length > 0 ? `, ${missingRunner.length} unimplemented` : ""),
 );
 
