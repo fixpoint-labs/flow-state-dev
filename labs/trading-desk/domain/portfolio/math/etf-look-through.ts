@@ -45,7 +45,7 @@ import {
   SINGLE_NAME_WARN_PCT,
   UNCLASSIFIED_BUCKET,
 } from "@/domain/portfolio/math/concentration-thresholds";
-import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
+import { classifyInstrument, isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
 
 /** Below this per-axis coverage a fund stays opaque on that axis (Decision
  *  4) — a tuning number beside the wrapper basis's concentration thresholds,
@@ -422,9 +422,21 @@ export function computeLookThroughExposure(
   const flags: LookThroughFlag[] = [];
   for (const p of positionsOut) {
     const heldDirect = positionsByTicker.get(p.ticker);
+    // A ticker the household actually HOLDS is authoritative (real
+    // classification data — same rule the wrapper basis uses). A ticker
+    // attributed ONLY through a fund (never held directly) has no such
+    // record, so it independently checks the ticker's own SHAPE via the
+    // classifier rather than assuming every non-"direct" source is a
+    // flag-eligible name: the upstream bond-ETF pre-filter and the
+    // fund-detection oracle (`resolveConstituentIsFund`) both curate/infer
+    // FUND-ness, but neither is exhaustive, and a fixed-income ETF that
+    // slips past them could resolve constituents to Treasury/CUSIP-shaped
+    // tickers — this is the leaf's own defense-in-depth against exactly that
+    // (Codex review, FIX-801 sub-PR b).
     const eligibleForFlags =
-      p.sources.some((s) => s.from !== "direct") || // any fund-attributed slice — assumed a name
-      (heldDirect !== undefined && isFlagEligibleAssetType(heldDirect.assetType));
+      heldDirect !== undefined
+        ? isFlagEligibleAssetType(heldDirect.assetType)
+        : isFlagEligibleAssetType(classifyInstrument(p.ticker).assetType);
     if (!eligibleForFlags) continue;
     if (maxPosition === null || Math.abs(p.weightPct) > Math.abs(maxPosition.weightPct)) {
       maxPosition = { ticker: p.ticker, weightPct: p.weightPct };

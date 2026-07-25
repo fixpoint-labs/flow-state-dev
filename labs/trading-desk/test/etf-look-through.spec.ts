@@ -331,6 +331,35 @@ describe("computeLookThroughExposure — Decision 8: flags at the same threshold
     expect(out.maxPosition?.ticker).not.toBe("912810TW8");
   });
 
+  it("never flags a fund-attributed constituent that resolves to a CUSIP-shaped (bond) ticker, even though it's not held directly (Codex review — defense-in-depth beyond the upstream bond-ETF pre-filter)", () => {
+    // Simulates a fixed-income ETF that slipped past the curated
+    // KNOWN_BOND_ETFS pre-filter (Decision 5) — its constituents resolve to
+    // Treasury/CUSIP-shaped tickers. Unlike the sibling test above, this bond
+    // is NEVER held directly, so there's no `positionsByTicker` entry to
+    // authoritatively classify it — the leaf must independently check the
+    // ticker's own shape rather than assuming every fund-attributed source is
+    // a flag-eligible name.
+    const positions = [fund("SLIPPED_BOND_FUND", 100)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SLIPPED_BOND_FUND",
+        profile({
+          nameCoverage: 1,
+          constituents: [{ ticker: "912810TW8", weight: 1 }], // a real CUSIP shape, well past both thresholds
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100, fundProfiles)!;
+    // The CUSIP constituent IS attributed on the name axis (it's a real
+    // effective position)...
+    const bond = out.positions.find((p) => p.ticker === "912810TW8");
+    expect(bond?.marketValue).toBeCloseTo(100);
+    // ...but never fires a single-name flag or becomes maxPosition, exactly
+    // like a DIRECTLY-held bond never does.
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "912810TW8")).toBe(false);
+    expect(out.maxPosition?.ticker).not.toBe("912810TW8");
+  });
+
   it("SECTOR_WARN_PCT is exported and matches the wrapper basis's own constant (Decision 8)", () => {
     expect(SECTOR_WARN_PCT).toBe(30);
     expect(SINGLE_NAME_WARN_PCT).toBe(10);
