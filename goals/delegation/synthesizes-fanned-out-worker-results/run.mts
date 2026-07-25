@@ -23,7 +23,12 @@ import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 // The leak guard below must run the REAL function — a local re-implementation
 // would keep passing if the roster rule changed. If this path ever moves, the
 // goal fails loudly at import, which is the intended failure mode.
-import { agentPurpose } from "../../../packages/orchestration/src/skills/delegation-surface.ts";
+import {
+  agentPurpose,
+  RUN_BOARD_TOOL_NAME,
+} from "../../../packages/orchestration/src/skills/delegation-surface.ts";
+import { buildTaskToolsList } from "../../../packages/orchestration/src/skills/task-tools-capability.ts";
+import { taskStatusSchema } from "../../../packages/orchestration/src/tasks/schema/task-status.ts";
 import { z } from "zod";
 
 const MODEL = "openai/gpt-5.4-mini";
@@ -276,18 +281,51 @@ const COORDINATOR_PROMPT = [
 ].join("\n");
 
 /**
- * Reject a fixture value that collides with fixed prompt text this runner
- * controls. A documented-valid marker like `REPORT` would otherwise pass the
- * format/independence rules and then trip the honesty guard, because the fixed
- * coordinator prompt contains "report" — a CORRECT implementation would fail
- * before it ran. That is a false negative, so it is fenced off here at load
- * (loud, immediate) rather than with grader machinery.
+ * Reject a fixture value that collides with any text the coordinator sees but
+ * that no worker produced. Two corpora:
  *
- * Only text that must never legitimately contain a marker is checked — the
- * worker prompts are excluded, since they carry the markers by construction.
+ *  1. The runner's own fixed prompt/roster text. A marker like `REPORT` would
+ *     pass the format/independence rules and then trip the honesty guard,
+ *     because the fixed coordinator prompt says "report" — a false NEGATIVE.
+ *  2. **Framework-injected coordinator context** — the delegation guidance, the
+ *     task-tool and `runBoard` names/descriptions/schema field names, and the
+ *     predictable literals in the settled board payload. This one closes a false
+ *     POSITIVE: `runBoard` ALWAYS reports `status: "drained"`, so a marker of
+ *     `drained` could be emitted from board metadata alone with the worker's
+ *     output dropped — and the OFF baseline, which has no board surface, would
+ *     stay clean and falsely credit delegation.
+ *
+ * The framework corpus is derived from the REAL sources rather than a hand-copied
+ * list: the runtime tool definitions (`buildTaskToolsList`, `RUN_BOARD_TOOL_NAME`,
+ * `taskStatusSchema`) plus the full source text of the modules that build the
+ * surface. Reading the source text means new fixed literals are covered
+ * automatically. If the delegation surface moves to new modules, add them to
+ * `FRAMEWORK_SOURCE_FILES` below — the deep imports above would fail loudly first.
+ *
+ * Worker prompts are excluded from both corpora: they carry the markers by
+ * construction.
  */
+const FRAMEWORK_SOURCE_FILES = [
+  "../../../packages/orchestration/src/skills/delegation-surface.ts",
+  "../../../packages/orchestration/src/skills/task-tools-capability.ts",
+  "../../../packages/orchestration/src/tasks/schema/task-status.ts",
+];
+
 {
-  const fixedText = [
+  const taskTools = buildTaskToolsList() as { name?: string; description?: string }[];
+  const frameworkContext = [
+    // Real runtime values the coordinator's tool surface exposes.
+    RUN_BOARD_TOOL_NAME,
+    ...taskStatusSchema.options,
+    ...taskTools.flatMap((t) => [t.name ?? "", t.description ?? ""]),
+    // Full source text — covers the guidance playbook, the runBoard description,
+    // schema field names, and board-result literals such as "drained"/"blocked".
+    ...FRAMEWORK_SOURCE_FILES.map((rel) =>
+      readFileSync(new URL(rel, import.meta.url), "utf8"),
+    ),
+  ].join("\n");
+
+  const runnerContext = [
     COORDINATOR_PROMPT,
     USER_TURN,
     teamSkill.name,
@@ -299,22 +337,27 @@ const COORDINATOR_PROMPT = [
     // The generic roster lines (first line of each worker prompt).
     RESEARCHER_PROMPT.split("\n")[0]!,
     AUDITOR_PROMPT.split("\n")[0]!,
-  ]
-    .join("\n")
-    .toLowerCase();
+  ].join("\n");
 
-  for (const [field, value] of [
-    ["researcherSecret", SECRET],
-    ["auditToken", AUDIT_TOKEN],
-    ["handoffCode", HANDOFF],
+  for (const [corpusName, corpus] of [
+    ["the runner's fixed prompt/roster text", runnerContext],
+    ["framework-injected coordinator context (delegation guidance / task tools / board results)", frameworkContext],
   ] as const) {
-    if (fixedText.includes(value.toLowerCase())) {
-      throw new Error(
-        `fixture invalid: ${field} ${JSON.stringify(value)} appears in the runner's fixed ` +
-          `prompt/roster text, so it would trip the honesty guard and fail a correct ` +
-          `implementation. Choose a distinctive sentinel that does not occur in ordinary ` +
-          `instruction wording (e.g. "QORVIX-7788").`,
-      );
+    const haystack = corpus.toLowerCase();
+    for (const [field, value] of [
+      ["researcherSecret", SECRET],
+      ["auditToken", AUDIT_TOKEN],
+      ["handoffCode", HANDOFF],
+    ] as const) {
+      if (haystack.includes(value.toLowerCase())) {
+        throw new Error(
+          `fixture invalid: ${field} ${JSON.stringify(value)} appears in ${corpusName}. The ` +
+            `coordinator would see that string without any worker producing it, so the marker ` +
+            `could be emitted from context alone and the check would pass without real ` +
+            `delegation. Choose a distinctive sentinel that does not occur in framework or ` +
+            `instruction wording (e.g. "QORVIX-7788").`,
+        );
+      }
     }
   }
 }
