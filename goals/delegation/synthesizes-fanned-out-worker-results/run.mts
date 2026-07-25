@@ -8,7 +8,8 @@
  *
  * Run: pnpm tsx goals/delegation/synthesizes-fanned-out-worker-results/run.mts
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineFlow, generator } from "@flow-state-dev/core";
 import {
@@ -295,19 +296,31 @@ const COORDINATOR_PROMPT = [
  *
  * The framework corpus is derived from the REAL sources rather than a hand-copied
  * list: the runtime tool definitions (`buildTaskToolsList`, `RUN_BOARD_TOOL_NAME`,
- * `taskStatusSchema`) plus the full source text of the modules that build the
- * surface. Reading the source text means new fixed literals are covered
- * automatically. If the delegation surface moves to new modules, add them to
- * `FRAMEWORK_SOURCE_FILES` below — the deep imports above would fail loudly first.
+ * `taskStatusSchema`) plus the full source text of the skills + tasks subsystem.
+ * This is a cheap PRE-FLIGHT that fails before any model call; the authoritative
+ * check is `assertNoMarkerInRenderedContext`, which greps the coordinator's ACTUAL
+ * rendered system prompt after the run and therefore needs no enumeration at all.
  *
  * Worker prompts are excluded from both corpora: they carry the markers by
  * construction.
  */
-const FRAMEWORK_SOURCE_FILES = [
-  "../../../packages/orchestration/src/skills/delegation-surface.ts",
-  "../../../packages/orchestration/src/skills/task-tools-capability.ts",
-  "../../../packages/orchestration/src/tasks/schema/task-status.ts",
+const FRAMEWORK_SOURCE_DIRS = [
+  "../../../packages/orchestration/src/skills",
+  "../../../packages/orchestration/src/tasks",
 ];
+
+/** Every `.ts` file under the delegation subsystem, so no module is missed by enumeration. */
+function frameworkSourceText(): string {
+  const out: string[] = [];
+  for (const rel of FRAMEWORK_SOURCE_DIRS) {
+    const dir = fileURLToPath(new URL(rel, import.meta.url));
+    for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+      out.push(readFileSync(pathJoin(entry.parentPath ?? dir, entry.name), "utf8"));
+    }
+  }
+  return out.join("\n");
+}
 
 {
   const taskTools = buildTaskToolsList() as { name?: string; description?: string }[];
@@ -316,11 +329,12 @@ const FRAMEWORK_SOURCE_FILES = [
     RUN_BOARD_TOOL_NAME,
     ...taskStatusSchema.options,
     ...taskTools.flatMap((t) => [t.name ?? "", t.description ?? ""]),
-    // Full source text — covers the guidance playbook, the runBoard description,
-    // schema field names, and board-result literals such as "drained"/"blocked".
-    ...FRAMEWORK_SOURCE_FILES.map((rel) =>
-      readFileSync(new URL(rel, import.meta.url), "utf8"),
-    ),
+    // Full source text of the whole skills + tasks subsystem — covers the guidance
+    // playbook, the runBoard description, schema field names, board-result literals
+    // such as "drained"/"blocked", AND the skill reader's rendered preamble
+    // ("The following skills are active..."). Scanning the directories rather than
+    // naming files means a new module is covered without updating a list.
+    frameworkSourceText(),
   ].join("\n");
 
   const runnerContext = [
@@ -523,7 +537,33 @@ function assertFannedOutMidDrain(items: readonly Record<string, unknown>[]): str
     );
   }
 
-  // 2. Timing: created at/after the researcher was claimed → inside the drain.
+  // 2. The auditor must be SETTLED in the FIRST drain. Without this, a regression
+  //    in mid-drain pickup — the first runBoard returning while the newly created
+  //    auditor task sits `pending` — would be invisible: the coordinator could
+  //    simply call runBoard a second time, and the attribution and timing checks
+  //    would all still pass while FIX-927 was broken.
+  const drained = firstDrainTasks(items);
+  if (!drained) {
+    failures.push(`no runBoard result found — the board was never drained`);
+  } else {
+    const settled = drained.find((t) => t.id === auditor.id);
+    if (!settled) {
+      failures.push(
+        `the auditor task (${auditor.id}) is ABSENT from the FIRST runBoard result ` +
+          `(${JSON.stringify(drained.map((t) => ({ id: t.id, status: t.status })))}) — it was ` +
+          `created but not picked up by the drain that was already in flight. A later drain ` +
+          `could still settle it, which is exactly the mid-drain-pickup regression this goal ` +
+          `exists to catch`,
+      );
+    } else if (settled.status !== "completed") {
+      failures.push(
+        `the auditor task is in the FIRST runBoard result but not settled ` +
+          `(status="${settled.status}") — mid-drain pickup did not complete it`,
+      );
+    }
+  }
+
+  // 3. Timing: created at/after the researcher was claimed → inside the drain.
   if (researcher.startedAt === undefined) {
     failures.push(`researcher task was never claimed — the board did not run it`);
   } else if (!(auditor.createdAt >= researcher.startedAt)) {
@@ -542,6 +582,66 @@ function assertFannedOutMidDrain(items: readonly Record<string, unknown>[]): str
     );
   }
   return failures;
+}
+
+/**
+ * AUTHORITATIVE closure of the "marker reachable from injected context" class.
+ *
+ * The load-time corpus check is a pre-flight over source text; this greps the
+ * coordinator's ACTUAL rendered system prompt — the skill-reader preamble ("The
+ * following skills are active…"), the substituted SKILL.md body, the delegation
+ * guidance playbook, the live agent roster, and every tool description — as the
+ * generator really received it. If a graded marker appears there, the coordinator
+ * could emit it with no worker output at all, and the board-less OFF baseline
+ * could never catch it. Needs no enumeration, so it cannot fall behind the
+ * framework the way a hand-listed corpus can.
+ */
+function assertNoMarkerInRenderedContext(
+  items: readonly Record<string, unknown>[],
+): string[] {
+  const trace = items.find(
+    (i) => i.type === "block_trace" && i.blockName === "coordinatorWithTeam",
+  );
+  const generator = trace?.generator as
+    | { prompt?: unknown; tools?: unknown; user?: unknown; history?: unknown }
+    | undefined;
+  if (generator?.prompt === undefined) {
+    return [
+      `could not read the coordinator's rendered context (block_trace.generator.prompt) — ` +
+        `cannot verify that no graded marker was injected`,
+    ];
+  }
+  const rendered = [
+    String(generator.prompt),
+    JSON.stringify(generator.tools ?? ""),
+    JSON.stringify(generator.user ?? ""),
+    JSON.stringify(generator.history ?? ""),
+  ]
+    .join("\n")
+    .toLowerCase();
+
+  const failures: string[] = [];
+  for (const { label, marker } of GRADED_MARKERS) {
+    if (rendered.includes(marker.toLowerCase())) {
+      failures.push(
+        `the ${label} "${marker}" appears in the coordinator's RENDERED context before any ` +
+          `worker produced it — it could be emitted from context alone, so a pass would not ` +
+          `prove delegation`,
+      );
+    }
+  }
+  return failures;
+}
+
+/** The tasks returned by the FIRST `runBoard` call, in stream order. */
+function firstDrainTasks(
+  items: readonly Record<string, unknown>[],
+): { id: string; status: string; assignee?: string }[] | undefined {
+  const drain = items.find(
+    (i) => i.type === "tool_output" && i.blockName === RUN_BOARD_TOOL_NAME,
+  );
+  return (drain?.output as { tasks?: { id: string; status: string; assignee?: string }[] })
+    ?.tasks;
 }
 
 /** The roster lines the coordinator actually sees, via the real `agentPurpose`. */
@@ -639,6 +739,7 @@ async function runGoalCheck(): Promise<string[]> {
   // mid-drain by the researcher. Both markers being present is NOT sufficient —
   // a coordinator that assigned both agents itself would also surface both.
   failures.push(...assertFannedOutMidDrain(on.items as never));
+  failures.push(...assertNoMarkerInRenderedContext(on.items as never));
 
   // Corroboration (printed, not graded): the worker generators actually executed,
   // and their distinct outputs are visible in the stream (rendered via messageText).
