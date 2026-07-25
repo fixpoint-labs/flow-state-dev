@@ -130,14 +130,16 @@ describe("summarizePortfolioHealth — ticker merge + weights", () => {
     expect(aapl.allocationWeightPct).toBeCloseTo((1500 / 4300) * 100);
   });
 
-  it("buckets sector exposure over invested NAV, funds as their own opaque bucket", () => {
+  it("buckets sector exposure over invested NAV, funds as their own opaque bucket ON THE WRAPPER BASIS (look-through is a separate, additive axis — FIX-801)", () => {
     const h = summarizePortfolioHealth(multiAccountBook(), MAIN_QUOTES, MAIN_CLASS, null);
     const tech = h.sectorExposure.find((s) => s.bucket === "Technology");
     const funds = h.sectorExposure.find((s) => s.bucket === FUNDS_BUCKET);
     expect(tech!.marketValue).toBe(2500); // AAPL 1500 + MSFT 1000
     expect(tech!.pct).toBeCloseTo((2500 / 3300) * 100);
-    expect(funds!.marketValue).toBe(800); // SPY (etf → no look-through)
+    expect(funds!.marketValue).toBe(800); // SPY (etf → opaque on THIS basis)
+    // No etfProfiles argument was passed — lookThrough stays "none" (BP-030).
     expect(h.lookThrough).toBe("none");
+    expect(h.lookThroughExposure).toBeNull();
   });
 
   it("carries each sector bucket's constituent tickers, weight desc, summing to the bucket", () => {
@@ -352,5 +354,137 @@ describe("summarizePortfolioHealth — total-function edge cases", () => {
   it("passes through the snapshot as-of", () => {
     const h = summarizePortfolioHealth(multiAccountBook(), MAIN_QUOTES, MAIN_CLASS, "2026-07-10T20:00:00.000Z");
     expect(h.asOf).toBe("2026-07-10T20:00:00.000Z");
+  });
+});
+
+describe("summarizePortfolioHealth — FIX-801 look-through widening (Decision 2, §8 step 5)", () => {
+  it("an OMITTED etfProfiles argument reproduces today's exact output (BP-030 — asserted, not assumed)", () => {
+    const withoutArg = summarizePortfolioHealth(multiAccountBook(), MAIN_QUOTES, MAIN_CLASS, null);
+    const withUndefined = summarizePortfolioHealth(multiAccountBook(), MAIN_QUOTES, MAIN_CLASS, null, undefined);
+    expect(withoutArg).toEqual(withUndefined);
+    expect(withoutArg.lookThrough).toBe("none");
+    expect(withoutArg.lookThroughExposure).toBeNull();
+    // Every wrapper-basis field is untouched by the new optional argument.
+    expect(withoutArg.positions).toEqual(
+      summarizePortfolioHealth(multiAccountBook(), MAIN_QUOTES, MAIN_CLASS, null, new Map()).positions,
+    );
+  });
+
+  it("present, attributable profiles produce the second axis and widen lookThrough to 'partial'", () => {
+    const book = multiAccountBook(); // AAPL 1500 direct + SPY 800 (etf)
+    const etfProfiles = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [{ ticker: "AAPL", weight: 0.9 }],
+            nameCoverage: 0.9,
+            sectors: [{ sector: "Technology", weight: 0.9 }],
+            sectorCoverage: 0.9,
+          },
+          refusalReason: null,
+        } as const,
+      ],
+    ]);
+    const h = summarizePortfolioHealth(book, MAIN_QUOTES, MAIN_CLASS, null, etfProfiles);
+    expect(h.lookThrough).toBe("partial");
+    expect(h.lookThroughExposure).not.toBeNull();
+    const aapl = h.lookThroughExposure!.positions.find((p) => p.ticker === "AAPL")!;
+    // 1500 direct + 0.9*800 = 720 through SPY = 2220, vs. 1500 on the wrapper basis.
+    expect(aapl.marketValue).toBeCloseTo(1500 + 0.9 * 800);
+    const wrapperAapl = h.positions.find((p) => p.ticker === "AAPL")!;
+    expect(aapl.marketValue).toBeGreaterThan(wrapperAapl.marketValue as number);
+    // The wrapper-basis fields are UNCHANGED by the presence of profiles.
+    expect(wrapperAapl.marketValue).toBe(1500);
+    expect(h.sectorExposure.find((s) => s.bucket === FUNDS_BUCKET)?.marketValue).toBe(800);
+  });
+
+  it("an ineligible or thin fund stays in the residual and in the opaque list — lookThrough stays 'none' when NOTHING is attributable", () => {
+    const book = multiAccountBook();
+    const etfProfiles = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [{ ticker: "AMZN", weight: 0.2 }],
+            nameCoverage: 0.2, // below the 85% floor — thin
+            sectors: [],
+            sectorCoverage: 0.2,
+          },
+          refusalReason: null,
+        } as const,
+      ],
+    ]);
+    const h = summarizePortfolioHealth(book, MAIN_QUOTES, MAIN_CLASS, null, etfProfiles);
+    // The ONLY fund in the book is thin/unattributable — nothing was
+    // attributed through a fund, so this reads "none" (Decision 7), even
+    // though a profiles map WAS supplied.
+    expect(h.lookThrough).toBe("none");
+    expect(h.lookThroughExposure).toBeNull();
+  });
+
+  it("a mix of one attributable and one thin fund reads 'partial' overall, while the thin fund is still named opaque", () => {
+    const book: AccountState[] = [
+      account({
+        accountId: "A",
+        holdings: [
+          holding({ ticker: "AAPL", quantity: 10 }),
+          holding({ ticker: "SPY", quantity: 2, assetType: "etf" }),
+          holding({ ticker: "INTL", quantity: 1, assetType: "etf" }),
+        ],
+      }),
+    ];
+    const q = quotes({ AAPL: 100, SPY: 400, INTL: 50_000 });
+    const etfProfiles = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [{ ticker: "AAPL", weight: 0.9 }],
+            nameCoverage: 0.9,
+            sectors: [],
+            sectorCoverage: 0.9,
+          },
+          refusalReason: null,
+        } as const,
+      ],
+      [
+        "INTL",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [{ ticker: "NESN", weight: 0.2 }],
+            nameCoverage: 0.2, // thin
+            sectors: [],
+            sectorCoverage: 0.2,
+          },
+          refusalReason: null,
+        } as const,
+      ],
+    ]);
+    const h = summarizePortfolioHealth(book, q, classifications({ AAPL: "Technology" }), null, etfProfiles);
+    expect(h.lookThrough).toBe("partial"); // SPY attributed something
+    expect(h.lookThroughExposure!.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "INTL", axis: "names" }),
+    );
+  });
+
+  it("a short position anywhere refuses the look-through axis (returns null) without touching the wrapper-basis figures", () => {
+    const book = [
+      account({
+        accountId: "A",
+        holdings: [holding({ ticker: "AAPL", quantity: 10 }), holding({ ticker: "SHORT", quantity: -5 })],
+      }),
+    ];
+    const etfProfiles = new Map<string, never>();
+    const h = summarizePortfolioHealth(book, quotes({ AAPL: 100, SHORT: 100 }), classifications({}), null, etfProfiles);
+    expect(h.lookThrough).toBe("none");
+    expect(h.lookThroughExposure).toBeNull();
+    // Wrapper-basis figures are computed exactly as before (the existing
+    // guarded-division behavior for a short book).
+    expect(h.positions.find((p) => p.ticker === "AAPL")?.marketValue).toBe(1000);
   });
 });
