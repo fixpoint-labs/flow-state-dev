@@ -12,6 +12,7 @@ import {
   householdTickerWeight,
 } from "../flows/analysis/build-portfolio-context";
 import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
+import type { FundProfileInput } from "../domain/portfolio/math/etf-look-through";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {
@@ -227,6 +228,75 @@ describe("buildPortfolioContext — FIX-762 classifications + health block", () 
       null,
     );
     expect(out?.health).toBeNull();
+  });
+});
+
+describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
+  // AAPL held directly (10k) + a fund (SPY, 60k) whose stored profile says it
+  // holds 10% AAPL — the §1 worked example. Effective AAPL exposure through
+  // the fund must exceed the direct-only weight, and the health block's
+  // `lookThrough` field carries it.
+  const book = [
+    account({
+      cashBalance: 0,
+      holdings: [
+        { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // @100 → 10,000
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // @400 → 60,000
+      ],
+    }),
+  ];
+  const quotes = [
+    { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+    { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+  ];
+  // Row weights reconcile against the declared coverage figures (the leaf's
+  // own reconciliation check, FIX-801 sub-PR b) — mirrors the §1 worked
+  // example's own fixture (`nameCoverage: 0.995` = 0.07 AAPL + 0.925 MSFT).
+  const etfProfiles: Map<string, FundProfileInput> = new Map([
+    [
+      "SPY",
+      {
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "AAPL", weight: 0.925 },
+            { ticker: "MSFT", weight: 0.07 },
+          ],
+          nameCoverage: 0.995,
+          sectors: [
+            { sector: "Technology", weight: 0.3 },
+            { sector: "Financial Services", weight: 0.66 },
+          ],
+          sectorCoverage: 0.96,
+        },
+        refusalReason: null,
+      },
+    ],
+  ]);
+
+  it("omitted (default), the health block's lookThrough stays null — reproduces today's output exactly (BP-030)", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06");
+    expect(out?.health?.lookThrough).toBeNull();
+  });
+
+  it("passed through, the health block's lookThrough reports effective exposure beyond the direct holding, framed as a coverage-qualified lower bound", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map(), etfProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    // Direct AAPL alone is 10,000 / 70,000 ≈ 14.3%; through SPY's 92.5% AAPL
+    // stake (+55,500) it's 65,500 / 70,000 ≈ 93.6% — strictly more than direct
+    // alone, and now also the largest EFFECTIVE name (the compact block's
+    // `maxPosition` reads the look-through basis, not the wrapper one).
+    expect(lookThrough?.maxPosition?.ticker).toBe("AAPL");
+    expect(lookThrough?.maxPosition?.weightPct).toBeGreaterThan(100 / 7); // > direct-only 14.3%
+    expect(lookThrough?.coveragePct).not.toBeNull();
+    expect(lookThrough?.coveragePct as number).toBeLessThan(100); // never renormalized to 100%
+    expect(lookThrough?.opaqueFundCount).toBe(0);
+  });
+
+  it("a fund with no stored profile leaves lookThrough null (nothing attributed) — same 'never fetches' read as an empty map", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map(), new Map());
+    expect(out?.health?.lookThrough).toBeNull();
   });
 });
 

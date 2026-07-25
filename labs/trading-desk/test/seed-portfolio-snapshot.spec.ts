@@ -25,6 +25,14 @@ vi.mock("@/db/portfolio-db", () => ({
   },
 }));
 
+// FIX-801: the seed reads `app.etf_profiles` READ-ONLY and must never fetch —
+// mocking the fetcher module lets the "spends no Alpha Vantage request" test
+// assert this structurally, not just by inspecting `guards.ts`'s import list.
+const fetchEtfProfileMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/providers/etf-profile", () => ({
+  fetchEtfProfile: fetchEtfProfileMock,
+}));
+
 import { seedSession } from "../flows/analysis/orchestration/guards";
 import flow from "../flows/analysis/flow";
 import { sessionStateSchema } from "../flows/analysis/state";
@@ -128,6 +136,95 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(sessionState.portfolio?.health).not.toBeNull();
     expect(sessionState.portfolio?.health?.cashPct).toBeCloseTo((1000 / 2314) * 100);
     expect(sessionState.portfolio?.health?.concentration.maxPosition?.ticker).toBe("NVDA");
+  });
+
+  it("injects the ETF look-through second axis from stored fund profiles, READ-ONLY — never fetches (FIX-801 Decision 1)", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 0,
+      holdings: [
+        { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+    ]);
+    // The profile is already WARMED (as if the Portfolio pane had visited it) —
+    // the seed only ever reads this table, per Decision 1.
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "SPY",
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "AAPL", weight: 0.925 },
+            { ticker: "MSFT", weight: 0.07 },
+          ],
+          nameCoverage: 0.995,
+          sectors: [
+            { sector: "Technology", weight: 0.3 },
+            { sector: "Financial Services", weight: 0.66 },
+          ],
+          sectorCoverage: 0.96,
+          netExpenseRatio: 0.0945,
+          inceptionDate: "1993-01-22",
+        },
+        refusalReason: null,
+      },
+    ]);
+
+    const result = await testBlock(seedSession, { input: { ...baseInput, ticker: "AAPL" }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: {
+        health: {
+          lookThrough: { maxPosition: { ticker: string; weightPct: number } | null; coveragePct: number | null } | null;
+        } | null;
+      } | null;
+    };
+    const lookThrough = sessionState.portfolio?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    // AAPL direct (10,000) + 92.5% of SPY (55,500) = 65,500 of a 70,000 NAV.
+    expect(lookThrough?.maxPosition?.ticker).toBe("AAPL");
+    expect(lookThrough?.maxPosition?.weightPct).toBeGreaterThan(100 / 7); // > the 14.3% direct-only weight
+    expect(lookThrough?.coveragePct).not.toBeNull();
+
+    // The load-bearing assertion: the seed read the STORED profile and never
+    // called the fetcher — a run sees look-through only for funds the
+    // Portfolio pane already warmed, exactly as Decision 1 requires.
+    expect(fetchEtfProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves the look-through axis null when a fund is held but its profile has never been fetched — no budget spent finding out", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 1000,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+    ]);
+    // No `upsertEtfProfiles` call — nobody has warmed SPY's profile yet.
+
+    const result = await testBlock(seedSession, { input: { ...baseInput, ticker: "SPY" }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: { health: { lookThrough: unknown } | null } | null;
+    };
+    expect(sessionState.portfolio?.health?.lookThrough).toBeNull();
+    expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });
 
   it("computes state.portfolio scoped to selectedAccountIds when provided", async () => {

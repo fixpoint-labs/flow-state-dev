@@ -1,13 +1,18 @@
 /**
- * Tests for the `<portfolioContext>` formatter's household-health block (FIX-762).
+ * Tests for the `<portfolioContext>` formatter's household-health block (FIX-762)
+ * and its ETF look-through second axis (FIX-801).
  *
  * Intent encoded:
  *   1. When the snapshot carries a `health` block, the formatter renders the
- *      deterministic aggregate lines (allocation, concentration, sector, the
- *      no-look-through caveat) alongside the existing NAV/coverage lines.
+ *      deterministic aggregate lines (allocation, concentration, sector)
+ *      alongside the existing NAV/coverage lines.
  *   2. A drift line appears ONLY when `health.drift` is present (it is always null
  *      in v1 — the FIX-761-gated slice), never fabricated.
- *   3. The tag is still suppressed (null) on a portfolio-blind snapshot.
+ *   3. A look-through line appears ONLY when `health.lookThrough` is present
+ *      (something was attributed through a fund), states the reading is a
+ *      LOWER BOUND, and says plainly that it does not move the decision gates
+ *      — the model must not treat a look-through flag as a sizing cap.
+ *   4. The tag is still suppressed (null) on a portfolio-blind snapshot.
  */
 import { describe, expect, it } from "vitest";
 import { formatPortfolioContext } from "../flows/analysis/lib/format";
@@ -36,6 +41,7 @@ function snapshot(over: Partial<PortfolioContextInput> = {}): PortfolioContextIn
         flags: ["AAPL 33.3% (alert)"],
       },
       drift: null,
+      lookThrough: null,
     },
     ...over,
   };
@@ -49,7 +55,58 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).toContain("largest name AAPL 33.3%");
     expect(out).toContain("Sector exposure: Technology 33.3%, Funds (no look-through) 66.7%.");
     expect(out).toContain("Concentration flags: AAPL 33.3% (alert).");
-    expect(out).toContain("no ETF look-through");
+  });
+
+  it("omits the look-through line when nothing was attributed through a fund (null)", () => {
+    const out = formatPortfolioContext(snapshot(), [], "NVDA");
+    expect(out).not.toContain("ETF look-through");
+  });
+
+  it("renders the look-through line, framed as a lower bound that does not move the decision gates, when present (FIX-801)", () => {
+    const out = formatPortfolioContext(
+      snapshot({
+        health: {
+          ...snapshot().health!,
+          lookThrough: {
+            coveragePct: 99.0,
+            sectorCoveragePct: 96.5,
+            maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            flags: ["AAPL 16.9% (alert, look-through)"],
+            opaqueFundCount: 1,
+          },
+        },
+      }),
+      [],
+      "NVDA",
+    );
+    expect(out).toContain("ETF look-through");
+    expect(out).toContain("LOWER BOUND");
+    expect(out).toContain("does not move sizing gates");
+    expect(out).toContain("name coverage 99.0%, sector coverage 96.5%");
+    expect(out).toContain("largest effective name AAPL 16.9%");
+    expect(out).toContain("1 fund(s) still opaque");
+    expect(out).toContain("Look-through concentration flags: AAPL 16.9% (alert, look-through).");
+  });
+
+  it("omits the opaque-fund clause and the flags line when there's nothing to report", () => {
+    const out = formatPortfolioContext(
+      snapshot({
+        health: {
+          ...snapshot().health!,
+          lookThrough: {
+            coveragePct: 99.0,
+            sectorCoveragePct: 96.5,
+            maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            flags: [],
+            opaqueFundCount: 0,
+          },
+        },
+      }),
+      [],
+      "NVDA",
+    );
+    expect(out).not.toContain("fund(s) still opaque");
+    expect(out).not.toContain("Look-through concentration flags");
   });
 
   it("omits the drift line when there is no mandate (drift null)", () => {

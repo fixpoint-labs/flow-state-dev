@@ -71,6 +71,28 @@ const portfolioHealthContext = z.object({
       breaches: z.array(z.string()), // pre-rendered, e.g. "fixed_income 24% vs target 30 — LOW"
     })
     .nullable(), // null = no mandate (FIX-761-gated; always null in v1)
+  /**
+   * The ETF look-through second axis (FIX-801) — effective exposure SEEING
+   * INSIDE funds, beside the wrapper-basis fields above (Decision 2: additive,
+   * never a replacement). Null when nothing was attributed through a fund (no
+   * funds held, none attributable, or the analysis seed reads the profiles
+   * table read-only and nobody has warmed it for these tickers yet — Decision
+   * 1's documented "browser sees `partial`, a cold headless run may see
+   * `none`" divergence). `maxPosition`/`flags` are LOWER BOUNDS (Decision 3) —
+   * uncovered fund weight is a residual, never renormalized, so a look-through
+   * flag firing is trustworthy but one NOT firing is not a clean bill of
+   * health. These figures do NOT move the deterministic decision gates
+   * (mandate / policy / evidence) — narrative context only (spec Non-goals).
+   */
+  lookThrough: z
+    .object({
+      coveragePct: z.number().nullable(),
+      sectorCoveragePct: z.number().nullable(),
+      maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
+      flags: z.array(z.string()), // pre-rendered, e.g. "NVDA 16.9% (alert, look-through)"
+      opaqueFundCount: z.number(), // funds left unattributed (thin/ineligible/unfetched)
+    })
+    .nullable(),
 });
 
 /**

@@ -534,7 +534,7 @@ function fmtPct(value: number | null): string {
 function appendHealthLines(lines: string[], health: PortfolioContextInput["health"]): void {
   if (health == null) return;
   lines.push(
-    `Household health (deterministic; no ETF look-through): cash ${fmtPct(health.cashPct)} of NAV, ` +
+    `Household health (deterministic): cash ${fmtPct(health.cashPct)} of NAV, ` +
       `priced coverage ${fmtPct(health.coveragePct)}.`,
   );
   if (health.assetClassAllocation.length > 0) {
@@ -560,6 +560,37 @@ function appendHealthLines(lines: string[], health: PortfolioContextInput["healt
         `${health.drift.rebalanceSuggested ? " — rebalance suggested" : ""}` +
         `${health.drift.breaches.length > 0 ? ` (${health.drift.breaches.join("; ")})` : ""}.`,
     );
+  }
+  appendLookThroughLines(lines, health.lookThrough);
+}
+
+/** Append the ETF look-through second axis (FIX-801) — a separate line, not
+ *  folded into the wrapper-basis lines above (Decision 2: additive, never a
+ *  replacement). No-op when nothing was attributed through a fund (`null`) —
+ *  which covers both the honest "no funds held" case and, on a headless run,
+ *  the documented Decision 1 divergence (the seed reads stored profiles
+ *  read-only and never fetches, so a fund nobody has warmed via the Portfolio
+ *  pane simply doesn't appear here). `maxPosition`/coverage are explicitly
+ *  framed as a LOWER BOUND, and the line states plainly that this reading does
+ *  NOT move the deterministic decision gates — a household 25% in a name
+ *  through funds still clears a policy cap measured on the wrapper basis
+ *  (spec Non-goals; the model must not read a look-through flag as a gate). */
+function appendLookThroughLines(
+  lines: string[],
+  lookThrough: NonNullable<PortfolioContextInput["health"]>["lookThrough"],
+): void {
+  if (lookThrough == null) return;
+  const maxName = lookThrough.maxPosition
+    ? `${lookThrough.maxPosition.ticker} ${fmtPct(lookThrough.maxPosition.weightPct)}`
+    : "—";
+  lines.push(
+    `ETF look-through (seeing inside funds; a LOWER BOUND — does not move sizing gates): ` +
+      `name coverage ${fmtPct(lookThrough.coveragePct)}, sector coverage ${fmtPct(lookThrough.sectorCoveragePct)}, ` +
+      `largest effective name ${maxName}` +
+      `${lookThrough.opaqueFundCount > 0 ? `; ${lookThrough.opaqueFundCount} fund(s) still opaque (thin/ineligible data)` : ""}.`,
+  );
+  if (lookThrough.flags.length > 0) {
+    lines.push(`Look-through concentration flags: ${lookThrough.flags.join(", ")}.`);
   }
 }
 

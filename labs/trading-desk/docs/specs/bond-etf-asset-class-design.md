@@ -91,7 +91,7 @@ and would not surface the split the user actually wants.
 | Deferred | Why not now |
 |----------|-------------|
 | ETF sector/category label (Tier 1) | Needs a classification data source; enriches analysis but isn't required for a correct allocation split. |
-| ETF look-through — underlying holdings/weights (Tier 2) | This is FIX-801. Needs a real holdings provider. Large. |
+| ETF look-through — underlying holdings/weights (Tier 2) | **Delivered by FIX-801, for equity ETFs only** — see [`etf-look-through.md`](../etf-look-through.md). Bond, commodity, leveraged/inverse, and mutual funds stay ineligible and opaque; this row's original "large, needs a real holdings provider" framing is now historical context, not a live gap. |
 | Tax tracking (Tier 3) | A separate subsystem on the FIX-774 ledger. Independent decision. |
 | Analysis gate / context changes | Analysis is per-ticker today; there is no portfolio-level analysis consumer to feed asset class into. The per-ticker `checkAssetTypeSupported` gate stays as-is. |
 | Decoupled `assetClass` import-hint column | No producer emits it yet; adding it now is speculative surface (BP-038). Add when a class-bearing import exists. |
@@ -193,9 +193,23 @@ No schema migration (columns exist), no new dependencies, no data provider.
 
 ## Follow-ups (not this change)
 
-- **Tier 1** — ETF sector/category label from a classification source.
+- **Tier 1** — ETF sector/category label from a classification source. **Still
+  open after FIX-801**: look-through gives a real per-fund sector attribution
+  for the funds it can decompose, but that is a look-through-basis reading, not
+  the standalone Tier-1 "label an ETF by sector/category" surface described
+  here — the two are additive knock-ons of the same feature, not the same
+  deliverable, and Tier 1 does not close by virtue of Tier 2 landing.
 - **Tier 2 / FIX-801** — ETF look-through (underlying holdings + weights).
+  **Delivered**, for equity ETFs only, in
+  [`etf-look-through.md`](../etf-look-through.md).
 - **Tier 3** — tax tracking on the FIX-774 ledger.
 - Thread `assetClass` into a portfolio-level analysis context once such a
   consumer exists.
 - Decoupled `assetClass` import-hint column once a class-bearing import exists.
+- **The curated `KNOWN_BOND_ETFS` list remains the classifier of record**, even
+  though a holdings provider now exists (FIX-801). Classification feeds
+  valuation and asset-class allocation, so it must not depend on lazily-filled,
+  best-effort reference data — see the docblock on `KNOWN_BOND_ETFS` in
+  `classify-instrument.ts` for the full reasoning. Bond funds are also
+  explicitly ineligible for look-through, which reinforces rather than
+  supersedes this list.

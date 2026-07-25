@@ -36,6 +36,17 @@
  * (exposure, concentration, cash, coverage) the Health pane shows. Drift/
  * compliance is the FIX-761-gated slice — `health.drift` stays null in v1.
  *
+ * FIX-801 addition: an optional `etfProfiles` map (UPPER ticker → stored fund
+ * profile) threaded straight through to `summarizePortfolioHealth`'s own
+ * optional trailing argument, so the trader/PM context gets the SAME
+ * look-through second axis the Health pane shows. Per the spec's Decision 1,
+ * this function does NOT fetch — the caller (`seedSession`, FIX-801 sub-PR c)
+ * reads the profiles table READ-ONLY, so a run sees look-through only for
+ * funds the Portfolio pane has already warmed; omitted (or empty), the health
+ * block's `lookThrough` field stays null exactly as before this change
+ * (BP-030 — the absent-profiles output equality guarantee this file already
+ * makes for `classifications` extends to `etfProfiles`).
+ *
  * Pure leaf: imports the portfolio schema types, the flow input type, and the
  * pure `portfolio-health` leaf (no runtime IO). Unit-testable without a browser.
  */
@@ -48,6 +59,7 @@ import {
   type PortfolioHealth,
   type QuoteMap,
 } from "@/domain/portfolio/math/portfolio-health";
+import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
@@ -85,6 +97,23 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
     },
     // Drift/compliance is the FIX-761-gated slice — always null until it lands.
     drift: null,
+    // The look-through second axis (FIX-801) — null exactly when `lookThrough`
+    // is `"none"` (no funds attributed), matching `lookThroughExposure`'s own
+    // nullability on the wrapper leaf's output.
+    lookThrough:
+      health.lookThrough === "partial" && health.lookThroughExposure !== null
+        ? {
+            coveragePct: health.lookThroughExposure.coveragePct,
+            sectorCoveragePct: health.lookThroughExposure.sectorCoveragePct,
+            maxPosition: health.lookThroughExposure.maxPosition,
+            flags: health.lookThroughExposure.flags.map((f) =>
+              f.kind === "single_name"
+                ? `${f.ticker} ${f.weightPct.toFixed(1)}% (${f.level}, look-through)`
+                : `${f.sector} ${f.weightPct.toFixed(1)}% (warn, look-through)`,
+            ),
+            opaqueFundCount: health.lookThroughExposure.opaqueFunds.length,
+          }
+        : null,
   };
 }
 
@@ -100,6 +129,7 @@ export function buildPortfolioContext(
   quotes: QuoteLike[],
   snapshotAsOf: string | null,
   classifications: ClassificationMap = new Map(),
+  etfProfiles: ReadonlyMap<string, FundProfileInput> = new Map(),
 ): PortfolioContextInput | null {
   if (accounts.length === 0) return null;
 
@@ -182,7 +212,7 @@ export function buildPortfolioContext(
   const quoteMap: QuoteMap = new Map();
   for (const q of quotes) quoteMap.set(q.ticker.toUpperCase(), { price: q.price, asOf: q.asOf });
   const health = projectHealth(
-    summarizePortfolioHealth(accounts, quoteMap, classifications, snapshotAsOf),
+    summarizePortfolioHealth(accounts, quoteMap, classifications, snapshotAsOf, etfProfiles),
   );
 
   return {

@@ -416,12 +416,21 @@ Accounts perspective, since they don't apply on the other views:
   per-account attribution stays in each account's Realized Gains tab.
 - **Health** — the household view across all accounts: the same name held in
   three accounts shown as one exposure, how the book splits by asset class and
-  sector (funds appear as their own bucket — no ETF look-through in this
-  version), concentration reads (largest single name, top-5 / top-10 weight, and
+  sector, concentration reads (largest single name, top-5 / top-10 weight, and
   an "effective number of positions" figure) with plain warn/alert flags, your
   cash level, and a coverage line for anything that can't be priced. Every figure
-  is plain arithmetic over stored quantities and sourced prices — no model calls.
-  Drift versus a target allocation lands once a portfolio mandate exists.
+  is plain arithmetic over stored quantities and sourced prices — no model calls
+  of its own (the *input* is a third party's stated fund composition — see
+  below). A second **look-through** read sits beside the first: it sees inside
+  ETFs and mutual funds, so a name you hold directly and the same name held
+  through a fund add up instead of sitting apart, and a fund's sector mix
+  attributes to real sectors instead of a "Funds" placeholder. It's additive,
+  never a replacement — the plain per-account figures above are unchanged — and
+  it's coverage-qualified: a fund whose holdings data is too thin, or that's
+  leveraged/inverse/bond/commodity, stays honestly opaque by design rather than
+  half-attributed. See [`docs/etf-look-through.md`](docs/etf-look-through.md) for
+  the methodology and its limits. Drift versus a target allocation lands once a
+  portfolio mandate exists.
 
 Click a card in the Accounts perspective to open the account, which has four
 tabs:
@@ -544,7 +553,12 @@ missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
 treatment. `ALPHAVANTAGE_API_KEY` (optional, free tier — 25 requests/day,
 5/minute) enables live earnings-call transcripts and analyst consensus /
 price-targets, and an insider-transactions fallback; without it the disclosure
-analyst still runs on EDGAR filings and Finnhub ratings alone. `ALPHAVANTAGE_DAILY_LIMIT`
+analyst still runs on EDGAR filings and Finnhub ratings alone. The **same key
+and the same shared daily/per-minute budget** also power the Health view's ETF
+look-through (fetching a fund's holdings composition, lazily and once per
+fund) — a non-analysis consumer sharing the one allowance, not a separate one.
+Without the key, funds simply stay opaque in the Health view exactly as they
+did before look-through existed. `ALPHAVANTAGE_DAILY_LIMIT`
 tunes the in-process daily-budget guard (default `25`; set it to `0` for a paid
 plan with no cap). `ALPHAVANTAGE_MINUTE_LIMIT` tunes the in-process per-minute
 pacing guard the same way (default `5`; set it to `0` for a paid plan with no
@@ -778,6 +792,7 @@ methodology rather than advice:
 
 - [Critical-financials recovery](docs/financials-recovery.md) — the IPO-prospectus fallback: the recovery hierarchy, promote gates, cost behavior, and the `recoveryAudit` trail when a newly listed issuer's audited financials live only in its S-1 / 424B*.
 - [Portfolio mandate (IPS)](docs/portfolio-mandate.md) — the durable household policy: schema, validation, the FIX-752 reconciliation, and what the desk enforces vs treats as advisory.
+- [ETF profile & holdings look-through](docs/etf-look-through.md) — where the fund-holdings data comes from, the eligibility + coverage gates that decide what's honestly attributable, the lower-bound reading, and the worked arithmetic.
 - [Architecture deep-dive](../../docs/internal/design/trading-desk.md) — in-repo design doc covering pipeline shape, identity, resource flow, pattern choices, and the work the framework absorbs.
 - [Public guide](../../apps/docs/guides/trading-desk-walkthrough.md) — published Docusaurus walkthrough of the app phase by phase.
 

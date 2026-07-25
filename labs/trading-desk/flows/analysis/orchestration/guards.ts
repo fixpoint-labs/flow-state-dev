@@ -51,6 +51,8 @@ import {
 } from "@/domain/portfolio/schema/portfolio-mandate-schema";
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
+import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
+import { toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/db/portfolio-db";
 import { toAccountStates } from "@/db/repository";
@@ -208,11 +210,36 @@ export const seedSession = handler({
     } catch (err) {
       console.warn(`[trading-desk] seed: instrument classifications read failed`, err);
     }
+    // Stored ETF/mutual-fund profiles (FIX-801), read-only from
+    // `app.etf_profiles` — the seed NEVER fetches (Decision 1: fetching is the
+    // Portfolio pane's job, via `GET /api/portfolio/etf-profiles`). A run
+    // therefore sees look-through only for funds the pane has already warmed;
+    // a fund nobody has viewed reads as an absent map entry, and the leaf
+    // treats that exactly like "no stored profile" (opaque, not fetched). A
+    // read failure must not fail the run — degrade to an empty map, same
+    // discipline as the classifications read above.
+    const heldFundTickers = [
+      ...new Set(
+        scoped.flatMap((a) =>
+          a.holdings
+            .filter((h) => h.assetType === "etf" || h.assetType === "mutual_fund")
+            .map((h) => h.ticker.toUpperCase()),
+        ),
+      ),
+    ];
+    const etfProfiles: Map<string, FundProfileInput> = new Map();
+    try {
+      const rows = await repo.getEtfProfiles(heldFundTickers);
+      for (const [ticker, profile] of toFundProfileMap(rows)) etfProfiles.set(ticker, profile);
+    } catch (err) {
+      console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
+    }
     const portfolio = buildPortfolioContext(
       scoped,
       quoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),
       snapshotAsOf,
       classifications,
+      etfProfiles,
     );
 
     // Durable household portfolio mandate (FIX-761), read from the user-scoped
