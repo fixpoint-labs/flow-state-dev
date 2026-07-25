@@ -174,6 +174,42 @@ describe("taskBoard caps — a board that CONSTRUCTS its collection", () => {
     expect(out.viaEscapeHatch).toBeNull();
   });
 
+  it("derives an omitted enqueue bound from a lower explicit total", () => {
+    // `taskBoard({ maxTotalTasks: 50 })` is a request for a SMALLER board, not a
+    // contradiction. Supplying the 100 enqueue default beside it independently
+    // and then rejecting the pair refused a plainly reasonable configuration.
+    const small = taskBoard({ name: "cap-lone-total", workers: noopWorker, maxTotalTasks: 50 });
+    expect(small.caps).toEqual({ maxTotalTasks: 50, maxEnqueuedTasks: 50 });
+
+    // Above the default, the default still applies — the clamp only lowers.
+    const big = taskBoard({ name: "cap-lone-total-hi", workers: noopWorker, maxTotalTasks: 900 });
+    expect(big.caps).toEqual({ maxTotalTasks: 900, maxEnqueuedTasks: 100 });
+
+    // `null` total is unbounded, so there is nothing to clamp against.
+    const none = taskBoard({ name: "cap-lone-total-null", workers: noopWorker, maxTotalTasks: null });
+    expect(none.caps).toEqual({ maxTotalTasks: null, maxEnqueuedTasks: 100 });
+  });
+
+  it("still rejects an explicitly contradictory pair", () => {
+    // The clamp must not swallow a contradiction the CALLER wrote. Only an
+    // omitted enqueue bound is derived; an explicit one is taken at its word
+    // and checked.
+    expect(() =>
+      taskBoard({
+        name: "cap-explicit-contradiction",
+        workers: noopWorker,
+        maxTotalTasks: 5,
+        maxEnqueuedTasks: 6,
+      }),
+    ).toThrow(/must be <= maxTotalTasks/);
+    // An explicit enqueue bound above the DEFAULTED total is also a real
+    // contradiction: the board can never hold that many. Raising the lifetime
+    // ceiling to fit would silently weaken a bound the caller never touched.
+    expect(() =>
+      taskBoard({ name: "cap-explicit-over-default", workers: noopWorker, maxEnqueuedTasks: 600 }),
+    ).toThrow(/must be <= maxTotalTasks/);
+  });
+
   it("rejects an invalid cap at taskBoard() construction, like concurrency does", () => {
     expect(() =>
       taskBoard({ name: "bad-cap", workers: noopWorker, maxTotalTasks: 0 }),
@@ -201,6 +237,66 @@ describe("taskBoard caps — a board that CONSTRUCTS its collection", () => {
         maxEnqueuedTasks: 5,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("taskBoard caps — a SECOND ref over the same ledger", () => {
+  it("enforces nothing unless it is built with the board's caps", async () => {
+    // The bound lives in the resolved ref's closure, and
+    // `getOrCreateTaskCollection` never caches. So a writer that resolves the
+    // board's ledger itself gets an UNBOUNDED view of it — the board would then
+    // advertise a ceiling it does not hold. This is why `board.caps` exists and
+    // why every out-of-band writer must be handed it.
+    const board = taskBoard({
+      name: "second-ref",
+      collection: { collectionId: "second-ref" },
+      workers: noopWorker,
+      maxTotalTasks: 3,
+      maxEnqueuedTasks: 2,
+    });
+
+    const probe = handler({
+      name: "second-ref-probe",
+      uses: [board.capability],
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ uncapped: z.number(), capped: z.string() }),
+      execute: async (_input, ctx) => {
+        // A bare resolver — the shape a pattern writer used before FIX-931.
+        const bare = await getOrCreateTaskCollection({
+          ctx,
+          backing: "request",
+          collectionId: "second-ref",
+        });
+        await bare.addTasks(
+          Array.from({ length: 9 }, (_, i) => ({ id: `bare-${i}`, goal: `b-${i}` })),
+        );
+
+        // The same ledger, resolved WITH the board's caps.
+        const withCaps = await getOrCreateTaskCollection({
+          ctx,
+          backing: "request",
+          collectionId: "second-ref",
+          ...board.caps,
+        });
+        let capped = "inserted";
+        try {
+          await withCaps.addTask({ id: "capped", goal: "c" });
+        } catch (err) {
+          capped = err instanceof TaskCapExceededError ? err.cap : `unexpected: ${String(err)}`;
+        }
+        return { uncapped: bare.count(), capped };
+      },
+    });
+
+    const result = await testBlock(probe as never, { input: undefined as never });
+    expect(result.error).toBeNull();
+    const out = result.output as { uncapped: number; capped: string };
+    // The bare ref wrote straight past a board advertising max 3.
+    expect(out.uncapped).toBe(9);
+    // Handed the board's caps, the very next creation is refused — so passing
+    // `board.caps` is what closes the gap, and this test fails if `caps` ever
+    // stops being surfaced or stops being honored.
+    expect(out.capped).toBe("total");
   });
 });
 

@@ -99,8 +99,12 @@ export interface SkillsLibraryOptions {
   /**
    * Lifetime task ceiling for the delegation board (FIX-931). Counts every task
    * ever created on the board, terminal ones included, and is never refunded by
-   * draining. Default 500; `null` is explicitly unbounded. Not durable across
-   * suspend/resume — a rebuilt board starts from zero.
+   * draining. Default 500; `null` is explicitly unbounded.
+   *
+   * The delegation board is sequencer-backed (the executive's own state), so on
+   * a checkpoint resume the ledger — and therefore this count — is restored with
+   * it rather than starting over. See the lifetime section in
+   * `tasks/collection/task-caps.ts`.
    */
   maxTotalTasks?: number | null;
   /**

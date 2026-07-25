@@ -156,6 +156,18 @@ free slots) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
 refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 `maxTotalTasks` (`null` = unbounded).
 
+> **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
+> collection, so they cover boards the skills library installs and boards
+> `taskBoard` builds itself — not the capability surface on its own. Wiring the
+> exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
+> generator's own-state board through a bare, **uncapped** collection: `addTask`
+> there is unbounded. That is deliberate — a hand-wired capability has no
+> construction site to take cap options from — but do not read "delegation is
+> capped" as "`taskTools` is capped". For a bounded board on that path, build the
+> collection yourself with
+> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
+> resolver for it to `createTaskToolsCapability(resolver)`.
+
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.
 generator({ uses: [skills.with({ active: ["research-lead"] })] });

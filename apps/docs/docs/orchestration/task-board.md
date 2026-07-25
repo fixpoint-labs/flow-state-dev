@@ -226,11 +226,42 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 
 Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead, so a coordinator can drain and continue.
 
-Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`. Neither bound is durable across suspend and resume: a rebuilt board starts counting from zero.
+Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`.
+
+### How long the counts last
+
+Neither bound is a stored counter. Both are read off the board's task ledger at the moment a task is created: the total is the ledger's size, the enqueue count is how many of its tasks are `pending`. So the counts last exactly as long as the ledger, which depends on the backing:
+
+- **Request-backed** (the default) — the ledger lives on the request, so a new request starts empty and both counts start from zero.
+- **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. The counts come back with it. A wave of new tasks after a resume is checked against the tasks that were already there, not against an empty board.
+- **Durable (resource-backed)** — the bounds are not enforced on this backing yet.
+
+Do not plan a post-resume wave on the assumption that the ceiling resets. It does not reset on the sequencer backing, and a delegation board is sequencer-backed.
+
+### One writer, or hand every writer the bounds
+
+The bounds are carried by the collection reference the board resolves. Resolving the same ledger a second time gives you a *different* reference, and it enforces only what it was built with. So a block that calls `getOrCreateTaskCollection` itself, against a board's `collectionId`, writes past the board's bounds unless it is given them:
+
+```ts
+const board = taskBoard({ name: "research", workers });
+
+// This second reference is unbounded, even though the board has bounds.
+const loose = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "research" });
+
+// Hand it the board's own resolved bounds and it enforces them.
+const bounded = await getOrCreateTaskCollection({
+  ctx,
+  backing: "request",
+  collectionId: "research",
+  ...board.caps,
+});
+```
+
+`board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
 
 ### Where the bounds apply
 
-They belong to the collection, so the board applies them only when it builds the collection itself. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead:
+They belong to the collection, so the board applies them only when it builds the collection itself — and, per the previous section, only to writers that go through the board's own reference. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead:
 
 ```ts
 const tasks = await getOrCreateTaskCollection({

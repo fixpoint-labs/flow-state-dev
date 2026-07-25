@@ -104,6 +104,9 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     collectionId: name,
     inputDefault: "goal",
+    // The board's bounds, so the planner's seed writes through a capped ref
+    // rather than a second uncapped one over the same ledger (FIX-931).
+    caps: board.caps,
   });
 
   // Collects completed task outputs after the board drains.

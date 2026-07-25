@@ -37,6 +37,7 @@ import type {
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
+  resolveTaskCapDefaults,
   type TaskCollectionRef,
   type TaskWorkerInput,
   type TaskWorkerRegistry,
@@ -226,11 +227,20 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const RESOURCE_KEY = "eventedActors";
   const appendEntry = createAppendEntry(name, workspaceResource, RESOURCE_KEY);
 
+  // ONE definition of this board's creation bounds (FIX-931), spread into both
+  // the board below and `getCollection` here. Actor spawning resolves the
+  // board's ledger into its own `TaskCollectionRef`, and the caps are closed
+  // over per-ref — so a resolver built without them writes past the bounds the
+  // board advertises. Resolved up here rather than read off `board.caps`
+  // because `getCollection` is declared before the board is built.
+  const boardCaps = resolveTaskCapDefaults(`[eventActors] "${name}"`, {});
+
   async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
     return getOrCreateTaskCollection({
       ctx,
       backing: "request",
       collectionId,
+      ...boardCaps,
     });
   }
 
@@ -361,6 +371,9 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId },
+    // Same resolved bounds `getCollection` uses — spread rather than restated,
+    // so the board and the actor-spawn writer can never disagree (FIX-931).
+    ...boardCaps,
     workers: workerRegistry,
     concurrency,
     dispatcher: "fifo",

@@ -42,9 +42,8 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  DEFAULT_MAX_ENQUEUED_TASKS,
-  DEFAULT_MAX_TOTAL_TASKS,
   getOrCreateTaskCollection,
+  resolveTaskCapDefaults,
   taskStatusSchema,
 } from "../tasks";
 import type { TaskCollectionRef } from "../tasks";
@@ -583,10 +582,18 @@ async function buildTools(
 
   // The delegation board's drain is `taskBoard({ collection: () => boardCollection() })`
   // — a SUPPLIED collection, which takes no board-level caps. So the caps ride
-  // this construction instead (FIX-931), with the 500/100 defaults applied here
-  // and tunable via `SkillsLibraryOptions`. Every writer for this board — the
-  // executive's flat task tools, a worker's fan-out capability, and the drain —
-  // resolves through this one function, which is what makes the caps hold.
+  // this construction instead (FIX-931), tunable via `SkillsLibraryOptions`.
+  // Resolved once per surface build, not per call: the defaults and their
+  // validation live in `resolveTaskCapDefaults`, so a bad library option fails
+  // here rather than deep inside the collection constructor.
+  const caps = resolveTaskCapDefaults("[skills] delegation board", {
+    maxTotalTasks: deps.maxTotalTasks,
+    maxEnqueuedTasks: deps.maxEnqueuedTasks,
+  });
+
+  // Every writer for this board — the executive's flat task tools, a worker's
+  // fan-out capability, and the drain — resolves through this one function,
+  // which is what makes the caps hold.
   const boardCollection = (): Promise<TaskCollectionRef> =>
     getOrCreateTaskCollection({
       backing: "sequencer",
@@ -595,12 +602,7 @@ async function buildTools(
       collectionId: DELEGATION_BOARD_FIELD,
       ctx,
       changeVisibility: DELEGATION_BOARD_VISIBILITY,
-      maxTotalTasks:
-        deps.maxTotalTasks === undefined ? DEFAULT_MAX_TOTAL_TASKS : deps.maxTotalTasks,
-      maxEnqueuedTasks:
-        deps.maxEnqueuedTasks === undefined
-          ? DEFAULT_MAX_ENQUEUED_TASKS
-          : deps.maxEnqueuedTasks,
+      ...caps,
     });
 
   // The declared-agent roster assignment is validated against (FIX-924) — the

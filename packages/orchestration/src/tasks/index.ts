@@ -50,6 +50,7 @@ export type { ResourceBackedOptions } from "./collection/resource-backed";
 export {
   TaskCapExceededError,
   validateTaskCaps,
+  resolveTaskCapDefaults,
   DEFAULT_MAX_TOTAL_TASKS,
   DEFAULT_MAX_ENQUEUED_TASKS,
   type TaskCapKind,

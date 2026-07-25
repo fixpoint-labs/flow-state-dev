@@ -83,7 +83,9 @@ addTask({ goal: "…" })  → { ok: false, error: "total_task_cap_exceeded" }   
 
 The usual recovery is the loop the guidance already describes: call `runBoard`, let the pending work drain, then add the next wave.
 
-One thing to be precise about. The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own — a retry, an unblock, a resumed review, a reclaimed lease — and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`. Neither bound survives a suspend and resume: a rebuilt board starts counting again from zero.
+One thing to be precise about. The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own — a retry, an unblock, a resumed review, a reclaimed lease — and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`.
+
+The counts are read off the board's task ledger rather than kept as a separate tally, so they last as long as that ledger does. A delegation board lives on the executive generator's own state, which is restored from its checkpoint when a suspended run resumes — so the tasks are still there afterwards, and so are the counts. Planning a fresh wave of 100 after a resume will not work if the board already holds them. See [how long the counts last](../orchestration/task-board#how-long-the-counts-last) for the full picture across backings.
 
 Both are tunable on the library, beside `workerModelId`:
 
@@ -97,6 +99,21 @@ const skills = createSkillsLibrary({
 ```
 
 `null` is the opt-out. Omitting an option is not — it reapplies the default.
+
+One boundary worth knowing, because it is easy to assume otherwise. The bounds come from the code that *builds* the board's task collection. Binding a delegating skill does that for you, so those boards are bounded. Wiring the `taskTools` capability by hand — `uses: [taskTools]` on a generator, outside a skill binding — does not: it reaches the generator's own-state board through a plain collection with no bounds at all, and `addTask` there is unbounded. That is intentional, since a hand-wired capability has nowhere to put the options, but it means "delegation is bounded" is not the same claim as "`taskTools` is bounded". If you want a bound on that path, build the collection yourself and hand the capability a resolver for it:
+
+```ts
+const bounded = (ctx) =>
+  getOrCreateTaskCollection({
+    ctx,
+    backing: "sequencer",
+    collectionId: "my-board",
+    sequencer: ctx.sequencer!,
+    maxEnqueuedTasks: 25,
+  });
+
+generator({ uses: [createTaskToolsCapability(bounded)] });
+```
 
 ## Default worker (the floor)
 

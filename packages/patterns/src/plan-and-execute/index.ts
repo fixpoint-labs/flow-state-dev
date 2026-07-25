@@ -665,12 +665,10 @@ export function planAndExecute<
 
   // ------- Pattern-specific blocks ------------------------------------------
 
-  const captureAndPlan = createCaptureAndPlan({
-    name,
-    planner,
-    maxAttemptsPerTask,
-    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
-  });
+  // NOTE: `captureAndPlan` is built AFTER the board (below), because its
+  // planner-seed step resolves the board's ledger into its own
+  // `TaskCollectionRef` and must be handed `board.caps` (FIX-931). Reading the
+  // caps off the board rather than restating them keeps one definition.
 
   // FIX-827: optional goal synthesis. Composed at the pipeline top (before
   // `stampOuterGoal`) so the synthesized goal reaches BOTH the outer state
@@ -705,6 +703,16 @@ export function planAndExecute<
     // staying bounded — callers can override on the underlying
     // taskBoard if they want a stricter policy.
     flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
+  });
+
+  const captureAndPlan = createCaptureAndPlan({
+    name,
+    planner,
+    maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+    // The board's bounds, so the planner's seed writes through a capped ref
+    // rather than a second uncapped one over the same ledger (FIX-931).
+    caps: board.caps,
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });

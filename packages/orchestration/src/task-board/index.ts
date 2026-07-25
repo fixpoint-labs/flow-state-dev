@@ -76,9 +76,7 @@ import {
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
   onTaskChangeFor,
-  validateTaskCaps,
-  DEFAULT_MAX_ENQUEUED_TASKS,
-  DEFAULT_MAX_TOTAL_TASKS,
+  resolveTaskCapDefaults,
   type DefinedTaskCollection,
   type TaskCapOptions,
   type TaskCollectionRef,
@@ -319,16 +317,25 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * `collection` (a `DefinedTaskCollection` or a factory) is a construction
    * error: that collection carries whatever caps it was built with, and a
    * board cannot retrofit limits onto a collection it did not construct.
+   *
+   * IMPORTANT — the bound holds for writers that go through this board's
+   * `collectionFactory` or `capability`. It is closed over by the resolved
+   * `TaskCollectionRef`, and `getOrCreateTaskCollection` never caches, so a
+   * writer that resolves the SAME ledger into its own ref enforces nothing and
+   * can insert past the bound. Such a writer must be handed `board.caps`.
    */
   maxEnqueuedTasks?: number | null;
 
   /**
    * Maximum tasks the board may ever hold, terminal ones included (FIX-931).
-   * Default 500. Cumulative within the request and never refunded by
-   * draining, so it is the backstop against a drain-then-re-enqueue runaway.
-   * Not durable across suspend/resume — a rebuilt board starts from zero.
-   * `null` is explicitly unbounded; same supplied-collection rule as
-   * `maxEnqueuedTasks`.
+   * Default 500. Never refunded by draining, so it is the backstop against a
+   * drain-then-re-enqueue runaway. `null` is explicitly unbounded; same
+   * supplied-collection rule as `maxEnqueuedTasks`.
+   *
+   * For how far the count persists (it is derived from the ledger, so it lasts
+   * exactly as long as the ledger — which differs by backing, and does NOT
+   * simply reset on resume), see the lifetime section in
+   * `tasks/collection/task-caps.ts`.
    */
   maxTotalTasks?: number | null;
 
@@ -487,6 +494,20 @@ export interface TaskBoardHandle<
    * initial tasks or all carry ids.
    */
   hasIdlessInitialTasks: boolean;
+  /**
+   * The board's resolved creation caps (FIX-931) — defaults applied, validated.
+   * Empty (`{}`) when the caller supplied the collection, since the board then
+   * applies none.
+   *
+   * Surfaced because the caps live in a ref's closure and
+   * `getOrCreateTaskCollection` never caches, so a SECOND ref over the same
+   * ledger enforces nothing. Any writer that resolves this board's collection
+   * itself — rather than through `collectionFactory` or `capability` — must pass
+   * these, or it silently writes past the bounds the board advertises. That is
+   * what `patterns`' planner-seed and event-record paths do; see the note on
+   * `TaskBoardConfig.maxEnqueuedTasks`.
+   */
+  caps: TaskCapOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -782,7 +803,7 @@ export function taskBoard<
   // once-chosen backing onto every downstream wiring, so no call site restates
   // it. `board.capability` is always defined; `uses: [board.capability]` gets a
   // typed `ctx.cap.<name>` accessor regardless of backing.
-  return { drain, collectionId, capability, backing, hasIdlessInitialTasks };
+  return { drain, collectionId, capability, backing, hasIdlessInitialTasks, caps };
 }
 
 // ---------------------------------------------------------------------------
@@ -824,19 +845,14 @@ function resolveBoardCaps(
   }
 
   // Declarative: the board constructs the collection, so the defaults apply.
-  // `null` must survive `??` — it is the explicit opt-out, and omission is not.
-  const resolved: TaskCapOptions = {
-    maxTotalTasks:
-      config.maxTotalTasks === undefined ? DEFAULT_MAX_TOTAL_TASKS : config.maxTotalTasks,
-    maxEnqueuedTasks:
-      config.maxEnqueuedTasks === undefined
-        ? DEFAULT_MAX_ENQUEUED_TASKS
-        : config.maxEnqueuedTasks,
-  };
-  // Fail at `taskBoard()` construction rather than on first resolve, mirroring
-  // the concurrency/maxIterations throws above.
-  validateTaskCaps(`[task-board] "${name}"`, resolved);
-  return resolved;
+  // `resolveTaskCapDefaults` owns both the default values and the validation, so
+  // this site never restates 500/100. It throws at `taskBoard()` construction
+  // rather than on first resolve, mirroring the concurrency/maxIterations checks
+  // above.
+  return resolveTaskCapDefaults(`[task-board] "${name}"`, {
+    maxTotalTasks: config.maxTotalTasks,
+    maxEnqueuedTasks: config.maxEnqueuedTasks,
+  });
 }
 
 /**

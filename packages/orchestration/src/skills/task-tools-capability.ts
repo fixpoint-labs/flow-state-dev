@@ -59,6 +59,13 @@ export type TaskCollectionResolver = (
  * Read the host generator's delegation board from `ctx.parent`. Returns
  * `undefined` (→ `no_delegation_board`) when the parent declares no own state
  * or no board field, so a stray `taskTools`-only consumer degrades gracefully.
+ *
+ * NOT capped (FIX-931). This builds a bare collection with no creation caps, so
+ * a board reached only through this fallback is unbounded. That is deliberate —
+ * it has no construction site to take cap options from — but it means the caps
+ * are a property of the surface that BUILT the board, not of `taskTools`. The
+ * delegation surface passes its own capped resolver instead of relying on this;
+ * see `defaultOwnStateResolver`'s note on the `taskTools` singleton below.
  */
 export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
   const parent = (
@@ -435,5 +442,17 @@ export function createTaskToolsCapability(
   });
 }
 
-/** Default instance for direct `uses: [taskTools]` wiring (own-state board). */
+/**
+ * Default instance for direct `uses: [taskTools]` wiring (own-state board).
+ *
+ * **This instance is UNCAPPED** (FIX-931). It closes over
+ * `defaultOwnStateResolver`, which builds a bare collection with no creation
+ * caps, so a board reached this way has no `maxEnqueuedTasks` /
+ * `maxTotalTasks` ceiling. Boards installed by the skills library's delegation
+ * surface ARE capped (500/100 by default) — the caps come from the site that
+ * constructs the collection, and wiring this capability by hand has no such
+ * site. If you want a bounded board here, build the collection yourself with
+ * `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and pass a
+ * resolver for it to `createTaskToolsCapability`.
+ */
 export const taskTools = createTaskToolsCapability();

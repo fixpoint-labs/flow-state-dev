@@ -353,6 +353,9 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     planner: activePlanner,
     maxAttemptsPerTask,
     ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+    // The board's bounds, so the planner's seed writes through a capped ref
+    // rather than a second uncapped one over the same ledger (FIX-931).
+    caps: board.caps,
   });
 
   // FIX-827: optional goal synthesis at the pipeline top (before

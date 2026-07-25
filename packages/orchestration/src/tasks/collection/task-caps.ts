@@ -23,6 +23,38 @@
  * Caps are a property of the COLLECTION, not the board: they are applied where a
  * collection is constructed. A board handed a collection it did not build
  * applies none.
+ *
+ * ## Lifetime — the canonical statement (cite this, don't restate it)
+ *
+ * Neither cap is a stored counter. Both are DERIVED from the ledger's contents
+ * at check time (`maxTotalTasks` = the task map's size, `maxEnqueuedTasks` = its
+ * `pending` count). So they persist exactly as far as the ledger does, and no
+ * further:
+ *
+ * - **Request-backed** — the ledger lives on `ctx.request`, so it ends with the
+ *   request. A new request starts empty and both counts start from zero.
+ * - **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its
+ *   whole accumulator on resume (`ctx.sequencer.setState(resumeState.state)` in
+ *   `packages/core/src/blocks/sequencer.ts`), and the task map is part of it. The
+ *   counts come back with the ledger; a post-resume wave is checked against the
+ *   pre-suspension tasks, NOT against an empty board.
+ * - **Resource-backed** — not enforced at all (deferred, see FIX-939/FIX-917).
+ *
+ * "The caps reset on resume" is false for the sequencer backing and was wrong in
+ * the docs before FIX-931 landed. What the spec actually scoped out was a
+ * cross-resume cumulative *guarantee* — we do not promise the counts survive,
+ * because that depends on the backing and on whether a checkpoint was restored.
+ * We equally do not promise they reset.
+ *
+ * ## Enforcement boundary (the other thing not to restate wrongly)
+ *
+ * The caps are closed over by ONE resolved `TaskCollectionRef`, and
+ * `getOrCreateTaskCollection` never caches — every call builds a fresh ref. A
+ * second ref over the same ledger built WITHOUT these options enforces nothing
+ * and can insert straight past the bounds. "Intrinsic to the collection"
+ * therefore means intrinsic to a ref, not to the underlying storage. Every
+ * writer for a bounded board must resolve through the board's own
+ * `collectionFactory`/`capability`, or be handed `board.caps`.
  */
 
 /** Which bound a {@link TaskCapExceededError} reports. */
@@ -108,4 +140,55 @@ export function validateTaskCaps(label: string, caps: TaskCapOptions): void {
         `(${caps.maxTotalTasks}) — an enqueue bound above the lifetime ceiling can never bind`,
     );
   }
+}
+
+/**
+ * Apply the defaults to a caller's partial caps and validate the result — the
+ * ONE place 500/100 is turned into a concrete configuration.
+ *
+ * Every site that constructs a collection on a caller's behalf (`taskBoard`'s
+ * declarative branch, the delegation surface) goes through here rather than
+ * spelling out its own defaulting. Two sites holding one definition is how a
+ * default silently diverges: they agree the day they are written and nothing
+ * fails when one is later changed alone.
+ *
+ * `null` must survive: it is the explicit unbounded opt-out, so it is NOT the
+ * same as omission. `?? DEFAULT` would collapse the two and quietly delete the
+ * only in-place migration a capped board has.
+ *
+ * @param label Prefix identifying the construction site in a validation error.
+ * @param caps The caller's partial options; omitted axes take their default.
+ */
+export function resolveTaskCapDefaults(label: string, caps: TaskCapOptions): TaskCapOptions {
+  // Validate what the CALLER actually supplied first. The ordering rule exists
+  // to catch a contradiction the caller wrote; it must not fire on a pairing
+  // this function itself invented.
+  validateTaskCaps(label, caps);
+
+  const maxTotalTasks =
+    caps.maxTotalTasks === undefined ? DEFAULT_MAX_TOTAL_TASKS : caps.maxTotalTasks;
+
+  // An omitted enqueue bound is DERIVED from the resolved total, not chosen
+  // independently. `taskBoard({ maxTotalTasks: 50 })` is a request for a smaller
+  // board, not a contradiction — supplying the 100 default beside it and then
+  // rejecting the pair would refuse a plainly reasonable configuration.
+  //
+  // The clamp is deliberately one-directional. Lowering the softer bound (the
+  // burst) to fit a ceiling the caller chose is always safe. Raising the harder
+  // bound to fit an explicit burst is not: it would quietly weaken a lifetime
+  // ceiling the caller never touched, so an explicit `maxEnqueuedTasks` above
+  // the resolved total still throws.
+  const maxEnqueuedTasks =
+    caps.maxEnqueuedTasks === undefined
+      ? typeof maxTotalTasks === "number"
+        ? Math.min(DEFAULT_MAX_ENQUEUED_TASKS, maxTotalTasks)
+        : DEFAULT_MAX_ENQUEUED_TASKS
+      : caps.maxEnqueuedTasks;
+
+  const resolved: TaskCapOptions = { maxTotalTasks, maxEnqueuedTasks };
+  // Re-validate the resolved pair. The clamp above makes this unreachable for a
+  // derived enqueue bound, so what it still catches is an EXPLICIT enqueue bound
+  // above a defaulted total — which is a real contradiction worth naming.
+  validateTaskCaps(label, resolved);
+  return resolved;
 }
