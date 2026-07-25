@@ -104,38 +104,6 @@ function isStale(fetchedAt: string, now: Date): boolean {
   return ageMs > ETF_PROFILE_STALENESS_DAYS * 24 * 60 * 60 * 1000;
 }
 
-/** Flatten a discriminated {@link EtfProfileUpsertInput} into the read shape
- *  ({@link EtfProfileRow}) the response-building loop reads — the ONE place
- *  that reconciles the write shape and the read shape, so persisting an
- *  outcome and reflecting it into the in-memory `storedByTicker` map never
- *  restate the same flattening logic twice. */
-function toStoredRow(input: EtfProfileUpsertInput, fetchedAt: string): EtfProfileRow {
-  if (input.refusalReason === null) {
-    return {
-      ticker: input.ticker,
-      payload: input.payload,
-      refusalReason: null,
-      refusalDetail: null,
-      retryAt: input.retryAt ?? null,
-      transientAttempts: input.transientAttempts ?? 0,
-      // A preserved-payload backoff-only write carries its OWN explicit
-      // `fetchedAt` (the prior successful fetch time, kept — not bumped);
-      // a genuine fresh success has none set, so it falls back to the
-      // caller-supplied "now" (reviewer follow-up, FIX-801 sub-PR a).
-      fetchedAt: input.fetchedAt ?? fetchedAt,
-    };
-  }
-  return {
-    ticker: input.ticker,
-    payload: null,
-    refusalReason: input.refusalReason,
-    refusalDetail: input.refusalDetail,
-    retryAt: input.retryAt,
-    transientAttempts: input.transientAttempts,
-    fetchedAt,
-  };
-}
-
 /** Whether a stored row is still due for a fetch attempt right now — the
  *  SAME rule the outer `misses` filter uses, re-applied under the lease
  *  against a FRESH read (see the `GET` handler for why: a sequential, not
@@ -320,7 +288,18 @@ export async function GET(req: NextRequest) {
       }
 
       await repo.upsertEtfProfiles([upsert]);
-      return { row: toStoredRow(upsert, now.toISOString()), hitQuota: hitQuotaHere };
+      // Re-read rather than project `upsert` itself (Codex review, FIX-801
+      // sub-PR a): in the multi-instance race the repository's conditional
+      // upsert can silently DROP this write (a losing success-vs-success or
+      // refusal-vs-success race, see the WHERE clause in
+      // `upsertEtfProfiles`) — returning the pre-write intent would then
+      // hand the caller a row that was never actually persisted, and the
+      // response would disagree with the database. Re-reading returns
+      // whatever the conditional write actually left behind: this write's
+      // own row when it won, or the other instance's already-stored row when
+      // it lost.
+      const persisted = (await repo.getEtfProfiles([ticker]))[0]!;
+      return { row: persisted, hitQuota: hitQuotaHere };
     });
 
     // Propagate quota state to THIS caller's own request-local flag — even

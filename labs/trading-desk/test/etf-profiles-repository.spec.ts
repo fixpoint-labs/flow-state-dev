@@ -114,6 +114,42 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].refusalReason).toBeNull();
   });
 
+  it("a success upsert with an OLDER fetchedAt than the currently-stored row does NOT overwrite it — the freshness guard (Codex review round 2, FIX-801 sub-PR a)", async () => {
+    // The first WHERE-clause fix (the test above) only distinguished
+    // refusal-shaped vs. success-shaped writes, which left a residual gap: a
+    // SUCCESS-shaped write can itself be stale — the route's "preserved
+    // payload" case carries the OLD fetchedAt forward on purpose (so a
+    // backoff-only write doesn't look freshly fetched), and that old
+    // fetchedAt can be older than a fresher row a DIFFERENT concurrent
+    // instance already persisted. Simulates that race directly: instance A's
+    // fresh success lands first, then instance B's own stale preserved-
+    // payload write (still success-shaped, but with an older fetchedAt) must
+    // be silently dropped, not applied.
+    const freshWriteTime = new Date();
+    await repo.upsertEtfProfiles([{ ticker: "IVV", payload: SAMPLE_PROFILE, refusalReason: null }]);
+    const afterFresh = (await repo.getEtfProfiles(["IVV"]))[0]!;
+    expect(afterFresh.payload).toEqual(SAMPLE_PROFILE);
+    expect(new Date(afterFresh.fetchedAt).getTime()).toBeGreaterThanOrEqual(freshWriteTime.getTime());
+
+    const staleProfile: NormalizedEtfProfile = { ...SAMPLE_PROFILE, netExpenseRatio: 0.5 }; // distinguishable
+    const staleFetchedAt = new Date(new Date(afterFresh.fetchedAt).getTime() - 60_000).toISOString(); // 1 minute OLDER
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "IVV",
+        payload: staleProfile,
+        refusalReason: null,
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt, // a preserved-payload write carrying the OLD fetch time forward
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["IVV"]);
+    expect(rows).toHaveLength(1);
+    // The fresher row survives — the stale success-shaped write was a no-op.
+    expect(rows[0].payload).toEqual(SAMPLE_PROFILE);
+    expect(rows[0].fetchedAt).toBe(afterFresh.fetchedAt);
+  });
+
   it("a success upsert for a genuinely new ticker (no existing row) is never blocked by the guard", async () => {
     await repo.upsertEtfProfiles([
       {

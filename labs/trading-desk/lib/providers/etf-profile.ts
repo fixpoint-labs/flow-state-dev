@@ -225,16 +225,23 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
   }
 
   const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
-  if (rawHoldings.length > 0 && !hasResolvableConstituent) {
-    // "No resolvable constituent" has two DIFFERENT causes that must not
-    // share a verdict (Codex review, FIX-801 sub-PR a): a genuinely
-    // unsymboled book (bullion, unsymboled debt) is a permanent fact about
-    // the fund — `ineligible`, ~90-day backoff. Symbols that WERE resolvable
-    // but whose weights all failed to parse (corrupted/out-of-range) is a
-    // provider-side data glitch that may well be fixed on the next fetch —
-    // `malformed`, ~7-day backoff. Checked independently of weight validity,
-    // so a response with fine symbols and garbage weights isn't suppressed
-    // for 12x longer than it should be.
+  if (!hasResolvableConstituent) {
+    // "No resolvable constituent" covers THREE distinct raw shapes, which
+    // must not share a verdict (Codex review, FIX-801 sub-PR a): a
+    // genuinely unsymboled book (bullion, unsymboled debt) is a permanent
+    // fact about the fund — `ineligible`, ~90-day backoff. Symbols that WERE
+    // resolvable but whose weights all failed to parse (corrupted/
+    // out-of-range) is a provider-side data glitch that may well be fixed on
+    // the next fetch — `malformed`, ~7-day backoff. A response with sector
+    // rows but an EMPTY/absent `holdings` array (`rawHoldings.length === 0`)
+    // falls through to this same check now too — this is no longer gated on
+    // `rawHoldings.length > 0`, since an empty holdings array trivially has
+    // no resolvable symbol either and must not silently pass through as a
+    // zero-constituent "profile" (a second Codex review, FIX-801 sub-PR a —
+    // distinct from the initial both-empty `not_an_etf` check above, which
+    // only fires when sectors are ALSO empty). Checked independently of
+    // weight validity, so a response with fine symbols and garbage weights
+    // isn't suppressed for 12x longer than it should be.
     const hasResolvableSymbol = rawHoldings.some((row) => !isAbsent(row.symbol));
     if (hasResolvableSymbol) {
       return {

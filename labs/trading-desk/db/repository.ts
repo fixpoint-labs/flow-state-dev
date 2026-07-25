@@ -1925,10 +1925,25 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             // atomically: a REFUSAL-shaped write (`excluded.refusal_reason`
             // set) is simply dropped — not applied, per ON CONFLICT ... DO
             // UPDATE ... WHERE semantics — when the row it would land on
-            // already carries a real payload. A success-shaped write
-            // (`refusal_reason` null, including the preserved-payload
-            // backoff-only case) is never blocked here.
-            where: sql`${etfProfiles.payload} is null or excluded.refusal_reason is null`,
+            // already carries a real payload.
+            //
+            // A success-shaped write is additionally required to be NO OLDER
+            // than the row it would replace (`excluded.fetched_at >=
+            // etfProfiles.fetchedAt`) — the residual gap this guard's first
+            // version left, independently confirmed by a second Codex review:
+            // instance A persists a fresh success, then instance B's OWN
+            // failed refresh (against the pre-A snapshot it read) produces a
+            // success-shaped PRESERVED-payload write (B's old payload +
+            // backoff stamp, `fetchedAt` = B's old payload's fetch time —
+            // `toStoredRow`/`upsertEtfProfiles` both carry that through
+            // unchanged for exactly this comparison) that the ORIGINAL
+            // refusal-vs-success-only WHERE admitted, clobbering A's fresh
+            // row with B's stale one for up to 90 days. A genuinely fresh
+            // fetch (no explicit `fetchedAt` passed) always stamps "now", so
+            // it is never blocked by this comparison in the normal case —
+            // only a stale preserved-payload write can lose to an
+            // already-newer stored row.
+            where: sql`${etfProfiles.payload} is null or (excluded.refusal_reason is null and excluded.fetched_at >= ${etfProfiles.fetchedAt})`,
           });
       });
     },

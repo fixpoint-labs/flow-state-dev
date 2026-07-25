@@ -136,6 +136,22 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
   });
 
+  it("refuses a SECTOR-ONLY response (sector rows present, holdings array empty/absent) rather than caching a zero-constituent profile (Codex review round 2)", async () => {
+    // Distinct from the all-n/a case above (which has holdings ROWS, just
+    // unresolvable ones) and from the both-empty case (already caught by the
+    // earlier not_an_etf guard): here `sectors` is non-empty but `holdings`
+    // itself is empty, so nothing in the earlier "no resolvable constituent"
+    // check fired (it used to be gated on `rawHoldings.length > 0`) and a
+    // profile with zero constituents/zero nameCoverage would otherwise be
+    // cached as valid for 30 days.
+    mockFetchOnce({
+      ...WELL_COVERED,
+      holdings: [],
+    });
+    const out = await fetchEtfProfile("SECTORONLY");
+    expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
+  });
+
   it("classifies resolvable symbols with ALL-unparseable/out-of-range weights as malformed, not ineligible (Codex review)", async () => {
     // Distinct from the all-n/a case above: the SYMBOLS are fine here, only
     // the weights are corrupted — a recoverable provider glitch (~7-day

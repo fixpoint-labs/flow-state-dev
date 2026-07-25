@@ -402,6 +402,45 @@ describe("GET /api/portfolio/etf-profiles", () => {
     }
   });
 
+  it("when this instance's own write loses the cross-process freshness race, the response reflects what's actually stored, not the local write attempt (Codex review round 2, FIX-801 sub-PR a)", async () => {
+    await seedEtf("SPY");
+    // Establish a first stored success, then force it stale so the next GET
+    // treats it as due for a refresh.
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: SAMPLE_PROFILE });
+    await GET(get(USER_ID));
+    await backdateFetchedAt("SPY", 31);
+
+    // This GET's own refresh attempt will FAIL (transient), so it computes a
+    // success-shaped PRESERVED-payload write carrying the OLD (backdated)
+    // fetchedAt forward. Intercept the route's OWN upsert call — the exact
+    // moment it reaches Postgres — and land a "concurrent instance"'s
+    // genuinely fresh write immediately before it, deterministically
+    // (no timing-dependent promise juggling around the real PGlite I/O).
+    fetcherMock.fetchEtfProfile.mockClear();
+    fetcherMock.fetchEtfProfile.mockRejectedValueOnce(new Error("network blip"));
+    // nameCoverage (not netExpenseRatio/inceptionDate, which the route's
+    // response projection deliberately drops) is the distinguishing marker —
+    // it's one of the fields `EtfProfileEntry` actually carries through.
+    const FRESHER_PROFILE: NormalizedEtfProfile = { ...SAMPLE_PROFILE, nameCoverage: 0.42 };
+    const originalUpsert = repoState.repo!.upsertEtfProfiles.bind(repoState.repo!);
+    vi.spyOn(repoState.repo!, "upsertEtfProfiles").mockImplementation(async (rows) => {
+      await originalUpsert([{ ticker: "SPY", payload: FRESHER_PROFILE, refusalReason: null }]);
+      return originalUpsert(rows);
+    });
+
+    const res = await GET(get(USER_ID));
+    const body = (await res.json()) as EtfProfilesResponse;
+
+    // The route's own write (the stale preserved-payload one) was silently
+    // dropped by the repository's freshness guard — the concurrent instance's
+    // fresher row won. The response must reflect THAT row, not this
+    // request's own (losing) write intent.
+    const spy = body.profiles.find((p) => p.ticker === "SPY");
+    expect(spy?.nameCoverage).toBeCloseTo(0.42);
+    const stored = (await repoState.repo!.getEtfProfiles(["SPY"]))[0]!;
+    expect(stored.payload?.nameCoverage).toBeCloseTo(0.42);
+  });
+
   it("400s without a userId query param", async () => {
     expect((await GET(get(undefined))).status).toBe(400);
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
