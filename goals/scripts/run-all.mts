@@ -133,19 +133,36 @@ const results: { id: string; verdict: "PASS" | "FAIL"; note: string }[] = [];
 for (const [index, goal] of runnable.entries()) {
   const header = `[${index + 1}/${runnable.length}] ${goal.id}`;
   console.log(`\n${"=".repeat(Math.min(header.length + 4, 80))}\n${header}\n${"=".repeat(Math.min(header.length + 4, 80))}`);
+
+  // stdout is INHERITED, not piped.
+  //
+  // A goal that drives `fsdev run` without `--quiet` streams the CLI's full
+  // NDJSON item log — unbounded, growing with item count and answer length.
+  // Capturing that through a pipe hits `spawnSync`'s default 1 MiB `maxBuffer`,
+  // which returns ENOBUFS with a NULL status: an expensive goal that actually
+  // PASSED would be reported as failed, and its child may outlive the runner.
+  //
+  // Raising `maxBuffer` only moves the cliff. Inheriting removes it: the goal's
+  // output streams straight to the terminal (better for a long sweep anyway),
+  // and the verdict comes from the EXIT CODE, which `runGoal` already
+  // guarantees — 0 for PASS, 1 for FAIL. The PASS evidence line has by then
+  // already been printed by the goal itself, so nothing is lost by not
+  // re-capturing it here.
   const run = spawnSync("pnpm", ["tsx", join(goal.dir, "run.mts")], {
     cwd: GOALS_ROOT,
-    stdio: ["ignore", "pipe", "inherit"],
-    encoding: "utf8",
+    stdio: ["ignore", "inherit", "inherit"],
   });
-  const stdout = run.stdout ?? "";
-  process.stdout.write(stdout);
-  // One verdict format, matching `goals/lib/verdict.mts`.
-  const verdictLine = stdout.split("\n").find((l) => l.startsWith("PASS —")) ?? "";
+
+  // `status` is null when the child was killed by a signal; treat that as FAIL.
   results.push({
     id: goal.id,
     verdict: run.status === 0 ? "PASS" : "FAIL",
-    note: run.status === 0 ? verdictLine.slice(0, 100) : `exit ${run.status}`,
+    note:
+      run.status === 0
+        ? ""
+        : run.status === null
+          ? `killed by signal ${run.signal ?? "unknown"}`
+          : `exit ${run.status}`,
   });
 }
 
@@ -153,7 +170,9 @@ const failed = results.filter((r) => r.verdict === "FAIL");
 
 console.log(`\n${"=".repeat(80)}\nGOAL SWEEP SUMMARY\n${"=".repeat(80)}`);
 for (const result of results) {
-  console.log(`${result.verdict === "PASS" ? "PASS" : "FAIL"}  ${result.id}`);
+  console.log(
+    `${result.verdict}  ${result.id}${result.note !== "" ? `  (${result.note})` : ""}`,
+  );
 }
 if (missingRunner.length > 0) {
   console.log(`\n${missingRunner.length} goal(s) have a goal.md but NO run.mts (not run):`);
