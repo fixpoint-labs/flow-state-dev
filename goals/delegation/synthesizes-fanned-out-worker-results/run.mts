@@ -59,10 +59,71 @@ function messageText(item: { content?: unknown; text?: unknown }): string {
   return String(c);
 }
 
-/** All hyphen-joined code-like tokens in a text, as EXACT (case-normalized) tokens. */
-function extractCodes(text: string): Set<string> {
-  return new Set(text.toLowerCase().match(/[a-z0-9]+(?:-[a-z0-9]+)*/g) ?? []);
+// ---------------------------------------------------------------------------
+// Marker matching — EXACT and case-sensitive, so the fixture code must survive
+// verbatim (a lowercased echo is not the fixture's code). Matching is plain
+// substring + boundary, never tokenization, so the goal.md contract "swap them
+// for any other two distinct strings" genuinely holds: a fixture containing
+// underscores, spaces, punctuation, or non-ASCII grades the same way.
+// ---------------------------------------------------------------------------
+
+/** A char that would make an adjacent match part of a longer run. */
+const WORDISH = /[\p{L}\p{N}_-]/u;
+
+/** Every start index of `marker` in `text` (exact, case-sensitive). */
+function occurrences(text: string, marker: string): number[] {
+  const out: number[] = [];
+  for (let i = text.indexOf(marker); i !== -1; i = text.indexOf(marker, i + 1)) out.push(i);
+  return out;
 }
+
+/** True when the match at `at` is not glued to a longer surrounding run. */
+function isBounded(text: string, at: number, marker: string): boolean {
+  const before = at > 0 ? text[at - 1]! : "";
+  const after = at + marker.length < text.length ? text[at + marker.length]! : "";
+  return (!before || !WORDISH.test(before)) && (!after || !WORDISH.test(after));
+}
+
+/**
+ * Does `text` carry `marker` on its own — as a bounded occurrence that is not
+ * merely part of one of the `longer` graded markers that contain it? Passing
+ * `longer` is what makes "standalone SECRET" distinct from "SECRET inside
+ * FANNED", for any fixture strings (not just hyphenated ASCII ones).
+ */
+function hasMarker(text: string, marker: string, longer: readonly string[] = []): boolean {
+  return occurrences(text, marker).some(
+    (i) =>
+      isBounded(text, i, marker) &&
+      !longer.some((l) => {
+        const offset = l.indexOf(marker);
+        return offset !== -1 && text.startsWith(l, i - offset);
+      }),
+  );
+}
+
+/**
+ * The graded markers, in ONE list so the two sides of the A/B cannot drift
+ * apart: the delegation-ON answer must carry EVERY marker here, and the
+ * no-delegation baseline must carry NONE of them. (A baseline that emits the
+ * fanned code is just as disqualifying as one that emits the bare secret —
+ * either means the marker was reachable without delegation.)
+ */
+const GRADED_MARKERS = [
+  {
+    label: "researcher's standalone secret",
+    marker: SECRET,
+    // SECRET is a prefix of FANNED, so an occurrence inside FANNED does not
+    // count as the researcher's own distinct result.
+    notPartOf: [FANNED] as const,
+    why: "the researcher's own result was not synthesized",
+  },
+  {
+    label: "fanned-out auditor code",
+    marker: FANNED,
+    notPartOf: [] as const,
+    why: "the mid-drain fan-out did not reach the answer",
+  },
+] as const;
 
 // ---------------------------------------------------------------------------
 // The team skill: two inline-prompt workers. The `researcher` declares
@@ -255,8 +316,20 @@ function assertNoRosterLeak(): string[] {
 async function runGoalCheck(): Promise<string[]> {
   const failures: string[] = [];
 
+  // Fixture sanity: the two held-out strings must be non-empty and distinct, or
+  // the standalone-vs-fanned distinction collapses. Any other pair is fair game
+  // (the matcher is exact + boundary-based, not tokenized).
+  if (!SECRET || !SUFFIX || SECRET === SUFFIX) {
+    return [
+      `fixture invalid: researcherSecret and auditSuffix must be non-empty and distinct ` +
+        `(got ${JSON.stringify(SECRET)} / ${JSON.stringify(SUFFIX)})`,
+    ];
+  }
+
   // Honesty guard part 1: neither secret nor suffix may appear in the
-  // coordinator's own prompt or the user turn.
+  // coordinator's own prompt or the user turn. Case-folded ON PURPOSE — unlike
+  // grading (which demands the fixture code verbatim), a leak guard should be
+  // broad, so a lowercased echo of a marker still trips it.
   const coordinatorContext = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
   if (
     coordinatorContext.includes(SECRET.toLowerCase()) ||
@@ -280,27 +353,19 @@ async function runGoalCheck(): Promise<string[]> {
   const on = await run("withTeam", "deleg-on");
   if (on.error) return [`delegation-ON run failed: ${on.error.message}`];
   const onOutput = coordinatorOutput(on);
-  const onCodes = extractCodes(onOutput);
 
-  // 1. Delegation happened: the researcher's STANDALONE secret was synthesized
-  //    into the coordinator's answer. It must be a distinct token — not merely a
-  //    substring of FANNED — or a coordinator that dropped the researcher's own
-  //    output and reported only the auditor's would falsely pass.
-  if (!onCodes.has(SECRET.toLowerCase())) {
-    failures.push(
-      `coordinator's terminal answer has no STANDALONE researcher code "${SECRET}" — the ` +
-        `researcher's own result was not synthesized. Output: ${JSON.stringify(onOutput.slice(0, 400))}`,
-    );
-  }
-
-  // 2. Fan-out happened: the auditor's transformed code (secret+suffix). Only
-  //    reachable if the researcher enqueued the auditor mid-drain AND handed it
-  //    the secret — the coordinator never learns the suffix.
-  if (!onCodes.has(FANNED.toLowerCase())) {
-    failures.push(
-      `coordinator's terminal answer has no fanned-out auditor code "${FANNED}" — the ` +
-        `mid-drain fan-out did not reach the answer. Output: ${JSON.stringify(onOutput.slice(0, 400))}`,
-    );
+  // The delegation-ON answer must carry EVERY graded marker: the researcher's
+  // standalone secret (proving its own result was synthesized, not just echoed
+  // inside the auditor's longer code) and the auditor's fanned-out code
+  // (reachable only if the researcher enqueued it mid-drain and handed it the
+  // secret — the coordinator never learns the suffix).
+  for (const { label, marker, notPartOf, why } of GRADED_MARKERS) {
+    if (!hasMarker(onOutput, marker, notPartOf)) {
+      failures.push(
+        `coordinator's terminal answer has no ${label} "${marker}" — ${why}. ` +
+          `Output: ${JSON.stringify(onOutput.slice(0, 400))}`,
+      );
+    }
   }
 
   // Corroboration (printed, not graded): the worker generators actually executed,
@@ -324,16 +389,22 @@ async function runGoalCheck(): Promise<string[]> {
   const off = await run("solo", "deleg-off");
   if (off.error) return [`baseline (solo) run failed: ${off.error.message}`];
   const offOutput = coordinatorOutput(off);
-  const offCodes = extractCodes(offOutput);
 
-  // 3. The baseline — identical prompt + user turn, NO team — CANNOT produce the
-  //    secret. If it does, the ON pass is not trustworthy (leakage/hardcoding).
-  if (offCodes.has(SECRET.toLowerCase())) {
-    failures.push(
-      `ANTI-GAME VIOLATED: the no-delegation baseline produced the secret "${SECRET}" ` +
-        `despite having no workers — the delegation-ON pass cannot be attributed to ` +
-        `delegation. Baseline output: ${JSON.stringify(offOutput.slice(0, 400))}`,
-    );
+  // The baseline — identical prompt + user turn, NO team — must produce NONE of
+  // the graded markers. Checked over the same GRADED_MARKERS list the ON side
+  // accepts, so the two can't drift: a baseline that emits the FANNED code is
+  // just as disqualifying as one that emits the bare secret, since either means
+  // the marker was reachable without delegation. Note the baseline check does
+  // NOT apply `notPartOf` — here ANY appearance is disqualifying, including one
+  // nested inside a longer marker.
+  for (const { marker } of GRADED_MARKERS) {
+    if (hasMarker(offOutput, marker)) {
+      failures.push(
+        `ANTI-GAME VIOLATED: the no-delegation baseline produced the graded marker ` +
+          `"${marker}" despite having no workers — the delegation-ON pass cannot be ` +
+          `attributed to delegation. Baseline output: ${JSON.stringify(offOutput.slice(0, 400))}`,
+      );
+    }
   }
 
   console.log(
@@ -343,12 +414,17 @@ async function runGoalCheck(): Promise<string[]> {
         .join("\n    ") +
       `\n` +
       `delegation ON terminal output:  ${JSON.stringify(onOutput.slice(0, 300))}\n` +
-      `  standalone secret "${SECRET}" present: ${onCodes.has(SECRET.toLowerCase())}\n` +
-      `  fanned-out "${FANNED}" present:        ${onCodes.has(FANNED.toLowerCase())}\n` +
+      GRADED_MARKERS.map(
+        ({ label, marker, notPartOf }) =>
+          `  ${label} "${marker}" present: ${hasMarker(onOutput, marker, notPartOf)} (must be true)\n`,
+      ).join("") +
       `  worker stream outputs (corroboration):\n    ${workerOutputs.join("\n    ") || "(none)"}\n` +
       `  auditor worker executed: ${ranAuditor}\n` +
       `delegation OFF terminal output: ${JSON.stringify(offOutput.slice(0, 300))}\n` +
-      `  secret "${SECRET}" present: ${offCodes.has(SECRET.toLowerCase())} (must be false)`,
+      GRADED_MARKERS.map(
+        ({ label, marker }) =>
+          `  ${label} "${marker}" present: ${hasMarker(offOutput, marker)} (must be false)\n`,
+      ).join(""),
   );
 
   return failures;
