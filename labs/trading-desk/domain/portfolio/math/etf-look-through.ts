@@ -446,15 +446,16 @@ export function computeLookThroughExposure(
         const slice = c.weight * mv;
         if (c.ticker === null || resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) {
           nameResidualMass += slice; // non-attributable line, or routed away from the name axis
-        } else {
+        } else if (slice > 0) {
+          // The same "real attribution, not just a passing gate" rule the
+          // sector axis below already applies (Codex review round 6,
+          // FIX-801): an otherwise-attributable constituent with a ZERO
+          // weight contributes nothing real — pushing it anyway would
+          // create a phantom $0 position that could surface as
+          // `maxPosition` (the first-eligible-candidate case) and wrongly
+          // flip `hasAttribution` even though every other slice is
+          // genuinely residual.
           pushSource(c.ticker, pos.ticker, slice);
-          // `hasAttribution` must reflect a REAL name actually attributed —
-          // not just that the coverage NUMBER cleared the floor (Codex
-          // review round 3, FIX-801): coverage can clear using ONLY
-          // non-attributable rows (every constituent `null`-ticker or
-          // itself a fund), in which case every slice above routes to
-          // residual and nothing is pushed here — that must NOT read as
-          // attribution.
           hasAttribution = true;
         }
       }

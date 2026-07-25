@@ -233,6 +233,36 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(out.residual.marketValue).toBeCloseTo(100_000);
     expect(out.hasAttribution).toBe(false);
   });
+
+  it("a ZERO-weight attributable constituent doesn't create a phantom position or flip hasAttribution (Codex review round 6)", () => {
+    // THIN's coverage clears via a null-ticker row (100% non-attributable),
+    // plus one otherwise-attributable constituent whose weight happens to be
+    // 0. Before this fix, that zero-weight row still went through
+    // `pushSource` (a phantom $0 position that could surface as
+    // `maxPosition`) and unconditionally flipped `hasAttribution` — even
+    // though 100% of the fund's mass is genuinely residual. The sector axis
+    // also fails here, so the correct overall read is "nothing was
+    // attributed".
+    const positions = [fund("THIN", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "THIN",
+        profile({
+          nameCoverage: 1,
+          constituents: [
+            { ticker: null, weight: 1 },
+            { ticker: "ZEROCO", weight: 0 },
+          ],
+          sectorCoverage: 0.2, // fails the floor
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // no phantom $0 ZEROCO position
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.hasAttribution).toBe(false);
+  });
 });
 
 describe("computeLookThroughExposure — Decision 4: effective-position interval", () => {
