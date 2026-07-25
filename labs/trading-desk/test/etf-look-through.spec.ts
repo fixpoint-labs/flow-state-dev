@@ -529,14 +529,20 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(totalSectors + out.sectorResidual.marketValue).toBeCloseTo(100_000); // always closes
   });
 
-  it("an OVER-sum within tolerance clamps to a non-negative NAME residual, not a negative one", () => {
+  it("an OVER-sum within tolerance scales attribution down AND clamps the NAME residual, so the total closes exactly", () => {
     // Declared `nameCoverage: 1` (100%) vs. two individually-valid rows
     // (0.6 + 0.405 = 1.005, 100.5%) — within the 0.01 tolerance, so
-    // accepted, not rejected. Before the clamp, the residual was
-    // `(1 - 1.005) * mv` = a NEGATIVE $500, which would also push
-    // `coveragePct` above 100% and could invert the effective-position
-    // interval (`low > high`). Clamping the actual sum to at most 1 before
-    // computing the residual keeps it at $0 instead.
+    // accepted, not rejected. The residual clamp alone (a prior round) only
+    // prevented a NEGATIVE residual / coveragePct > 100% — it did nothing
+    // about the SLICES themselves, which are computed from the raw row
+    // weights: unscaled, AAPL ($60,000) + MSFT ($40,500) already total
+    // $100,500 of the $100,000 fund, so residual clamping to $0 papered
+    // over an already-inflated attribution rather than fixing it (the total
+    // was still $100,500, not $100,000). Scaling each slice by
+    // `1 / actualNameSum` makes the slices themselves sum to exactly the
+    // fund's value, so attribution + residual closes exactly — the same
+    // invariant the under-sum fix (prior round) pinned, now proven for the
+    // over-sum direction too.
     const positions = [fund("OVERSUM", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
@@ -553,15 +559,22 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
       ],
     ]);
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    // Scaled proportionally: AAPL 0.6 / 1.005 ≈ 0.597015, MSFT likewise.
+    const aapl = out.positions.find((p) => p.ticker === "AAPL");
+    const msft = out.positions.find((p) => p.ticker === "MSFT");
+    expect(aapl?.marketValue).toBeCloseTo((0.6 / 1.005) * 100_000);
+    expect(msft?.marketValue).toBeCloseTo((0.405 / 1.005) * 100_000);
     expect(out.residual.marketValue).toBeCloseTo(0);
     expect(out.residual.marketValue).toBeGreaterThanOrEqual(0);
+    const totalPositions = out.positions.reduce((s, p) => s + p.marketValue, 0);
+    expect(totalPositions + out.residual.marketValue).toBeCloseTo(100_000); // closes EXACTLY, not $100,500
     expect(out.coveragePct).not.toBeNull();
     expect(out.coveragePct as number).toBeLessThanOrEqual(100);
     expect(out.effectivePositions).not.toBeNull();
     expect(out.effectivePositions!.low).toBeLessThanOrEqual(out.effectivePositions!.high);
   });
 
-  it("an OVER-sum within tolerance clamps to a non-negative SECTOR residual, not a negative one", () => {
+  it("an OVER-sum within tolerance scales attribution down AND clamps the SECTOR residual, so the total closes exactly", () => {
     // Sector-axis mirror of the name-axis case above.
     const positions = [fund("SECTOVERSUM", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
@@ -579,8 +592,14 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
       ],
     ]);
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    const tech = out.sectorExposure.find((s) => s.bucket === "Technology");
+    const health = out.sectorExposure.find((s) => s.bucket === "Healthcare");
+    expect(tech?.marketValue).toBeCloseTo((0.6 / 1.005) * 100_000);
+    expect(health?.marketValue).toBeCloseTo((0.405 / 1.005) * 100_000);
     expect(out.sectorResidual.marketValue).toBeCloseTo(0);
     expect(out.sectorResidual.marketValue).toBeGreaterThanOrEqual(0);
+    const totalSectors = out.sectorExposure.reduce((s, b) => s + b.marketValue, 0);
+    expect(totalSectors + out.sectorResidual.marketValue).toBeCloseTo(100_000); // closes EXACTLY
     expect(out.sectorCoveragePct).not.toBeNull();
     expect(out.sectorCoveragePct as number).toBeLessThanOrEqual(100);
   });

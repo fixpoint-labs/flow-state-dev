@@ -611,8 +611,21 @@ export function computeLookThroughExposure(
         names: `holdings data malformed (declared ${(safeNameCoverage * 100).toFixed(1)}% coverage doesn't match ${(actualNameSum * 100).toFixed(1)}% summed constituent weight)`,
       });
     } else {
+      // An OVER-sum within tolerance (e.g. declared 100% coverage, rows
+      // actually summing to 100.5%) must not just clamp the RESIDUAL to
+      // non-negative — the individual SLICES below are computed from the
+      // raw row weights, so without also scaling them down, attribution
+      // alone already overshoots `mv` (two rows at 0.6 + 0.405 push $60,000
+      // + $40,500 = $100,500 of a $100,000 fund) and the residual clamping
+      // to $0 papers over that instead of fixing it — attribution + residual
+      // would still total $100,500, not $100,000. Scaling every row's slice
+      // by `nameScale` (only when `actualNameSum > 1`; a no-op otherwise)
+      // makes the slices THEMSELVES sum to exactly 1, so the residual
+      // formula below (unchanged from the prior round) becomes correct
+      // rather than merely non-negative (Codex review, FIX-801 sub-PR b).
+      const nameScale = actualNameSum > 1 ? 1 / actualNameSum : 1;
       for (const c of fp.constituents) {
-        const slice = safeWeight(c.weight) * mv;
+        const slice = safeWeight(c.weight) * nameScale * mv;
         if (c.ticker === null || isFundCached(c.ticker)) {
           nameResidualMass += slice; // non-attributable line, or routed away from the name axis
         } else if (slice > 0) {
@@ -640,16 +653,11 @@ export function computeLookThroughExposure(
       // DECLARED coverage instead would silently lose (or invent) up to one
       // epsilon's worth of mass, breaking this leaf's own "attribution +
       // residual always closes to the fund's total value" contract (Codex
-      // review, FIX-801 sub-PR b). Clamped to at most 1: an OVER-sum within
-      // tolerance (e.g. declared 100% vs. rows actually summing to 100.5%) is
-      // the mirror-image case — without the clamp, `1 - actualNameSum` goes
-      // negative, producing a negative residual, a `coveragePct` above 100%,
-      // and a possibly-inverted effective-position interval (`low > high`).
-      // `nameReconciles` already bounds `actualNameSum` to at most
-      // `safeNameCoverage + epsilon` (and `safeNameCoverage` is itself capped
-      // at 1 by `safeWeight`), so the clamp only ever trims that one epsilon's
-      // worth of over-count, never masks a real malformed profile (Codex
-      // review, FIX-801 sub-PR b).
+      // review, FIX-801 sub-PR b). Clamped to at most 1 to match `nameScale`
+      // above: once the slices are scaled down to sum to exactly 1 (the
+      // over-sum case), the remainder is exactly 0, not negative — the clamp
+      // and the scale are the same fix applied to the two halves of this
+      // axis's total (Codex review, FIX-801 sub-PR b).
       nameResidualMass += (1 - Math.min(actualNameSum, 1)) * mv;
     }
 
@@ -678,8 +686,14 @@ export function computeLookThroughExposure(
           sectors: `sector data malformed (declared ${(safeSectorCoverage * 100).toFixed(1)}% coverage doesn't match ${(actualSectorSum * 100).toFixed(1)}% summed sector weight)`,
         });
       } else {
+        // Same over-sum scaling as the name axis above, and for the same
+        // reason: without it, the per-sector slices below (raw row weight ×
+        // `mv`) already overshoot `mv` on their own before the residual
+        // clamp ever runs, so clamping the residual alone leaves
+        // attribution + residual totaling more than the fund's value.
+        const sectorScale = actualSectorSum > 1 ? 1 / actualSectorSum : 1;
         for (const s of fp.sectors) {
-          const slice = safeWeight(s.weight) * mv;
+          const slice = safeWeight(s.weight) * sectorScale * mv;
           add(sectorMass, s.sector, slice);
           // Same "real attribution, not just a passing gate" rule as the name
           // axis above — a zero-weight row adds nothing real.
@@ -688,9 +702,9 @@ export function computeLookThroughExposure(
         // Same closure fix as the name axis above: derive the unreported
         // remainder from the ACTUAL summed sector weight, not the declared
         // `sectorCoverage` — a within-tolerance mismatch must not silently
-        // lose or invent mass, and the sum is clamped to at most 1 so a
-        // within-tolerance OVER-sum can't drive the residual negative (Codex
-        // review, FIX-801 sub-PR b).
+        // lose or invent mass, and the sum is clamped to at most 1 (matching
+        // `sectorScale` above) so a within-tolerance OVER-sum can't drive the
+        // residual negative (Codex review, FIX-801 sub-PR b).
         sectorResidualMass += (1 - Math.min(actualSectorSum, 1)) * mv;
       }
     }
