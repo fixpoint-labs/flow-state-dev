@@ -363,6 +363,41 @@ describe("delegation floor — reserved agent keys", () => {
       warn.mockRestore();
     }
   });
+
+  // A live manifest gaining an illegal key MID-EXECUTION, with its valid roster
+  // otherwise untouched. Filtering removes the new key before the snapshot is
+  // taken, so the BUILD identity is unchanged — correctly, since the board,
+  // tools and guidance are all identical either way. The diagnostic must not
+  // inherit that identity, or the newly rejected key goes unreported until some
+  // unrelated roster field happens to change.
+  it("reports a key that turns illegal mid-execution under an unchanged roster", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const collection = createMockSkillsCollection();
+      const { ctx } = buildExecCtx(collection);
+
+      // Step 1: a clean roster. Builds, caches, warns about nothing.
+      await buildDelegationTools(ctx, plantedDeps({ briefer: { prompt: "briefs" } }) as never);
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes("__no_assignee__"))).toHaveLength(0);
+
+      // Step 2: same roster PLUS an illegal key — the filtered snapshot is
+      // byte-identical, so the build memo legitimately returns its cached entry.
+      await buildDelegationTools(
+        ctx,
+        plantedDeps({
+          briefer: { prompt: "briefs" },
+          __no_assignee__: { prompt: "planted" },
+        }) as never,
+      );
+
+      const rejections = warn.mock.calls.filter((c) =>
+        String(c[0]).includes("__no_assignee__"),
+      );
+      expect(rejections).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

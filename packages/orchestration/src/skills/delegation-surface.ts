@@ -428,6 +428,48 @@ function validateAgentKeys(sources: DelegationAgentSource[]): {
   return { sources: validated, rejected };
 }
 
+/**
+ * Per-execution memo for the rejected-key diagnostic, deliberately SEPARATE
+ * from the build memo in `internal/delegation-memo.ts`.
+ *
+ * "What to build" and "what to warn about" have different identities, and
+ * modelling them as one is what made the diagnostic fragile twice over. Rejected
+ * keys are filtered out *before* the board, tools and guidance are computed, so
+ * they cannot change the built output — which cuts both ways:
+ *
+ *   - Folding them into the build snapshot would invalidate the board cache for
+ *     a purely diagnostic change, trading FIX-928's build-once property for a
+ *     log line.
+ *   - But keying the diagnostic on the BUILD snapshot loses reports, because a
+ *     roster that gains only an illegal key filters to an identical snapshot.
+ *
+ * So the diagnostic gets its own identity: the rejected set itself. Keyed on the
+ * execution ctx exactly like the build memo, so it GCs with the execution and a
+ * still-corrupt manifest re-reports on the next turn.
+ */
+const reportedRejections = new WeakMap<object, string>();
+
+/** Warn once per distinct rejected-key set per execution. */
+function reportRejectedAgentKeys(
+  ctx: object,
+  rejected: ReadonlyArray<{ skillName: string; key: string }>,
+): void {
+  if (rejected.length === 0) return;
+  const fingerprint = rejected
+    .map(({ skillName, key }) => `${skillName} ${key}`)
+    .sort()
+    .join("");
+  if (reportedRejections.get(ctx) === fingerprint) return;
+  reportedRejections.set(ctx, fingerprint);
+  for (const { skillName, key } of rejected) {
+    console.warn(
+      `[skills] delegation agent key "${key}" (skill "${skillName}") is not a legal agent ` +
+        `key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led names are ` +
+        `reserved by the delegation board.`,
+    );
+  }
+}
+
 async function resolveBuild(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
@@ -436,18 +478,10 @@ async function resolveBuild(
   // Validate BEFORE the memo so the snapshot keys on the roster that is actually
   // built, and both builders below see the identical list.
   const { sources, rejected } = validateAgentKeys(collected);
+  // Reported on its own memo, outside the build closure: the build may legitimately
+  // be cached when only the rejected set changed, and the report must still land.
+  reportRejectedAgentKeys(ctx, rejected);
   return resolveDelegationBuild(ctx, sources, async () => {
-    // Warn inside the build closure so a corrupt manifest reports once per
-    // snapshot rather than on every step of the tool loop. The memo invokes
-    // this closure for every changed snapshot INCLUDING an empty one, so a
-    // roster validated down to nothing still reports why it vanished.
-    for (const { skillName, key } of rejected) {
-      console.warn(
-        `[skills] delegation agent key "${key}" (skill "${skillName}") is not a legal agent ` +
-          `key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led names are ` +
-          `reserved by the delegation board.`,
-      );
-    }
     return {
       tools: await buildTools(ctx, deps, sources),
       guidance: buildGuidance(sources, deps.allowEmptyRoster),

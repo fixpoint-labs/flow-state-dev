@@ -94,16 +94,17 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
  * deliberately has no opinion about what an empty roster means — that is the
  * surface's call, and `buildTools`/`buildGuidance` already return `[]`/`null`
  * for a roster with nothing in it. An earlier version short-circuited an empty
- * source list here, which silently skipped the build closure; anything the
- * closure owns besides the build itself — notably the surface's warning that a
- * manifest's agent keys were all rejected — was then lost precisely in the case
- * that most needed reporting (FIX-940 review round 3). Keeping the one
- * invocation path means a diagnostic in the closure inherits this memo for
- * free: emitted once per distinct snapshot, never once per tool-loop step.
+ * source list here; the branch bought nothing (`buildTools` returns before
+ * materializing a board or a floor, so the "saved" work is a couple of object
+ * allocations) while making `build` conditional in a way its callers could not
+ * see.
  *
- * The cost of building an empty roster is a couple of object allocations —
- * `buildTools` returns before materializing a board or a floor — so there is no
- * work to save by special-casing it.
+ * That is the standing caution for this module: `build` is invoked when the
+ * snapshot changes, and on no other schedule. Anything that must happen on a
+ * DIFFERENT schedule does not belong inside the closure — the surface's
+ * rejected-agent-key warning is keyed on its own identity in
+ * `delegation-surface.ts` for exactly that reason, since a roster can gain an
+ * illegal key while filtering to a byte-identical snapshot here.
  */
 export async function resolveDelegationBuild(
   ctx: object,
