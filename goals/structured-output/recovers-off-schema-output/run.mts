@@ -15,85 +15,81 @@
  * GLM 5.2 — see goal.md for the realistic `intent/utility` variant. Shelled
  * with cwd = apps/kitchen-sink because config search is cwd-only.
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import {
+  KITCHEN_SINK,
+  answerText,
+  goalTmpDir,
+  loadFixture,
+  readCapture,
+  runFsdev,
+  runGoal,
+} from "../../lib/index.mts";
 
-const CAPTURE = "/tmp/pae-glm-goal.json";
+const CAPTURE = join(goalTmpDir("structured-output"), "run.json");
+// A LITERAL, deliberately — not `goalModel()`, and not `DEFAULT_MODEL`.
+//
+// goal.md pins this model because it is the one that surfaced the bug ("do not
+// substitute"). Routing it through `goalModel()` would let an ambient
+// `GOAL_MODEL` silently swap in a more schema-compliant model, and the run
+// would report PASS without ever exercising the off-schema recovery this goal
+// exists to check. A contract-pinned model must never be overridable.
 const MODEL = "vercel/zai/glm-5.2";
-const KITCHEN_SINK = fileURLToPath(new URL("../../../apps/kitchen-sink", import.meta.url));
 
 // Held-out fixture. Nothing below hardcodes the topic or the answer — only that
 // the run completed through plan-and-execute with real content.
-const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/goal.json", import.meta.url), "utf8"),
-) as { message: string; minAnswerChars: number };
+const fixture = loadFixture<{ message: string; minAnswerChars: number }>(
+  import.meta.url,
+  "goal.json",
+);
 
-function messageText(item: any): string {
-  const c = item?.content ?? item?.text ?? "";
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) {
-    return c.map((p) => (typeof p === "string" ? p : (p?.text ?? ""))).join(" ");
+await runGoal(() => {
+  runFsdev({
+    app: KITCHEN_SINK,
+    flow: "chat-agent",
+    action: "run",
+    input: { message: fixture.message, mode: "ask", thinkingStyle: "plan-and-execute" },
+    model: MODEL,
+    capture: CAPTURE,
+  });
+
+  const capture = readCapture(CAPTURE);
+  const failures: string[] = [];
+
+  // 1) The run completed — no execution_error. This is the headline: pre-fix it
+  //    aborts here.
+  if (capture.result.success !== true) {
+    failures.push(
+      `run did not complete: ${JSON.stringify(capture.result.error ?? capture.result ?? "unknown")}`,
+    );
   }
-  return String(c);
-}
 
-execFileSync(
-  "pnpm",
-  [
-    "fsdev", "run", "chat-agent", "run",
-    "-i", JSON.stringify({ message: fixture.message, mode: "ask", thinkingStyle: "plan-and-execute" }),
-    "--model", MODEL,
-    "--capture", CAPTURE,
-  ],
-  { stdio: "inherit", cwd: KITCHEN_SINK },
-);
-
-const captured = JSON.parse(readFileSync(CAPTURE, "utf8"));
-const failures: string[] = [];
-
-// 1) The run completed — no execution_error. This is the headline: pre-fix it
-//    aborts here.
-if (captured.result?.success !== true) {
-  failures.push(
-    `run did not complete: ${JSON.stringify(captured.result?.error ?? captured.result ?? "unknown")}`,
+  // 2) It actually went through plan-and-execute (anti-game: not the default
+  //    thinking style). task-change / task-board-meta components are emitted only
+  //    by the task-board substrate the pattern runs on.
+  const planItems = capture.items.filter(
+    (i) =>
+      i.type === "component" &&
+      (i.component === "task-change" || i.component === "task-board-meta"),
   );
-}
+  if (planItems.length === 0) {
+    failures.push(
+      "no plan-and-execute items (task-change / task-board-meta) — the replan loop did not run",
+    );
+  }
 
-const items: any[] = (captured.events ?? [])
-  .filter((e: any) => e.type === "item_added")
-  .map((e: any) => e.item);
+  // 3) The synthesized answer has real content (anti-game: not an empty message).
+  const answer = answerText(capture);
+  if (answer.length < fixture.minAnswerChars) {
+    failures.push(
+      `answer too short (${answer.length} < ${fixture.minAnswerChars} chars): ${JSON.stringify(answer.slice(0, 200))}`,
+    );
+  }
 
-// 2) It actually went through plan-and-execute (anti-game: not the default
-//    thinking style). task-change / task-board-meta components are emitted only
-//    by the task-board substrate the pattern runs on.
-const planItems = items.filter(
-  (i) => i.type === "component" && (i.component === "task-change" || i.component === "task-board-meta"),
-);
-if (planItems.length === 0) {
-  failures.push("no plan-and-execute items (task-change / task-board-meta) — the replan loop did not run");
-}
-
-// 3) The synthesized answer has real content (anti-game: not an empty message).
-const assistantText = items
-  .filter((i) => i.type === "message" && i.role !== "user")
-  .map(messageText)
-  .join("\n");
-const outputText = String(captured.result?.output ?? "");
-const answer = `${assistantText}\n${outputText}`.trim();
-if (answer.length < fixture.minAnswerChars) {
-  failures.push(
-    `answer too short (${answer.length} < ${fixture.minAnswerChars} chars): ${JSON.stringify(answer.slice(0, 200))}`,
-  );
-}
-
-if (failures.length === 0) {
-  console.log(
-    `PASS — plan-and-execute completed on ${MODEL}: ${planItems.length} plan items, ` +
+  return {
+    failures,
+    evidence:
+      `plan-and-execute completed on ${MODEL}: ${planItems.length} plan items, ` +
       `${answer.length}-char answer. Off-schema replan-loop output was recovered, not fatal.`,
-  );
-  process.exit(0);
-} else {
-  console.error("FAIL —\n" + failures.join("\n"));
-  process.exit(1);
-}
+  };
+});

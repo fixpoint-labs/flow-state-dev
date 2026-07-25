@@ -21,30 +21,26 @@
  *
  * Run: pnpm tsx goals/context-supply/inherits-parent-conversation/run.mts
  */
-import { readFileSync } from "node:fs";
 import { defineFlow, generator } from "@flow-state-dev/core";
-import {
-  runAction,
-  createInMemoryStores,
-  createModelResolver,
-} from "@flow-state-dev/engine";
+import { runAction, createInMemoryStores, createModelResolver } from "@flow-state-dev/engine";
 import { materializeWorker } from "@flow-state-dev/orchestration";
 import { z } from "zod";
+import {
+  DEFAULT_MODEL,
+  goalSessionId,
+  loadFixture,
+  runGoal,
+  stripIntentOverrides,
+} from "../../lib/index.mts";
 
-const MODEL = "openai/gpt-5.4-mini";
+const MODEL = DEFAULT_MODEL;
 
-const fx = JSON.parse(
-  readFileSync(new URL("./fixtures/input.json", import.meta.url), "utf8"),
-) as { fact: string; statement: string; question: string };
+const fx = loadFixture<{ fact: string; statement: string; question: string }>(import.meta.url);
 
-// The env may carry an intent ladder override (FSDEV_DEFAULT_MODEL /
-// FSDEV_INTENT_*) that a bare createModelResolver (no declared intents) rejects.
-// Clear it so the resolver auto-wires the AI Gateway from AI_GATEWAY_API_KEY.
-for (const k of Object.keys(process.env)) {
-  if (k === "FSDEV_DEFAULT_MODEL" || k.startsWith("FSDEV_INTENT_")) {
-    delete process.env[k];
-  }
-}
+// The env may carry an intent ladder override that a bare createModelResolver
+// (no declared intents) rejects. Clear it so the resolver auto-wires the AI
+// Gateway from AI_GATEWAY_API_KEY.
+stripIntentOverrides();
 
 // Turn 1 — a real conversation turn that states the held-out fact. `userMessage`
 // emits the user turn; the generator acknowledges. Both are history-visible, so
@@ -108,33 +104,32 @@ async function run(actionName: string, input: unknown, sessionId: string) {
 /** The delegated task — carries the QUESTION, never the fact. */
 const task = { taskId: "t1", goal: fx.question, attempts: 0 };
 
-async function runGoalCheck(): Promise<string[]> {
+await runGoal(async () => {
   const failures: string[] = [];
 
   // Honesty guard: the task the worker receives must NOT contain the fact, or
   // "recovered it" would prove nothing. The worker's turn is built from the
   // goal (+ optional input); assert the fact is absent from both.
-  const taskText = JSON.stringify(task).toLowerCase();
-  if (taskText.includes(fx.fact.toLowerCase())) {
-    return [`setup invalid: the fact leaked into the worker's task input`];
+  if (JSON.stringify(task).toLowerCase().includes(fx.fact.toLowerCase())) {
+    return { failures: ["setup invalid: the fact leaked into the worker's task input"], evidence: "" };
   }
 
-  const SESSION = "ctx-supply-session";
+  const SESSION = goalSessionId("ctx-supply");
 
   // Turn 1: seed the fact into the conversation.
   const seeded = await run("seed", { statement: fx.statement }, SESSION);
-  if (seeded.error) return [`seed turn failed: ${seeded.error.message}`];
+  if (seeded.error) return { failures: [`seed turn failed: ${seeded.error.message}`], evidence: "" };
 
   // Turn 2: the conversation worker — same session, task input without the fact.
   const conv = await run("conversationWorker", task, SESSION);
-  if (conv.error) return [`conversation worker failed: ${conv.error.message}`];
+  if (conv.error) return { failures: [`conversation worker failed: ${conv.error.message}`], evidence: "" };
 
   // Turn 3: the isolated worker — SAME seeded session, SAME task input. Only
   // `contextSupply` differs. Its output's own history-invisibility means turn 2
   // contributed nothing to history either, so the only place the fact lives is
   // the turn-1 conversation the isolated worker has no slot to read.
   const iso = await run("isolatedWorker", task, SESSION);
-  if (iso.error) return [`isolated worker failed: ${iso.error.message}`];
+  if (iso.error) return { failures: [`isolated worker failed: ${iso.error.message}`], evidence: "" };
 
   const convAnswer = String(conv.output ?? "");
   const isoAnswer = String(iso.output ?? "");
@@ -164,7 +159,7 @@ async function runGoalCheck(): Promise<string[]> {
     (i: { type: string; role?: string }) => i.type === "message" && i.role === "assistant",
   ) as { itemVisibility?: { history?: boolean } } | undefined;
   if (!workerMessage) {
-    failures.push(`could not find the conversation worker's emitted message item to check visibility`);
+    failures.push("could not find the conversation worker's emitted message item to check visibility");
   } else if (workerMessage.itemVisibility?.history !== false) {
     failures.push(
       `output isolation broken: worker message itemVisibility.history is ` +
@@ -172,26 +167,14 @@ async function runGoalCheck(): Promise<string[]> {
     );
   }
 
-  if (failures.length === 0) {
-    console.log(
-      `conversation answer: ${JSON.stringify(convAnswer)}  (recovered "${fx.fact}")\n` +
-        `isolated answer:     ${JSON.stringify(isoAnswer)}  (did NOT recover it)\n` +
-        `worker output itemVisibility.history: ${workerMessage!.itemVisibility?.history}`,
-    );
-  }
-  return failures;
-}
-
-const failures = await runGoalCheck();
-if (failures.length === 0) {
-  console.log(
-    `\nPASS — a context-supply "conversation" agent recovered the held-out fact from the parent ` +
+  return {
+    failures,
+    evidence:
+      `a context-supply "conversation" agent recovered the held-out fact from the parent ` +
       `conversation; an isolated agent, given the identical session and task, did not; and the ` +
-      `worker's own output stayed history-invisible.`,
-  );
-  process.exit(0);
-} else {
-  console.error("\nFAIL —");
-  for (const f of failures) console.error(`  - ${f}`);
-  process.exit(1);
-}
+      `worker's own output stayed history-invisible.\n` +
+      `  conversation answer: ${JSON.stringify(convAnswer)}  (recovered "${fx.fact}")\n` +
+      `  isolated answer:     ${JSON.stringify(isoAnswer)}  (did NOT recover it)\n` +
+      `  worker output itemVisibility.history: ${workerMessage?.itemVisibility?.history}`,
+  };
+});

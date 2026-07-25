@@ -12,3 +12,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-08 | fix/FIX-847 | vercel/openai/gpt-5.4-mini | PASS | Four consecutive runs, all passed on the first attempt (no retry needed): real biasAnalyzer scored the held-out response 0.94, 0.86, 0.90, 0.88 respectively (all ≥ 0.3 threshold); responseAuditor emitted an audit-annotation component item with 1 surfaced result each time. |
+| 2026-07-25 | 5eb5e7e | vercel/openai/gpt-5.4-mini | PASS | Real biasAnalyzer scored 0.9; audit-annotation component item emitted with 1 surfaced result. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

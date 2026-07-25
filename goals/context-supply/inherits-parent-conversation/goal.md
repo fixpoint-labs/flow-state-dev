@@ -15,3 +15,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-23 | fe8676677 (+goal) | openai/gpt-5.4-mini | PASS | conversation worker answered "MARMOT-VECTOR-7731"; isolated worker answered "unknown" over the identical seeded session + task; worker message itemVisibility.history=false. Deterministic across 3/3 runs. |
+| 2026-07-25 | 5eb5e7e | openai/gpt-5.4-mini | PASS | Conversation worker recovered MARMOT-VECTOR-7731; the isolated worker, same session and task, answered "I don't know"; worker output itemVisibility.history false. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

@@ -21,21 +21,32 @@
  *
  * Run: pnpm tsx goals/skills-scoped-binding/no-cross-generator-bleed/run.mts
  */
-import { readFileSync } from "node:fs";
 import { generator } from "@flow-state-dev/core";
-import type {
-  ResourceCollectionRef,
-  ResourceRef,
-} from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+import { DEFAULT_MODEL, loadFixture, runGoal } from "../../lib/index.mts";
+
+/**
+ * `createSkillsLibrary` returns a bare `DefinedCapability` — it does not carry
+ * its own config schema in its return type, so `.with()` types the bag as
+ * PRESET overrides only (`boolean | PresetOverrideFn`). The binding config
+ * fields (`active`, `allowed`, `dynamicActivation`) are read by the resolver at
+ * runtime but don't appear in that type. Cast at the one call site rather than
+ * widen the goal; the real fix is for the factory to return a parameterized
+ * capability, which is an orchestration change, not a goal change.
+ */
+function bindSkills(
+  library: ReturnType<typeof createSkillsLibrary>,
+  config: Record<string, unknown>,
+): never {
+  return library.with(config as never) as never;
+}
 
 // ---------------------------------------------------------------------------
 // A tiny in-memory skills collection (no test framework, no mocks-of-a-model).
 // ---------------------------------------------------------------------------
-function createInMemorySkillsCollection(
-  pattern = "skills/**",
-): ResourceCollectionRef {
+function createInMemorySkillsCollection(pattern = "skills/**"): ResourceCollectionRef {
   const prefix = pattern.replace(/\/\*\*$/, "");
   const store = new Map<string, { name: string; state: Record<string, unknown>; content: string | null }>();
   const full = (key: string) => (key.startsWith(prefix + "/") ? key : `${prefix}/${key}`);
@@ -130,19 +141,20 @@ async function renderSkills(gen: ReturnType<typeof generator>, ctx: unknown): Pr
   return parts.join("\n");
 }
 
-async function resolveTools(gen: ReturnType<typeof generator>, ctx: unknown): Promise<Array<{ name: string; execute?: Function; config?: { execute?: Function } }>> {
+async function resolveTools(
+  gen: ReturnType<typeof generator>,
+  ctx: unknown,
+): Promise<Array<{ name: string; execute?: Function; config?: { execute?: Function } }>> {
   const tools = (gen.config as { tools?: unknown }).tools;
   if (typeof tools === "function") return (await (tools as Function)(ctx)) ?? [];
   return (tools as never[]) ?? [];
 }
 
-async function runGoalCheck(): Promise<string[]> {
-  const fx = JSON.parse(
-    readFileSync(new URL("./fixtures/input.json", import.meta.url), "utf8"),
-  ) as {
+await runGoal(async () => {
+  const fx = loadFixture<{
     skillA: { name: string; description: string; marker: string };
     skillB: { name: string; description: string; marker: string };
-  };
+  }>(import.meta.url);
 
   const skillMd = (s: { name: string; description: string; marker: string }): InitialSkill => ({
     name: s.name,
@@ -156,15 +168,15 @@ async function runGoalCheck(): Promise<string[]> {
   const skills = createSkillsLibrary({ initialSkills });
   const genA = generator({
     name: "analyst",
-    model: "openai/gpt-5.4-mini",
+    model: DEFAULT_MODEL,
     prompt: "p",
-    uses: [skills.with({ active: [fx.skillA.name] })],
+    uses: [bindSkills(skills, { active: [fx.skillA.name] })],
   });
   const genB = generator({
     name: "summarizer",
-    model: "openai/gpt-5.4-mini",
+    model: DEFAULT_MODEL,
     prompt: "p",
-    uses: [skills.with({ active: [fx.skillB.name] })],
+    uses: [bindSkills(skills, { active: [fx.skillB.name] })],
   });
 
   const outA = await renderSkills(genA, ctxWith(createInMemorySkillsCollection()));
@@ -183,9 +195,9 @@ async function runGoalCheck(): Promise<string[]> {
   const dyn = createSkillsLibrary({ initialSkills });
   const genD = generator({
     name: "worker",
-    model: "openai/gpt-5.4-mini",
+    model: DEFAULT_MODEL,
     prompt: "p",
-    uses: [dyn.with({ allowed: [fx.skillA.name], dynamicActivation: true })],
+    uses: [bindSkills(dyn, { allowed: [fx.skillA.name], dynamicActivation: true })],
   });
 
   // Turn 1: a fresh request-scoped block-state cell for genD.
@@ -202,17 +214,17 @@ async function runGoalCheck(): Promise<string[]> {
   });
   const loadSkill = (await resolveTools(genD, ctxTool)).find((t) => t.name === "loadSkill");
   if (!loadSkill) {
-    failures.push("dynamic: loadSkill load tool was not installed by dynamicActivation");
-    return failures;
+    return {
+      failures: [...failures, "dynamic: loadSkill load tool was not installed by dynamicActivation"],
+      evidence: "",
+    };
   }
   const exec = (loadSkill.execute ?? loadSkill.config?.execute) as Function;
   await exec({ name: fx.skillA.name }, ctxTool);
 
   // The reader running in genD's scope (ctx.self == the same block-state cell)
   // now injects skill A.
-  const readerCtxTurn1 = ctxWith(createInMemorySkillsCollection(), {
-    self: { state: blockStateTurn1 },
-  });
+  const readerCtxTurn1 = ctxWith(createInMemorySkillsCollection(), { self: { state: blockStateTurn1 } });
   const dynOut = await renderSkills(genD, readerCtxTurn1);
   if (!dynOut.includes(fx.skillA.marker))
     failures.push(`dynamic: loaded skill ${fx.skillA.marker} did not render on the next step`);
@@ -228,17 +240,10 @@ async function runGoalCheck(): Promise<string[]> {
   if (turn2Out.includes(fx.skillA.marker))
     failures.push(`persistence: a block-state activation carried into a new turn`);
 
-  return failures;
-}
-
-const failures = await runGoalCheck();
-if (failures.length === 0) {
-  console.log(
-    "PASS — a skill bound to/activated on one generator stayed out of the other's context, and a runtime activation did not carry into the next turn",
-  );
-  process.exit(0);
-} else {
-  console.error("FAIL");
-  for (const f of failures) console.error(`  - ${f}`);
-  process.exit(1);
-}
+  return {
+    failures,
+    evidence:
+      "a skill bound to/activated on one generator stayed out of the other's context, and a " +
+      "runtime activation did not carry into the next turn",
+  };
+});

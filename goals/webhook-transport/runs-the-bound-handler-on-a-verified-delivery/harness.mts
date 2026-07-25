@@ -1,6 +1,7 @@
 /**
- * Real-path driver for the webhook goal check. Run via `tsx -e` from
- * `apps/kitchen-sink` (by run.mts) so `@flow-state-dev/*` and `zod` resolve from
+ * Real-path driver for the webhook goal check. Copied into `apps/kitchen-sink`
+ * and run there as a real ESM file by run.mts
+ * (via `runHarness`) so `@flow-state-dev/*` and `zod` resolve from
  * the app's node_modules — goals/ is not a package.
  *
  * Mounts the real webhook adapter on a real `createInboundTransportHost`, sends
@@ -145,7 +146,8 @@ function signed(payload: unknown): Request {
   });
 }
 
-// Wrapped in an async main: `tsx -e` compiles to CJS, which forbids top-level await.
+// Wrapped in an async main: harmless now that runHarness runs this as a real
+// ESM file, and it keeps the error handling in one place.
 async function main(): Promise<void> {
   // Forged delivery first: must be rejected, must leave no session.
   const forgedCustomer = "cus_forged_x";

@@ -37,6 +37,8 @@ price" can't be faked by demo data or a provider hiccup. Value is never persiste
 onto the holding, so "valued without a live fetch" can't be faked by storing a
 stale product.
 
+**Model.** none — quote persistence and valuation are deterministic TS over real PGlite; no LLM is in this path.
+
 **Run.** Out of CI, by hand (no model cost):
 
 ```
@@ -52,3 +54,5 @@ pnpm tsx goals/trading-desk-portfolio/persist-last-known-price/run.mts
   + 1000 cash = 2314); fixture-mode `getQuotes` persists nothing and a null-priced
   refresh keeps the prior row; and quote-sourced prices carry the quote's `asOf`
   while par/statement/unavailable are `asOf: null`.
+
+- 2026-07-25 — **PASS** (none). All five real-path specs green over real PGlite. Run during the goals/lib migration (runner scaffolding only; no product code changed).

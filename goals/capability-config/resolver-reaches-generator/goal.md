@@ -12,3 +12,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-20 | (pre-PR) | none (build-time) | PASS | Assembled generator context contained the injected note (loud→uppercase, default→lowercase, shout-preset in both chain orders→uppercase). |
+| 2026-07-25 | 5eb5e7e | none (build-time) | PASS | Assembled generator context carried the injected note in all four arrangements. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

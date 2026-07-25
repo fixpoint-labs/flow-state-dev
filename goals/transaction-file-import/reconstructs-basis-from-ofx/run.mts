@@ -15,15 +15,18 @@
  * Run: pnpm tsx goals/transaction-file-import/reconstructs-basis-from-ofx/run.mts
  */
 import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { deriveLots } from "../../../labs/trading-desk/domain/portfolio/math/lots.ts";
 import { parseOfxTransactions } from "../../../labs/trading-desk/domain/portfolio/parsers/portfolio-ofx.ts";
 import {
   ledgerEventInputSchema,
+  splitAttributesSchema,
   type LedgerRow,
+  type SplitAttributes,
 } from "../../../labs/trading-desk/domain/portfolio/schema/ledger-schema.ts";
+import { fixtureDir, runGoal } from "../../lib/index.mts";
 
-const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
+const FIXTURES = fixtureDir(import.meta.url);
 
 type ExpectedPosition = { ticker: string; quantity: number; basisUnknown: boolean };
 type Expected = {
@@ -34,13 +37,23 @@ type Expected = {
 
 const EPS = 1e-6;
 
+/**
+ * Narrow a parsed event's `attributes` to the `LedgerRow` shape. The event
+ * schema types it `unknown` (forward-compatible to future corporate actions);
+ * a `LedgerRow` carries the split ratio typed. This re-applies exactly the
+ * invariant `refineLedgerEvent` enforces at the ingest boundary: a valid split
+ * payload, or null.
+ */
+function toRowAttributes(attributes: unknown): SplitAttributes | null {
+  const parsed = splitAttributesSchema.safeParse(attributes);
+  return parsed.success ? parsed.data : null;
+}
+
 async function checkFixture(file: string): Promise<string[]> {
   const failures: string[] = [];
-  const content = readFileSync(`${FIXTURES}/${file}`, "utf8");
+  const content = readFileSync(join(FIXTURES, file), "utf8");
   const base = file.replace(/\.(qfx|qbo|ofx)$/i, "");
-  const expected = JSON.parse(
-    readFileSync(`${FIXTURES}/${base}.expected.json`, "utf8"),
-  ) as Expected;
+  const expected = JSON.parse(readFileSync(join(FIXTURES, `${base}.expected.json`), "utf8")) as Expected;
 
   const parsed = await parseOfxTransactions(content);
 
@@ -61,9 +74,10 @@ async function checkFixture(file: string): Promise<string[]> {
     id: `row-${i}`,
     accountId: "goal",
     userId: "goal",
-    source: "file",
+    source: "file" as const,
     voidedAt: null,
     createdAt: `2026-01-01T00:00:0${i % 10}.000Z`,
+    attributes: toRowAttributes((e as { attributes?: unknown }).attributes),
   }));
   const { positions } = deriveLots(rows);
   const byTicker = new Map(positions.map((p) => [p.ticker, p]));
@@ -97,25 +111,19 @@ async function checkFixture(file: string): Promise<string[]> {
   return failures;
 }
 
-async function main(): Promise<void> {
+await runGoal(async () => {
   const files = readdirSync(FIXTURES).filter((f) => /\.(qfx|qbo|ofx)$/i.test(f));
   if (files.length === 0) {
-    console.error("FAIL — no OFX-family fixtures found in fixtures/");
-    process.exit(1);
+    return { failures: ["no OFX-family fixtures found in fixtures/"], evidence: "" };
   }
   const failures: string[] = [];
   for (const file of files) failures.push(...(await checkFixture(file)));
 
-  if (failures.length === 0) {
-    console.log(
-      `PASS — ${files.length} OFX-family file(s) parsed, every event canonical-valid, ` +
-        `FIFO positions + basis-unknown flags + unresolved CUSIPs + skipped corporate ` +
-        `actions all reconciled against the held-out expectations.`,
-    );
-    process.exit(0);
-  }
-  console.error("FAIL —\n" + failures.join("\n"));
-  process.exit(1);
-}
-
-void main();
+  return {
+    failures,
+    evidence:
+      `${files.length} OFX-family file(s) parsed, every event canonical-valid, ` +
+      `FIFO positions + basis-unknown flags + unresolved CUSIPs + skipped corporate ` +
+      `actions all reconciled against the held-out expectations.`,
+  };
+});

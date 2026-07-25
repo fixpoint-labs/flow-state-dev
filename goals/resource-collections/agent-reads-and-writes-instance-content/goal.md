@@ -12,3 +12,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-23 | 55e5561 | vercel/openai/gpt-5-nano | PASS | In-process `runAction` over a session collection `notes/**` (`llmReadable`+`llmWritable`); generator wired with `readResourceContentTool()`/`writeResourceContentTool()`. Model read `session/notes/a` and rewrote it to `CONFIRMED: daffodil`; persisted body read back from `ContentStore` changed and carried the held-out secret. |
+| 2026-07-25 | 5eb5e7e | vercel/openai/gpt-5-nano | PASS | Persisted note body rewritten to "CONFIRMED: daffodil" — the held-out secret reached the ContentStore. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

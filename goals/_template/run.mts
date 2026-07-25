@@ -1,77 +1,74 @@
 /**
  * Goal check runner — real model, real path, out of CI.
  *
- * Copy this with the goal folder, then fill in `runGoalCheck`: load the
- * held-out fixture, drive the real path with a real model, and assert on the
+ * Copy this with the goal folder, then fill in the body: load the held-out
+ * fixture, drive the real path with a real model, and assert on the
  * user-visible surface — graded against the fixture, never the implementation's
- * own internal output. Print an explicit PASS/FAIL; exit non-zero on FAIL.
+ * own internal output. `runGoal` prints the PASS/FAIL verdict and sets the exit
+ * code; return `failures` (empty means PASS) plus the `evidence` inspected.
  *
- * Run: pnpm tsx goals/<id>-<slug>/run.mts
+ * The shared helpers live in `goals/lib` — use them rather than re-deriving:
+ * they encode the techniques in README.md → "Script techniques", and the two
+ * bugs that showed up when goals hand-rolled them (a partial env strip, and
+ * reading the FIRST item snapshot instead of the latest).
+ *
+ * Run: pnpm tsx goals/<describe>/<it>/run.mts
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  KITCHEN_SINK,
+  DEFAULT_MODEL,
+  answerText,
+  goalTmpDir,
+  loadFixture,
+  readCapture,
+  runFsdev,
+  runGoal,
+} from "../lib/index.mts";
+import { join } from "node:path";
 
-const MODEL = "openai/gpt-5.4-mini";
+// 1. Load the held-out fixture. Nothing below should hardcode its contents —
+//    swapping it for another valid input must still pass a correct impl.
+const fixture = loadFixture<{ message: string; mustContain: string }>(import.meta.url);
 
-function runGoalCheck(): string[] {
-  // 1. Load the held-out fixture. Nothing below should hardcode its contents.
-  const input = JSON.parse(
-    readFileSync(new URL("./fixtures/input.json", import.meta.url), "utf8"),
-  );
+const CAPTURE = join(goalTmpDir("<slug>"), "run.json");
 
-  // 2. Drive the REAL path with a REAL model, capturing the run.
-  execFileSync(
-    "pnpm",
-    [
-      "fsdev", "run", "<flow>", "<action>",
-      "-i", JSON.stringify(input),
-      "--model", MODEL,
-      "--capture", "/tmp/goal-run.json",
-    ],
-    { stdio: "inherit" },
-  );
+await runGoal(() => {
+  // 2. Drive the REAL path with a REAL model, capturing the run. cwd must be
+  //    the app dir — `fsdev` config search is cwd-only.
+  const exit = runFsdev({
+    app: KITCHEN_SINK,
+    flow: "<flow>",
+    action: "<action>",
+    input: fixture,
+    model: DEFAULT_MODEL,
+    capture: CAPTURE,
+  });
+  if (exit !== 0) return { failures: [`fsdev run exited ${exit}`], evidence: "" };
 
-  // `fsdev run --capture` writes { command, events, result }.
-  const captured = JSON.parse(readFileSync("/tmp/goal-run.json", "utf8"));
-  const failures: string[] = [];
-  if (captured.result?.success !== true) {
-    return [`flow did not complete: ${JSON.stringify(captured.result?.error ?? "unknown")}`];
+  // `readCapture` reconstructs the FINAL state of each item (latest snapshot per
+  // id). Do NOT filter `item_added` and take `e.item` — streamed assistant text
+  // lands in LATER snapshots, so the first one is usually empty and grading it
+  // is a false FAIL.
+  const capture = readCapture(CAPTURE);
+  if (capture.result.success !== true) {
+    return {
+      failures: [`flow did not complete: ${JSON.stringify(capture.result.error ?? "unknown")}`],
+      evidence: "",
+    };
   }
-
-  // Reconstruct the FINAL state of each item: keep the latest snapshot per id.
-  // Streamed assistant text lands in later snapshots (content.delta is
-  // checkpointed into item snapshots, not the persisted event log), so the
-  // first `item_added` can be empty — taking the latest avoids a false fail.
-  const itemsById = new Map<string, any>();
-  for (const e of captured.events ?? []) {
-    if (e.item?.id) itemsById.set(e.item.id, e.item);
-  }
-  const items = [...itemsById.values()];
 
   // 3. Assert on the user-visible surface, graded against the fixture — NOT on
-  //    implementation internals. Prefer the terminal `captured.result.output`
-  //    and completed assistant messages (type "message", role !== "user").
-  //    Note: worker/block execution items are `type: "block_trace"` with an
-  //    internal `BlockValueInternal` value — assert on public/terminal output,
-  //    not on trace internals.
-  // e.g.
-  //   const answer = [
-  //     JSON.stringify(captured.result.output ?? ""),
-  //     ...items.filter((i) => i.type === "message" && i.role !== "user")
-  //       .map((i) => String(i.content ?? i.text ?? "")),
-  //   ].join("\n");
-  //   for (const fact of factsFrom(input)) {
-  //     if (!answer.includes(fact)) failures.push(`missing: ${fact}`);
-  //   }
-  void input; void items;
-  return failures;
-}
+  //    implementation internals. `answerText` joins the assistant messages and
+  //    the action's terminal output, which is the surface a user sees.
+  //    Note: worker/block execution items are `type: "block_trace"` carrying an
+  //    internal `BlockValueInternal` value — never unwrap those.
+  const failures: string[] = [];
+  const answer = answerText(capture);
+  if (!answer.toLowerCase().includes(fixture.mustContain.toLowerCase())) {
+    failures.push(
+      `answer did not contain "${fixture.mustContain}": ${JSON.stringify(answer.slice(0, 200))}`,
+    );
+  }
 
-const failures = runGoalCheck();
-if (failures.length === 0) {
-  console.log("PASS — <evidence inspected>");
-  process.exit(0);
-} else {
-  console.error("FAIL —\n" + failures.join("\n"));
-  process.exit(1);
-}
+  return { failures, evidence: "<what was inspected, and why it can't be faked>" };
+});

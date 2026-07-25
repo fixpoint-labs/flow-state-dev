@@ -13,106 +13,91 @@
  * cwd-only — the app's real wiring (intent ladder, gateway, stores) only
  * applies when fsdev is invoked from the app directory.
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import {
+  KITCHEN_SINK,
+  actualModel,
+  answerText,
+  assistantMessages,
+  assistantText,
+  goalTmpDir,
+  loadFixture,
+  readCapture,
+  runFsdev,
+  runGoal,
+} from "../../lib/index.mts";
 
-const CAPTURE = "/tmp/chat-goal.json";
-const KITCHEN_SINK = fileURLToPath(
-  new URL("../../../apps/kitchen-sink", import.meta.url),
-);
+const CAPTURE = join(goalTmpDir("chat-agent"), "run.json");
 
 // Held-out fixture. Nothing below hardcodes the question or the expected
 // answer — the assertion reads `mustContain` from here, so swapping in a
 // different valid question + answer must still pass a correct implementation.
-const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/question.json", import.meta.url), "utf8"),
-) as { message: string; mustContain: string };
+const fixture = loadFixture<{ message: string; mustContain: string }>(
+  import.meta.url,
+  "question.json",
+);
 
-// Pull the text out of a message item's content, whether it's a bare string,
-// an array of content parts ({ type, text }), or a `text` field.
-function messageText(item: any): string {
-  const c = item?.content ?? item?.text ?? "";
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) {
-    return c.map((p) => (typeof p === "string" ? p : (p?.text ?? ""))).join(" ");
+await runGoal(() => {
+  // Drive the real path with a real model; capture the full stream + result.
+  // No --model flag: the env's intent ladder / model resolver decides what runs
+  // (this container may pin it via FSDEV_DEFAULT_MODEL). We record whatever the
+  // assistant generator actually ran on, read back from the capture below.
+  const exit = runFsdev({
+    app: KITCHEN_SINK,
+    flow: "chat-agent",
+    action: "run",
+    input: { message: fixture.message, mode: "ask" },
+    capture: CAPTURE,
+  });
+  if (exit !== 0) return { failures: [`fsdev run exited ${exit}`], evidence: "" };
+
+  // readCapture keeps the LATEST snapshot per item id — streamed assistant text
+  // lands in later snapshots, so the first `item_added` is usually empty.
+  const capture = readCapture(CAPTURE);
+  if (capture.result.success !== true) {
+    return {
+      failures: [
+        `flow did not complete: ${JSON.stringify(capture.result.error ?? capture.result ?? "unknown")}`,
+      ],
+      evidence: "",
+    };
   }
-  return String(c);
-}
 
-// Drive the real path with a real model; capture the full stream + result.
-// No --model flag: the env's intent ladder / model resolver decides what runs
-// (this container may pin it via FSDEV_DEFAULT_MODEL). We record whatever the
-// assistant generator actually ran on, read back from the capture below.
-execFileSync(
-  "pnpm",
-  [
-    "fsdev", "run", "chat-agent", "run",
-    "-i", JSON.stringify({ message: fixture.message, mode: "ask" }),
-    "--capture", CAPTURE,
-  ],
-  { stdio: "inherit", cwd: KITCHEN_SINK },
-);
+  // The user-visible answer surface: assistant messages (role !== "user") and
+  // the action's returned output. We assert on the CONTENT of these — not their
+  // mere presence (see Anti-game in goal.md).
+  const messages = assistantMessages(capture.items);
+  const assistant = assistantText(capture.items);
+  const output = String(capture.result.output ?? "");
+  const needle = fixture.mustContain.toLowerCase();
+  // The graded surface is `answerText` (assistant messages + terminal output),
+  // the same helper `_template` and `structured-output` use. The two booleans
+  // below are only for the evidence line — reporting WHERE the answer landed is
+  // information `answerText` alone collapses.
+  const inAssistant = assistant.toLowerCase().includes(needle);
+  const inOutput = output.toLowerCase().includes(needle);
 
-// `fsdev run --capture` writes { command, events, result }. The item stream is
-// the `item_added` events; the action's final output is on `result`.
-const captured = JSON.parse(readFileSync(CAPTURE, "utf8"));
-
-const failures: string[] = [];
-
-if (captured.result?.success !== true) {
-  console.error(
-    `FAIL — flow did not complete: ${JSON.stringify(captured.result?.error ?? captured.result ?? "unknown")}`,
-  );
-  process.exit(1);
-}
-
-const items: any[] = (captured.events ?? [])
-  .filter((e: any) => e.type === "item_added")
-  .map((e: any) => e.item);
-
-// The user-visible answer surface: assistant messages (role !== "user") and
-// the action's returned output. We assert on the CONTENT of these — not their
-// mere presence (see Anti-game in goal.md).
-const assistantMessages = items.filter(
-  (i) => i.type === "message" && i.role !== "user",
-);
-const assistantText = assistantMessages.map(messageText).join("\n");
-const outputText = String(captured.result?.output ?? "");
-const answer = `${assistantText}\n${outputText}`;
-
-const needle = fixture.mustContain.toLowerCase();
-const inAssistant = assistantText.toLowerCase().includes(needle);
-const inOutput = outputText.toLowerCase().includes(needle);
-
-// The check passes only when the held-out answer is actually present in the
-// answer text. An assistant message with no/other content does NOT pass — this
-// is the anti-game guard: emitting a message item is not enough.
-if (!answer.toLowerCase().includes(needle)) {
-  if (assistantMessages.length === 0) {
-    failures.push("no assistant message emitted and output is empty");
-  } else {
+  const failures: string[] = [];
+  // The check passes only when the held-out answer is actually present in the
+  // answer text. An assistant message with no/other content does NOT pass — this
+  // is the anti-game guard: emitting a message item is not enough.
+  if (!answerText(capture).toLowerCase().includes(needle)) {
     failures.push(
-      `answer did not contain "${fixture.mustContain}". ` +
-        `assistant text: ${JSON.stringify(assistantText.slice(0, 200))}, ` +
-        `output: ${JSON.stringify(outputText.slice(0, 200))}`,
+      messages.length === 0
+        ? "no assistant message emitted and output is empty"
+        : `answer did not contain "${fixture.mustContain}". ` +
+          `assistant text: ${JSON.stringify(assistant.slice(0, 200))}, ` +
+          `output: ${JSON.stringify(output.slice(0, 200))}`,
     );
   }
-}
 
-if (failures.length === 0) {
-  // Record the model the assistant generator actually ran on.
-  const ranModel =
-    assistantMessages.map((m) => m?.model?.actual).find(Boolean) ?? "unknown";
   const where = [inAssistant && "assistant message", inOutput && "result.output"]
     .filter(Boolean)
     .join(" + ");
-  console.log(
-    `PASS — answer contained "${fixture.mustContain}" in ${where} ` +
-      `(model: ${ranModel}). Asserted on content, not message presence.`,
-  );
-  process.exit(0);
-} else {
-  console.error("FAIL —\n" + failures.join("\n"));
-  process.exit(1);
-}
+  return {
+    failures,
+    evidence:
+      `answer contained "${fixture.mustContain}" in ${where} ` +
+      `(model: ${actualModel(capture.items)}). Asserted on content, not message presence.`,
+  };
+});

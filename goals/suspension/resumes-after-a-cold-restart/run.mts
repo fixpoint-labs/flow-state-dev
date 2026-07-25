@@ -16,189 +16,106 @@
  * — proving cross-restart persistence, not a brand-new suspension (see goal.md
  * Anti-game). `requestApproval` has no LLM, so no model credential is needed.
  *
- * Persistence uses @flow-state-dev/engine's on-disk filesystem store — it
- * provides the checkpoint/suspension/lease stores and survives a process
- * restart. store-sqlite would work too but is not a kitchen-sink dependency, so
- * it can't be resolved from a driver placed in apps/kitchen-sink.
- *
- * Mechanism: the drivers must resolve both the kitchen-sink `@/*` aliases and
- * the `@flow-state-dev/*` packages, which only holds for files under
- * apps/kitchen-sink run with that cwd. So the runner writes two transient
- * drivers there (one per process / runtime), runs them against a shared on-disk
- * store directory, grades the JSON verdicts, and cleans everything up.
+ * The two processes are `harness-suspend.mts` and `harness-resume.mts`, each run
+ * with cwd = apps/kitchen-sink (only there do `@/*` and `@flow-state-dev/*` both
+ * resolve), sharing one throwaway on-disk store directory. This file owns the
+ * grading and the cleanup.
  *
  * Run: pnpm tsx goals/suspension/resumes-after-a-cold-restart/run.mts
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+import {
+  KITCHEN_SINK,
+  goalTmpDir,
+  loadFixture,
+  runGoal,
+  runHarness,
+} from "../../lib/index.mts";
 
-const KITCHEN_SINK = fileURLToPath(new URL("../../../apps/kitchen-sink", import.meta.url));
-const SUSPEND_DRIVER = `.goal-cold-suspend.${process.pid}.mts`;
-const RESUME_DRIVER = `.goal-cold-resume.${process.pid}.mts`;
-const DATA_DIR = `/tmp/goal-cold-restart-${process.pid}`;
-const MARKER = "__GOAL_RESULT__";
+const fixture = loadFixture<{ request: string; note: string }>(import.meta.url, "approval.json");
+const SCRATCH = goalTmpDir("cold-restart");
+const DATA_DIR = join(SCRATCH, "stores");
 
-const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/approval.json", import.meta.url), "utf8"),
-) as { request: string; note: string };
-
-// --- Process A: dispatch → suspend, persisted to disk -----------------------
-const suspendDriver = `
-import { createFilesystemStores, createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
-import flow from "./flows/chat-agent/flow";
-
-const out = (r) => console.log(${JSON.stringify(MARKER)} + JSON.stringify(r));
-const stores = createFilesystemStores({ rootDir: process.env.KS_GOAL_DIR, developmentOnly: true });
-try {
-  const provider = createCheckpointDurabilityProvider({
-    checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases,
-  });
-  const userId = "goal-user";
-  const sessionId = "goal_cold_" + Date.now();
-  const initial = await runAction({
-    flow, actionName: "requestApproval", input: { request: process.env.KS_GOAL_REQUEST },
-    userId, sessionId, stores, runtimeConfig: { durabilityProvider: provider },
-  });
-  const pending = await provider.listSuspended({ status: "pending" });
-  const suspension = pending.find((s) => s.requestId === initial.requestId);
-  if (!suspension) {
-    out({ ok: false, reason: "process A did not suspend", output: String(initial.output ?? "") });
-  } else {
-    out({ ok: true, requestId: initial.requestId, sessionId, suspensionId: suspension.suspensionId });
-  }
-} catch (err) {
-  out({ ok: false, reason: "suspend driver threw: " + (err instanceof Error ? err.message : String(err)) });
-} finally {
-  if (typeof stores.close === "function") stores.close();
+interface SuspendObservation {
+  ok: boolean;
+  reason?: string;
+  requestId?: string;
+  sessionId?: string;
+  suspensionId?: string;
 }
-process.exit(0);
-`;
-
-// --- Process B: FRESH runtime over the same on-disk dir → reload, approve, resume
-const resumeDriver = `
-import { createFilesystemStores, createCheckpointDurabilityProvider, runAction } from "@flow-state-dev/engine";
-import flow from "./flows/chat-agent/flow";
-
-const out = (r) => console.log(${JSON.stringify(MARKER)} + JSON.stringify(r));
-const stores = createFilesystemStores({ rootDir: process.env.KS_GOAL_DIR, developmentOnly: true });
-try {
-  const provider = createCheckpointDurabilityProvider({
-    checkpoints: stores.checkpoints, suspensions: stores.suspensions, leases: stores.leases,
-  });
-  const requestId = process.env.KS_GOAL_REQUEST_ID;
-  const sessionId = process.env.KS_GOAL_SESSION_ID;
-  const suspensionId = process.env.KS_GOAL_SUSPENSION_ID;
-  const note = process.env.KS_GOAL_NOTE;
-
-  // Cross-restart persistence proof: the prior runtime's suspension must still
-  // be loadable here, and still pending (nobody resolved it before the restart).
-  const reloaded = await provider.loadSuspension(requestId, suspensionId);
-  const foundPending = reloaded != null && reloaded.status === "pending";
-  if (reloaded) {
-    await provider.suspend({ ...reloaded, status: "approved", resolvedAt: Date.now(), resumeData: { note } });
-  }
-
-  const resumed = await runAction({
-    flow, actionName: "requestApproval", input: { request: process.env.KS_GOAL_REQUEST },
-    userId: "goal-user", sessionId, stores, runtimeConfig: { durabilityProvider: provider },
-    metadata: {
-      resumeOf: requestId,
-      resumeContext: { suspensionId, action: "approve", data: { note } },
-    },
-  });
-  const rec = await stores.request.get(resumed.requestId);
-  out({
-    ok: true, foundPending,
-    output: resumed.output ?? null,
-    status: rec?.status ?? "unknown",
-    error: resumed.error ?? null,
-  });
-} catch (err) {
-  out({ ok: false, reason: "resume driver threw: " + (err instanceof Error ? err.message : String(err)) });
-} finally {
-  if (typeof stores.close === "function") stores.close();
-}
-process.exit(0);
-`;
-
-function fail(msg: string): never {
-  console.error("FAIL — " + msg);
-  cleanup();
-  process.exit(1);
+interface ResumeObservation {
+  ok: boolean;
+  reason?: string;
+  foundPending?: boolean;
+  output?: unknown;
+  status?: string;
+  error?: unknown;
 }
 
-function cleanup(): void {
-  rmSync(`${KITCHEN_SINK}/${SUSPEND_DRIVER}`, { force: true });
-  rmSync(`${KITCHEN_SINK}/${RESUME_DRIVER}`, { force: true });
-  rmSync(DATA_DIR, { recursive: true, force: true });
-}
+// Both harnesses build a minimal runtime with no declared model intents
+// (requestApproval has no generator), so the intent-ladder overrides are
+// stripped — runHarness does that by default.
+const baseEnv = {
+  FSD_ENV: "dev",
+  KS_GOAL_DIR: DATA_DIR,
+  KS_GOAL_REQUEST: fixture.request,
+  KS_GOAL_NOTE: fixture.note,
+};
 
-function runDriver(name: string, env: NodeJS.ProcessEnv): any {
-  let stdout = "";
+await runGoal(() => {
   try {
-    stdout = execFileSync("pnpm", ["tsx", name], { cwd: KITCHEN_SINK, encoding: "utf8", env });
-  } catch (err: any) {
-    fail(`${name} process failed:\n${err?.stdout ?? ""}\n${err?.stderr ?? err?.message ?? ""}`);
+    // Process A — suspend, persisted to disk.
+    const a = runHarness<SuspendObservation>({
+      app: KITCHEN_SINK,
+      harness: new URL("./harness-suspend.mts", import.meta.url),
+      env: baseEnv,
+    });
+    if (a.ok !== true) return { failures: [a.reason ?? "suspend phase failed"], evidence: "" };
+
+    // Process B — cold restart: a fresh runtime over the persisted store dir.
+    const b = runHarness<ResumeObservation>({
+      app: KITCHEN_SINK,
+      harness: new URL("./harness-resume.mts", import.meta.url),
+      env: {
+        ...baseEnv,
+        KS_GOAL_REQUEST_ID: a.requestId!,
+        KS_GOAL_SESSION_ID: a.sessionId!,
+        KS_GOAL_SUSPENSION_ID: a.suspensionId!,
+      },
+    });
+    if (b.ok !== true) return { failures: [b.reason ?? "resume phase failed"], evidence: "" };
+    if (b.error) return { failures: [`resume errored: ${JSON.stringify(b.error)}`], evidence: "" };
+
+    // --- Grade -------------------------------------------------------------
+    const output = typeof b.output === "string" ? b.output : JSON.stringify(b.output ?? "");
+    const failures: string[] = [];
+    if (b.foundPending !== true) {
+      failures.push(
+        "the prior runtime's suspension did not reload as pending in the fresh runtime — it did not survive the cold restart",
+      );
+    }
+    if (!output.toLowerCase().includes(fixture.request.toLowerCase())) {
+      failures.push(`resumed output missing the original request "${fixture.request}"`);
+    }
+    if (!output.toLowerCase().includes(fixture.note.toLowerCase())) {
+      failures.push(
+        `resumed output missing the approver note "${fixture.note}" — approve payload did not flow through after the restart`,
+      );
+    }
+    if (b.status !== "completed") {
+      failures.push(`resumed request status is "${b.status}", expected "completed"`);
+    }
+    if (failures.length > 0) failures.push(`resumed output: ${output}`);
+
+    return {
+      failures,
+      evidence:
+        `suspension survived a cold restart: process A suspended and persisted to disk; a fresh ` +
+        `process B reloaded it as pending, approved, and resumed to completion. Resumed output carried ` +
+        `both the held-out request and note: ${output}. Graded on cross-restart persistence + output content.`,
+    };
+  } finally {
+    rmSync(SCRATCH, { recursive: true, force: true });
   }
-  const line = stdout.split("\n").find((l) => l.startsWith(MARKER));
-  if (line === undefined) fail(`no result line from ${name}. stdout:\n${stdout}`);
-  return JSON.parse(line.slice(MARKER.length));
-}
-
-writeFileSync(`${KITCHEN_SINK}/${SUSPEND_DRIVER}`, suspendDriver, "utf8");
-writeFileSync(`${KITCHEN_SINK}/${RESUME_DRIVER}`, resumeDriver, "utf8");
-
-// The drivers build a minimal runtime (no declared model intents) because
-// requestApproval has no generator. Strip this container's FSDEV_INTENT_* /
-// FSDEV_DEFAULT_MODEL overrides so createModelResolver doesn't try to match a
-// pinned intent against the (empty) declared set and throw.
-const cleanEnv: NodeJS.ProcessEnv = { ...process.env };
-for (const key of Object.keys(cleanEnv)) {
-  if (key.startsWith("FSDEV_INTENT_") || key === "FSDEV_DEFAULT_MODEL") delete cleanEnv[key];
-}
-const baseEnv = { ...cleanEnv, FSD_ENV: "dev", KS_GOAL_DIR: DATA_DIR, KS_GOAL_REQUEST: fixture.request, KS_GOAL_NOTE: fixture.note };
-
-// Process A — suspend.
-const a = runDriver(SUSPEND_DRIVER, baseEnv);
-if (a.ok !== true) fail(a.reason ?? "suspend phase failed");
-
-// Process B — cold restart: fresh runtime over the persisted DB.
-const b = runDriver(RESUME_DRIVER, {
-  ...baseEnv,
-  KS_GOAL_REQUEST_ID: a.requestId,
-  KS_GOAL_SESSION_ID: a.sessionId,
-  KS_GOAL_SUSPENSION_ID: a.suspensionId,
 });
-if (b.ok !== true) fail(b.reason ?? "resume phase failed");
-if (b.error) fail(`resume errored: ${JSON.stringify(b.error)}`);
-
-// --- Grade -------------------------------------------------------------------
-const output = typeof b.output === "string" ? b.output : JSON.stringify(b.output ?? "");
-const failures: string[] = [];
-if (b.foundPending !== true) {
-  failures.push("the prior runtime's suspension did not reload as pending in the fresh runtime — it did not survive the cold restart");
-}
-if (!output.toLowerCase().includes(fixture.request.toLowerCase())) {
-  failures.push(`resumed output missing the original request "${fixture.request}"`);
-}
-if (!output.toLowerCase().includes(fixture.note.toLowerCase())) {
-  failures.push(`resumed output missing the approver note "${fixture.note}" — approve payload did not flow through after the restart`);
-}
-if (b.status !== "completed") {
-  failures.push(`resumed request status is "${b.status}", expected "completed"`);
-}
-
-cleanup();
-
-if (failures.length > 0) {
-  console.error("FAIL —\n  - " + failures.join("\n  - ") + `\n  resumed output: ${output}`);
-  process.exit(1);
-}
-
-console.log(
-  `PASS — suspension survived a cold restart: process A suspended and persisted to disk; a fresh ` +
-    `process B reloaded it as pending, approved, and resumed to completion. Resumed output carried ` +
-    `both the held-out request and note: ${output}. Graded on cross-restart persistence + output content.`,
-);
-process.exit(0);
