@@ -19,7 +19,6 @@ import { join } from "node:path";
 import {
   KITCHEN_SINK,
   answerText,
-  goalModel,
   goalTmpDir,
   loadFixture,
   readCapture,
@@ -28,9 +27,14 @@ import {
 } from "../../lib/index.mts";
 
 const CAPTURE = join(goalTmpDir("structured-output"), "run.json");
-// Pinned deliberately: this is the model that surfaced the bug. Not a default —
-// do not substitute it for the corpus-wide DEFAULT_MODEL.
-const MODEL = goalModel("vercel/zai/glm-5.2");
+// A LITERAL, deliberately — not `goalModel()`, and not `DEFAULT_MODEL`.
+//
+// goal.md pins this model because it is the one that surfaced the bug ("do not
+// substitute"). Routing it through `goalModel()` would let an ambient
+// `GOAL_MODEL` silently swap in a more schema-compliant model, and the run
+// would report PASS without ever exercising the off-schema recovery this goal
+// exists to check. A contract-pinned model must never be overridable.
+const MODEL = "vercel/zai/glm-5.2";
 
 // Held-out fixture. Nothing below hardcodes the topic or the answer — only that
 // the run completed through plan-and-execute with real content.

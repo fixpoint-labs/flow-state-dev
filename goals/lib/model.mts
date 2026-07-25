@@ -38,6 +38,12 @@ export function gatewayModel(id: string = DEFAULT_MODEL, gateway = DEFAULT_GATEW
 /**
  * The model this run should use: `GOAL_MODEL` if set, else `fallback`. Lets a
  * run target a differently-named gateway without editing the goal.
+ *
+ * DO NOT use this for a model a goal's contract PINS. `GOAL_MODEL` would
+ * silently substitute it, and a goal that reproduces a model-specific bug would
+ * then report PASS on a model that never had the bug. Pinned models are written
+ * as literals at the call site, with the reason — see
+ * `structured-output/recovers-off-schema-output`.
  */
 export function goalModel(fallback: string = DEFAULT_MODEL): string {
   return process.env.GOAL_MODEL ?? fallback;
