@@ -1,0 +1,6 @@
+{
+  "subject": "the Voyager 1 spacecraft",
+  "coveredAspect": "its launch date and launch vehicle",
+  "missingAspect": "its power source and how long that power is expected to last",
+  "goal": "Write a briefing on the Voyager 1 spacecraft that covers BOTH (a) its launch date and launch vehicle AND (b) its power source and how long that power is expected to last. Both aspects are required; the briefing is incomplete if either is missing."
+}
