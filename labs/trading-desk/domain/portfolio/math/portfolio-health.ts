@@ -55,19 +55,19 @@ import {
   SECTOR_WARN_PCT,
   SINGLE_NAME_ALERT_PCT,
   SINGLE_NAME_WARN_PCT,
+  UNCLASSIFIED_BUCKET,
 } from "@/domain/portfolio/math/concentration-thresholds";
 import {
   computeLookThroughExposure,
-  LOOK_THROUGH_COVERAGE_FLOOR_PCT,
   type FundProfileInput,
   type LookThroughExposure,
 } from "@/domain/portfolio/math/etf-look-through";
 
-// Re-exported for existing importers (BP-030) — the thresholds moved to
-// `concentration-thresholds.ts` so the look-through leaf can share them
-// without importing this module (which now imports the look-through leaf,
-// and a two-way import would be a cycle).
-export { SECTOR_WARN_PCT, SINGLE_NAME_ALERT_PCT, SINGLE_NAME_WARN_PCT };
+// Re-exported for existing importers (BP-030) — the thresholds and the
+// unclassified-sector label moved to `concentration-thresholds.ts` so the
+// look-through leaf can share them without importing this module (which now
+// imports the look-through leaf, and a two-way import would be a cycle).
+export { SECTOR_WARN_PCT, SINGLE_NAME_ALERT_PCT, SINGLE_NAME_WARN_PCT, UNCLASSIFIED_BUCKET };
 
 /** Quote map as the pane and seed already hold it: UPPER ticker → { price, asOf }. */
 export type QuoteMap = Map<string, { price: number | null; asOf: string | null }>;
@@ -79,8 +79,8 @@ export type ClassificationMap = Map<string, string | null>;
  *  on the WRAPPER basis (Decision 2) — the look-through axis, when present,
  *  replaces this with the fund's own attributed sector breakdown instead. */
 export const FUNDS_BUCKET = "Funds (no look-through)";
-/** Sector bucket label for a single-name equity whose sector didn't resolve. */
-export const UNCLASSIFIED_BUCKET = "Unclassified";
+/** Sector bucket label for a single-name equity whose sector didn't resolve —
+ *  re-exported from `concentration-thresholds.ts` above (see that import). */
 
 /** One ticker-merged household position (summed across accounts). */
 export type HealthPosition = {
@@ -408,10 +408,12 @@ export function summarizePortfolioHealth(
     // "partial" only once something was actually attributed THROUGH a fund
     // (Decision 7) — a book with funds that are all opaque/refused, or a
     // book with no funds at all, both read "none" (the wrapper-basis fields
-    // are the whole picture either way).
-    const anyFundAttributed =
-      lookThroughExposure !== null &&
-      lookThroughExposure.positions.some((p) => p.sources.some((s) => s.from !== "direct"));
+    // are the whole picture either way). Checked on EITHER axis
+    // (`hasAttribution`), not just the name axis — a fund can clear the
+    // sector floor while failing the name floor (or the reverse), and that
+    // lone successful axis must still surface as "partial" rather than being
+    // discarded (Codex review, FIX-801).
+    const anyFundAttributed = lookThroughExposure !== null && lookThroughExposure.hasAttribution;
     lookThrough = anyFundAttributed ? "partial" : "none";
     if (lookThrough === "none") lookThroughExposure = null;
   }

@@ -43,6 +43,7 @@ import {
   SECTOR_WARN_PCT,
   SINGLE_NAME_ALERT_PCT,
   SINGLE_NAME_WARN_PCT,
+  UNCLASSIFIED_BUCKET,
 } from "@/domain/portfolio/math/concentration-thresholds";
 import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
 
@@ -68,12 +69,15 @@ export type LookThroughConstituent = { ticker: string | null; weight: number };
  *  upstream (mirroring `EtfSectorRow`). `weight` a fraction in `[0, 1]`. */
 export type LookThroughSectorRow = { sector: string; weight: number };
 
-/** A fund's normalized profile, mirroring `NormalizedEtfProfile`. */
+/** A fund's normalized profile, mirroring `NormalizedEtfProfile`. `constituents`
+ *  / `sectors` are `readonly` — this leaf only ever reads them, and both the
+ *  fetcher's real output (sub-PR a) and test/fixture literals (which TS often
+ *  infers as deeply-readonly tuples) flow in naturally without a cast. */
 export type NormalizedFundProfile = {
   leveraged: boolean;
-  constituents: LookThroughConstituent[];
+  constituents: readonly LookThroughConstituent[];
   nameCoverage: number;
-  sectors: LookThroughSectorRow[];
+  sectors: readonly LookThroughSectorRow[];
   sectorCoverage: number;
 };
 
@@ -175,6 +179,14 @@ export type LookThroughExposure = {
   effectivePositions: { low: number; high: number } | null;
   opaqueFunds: OpaqueFund[];
   flags: LookThroughFlag[];
+  /** True once at least one fund cleared the coverage floor on EITHER axis
+   *  (names or sectors independently, Decision 4/7) and contributed
+   *  attributed mass. The caller (`summarizePortfolioHealth`) uses this —
+   *  not just a non-empty `positions` array — to decide `lookThrough: "none"`
+   *  vs `"partial"`, so a fund that is opaque on names but attributes on
+   *  sectors (or the reverse) still reads `"partial"` instead of having its
+   *  lone successful axis silently discarded (Codex review, FIX-801). */
+  hasAttribution: boolean;
 };
 
 function isCashPosition(assetClass: AssetClass, assetType: AssetType): boolean {
@@ -202,6 +214,17 @@ function pctOf(value: number, denom: number): number {
  * disproves fund-ness (layer 1); otherwise the curated bond-ETF list is
  * consulted (layer 2 — a bond ETF is a fund, just an ineligible one).
  *
+ * Layer 1 also reads a REFUSED profile's own reason: `"ineligible"` (e.g. a
+ * leveraged/inverse fund, or a fund with no resolvable constituent tickers)
+ * and `"malformed"` (corrupted holdings data) both mean the upstream fetch
+ * DID resolve an ETF_PROFILE for the ticker — the refusal is about the fund's
+ * data, not about whether it's a fund — so both are fund evidence, same as a
+ * stored success payload. `"not_an_etf"` (an empty profile response) is the
+ * only refusal reason that disproves fund-ness. `"quota"` / `"transient"`
+ * (the route's own classification of a request-level failure, never reaching
+ * the fetcher's own judgment) carry no evidence either way and fall through
+ * to the next layer (Codex review, FIX-801).
+ *
  * LAYER 4 (a fund-shaped signal on the constituent's description text) is
  * NOT implemented here: the upstream fetcher (`lib/providers/etf-profile.ts`,
  * sub-PR a) does not currently carry per-constituent description text, so
@@ -224,6 +247,7 @@ function resolveConstituentIsFund(
   if (profile) {
     if (profile.payload !== null) return true; // layer 1 — a stored profile proves it's a fund
     if (profile.refusalReason === "not_an_etf") return false; // layer 1 — proven NOT a fund
+    if (profile.refusalReason === "ineligible" || profile.refusalReason === "malformed") return true; // layer 1 — the fetch resolved an ETF_PROFILE; refusal is about the DATA, not fund-ness
   }
   if (isKnownBondEtf(ticker)) return true; // layer 2 — curated bond-ETF list
   return false; // default: a name (§7 — fund-ness is a positive finding only)
@@ -268,6 +292,7 @@ export function computeLookThroughExposure(
   const sectorMass = new Map<string, number>(); // bucket -> attributed mass
   let nameResidualMass = 0;
   let sectorResidualMass = 0;
+  let hasAttribution = false;
   const opaqueByTicker = new Map<string, { names?: string; sectors?: string; both?: string }>();
 
   function pushSource(ticker: string, from: string, amount: number): void {
@@ -329,6 +354,7 @@ export function computeLookThroughExposure(
         names: `holdings data incomplete (${(fp.nameCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
+      hasAttribution = true;
       for (const c of fp.constituents) {
         const slice = c.weight * mv;
         if (c.ticker === null || resolveConstituentIsFund(c.ticker, positionsByTicker, fundProfiles)) {
@@ -350,6 +376,7 @@ export function computeLookThroughExposure(
         sectors: `sector data incomplete (${(fp.sectorCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
+      hasAttribution = true;
       for (const s of fp.sectors) add(sectorMass, s.sector, s.weight * mv);
       sectorResidualMass += (1 - fp.sectorCoverage) * mv;
     }
@@ -410,6 +437,10 @@ export function computeLookThroughExposure(
     }
   }
   for (const s of sectorExposure) {
+    // The unclassified bucket is a data gap, not a concentration finding —
+    // mirrors the wrapper basis's own exclusion (`computeConcentration` in
+    // `portfolio-health.ts`, Codex review, FIX-801).
+    if (s.bucket === UNCLASSIFIED_BUCKET) continue;
     if (s.pct !== null && s.pct > SECTOR_WARN_PCT) {
       flags.push({ kind: "sector", level: "warn", sector: s.bucket, weightPct: s.pct });
     }
@@ -441,5 +472,6 @@ export function computeLookThroughExposure(
     effectivePositions,
     opaqueFunds,
     flags,
+    hasAttribution,
   };
 }

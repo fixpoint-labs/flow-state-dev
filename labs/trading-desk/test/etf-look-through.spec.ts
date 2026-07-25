@@ -273,10 +273,12 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
   });
 
   it("individually routes away a SMALL fund-of-funds slice without sinking the whole fund", () => {
-    // A mostly-normal fund with a 5% sleeve in another fund — well under the
-    // fund-of-funds threshold, so the fund itself stays eligible/attributed.
-    // SLEEVE is proven a fund via a stored profile (layer 1) without being a
-    // household holding itself.
+    // A mostly-normal fund with a sleeve in another fund, sized to HALF the
+    // configured fund-of-funds threshold — well under it by construction, so
+    // this stays "well under" (and the fund itself stays eligible/attributed)
+    // even if FUND_OF_FUNDS_THRESHOLD_PCT is retuned later, rather than
+    // silently drifting out of the intent a fixed 5% would encode.
+    const sleeveWeight = FUND_OF_FUNDS_THRESHOLD_PCT / 100 / 2;
     const positions = [fund("DIVERSIFIED", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
@@ -284,8 +286,8 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
         profile({
           nameCoverage: 1,
           constituents: [
-            { ticker: "AAPL", weight: 0.95 },
-            { ticker: "SLEEVE", weight: 0.05 },
+            { ticker: "AAPL", weight: 1 - sleeveWeight },
+            { ticker: "SLEEVE", weight: sleeveWeight },
           ],
         }),
       ],
@@ -294,12 +296,12 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
     expect(out.opaqueFunds.some((f) => f.ticker === "DIVERSIFIED")).toBe(false); // stayed eligible
     const aapl = out.positions.find((p) => p.ticker === "AAPL")!;
-    expect(aapl.marketValue).toBeCloseTo(95_000);
-    // The 5% SLEEVE slice ($5,000) is routed to residual, not attributed —
-    // SLEEVE itself gets no extra weight from DIVERSIFIED's holding of it.
+    expect(aapl.marketValue).toBeCloseTo((1 - sleeveWeight) * 100_000);
+    // The SLEEVE slice is routed to residual, not attributed — SLEEVE itself
+    // gets no extra weight from DIVERSIFIED's holding of it.
     const sleeve = out.positions.find((p) => p.ticker === "SLEEVE");
     expect(sleeve?.marketValue).toBeUndefined();
-    expect(out.residual.marketValue).toBeCloseTo(5_000);
+    expect(out.residual.marketValue).toBeCloseTo(sleeveWeight * 100_000);
   });
 });
 

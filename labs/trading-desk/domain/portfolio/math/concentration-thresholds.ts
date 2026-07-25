@@ -18,3 +18,10 @@ export const SINGLE_NAME_WARN_PCT = 10;
 export const SINGLE_NAME_ALERT_PCT = 25;
 /** Sector-concentration warn threshold (% of invested NAV). ~25–30% rule of thumb. */
 export const SECTOR_WARN_PCT = 30;
+
+/** Sector bucket label for a single-name equity whose sector didn't resolve —
+ *  a data gap, not a concentration finding, so both health leaves exclude it
+ *  from sector flags (mirrored here for the same acyclic-import reason as the
+ *  thresholds above; canonical export stays `portfolio-health.ts`'s
+ *  `UNCLASSIFIED_BUCKET`, BP-034). */
+export const UNCLASSIFIED_BUCKET = "Unclassified";
