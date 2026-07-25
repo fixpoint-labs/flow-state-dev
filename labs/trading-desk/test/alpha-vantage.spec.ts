@@ -283,6 +283,31 @@ describe("alphaVantageRequest — per-minute pacing (FIX-801 Decision 5)", () =>
       }
     },
   );
+
+  it("rejects immediately on an already-exhausted daily budget, WITHOUT waiting out a pacing slot first (Codex review)", async () => {
+    process.env.ALPHAVANTAGE_MINUTE_LIMIT = "1";
+    process.env.ALPHAVANTAGE_DAILY_LIMIT = "1";
+    vi.useFakeTimers();
+    try {
+      const spy = mockFetchOnce({ ok: 1 });
+      // Spend the single daily unit (also consumes the single minute-pacing slot).
+      await alphaVantageRequest({ function: "A", symbol: "X" });
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      // The second call is BOTH pacing-blocked (minute slot full) AND
+      // budget-exhausted. If the precheck didn't run before pacing, this
+      // would hang on a real ~60s wait with fake timers never advancing,
+      // and the test would time out rather than resolve. Asserting it
+      // rejects with no `advanceTimersByTimeAsync` call proves the budget
+      // check ran BEFORE the pacing wait, not after.
+      await expect(
+        alphaVantageRequest({ function: "B", symbol: "X" }),
+      ).rejects.toBeInstanceOf(AlphaVantageBudgetError);
+      expect(spy).toHaveBeenCalledTimes(1); // no second fetch attempted
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("fetchAlphaVantageInsiderTransactions", () => {

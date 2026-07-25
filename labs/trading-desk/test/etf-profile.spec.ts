@@ -167,6 +167,30 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     const out = await fetchEtfProfile("ROUNDING");
     expect(out.kind).toBe("profile");
   });
+
+  it("rejects an individual weight outside [0, 1] rather than letting it corrupt the aggregate sum (Codex review)", async () => {
+    // A negative weight offsets an oversized positive one so the AGGREGATE
+    // sum still lands near 100% — the malformed-sum check alone would miss
+    // this. Each row must be range-checked on its own.
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [],
+      holdings: [
+        { symbol: "AAPL", weight: "1.3" }, // corrupted — out of [0,1]
+        { symbol: "MSFT", weight: "-0.3" }, // corrupted — negative, offsets AAPL's overage
+        { symbol: "NVDA", weight: "0.2" }, // genuinely valid
+      ],
+    });
+    const out = await fetchEtfProfile("CORRUPT");
+    if (out.kind !== "profile") throw new Error("expected a profile");
+    const byTicker = new Map(out.profile.constituents.map((c) => [c.ticker, c.weight]));
+    // The two corrupted rows contribute nothing at all — not clamped, not
+    // partially counted — only the genuinely valid row survives.
+    expect(byTicker.has("AAPL")).toBe(false);
+    expect(byTicker.has("MSFT")).toBe(false);
+    expect(byTicker.get("NVDA")).toBeCloseTo(0.2);
+    expect(out.profile.nameCoverage).toBeCloseTo(0.2);
+  });
 });
 
 describe("fetchEtfProfile — AV transport/body errors propagate unchanged", () => {

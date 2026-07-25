@@ -103,6 +103,34 @@ function isStale(fetchedAt: string, now: Date): boolean {
   return ageMs > ETF_PROFILE_STALENESS_DAYS * 24 * 60 * 60 * 1000;
 }
 
+/** Flatten a discriminated {@link EtfProfileUpsertInput} into the read shape
+ *  ({@link EtfProfileRow}) the response-building loop reads — the ONE place
+ *  that reconciles the write shape and the read shape, so persisting an
+ *  outcome and reflecting it into the in-memory `storedByTicker` map never
+ *  restate the same flattening logic twice. */
+function toStoredRow(input: EtfProfileUpsertInput, fetchedAt: string): EtfProfileRow {
+  if (input.refusalReason === null) {
+    return {
+      ticker: input.ticker,
+      payload: input.payload,
+      refusalReason: null,
+      refusalDetail: null,
+      retryAt: null,
+      transientAttempts: 0,
+      fetchedAt,
+    };
+  }
+  return {
+    ticker: input.ticker,
+    payload: null,
+    refusalReason: input.refusalReason,
+    refusalDetail: input.refusalDetail,
+    retryAt: input.retryAt,
+    transientAttempts: input.transientAttempts,
+    fetchedAt,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get("userId");
   if (!userId) {
@@ -158,81 +186,84 @@ export async function GET(req: NextRequest) {
   const missesToFetch = misses.slice(0, ETF_PROFILE_MISS_CAP);
 
   let quotaHit = false;
-  const fetchResults = await mapLimit(missesToFetch, FETCH_CONCURRENCY, async (ticker) => {
-    if (quotaHit) return null; // stop scheduling new fetches once the shared budget is known spent
-    try {
-      const outcome = await withLease(`etf-profile:${ticker}`, () => fetchEtfProfile(ticker));
-      if (outcome.kind === "profile") {
-        return {
-          ticker,
-          upsert: { ticker, payload: outcome.profile, refusalReason: null } as EtfProfileUpsertInput,
-        };
-      }
-      const { retryAt } = computeRefusalBackoff(outcome.reason, now, 0);
-      return {
-        ticker,
-        upsert: {
-          ticker,
-          payload: null,
-          refusalReason: outcome.reason,
-          refusalDetail: outcome.detail,
-          retryAt: retryAt.toISOString(),
-          transientAttempts: 0,
-        } as EtfProfileUpsertInput,
-      };
-    } catch (err) {
-      const isQuota =
-        err instanceof AlphaVantageBudgetError || err instanceof AlphaVantageRateLimitError;
-      if (isQuota) quotaHit = true;
-      const stored = storedByTicker.get(ticker);
-      // A throwing fetch on a REFRESH attempt (this ticker already has a
-      // valid, if stale, stored profile) must not clobber known-good data
-      // with a refusal marker — a transient network blip or a momentary quota
-      // hit is not evidence the fund stopped being attributable. Leave the
-      // row intact; it stays "stale" and is retried on the next read that
-      // needs it (the same no-timer staleness discipline).
-      if (stored && stored.payload !== null) return null;
-      const reason: EtfProfileRefusalClass = isQuota ? "quota" : "transient";
-      const priorTransientAttempts =
-        stored?.refusalReason === "transient" ? stored.transientAttempts : 0;
-      const { retryAt, transientAttempts } = computeRefusalBackoff(
-        reason,
-        now,
-        priorTransientAttempts,
-      );
-      return {
-        ticker,
-        upsert: {
+  await mapLimit(missesToFetch, FETCH_CONCURRENCY, async (ticker) => {
+    if (quotaHit) return; // stop scheduling new fetches once the shared budget is known spent
+
+    // The lease covers the FULL fetch-AND-persist for this ticker, not just
+    // the fetch. A lease released right after the fetch settles — but before
+    // the write lands — would let a second overlapping request (a race two
+    // browser tabs, or a mount racing a refresh) see a DB miss during that
+    // window and spend a second budget unit on a ticker just fetched, which
+    // defeats the whole point of the lease (Codex review, FIX-801 sub-PR a).
+    //
+    // IMPORTANT: `storedByTicker` is REQUEST-LOCAL (one per `GET` call), so a
+    // deduped concurrent caller's lease body never actually runs — it just
+    // awaits the FIRST caller's shared promise. The upsert therefore has to
+    // come back as `withLease`'s RETURN VALUE and be reflected into THIS
+    // caller's own `storedByTicker`, not as a side effect buried inside the
+    // executing caller's closure (which a deduped sibling request would
+    // never see, leaving ITS OWN map — and its response — stale).
+    const result = await withLease(`etf-profile:${ticker}`, async () => {
+      const storedBefore = storedByTicker.get(ticker);
+      // Refresh guard, applied uniformly to BOTH outcome paths below (Cursor
+      // review + follow-up, FIX-801 sub-PR a): a REFRESH attempt on a ticker
+      // that already has a valid, if stale, stored profile must never
+      // clobber that known-good data — neither a thrown transport error NOR
+      // a fresh-but-refused HTTP-200 judgment is trustworthy enough to
+      // overturn an already-attributed fund. Alpha Vantage's documented
+      // flakiness means even a clean "not_an_etf" response on a refresh
+      // could be a transient hiccup, not a real change in the fund's nature.
+      // Only a fresh SUCCESS overwrites existing data; only a genuinely NEW
+      // miss (no prior payload) gets a refusal written.
+      const hasStoredSuccess = storedBefore !== undefined && storedBefore.payload !== null;
+
+      let upsert: EtfProfileUpsertInput;
+      try {
+        const outcome = await fetchEtfProfile(ticker);
+        if (outcome.kind === "profile") {
+          upsert = { ticker, payload: outcome.profile, refusalReason: null };
+        } else if (hasStoredSuccess) {
+          return null; // refused judgment on a refresh — leave the good row intact
+        } else {
+          const { retryAt } = computeRefusalBackoff(outcome.reason, now, 0);
+          upsert = {
+            ticker,
+            payload: null,
+            refusalReason: outcome.reason,
+            refusalDetail: outcome.detail,
+            retryAt: retryAt.toISOString(),
+            transientAttempts: 0,
+          };
+        }
+      } catch (err) {
+        const isQuota =
+          err instanceof AlphaVantageBudgetError || err instanceof AlphaVantageRateLimitError;
+        if (isQuota) quotaHit = true;
+        if (hasStoredSuccess) return null; // thrown error on a refresh — leave the good row intact
+        const reason: EtfProfileRefusalClass = isQuota ? "quota" : "transient";
+        const priorTransientAttempts =
+          storedBefore?.refusalReason === "transient" ? storedBefore.transientAttempts : 0;
+        const { retryAt, transientAttempts } = computeRefusalBackoff(
+          reason,
+          now,
+          priorTransientAttempts,
+        );
+        upsert = {
           ticker,
           payload: null,
           refusalReason: reason,
           refusalDetail: err instanceof Error ? err.message : String(err),
           retryAt: retryAt.toISOString(),
           transientAttempts,
-        } as EtfProfileUpsertInput,
-      };
-    }
-  });
+        };
+      }
 
-  const toPersist = fetchResults
-    .filter((r): r is { ticker: string; upsert: EtfProfileUpsertInput } => r !== null)
-    .map((r) => r.upsert);
-  if (toPersist.length > 0) {
-    await repo.upsertEtfProfiles(toPersist);
-  }
-  // Merge freshly-fetched outcomes over the pre-fetch read so the response
-  // reflects this call's work without a second round-trip to the table.
-  for (const r of toPersist) {
-    storedByTicker.set(r.ticker, {
-      ticker: r.ticker,
-      payload: r.payload,
-      refusalReason: r.refusalReason,
-      refusalDetail: r.refusalReason === null ? null : r.refusalDetail,
-      retryAt: r.refusalReason === null ? null : r.retryAt,
-      transientAttempts: r.refusalReason === null ? 0 : r.transientAttempts,
-      fetchedAt: now.toISOString(),
+      await repo.upsertEtfProfiles([upsert]);
+      return upsert;
     });
-  }
+
+    if (result) storedByTicker.set(ticker, toStoredRow(result, now.toISOString()));
+  });
 
   const profiles: EtfProfileEntry[] = [];
   const refusals: EtfProfileRefusalEntry[] = [];

@@ -9,20 +9,42 @@
  * `classifications-route` precedent); `fetchEtfProfile` is mocked so the fill
  * path runs offline and deterministically.
  */
+import { fileURLToPath } from "node:url";
+import { PGlite } from "@electric-sql/pglite";
+import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
+import { seedAccount } from "./_helpers/portfolio-repo";
 import { _resetLeases } from "@/lib/singleflight";
-import type { PortfolioRepository } from "@/db/repository";
+import { createMigratedPgliteDb, type Db } from "@/db/client";
+import { createPortfolioRepository, type PortfolioRepository } from "@/db/repository";
+import { etfProfiles } from "@/db/schema";
 import type { NormalizedEtfProfile } from "@/lib/providers/etf-profile";
 
-const repoState = vi.hoisted(() => ({ repo: null as PortfolioRepository | null }));
+const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
+
+const repoState = vi.hoisted(() => ({
+  repo: null as PortfolioRepository | null,
+  db: null as Db | null,
+}));
 vi.mock("@/db/portfolio-db", () => ({
   getRepository: async () => {
     if (!repoState.repo) throw new Error("test repository not initialized");
     return repoState.repo;
   },
 }));
+
+/** Backdate a stored ETF profile's `fetched_at` past the staleness bound —
+ *  the repository's public API always stamps `now()` on write, so forcing a
+ *  genuinely stale row (rather than asserting only the fresh/no-refetch path)
+ *  needs a direct write against the migrated table (reviewer follow-up on
+ *  FIX-801 sub-PR a: the original spec admitted it couldn't force staleness). */
+async function backdateFetchedAt(ticker: string, daysAgo: number): Promise<void> {
+  await repoState.db!
+    .update(etfProfiles)
+    .set({ fetchedAt: sql`now() - (${daysAgo} || ' days')::interval` })
+    .where(eq(etfProfiles.ticker, ticker.toUpperCase()));
+}
 
 const fetcherMock = vi.hoisted(() => ({ fetchEtfProfile: vi.fn() }));
 vi.mock("@/lib/providers/etf-profile", async (importOriginal) => {
@@ -49,7 +71,9 @@ const SAMPLE_PROFILE: NormalizedEtfProfile = {
 };
 
 beforeEach(async () => {
-  repoState.repo = await makeTestRepository();
+  const db = await createMigratedPgliteDb(new PGlite(), MIGRATIONS_DIR);
+  repoState.db = db;
+  repoState.repo = createPortfolioRepository(db);
   fetcherMock.fetchEtfProfile.mockReset();
   _resetLeases();
 });
@@ -98,6 +122,32 @@ describe("GET /api/portfolio/etf-profiles", () => {
     fetcherMock.fetchEtfProfile.mockClear();
     await GET(get(USER_ID));
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
+  it("two overlapping requests for the same NEW ticker share ONE fetch-and-persist, not two (Codex review — the lease must cover the write, not just the fetch)", async () => {
+    await seedEtf("SPY");
+    const upsertSpy = vi.spyOn(repoState.repo!, "upsertEtfProfiles");
+    let resolveFetch!: (v: { kind: "profile"; profile: NormalizedEtfProfile }) => void;
+    const pending = new Promise<{ kind: "profile"; profile: NormalizedEtfProfile }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    fetcherMock.fetchEtfProfile.mockReturnValue(pending);
+
+    // Two concurrent GETs — the miss-detection read in each has already
+    // happened by the time either reaches the fetch, so without a lease that
+    // spans the WRITE too, both would independently decide "SPY is a miss".
+    const call1 = GET(get(USER_ID));
+    const call2 = GET(get(USER_ID));
+    await Promise.resolve(); // let both requests reach the fetch stage
+    resolveFetch({ kind: "profile", profile: SAMPLE_PROFILE });
+    const [res1, res2] = await Promise.all([call1, call2]);
+
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1); // one upstream call, not two
+    expect(upsertSpy).toHaveBeenCalledTimes(1); // one write, not two
+    const body1 = (await res1.json()) as EtfProfilesResponse;
+    const body2 = (await res2.json()) as EtfProfilesResponse;
+    expect(body1.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+    expect(body2.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
   });
 
   it("does not fan out for a fund-less book", async () => {
@@ -180,27 +230,51 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(body2.refusals[0]?.ticker).toBe("TQQQ"); // still reported, from the stored row
   });
 
-  it("a throwing fetch on a refresh leaves the stored (stale) row intact rather than overwriting it with a refusal", async () => {
+  it("a throwing fetch on a FORCED-STALE refresh leaves the stored row intact rather than overwriting it with a refusal", async () => {
     await seedEtf("SPY");
     // First call succeeds and stores a real profile.
     fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: SAMPLE_PROFILE });
     await GET(get(USER_ID));
 
-    // Force staleness by rewriting fetchedAt into the past via a direct upsert
-    // is not exposed — instead simulate by making the SECOND call's fetch
-    // throw, and asserting the previously-stored profile still reads back
-    // fine (the route never re-fetches within the staleness bound here, so
-    // this exercises the "fresh success" path — the important assertion is
-    // that a throw is never turned into a refusal for a ticker with a stored
-    // profile that was never persisted as stale in the first place).
+    // Force genuine staleness (not just "the route didn't happen to re-fetch")
+    // by backdating fetched_at directly, then make the refresh attempt throw.
+    await backdateFetchedAt("SPY", 31);
     fetcherMock.fetchEtfProfile.mockClear();
     fetcherMock.fetchEtfProfile.mockRejectedValueOnce(new Error("network blip"));
     const res = await GET(get(USER_ID));
+    // The refresh WAS attempted (proving staleness was real, not a no-op)...
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    // ...but the throw did not clobber the stored profile with a refusal.
     const body = (await res.json()) as EtfProfilesResponse;
-    // Still fresh (not stale), so it wasn't even re-fetched — still reads
-    // as a healthy profile, never a refusal.
     expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
     expect(body.refusals).toEqual([]);
+  });
+
+  it("a REFUSED (non-throwing) outcome on a FORCED-STALE refresh also leaves the stored row intact (Cursor review)", async () => {
+    // AV can return a clean HTTP-200 refusal (e.g. an empty/flaky body judged
+    // not_an_etf) without throwing at all — this must be guarded exactly like
+    // the throw path, or a spurious flaky response silently destroys a good
+    // stored profile and stamps a 90-day backoff on top of it.
+    await seedEtf("SPY");
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: SAMPLE_PROFILE });
+    await GET(get(USER_ID));
+
+    await backdateFetchedAt("SPY", 31);
+    fetcherMock.fetchEtfProfile.mockClear();
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({
+      kind: "refused",
+      reason: "not_an_etf",
+      detail: "empty profile response",
+    });
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1); // the refresh WAS attempted
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]); // still a healthy profile
+    expect(body.refusals).toEqual([]); // never turned into a refusal
+    // The stored row itself is untouched, not just the response projection.
+    const stored = await repoState.repo!.getEtfProfiles(["SPY"]);
+    expect(stored[0]?.payload).not.toBeNull();
+    expect(stored[0]?.refusalReason).toBeNull();
   });
 
   it("a genuinely new ticker whose fetch throws (transient) is persisted as a refusal", async () => {

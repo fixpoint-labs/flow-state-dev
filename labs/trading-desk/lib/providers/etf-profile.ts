@@ -88,12 +88,18 @@ function isAbsent(v: unknown): boolean {
 function parseFraction(v: unknown): number | null {
   if (isAbsent(v)) return null;
   const s = (v as string).trim();
-  if (s.endsWith("%")) {
-    const n = Number(s.slice(0, -1));
-    return Number.isFinite(n) ? n / 100 : null;
-  }
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
+  const n = s.endsWith("%") ? Number(s.slice(0, -1)) / 100 : Number(s);
+  if (!Number.isFinite(n)) return null;
+  // Range-check the INDIVIDUAL weight, not just the aggregate sum: a
+  // malformed/corrupted provider value (e.g. a negative weight, or one
+  // reported as a raw percent like "728" instead of "7.28") must never enter
+  // the sums silently. Left unchecked, a negative weight could offset an
+  // oversized positive one so the aggregate sum-to-~100% malformed check in
+  // `fetchEtfProfile` still passes over genuinely corrupted data (Codex
+  // review, FIX-801 sub-PR a). Out-of-range → contributes nothing, same as an
+  // unparseable weight.
+  if (n < 0 || n > 1) return null;
+  return n;
 }
 
 /** Parse a plain AV numeric string (not a weight — no `%` handling). */

@@ -183,6 +183,21 @@ export async function alphaVantageRequest(
   const key = process.env.ALPHAVANTAGE_API_KEY?.trim();
   if (!key) throw new AlphaVantageError("ALPHAVANTAGE_API_KEY is not set");
 
+  // Fast-path precheck BEFORE pacing: if the day's budget is ALREADY spent, fail
+  // immediately rather than waiting out a pacing slot (up to ~a minute) for a
+  // call that was never going to fetch anyway. Deliberately racy — day-rollover
+  // or another caller freeing a unit between this check and the atomic
+  // check-and-reserve below is fine either way, since that reserve remains the
+  // real correctness boundary; this is purely a latency short-circuit (Codex
+  // review, FIX-801 sub-PR a).
+  const precheckLimit = resolveDailyLimit();
+  if (precheckLimit > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (budget.dayUtc === today && budget.count >= precheckLimit) {
+      throw new AlphaVantageBudgetError(precheckLimit);
+    }
+  }
+
   // Pacing gates BEFORE the daily reservation below — a call queued on the
   // per-minute cap must not debit a daily unit for an answer it hasn't
   // received yet (FIX-801 Decision 5).
