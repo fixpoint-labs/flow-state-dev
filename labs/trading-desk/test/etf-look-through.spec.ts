@@ -467,12 +467,20 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     );
   });
 
-  it("a coverage figure within tolerance of the rows' summed weight still passes (floating-point rounding, not a real mismatch)", () => {
+  it("a coverage figure within tolerance of the rows' summed weight still passes (floating-point rounding, not a real mismatch), and the residual closes off the ACTUAL row sum, not the declared coverage", () => {
     // `nameCoverage: 0.995` matching a summed weight of 0.995 exactly is
     // already covered elsewhere; this case checks a SMALL, sub-tolerance gap
     // (declared 0.90 vs. summed 0.895) still passes reconciliation instead
     // of being over-strict about ordinary floating-point-ish variance
     // between a provider's rounded coverage figure and its per-row weights.
+    //
+    // The residual assertion below pins a real closure bug: attribution is
+    // sized from the ACTUAL row weight (AAPL's slice = 0.895 × mv), but
+    // before this fix the residual was still derived from the DECLARED
+    // coverage (`1 - 0.9`), so attribution ($89,500) + residual ($10,000)
+    // only summed to $99,500 — silently losing $500 of the fund's $100k from
+    // the total. Deriving the residual from the actual row sum instead
+    // (`1 - 0.895`) makes it close exactly: $89,500 + $10,500 = $100,000.
     const positions = [fund("ROUNDING", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
@@ -491,6 +499,69 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(out.opaqueFunds).not.toContainEqual(
       expect.objectContaining({ ticker: "ROUNDING", axis: "names" }),
     );
+    expect(out.residual.marketValue).toBeCloseTo(10_500); // NOT 10,000 (the declared-coverage figure)
+    const totalPositions = out.positions.reduce((s, p) => s + p.marketValue, 0);
+    expect(totalPositions + out.residual.marketValue).toBeCloseTo(100_000); // always closes
+  });
+
+  it("the same within-tolerance closure fix applies to the SECTOR axis", () => {
+    // Mirrors the name-axis case above: declared `sectorCoverage: 0.9` vs.
+    // rows summing to 0.895 (within tolerance, accepted) — the sector
+    // residual must derive from the actual row sum, not the declared figure,
+    // or $500 of the fund's $100k silently vanishes from the total.
+    const positions = [fund("SECTROUNDING", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SECTROUNDING",
+        profile({
+          nameCoverage: 0.2, // fails — keep this test focused on sectors
+          constituents: [],
+          sectorCoverage: 0.9,
+          sectors: [{ sector: "Technology", weight: 0.895 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    const tech = out.sectorExposure.find((s) => s.bucket === "Technology");
+    expect(tech?.marketValue).toBeCloseTo(89_500);
+    expect(out.sectorResidual.marketValue).toBeCloseTo(10_500); // NOT 10,000
+    const totalSectors = out.sectorExposure.reduce((s, b) => s + b.marketValue, 0);
+    expect(totalSectors + out.sectorResidual.marketValue).toBeCloseTo(100_000); // always closes
+  });
+
+  it("the fund-of-funds check fires on sub-floor-but-honest coverage — nameReconciles alone gates it, not the presentation floor too", () => {
+    // A fund honestly attributes only 80% of names (below the 85% floor, so
+    // `namesPass` is false) but the rows reconcile perfectly (no corruption),
+    // and 60% of that 80% resolves to other known funds — well over the
+    // fund-of-funds threshold. Before this fix, gating fund-of-funds on
+    // `namesPass && nameReconciles` skipped the check entirely (namesPass is
+    // false), so this fund's independently-valid 100% sector allocation got
+    // attributed on its own — even though the module's own ≥50%-fund-share
+    // invariant says the WHOLE wrapper should be opaque. `nameReconciles`
+    // alone (the rows are trustworthy) is the correct gate.
+    const positions = [fund("SUBFLOORFOF", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SUBFLOORFOF",
+        profile({
+          nameCoverage: 0.8, // honest, reconciling, but below the 85% floor
+          constituents: [
+            { ticker: "BND", weight: 0.6 }, // 60% of the WHOLE fund — crosses the 50% threshold
+            { ticker: "AAPL", weight: 0.2 },
+          ],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // not decomposed into AAPL
+    expect(out.sectorExposure).toEqual([]); // sector axis correctly wiped too
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.sectorResidual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toEqual([
+      expect.objectContaining({ ticker: "SUBFLOORFOF", axis: "both", reason: expect.stringContaining("fund-of-funds") }),
+    ]);
   });
 });
 

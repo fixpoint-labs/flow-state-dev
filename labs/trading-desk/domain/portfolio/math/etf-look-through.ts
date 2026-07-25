@@ -522,18 +522,20 @@ export function computeLookThroughExposure(
 
     // NAME axis diagnostics — computed BEFORE the fund-of-funds check below,
     // because that check consumes the SAME `fp.constituents` rows the name
-    // axis does. If those rows don't even clear the coverage floor, or don't
-    // reconcile against the declared `nameCoverage` (a duplicated/corrupted
-    // row), the fund-of-funds SHARE computed from them is built on
-    // untrustworthy data — and letting it veto the fund anyway would gate the
-    // SECTOR axis (`fundShare >= threshold` marks BOTH axes opaque) off data
-    // that has nothing to do with sectors at all. Concretely: two duplicated
-    // 0.3-weight BND rows with `nameCoverage: 0.3` inflate the apparent
-    // fund-of-funds share to 60% (BND resolves as a fund via the curated
-    // list) even though the name axis's OWN reconciliation check below would
-    // separately (and correctly) reject just the name axis — while an
-    // independently valid, fully-reconciled sector allocation on the same
-    // fund was wiped out for no reason (Codex review, FIX-801 sub-PR b).
+    // axis does. If those rows don't reconcile against the declared
+    // `nameCoverage` (a duplicated/corrupted row), the fund-of-funds SHARE
+    // computed from them is built on untrustworthy data — and letting it veto
+    // the fund anyway would gate the SECTOR axis (`fundShare >= threshold`
+    // marks BOTH axes opaque) off data that has nothing to do with sectors at
+    // all. Concretely: two duplicated 0.9-weight BND rows with
+    // `nameCoverage: 0.9` inflate the apparent fund-of-funds share to 180%
+    // (BND resolves as a fund via the curated list) even though the name
+    // axis's OWN reconciliation check below would separately (and correctly)
+    // reject just the name axis — while an independently valid,
+    // fully-reconciled sector allocation on the same fund was wiped out for
+    // no reason (Codex review, FIX-801 sub-PR b). `namesPass` (the 85%
+    // presentation floor) is a SEPARATE concept and deliberately NOT part of
+    // this trustworthiness gate — see the fund-of-funds check itself for why.
     // `fp.sectors`/`fp.sectorCoverage` are a wholly separate declared field,
     // unaffected by a corrupted constituent row, and get evaluated entirely
     // on their own below regardless of what happens here.
@@ -543,13 +545,20 @@ export function computeLookThroughExposure(
     const nameReconciles = Math.abs(actualNameSum - safeNameCoverage) <= COVERAGE_RECONCILIATION_EPSILON;
 
     // Fund-of-funds check — a material share resolving as OTHER funds makes
-    // the WHOLE fund ineligible rather than half-decomposed (§7). Only
-    // evaluated when the constituent row data itself is trustworthy (see
-    // above) — when it isn't, this is skipped entirely and the NAME axis's
-    // own floor/reconciliation branches below report the more specific
-    // reason instead of a "fund-of-funds" verdict this leaf can't actually
-    // stand behind from corrupted rows.
-    if (namesPass && nameReconciles) {
+    // the WHOLE fund ineligible rather than half-decomposed (§7). Gated on
+    // `nameReconciles` ALONE, not `namesPass` too — those are different
+    // concepts. `nameReconciles` is a DATA-TRUSTWORTHINESS question (do the
+    // rows add up to something internally consistent); `namesPass` is a
+    // PRESENTATION-floor question (is there enough attributed to show a
+    // confident per-name read). A profile can honestly reconcile while still
+    // falling under the 85% floor — e.g. a fund that honestly attributes 80%
+    // of names (below the floor, so `namesPass` is false) with 60% of that
+    // resolving to other funds. That sub-floor coverage is exactly the case
+    // fund-of-funds detection matters most for: gating on `namesPass` too
+    // would skip the check entirely and let the SECTOR axis attribute on its
+    // own, even though the module's own ≥50%-fund-share invariant says the
+    // WHOLE wrapper should be opaque here (Codex review, FIX-801 sub-PR b).
+    if (nameReconciles) {
       let fundShare = 0;
       for (const c of fp.constituents) {
         if (c.ticker === null) continue;
@@ -619,8 +628,20 @@ export function computeLookThroughExposure(
           hasAttribution = true;
         }
       }
-      // The unreported remainder (rows the profile never listed at all).
-      nameResidualMass += (1 - safeNameCoverage) * mv;
+      // The unreported remainder — derived from the ACTUAL row sum, not the
+      // declared coverage. Once a profile is accepted (exactly matching OR
+      // within the reconciliation tolerance), every dollar of `mv` has gone
+      // somewhere in the loop above (either attributed or added to
+      // `nameResidualMass` as `slice`) EXCEPT the truly-unreported fraction —
+      // and that fraction is `1 - actualNameSum`, not `1 - safeNameCoverage`.
+      // A within-tolerance mismatch (e.g. declared 90% vs. rows actually
+      // summing to 89.5%) is accepted, not rejected, but attribution above was
+      // sized off the ACTUAL row weights — deriving the remainder from the
+      // DECLARED coverage instead would silently lose (or invent) up to one
+      // epsilon's worth of mass, breaking this leaf's own "attribution +
+      // residual always closes to the fund's total value" contract (Codex
+      // review, FIX-801 sub-PR b).
+      nameResidualMass += (1 - actualNameSum) * mv;
     }
 
     // SECTOR axis — gated independently of names (Decision 4/7). Same coverage
@@ -655,7 +676,11 @@ export function computeLookThroughExposure(
           // axis above — a zero-weight row adds nothing real.
           if (slice > 0) hasAttribution = true;
         }
-        sectorResidualMass += (1 - safeSectorCoverage) * mv;
+        // Same closure fix as the name axis above: derive the unreported
+        // remainder from the ACTUAL summed sector weight, not the declared
+        // `sectorCoverage` — a within-tolerance mismatch must not silently
+        // lose or invent mass (Codex review, FIX-801 sub-PR b).
+        sectorResidualMass += (1 - actualSectorSum) * mv;
       }
     }
   }
