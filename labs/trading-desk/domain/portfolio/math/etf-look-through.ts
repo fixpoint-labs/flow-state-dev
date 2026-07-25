@@ -640,8 +640,17 @@ export function computeLookThroughExposure(
       // DECLARED coverage instead would silently lose (or invent) up to one
       // epsilon's worth of mass, breaking this leaf's own "attribution +
       // residual always closes to the fund's total value" contract (Codex
+      // review, FIX-801 sub-PR b). Clamped to at most 1: an OVER-sum within
+      // tolerance (e.g. declared 100% vs. rows actually summing to 100.5%) is
+      // the mirror-image case — without the clamp, `1 - actualNameSum` goes
+      // negative, producing a negative residual, a `coveragePct` above 100%,
+      // and a possibly-inverted effective-position interval (`low > high`).
+      // `nameReconciles` already bounds `actualNameSum` to at most
+      // `safeNameCoverage + epsilon` (and `safeNameCoverage` is itself capped
+      // at 1 by `safeWeight`), so the clamp only ever trims that one epsilon's
+      // worth of over-count, never masks a real malformed profile (Codex
       // review, FIX-801 sub-PR b).
-      nameResidualMass += (1 - actualNameSum) * mv;
+      nameResidualMass += (1 - Math.min(actualNameSum, 1)) * mv;
     }
 
     // SECTOR axis — gated independently of names (Decision 4/7). Same coverage
@@ -679,8 +688,10 @@ export function computeLookThroughExposure(
         // Same closure fix as the name axis above: derive the unreported
         // remainder from the ACTUAL summed sector weight, not the declared
         // `sectorCoverage` — a within-tolerance mismatch must not silently
-        // lose or invent mass (Codex review, FIX-801 sub-PR b).
-        sectorResidualMass += (1 - actualSectorSum) * mv;
+        // lose or invent mass, and the sum is clamped to at most 1 so a
+        // within-tolerance OVER-sum can't drive the residual negative (Codex
+        // review, FIX-801 sub-PR b).
+        sectorResidualMass += (1 - Math.min(actualSectorSum, 1)) * mv;
       }
     }
   }

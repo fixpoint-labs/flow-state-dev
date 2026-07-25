@@ -529,6 +529,62 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(totalSectors + out.sectorResidual.marketValue).toBeCloseTo(100_000); // always closes
   });
 
+  it("an OVER-sum within tolerance clamps to a non-negative NAME residual, not a negative one", () => {
+    // Declared `nameCoverage: 1` (100%) vs. two individually-valid rows
+    // (0.6 + 0.405 = 1.005, 100.5%) — within the 0.01 tolerance, so
+    // accepted, not rejected. Before the clamp, the residual was
+    // `(1 - 1.005) * mv` = a NEGATIVE $500, which would also push
+    // `coveragePct` above 100% and could invert the effective-position
+    // interval (`low > high`). Clamping the actual sum to at most 1 before
+    // computing the residual keeps it at $0 instead.
+    const positions = [fund("OVERSUM", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "OVERSUM",
+        profile({
+          nameCoverage: 1,
+          constituents: [
+            { ticker: "AAPL", weight: 0.6 },
+            { ticker: "MSFT", weight: 0.405 },
+          ],
+          sectorCoverage: 0.2, // fails — keep this test focused on names
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.residual.marketValue).toBeCloseTo(0);
+    expect(out.residual.marketValue).toBeGreaterThanOrEqual(0);
+    expect(out.coveragePct).not.toBeNull();
+    expect(out.coveragePct as number).toBeLessThanOrEqual(100);
+    expect(out.effectivePositions).not.toBeNull();
+    expect(out.effectivePositions!.low).toBeLessThanOrEqual(out.effectivePositions!.high);
+  });
+
+  it("an OVER-sum within tolerance clamps to a non-negative SECTOR residual, not a negative one", () => {
+    // Sector-axis mirror of the name-axis case above.
+    const positions = [fund("SECTOVERSUM", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SECTOVERSUM",
+        profile({
+          nameCoverage: 0.2, // fails — keep this test focused on sectors
+          constituents: [],
+          sectorCoverage: 1,
+          sectors: [
+            { sector: "Technology", weight: 0.6 },
+            { sector: "Healthcare", weight: 0.405 },
+          ],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.sectorResidual.marketValue).toBeCloseTo(0);
+    expect(out.sectorResidual.marketValue).toBeGreaterThanOrEqual(0);
+    expect(out.sectorCoveragePct).not.toBeNull();
+    expect(out.sectorCoveragePct as number).toBeLessThanOrEqual(100);
+  });
+
   it("the fund-of-funds check fires on sub-floor-but-honest coverage — nameReconciles alone gates it, not the presentation floor too", () => {
     // A fund honestly attributes only 80% of names (below the 85% floor, so
     // `namesPass` is false) but the rows reconcile perfectly (no corruption),
