@@ -449,16 +449,24 @@ function validateAgentKeys(sources: DelegationAgentSource[]): {
  */
 const reportedRejections = new WeakMap<object, string>();
 
-/** Warn once per distinct rejected-key set per execution. */
+/**
+ * Warn once per distinct rejected-key set per execution.
+ *
+ * The delimiters are U+0000 and U+0001, chosen because neither can occur in a
+ * skill name or an agent key, so the fingerprint is injective. Write them as
+ * unicode ESCAPES, never as literal control bytes: a literal NUL makes this
+ * whole module classify as binary, at which point ripgrep reports only
+ * "binary file matches" and every symbol in the file becomes ungreppable.
+ */
 function reportRejectedAgentKeys(
   ctx: object,
   rejected: ReadonlyArray<{ skillName: string; key: string }>,
 ): void {
   if (rejected.length === 0) return;
   const fingerprint = rejected
-    .map(({ skillName, key }) => `${skillName} ${key}`)
+    .map(({ skillName, key }) => `${skillName}\u0000${key}`)
     .sort()
-    .join("");
+    .join("\u0001");
   if (reportedRejections.get(ctx) === fingerprint) return;
   reportedRejections.set(ctx, fingerprint);
   for (const { skillName, key } of rejected) {
