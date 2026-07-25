@@ -32,6 +32,31 @@ const fx = JSON.parse(
   readFileSync(new URL("./fixtures/team.json", import.meta.url), "utf8"),
 ) as { researcherSecret: string; auditSuffix: string };
 
+/**
+ * Sequences the skills runtime's `substitute()` rewrites in a worker prompt
+ * before invocation (`$ARGUMENTS`, `$1`–`$9`, `${...}` such as `${SKILL_DIR}`).
+ * A fixture marker containing one would be erased from the prompt while the
+ * grader still expects the literal, so a CORRECT implementation would fail. That
+ * is a loud false negative rather than a false pass, so it is fenced off by
+ * contract (see goal.md → Input) instead of by escaping logic here.
+ */
+const SUBSTITUTION_SEQUENCE = /\$\{[^}]*\}|\$ARGUMENTS\b|\$[1-9]\b/;
+
+for (const [field, value] of [
+  ["researcherSecret", fx.researcherSecret],
+  ["auditSuffix", fx.auditSuffix],
+] as const) {
+  const hit = SUBSTITUTION_SEQUENCE.exec(value ?? "");
+  if (hit) {
+    throw new Error(
+      `fixture invalid: ${field} ${JSON.stringify(value)} contains the substitution sequence ` +
+        `"${hit[0]}". Worker prompts pass through the skills runtime's substitute(), which would ` +
+        `erase it from the prompt while the grader still expects the literal — a correct ` +
+        `implementation would fail. Choose a marker with no $ARGUMENTS, $1–$9, or \${...}.`,
+    );
+  }
+}
+
 const SECRET = fx.researcherSecret;
 const SUFFIX = fx.auditSuffix;
 const FANNED = SECRET + SUFFIX; // the auditor's output — reachable ONLY via fan-out
@@ -398,14 +423,17 @@ async function runGoalCheck(): Promise<string[]> {
   const offOutput = coordinatorOutput(off);
 
   // The baseline — identical prompt + user turn, NO team — must produce NONE of
-  // the graded markers. Checked over the same GRADED_MARKERS list the ON side
-  // accepts, so the two can't drift: a baseline that emits the FANNED code is
-  // just as disqualifying as one that emits the bare secret, since either means
-  // the marker was reachable without delegation. Note the baseline check does
-  // NOT apply `notPartOf` — here ANY appearance is disqualifying, including one
-  // nested inside a longer marker.
+  // the graded markers. Same GRADED_MARKERS list the ON side accepts, so the two
+  // can't drift.
+  //
+  // Deliberately a PLAIN SUBSTRING check, not `hasMarker`: boundaries and
+  // nesting must NOT matter here. Any appearance at all is disqualifying,
+  // because it means the marker was reachable WITHOUT delegation — an embedded
+  // `prefixQORVIX-7788suffix` in a no-team answer proves the secret was
+  // available to the bare model just as surely as a clean one, and the
+  // bounded/standalone logic would wrongly wave it through as "clean".
   for (const { marker } of GRADED_MARKERS) {
-    if (hasMarker(offOutput, marker)) {
+    if (offOutput.includes(marker)) {
       failures.push(
         `ANTI-GAME VIOLATED: the no-delegation baseline produced the graded marker ` +
           `"${marker}" despite having no workers — the delegation-ON pass cannot be ` +
@@ -430,7 +458,7 @@ async function runGoalCheck(): Promise<string[]> {
       `delegation OFF terminal output: ${JSON.stringify(offOutput.slice(0, 300))}\n` +
       GRADED_MARKERS.map(
         ({ label, marker }) =>
-          `  ${label} "${marker}" present: ${hasMarker(offOutput, marker)} (must be false)\n`,
+          `  ${label} "${marker}" present anywhere: ${offOutput.includes(marker)} (must be false)\n`,
       ).join(""),
   );
 
