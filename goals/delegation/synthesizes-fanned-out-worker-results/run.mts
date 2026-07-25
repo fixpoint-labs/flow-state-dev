@@ -11,6 +11,14 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_MODEL,
+  loadFixture,
+  messageText,
+  repoPath,
+  runGoal,
+  stripIntentOverrides,
+} from "../../lib/index.mts";
 import { defineFlow, generator } from "@flow-state-dev/core";
 import {
   runAction,
@@ -36,11 +44,16 @@ import { buildTaskToolsList } from "../../../packages/orchestration/src/skills/t
 import { taskStatusSchema } from "../../../packages/orchestration/src/tasks/schema/task-status.ts";
 import { z } from "zod";
 
-const MODEL = "openai/gpt-5.4-mini";
+// The PORTABLE model id (goals/lib/model.mts): this runner builds a bare
+// `createModelResolver()`, which applies whatever gateway the env provides, so
+// the id must not name one itself.
+const MODEL = DEFAULT_MODEL;
 
-const fx = JSON.parse(
-  readFileSync(new URL("./fixtures/team.json", import.meta.url), "utf8"),
-) as { researcherSecret: string; auditToken: string; handoffCode: string };
+const fx = loadFixture<{
+  researcherSecret: string;
+  auditToken: string;
+  handoffCode: string;
+}>(import.meta.url, "team.json");
 
 /**
  * Required marker shape: `LETTERS-DIGITS` — at least four UPPERCASE letters, a
@@ -147,11 +160,7 @@ const USER_TURN = "Collect the codes from your team and report all of them.";
 // The env may carry an intent ladder override (FSDEV_DEFAULT_MODEL /
 // FSDEV_INTENT_*) that a bare createModelResolver (no declared intents) rejects.
 // Clear it so the resolver auto-wires the AI Gateway from AI_GATEWAY_API_KEY.
-for (const k of Object.keys(process.env)) {
-  if (k === "FSDEV_DEFAULT_MODEL" || k.startsWith("FSDEV_INTENT_")) {
-    delete process.env[k];
-  }
-}
+stripIntentOverrides();
 
 /**
  * `assertNoMarkerInRenderedContext` reads the coordinator's `block_trace`, and
@@ -170,17 +179,8 @@ for (const k of Object.keys(process.env)) {
  */
 process.env.FSDEV_TRACE_OBSERVABILITY = "true";
 
-/** Render a message item's content to text (handles structured content-part arrays). */
-function messageText(item: { content?: unknown; text?: unknown }): string {
-  const c = item?.content ?? item?.text ?? "";
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) {
-    return c
-      .map((p) => (typeof p === "string" ? p : ((p as { text?: string })?.text ?? "")))
-      .join(" ");
-  }
-  return String(c);
-}
+// `messageText` (renders a message item's content, including structured
+// content-part arrays) comes from goals/lib — it was the third copy in the corpus.
 
 // ---------------------------------------------------------------------------
 // Marker matching — EXACT and case-sensitive, so the fixture marker must survive
@@ -349,16 +349,19 @@ const COORDINATOR_PROMPT = [
  * Worker prompts are excluded from both corpora: they carry the markers by
  * construction.
  */
+// Repo-anchored (goals/lib/paths.mts) rather than `../../../` relative, so this
+// runtime scan does not depend on how deeply the goal folder is nested. The
+// deep static IMPORTS above stay relative on purpose — an import cannot use a
+// runtime helper, and goal.md wants a moved module to fail loudly at import.
 const FRAMEWORK_SOURCE_DIRS = [
-  "../../../packages/orchestration/src/skills",
-  "../../../packages/orchestration/src/tasks",
+  repoPath("packages", "orchestration", "src", "skills"),
+  repoPath("packages", "orchestration", "src", "tasks"),
 ];
 
 /** Every `.ts` file under the delegation subsystem, so no module is missed by enumeration. */
 function frameworkSourceText(): string {
   const out: string[] = [];
-  for (const rel of FRAMEWORK_SOURCE_DIRS) {
-    const dir = fileURLToPath(new URL(rel, import.meta.url));
+  for (const dir of FRAMEWORK_SOURCE_DIRS) {
     for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
       out.push(readFileSync(pathJoin(entry.parentPath ?? dir, entry.name), "utf8"));
@@ -1291,20 +1294,17 @@ async function runGoalCheck(): Promise<string[]> {
   return failures;
 }
 
-const failures = await runGoalCheck();
-if (failures.length === 0) {
-  console.log(
-    `\nPASS — the coordinator's terminal answer carried BOTH independent markers (the ` +
-      `researcher's secret and the auditor's sign-off token; neither derivable from the other), ` +
-      `AND the auditor's task was structurally proven to be created mid-drain by the researcher: ` +
-      `an addTask was emitted from inside the researcher's task scope, and the auditor's task was ` +
-      `created after the researcher was claimed — a window in which the coordinator is blocked. ` +
-      `The no-delegation baseline, given the identical prompt and request, produced neither ` +
-      `marker — so the pass is attributable to delegation and fan-out actually running.`,
-  );
-  process.exit(0);
-} else {
-  console.error("\nFAIL —");
-  for (const f of failures) console.error(`  - ${f}`);
-  process.exit(1);
-}
+// `runGoal` owns the verdict format and the exit code (goals/lib/verdict.mts).
+// `runGoalCheck` keeps returning a plain `string[]` so none of its graders or
+// early returns change shape.
+await runGoal(async () => ({
+  failures: await runGoalCheck(),
+  evidence:
+    `the coordinator's terminal answer carried BOTH independent markers (the ` +
+    `researcher's secret and the auditor's sign-off token; neither derivable from the other), ` +
+    `AND the auditor's task was structurally proven to be created mid-drain by the researcher: ` +
+    `an addTask was emitted from inside the researcher's task scope, and the auditor's task was ` +
+    `created after the researcher was claimed — a window in which the coordinator is blocked. ` +
+    `The no-delegation baseline, given the identical prompt and request, produced neither ` +
+    `marker — so the pass is attributable to delegation and fan-out actually running.`,
+}));
