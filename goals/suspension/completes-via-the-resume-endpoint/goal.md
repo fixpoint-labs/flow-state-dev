@@ -14,3 +14,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-23 | 78ee0c0a | n/a (no LLM) | PASS | Real router: dispatch→suspended, debug/suspensions pending, resume endpoint 202, status→completed; GET .../stream replay carried held-out request+note and a `request.completed` event (suspended→…→completed); reload showed completed + 0 pending. Confirms the DevTool reconnect-after-resume path. |
+| 2026-07-25 | 5eb5e7e | n/a | PASS | 202 to completed; re-fetched stream replay carried request + note and a request.completed event; 0 pending suspensions on reload. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

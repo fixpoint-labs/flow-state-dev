@@ -19,3 +19,4 @@ A short manual TTY checklist (not exercisable through a pipe):
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-10 | claude/fix-875-e05uaa | openai/gpt-5-mini | PASS | Turn 1 "My name is Ada." → "Nice to meet you, Ada."; turn 2 "What is my name?" → "Ada" (the question carried no name, so it came from turn-1 history); both /status blocks named the session and hello-chat · chat; exit 0. |
+| 2026-07-25 | 5eb5e7e | hello-chat configured model | PASS | The answer to the isolated question contained `Ada`, recovered from turn-1 history. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

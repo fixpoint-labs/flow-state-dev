@@ -12,3 +12,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-08 | d2267af0 | N/A — model-free | PASS | Real `serve()` host (`@flow-state-dev/node`) + real MCP transport adapter (`@flow-state-dev/mcp`) + PGlite-executor `postgresStores` (durable `prod` profile, real schema init) over the loopback socket. `create_concept` in request A; a separate request B's `read_concept` carried the held-out passphrase and `list_concepts` carried the id; unauthenticated `tools/call` returned 401. |
+| 2026-07-25 | 5eb5e7e | none | PASS | Request B's read_concept carried request A's held-out passphrase over the PGlite prod profile; unauthenticated call refused with 401. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

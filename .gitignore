@@ -31,3 +31,7 @@ docs/internal/design-memos/*
 # Turborepo
 .turbo
 graphify-out/*
+
+# Transient goal-check harness copies (goals/lib/driver.mts writes these into an
+# app root and removes them; this only catches a crash mid-run).
+.goal-*.mts

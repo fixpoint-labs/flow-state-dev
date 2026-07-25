@@ -14,3 +14,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-08 | 8b6069f9 | n/a (no LLM) | PASS | Two independently-interrupted requests each continued by their own id: each got exactly one `continuation` item attributed to its own `requestId`, per-flow counters stayed isolated (no cross-contamination), both reached `completed` under distinct ids. |
+| 2026-07-25 | 5eb5e7e | n/a | PASS | Each request got one continuation item attributed to its own id; both counters stayed at 1; both reached `completed` under distinct ids. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

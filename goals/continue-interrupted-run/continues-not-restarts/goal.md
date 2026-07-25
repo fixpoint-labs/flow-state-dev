@@ -16,3 +16,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-08 | 8b6069f9 | n/a (no LLM) | PASS | Single interrupted request continued in-process: exactly one `continuation` item (`trigger: "recovery"`, `priorItemCount 5`); `earlyStep` and `bgWork` run-counters each stayed at 1 across both continue calls (replayed, not re-executed); same request id reached `completed` carrying the held-out note. Continue-not-restart holds on this branch. |
+| 2026-07-25 | 5eb5e7e | n/a | PASS | One `recovery` continuation item (priorItemCount 5); earlyStep and bgWork each ran exactly once; same request id reached `completed` with the held-out note. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

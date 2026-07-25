@@ -23,12 +23,13 @@
  *   - `seed-portfolio-snapshot` — `seedSession` reads the sector cache read-only
  *     and freezes the health block onto `state.portfolio` (the real seed wiring).
  *
+ * These specs are mock-free by construction (real PGlite, no model), which is
+ * what makes delegating to them legitimate here — see `goals/lib/specs.mts`.
+ *
  * Run: pnpm tsx goals/trading-desk-portfolio/household-health/run.mts
  */
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { TRADING_DESK, runGoal, runSpecs } from "../../lib/index.mts";
 
-const APP = fileURLToPath(new URL("../../../labs/trading-desk", import.meta.url));
 const SPECS = [
   "portfolio-health",
   "instrument-classifications-repository",
@@ -38,15 +39,12 @@ const SPECS = [
   "seed-portfolio-snapshot",
 ];
 
-try {
-  execFileSync("pnpm", ["exec", "vitest", "run", ...SPECS], { stdio: "inherit", cwd: APP });
-} catch {
-  console.error("FAIL: a real-path household-health spec did not pass.");
-  process.exit(1);
-}
-console.log(
-  "PASS: household health merges exposure across accounts, computes concentration/" +
-    "sector/coverage deterministically, and injects the same compact aggregate into " +
-    "the trader/PM <portfolioContext> — over real PGlite, no model.",
-);
-process.exit(0);
+await runGoal(() => ({
+  failures: runSpecs(TRADING_DESK, SPECS)
+    ? []
+    : ["a real-path household-health spec did not pass (see the vitest output above)"],
+  evidence:
+    "household health merges exposure across accounts, computes concentration/sector/coverage " +
+    "deterministically, and injects the same compact aggregate into the trader/PM " +
+    `<portfolioContext> — over real PGlite, no model. Specs: ${SPECS.join(", ")}.`,
+}));

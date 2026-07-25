@@ -28,6 +28,8 @@ only the equity + crypto.
 contribute `null` (never a fabricated value) to keep NAV honest — so "includes
 the bond mass" can't be faked by valuing what can't be valued.
 
+**Model.** none — the import + valuation are deterministic TS over real PGlite; no LLM is in this path.
+
 **Run.** Out of CI, by hand (no model cost):
 
 ```
@@ -41,3 +43,5 @@ pnpm tsx goals/trading-desk-portfolio/multi-asset-import/run.mts
   bond at 98.5 + a 5000-unit money-market fund at par + 0.5 BTC) persisted 4/4
   typed holdings and valued NAV at $39,970, including the $6,970 bond +
   money-market mass the old importer discarded.
+
+- 2026-07-25 — **PASS** (none). 4 real-path spec files, 83 tests, green over real PGlite. Run during the goals/lib migration (runner scaffolding only; no product code changed).

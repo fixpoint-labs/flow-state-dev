@@ -6,20 +6,23 @@
  * `classifyInstrument`) persisted through the `app.holdings` repository over an
  * embedded PGlite (the real dev DB engine), then valued by `buildPortfolioContext`.
  * The proof therefore runs the REAL production code — not mocks — by executing the
- * two real-path specs that pin the contract, by hand and outside the default lane:
+ * real-path specs that pin the contract, by hand and outside the default lane:
  *
- *   - `holdings-taxonomy-repository.spec.ts` — a bond / option / cash_equivalent
+ *   - `holdings-taxonomy-repository` — a bond / option / cash_equivalent
  *     round-trip through `upsertHoldings` → `getPortfolio` over real PGlite, typed.
- *   - `build-portfolio-context.spec.ts` — a mixed book (equity via quote + bond at
+ *   - `build-portfolio-context` — a mixed book (equity via quote + bond at
  *     its carried mark + money-market at par + an unpriced bond) computes a NAV
  *     that INCLUDES the bond + money-market mass (the sliver the old importer lost).
+ *   - `classify-instrument` — the symbol-shape taxonomy the importer keys on.
+ *   - `portfolio-pdf` — the statement-parsing entry point.
+ *
+ * These specs are mock-free by construction (real PGlite, no model), which is
+ * what makes delegating to them legitimate here — see `goals/lib/specs.mts`.
  *
  * Run: pnpm tsx goals/trading-desk-portfolio/multi-asset-import/run.mts
  */
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { TRADING_DESK, runGoal, runSpecs } from "../../lib/index.mts";
 
-const APP = fileURLToPath(new URL("../../../labs/trading-desk", import.meta.url));
 const SPECS = [
   "holdings-taxonomy-repository",
   "build-portfolio-context",
@@ -27,14 +30,11 @@ const SPECS = [
   "portfolio-pdf",
 ];
 
-try {
-  execFileSync("pnpm", ["exec", "vitest", "run", ...SPECS], { stdio: "inherit", cwd: APP });
-} catch {
-  console.error("FAIL: a real-path import/valuation spec did not pass.");
-  process.exit(1);
-}
-console.log(
-  "PASS: mixed-asset import persists typed bond / money-market / crypto / equity " +
-    "holdings (none dropped) and NAV includes the non-equity mass — over real PGlite.",
-);
-process.exit(0);
+await runGoal(() => ({
+  failures: runSpecs(TRADING_DESK, SPECS)
+    ? []
+    : ["a real-path import/valuation spec did not pass (see the vitest output above)"],
+  evidence:
+    "mixed-asset import persists typed bond / money-market / crypto / equity holdings " +
+    `(none dropped) and NAV includes the non-equity mass — over real PGlite. Specs: ${SPECS.join(", ")}.`,
+}));

@@ -16,9 +16,9 @@
  *
  * Run: pnpm tsx goals/capability-config/resolver-reaches-generator/run.mts
  */
-import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { defineCapability, generator } from "@flow-state-dev/core";
+import { DEFAULT_MODEL, loadFixture, runGoal } from "../../lib/index.mts";
 
 function collectStrings(value: unknown, out: string[]): void {
   if (typeof value === "string") {
@@ -28,11 +28,15 @@ function collectStrings(value: unknown, out: string[]): void {
   }
 }
 
-function runGoalCheck(): string[] {
-  const { note } = JSON.parse(
-    readFileSync(new URL("./fixtures/input.json", import.meta.url), "utf8"),
-  ) as { note: string };
+/** The assembled context strings on a built generator. */
+function assembledContext(gen: ReturnType<typeof generator>): string[] {
+  const out: string[] = [];
+  collectStrings((gen.config as { context?: unknown }).context, out);
+  return out;
+}
 
+await runGoal(() => {
+  const { note } = loadFixture<{ note: string }>(import.meta.url);
   const failures: string[] = [];
 
   // A capability with typed open config plus a flag preset. The resolver reads
@@ -50,14 +54,14 @@ function runGoalCheck(): string[] {
   });
 
   // 1. Explicit config value reaches the assembled surface.
-  const loudGen = generator({
-    name: "loud",
-    model: "openai/gpt-5.4-mini",
-    prompt: "p",
-    uses: [banner.config({ note, loud: true })],
-  });
-  const loudCtx: string[] = [];
-  collectStrings((loudGen.config as { context?: unknown }).context, loudCtx);
+  const loudCtx = assembledContext(
+    generator({
+      name: "loud",
+      model: DEFAULT_MODEL,
+      prompt: "p",
+      uses: [banner.config({ note, loud: true })],
+    }),
+  );
   if (!loudCtx.includes(note.toUpperCase())) {
     failures.push(
       `expected assembled context to contain "${note.toUpperCase()}", got ${JSON.stringify(loudCtx)}`,
@@ -65,39 +69,28 @@ function runGoalCheck(): string[] {
   }
 
   // 2. The defaulted field (z.output) is honored: loud defaults to false.
-  const quietGen = generator({
-    name: "quiet",
-    model: "openai/gpt-5.4-mini",
-    prompt: "p",
-    uses: [banner.config({ note })],
-  });
-  const quietCtx: string[] = [];
-  collectStrings((quietGen.config as { context?: unknown }).context, quietCtx);
+  const quietCtx = assembledContext(
+    generator({
+      name: "quiet",
+      model: DEFAULT_MODEL,
+      prompt: "p",
+      uses: [banner.config({ note })],
+    }),
+  );
   if (!quietCtx.includes(note)) {
-    failures.push(
-      `expected assembled context to contain "${note}", got ${JSON.stringify(quietCtx)}`,
-    );
+    failures.push(`expected assembled context to contain "${note}", got ${JSON.stringify(quietCtx)}`);
   }
 
   // 3. Config composes with presets, in either chain order: a preset turned on
   //    reconciles against the config value (shout → uppercase even if !loud).
   for (const label of ["config-then-presets", "presets-then-config"] as const) {
-    const gen =
+    const uses =
       label === "config-then-presets"
-        ? generator({
-            name: label,
-            model: "openai/gpt-5.4-mini",
-            prompt: "p",
-            uses: [banner.config({ note }).presets({ shout: true })],
-          })
-        : generator({
-            name: label,
-            model: "openai/gpt-5.4-mini",
-            prompt: "p",
-            uses: [banner.presets({ shout: true }).config({ note })],
-          });
-    const ctx: string[] = [];
-    collectStrings((gen.config as { context?: unknown }).context, ctx);
+        ? [banner.config({ note }).presets({ shout: true })]
+        : [banner.presets({ shout: true }).config({ note })];
+    const ctx = assembledContext(
+      generator({ name: label, model: DEFAULT_MODEL, prompt: "p", uses }),
+    );
     if (!ctx.includes(note.toUpperCase())) {
       failures.push(
         `[${label}] expected preset to reconcile config to "${note.toUpperCase()}", got ${JSON.stringify(ctx)}`,
@@ -105,15 +98,8 @@ function runGoalCheck(): string[] {
     }
   }
 
-  return failures;
-}
-
-const failures = runGoalCheck();
-if (failures.length === 0) {
-  console.log("PASS — config resolver output reached the assembled generator surface");
-  process.exit(0);
-} else {
-  console.error("FAIL");
-  for (const f of failures) console.error(`  - ${f}`);
-  process.exit(1);
-}
+  return {
+    failures,
+    evidence: "config resolver output reached the assembled generator surface",
+  };
+});

@@ -12,7 +12,6 @@
  * Run (deps resolve via the `goals` workspace package):
  *   pnpm tsx goals/resource-collections/agent-reads-and-writes-instance-content/run.mts
  */
-import { readFileSync } from "node:fs";
 import {
   defineFlow,
   defineResourceCollection,
@@ -28,14 +27,25 @@ import {
   createResponseEmitter,
   runAction,
 } from "@flow-state-dev/engine";
+import {
+  DEFAULT_MODEL,
+  goalSessionId,
+  loadFixture,
+  runGoal,
+  silentLogger,
+} from "../../lib/index.mts";
 
-const MODEL = process.env.FSDEV_DEFAULT_MODEL ?? "openai/gpt-5.4-mini";
+// This goal deliberately runs on the AMBIENT ladder rather than stripping it
+// (see goals/lib/env.mts): it declares the intents below so the generator
+// resolves a concrete model id through whatever gateway the env provides.
+const MODEL = process.env.FSDEV_DEFAULT_MODEL ?? DEFAULT_MODEL;
 
 // Held-out fixture. The runner reads `secret` from here and the prompt never
 // names it, so a different body + secret must still pass a correct impl.
-const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/note.json", import.meta.url), "utf8"),
-) as { noteKey: string; seedBody: string; secret: string };
+const fixture = loadFixture<{ noteKey: string; seedBody: string; secret: string }>(
+  import.meta.url,
+  "note.json",
+);
 
 const inputSchema = z.object({ message: z.string() });
 
@@ -69,19 +79,17 @@ const editor = generator({
 
 const pipeline = sequencer({ name: "notes-pipeline", inputSchema }).step(editor);
 
-const goalFlow = defineFlow({
+const flow = defineFlow({
   kind: "goal-resource-collection-content",
   requireUser: true,
   actions: { run: { inputSchema, block: pipeline, userMessage: (i) => i.message } },
   resources,
   session: { stateSchema: z.object({}) },
-});
+})({ id: "default" });
 
-const flow = goalFlow({ id: "default" });
-
-async function main(): Promise<void> {
+await runGoal(async () => {
   const stores = createInMemoryStores();
-  const sessionId = "goal_sess_1";
+  const sessionId = goalSessionId("resource-collections");
   const userId = "goal-user";
   const storageKey = `notes/${fixture.noteKey}`;
 
@@ -105,7 +113,6 @@ async function main(): Promise<void> {
   await stores.content.set("session", sessionId, storageKey, fixture.seedBody);
 
   const responseEmitter = createResponseEmitter({ requestId: "goal_req_1", onEvent: () => {} });
-  const silent = { debug() {}, info() {}, warn() {}, error() {} };
 
   const result = await runAction({
     flow,
@@ -122,7 +129,7 @@ async function main(): Promise<void> {
         defaultModel: MODEL,
         intents: { chat: [MODEL], plan: [MODEL], reason: [MODEL], utility: [MODEL] },
       }),
-      logger: silent,
+      logger: silentLogger,
     },
   });
 
@@ -131,27 +138,21 @@ async function main(): Promise<void> {
   const after = await stores.content.get("session", sessionId, storageKey);
   const failures: string[] = [];
   if (result.error !== undefined) failures.push(`flow errored: ${result.error.message}`);
-  if (typeof after !== "string") failures.push("note body is missing after the run");
-  else {
+  if (typeof after !== "string") {
+    failures.push("note body is missing after the run");
+  } else {
     if (after === fixture.seedBody) failures.push("note body unchanged — write did not happen");
     if (!after.toLowerCase().includes(fixture.secret.toLowerCase())) {
-      failures.push(`note body did not carry the held-out secret — read did not happen (got ${JSON.stringify(after)})`);
+      failures.push(
+        `note body did not carry the held-out secret — read did not happen (got ${JSON.stringify(after)})`,
+      );
     }
   }
 
-  if (failures.length === 0) {
-    console.log(
-      `PASS — note '${storageKey}' rewritten to ${JSON.stringify(after)} (model: ${MODEL}). ` +
-        `Graded persisted body for the held-out secret + a change from seed; not on tool calls or success flag.`,
-    );
-    process.exit(0);
-  } else {
-    console.error("FAIL —\n" + failures.join("\n"));
-    process.exit(1);
-  }
-}
-
-main().catch((err) => {
-  console.error("FAIL (threw):", err);
-  process.exit(1);
+  return {
+    failures,
+    evidence:
+      `note '${storageKey}' rewritten to ${JSON.stringify(after)} (model: ${MODEL}). ` +
+      `Graded persisted body for the held-out secret + a change from seed; not on tool calls or success flag.`,
+  };
 });

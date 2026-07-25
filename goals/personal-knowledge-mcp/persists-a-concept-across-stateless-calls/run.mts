@@ -15,18 +15,22 @@
  *
  * Run: pnpm tsx goals/personal-knowledge-mcp/persists-a-concept-across-stateless-calls/run.mts
  */
-import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import type { QueryExecutor } from "@flow-state-dev/store-postgres";
+import { loadFixture, runGoal } from "../../lib/index.mts";
 
 const SECRET = process.env.KB_MCP_SECRET ?? "goal-check-secret";
 
 // Held-out fixture — the runner reads id/type/title/body/passphrase from
 // here and hardcodes none, so swapping in a different valid concept must
 // still pass a correct implementation.
-const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/concept.json", import.meta.url), "utf8"),
-) as { id: string; type: string; title: string; body: string; passphrase: string };
+const fixture = loadFixture<{
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  passphrase: string;
+}>(import.meta.url, "concept.json");
 
 /** Wrap PGlite to match `QueryExecutor` — the same shape store-postgres's own tests use. */
 function pgliteExecutor(pglite: PGlite): QueryExecutor {
@@ -42,7 +46,11 @@ function neverResolvesAModel(): never {
   throw new Error("personal-knowledge-mcp goal check: the knowledge flow has no generator actions.");
 }
 
-async function postMcp(baseUrl: string, body: unknown, auth: boolean): Promise<{ status: number; json: any }> {
+async function postMcp(
+  baseUrl: string,
+  body: unknown,
+  auth: boolean,
+): Promise<{ status: number; json: any }> {
   const res = await fetch(baseUrl, {
     method: "POST",
     headers: {
@@ -55,7 +63,7 @@ async function postMcp(baseUrl: string, body: unknown, auth: boolean): Promise<{
   return { status: res.status, json };
 }
 
-async function main(): Promise<void> {
+await runGoal(async () => {
   // Set before the FIRST (dynamic) import of the lab's config/flow modules —
   // both read `process.env.KB_MCP_SECRET` at module-evaluation time to build
   // the bearer-secret resolver and the fail-closed prod-profile guard.
@@ -68,7 +76,9 @@ async function main(): Promise<void> {
   const { serve } = await import("@flow-state-dev/node");
   const { default: knowledgeFlow } = await import("../../../examples/knowledge-base/src/flow.ts");
 
-  const modelResolver = Object.assign(neverResolvesAModel, { resolveId: neverResolvesAModel }) as any;
+  const modelResolver = Object.assign(neverResolvesAModel, {
+    resolveId: neverResolvesAModel,
+  }) as any;
 
   const flowstate = createFlowState({
     flows: { knowledge: knowledgeFlow },
@@ -115,7 +125,9 @@ async function main(): Promise<void> {
     // OWN response text — not asserted from the fixture directly, not from
     // request A's response, and not from reading the PGlite store directly.
     if (!readText.includes(fixture.passphrase)) {
-      failures.push(`read_concept (separate request) did not carry the held-out passphrase — got ${JSON.stringify(readText)}`);
+      failures.push(
+        `read_concept (separate request) did not carry the held-out passphrase — got ${JSON.stringify(readText)}`,
+      );
     }
 
     const listRes = await postMcp(
@@ -125,7 +137,9 @@ async function main(): Promise<void> {
     );
     const listText: string = listRes.json?.result?.content?.[0]?.text ?? "";
     if (!listText.includes(fixture.id)) {
-      failures.push(`list_concepts (separate request) did not carry the concept id — got ${JSON.stringify(listText)}`);
+      failures.push(
+        `list_concepts (separate request) did not carry the concept id — got ${JSON.stringify(listText)}`,
+      );
     }
 
     // Negative: no Authorization header must be refused, not silently served.
@@ -142,20 +156,11 @@ async function main(): Promise<void> {
     await pglite.close().catch(() => {});
   }
 
-  if (failures.length === 0) {
-    console.log(
-      `PASS — create_concept in request A; a separate request B's read_concept carried the held-out ` +
-        `passphrase and list_concepts carried the id (durable, PGlite-backed prod profile); an ` +
-        `unauthenticated tools/call was refused with 401. Real serve() host over the loopback socket.`,
-    );
-    process.exit(0);
-  } else {
-    console.error("FAIL —\n" + failures.join("\n"));
-    process.exit(1);
-  }
-}
-
-main().catch((err) => {
-  console.error("FAIL (threw):", err);
-  process.exit(1);
+  return {
+    failures,
+    evidence:
+      `create_concept in request A; a separate request B's read_concept carried the held-out ` +
+      `passphrase and list_concepts carried the id (durable, PGlite-backed prod profile); an ` +
+      `unauthenticated tools/call was refused with 401. Real serve() host over the loopback socket.`,
+  };
 });

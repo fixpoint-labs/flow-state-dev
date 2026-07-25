@@ -24,6 +24,8 @@ projects a summary. The check asserts `status === "completed"` AND a non-null
 `finalRating` AND the PM memo published, so the pipeline must actually have
 produced a decision.
 
+**Model.** real — the desk's own intent ladder via the Vercel AI Gateway (`AI_GATEWAY_API_KEY`). Fixture mode stubs DATA tools only, so every generator runs live.
+
 **Run.** Requires `AI_GATEWAY_API_KEY` (slow + costs tokens — ~30 real
 generators). Out of CI, by hand:
 

@@ -31,3 +31,4 @@ If the forced run fails *only* because GLM can't reliably self-coerce, run the r
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-23 | (pending) | vercel/zai/glm-5.2 | NOT RUN | Authored with the fix. Not run in the implementation environment — no Vercel AI Gateway inference credential for GLM 5.2 here. Run by hand where a real inference credential exists and record the verdict. |
+| 2026-07-25 | 5eb5e7e | vercel/zai/glm-5.2 | FAIL | Run aborted: `[goalSeekLoop] "pae-thinking" judge returned "replan" with no tasks and no replanner configured`; 0-char answer. NOT a goal-runner regression — the pre-migration runner fails on the same call (it crashed with an unhandled execFileSync throw instead of reporting a verdict). Needs triage against plan-and-execute / goalSeekLoop. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

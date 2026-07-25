@@ -14,3 +14,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-08 | 561d855a | openai/gpt-5.4-mini | PASS | `pnpm tsx goals/suspension/generator-resumes-after-tool-approval/run.mts` → exit 0, stable across 3 consecutive runs + 1 held-out swap. Tool ran once (0 before approval, 1 after); step 0 replayed from log (1 model call pre-suspend, first resume call carried the tool result → not re-called); request `completed`; final answer quoted the held-out `confirmationId`, not the `approver` payload. Found + fixed a driver bug during authoring (un-awaited `continueRequest().finished` promise) — not a framework bug. |
+| 2026-07-25 | 5eb5e7e | vercel/openai/gpt-5.4-mini | PASS | Tool ran exactly once (0 before approval, 1 after); step 0 replayed from the durable log; final answer quoted the held-out confirmation id PUBCONF-7F3A9K2Q. Run during the goals/lib migration (runner scaffolding only; no product code changed). |
