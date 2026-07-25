@@ -67,6 +67,37 @@ skills.with({ active: ["research-lead"], guidance: false });
 
 A skill that declares no `agents:` and does not set `delegation: true` installs none of this — no board, no `taskTools`, no `runBoard`, no guidance. Ordinary inline skills carry zero delegation overhead.
 
+### How much work the board will take on
+
+Every task is an agent turn, and every turn costs tokens. `concurrency` (fixed at 4 for the delegation board) only paces how many run at once, so the board carries two more bounds on how much work can be *created*:
+
+- `maxEnqueuedTasks` (default 100) — how many tasks the coordinator may add while others are still waiting. It refreshes as the board drains.
+- `maxTotalTasks` (default 500) — how many tasks the board may hold over its whole run, completed ones included. Draining does not give any back.
+
+When a bound is reached, `addTask` returns a soft error rather than throwing, and the coordinator is expected to react:
+
+```
+addTask({ goal: "…" })  → { ok: false, error: "enqueued_task_cap_exceeded" }   // drain, then continue
+addTask({ goal: "…" })  → { ok: false, error: "total_task_cap_exceeded" }      // the run's ceiling
+```
+
+The usual recovery is the loop the guidance already describes: call `runBoard`, let the pending work drain, then add the next wave.
+
+One thing to be precise about. The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own — a retry, an unblock, a resumed review, a reclaimed lease — and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`. Neither bound survives a suspend and resume: a rebuilt board starts counting again from zero.
+
+Both are tunable on the library, beside `workerModelId`:
+
+```ts
+const skills = createSkillsLibrary({
+  catalog,
+  initialSkills,
+  maxTotalTasks: 2_000,
+  maxEnqueuedTasks: null, // explicitly unbounded on this axis
+});
+```
+
+`null` is the opt-out. Omitting an option is not — it reapplies the default.
+
 ## Default worker (the floor)
 
 Every delegation board has a **default worker** — a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared agent, that agent runs it. When the `assignee` is unset, the task runs on the default worker instead of erroring.

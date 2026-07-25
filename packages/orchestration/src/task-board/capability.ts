@@ -49,6 +49,7 @@ import {
   type Task,
   type TaskCollectionRef,
   type TaskFilter,
+  type TaskCapOptions,
   type TaskHandle,
   type TaskInit,
 } from "../tasks";
@@ -68,7 +69,7 @@ import { resolveResourceTaskCollection } from "./resolve-resource";
  * `targetStateSchemas: { [boardName]: taskBoardStateSchema }` so consumers
  * contribute the state schema transitively.
  */
-export interface TaskBoardSequencerCapabilityOptions {
+export interface TaskBoardSequencerCapabilityOptions extends TaskCapOptions {
   backing: "sequencer";
   /** Board name — also the `ctx.getTarget(boardName)` key for the board's state ref. */
   boardName: string;
@@ -85,7 +86,7 @@ export interface TaskBoardSequencerCapabilityOptions {
  * task from a sibling or outer step before the board drains, and re-entry from
  * outer loops that wrap `board.drain`.
  */
-export interface TaskBoardRequestCapabilityOptions {
+export interface TaskBoardRequestCapabilityOptions extends TaskCapOptions {
   backing: "request";
   boardName: string;
   collectionId: string;
@@ -221,7 +222,11 @@ export function createTaskBoardCapability<
   }
 
   if (options.backing === "request") {
-    const { stateKey } = options;
+    // The caps ride the capability too, not just the drain's factory (FIX-931):
+    // `getOrCreateTaskCollection` never caches, so `ctx.cap.<board>.addTask`
+    // builds its OWN ref. One resolver per board, not one per writer — without
+    // this the capability would be an uncapped writer onto the same board.
+    const { stateKey, maxTotalTasks, maxEnqueuedTasks } = options;
     return defineCapability({
       name: capabilityName,
       fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
@@ -231,6 +236,8 @@ export function createTaskBoardCapability<
             backing: "request",
             collectionId,
             stateKey,
+            maxTotalTasks,
+            maxEnqueuedTasks,
           })
         ),
     });
@@ -258,7 +265,7 @@ export function createTaskBoardCapability<
   // strictly via `ctx.getTarget(boardName)`. No `ctx.sequencer` fallback — the
   // targets registry only resolves inside the board's subtree, so failing loudly
   // here beats silently writing to a sibling's state.
-  const { stateKey } = options;
+  const { stateKey, maxTotalTasks, maxEnqueuedTasks } = options;
   return defineCapability({
     name: capabilityName,
     targetStateSchemas: {
@@ -280,6 +287,8 @@ export function createTaskBoardCapability<
           collectionId,
           sequencer: target as StateRef<Record<string, unknown>>,
           stateKey,
+          maxTotalTasks,
+          maxEnqueuedTasks,
         });
       }),
   });

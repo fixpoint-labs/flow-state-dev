@@ -26,6 +26,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   taskSchema,
+  TaskCapExceededError,
   type TaskCollectionRef,
 } from "../tasks";
 
@@ -92,7 +93,6 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
 // ---------------------------------------------------------------------------
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
-
 /**
  * The declared agents a delegation board can be assigned to, plus a
  * human-readable rendering for error messages. Supplied by the delegation
@@ -143,6 +143,15 @@ export function checkAssignee(
   return unknownAssigneeError(assignee, roster);
 }
 
+/** Map a creation-cap breach (FIX-931) onto its distinct soft-error code. */
+const capError = (err: TaskCapExceededError) => ({
+  ok: false as const,
+  error:
+    err.cap === "enqueued"
+      ? ("enqueued_task_cap_exceeded" as const)
+      : ("total_task_cap_exceeded" as const),
+});
+
 /** Shared output shape for the six tasked-by-id mutators. */
 const okOrError = z.union([
   z.object({ ok: z.literal(true) }),
@@ -185,7 +194,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
       "assignee optionally names one of your agents; leave it unset to run the task " +
       "on a capable default worker. Set deps to task ids that must finish first, and input " +
       "to a structured payload for the worker. Execute the plan by calling runBoard once " +
-      "all tasks are added.",
+      "all tasks are added. The board bounds how many tasks may wait at once and how many it " +
+      "may hold in total: enqueued_task_cap_exceeded means drain with runBoard first, and " +
+      "total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
     inputSchema: z.object({
       goal: z.string(),
       assignee: z.string().optional(),
@@ -205,19 +216,36 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      // Reject a phantom assignee here, where it enters the system, rather than
-      // letting the task sit on the board and surface as a dispatch-time miss.
+      // Failure order is deliberate and uniform across the tools that touch an
+      // assignee: no board (above) -> unknown assignee -> creation cap.
+      //
+      // The cap comes LAST because "that worker doesn't exist" is the more
+      // useful thing to tell a model, and because a task refused for a phantom
+      // assignee must not consume budget or reach the ledger at all — otherwise
+      // a typo'd add could be what trips the cap for a later valid one. It also
+      // avoids a two-round-trip dead end at the boundary: cap-first would answer
+      // "board full" to a caller whose real problem is the assignee, which it
+      // would then still hit after fixing it. `checkAssignee` is a pure
+      // pre-flight, so running it first costs nothing.
       const bad = checkAssignee(input.assignee, roster);
       if (bad) return bad;
-      const task = await collection.addTask({
-        goal: input.goal,
-        ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
-        ...(input.deps !== undefined ? { deps: input.deps } : {}),
-        ...(input.priority !== undefined ? { priority: input.priority } : {}),
-        ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-      });
-      return { ok: true as const, taskId: task.id };
+      try {
+        const task = await collection.addTask({
+          goal: input.goal,
+          ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+          ...(input.deps !== undefined ? { deps: input.deps } : {}),
+          ...(input.priority !== undefined ? { priority: input.priority } : {}),
+          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        });
+        return { ok: true as const, taskId: task.id };
+      } catch (err) {
+        // A creation cap (FIX-931) is a soft error the model can act on — drain
+        // to free enqueue slots, or stop planning at the lifetime ceiling. Every
+        // other throw still propagates.
+        if (err instanceof TaskCapExceededError) return capError(err);
+        throw err;
+      }
     },
   });
 

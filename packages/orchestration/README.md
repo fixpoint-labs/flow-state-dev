@@ -79,8 +79,16 @@ Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
-`onError`, and `maxIterations` (loop-cap, default 10000). Per-task retries are set
-via `maxAttempts` on each task (`TaskInit`), not on the board. See the
+`onError`, `maxIterations` (loop-cap, default 10000), and the two creation caps
+`maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
+refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
+terminal, never refunded). Both take a positive integer or `null` (explicitly
+unbounded); omission reapplies the default. They apply only when the board
+constructs its own collection — a supplied `collection` is left alone and passing
+both is a construction error, so configure caps on `getOrCreateTaskCollection`'s
+sequencer/request backing instead. Existing declarative boards inherit the
+defaults. Per-task retries are set via `maxAttempts` on each task (`TaskInit`),
+not on the board. See the
 [Task Board guide](https://flow-state.dev/docs/orchestration/task-board).
 
 ### goalSeekLoop
@@ -141,7 +149,12 @@ directly; draining the board is the sole execution path. Agents materialize at
 runtime, so `agent-ref` agents resolve through the library's
 `agentRegistry`/`materializeAgent` options and runtime-activated skills contribute
 their tools too. With no delegation board resolvable, a stray `taskTools` call
-returns `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+returns `{ ok: false, error: "no_delegation_board" }` rather than throwing. The
+board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
+(`{ ok: false, error: "enqueued_task_cap_exceeded" }` — drain with `runBoard` to
+free slots) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
+refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
+`maxTotalTasks` (`null` = unbounded).
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.

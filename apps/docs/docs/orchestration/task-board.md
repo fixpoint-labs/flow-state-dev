@@ -216,6 +216,48 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 - `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
 - `maxIterations` — board-level safety cap on total dispatch loops before the board stops. Default `10000`.
 
+## Bounding how much work a board takes on
+
+`concurrency` paces how many tasks run at once. It says nothing about how many can be created, so a coordinator that plans badly can queue far more work than anyone intended. Two more bounds cover that, and the three sit at different scopes:
+
+- `maxEnqueuedTasks` (default `100`) — how many tasks may be **added while others are still waiting**. Checked when a task is created, against the resulting `pending` count, so it refreshes as the board drains: finish some work and the slots come back.
+- `maxTotalTasks` (default `500`) — how many tasks the board may **ever hold**, completed and cancelled ones included. Never refunded by draining, so it also catches a board that keeps draining and re-queueing.
+- `concurrency` (default `4`) — how many run at the same time.
+
+Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead, so a coordinator can drain and continue.
+
+Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`. Neither bound is durable across suspend and resume: a rebuilt board starts counting from zero.
+
+### Where the bounds apply
+
+They belong to the collection, so the board applies them only when it builds the collection itself. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead:
+
+```ts
+const tasks = await getOrCreateTaskCollection({
+  ctx,
+  backing: "sequencer",
+  collectionId: "my-board",
+  sequencer: ctx.sequencer!,
+  maxTotalTasks: 2000,
+});
+```
+
+The bounds live on the sequencer and request backing specs only. `backing: "resource"` does not accept them yet and does not enforce them, so asking there is a type error rather than a ceiling that quietly does nothing.
+
+### If the defaults are too low for your board
+
+This is a behavior change: a board that legitimately creates more than 500 tasks in a run, or holds more than 100 pending at once, starts being refused work with no change at its call site. Raise the bound, or turn it off in place with `null`:
+
+```ts
+// Raise it.
+const board = taskBoard({ name: "big", workers, maxTotalTasks: 5_000 });
+
+// Or opt out of one axis entirely.
+const unbounded = taskBoard({ name: "streaming", workers, maxEnqueuedTasks: null });
+```
+
+Omitting an option is not an off switch — it reapplies the default. `null` is. Each option otherwise takes a positive integer; `0`, a negative, a fraction, `NaN`, `Infinity`, or an enqueue bound above the lifetime ceiling are all rejected when the board is constructed.
+
 ## Stream items emitted
 
 A board run produces two item streams:

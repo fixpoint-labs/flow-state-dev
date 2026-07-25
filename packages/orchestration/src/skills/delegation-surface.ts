@@ -41,7 +41,12 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { getOrCreateTaskCollection, taskStatusSchema } from "../tasks";
+import {
+  DEFAULT_MAX_ENQUEUED_TASKS,
+  DEFAULT_MAX_TOTAL_TASKS,
+  getOrCreateTaskCollection,
+  taskStatusSchema,
+} from "../tasks";
 import type { TaskCollectionRef } from "../tasks";
 import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
@@ -55,7 +60,6 @@ import { resolveDelegationBuild } from "./internal/delegation-memo";
 import {
   buildTaskToolsList,
   createTaskToolsCapability,
-  defaultOwnStateResolver,
   DELEGATION_BOARD_FIELD,
   type WorkerRoster,
 } from "./task-tools-capability";
@@ -137,6 +141,14 @@ export interface DelegationSurfaceDeps {
   materializeAgent?: MaterializeAgentFn;
   capabilityCatalog?: Record<string, DefinedCapability>;
   defaultModelId?: string;
+  /**
+   * Creation caps for the delegation board (FIX-931), forwarded from
+   * `SkillsLibraryOptions` exactly as `workerModelId` → `defaultModelId` is.
+   * Omitted values take the 500/100 defaults where `boardCollection()`
+   * constructs the ledger; `null` is explicitly unbounded on that axis.
+   */
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
   /** Resource registry key of the skills collection (for prompt-ref reads). */
   collectionKey: string;
   /** Where this binding's runtime activations live. */
@@ -569,6 +581,12 @@ async function buildTools(
     return [];
   }
 
+  // The delegation board's drain is `taskBoard({ collection: () => boardCollection() })`
+  // — a SUPPLIED collection, which takes no board-level caps. So the caps ride
+  // this construction instead (FIX-931), with the 500/100 defaults applied here
+  // and tunable via `SkillsLibraryOptions`. Every writer for this board — the
+  // executive's flat task tools, a worker's fan-out capability, and the drain —
+  // resolves through this one function, which is what makes the caps hold.
   const boardCollection = (): Promise<TaskCollectionRef> =>
     getOrCreateTaskCollection({
       backing: "sequencer",
@@ -577,6 +595,12 @@ async function buildTools(
       collectionId: DELEGATION_BOARD_FIELD,
       ctx,
       changeVisibility: DELEGATION_BOARD_VISIBILITY,
+      maxTotalTasks:
+        deps.maxTotalTasks === undefined ? DEFAULT_MAX_TOTAL_TASKS : deps.maxTotalTasks,
+      maxEnqueuedTasks:
+        deps.maxEnqueuedTasks === undefined
+          ? DEFAULT_MAX_ENQUEUED_TASKS
+          : deps.maxEnqueuedTasks,
     });
 
   // The declared-agent roster assignment is validated against (FIX-924) — the
@@ -663,13 +687,22 @@ async function buildTools(
   const defaultWorker = await materializeFloor(deps);
 
   return [
-    // With declared agents, assignment is validated against them: an assignee
-    // naming none of them is rejected at addTask instead of quietly landing on
-    // the floor at drain time (FIX-924). A rosterless `delegation: true` board
-    // has nothing to validate against, so it passes no roster and every task
-    // runs on the floor exactly as before.
+    // BOTH arguments are load-bearing, and each guards a different failure.
+    //
+    // The RESOLVER (FIX-931): pass the board's own `boardCollection` rather than
+    // letting this fall back to `defaultOwnStateResolver`. That fallback builds
+    // its OWN ref off `ctx.parent`, and `getOrCreateTaskCollection` never
+    // caches, so the executive's `addTask` — the very path the creation caps
+    // exist to bound — would write to an uncapped view of the same board. This
+    // joins it to the resolver the workers' capability and the drain share.
+    //
+    // The ROSTER (FIX-924): with declared agents, assignment is validated
+    // against them, so an assignee naming none of them is rejected at addTask
+    // instead of quietly landing on the floor at drain time. A rosterless
+    // `delegation: true` board has nothing to validate against, so it passes no
+    // roster and every task runs on the floor exactly as before.
     ...(buildTaskToolsList(
-      defaultOwnStateResolver,
+      () => boardCollection(),
       rosterPurposes.size > 0 ? roster : undefined,
     ) as GeneratorTool[]),
     buildRunBoardTool(boardCollection, boardWorkers, defaultWorker),
@@ -702,6 +735,10 @@ const DELEGATION_PLAYBOOK = [
   "first; input carries a structured payload), then call runBoard once. The board runs your workers —",
   "independent tasks in parallel, dependency-gated tasks once their deps complete —",
   "and returns each task's result. Synthesize the results into your own answer.",
+  "The board bounds how much work you can queue: if addTask reports",
+  "enqueued_task_cap_exceeded, you have too many tasks waiting — call runBoard to drain them,",
+  "then add the next wave. total_task_cap_exceeded is the board's lifetime ceiling and does not",
+  "reset on draining; plan the remaining work within it rather than retrying the same add.",
 ].join(" ");
 
 /**
