@@ -303,6 +303,37 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(sleeve?.marketValue).toBeUndefined();
     expect(out.residual.marketValue).toBeCloseTo(sleeveWeight * 100_000);
   });
+
+  it("a stored fund profile outweighs a stale/misclassified DIRECT holding classification (Codex review round 2)", () => {
+    // VTI is held directly, but its imported assetType is still "equity"
+    // (misclassified/stale) — a real scenario, not a contrived one. VTI ALSO
+    // has a successful stored ETF profile (fetched because AOA's holdings
+    // include VTI). Before the fix, the oracle checked the held-ticker
+    // classification FIRST and returned early on "equity" — never reaching
+    // the stored profile — so AOA's 100%-VTI constituent slice was (wrongly)
+    // attributed to VTI as a NAME, stacking on top of VTI's own direct
+    // holding and reporting VTI as a ~100% single-name concentration
+    // instead of correctly recognizing AOA as a fund-of-funds.
+    const positions = [direct("VTI", 40_000, { assetType: "equity" }), fund("AOA", 60_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      ["AOA", profile({ nameCoverage: 1, constituents: [{ ticker: "VTI", weight: 1 }] })],
+      // VTI's OWN successful stored profile — positive fund evidence that
+      // must outweigh its stale "equity" direct-holding classification.
+      ["VTI", profile({ nameCoverage: 1, constituents: [{ ticker: "AAPL", weight: 1 }] })],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    // AOA is entirely VTI (a fund) — 100% fund share, well over the
+    // fund-of-funds threshold, so AOA's whole mass is residual, not
+    // attributed to VTI as a name.
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "AOA", axis: "both", reason: expect.stringContaining("fund-of-funds") }),
+    );
+    // VTI's effective position is ONLY its own direct holding — AOA's $60k
+    // never stacks on top of it.
+    const vti = out.positions.find((p) => p.ticker === "VTI")!;
+    expect(vti.marketValue).toBeCloseTo(40_000);
+    expect(vti.sources).toEqual([{ from: "direct", marketValue: 40_000 }]);
+  });
 });
 
 describe("computeLookThroughExposure — Decision 8: flags at the same thresholds, tagged separately", () => {

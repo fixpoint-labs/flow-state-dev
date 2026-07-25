@@ -208,22 +208,35 @@ function pctOf(value: number, denom: number): number {
 }
 
 /**
- * The ordered fund-detection oracle (§7), layers 1–3. A ticker held directly
- * by the household is decided by ITS OWN classification (layer 3, most
- * authoritative when available); otherwise a stored profile row proves or
- * disproves fund-ness (layer 1); otherwise the curated bond-ETF list is
- * consulted (layer 2 — a bond ETF is a fund, just an ineligible one).
+ * The ordered fund-detection oracle (§7), layers 1–3. Evidence is checked in
+ * STRENGTH order, not simply "held ticker first": a held ticker's OWN
+ * classification is authoritative ONLY when it says "fund" (layer 1a) — a
+ * `etf`/`mutual_fund` `assetType` is unambiguous positive evidence no matter
+ * what else is known. A stored profile (layer 1b) is checked NEXT, before
+ * falling back to a held ticker's NON-fund classification, because a direct
+ * holding's `assetType` can be stale or simply wrong (an import default, a
+ * classification that was never corrected) while a stored profile is a real
+ * fetched fact. Concretely: VTI held directly but still classified `equity`
+ * (misclassified/stale), where VTI ALSO has a successful stored profile
+ * (fetched because ANOTHER fund's holdings include VTI) — the profile must
+ * win, or a fund-of-funds situation reports as a 100% single-name
+ * concentration alert instead of correctly attributing through (Codex review
+ * round 2, FIX-801 sub-PR b). Only once BOTH of those are exhausted does a
+ * held ticker's non-fund classification settle it (layer 1c — still
+ * authoritative in the ABSENCE of stored-profile evidence); then the curated
+ * bond-ETF list (layer 2 — a bond ETF is a fund, just an ineligible one).
  *
- * Layer 1 also reads a REFUSED profile's own reason: `"ineligible"` (e.g. a
- * leveraged/inverse fund, or a fund with no resolvable constituent tickers)
- * and `"malformed"` (corrupted holdings data) both mean the upstream fetch
- * DID resolve an ETF_PROFILE for the ticker — the refusal is about the fund's
- * data, not about whether it's a fund — so both are fund evidence, same as a
- * stored success payload. `"not_an_etf"` (an empty profile response) is the
- * only refusal reason that disproves fund-ness. `"quota"` / `"transient"`
- * (the route's own classification of a request-level failure, never reaching
- * the fetcher's own judgment) carry no evidence either way and fall through
- * to the next layer (Codex review, FIX-801).
+ * The stored-profile check also reads a REFUSED profile's own reason:
+ * `"ineligible"` (e.g. a leveraged/inverse fund, or a fund with no resolvable
+ * constituent tickers) and `"malformed"` (corrupted holdings data) both mean
+ * the upstream fetch DID resolve an ETF_PROFILE for the ticker — the refusal
+ * is about the fund's data, not about whether it's a fund — so both are fund
+ * evidence, same as a stored success payload. `"not_an_etf"` (an empty
+ * profile response) is the only refusal reason that disproves fund-ness.
+ * `"quota"` / `"transient"` (the route's own classification of a
+ * request-level failure, never reaching the fetcher's own judgment) carry no
+ * evidence either way and fall through to the next layer (Codex review,
+ * FIX-801).
  *
  * LAYER 4 (a fund-shaped signal on the constituent's description text) is
  * NOT implemented here: the upstream fetcher (`lib/providers/etf-profile.ts`,
@@ -242,13 +255,27 @@ function resolveConstituentIsFund(
   fundProfiles: ReadonlyMap<string, FundProfileInput>,
 ): boolean {
   const held = positionsByTicker.get(ticker);
-  if (held) return isFundAssetType(held.assetType); // layer 3 — authoritative for a held ticker
+  // Layer 1a — a held ticker's OWN classification, but ONLY as positive
+  // evidence: "yes, this is a fund" is unambiguous no matter what else is
+  // known. A non-fund classification is NOT trusted yet — a stored profile
+  // (checked next) can outweigh it.
+  if (held && isFundAssetType(held.assetType)) return true;
+
+  // Layer 1b — a stored profile, checked BEFORE a held ticker's non-fund
+  // classification is allowed to settle the question (see the docblock
+  // above for why: a direct holding's assetType can be stale/misclassified).
   const profile = fundProfiles.get(ticker);
   if (profile) {
-    if (profile.payload !== null) return true; // layer 1 — a stored profile proves it's a fund
-    if (profile.refusalReason === "not_an_etf") return false; // layer 1 — proven NOT a fund
-    if (profile.refusalReason === "ineligible" || profile.refusalReason === "malformed") return true; // layer 1 — the fetch resolved an ETF_PROFILE; refusal is about the DATA, not fund-ness
+    if (profile.payload !== null) return true; // a stored profile proves it's a fund
+    if (profile.refusalReason === "not_an_etf") return false; // proven NOT a fund
+    if (profile.refusalReason === "ineligible" || profile.refusalReason === "malformed") return true; // the fetch resolved an ETF_PROFILE; refusal is about the DATA, not fund-ness
   }
+
+  // Layer 1c — a held ticker with NO stored-profile evidence falls back to
+  // its own (non-fund) classification, authoritative in the absence of
+  // anything stronger.
+  if (held) return false;
+
   if (isKnownBondEtf(ticker)) return true; // layer 2 — curated bond-ETF list
   return false; // default: a name (§7 — fund-ness is a positive finding only)
 }
