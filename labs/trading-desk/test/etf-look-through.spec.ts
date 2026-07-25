@@ -322,6 +322,43 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
     expect(Number.isFinite(tech?.pct as number)).toBe(true);
     expect(out.hasAttribution).toBe(false);
   });
+
+  it("a non-finite nameCoverage/sectorCoverage never poisons the residual mass and reads as opaque, not a passing profile (Codex review round 7)", () => {
+    // nameCoverage/sectorCoverage are themselves stored profile fields with
+    // the same [0,1]-fraction contract as a row weight. An Infinity coverage
+    // would have PASSED the `* 100 >= floor` gate (Infinity >= 85 is true)
+    // and then poisoned `nameResidualMass`/`sectorResidualMass` via
+    // `(1 - Infinity) * mv` (`-Infinity`) — the opposite failure mode from a
+    // corrupted row weight (which silently loses mass), but the same
+    // "never leak non-finite output" contract violation.
+    const positions = [fund("CORRUPTCOVERAGE", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "CORRUPTCOVERAGE",
+        profile({
+          nameCoverage: Number.POSITIVE_INFINITY,
+          constituents: [],
+          sectorCoverage: Number.POSITIVE_INFINITY,
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    // An invalid coverage reads as opaque (0%, below the floor) — never a
+    // passing/complete profile — so the whole $100k routes to residual.
+    expect(out.positions).toEqual([]);
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(Number.isFinite(out.residual.marketValue)).toBe(true);
+    expect(out.sectorResidual.marketValue).toBeCloseTo(100_000);
+    expect(Number.isFinite(out.sectorResidual.marketValue)).toBe(true);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "CORRUPTCOVERAGE", axis: "names" }),
+    );
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "CORRUPTCOVERAGE", axis: "sectors" }),
+    );
+    expect(out.hasAttribution).toBe(false);
+  });
 });
 
 describe("computeLookThroughExposure — Decision 4: effective-position interval", () => {

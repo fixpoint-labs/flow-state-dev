@@ -328,18 +328,22 @@ function add(map: Map<string, number>, key: string, amount: number): void {
 }
 
 /**
- * Defensively validate a stored profile row's `weight` before it enters ANY
- * accumulation — a corrupted `etf_profiles` row (hand-edited, migrated, or
+ * Defensively validate a stored profile's `[0, 1]`-fraction field — a
+ * constituent/sector `weight` OR `nameCoverage`/`sectorCoverage` (all four
+ * share the exact same documented contract) — before it enters ANY
+ * accumulation. A corrupted `etf_profiles` row (hand-edited, migrated, or
  * otherwise bypassing sub-PR a's own write-time `parseFraction` guard) must
- * never propagate a non-finite or out-of-[0,1]-range value into either axis's
+ * never propagate a non-finite or out-of-range value into either axis's
  * mass, same "no NaN/Infinity output" contract the market-value guard already
  * enforces on `investedNav`/positions (Codex review round 7, FIX-801). An
- * invalid weight contributes NOTHING — mirrors the fetcher's own defense
+ * invalid value is treated as 0 — for a weight that means it contributes
+ * NOTHING; for a coverage figure it means the axis reads as opaque/thin
+ * rather than a passing/complete profile. Mirrors the fetcher's own defense
  * (`lib/providers/etf-profile.ts`'s `parseFraction`, sub-PR a), which this
  * leaf must not assume held for every row it will ever see.
  */
-function safeWeight(weight: number): number {
-  return Number.isFinite(weight) && weight >= 0 && weight <= 1 ? weight : 0;
+function safeWeight(fraction: number): number {
+  return Number.isFinite(fraction) && fraction >= 0 && fraction <= 1 ? fraction : 0;
 }
 
 /**
@@ -448,13 +452,21 @@ export function computeLookThroughExposure(
       continue;
     }
 
-    // NAME axis — gated independently of sectors (Decision 4).
-    const namesPass = fp.nameCoverage * 100 >= LOOK_THROUGH_COVERAGE_FLOOR_PCT;
+    // NAME axis — gated independently of sectors (Decision 4). `fp.nameCoverage`
+    // is itself a stored profile field, subject to the same corruption risk as
+    // a row weight — an Infinity coverage would pass the floor check but then
+    // poison `nameResidualMass` via `(1 - fp.nameCoverage) * mv` (`-Infinity`);
+    // `safeWeight` doubles as the coverage validator since both share the same
+    // documented [0, 1]-fraction contract (Codex review round 7, FIX-801).
+    // An invalid coverage defaults to 0 — the safe, opaque-on-this-axis
+    // reading, never treated as a passing/complete profile.
+    const safeNameCoverage = safeWeight(fp.nameCoverage);
+    const namesPass = safeNameCoverage * 100 >= LOOK_THROUGH_COVERAGE_FLOOR_PCT;
     if (!namesPass) {
       nameResidualMass += mv;
       opaqueByTicker.set(pos.ticker, {
         ...opaqueByTicker.get(pos.ticker),
-        names: `holdings data incomplete (${(fp.nameCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
+        names: `holdings data incomplete (${(safeNameCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
       for (const c of fp.constituents) {
@@ -475,16 +487,18 @@ export function computeLookThroughExposure(
         }
       }
       // The unreported remainder (rows the profile never listed at all).
-      nameResidualMass += (1 - fp.nameCoverage) * mv;
+      nameResidualMass += (1 - safeNameCoverage) * mv;
     }
 
-    // SECTOR axis — gated independently of names (Decision 4/7).
-    const sectorsPass = fp.sectorCoverage * 100 >= LOOK_THROUGH_COVERAGE_FLOOR_PCT;
+    // SECTOR axis — gated independently of names (Decision 4/7). Same coverage
+    // validation as the name axis above.
+    const safeSectorCoverage = safeWeight(fp.sectorCoverage);
+    const sectorsPass = safeSectorCoverage * 100 >= LOOK_THROUGH_COVERAGE_FLOOR_PCT;
     if (!sectorsPass) {
       sectorResidualMass += mv;
       opaqueByTicker.set(pos.ticker, {
         ...opaqueByTicker.get(pos.ticker),
-        sectors: `sector data incomplete (${(fp.sectorCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
+        sectors: `sector data incomplete (${(safeSectorCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
     } else {
       for (const s of fp.sectors) {
@@ -494,7 +508,7 @@ export function computeLookThroughExposure(
         // axis above — a zero-weight row adds nothing real.
         if (slice > 0) hasAttribution = true;
       }
-      sectorResidualMass += (1 - fp.sectorCoverage) * mv;
+      sectorResidualMass += (1 - safeSectorCoverage) * mv;
     }
   }
 
