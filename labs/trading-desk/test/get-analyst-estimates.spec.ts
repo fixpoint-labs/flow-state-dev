@@ -8,20 +8,29 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { get_analyst_estimates } from "../flows/analysis/tools/data/get_analyst_estimates";
 import { _resetCache } from "../lib/cache";
-import { _resetBudget } from "../lib/providers/alpha-vantage";
+import { _resetBudget, _resetMinutePacing } from "../lib/providers/alpha-vantage";
 
 const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
   _resetCache();
   _resetBudget();
+  // FIX-801 minute pacing defaults to 5/min and is module-scoped; without a
+  // reset (and with pacing left ON) this file's cumulative AV calls across
+  // tests would eventually wait on a real 60s window and blow the test
+  // timeout. This suite doesn't exercise pacing, so it's disabled here (the
+  // `alpha-vantage.spec.ts` precedent for tests that predate FIX-801).
+  _resetMinutePacing();
+  process.env.ALPHAVANTAGE_MINUTE_LIMIT = "0";
 });
 afterEach(() => {
   process.chdir(originalCwd);
   vi.restoreAllMocks();
   delete process.env.FINNHUB_API_KEY;
   delete process.env.ALPHAVANTAGE_API_KEY;
+  delete process.env.ALPHAVANTAGE_MINUTE_LIMIT;
   _resetBudget();
+  _resetMinutePacing();
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
