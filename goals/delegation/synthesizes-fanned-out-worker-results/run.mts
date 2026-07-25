@@ -43,37 +43,49 @@ const fx = JSON.parse(
 ) as { researcherSecret: string; auditToken: string; handoffCode: string };
 
 /**
- * Required marker format: an unambiguous sentinel — at least 6 chars, starts
- * with a letter, alphanumeric-plus-hyphen, no leading/trailing punctuation.
+ * Required marker shape: `LETTERS-DIGITS` — at least four UPPERCASE letters, a
+ * hyphen, at least four digits (e.g. `QORVIX-7788`).
  *
- * This is a VALIDATION rule, not grader logic. It fences off two ways a fixture
- * could make a correct implementation mis-grade, without adding any matcher
- * machinery: (a) punctuation-only or punctuation-edged markers collide with
- * response formatting — with `researcherSecret = "-"`, a Markdown answer's list
- * bullet reads as a bounded standalone `-`; (b) `$`-substitution sequences
- * (`$ARGUMENTS`, `$1`–`$9`, `${SKILL_DIR}`) are rewritten by the skills
- * runtime's `substitute()` before a worker prompt is invoked, erasing the marker
- * from the prompt while the grader still expects the literal. The format below
- * excludes both by construction.
+ * This is a VALIDATION rule, not grader logic. It fences off three ways a
+ * fixture could make a correct implementation mis-grade, without adding any
+ * matcher machinery:
+ *
+ *  (a) Response formatting. A punctuation-only or punctuation-edged marker
+ *      collides with prose: with `researcherSecret = "-"`, a Markdown answer's
+ *      list bullet reads as a bounded standalone `-`.
+ *  (b) `$`-substitution. `$ARGUMENTS`, `$1`–`$9`, `${SKILL_DIR}` are rewritten
+ *      by the skills runtime's `substitute()` before a worker prompt is invoked,
+ *      erasing the marker from the prompt while the grader still expects the
+ *      literal.
+ *  (c) THE SURFACES NO GREP HERE CAN SEE. `assertNoMarkerInRenderedContext`
+ *      reads the coordinator's captured `block_trace`, and that capture records
+ *      only tool NAMES — `packages/core/src/blocks/generator.ts` stamps
+ *      `tools: toolBlocks.map((t) => t.name)`. The tool DESCRIPTIONS and the
+ *      JSON schemas serialized for the provider never enter the captured
+ *      context, so no post-run check can grep them. Descriptions and schema
+ *      FIELD names are covered by the source pre-flight below; the JSON-schema
+ *      VOCABULARY the zod→provider conversion emits (`additionalProperties`,
+ *      `properties`, `required`, `description`, …) is covered by nothing. This
+ *      shape closes that hole by construction rather than by capture: an
+ *      uppercase letter-run followed by `-` and a digit-run cannot be an
+ *      English word, a JSON-schema keyword, or a code identifier (camelCase and
+ *      snake_case have no hyphen; kebab-case identifiers like `task-change`
+ *      have no digit run). Note `additionalProperties` satisfied the previous,
+ *      looser format — and occurs verbatim in every generated tool schema.
  */
-const MARKER_FORMAT = /^[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]$/;
-const MARKER_MIN_LENGTH = 6;
+const MARKER_FORMAT = /^[A-Z]{4,}-[0-9]{4,}$/;
 
 function assertValidMarker(field: string, value: string): void {
-  if (typeof value !== "string" || value.length < MARKER_MIN_LENGTH || !MARKER_FORMAT.test(value)) {
+  if (typeof value !== "string" || !MARKER_FORMAT.test(value)) {
     throw new Error(
-      `fixture invalid: ${field} ${JSON.stringify(value)} is not a valid marker. Markers must be ` +
-        `at least ${MARKER_MIN_LENGTH} characters, start with a letter, contain only letters, ` +
-        `digits and hyphens, and not start or end with punctuation (e.g. "QORVIX-7788"). This ` +
-        `keeps a marker from colliding with response formatting or with the skills runtime's ` +
-        `$-substitution.`,
+      `fixture invalid: ${field} ${JSON.stringify(value)} is not a valid marker. Markers must ` +
+        `match ${MARKER_FORMAT} — at least four uppercase letters, a hyphen, then at least four ` +
+        `digits (e.g. "QORVIX-7788"). That shape cannot collide with response formatting, with ` +
+        `the skills runtime's $-substitution, or with the tool descriptions and generated JSON ` +
+        `schemas that the coordinator receives but no post-run grep can read.`,
     );
   }
 }
-
-assertValidMarker("researcherSecret", fx.researcherSecret);
-assertValidMarker("auditToken", fx.auditToken);
-assertValidMarker("handoffCode", fx.handoffCode);
 
 const SECRET = fx.researcherSecret; // the researcher's result (GRADED)
 const AUDIT_TOKEN = fx.auditToken; // the auditor's OWN result (GRADED) — not derived from SECRET
@@ -87,34 +99,48 @@ const AUDIT_TOKEN = fx.auditToken; // the auditor's OWN result (GRADED) — not 
  */
 const HANDOFF = fx.handoffCode;
 
-/**
- * All three fixture values must be mutually underivable. If one contained
- * another, a single worker's output could carry more than one graded marker and
- * the check would pass without both results being synthesized. Asserted at load
- * so it cannot silently regress.
- */
-for (const [aName, aVal] of [
+/** `[fieldName, value]` — the three fixture values every load guard walks. */
+type Fixture = readonly [field: string, value: string];
+const FIXTURES: readonly Fixture[] = [
   ["researcherSecret", SECRET],
   ["auditToken", AUDIT_TOKEN],
   ["handoffCode", HANDOFF],
-] as const) {
-  for (const [bName, bVal] of [
-    ["researcherSecret", SECRET],
-    ["auditToken", AUDIT_TOKEN],
-    ["handoffCode", HANDOFF],
-  ] as const) {
-    if (aName === bName) continue;
-    const a = aVal.toLowerCase();
-    const b = bVal.toLowerCase();
-    if (a === b || a.includes(b)) {
-      throw new Error(
-        `fixture invalid: ${aName} ${JSON.stringify(aVal)} overlaps ${bName} ` +
-          `${JSON.stringify(bVal)} — the three fixture values must be mutually independent, or ` +
-          `one worker's result would be derivable from another's.`,
-      );
+];
+
+/**
+ * Every fixture value must match the sentinel shape. Extracted as a function
+ * (rather than three inline calls) so the probe suite can exercise it with
+ * deliberately bad values.
+ */
+function assertValidMarkers(fixtures: readonly Fixture[]): void {
+  for (const [field, value] of fixtures) assertValidMarker(field, value);
+}
+
+/**
+ * All fixture values must be mutually underivable. If one contained another, a
+ * single worker's output could carry more than one graded marker and the check
+ * would pass without both results being synthesized. Asserted at load so it
+ * cannot silently regress.
+ */
+function assertMutuallyIndependent(fixtures: readonly Fixture[]): void {
+  for (const [aName, aVal] of fixtures) {
+    for (const [bName, bVal] of fixtures) {
+      if (aName === bName) continue;
+      const a = aVal.toLowerCase();
+      const b = bVal.toLowerCase();
+      if (a === b || a.includes(b)) {
+        throw new Error(
+          `fixture invalid: ${aName} ${JSON.stringify(aVal)} overlaps ${bName} ` +
+            `${JSON.stringify(bVal)} — the fixture values must be mutually independent, or ` +
+            `one worker's result would be derivable from another's.`,
+        );
+      }
     }
   }
 }
+
+assertValidMarkers(FIXTURES);
+assertMutuallyIndependent(FIXTURES);
 
 const USER_TURN = "Collect the codes from your team and report all of them.";
 
@@ -126,6 +152,23 @@ for (const k of Object.keys(process.env)) {
     delete process.env[k];
   }
 }
+
+/**
+ * `assertNoMarkerInRenderedContext` reads the coordinator's `block_trace`, and
+ * that item only exists when trace capture is on: `createExecutionContext` wires
+ * `onBlockTraceCapture` behind `isTraceObservabilityEnabled()`
+ * (`packages/core/src/helpers/trace-observability.ts`), which defaults to OFF
+ * under `NODE_ENV=production` and honors an explicit
+ * `FSDEV_TRACE_OBSERVABILITY=false` everywhere. Both are supported
+ * environments, and in either one the guard would report "no rendered context"
+ * and fail every otherwise-correct delegation run.
+ *
+ * So the check turns capture on for itself rather than inheriting the ambient
+ * default. This is also what makes the guard's failure branch meaningful: with
+ * capture explicitly enabled, a missing `block_trace` means trace capture
+ * really broke, which IS worth failing on.
+ */
+process.env.FSDEV_TRACE_OBSERVABILITY = "true";
 
 /** Render a message item's content to text (handles structured content-part arrays). */
 function messageText(item: { content?: unknown; text?: unknown }): string {
@@ -297,9 +340,11 @@ const COORDINATOR_PROMPT = [
  * The framework corpus is derived from the REAL sources rather than a hand-copied
  * list: the runtime tool definitions (`buildTaskToolsList`, `RUN_BOARD_TOOL_NAME`,
  * `taskStatusSchema`) plus the full source text of the skills + tasks subsystem.
- * This is a cheap PRE-FLIGHT that fails before any model call; the authoritative
- * check is `assertNoMarkerInRenderedContext`, which greps the coordinator's ACTUAL
- * rendered system prompt after the run and therefore needs no enumeration at all.
+ * Scanning the source is what covers the tool DESCRIPTIONS and schema FIELD
+ * names, which the post-run capture cannot see (it records tool NAMES only —
+ * see `MARKER_FORMAT`). What neither this corpus nor the capture covers is the
+ * JSON-schema vocabulary the provider serialization adds; the sentinel SHAPE
+ * closes that by construction.
  *
  * Worker prompts are excluded from both corpora: they carry the markers by
  * construction.
@@ -320,6 +365,27 @@ function frameworkSourceText(): string {
     }
   }
   return out.join("\n");
+}
+
+/** Throw if any fixture value occurs (case-folded) in any named corpus. */
+function assertNoCorpusCollision(
+  fixtures: readonly Fixture[],
+  corpora: readonly (readonly [name: string, text: string])[],
+): void {
+  for (const [corpusName, corpus] of corpora) {
+    const haystack = corpus.toLowerCase();
+    for (const [field, value] of fixtures) {
+      if (haystack.includes(value.toLowerCase())) {
+        throw new Error(
+          `fixture invalid: ${field} ${JSON.stringify(value)} appears in ${corpusName}. The ` +
+            `coordinator would see that string without any worker producing it, so the marker ` +
+            `could be emitted from context alone and the check would pass without real ` +
+            `delegation. Choose a distinctive sentinel that does not occur in framework or ` +
+            `instruction wording (e.g. "QORVIX-7788").`,
+        );
+      }
+    }
+  }
 }
 
 {
@@ -351,27 +417,13 @@ function frameworkSourceText(): string {
     "auditor",
   ].join("\n");
 
-  for (const [corpusName, corpus] of [
+  assertNoCorpusCollision(FIXTURES, [
     ["the runner's fixed prompt/roster text", runnerContext],
-    ["framework-injected coordinator context (delegation guidance / task tools / board results)", frameworkContext],
-  ] as const) {
-    const haystack = corpus.toLowerCase();
-    for (const [field, value] of [
-      ["researcherSecret", SECRET],
-      ["auditToken", AUDIT_TOKEN],
-      ["handoffCode", HANDOFF],
-    ] as const) {
-      if (haystack.includes(value.toLowerCase())) {
-        throw new Error(
-          `fixture invalid: ${field} ${JSON.stringify(value)} appears in ${corpusName}. The ` +
-            `coordinator would see that string without any worker producing it, so the marker ` +
-            `could be emitted from context alone and the check would pass without real ` +
-            `delegation. Choose a distinctive sentinel that does not occur in framework or ` +
-            `instruction wording (e.g. "QORVIX-7788").`,
-        );
-      }
-    }
-  }
+    [
+      "framework-injected coordinator context (delegation guidance / task tools / board results)",
+      frameworkContext,
+    ],
+  ]);
 }
 
 /**
@@ -460,12 +512,26 @@ function coordinatorOutput(res: { output?: unknown }): string {
   return typeof res.output === "string" ? res.output : "";
 }
 
-/** Final snapshot of each board task, read from the `task-change` component stream. */
+/**
+ * Final snapshot of each board task, read from the `task-change` component
+ * stream. The substrate publishes the WHOLE `Task` record on every transition
+ * (`tasks/collection/change-event.ts` → `get-or-create.ts` emits `task: event.task`),
+ * so the creation-side payload a worker chose when it called `addTask` is
+ * already in hand — no extra capture needed to inspect it.
+ */
 interface BoardTask {
   id: string;
   assignee?: string;
   createdAt: number;
   startedAt?: number;
+  // --- creation-side payload (whatever the task's CREATOR set) ---
+  goal?: string;
+  title?: string;
+  context?: string;
+  input?: unknown;
+  feedback?: string;
+  metadata?: Record<string, unknown>;
+  deps?: string[];
 }
 
 function boardTasks(items: readonly Record<string, unknown>[]): BoardTask[] {
@@ -476,6 +542,102 @@ function boardTasks(items: readonly Record<string, unknown>[]): BoardTask[] {
     if (task?.id) byId.set(task.id, task); // keyed items upsert — last wins
   }
   return [...byId.values()];
+}
+
+/**
+ * The fields of a task that its CREATOR chose — i.e. everything a fanned-out
+ * worker can be handed. `buildUserMessage` (`skills/worker-materializer.ts`)
+ * renders `goal` and `input` verbatim into the assigned worker's user turn, so
+ * these are the channel by which one worker's content reaches another's context.
+ *
+ * Deliberately EXCLUDES `output` and `error`: the worker itself writes those,
+ * and the auditor's own output carries the graded `AUDIT_TOKEN` by design.
+ * `deps` is checked separately — it holds task ids, and the substrate resolves
+ * them to the upstream tasks' OUTPUTS before rendering them into the turn.
+ */
+function creationPayload(task: BoardTask): string {
+  return JSON.stringify({
+    goal: task.goal,
+    title: task.title,
+    context: task.context,
+    input: task.input,
+    feedback: task.feedback,
+    metadata: task.metadata,
+  });
+}
+
+/**
+ * HANDOFF ISOLATION, asserted against the REAL created task rather than trusted
+ * to the researcher's instructions.
+ *
+ * `researcher.md` tells the researcher to hand the auditor the ungraded
+ * `HANDOFF` code and to "never send your secret code to anyone" — but that is an
+ * INSTRUCTION to a real model, not a guarantee. If the researcher deviates and
+ * puts its graded `SECRET` into the auditor task's `goal`/`input`, that value
+ * enters the auditor's context through `buildUserMessage`; an auditor that then
+ * echoes it alongside its own token would put BOTH graded markers in ONE
+ * worker's output. Every other assertion here still passes — the markers are
+ * present, the auditor task really was created mid-drain by the researcher — yet
+ * the coordinator could have synthesized the auditor's result alone and never
+ * read the researcher's. That is precisely the derivability class the
+ * independent fixtures were introduced to kill; fixture independence stops the
+ * markers being derivable BY CONSTRUCTION, but it cannot stop the researcher
+ * re-coupling them AT RUNTIME.
+ *
+ * So: grade the real payload. A deviated run is a FAIL, not a pass.
+ */
+function assertAuditorTaskPayloadIsolated(
+  items: readonly Record<string, unknown>[],
+): string[] {
+  const tasks = boardTasks(items);
+  const auditor = tasks.find((t) => t.assignee === "auditor");
+  // A missing auditor task is already reported by assertFannedOutMidDrain.
+  if (!auditor) return [];
+
+  const failures: string[] = [];
+  const payload = creationPayload(auditor);
+  const folded = payload.toLowerCase();
+
+  // Positive half: the handoff channel actually carried the intended value.
+  // Case-folded — the point is that the researcher passed the ungraded code, not
+  // that it preserved its casing.
+  if (!folded.includes(HANDOFF.toLowerCase())) {
+    failures.push(
+      `the auditor task (${auditor.id}) was created WITHOUT the handoff code "${HANDOFF}" — ` +
+        `the researcher did not hand the auditor the value it was told to pass, so the ` +
+        `addTask({ input }) payload channel to a fanned-out worker is unproven. ` +
+        `Created payload: ${payload.slice(0, 400)}`,
+    );
+  }
+
+  // Negative half: no GRADED marker may ride along. Case-folded on purpose — a
+  // leak guard should be broad, so even a lowercased echo of the secret trips it.
+  for (const { label, marker } of GRADED_MARKERS) {
+    if (folded.includes(marker.toLowerCase())) {
+      failures.push(
+        `HANDOFF ISOLATION VIOLATED: the ${label} "${marker}" is in the auditor task's created ` +
+          `payload (${auditor.id}). buildUserMessage renders goal/input verbatim into the ` +
+          `auditor's turn, so an auditor that echoed its input could carry BOTH graded markers ` +
+          `alone — and the run would pass with the researcher's own result never synthesized. ` +
+          `Created payload: ${payload.slice(0, 400)}`,
+      );
+    }
+  }
+
+  // Same hole, third channel: a dep on the researcher's task makes the substrate
+  // render the researcher's OUTPUT (the secret) into the auditor's turn as an
+  // "Upstream outputs:" line, without the secret ever appearing in the payload above.
+  const researcher = tasks.find((t) => t.assignee === "researcher");
+  if (researcher && (auditor.deps ?? []).includes(researcher.id)) {
+    failures.push(
+      `HANDOFF ISOLATION VIOLATED: the auditor task declares a dependency on the researcher ` +
+        `task (${researcher.id}), so the substrate renders the researcher's OUTPUT into the ` +
+        `auditor's turn as an upstream output — the auditor's result could carry the ` +
+        `researcher's secret without it ever appearing in the task payload`,
+    );
+  }
+
+  return failures;
 }
 
 /**
@@ -585,16 +747,30 @@ function assertFannedOutMidDrain(items: readonly Record<string, unknown>[]): str
 }
 
 /**
- * AUTHORITATIVE closure of the "marker reachable from injected context" class.
+ * Grep the coordinator's ACTUAL rendered context for a graded marker. If one
+ * appears there, the coordinator could emit it with no worker output at all, and
+ * the board-less OFF baseline could never catch it.
  *
- * The load-time corpus check is a pre-flight over source text; this greps the
- * coordinator's ACTUAL rendered system prompt — the skill-reader preamble ("The
- * following skills are active…"), the substituted SKILL.md body, the delegation
- * guidance playbook, the live agent roster, and every tool description — as the
- * generator really received it. If a graded marker appears there, the coordinator
- * could emit it with no worker output at all, and the board-less OFF baseline
- * could never catch it. Needs no enumeration, so it cannot fall behind the
- * framework the way a hand-listed corpus can.
+ * SCOPE — exactly what the captured `block_trace.generator` holds, no more:
+ *   - `prompt`   the assembled system message: the skill-reader preamble ("The
+ *                following skills are active…"), the substituted SKILL.md body,
+ *                the delegation guidance playbook, the live agent roster.
+ *   - `user` / `history`  the message shapes as sent.
+ *   - `tools`    the tool NAMES only. `packages/core/src/blocks/generator.ts`
+ *                records `tools: toolBlocks.map((t) => t.name)`, so tool
+ *                DESCRIPTIONS and the JSON schemas serialized for the provider
+ *                are NOT here and cannot be checked after the fact.
+ *
+ * Those two uncovered surfaces are closed elsewhere, and deliberately not by
+ * building capture machinery: descriptions and schema field names live in the
+ * source text the load-time corpus check scans, and everything else (the
+ * JSON-schema vocabulary the provider serialization emits — `additionalProperties`,
+ * `properties`, `required`) is excluded by the sentinel SHAPE `MARKER_FORMAT`
+ * enforces. Read that comment for why the shape is sufficient.
+ *
+ * Requires trace capture, which this runner enables explicitly (see the
+ * `FSDEV_TRACE_OBSERVABILITY` assignment above) — otherwise this reports a
+ * missing trace on every run under `NODE_ENV=production`.
  */
 function assertNoMarkerInRenderedContext(
   items: readonly Record<string, unknown>[],
@@ -677,8 +853,295 @@ function assertNoRosterLeak(): string[] {
   return failures;
 }
 
+// ---------------------------------------------------------------------------
+// DETERMINISTIC PROBE SUITE
+//
+// Every grader and load guard above, exercised against synthetic inputs BEFORE
+// any model call. This exists because the graders here are the whole value of
+// the check: a grader bug is indistinguishable from a substrate bug at the
+// verdict line, and this goal has already produced one (round 6 read `item.name`
+// where the real items carry `blockName`, reporting a false FAIL against a
+// working substrate).
+//
+// It lives in this file, and runs unconditionally, on purpose. Earlier rounds
+// wrote equivalent probes as throwaway scripts; the counts survive in the
+// verdict log while the probes themselves are gone, so each round re-derived
+// them. Running them inline costs milliseconds and makes them impossible to skip.
+// ---------------------------------------------------------------------------
+
+/** True when `fn` throws — the assertion shape every load guard uses. */
+function throws(fn: () => void): boolean {
+  try {
+    fn();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+const RESEARCHER_ID = "task_probe_researcher";
+const AUDITOR_ID = "task_probe_auditor";
+
+function taskChange(task: Record<string, unknown> & { id: string }): Record<string, unknown> {
+  return { type: "component", component: "task-change", data: { task } };
+}
+
+/** The assignee of a synthetic item's task, or undefined for non-task items. */
+function probeAssignee(item: Record<string, unknown>): string | undefined {
+  return (item.data as { task?: BoardTask } | undefined)?.task?.assignee;
+}
+
+/** A synthetic, fully-correct delegation run's item stream. Probes perturb it. */
+function goodItems(
+  overrides: {
+    researcher?: Partial<BoardTask>;
+    auditor?: Partial<BoardTask>;
+    addTaskScope?: string | undefined;
+    drainTasks?: { id: string; status: string }[];
+    generator?: Record<string, unknown> | null;
+  } = {},
+): Record<string, unknown>[] {
+  const researcher: Record<string, unknown> & { id: string } = {
+    id: RESEARCHER_ID,
+    assignee: "researcher",
+    goal: "report your code",
+    createdAt: 1000,
+    startedAt: 1100,
+    ...overrides.researcher,
+  };
+  const auditor: Record<string, unknown> & { id: string } = {
+    id: AUDITOR_ID,
+    assignee: "auditor",
+    goal: "verify the code",
+    input: HANDOFF,
+    createdAt: 1200,
+    startedAt: 1300,
+    ...overrides.auditor,
+  };
+  const items: Record<string, unknown>[] = [
+    taskChange(researcher),
+    taskChange(auditor),
+    {
+      type: "tool_output",
+      blockName: "addTask",
+      // The emit-time worker-scope stamp. `undefined` = the coordinator's own scope.
+      ...("addTaskScope" in overrides
+        ? overrides.addTaskScope !== undefined
+          ? { taskId: overrides.addTaskScope }
+          : {}
+        : { taskId: RESEARCHER_ID }),
+      output: { ok: true, taskId: AUDITOR_ID },
+    },
+    {
+      type: "tool_output",
+      blockName: RUN_BOARD_TOOL_NAME,
+      output: {
+        status: "drained",
+        tasks: overrides.drainTasks ?? [
+          { id: RESEARCHER_ID, status: "completed" },
+          { id: AUDITOR_ID, status: "completed" },
+        ],
+      },
+    },
+  ];
+  if (overrides.generator !== null) {
+    items.push({
+      type: "block_trace",
+      blockName: "coordinatorWithTeam",
+      generator: overrides.generator ?? {
+        prompt: "You are the coordinator. Your agents:\n- researcher: …\n- auditor: …",
+        tools: ["addTask", RUN_BOARD_TOOL_NAME],
+        user: [USER_TURN],
+        history: [],
+      },
+    });
+  }
+  return items;
+}
+
+/** Each probe: a name and a predicate that must be true. */
+const PROBES: readonly (readonly [string, () => boolean])[] = [
+  // --- marker matching (ON side: bounded, exact, case-sensitive) ---
+  ["hasMarker: standalone occurrence matches", () => hasMarker(`answer: ${SECRET}`, SECRET)],
+  ["hasMarker: embedded occurrence does NOT match", () => !hasMarker(`x${SECRET}y`, SECRET)],
+  ["hasMarker: lowercased echo does NOT match", () => !hasMarker(SECRET.toLowerCase(), SECRET)],
+  ["hasMarker: surrounding punctuation still matches", () => hasMarker(`(${SECRET}).`, SECRET)],
+  ["hasMarker: newline-delimited matches", () => hasMarker(`${SECRET}\n${AUDIT_TOKEN}`, SECRET)],
+  ["hasMarker: absent marker does not match", () => !hasMarker("no codes here", SECRET)],
+  ["hasMarker: hyphen-glued suffix does NOT match", () => !hasMarker(`${SECRET}-EXTRA`, SECRET)],
+  [
+    "hasMarker: checks EVERY offset (glued first, bounded second)",
+    () => hasMarker(`x${SECRET}y and ${SECRET}`, SECRET),
+  ],
+
+  // --- sentinel format (MARKER_FORMAT) ---
+  ["format: current fixtures are valid", () => !throws(() => assertValidMarkers(FIXTURES))],
+  [
+    "format: rejects `additionalProperties` (occurs verbatim in generated tool schemas)",
+    () => throws(() => assertValidMarker("x", "additionalProperties")),
+  ],
+  ["format: rejects a framework literal (`drained`)", () => throws(() => assertValidMarker("x", "drained"))],
+  ["format: rejects an issue-id shape (`FIX-930`)", () => throws(() => assertValidMarker("x", "FIX-930"))],
+  ["format: rejects lowercase letters", () => throws(() => assertValidMarker("x", SECRET.toLowerCase()))],
+  ["format: rejects a short digit run", () => throws(() => assertValidMarker("x", "QORVIX-778"))],
+  ["format: rejects a $-substitution sequence", () => throws(() => assertValidMarker("x", "$ARGUMENTS"))],
+  ["format: rejects an English word", () => throws(() => assertValidMarker("x", "REPORT"))],
+
+  // --- fixture independence ---
+  ["independence: current fixtures pass", () => !throws(() => assertMutuallyIndependent(FIXTURES))],
+  [
+    "independence: identical values throw",
+    () => throws(() => assertMutuallyIndependent([["a", SECRET], ["b", SECRET]])),
+  ],
+  [
+    "independence: containment throws (the old secret+suffix shape)",
+    () => throws(() => assertMutuallyIndependent([["a", SECRET], ["b", `${SECRET}-CHECKED-4413`]])),
+  ],
+
+  // --- corpus collision ---
+  [
+    "corpus: a clean corpus passes",
+    () => !throws(() => assertNoCorpusCollision(FIXTURES, [["probe", "nothing to see"]])),
+  ],
+  [
+    "corpus: a colliding corpus throws, case-folded",
+    () => throws(() => assertNoCorpusCollision(FIXTURES, [["probe", `text ${SECRET.toLowerCase()} text`]])),
+  ],
+
+  // --- structural mid-drain fan-out ---
+  ["fan-out: a correct run reports no failures", () => assertFannedOutMidDrain(goodItems()).length === 0],
+  [
+    "fan-out: no researcher task fails",
+    () => assertFannedOutMidDrain(goodItems().filter((i) => probeAssignee(i) !== "researcher")).length > 0,
+  ],
+  [
+    "fan-out: no auditor task fails",
+    () => assertFannedOutMidDrain(goodItems().filter((i) => probeAssignee(i) !== "auditor")).length > 0,
+  ],
+  [
+    "fan-out: a coordinator-scoped addTask fails attribution",
+    () => assertFannedOutMidDrain(goodItems({ addTaskScope: undefined })).length > 0,
+  ],
+  [
+    "fan-out: a researcher-scoped addTask for some OTHER task fails attribution",
+    () =>
+      assertFannedOutMidDrain(
+        goodItems().map((i) =>
+          i.blockName === "addTask" ? { ...i, output: { ok: true, taskId: "task_unrelated" } } : i,
+        ),
+      ).length > 0,
+  ],
+  [
+    "fan-out: auditor absent from the FIRST drain fails",
+    () => assertFannedOutMidDrain(goodItems({ drainTasks: [{ id: RESEARCHER_ID, status: "completed" }] })).length > 0,
+  ],
+  [
+    "fan-out: auditor still `pending` in the FIRST drain fails",
+    () =>
+      assertFannedOutMidDrain(
+        goodItems({
+          drainTasks: [
+            { id: RESEARCHER_ID, status: "completed" },
+            { id: AUDITOR_ID, status: "pending" },
+          ],
+        }),
+      ).length > 0,
+  ],
+  [
+    "fan-out: an auditor task predating the researcher's claim fails timing",
+    () => assertFannedOutMidDrain(goodItems({ auditor: { createdAt: 1050 } })).length > 0,
+  ],
+
+  // --- handoff isolation (the auditor task's REAL created payload) ---
+  ["handoff: a correct payload reports no failures", () => assertAuditorTaskPayloadIsolated(goodItems()).length === 0],
+  [
+    "handoff: the graded secret in the auditor task's GOAL fails",
+    () => assertAuditorTaskPayloadIsolated(goodItems({ auditor: { goal: `verify ${SECRET}` } })).length > 0,
+  ],
+  [
+    "handoff: the graded secret in the auditor task's INPUT fails",
+    () => assertAuditorTaskPayloadIsolated(goodItems({ auditor: { input: { code: SECRET } } })).length > 0,
+  ],
+  [
+    "handoff: a LOWERCASED secret in the payload still fails (broad leak guard)",
+    () =>
+      assertAuditorTaskPayloadIsolated(
+        goodItems({ auditor: { input: `${HANDOFF} ${SECRET.toLowerCase()}` } }),
+      ).length > 0,
+  ],
+  [
+    "handoff: the graded secret in metadata fails",
+    () => assertAuditorTaskPayloadIsolated(goodItems({ auditor: { metadata: { note: SECRET } } })).length > 0,
+  ],
+  [
+    "handoff: a missing handoff code fails",
+    () => assertAuditorTaskPayloadIsolated(goodItems({ auditor: { input: "just verify it" } })).length > 0,
+  ],
+  [
+    "handoff: a dep on the researcher task fails (upstream outputs render its secret)",
+    () => assertAuditorTaskPayloadIsolated(goodItems({ auditor: { deps: [RESEARCHER_ID] } })).length > 0,
+  ],
+  [
+    "handoff: the auditor's own OUTPUT is not graded as payload",
+    () =>
+      assertAuditorTaskPayloadIsolated(
+        goodItems().map((i) => {
+          const task = (i.data as { task?: BoardTask } | undefined)?.task;
+          return task?.assignee === "auditor"
+            ? taskChange({ ...(task as unknown as Record<string, unknown>), id: task.id, output: AUDIT_TOKEN })
+            : i;
+        }),
+      ).length === 0,
+  ],
+
+  // --- rendered-context grep ---
+  ["context: a clean rendered context reports no failures", () => assertNoMarkerInRenderedContext(goodItems()).length === 0],
+  [
+    "context: a missing block_trace fails (capture is explicitly enabled, so this means it broke)",
+    () => assertNoMarkerInRenderedContext(goodItems({ generator: null })).length > 0,
+  ],
+  [
+    "context: a marker in the rendered prompt fails",
+    () => assertNoMarkerInRenderedContext(goodItems({ generator: { prompt: `roster ${SECRET}` } })).length > 0,
+  ],
+  [
+    "context: a marker among the captured tool NAMES fails",
+    () =>
+      assertNoMarkerInRenderedContext(goodItems({ generator: { prompt: "clean", tools: [AUDIT_TOKEN] } }))
+        .length > 0,
+  ],
+
+  // --- roster leak, against the REAL agentPurpose and the REAL authored prompts ---
+  ["roster: the authored worker prompts leak no marker into the roster", () => assertNoRosterLeak().length === 0],
+];
+
+/** Run every probe. Returns the failing probe names (empty = all green). */
+function runProbes(): string[] {
+  const failed: string[] = [];
+  for (const [name, predicate] of PROBES) {
+    let ok = false;
+    try {
+      ok = predicate();
+    } catch (e) {
+      ok = false;
+      failed.push(`${name} (threw: ${(e as Error).message})`);
+      continue;
+    }
+    if (!ok) failed.push(name);
+  }
+  return failed;
+}
+
 async function runGoalCheck(): Promise<string[]> {
   const failures: string[] = [];
+
+  // Probes first — always, before any model call. A grader bug must not be
+  // reported as a substrate verdict.
+  const probeFailures = runProbes();
+  console.log(`probes: ${PROBES.length - probeFailures.length}/${PROBES.length}`);
+  if (probeFailures.length > 0) {
+    return probeFailures.map((name) => `PROBE FAILED (grader bug, not a substrate verdict): ${name}`);
+  }
 
   // Honesty guard part 1: neither marker may appear in the
   // coordinator's own prompt or the user turn. Case-folded ON PURPOSE — unlike
@@ -739,6 +1202,9 @@ async function runGoalCheck(): Promise<string[]> {
   // mid-drain by the researcher. Both markers being present is NOT sufficient —
   // a coordinator that assigned both agents itself would also surface both.
   failures.push(...assertFannedOutMidDrain(on.items as never));
+  // ...and the fan-out must be a real HANDOFF, not the researcher smuggling its
+  // own graded secret into the auditor's context.
+  failures.push(...assertAuditorTaskPayloadIsolated(on.items as never));
   failures.push(...assertNoMarkerInRenderedContext(on.items as never));
 
   // Corroboration (printed, not graded): the worker generators actually executed,
@@ -809,6 +1275,12 @@ async function runGoalCheck(): Promise<string[]> {
           .map((i) => (i.output as { taskId?: string } | undefined)?.taskId)
           .filter(Boolean),
       )} (must include the auditor task id)\n` +
+      `    auditor task's CREATED payload: ${
+        (() => {
+          const auditor = boardTasks(on.items as never).find((t) => t.assignee === "auditor");
+          return auditor ? creationPayload(auditor).slice(0, 300) : "(no auditor task)";
+        })()
+      }\n      (must carry "${HANDOFF}" and NEITHER graded marker)\n` +
       `delegation OFF terminal output: ${JSON.stringify(offOutput.slice(0, 300))}\n` +
       GRADED_MARKERS.map(
         ({ label, marker }) =>
