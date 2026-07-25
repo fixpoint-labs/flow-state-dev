@@ -601,27 +601,47 @@ function assertAuditorTaskPayloadIsolated(
   const payload = creationPayload(auditor);
   const folded = payload.toLowerCase();
 
-  // Positive half: the handoff channel actually carried the intended value.
-  // Case-folded — the point is that the researcher passed the ungraded code, not
-  // that it preserved its casing.
-  if (!folded.includes(HANDOFF.toLowerCase())) {
+  // Positive half, LAYER 1 (localizer): the researcher populated the structured
+  // `input` field at creation time. NOT the authoritative proof — the creation
+  // record is not the worker boundary — but it separates "the researcher never
+  // sent it" from "the substrate dropped it in transit", which layer 2 alone
+  // cannot distinguish. Reads `input` ONLY: grepping the wide `creationPayload`
+  // blob (which includes `goal`) passes when the researcher writes the code into
+  // the goal and sets no `input`, reporting the structured channel as verified
+  // when it was never exercised.
+  //
+  // Deliberately does NOT re-render the value the way `buildUserMessage` does.
+  // Mirroring the framework's three lines of rendering here would be a copy that
+  // silently rots; layer 2 reads the framework's REAL rendering instead.
+  if (auditor.input === undefined || auditor.input === null) {
     failures.push(
-      `the auditor task (${auditor.id}) was created WITHOUT the handoff code "${HANDOFF}" — ` +
-        `the researcher did not hand the auditor the value it was told to pass, so the ` +
-        `addTask({ input }) payload channel to a fanned-out worker is unproven. ` +
+      `the auditor task (${auditor.id}) was created with NO structured \`input\` — ` +
+        `addTask({ input }) was never exercised, so the payload channel to a fanned-out worker ` +
+        `is unproven even if the handoff code appears elsewhere on the task. ` +
         `Created payload: ${payload.slice(0, 400)}`,
+    );
+  } else if (!JSON.stringify(auditor.input).toLowerCase().includes(HANDOFF.toLowerCase())) {
+    failures.push(
+      `the auditor task (${auditor.id}) has a structured \`input\` that does not carry the ` +
+        `handoff code "${HANDOFF}" — the researcher did not hand the auditor the value it was ` +
+        `told to pass. Created input: ${JSON.stringify(auditor.input).slice(0, 400)}`,
     );
   }
 
-  // Negative half: no GRADED marker may ride along. Case-folded on purpose — a
-  // leak guard should be broad, so even a lowercased echo of the secret trips it.
+  // Negative half: no GRADED marker may ride along, in ANY field the creator
+  // chose. Case-folded on purpose — a leak guard should be broad, so even a
+  // lowercased echo of the secret trips it. Note the net is deliberately WIDER
+  // than what reaches the worker's turn: `metadata` and `context` never reach
+  // `buildUserMessage`, but a graded marker sitting in them still means the
+  // researcher leaked its secret downstream, which is what this guards.
   for (const { label, marker } of GRADED_MARKERS) {
     if (folded.includes(marker.toLowerCase())) {
       failures.push(
-        `HANDOFF ISOLATION VIOLATED: the ${label} "${marker}" is in the auditor task's created ` +
-          `payload (${auditor.id}). buildUserMessage renders goal/input verbatim into the ` +
-          `auditor's turn, so an auditor that echoed its input could carry BOTH graded markers ` +
-          `alone — and the run would pass with the researcher's own result never synthesized. ` +
+        `HANDOFF ISOLATION VIOLATED: the ${label} "${marker}" is in a creator-chosen field of ` +
+          `the auditor task (${auditor.id}). Whatever the researcher writes onto the task can ` +
+          `reach the auditor — goal/input render straight into its turn — so an auditor ` +
+          `that echoed what it was handed could carry BOTH graded markers alone, and the run ` +
+          `would pass with the researcher's own result never synthesized. ` +
           `Created payload: ${payload.slice(0, 400)}`,
       );
     }
@@ -641,6 +661,88 @@ function assertAuditorTaskPayloadIsolated(
   }
 
   return failures;
+}
+
+/**
+ * The `Input:` section of a worker's rendered turn, or `undefined` when the turn
+ * has none.
+ *
+ * `buildUserMessage` (`skills/worker-materializer.ts`) builds the turn as parts
+ * joined by "\n", with "" between sections — so sections are "\n\n"-separated
+ * and the payload section is the one starting with `Input:`. It omits that
+ * section entirely when `input` is null/undefined, which is exactly the state
+ * this needs to detect.
+ *
+ * Isolating the section matters: grepping the WHOLE turn for the handoff would
+ * pass when the code sits in the goal (`Task: verify DELTA-9034`) and no input
+ * was ever delivered — the same conflation this assertion exists to close, one
+ * layer out.
+ */
+function inputSection(turn: string): string | undefined {
+  return turn.split("\n\n").find((part) => part.startsWith("Input:"));
+}
+
+/**
+ * AUTHORITATIVE proof that the handoff reached the auditor AT THE WORKER
+ * BOUNDARY — the turn the auditor's generator actually received.
+ *
+ * The creation-record check above reads the `task-change` snapshot, which is
+ * where the researcher WROTE the payload, not where the auditor READ it. If the
+ * dispatch/materialization path drops `task.input` between creation and the
+ * worker call, that check still reports a successful handoff. And the auditor's
+ * own output cannot stand in as evidence: `reference/auditor.md` substitutes the
+ * expected handoff into its SYSTEM PROMPT as `$3`, so it can emit its sign-off
+ * token — satisfying every terminal and structural assertion — without ever
+ * having received an `Input:` section at all.
+ *
+ * So read the boundary directly. The worker's `block_trace` carries
+ * `generator.user`, the rendered turn as the model received it, which means this
+ * asserts against the framework's REAL rendering rather than a local mirror of
+ * it. Requires trace capture, which this runner enables explicitly.
+ *
+ * The auditor generator is found by name match rather than an exact constructed
+ * name so a framework rename surfaces as a clear diagnostic (every
+ * generator-bearing block is listed) instead of a silent miss.
+ */
+function assertHandoffReachedAuditorTurn(
+  items: readonly Record<string, unknown>[],
+): string[] {
+  const generatorTraces = items.filter(
+    (i) => i.type === "block_trace" && (i as { generator?: unknown }).generator !== undefined,
+  );
+  const auditorTrace = generatorTraces.find((i) =>
+    String(i.blockName ?? "").toLowerCase().includes("auditor"),
+  );
+  if (!auditorTrace) {
+    return [
+      `no captured generator turn for the auditor worker — cannot verify the handoff reached ` +
+        `the worker boundary. Generator-bearing blocks in this run: ` +
+        `${JSON.stringify(generatorTraces.map((i) => i.blockName))}`,
+    ];
+  }
+
+  const user = (auditorTrace.generator as { user?: unknown }).user;
+  const turn = Array.isArray(user)
+    ? user.map((m) => messageText(m as { content?: unknown })).join("\n")
+    : messageText((user ?? {}) as { content?: unknown });
+
+  const section = inputSection(turn);
+  if (section === undefined) {
+    return [
+      `the auditor's rendered turn carries NO "Input:" section — the task's structured input ` +
+        `did not survive dispatch to the worker, so addTask({ input }) did not actually deliver ` +
+        `a payload. (The auditor can still emit its sign-off token from its system prompt, so ` +
+        `its output does not evidence this.) Turn: ${JSON.stringify(turn.slice(0, 400))}`,
+    ];
+  }
+  if (!section.toLowerCase().includes(HANDOFF.toLowerCase())) {
+    return [
+      `the auditor's rendered turn has an "Input:" section that does not carry the handoff ` +
+        `code "${HANDOFF}" — what reached the worker is not what the researcher was told to ` +
+        `pass. Input section: ${JSON.stringify(section.slice(0, 400))}`,
+    ];
+  }
+  return [];
 }
 
 /**
@@ -902,6 +1004,8 @@ function goodItems(
     addTaskScope?: string | undefined;
     drainTasks?: { id: string; status: string }[];
     generator?: Record<string, unknown> | null;
+    /** The auditor worker's rendered turn. `null` omits its trace entirely. */
+    auditorTurn?: string | null;
   } = {},
 ): Record<string, unknown>[] {
   const researcher: Record<string, unknown> & { id: string } = {
@@ -956,6 +1060,22 @@ function goodItems(
         tools: ["addTask", RUN_BOARD_TOOL_NAME],
         user: [USER_TURN],
         history: [],
+      },
+    });
+  }
+  // The auditor worker's own generator trace — the boundary layer 2 reads.
+  if (overrides.auditorTurn !== null) {
+    items.push({
+      type: "block_trace",
+      blockName: `skillWorker_${SKILL_NAME}_auditor`,
+      generator: {
+        prompt: `Verifies a code it is handed. Your sign-off token is ${AUDIT_TOKEN}.`,
+        user: [
+          {
+            role: "user",
+            content: overrides.auditorTurn ?? `Task: verify the code\n\nInput: ${HANDOFF}`,
+          },
+        ],
       },
     });
   }
@@ -1096,6 +1216,51 @@ const PROBES: readonly (readonly [string, () => boolean])[] = [
         }),
       ).length === 0,
   ],
+  [
+    "handoff: the code in GOAL with NO input fails (structured channel never exercised)",
+    () =>
+      assertAuditorTaskPayloadIsolated(
+        goodItems({ auditor: { goal: `verify ${HANDOFF}`, input: undefined } }),
+      ).length > 0,
+  ],
+  [
+    "handoff: a STRUCTURED object input carrying the code passes",
+    () => assertAuditorTaskPayloadIsolated(goodItems({ auditor: { input: { code: HANDOFF } } })).length === 0,
+  ],
+
+  // --- worker boundary: the handoff reached the auditor's actual turn ---
+  // These are what close the P1: the creation record says what the researcher
+  // WROTE; only the rendered turn says what the auditor RECEIVED.
+  [
+    "boundary: a correct rendered turn reports no failures",
+    () => assertHandoffReachedAuditorTurn(goodItems()).length === 0,
+  ],
+  [
+    "boundary: NO Input: section fails (input dropped between creation and dispatch)",
+    () => assertHandoffReachedAuditorTurn(goodItems({ auditorTurn: "Task: verify the code" })).length > 0,
+  ],
+  [
+    "boundary: the code in the goal text with no Input: section fails",
+    () => assertHandoffReachedAuditorTurn(goodItems({ auditorTurn: `Task: verify ${HANDOFF}` })).length > 0,
+  ],
+  [
+    "boundary: an Input: section carrying the wrong value fails",
+    () =>
+      assertHandoffReachedAuditorTurn(
+        goodItems({ auditorTurn: "Task: verify the code\n\nInput: ZZZZZZ-0000" }),
+      ).length > 0,
+  ],
+  [
+    "boundary: a missing auditor generator trace fails (cannot verify the boundary)",
+    () => assertHandoffReachedAuditorTurn(goodItems({ auditorTurn: null })).length > 0,
+  ],
+  [
+    "boundary: a creation record with input does NOT rescue a turn that lost it",
+    () =>
+      assertHandoffReachedAuditorTurn(
+        goodItems({ auditor: { input: HANDOFF }, auditorTurn: "Task: verify the code" }),
+      ).length > 0,
+  ],
 
   // --- rendered-context grep ---
   ["context: a clean rendered context reports no failures", () => assertNoMarkerInRenderedContext(goodItems()).length === 0],
@@ -1208,6 +1373,9 @@ async function runGoalCheck(): Promise<string[]> {
   // ...and the fan-out must be a real HANDOFF, not the researcher smuggling its
   // own graded secret into the auditor's context.
   failures.push(...assertAuditorTaskPayloadIsolated(on.items as never));
+  // ...and the handoff must have survived all the way to the worker boundary,
+  // not merely been written onto the task record.
+  failures.push(...assertHandoffReachedAuditorTurn(on.items as never));
   failures.push(...assertNoMarkerInRenderedContext(on.items as never));
 
   // Corroboration (printed, not graded): the worker generators actually executed,
@@ -1278,12 +1446,26 @@ async function runGoalCheck(): Promise<string[]> {
           .map((i) => (i.output as { taskId?: string } | undefined)?.taskId)
           .filter(Boolean),
       )} (must include the auditor task id)\n` +
-      `    auditor task's CREATED payload: ${
-        (() => {
-          const auditor = boardTasks(on.items as never).find((t) => t.assignee === "auditor");
-          return auditor ? creationPayload(auditor).slice(0, 300) : "(no auditor task)";
-        })()
-      }\n      (must carry "${HANDOFF}" and NEITHER graded marker)\n` +
+      (() => {
+        const auditor = boardTasks(on.items as never).find((t) => t.assignee === "auditor");
+        const trace = (on.items as never as Record<string, unknown>[]).find(
+          (i) =>
+            i.type === "block_trace" &&
+            (i as { generator?: unknown }).generator !== undefined &&
+            String(i.blockName ?? "").toLowerCase().includes("auditor"),
+        );
+        const user = trace ? (trace.generator as { user?: unknown }).user : undefined;
+        const turn = Array.isArray(user)
+          ? user.map((m) => messageText(m as { content?: unknown })).join("\n")
+          : "";
+        return (
+          `    auditor task's created payload (leak net — NEITHER graded marker):\n` +
+          `      ${auditor ? creationPayload(auditor).slice(0, 300) : "(no auditor task)"}\n` +
+          `    auditor's RENDERED TURN at the worker boundary (authoritative handoff proof):\n` +
+          `      ${JSON.stringify(turn.slice(0, 300))}\n` +
+          `      Input: section must carry "${HANDOFF}" → ${JSON.stringify(inputSection(turn) ?? "(ABSENT)")}\n`
+        );
+      })() +
       `delegation OFF terminal output: ${JSON.stringify(offOutput.slice(0, 300))}\n` +
       GRADED_MARKERS.map(
         ({ label, marker }) =>
@@ -1305,6 +1487,9 @@ await runGoal(async () => ({
     `AND the auditor's task was structurally proven to be created mid-drain by the researcher: ` +
     `an addTask was emitted from inside the researcher's task scope, and the auditor's task was ` +
     `created after the researcher was claimed — a window in which the coordinator is blocked. ` +
+    `The handoff was verified AT THE WORKER BOUNDARY: the auditor's rendered turn carried an ` +
+    `"Input:" section with the handoff code, so the payload survived dispatch rather than merely ` +
+    `being written onto the task record. ` +
     `The no-delegation baseline, given the identical prompt and request, produced neither ` +
     `marker — so the pass is attributable to delegation and fan-out actually running.`,
 }));
