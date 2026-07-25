@@ -546,8 +546,12 @@ treatment. `ALPHAVANTAGE_API_KEY` (optional, free tier — 25 requests/day,
 price-targets, and an insider-transactions fallback; without it the disclosure
 analyst still runs on EDGAR filings and Finnhub ratings alone. `ALPHAVANTAGE_DAILY_LIMIT`
 tunes the in-process daily-budget guard (default `25`; set it to `0` for a paid
-plan with no cap). Two caveats on the guard: once the day's budget is spent, the
-Alpha Vantage-backed tools degrade to `unavailable`; and it is a best-effort,
+plan with no cap). `ALPHAVANTAGE_MINUTE_LIMIT` tunes the in-process per-minute
+pacing guard the same way (default `5`; set it to `0` for a paid plan with no
+per-minute cap) — a paid-plan operator who disables the daily cap but leaves
+this at its default still hits a ~1-minute stall on the 6th call in a burst.
+Two caveats on the guard: once the day's budget is spent, the Alpha
+Vantage-backed tools degrade to `unavailable`; and it is a best-effort,
 in-process guard — a process restart or serverless cold-start resets the
 counter, and the 5-requests/minute limit (not the daily cap) is what binds when
 runs fire close together.
