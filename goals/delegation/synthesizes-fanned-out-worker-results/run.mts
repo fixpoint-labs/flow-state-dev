@@ -9,14 +9,18 @@
  * Run: pnpm tsx goals/delegation/synthesizes-fanned-out-worker-results/run.mts
  */
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineFlow, generator } from "@flow-state-dev/core";
-import type { InitialSkill } from "@flow-state-dev/core";
 import {
   runAction,
   createInMemoryStores,
   createModelResolver,
 } from "@flow-state-dev/engine";
-import { createSkillsLibrary } from "@flow-state-dev/orchestration";
+import {
+  createSkillsLibrary,
+  inlineActivate,
+  readSkillsDirectory,
+} from "@flow-state-dev/orchestration";
 import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 // Deep source import on purpose: `agentPurpose` is what builds the coordinator's
 // live delegation roster, and it is not on the package's public export surface.
@@ -205,79 +209,73 @@ const GRADED_MARKERS = [
 // result still emit the marker straight from the roster. `assertNoRosterLeak`
 // enforces this against the real `agentPurpose`.
 // ---------------------------------------------------------------------------
-// The researcher hands the auditor the UNGRADED handoff code — never its own
-// graded secret, which therefore never enters the auditor's context at all.
-const RESEARCHER_PROMPT = [
-  "Researches the requested topic and reports its finding.", // roster line — generic
-  `Your secret code is ${SECRET}.`,
-  `The verification code you pass to the auditor is ${HANDOFF}.`,
-  "When you receive a task, do BOTH of these, in order:",
-  '1. Call addTask to create ONE follow-up task with assignee "auditor",',
-  '   a short goal like "verify the code", and its input set to the',
-  `   verification code ${HANDOFF}. Never send your secret code to anyone.`,
-  `2. Then reply with exactly your secret code ${SECRET} and nothing else.`,
-].join("\n");
+// The skill is authored the way a real user authors one: a `skills/code-team/`
+// folder with a `SKILL.md` (frontmatter `agents:` using `prompt-ref`) and a
+// prompt file per worker under `reference/` — the same layout as
+// `examples/guides/research-team`. It is loaded through the REAL loader
+// (`readSkillsDirectory`), so this goal exercises file discovery, frontmatter
+// parsing, prompt-ref resolution and `substitute()` — all part of the delegation
+// surface that an inline, TypeScript-constructed skill object bypasses entirely.
+//
+// The held-out fixture values are NOT hardcoded in the markdown. The prompts use
+// the framework's own `$1`/`$2`/`$3` substitution, and the values arrive as the
+// skill's activation arguments (see `ACTIVATION_ARGS`) — the same mechanism a
+// real slash-command-style skill uses to parameterize itself. The sentinel
+// format rule above guarantees the values are whitespace-free, so they map
+// one-to-one onto `$1`/`$2`/`$3`.
+const SKILL_NAME = "code-team";
+const SKILLS_DIR = fileURLToPath(new URL("./skills", import.meta.url));
 
-// The auditor returns its OWN independent token. Its token appearing in the
-// answer is the fan-out proof: the auditor only ever lands on the board when the
-// researcher enqueues it mid-drain, so nothing else can put this token there.
-const AUDITOR_PROMPT = [
-  "Verifies a code it is handed and reports its own sign-off.", // roster line — generic
-  `Your sign-off token is ${AUDIT_TOKEN}.`,
-  `Your task Input contains a verification code (it should be ${HANDOFF}).`,
-  "Check that it is present, then reply with exactly your sign-off token",
-  `${AUDIT_TOKEN} and nothing else.`,
-  "Never repeat or quote the code you were given — reply only with your own token.",
-].join("\n");
-
-/** Indent a prompt body so it nests under a YAML `prompt: |` block scalar. */
-function yamlBlock(body: string, indent: string): string {
-  return body
-    .split("\n")
-    .map((l) => `${indent}${l}`)
-    .join("\n");
+const { skills: initialSkills, errors: skillLoadErrors } =
+  await readSkillsDirectory(SKILLS_DIR);
+if (skillLoadErrors.length > 0) {
+  throw new Error(
+    `failed to load skill files from ${SKILLS_DIR}: ` +
+      skillLoadErrors.map(({ name, error }) => `${name}: ${error.message}`).join("; "),
+  );
+}
+if (!initialSkills.some((sk) => sk.name === SKILL_NAME)) {
+  throw new Error(
+    `skill "${SKILL_NAME}" not found under ${SKILLS_DIR} — expected ${SKILL_NAME}/SKILL.md`,
+  );
 }
 
-const teamSkill: InitialSkill = {
-  name: "code-team",
-  skillMd: [
-    "---",
-    "description: A two-agent team that reports secret codes.",
-    "agents:",
-    "  researcher:",
-    "    tools: [taskTools]",
-    "    prompt: |",
-    yamlBlock(RESEARCHER_PROMPT, "      "),
-    "  auditor:",
-    "    prompt: |",
-    yamlBlock(AUDITOR_PROMPT, "      "),
-    "---",
-    "",
-    "Delegate to the researcher via addTask + runBoard.",
-  ].join("\n"),
-};
+/** `$1 $2 $3` — positional args the skill's prompts substitute. */
+const ACTIVATION_ARGS = `${SECRET} ${AUDIT_TOKEN} ${HANDOFF}`;
+
+/** Raw (unsubstituted) prompt bodies, straight from the authored files. */
+function promptFile(rel: string): string {
+  return readFileSync(new URL(`./skills/${SKILL_NAME}/${rel}`, import.meta.url), "utf8");
+}
+const RESEARCHER_PROMPT_RAW = promptFile("reference/researcher.md");
+const AUDITOR_PROMPT_RAW = promptFile("reference/auditor.md");
 
 const skills = createSkillsLibrary({
   catalog: {},
-  initialSkills: [teamSkill],
+  initialSkills,
   workerModelId: MODEL,
   // Session scope keeps the fixture self-contained — no org identity/persistence.
   scope: "session",
 });
 
-const skillsBinding = { active: ["code-team"] } satisfies SkillsBindingConfig;
+/**
+ * The skill is activated at RUNTIME with arguments (rather than bound `active`),
+ * because only a runtime activation carries the `input` that `substitute()`
+ * feeds to `$1`/`$2`/`$3`. Activations live in session state, written by the
+ * framework's own `inlineActivate` block — the same path the real skill
+ * activator uses.
+ */
+const skillsBinding = {
+  activeState: { scope: "session", field: "activeSkills" },
+} satisfies SkillsBindingConfig;
 
 const inputSchema = z.object({ message: z.string() });
 
+// Deliberately thin: the delegation plan lives in the authored SKILL.md, the way
+// a real skill carries its own playbook. The coordinator just follows it.
 const COORDINATOR_PROMPT = [
   "You are the coordinator of a team of agents, reachable through your task board.",
-  "When the user asks you to collect the team's codes, do exactly this:",
-  '1. Call addTask ONCE to create a single task assigned to "researcher"',
-  '   (assignee: "researcher"), goal "report your code". Do NOT assign any',
-  "   other agent yourself.",
-  "2. Call runBoard ONCE to run the whole board.",
-  "3. Read EVERY task's output in the runBoard result, then write a final answer",
-  "   that lists every distinct code you found, each on its own line, verbatim.",
+  "Follow your active skill's instructions exactly when it applies.",
 ].join("\n");
 
 /**
@@ -328,15 +326,15 @@ const FRAMEWORK_SOURCE_FILES = [
   const runnerContext = [
     COORDINATOR_PROMPT,
     USER_TURN,
-    teamSkill.name,
-    // The skill body + frontmatter scaffolding, minus the interpolated markers.
-    "A two-agent team that reports secret codes.",
-    "Delegate to the researcher via addTask + runBoard.",
+    SKILL_NAME,
+    // The authored skill files, verbatim. They legitimately contain the `$1`/`$2`/`$3`
+    // placeholders but never the fixture VALUES, so any value found here is hardcoded
+    // markdown that would bypass the held-out contract.
+    initialSkills.find((sk) => sk.name === SKILL_NAME)!.skillMd,
+    RESEARCHER_PROMPT_RAW,
+    AUDITOR_PROMPT_RAW,
     "researcher",
     "auditor",
-    // The generic roster lines (first line of each worker prompt).
-    RESEARCHER_PROMPT.split("\n")[0]!,
-    AUDITOR_PROMPT.split("\n")[0]!,
   ].join("\n");
 
   for (const [corpusName, corpus] of [
@@ -385,6 +383,9 @@ const flow = defineFlow({
   kind: "delegation-e2e-goal",
   requireUser: true,
   actions: {
+    // Runtime skill activation WITH arguments — the framework's own block, the
+    // same path a real activator uses. This is what carries `$1 $2 $3`.
+    activate: { block: inlineActivate as never },
     withTeam: {
       inputSchema,
       block: makeCoordinator("coordinatorWithTeam", true),
@@ -406,6 +407,23 @@ async function run(actionName: "withTeam" | "solo", sessionId: string) {
     flow,
     actionName: actionName as never,
     input: { message: USER_TURN },
+    userId: "goal-user",
+    sessionId,
+    stores,
+    runtimeConfig,
+  });
+}
+
+/**
+ * Activate the authored skill for this session, passing the held-out fixture
+ * values as its arguments. `substitute()` maps them onto the `$1`/`$2`/`$3`
+ * placeholders in the authored prompt files at worker-materialization time.
+ */
+async function activateTeam(sessionId: string) {
+  return runAction({
+    flow,
+    actionName: "activate" as never,
+    input: { skillName: SKILL_NAME, input: ACTIVATION_ARGS },
     userId: "goal-user",
     sessionId,
     stores,
@@ -481,17 +499,27 @@ function assertFannedOutMidDrain(items: readonly Record<string, unknown>[]): str
 
   // 1. Creator attribution: an addTask emitted from INSIDE the researcher's scope.
   // Field names per the real item shapes: a `tool_output` names its tool in
-  // `blockName`, a `tool_call_progress` in `toolName`. (The `addTask` handler's
-  // own `block_trace` is NOT scope-stamped, so it cannot be used here.)
-  const workerCreatedTask = items.some(
-    (i) =>
-      (i.blockName === "addTask" || i.toolName === "addTask") && i.taskId === researcher.id,
-  );
-  if (!workerCreatedTask) {
+  // `blockName` and carries the tool's return value in `output`. (The `addTask`
+  // handler's own `block_trace` is NOT scope-stamped, so it cannot be used here.)
+  //
+  // It is not enough that the researcher called addTask at all: same-step
+  // coordinator tool calls run concurrently, so a coordinator can issue its own
+  // auditor `addTask` alongside `runBoard`. If the researcher happened to create
+  // some OTHER task, a "researcher called addTask" predicate would pass while the
+  // graded auditor task was still coordinator-created. So bind the attribution to
+  // the graded task: collect the task ids RETURNED by researcher-scoped addTask
+  // calls and require the auditor's id among them.
+  const researcherCreatedIds = items
+    .filter((i) => i.blockName === "addTask" && i.taskId === researcher.id)
+    .map((i) => (i.output as { taskId?: string } | undefined)?.taskId)
+    .filter((id): id is string => typeof id === "string");
+
+  if (!researcherCreatedIds.includes(auditor.id)) {
     failures.push(
-      `no addTask was emitted from inside the researcher's task scope (taskId ` +
-        `${researcher.id}) — the auditor's task was not created by a worker, so the ` +
-        `coordinator most likely assigned both agents itself and NO fan-out occurred`,
+      `the auditor task (${auditor.id}) was not created by the researcher: addTask calls ` +
+        `inside the researcher's scope (taskId ${researcher.id}) returned ` +
+        `${JSON.stringify(researcherCreatedIds)}. The coordinator most likely created the ` +
+        `auditor task itself, so NO mid-drain fan-out occurred`,
     );
   }
 
@@ -519,8 +547,8 @@ function assertFannedOutMidDrain(items: readonly Record<string, unknown>[]): str
 /** The roster lines the coordinator actually sees, via the real `agentPurpose`. */
 function rosterLines(): { agent: string; line: string }[] {
   return [
-    { agent: "researcher", line: agentPurpose({ prompt: RESEARCHER_PROMPT } as never) },
-    { agent: "auditor", line: agentPurpose({ prompt: AUDITOR_PROMPT } as never) },
+    { agent: "researcher", line: agentPurpose({ prompt: RESEARCHER_PROMPT_RAW } as never) },
+    { agent: "auditor", line: agentPurpose({ prompt: AUDITOR_PROMPT_RAW } as never) },
   ];
 }
 
@@ -576,6 +604,9 @@ async function runGoalCheck(): Promise<string[]> {
   if (rosterLeak.length > 0) return rosterLeak;
 
   // --- Delegation ON ---
+  const activated = await activateTeam("deleg-on");
+  if (activated.error) return [`skill activation failed: ${activated.error.message}`];
+
   const on = await run("withTeam", "deleg-on");
   if (on.error) return [`delegation-ON run failed: ${on.error.message}`];
   const onOutput = coordinatorOutput(on);
@@ -671,12 +702,12 @@ async function runGoalCheck(): Promise<string[]> {
             `${t.assignee ?? "?"} task ${t.id} createdAt=${t.createdAt} startedAt=${t.startedAt ?? "-"}`,
         )
         .join("\n    ") +
-      `\n    addTask emitted from inside a worker scope: ${
-        (on.items as never as Record<string, unknown>[]).some(
-          (i) =>
-            (i.blockName === "addTask" || i.toolName === "addTask") && i.taskId !== undefined,
-        )
-      }\n` +
+      `\n    task ids created by researcher-scoped addTask calls: ${JSON.stringify(
+        (on.items as never as Record<string, unknown>[])
+          .filter((i) => i.blockName === "addTask" && i.taskId !== undefined)
+          .map((i) => (i.output as { taskId?: string } | undefined)?.taskId)
+          .filter(Boolean),
+      )} (must include the auditor task id)\n` +
       `delegation OFF terminal output: ${JSON.stringify(offOutput.slice(0, 300))}\n` +
       GRADED_MARKERS.map(
         ({ label, marker }) =>
