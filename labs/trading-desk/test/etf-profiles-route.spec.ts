@@ -12,7 +12,7 @@
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { eq, sql } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { seedAccount } from "./_helpers/portfolio-repo";
 import { _resetLeases } from "@/lib/singleflight";
@@ -76,6 +76,15 @@ beforeEach(async () => {
   repoState.repo = createPortfolioRepository(db);
   fetcherMock.fetchEtfProfile.mockReset();
   _resetLeases();
+  // The route gates on hasAlphaVantageKey() before attempting any fill
+  // (Codex review, FIX-801 sub-PR a) — set a key by default so the existing
+  // fetch-path tests exercise the mocked fetcher as before; the dedicated
+  // no-key test below deletes it.
+  process.env.ALPHAVANTAGE_API_KEY = "test-key";
+});
+
+afterEach(() => {
+  delete process.env.ALPHAVANTAGE_API_KEY;
 });
 
 function get(userId?: string): NextRequest {
@@ -294,13 +303,23 @@ describe("GET /api/portfolio/etf-profiles", () => {
     await GET(get(USER_ID));
 
     await backdateFetchedAt("SPY", 31);
+    // Capture the (backdated) fetchedAt the preserve-write is expected to
+    // keep — this IS the "prior successful fetch time" from the write's
+    // point of view, not the pre-backdate value.
+    const backdatedFetchedAt = (await repoState.repo!.getEtfProfiles(["SPY"]))[0]!.fetchedAt;
     fetcherMock.fetchEtfProfile.mockClear();
     fetcherMock.fetchEtfProfile.mockRejectedValueOnce(new Error("network blip"));
     await GET(get(USER_ID)); // the refresh attempt fails; the payload is preserved
 
     const stored = (await repoState.repo!.getEtfProfiles(["SPY"]))[0]!;
     expect(stored.payload).not.toBeNull(); // preserved (the existing guard)
-    expect(stored.retryAt).not.toBeNull(); // NEW: a backoff boundary was recorded
+    expect(stored.retryAt).not.toBeNull(); // a backoff boundary was recorded
+    // CRITICAL (follow-up review): fetchedAt must NOT be bumped to "now" on
+    // this write — isDueForFetch checks staleness (fetchedAt) BEFORE it ever
+    // looks at retryAt, so if fetchedAt advanced the row would look freshly
+    // fetched and the retryAt boundary above would never actually be
+    // consulted, silently defeating the backoff.
+    expect(new Date(stored.fetchedAt).getTime()).toBe(new Date(backdatedFetchedAt).getTime());
 
     // A second read, still within that backoff window and still "stale" by
     // fetchedAt, must NOT retry the refresh — the retryAt boundary is what
@@ -310,6 +329,26 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
     const body = (await res.json()) as EtfProfilesResponse;
     expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+  });
+
+  it("gates on hasAlphaVantageKey() before attempting any fill — no key configured means no fetch and nothing persisted (Codex review)", async () => {
+    await seedEtf("SPY");
+    delete process.env.ALPHAVANTAGE_API_KEY;
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles).toEqual([]);
+    expect(body.refusals).toEqual([]); // no persisted "transient" refusal either
+    expect(await repoState.repo!.getEtfProfiles(["SPY"])).toEqual([]);
+
+    // Configuring the key afterward unblocks the ticker immediately — no
+    // lingering refusal/backoff from the keyless period.
+    process.env.ALPHAVANTAGE_API_KEY = "test-key";
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: SAMPLE_PROFILE });
+    const res2 = await GET(get(USER_ID));
+    const body2 = (await res2.json()) as EtfProfilesResponse;
+    expect(body2.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
   });
 
   it("a sequential race: a caller whose own pre-fetch snapshot is stale re-checks fresh state under the lease and skips a redundant fetch (Codex review P2)", async () => {

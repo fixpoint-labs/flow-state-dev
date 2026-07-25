@@ -441,15 +441,22 @@ export type EtfProfileRow = {
  *  `refusalReason` (or neither) — the fill route always has exactly one
  *  outcome per ticker per attempt.
  *
- *  The success variant's `retryAt`/`transientAttempts` are OPTIONAL and exist
- *  for one narrow case: a REFRESH attempt on an already-good `payload` that
- *  itself failed (threw, or came back refused) — the route keeps the known-
- *  good payload (never clobbers it) but still needs to record WHEN the next
- *  refresh attempt is allowed, via the same per-failure-class backoff the
- *  refusal variant uses (reviewer follow-up on FIX-801 sub-PR a: without
- *  this, a stale row whose refresh keeps failing is retried on every single
- *  read, burning the shared daily budget). Omitted (a normal fresh success)
- *  clears any prior backoff, matching the pre-existing behavior. */
+ *  The success variant's `retryAt`/`transientAttempts`/`fetchedAt` are ALL
+ *  OPTIONAL and exist for one narrow case: a REFRESH attempt on an already-
+ *  good `payload` that itself failed (threw, or came back refused) — the
+ *  route keeps the known-good payload (never clobbers it) but still needs to
+ *  record WHEN the next refresh attempt is allowed, via the same per-
+ *  failure-class backoff the refusal variant uses (reviewer follow-up on
+ *  FIX-801 sub-PR a: without this, a stale row whose refresh keeps failing
+ *  is retried on every single read, burning the shared daily budget).
+ *  `fetchedAt` must be explicitly PRESERVED (the ticker's prior successful
+ *  fetch time) on that same write — bumping it to "now" would make the row
+ *  look freshly fetched, so the staleness check that gates a retry attempt
+ *  (`isDueForFetch`, checked BEFORE `retryAt`) would short-circuit and the
+ *  backoff would never actually be consulted (a second reviewer follow-up:
+ *  the fix above only works if the row still LOOKS stale). Omitted (a normal
+ *  fresh success) clears any prior backoff and stamps the current time,
+ *  matching the pre-existing behavior. */
 export type EtfProfileUpsertInput =
   | {
       ticker: string;
@@ -457,6 +464,7 @@ export type EtfProfileUpsertInput =
       refusalReason: null;
       retryAt?: string | null;
       transientAttempts?: number;
+      fetchedAt?: string;
     }
   | {
       ticker: string;
@@ -1871,6 +1879,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       // ON CONFLICT.
       const byTicker = new Map<string, EtfProfileUpsertInput>();
       for (const r of rows) byTicker.set(r.ticker.toUpperCase(), r);
+      const nowIso = new Date().toISOString();
       const values = [...byTicker.entries()].map(([ticker, r]) => ({
         ticker,
         payload: r.payload,
@@ -1881,6 +1890,14 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         // next attempt" write; omitted (undefined) clears any prior backoff.
         retryAt: r.refusalReason === null ? (r.retryAt ?? null) : r.retryAt,
         transientAttempts: r.refusalReason === null ? (r.transientAttempts ?? 0) : r.transientAttempts,
+        // fetchedAt is EXPLICIT here (not `now()` in the SQL), so a caller
+        // can PRESERVE the prior successful fetch time on a kept-payload
+        // backoff-only write — bumping it would make the row look freshly
+        // fetched and defeat the retryAt backoff, which the staleness check
+        // gates ahead of (reviewer follow-up, FIX-801 sub-PR a). A refusal
+        // row (a genuinely new miss, never has a prior fetchedAt to keep)
+        // and an omitted `fetchedAt` on the success variant both stamp "now".
+        fetchedAt: r.refusalReason === null ? (r.fetchedAt ?? nowIso) : nowIso,
       }));
       await db.transaction(async (tx) => {
         await tx
@@ -1894,7 +1911,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               refusalDetail: sql`excluded.refusal_detail`,
               retryAt: sql`excluded.retry_at`,
               transientAttempts: sql`excluded.transient_attempts`,
-              fetchedAt: sql`now()`,
+              fetchedAt: sql`excluded.fetched_at`,
             },
           });
       });

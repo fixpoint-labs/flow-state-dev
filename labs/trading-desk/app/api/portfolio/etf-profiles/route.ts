@@ -7,6 +7,7 @@ import { computeRefusalBackoff, type EtfProfileRefusalClass } from "@/lib/etf-pr
 import {
   AlphaVantageBudgetError,
   AlphaVantageRateLimitError,
+  hasAlphaVantageKey,
 } from "@/lib/providers/alpha-vantage";
 import { fetchEtfProfile, type NormalizedEtfProfile } from "@/lib/providers/etf-profile";
 
@@ -117,7 +118,11 @@ function toStoredRow(input: EtfProfileUpsertInput, fetchedAt: string): EtfProfil
       refusalDetail: null,
       retryAt: input.retryAt ?? null,
       transientAttempts: input.transientAttempts ?? 0,
-      fetchedAt,
+      // A preserved-payload backoff-only write carries its OWN explicit
+      // `fetchedAt` (the prior successful fetch time, kept — not bumped);
+      // a genuine fresh success has none set, so it falls back to the
+      // caller-supplied "now" (reviewer follow-up, FIX-801 sub-PR a).
+      fetchedAt: input.fetchedAt ?? fetchedAt,
     };
   }
   return {
@@ -194,7 +199,15 @@ export async function GET(req: NextRequest) {
   const fetchCandidates = eligibleTickers.filter((t) => pricedTickers.has(t));
 
   const misses = fetchCandidates.filter((ticker) => isDueForFetch(storedByTicker.get(ticker), now));
-  const missesToFetch = misses.slice(0, ETF_PROFILE_MISS_CAP);
+  // No key configured is a documented, supported state (every other AV
+  // consumer in this codebase checks this first) — no fetch attempted,
+  // nothing persisted, never a refusal. Without this gate, a keyless
+  // deployment would let `fetchEtfProfile` throw `AlphaVantageError`, which
+  // the catch path below records as a `transient` refusal — three keyless
+  // reads and a ticker is suppressed for up to 90 days, so configuring a key
+  // later wouldn't actually unblock it until that backoff expires (Codex
+  // review, FIX-801 sub-PR a).
+  const missesToFetch = hasAlphaVantageKey() ? misses.slice(0, ETF_PROFILE_MISS_CAP) : [];
 
   let quotaHit = false;
   await mapLimit(missesToFetch, FETCH_CONCURRENCY, async (ticker) => {
@@ -262,6 +275,7 @@ export async function GET(req: NextRequest) {
             refusalReason: null,
             retryAt: retryAt.toISOString(),
             transientAttempts,
+            fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch
           };
         } else {
           const { retryAt } = computeRefusalBackoff(outcome.reason, now, 0);
@@ -291,6 +305,7 @@ export async function GET(req: NextRequest) {
             refusalReason: null,
             retryAt: retryAt.toISOString(),
             transientAttempts,
+            fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch
           };
         } else {
           upsert = {
