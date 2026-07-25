@@ -35,6 +35,7 @@ import {
   SECTOR_WARN_PCT,
   SINGLE_NAME_ALERT_PCT,
   SINGLE_NAME_WARN_PCT,
+  UNCLASSIFIED_BUCKET,
 } from "@/domain/portfolio/math/concentration-thresholds";
 
 function direct(
@@ -717,6 +718,76 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     ]);
     expect(out.residual.marketValue).toBeCloseTo(0);
     expect(out.opaqueFunds).toEqual([]);
+  });
+
+  it("a disproven fund's mass falls back to UNCLASSIFIED_BUCKET on the sector axis, not the wrapper's stale fund-labeled bucket (Codex review, disproven-fund propagation round)", () => {
+    // MISTAG is tagged `etf`, so the WRAPPER basis's own sector bucketing
+    // (which this leaf normally reuses as-is for a direct position — see the
+    // LookThroughPositionInput docblock) would have labeled it "Funds (no
+    // look-through)" before this leaf ever sees it. But the stored profile
+    // disproves it (`not_an_etf`). The fix to `resolveTickerIsFund` alone
+    // (the prior round) only corrected the ROUTING decision — this pins that
+    // the sector bucket is ALSO corrected: reusing the stale fund-labeled
+    // bucket would mislabel the position and could fire a nonsensical
+    // sector-concentration warning for a bucket that isn't a real sector.
+    const positions = [
+      direct("MISTAG", 100_000, { assetType: "etf", sectorBucket: "Funds (no look-through)" }),
+    ];
+    const fundProfiles = new Map<string, FundProfileInput>([["MISTAG", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.sectorExposure).toEqual([{ bucket: UNCLASSIFIED_BUCKET, marketValue: 100_000, pct: 100 }]);
+    expect(out.flags.some((f) => f.kind === "sector")).toBe(false);
+  });
+
+  it("a disproven fund is eligible for its own single-name concentration flag, not suppressed by its stale fund-type tag (Codex review, disproven-fund propagation round)", () => {
+    // Same MISTAG setup: the routing fix alone (prior round) correctly
+    // attributes it as a direct name, but the concentration-eligibility
+    // check independently re-checked the raw `assetType` tag and got it
+    // wrong — a 100%-weight effective name was suppressed from ever being
+    // flagged, hiding a legitimate concentration signal. This pins that
+    // eligibility now follows the same disproven verdict.
+    const positions = [direct("MISTAG", 100_000, { assetType: "etf" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["MISTAG", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.maxPosition).toEqual({ ticker: "MISTAG", weightPct: 100 });
+    expect(out.flags).toContainEqual(
+      expect.objectContaining({ kind: "single_name", level: "alert", ticker: "MISTAG" }),
+    );
+  });
+
+  it("a fund-of-funds share computed from unreconciled constituent rows must not gate the SECTOR axis too (Codex review, disproven-fund propagation round)", () => {
+    // Two duplicated 0.9-weight BND rows (BND is a known bond ETF — curated
+    // list, so it resolves as a fund) with `nameCoverage: 0.9` sum to 1.8 —
+    // a name-axis reconciliation mismatch that clears the 85% floor on the
+    // DECLARED figure alone. Before this fix, the fund-of-funds check ran
+    // BEFORE reconciliation, using the UNRECONCILED 180% fundShare (well
+    // over the 50% threshold) to mark the WHOLE fund opaque on BOTH axes —
+    // wiping out an independently valid, fully-reconciled 100% sector
+    // allocation on the same profile. The correct read: the name axis is
+    // malformed (not "fund-of-funds" — that verdict can't be trusted from
+    // corrupted rows), and the sector axis, built from a wholly separate
+    // declared field, stays intact.
+    const positions = [fund("DUPBOND", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "DUPBOND",
+        profile({
+          nameCoverage: 0.9,
+          constituents: [
+            { ticker: "BND", weight: 0.9 },
+            { ticker: "BND", weight: 0.9 },
+          ],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Fixed income", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.opaqueFunds).toEqual([expect.objectContaining({ ticker: "DUPBOND", axis: "names" })]);
+    expect(out.opaqueFunds.some((f) => f.reason.includes("fund-of-funds"))).toBe(false);
+    expect(out.sectorExposure).toEqual([{ bucket: "Fixed income", marketValue: 100_000, pct: 100 }]);
+    expect(out.sectorResidual.marketValue).toBeCloseTo(0);
+    expect(out.hasAttribution).toBe(true);
   });
 });
 

@@ -413,6 +413,28 @@ export function computeLookThroughExposure(
 
   const positionsByTicker = new Map(positions.map((p) => [p.ticker.toUpperCase(), p]));
 
+  // The fund/not-fund verdict for a ticker is computed ONCE here and reused
+  // everywhere this function asks the question — routing, the fund-of-funds
+  // share check, the name-axis attribution loop, the direct-position sector
+  // fallback, and flag eligibility. Three earlier rounds of review found the
+  // SAME evidence-ordering bug independently re-derived (slightly
+  // differently, and so inconsistently) at multiple call sites; two more
+  // rounds found the fix to `resolveTickerIsFund` itself hadn't propagated to
+  // two DOWNSTREAM consumers that independently re-checked the raw
+  // classification tag instead of reusing the already-corrected verdict
+  // (Codex review, FIX-801 sub-PR b). This cache is what makes "one source of
+  // truth" actually structural rather than a convention every new call site
+  // has to remember.
+  const fundVerdictCache = new Map<string, boolean>();
+  function isFundCached(ticker: string): boolean {
+    let verdict = fundVerdictCache.get(ticker);
+    if (verdict === undefined) {
+      verdict = resolveTickerIsFund(ticker, positionsByTicker, fundProfiles);
+      fundVerdictCache.set(ticker, verdict);
+    }
+    return verdict;
+  }
+
   const nameMass = new Map<string, number>(); // ticker -> attributed mass
   const nameSources = new Map<string, Array<{ from: string; marketValue: number }>>();
   const sectorMass = new Map<string, number>(); // bucket -> attributed mass
@@ -435,19 +457,34 @@ export function computeLookThroughExposure(
     const profile = fundProfiles.get(pos.ticker);
     // The DIRECT-holding routing decision is the SAME "does this ticker have
     // fund evidence" question the constituent checks below ask — reusing
-    // `resolveTickerIsFund` here (rather than a narrower reimplementation)
-    // is what keeps this branch, the fund-of-funds check, and the name-axis
+    // `isFundCached` here (rather than a narrower reimplementation) is what
+    // keeps this branch, the fund-of-funds check, and the name-axis
     // attribution loop from drifting out of sync one evidence-ordering fix
-    // at a time (Codex review rounds 4-5, FIX-801 — see that function's
+    // at a time (Codex review rounds 4-5, FIX-801 — see `resolveTickerIsFund`'s
     // docblock, including why the curated bond-ETF list is now checked
     // BEFORE a held ticker's own classification too — exactly the same
     // "don't trust stale local metadata over stronger external evidence"
     // rule this branch relies on).
-    const isFund = resolveTickerIsFund(pos.ticker, positionsByTicker, fundProfiles);
+    const isFund = isFundCached(pos.ticker);
     if (!isFund) {
-      // A direct holding is unambiguously itself (§7).
+      // A direct holding is unambiguously itself (§7). EXCEPTION: the
+      // wrapper-basis `sectorBucket` this leaf normally reuses as-is (see the
+      // INPUT SHAPE docblock) was computed purely off the position's own
+      // `assetType` tag — for a ticker tagged etf/mutual_fund but DISPROVEN
+      // as a fund by `isFundCached` (e.g. a stored `not_an_etf` refusal), that
+      // bucket is the wrapper's stale "Funds (no look-through)" label, which
+      // is actively wrong once we know it isn't a fund — trusting it would
+      // both mislabel the position and could fire a nonsensical sector-
+      // concentration warning for a bucket that isn't a real sector. This
+      // leaf has no real sector data for that ticker (BP-019 — no
+      // classifications lookup here), so it honestly falls back to
+      // `UNCLASSIFIED_BUCKET` (the established "data gap, not a real sector"
+      // bucket, already excluded from the sector-flag loop below) instead of
+      // keeping a bucket built on the assumption this IS a fund (Codex
+      // review, FIX-801 sub-PR b).
+      const bucket = isFundAssetType(pos.assetType) ? UNCLASSIFIED_BUCKET : pos.sectorBucket;
       pushSource(pos.ticker, "direct", mv);
-      add(sectorMass, pos.sectorBucket, mv);
+      add(sectorMass, bucket, mv);
       continue;
     }
 
@@ -483,20 +520,49 @@ export function computeLookThroughExposure(
       continue;
     }
 
+    // NAME axis diagnostics — computed BEFORE the fund-of-funds check below,
+    // because that check consumes the SAME `fp.constituents` rows the name
+    // axis does. If those rows don't even clear the coverage floor, or don't
+    // reconcile against the declared `nameCoverage` (a duplicated/corrupted
+    // row), the fund-of-funds SHARE computed from them is built on
+    // untrustworthy data — and letting it veto the fund anyway would gate the
+    // SECTOR axis (`fundShare >= threshold` marks BOTH axes opaque) off data
+    // that has nothing to do with sectors at all. Concretely: two duplicated
+    // 0.3-weight BND rows with `nameCoverage: 0.3` inflate the apparent
+    // fund-of-funds share to 60% (BND resolves as a fund via the curated
+    // list) even though the name axis's OWN reconciliation check below would
+    // separately (and correctly) reject just the name axis — while an
+    // independently valid, fully-reconciled sector allocation on the same
+    // fund was wiped out for no reason (Codex review, FIX-801 sub-PR b).
+    // `fp.sectors`/`fp.sectorCoverage` are a wholly separate declared field,
+    // unaffected by a corrupted constituent row, and get evaluated entirely
+    // on their own below regardless of what happens here.
+    const safeNameCoverage = safeWeight(fp.nameCoverage);
+    const namesPass = safeNameCoverage * 100 >= LOOK_THROUGH_COVERAGE_FLOOR_PCT;
+    const actualNameSum = fp.constituents.reduce((sum, c) => sum + safeWeight(c.weight), 0);
+    const nameReconciles = Math.abs(actualNameSum - safeNameCoverage) <= COVERAGE_RECONCILIATION_EPSILON;
+
     // Fund-of-funds check — a material share resolving as OTHER funds makes
-    // the WHOLE fund ineligible rather than half-decomposed (§7).
-    let fundShare = 0;
-    for (const c of fp.constituents) {
-      if (c.ticker === null) continue;
-      if (resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) fundShare += safeWeight(c.weight);
-    }
-    if (fundShare * 100 >= FUND_OF_FUNDS_THRESHOLD_PCT) {
-      nameResidualMass += mv;
-      sectorResidualMass += mv;
-      opaqueByTicker.set(pos.ticker, {
-        both: `fund-of-funds: ${(fundShare * 100).toFixed(1)}% of holdings resolve to other funds`,
-      });
-      continue;
+    // the WHOLE fund ineligible rather than half-decomposed (§7). Only
+    // evaluated when the constituent row data itself is trustworthy (see
+    // above) — when it isn't, this is skipped entirely and the NAME axis's
+    // own floor/reconciliation branches below report the more specific
+    // reason instead of a "fund-of-funds" verdict this leaf can't actually
+    // stand behind from corrupted rows.
+    if (namesPass && nameReconciles) {
+      let fundShare = 0;
+      for (const c of fp.constituents) {
+        if (c.ticker === null) continue;
+        if (isFundCached(c.ticker)) fundShare += safeWeight(c.weight);
+      }
+      if (fundShare * 100 >= FUND_OF_FUNDS_THRESHOLD_PCT) {
+        nameResidualMass += mv;
+        sectorResidualMass += mv;
+        opaqueByTicker.set(pos.ticker, {
+          both: `fund-of-funds: ${(fundShare * 100).toFixed(1)}% of holdings resolve to other funds`,
+        });
+        continue;
+      }
     }
 
     // NAME axis — gated independently of sectors (Decision 4). `fp.nameCoverage`
@@ -507,15 +573,13 @@ export function computeLookThroughExposure(
     // documented [0, 1]-fraction contract (Codex review round 7, FIX-801).
     // An invalid coverage defaults to 0 — the safe, opaque-on-this-axis
     // reading, never treated as a passing/complete profile.
-    const safeNameCoverage = safeWeight(fp.nameCoverage);
-    const namesPass = safeNameCoverage * 100 >= LOOK_THROUGH_COVERAGE_FLOOR_PCT;
     if (!namesPass) {
       nameResidualMass += mv;
       opaqueByTicker.set(pos.ticker, {
         ...opaqueByTicker.get(pos.ticker),
         names: `holdings data incomplete (${(safeNameCoverage * 100).toFixed(1)}% coverage, floor ${LOOK_THROUGH_COVERAGE_FLOOR_PCT}%)`,
       });
-    } else {
+    } else if (!nameReconciles) {
       // Reconcile the declared coverage against what the rows actually sum
       // to BEFORE attributing anything. A mismatch beyond tolerance means
       // the coverage figure is not describing these rows — most likely a
@@ -532,34 +596,31 @@ export function computeLookThroughExposure(
       // "don't trust a self-inconsistent profile" call sub-PR a's fetcher
       // already makes at write time for an over-summing payload (Codex
       // review, FIX-801 sub-PR b).
-      const actualNameSum = fp.constituents.reduce((sum, c) => sum + safeWeight(c.weight), 0);
-      if (Math.abs(actualNameSum - safeNameCoverage) > COVERAGE_RECONCILIATION_EPSILON) {
-        nameResidualMass += mv;
-        opaqueByTicker.set(pos.ticker, {
-          ...opaqueByTicker.get(pos.ticker),
-          names: `holdings data malformed (declared ${(safeNameCoverage * 100).toFixed(1)}% coverage doesn't match ${(actualNameSum * 100).toFixed(1)}% summed constituent weight)`,
-        });
-      } else {
-        for (const c of fp.constituents) {
-          const slice = safeWeight(c.weight) * mv;
-          if (c.ticker === null || resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) {
-            nameResidualMass += slice; // non-attributable line, or routed away from the name axis
-          } else if (slice > 0) {
-            // The same "real attribution, not just a passing gate" rule the
-            // sector axis below already applies (Codex review round 6,
-            // FIX-801): an otherwise-attributable constituent with a ZERO
-            // weight contributes nothing real — pushing it anyway would
-            // create a phantom $0 position that could surface as
-            // `maxPosition` (the first-eligible-candidate case) and wrongly
-            // flip `hasAttribution` even though every other slice is
-            // genuinely residual.
-            pushSource(c.ticker, pos.ticker, slice);
-            hasAttribution = true;
-          }
+      nameResidualMass += mv;
+      opaqueByTicker.set(pos.ticker, {
+        ...opaqueByTicker.get(pos.ticker),
+        names: `holdings data malformed (declared ${(safeNameCoverage * 100).toFixed(1)}% coverage doesn't match ${(actualNameSum * 100).toFixed(1)}% summed constituent weight)`,
+      });
+    } else {
+      for (const c of fp.constituents) {
+        const slice = safeWeight(c.weight) * mv;
+        if (c.ticker === null || isFundCached(c.ticker)) {
+          nameResidualMass += slice; // non-attributable line, or routed away from the name axis
+        } else if (slice > 0) {
+          // The same "real attribution, not just a passing gate" rule the
+          // sector axis below already applies (Codex review round 6,
+          // FIX-801): an otherwise-attributable constituent with a ZERO
+          // weight contributes nothing real — pushing it anyway would
+          // create a phantom $0 position that could surface as
+          // `maxPosition` (the first-eligible-candidate case) and wrongly
+          // flip `hasAttribution` even though every other slice is
+          // genuinely residual.
+          pushSource(c.ticker, pos.ticker, slice);
+          hasAttribution = true;
         }
-        // The unreported remainder (rows the profile never listed at all).
-        nameResidualMass += (1 - safeNameCoverage) * mv;
       }
+      // The unreported remainder (rows the profile never listed at all).
+      nameResidualMass += (1 - safeNameCoverage) * mv;
     }
 
     // SECTOR axis — gated independently of names (Decision 4/7). Same coverage
@@ -645,13 +706,22 @@ export function computeLookThroughExposure(
     // record, so it independently checks the ticker's own SHAPE via the
     // classifier rather than assuming every non-"direct" source is a
     // flag-eligible name: the upstream bond-ETF pre-filter and the
-    // fund-detection oracle (`resolveTickerIsFund`) both curate/infer
-    // FUND-ness, but neither is exhaustive, and a fixed-income ETF that
-    // slips past them could resolve constituents to Treasury/CUSIP-shaped
-    // tickers — this is the leaf's own defense-in-depth against exactly that
-    // (Codex review, FIX-801 sub-PR b).
+    // fund-detection oracle (`isFundCached`) both curate/infer FUND-ness, but
+    // neither is exhaustive, and a fixed-income ETF that slips past them
+    // could resolve constituents to Treasury/CUSIP-shaped tickers — this is
+    // the leaf's own defense-in-depth against exactly that (Codex review,
+    // FIX-801 sub-PR b). EXCEPTION: a held ticker's fund-type tag
+    // (etf/mutual_fund) is not trusted for eligibility when `isFundCached`
+    // has DISPROVEN it (a stored `not_an_etf` refusal) — the same "don't
+    // independently re-derive from the raw classification tag" rule the
+    // routing decision and the sector-bucket fallback above already apply.
+    // Without this, a ticker routed as a direct name (its true, disproven
+    // state) would still be suppressed from ever being flagged, hiding a
+    // legitimate concentration signal (Codex review, FIX-801 sub-PR b).
+    const heldTagDisprovenAsFund =
+      heldDirect !== undefined && isFundAssetType(heldDirect.assetType) && !isFundCached(p.ticker);
     const eligibleForFlags =
-      heldDirect !== undefined
+      heldDirect !== undefined && !heldTagDisprovenAsFund
         ? isFlagEligibleAssetType(heldDirect.assetType)
         : isFlagEligibleAssetType(classifyInstrument(p.ticker).assetType);
     if (!eligibleForFlags) continue;
