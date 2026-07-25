@@ -30,7 +30,7 @@ const MODEL = "openai/gpt-5.4-mini";
 
 const fx = JSON.parse(
   readFileSync(new URL("./fixtures/team.json", import.meta.url), "utf8"),
-) as { researcherSecret: string; auditToken: string };
+) as { researcherSecret: string; auditToken: string; handoffCode: string };
 
 /**
  * Required marker format: an unambiguous sentinel — at least 6 chars, starts
@@ -63,26 +63,46 @@ function assertValidMarker(field: string, value: string): void {
 
 assertValidMarker("researcherSecret", fx.researcherSecret);
 assertValidMarker("auditToken", fx.auditToken);
+assertValidMarker("handoffCode", fx.handoffCode);
 
-const SECRET = fx.researcherSecret; // the researcher's result
-const AUDIT_TOKEN = fx.auditToken; // the auditor's OWN result — NOT derived from SECRET
+const SECRET = fx.researcherSecret; // the researcher's result (GRADED)
+const AUDIT_TOKEN = fx.auditToken; // the auditor's OWN result (GRADED) — not derived from SECRET
+/**
+ * The value the researcher hands the auditor. Deliberately UNGRADED and
+ * independent of both graded markers: `buildUserMessage` renders a task's input
+ * verbatim into the worker's turn, so whatever the researcher passes lands in
+ * the auditor's context. If that were the graded SECRET, an auditor that simply
+ * echoed its input would put both graded markers in one worker's output — and
+ * the check would pass with the researcher's own result dropped.
+ */
+const HANDOFF = fx.handoffCode;
 
 /**
- * The two markers must be mutually underivable, or the whole point collapses: if
- * one contained the other, a coordinator handed only the auditor's result could
- * print the researcher's marker too and pass both checks with the researcher's
- * own output dropped. Asserted at load so it cannot silently regress.
+ * All three fixture values must be mutually underivable. If one contained
+ * another, a single worker's output could carry more than one graded marker and
+ * the check would pass without both results being synthesized. Asserted at load
+ * so it cannot silently regress.
  */
-{
-  const a = SECRET.toLowerCase();
-  const b = AUDIT_TOKEN.toLowerCase();
-  if (a === b || a.includes(b) || b.includes(a)) {
-    throw new Error(
-      `fixture invalid: researcherSecret ${JSON.stringify(SECRET)} and auditToken ` +
-        `${JSON.stringify(AUDIT_TOKEN)} overlap — neither may contain the other. They must be ` +
-        `independent, or one worker's result would be derivable from the other's and the check ` +
-        `would pass without both results being synthesized.`,
-    );
+for (const [aName, aVal] of [
+  ["researcherSecret", SECRET],
+  ["auditToken", AUDIT_TOKEN],
+  ["handoffCode", HANDOFF],
+] as const) {
+  for (const [bName, bVal] of [
+    ["researcherSecret", SECRET],
+    ["auditToken", AUDIT_TOKEN],
+    ["handoffCode", HANDOFF],
+  ] as const) {
+    if (aName === bName) continue;
+    const a = aVal.toLowerCase();
+    const b = bVal.toLowerCase();
+    if (a === b || a.includes(b)) {
+      throw new Error(
+        `fixture invalid: ${aName} ${JSON.stringify(aVal)} overlaps ${bName} ` +
+          `${JSON.stringify(bVal)} — the three fixture values must be mutually independent, or ` +
+          `one worker's result would be derivable from another's.`,
+      );
+    }
   }
 }
 
@@ -180,25 +200,28 @@ const GRADED_MARKERS = [
 // result still emit the marker straight from the roster. `assertNoRosterLeak`
 // enforces this against the real `agentPurpose`.
 // ---------------------------------------------------------------------------
+// The researcher hands the auditor the UNGRADED handoff code — never its own
+// graded secret, which therefore never enters the auditor's context at all.
 const RESEARCHER_PROMPT = [
   "Researches the requested topic and reports its finding.", // roster line — generic
   `Your secret code is ${SECRET}.`,
+  `The verification code you pass to the auditor is ${HANDOFF}.`,
   "When you receive a task, do BOTH of these, in order:",
   '1. Call addTask to create ONE follow-up task with assignee "auditor",',
-  '   a short goal like "verify the code", and its input set to your',
-  `   secret code ${SECRET}.`,
+  '   a short goal like "verify the code", and its input set to the',
+  `   verification code ${HANDOFF}. Never send your secret code to anyone.`,
   `2. Then reply with exactly your secret code ${SECRET} and nothing else.`,
 ].join("\n");
 
-// The auditor returns its OWN independent token — never a transform of, and
-// never echoing, the researcher's secret. Its token appearing in the answer is
-// the fan-out proof: the auditor only ever lands on the board when the
+// The auditor returns its OWN independent token. Its token appearing in the
+// answer is the fan-out proof: the auditor only ever lands on the board when the
 // researcher enqueues it mid-drain, so nothing else can put this token there.
 const AUDITOR_PROMPT = [
   "Verifies a code it is handed and reports its own sign-off.", // roster line — generic
   `Your sign-off token is ${AUDIT_TOKEN}.`,
-  "Your task Input contains a code to verify. Check that it is present,",
-  `then reply with exactly your sign-off token ${AUDIT_TOKEN} and nothing else.`,
+  `Your task Input contains a verification code (it should be ${HANDOFF}).`,
+  "Check that it is present, then reply with exactly your sign-off token",
+  `${AUDIT_TOKEN} and nothing else.`,
   "Never repeat or quote the code you were given — reply only with your own token.",
 ].join("\n");
 
@@ -251,6 +274,50 @@ const COORDINATOR_PROMPT = [
   "3. Read EVERY task's output in the runBoard result, then write a final answer",
   "   that lists every distinct code you found, each on its own line, verbatim.",
 ].join("\n");
+
+/**
+ * Reject a fixture value that collides with fixed prompt text this runner
+ * controls. A documented-valid marker like `REPORT` would otherwise pass the
+ * format/independence rules and then trip the honesty guard, because the fixed
+ * coordinator prompt contains "report" — a CORRECT implementation would fail
+ * before it ran. That is a false negative, so it is fenced off here at load
+ * (loud, immediate) rather than with grader machinery.
+ *
+ * Only text that must never legitimately contain a marker is checked — the
+ * worker prompts are excluded, since they carry the markers by construction.
+ */
+{
+  const fixedText = [
+    COORDINATOR_PROMPT,
+    USER_TURN,
+    teamSkill.name,
+    // The skill body + frontmatter scaffolding, minus the interpolated markers.
+    "A two-agent team that reports secret codes.",
+    "Delegate to the researcher via addTask + runBoard.",
+    "researcher",
+    "auditor",
+    // The generic roster lines (first line of each worker prompt).
+    RESEARCHER_PROMPT.split("\n")[0]!,
+    AUDITOR_PROMPT.split("\n")[0]!,
+  ]
+    .join("\n")
+    .toLowerCase();
+
+  for (const [field, value] of [
+    ["researcherSecret", SECRET],
+    ["auditToken", AUDIT_TOKEN],
+    ["handoffCode", HANDOFF],
+  ] as const) {
+    if (fixedText.includes(value.toLowerCase())) {
+      throw new Error(
+        `fixture invalid: ${field} ${JSON.stringify(value)} appears in the runner's fixed ` +
+          `prompt/roster text, so it would trip the honesty guard and fail a correct ` +
+          `implementation. Choose a distinctive sentinel that does not occur in ordinary ` +
+          `instruction wording (e.g. "QORVIX-7788").`,
+      );
+    }
+  }
+}
 
 /**
  * Both coordinators are identical apart from the team binding — the A/B contract
@@ -316,6 +383,94 @@ async function run(actionName: "withTeam" | "solo", sessionId: string) {
  */
 function coordinatorOutput(res: { output?: unknown }): string {
   return typeof res.output === "string" ? res.output : "";
+}
+
+/** Final snapshot of each board task, read from the `task-change` component stream. */
+interface BoardTask {
+  id: string;
+  assignee?: string;
+  createdAt: number;
+  startedAt?: number;
+}
+
+function boardTasks(items: readonly Record<string, unknown>[]): BoardTask[] {
+  const byId = new Map<string, BoardTask>();
+  for (const item of items) {
+    if (item.type !== "component" || item.component !== "task-change") continue;
+    const task = (item.data as { task?: BoardTask } | undefined)?.task;
+    if (task?.id) byId.set(task.id, task); // keyed items upsert — last wins
+  }
+  return [...byId.values()];
+}
+
+/**
+ * STRUCTURAL PROOF that the auditor's task was created MID-DRAIN by a worker,
+ * not up front by the coordinator.
+ *
+ * Without this, the check can pass without proving the thing it exists to prove:
+ * the coordinator is merely *told* to delegate only to the researcher, but both
+ * workers are on its roster, so a coordinator that ignored the instruction and
+ * addTask'd BOTH itself would still surface both markers — with no fan-out.
+ *
+ * Two independent signals, both required:
+ *  1. Creator attribution (primary, exact). Items are stamped at emit time with
+ *     the `taskId` of the worker scope that produced them. The coordinator runs
+ *     outside any task scope, so ITS `addTask` calls carry no `taskId`; a
+ *     worker's carry that worker's task id. An `addTask` item stamped with the
+ *     researcher's task id therefore proves a WORKER created a task.
+ *  2. Timing (corroboration). The coordinator is blocked while `runBoard`
+ *     drains, so any task created at/after the researcher was CLAIMED
+ *     (`startedAt`) was necessarily created inside the drain window.
+ */
+function assertFannedOutMidDrain(items: readonly Record<string, unknown>[]): string[] {
+  const failures: string[] = [];
+  const tasks = boardTasks(items);
+  const researcher = tasks.find((t) => t.assignee === "researcher");
+  const auditor = tasks.find((t) => t.assignee === "auditor");
+
+  if (!researcher) return [`no researcher task on the board — nothing was delegated`];
+  if (!auditor) {
+    return [
+      `no auditor task on the board — the researcher never enqueued the follow-up work, ` +
+        `so no mid-drain fan-out happened`,
+    ];
+  }
+
+  // 1. Creator attribution: an addTask emitted from INSIDE the researcher's scope.
+  // Field names per the real item shapes: a `tool_output` names its tool in
+  // `blockName`, a `tool_call_progress` in `toolName`. (The `addTask` handler's
+  // own `block_trace` is NOT scope-stamped, so it cannot be used here.)
+  const workerCreatedTask = items.some(
+    (i) =>
+      (i.blockName === "addTask" || i.toolName === "addTask") && i.taskId === researcher.id,
+  );
+  if (!workerCreatedTask) {
+    failures.push(
+      `no addTask was emitted from inside the researcher's task scope (taskId ` +
+        `${researcher.id}) — the auditor's task was not created by a worker, so the ` +
+        `coordinator most likely assigned both agents itself and NO fan-out occurred`,
+    );
+  }
+
+  // 2. Timing: created at/after the researcher was claimed → inside the drain.
+  if (researcher.startedAt === undefined) {
+    failures.push(`researcher task was never claimed — the board did not run it`);
+  } else if (!(auditor.createdAt >= researcher.startedAt)) {
+    failures.push(
+      `auditor task was created BEFORE the researcher was claimed ` +
+        `(auditor.createdAt=${auditor.createdAt} < researcher.startedAt=${researcher.startedAt}) ` +
+        `— it predates the drain window, so the coordinator created it up front rather than ` +
+        `the researcher fanning out mid-drain`,
+    );
+  }
+  if (!(researcher.createdAt < auditor.createdAt)) {
+    failures.push(
+      `auditor task does not post-date the researcher task ` +
+        `(researcher.createdAt=${researcher.createdAt}, auditor.createdAt=${auditor.createdAt}) ` +
+        `— inconsistent with the researcher having enqueued it`,
+    );
+  }
+  return failures;
 }
 
 /** The roster lines the coordinator actually sees, via the real `agentPurpose`. */
@@ -406,6 +561,11 @@ async function runGoalCheck(): Promise<string[]> {
     }
   }
 
+  // HARD structural requirement: the auditor's task must have been created
+  // mid-drain by the researcher. Both markers being present is NOT sufficient —
+  // a coordinator that assigned both agents itself would also surface both.
+  failures.push(...assertFannedOutMidDrain(on.items as never));
+
   // Corroboration (printed, not graded): the worker generators actually executed,
   // and their distinct outputs are visible in the stream (rendered via messageText).
   const workerOutputs = on.items
@@ -461,6 +621,19 @@ async function runGoalCheck(): Promise<string[]> {
       ).join("") +
       `  worker stream outputs (corroboration):\n    ${workerOutputs.join("\n    ") || "(none)"}\n` +
       `  auditor worker executed: ${ranAuditor}\n` +
+      `  mid-drain fan-out proof:\n    ` +
+      boardTasks(on.items as never)
+        .map(
+          (t) =>
+            `${t.assignee ?? "?"} task ${t.id} createdAt=${t.createdAt} startedAt=${t.startedAt ?? "-"}`,
+        )
+        .join("\n    ") +
+      `\n    addTask emitted from inside a worker scope: ${
+        (on.items as never as Record<string, unknown>[]).some(
+          (i) =>
+            (i.blockName === "addTask" || i.toolName === "addTask") && i.taskId !== undefined,
+        )
+      }\n` +
       `delegation OFF terminal output: ${JSON.stringify(offOutput.slice(0, 300))}\n` +
       GRADED_MARKERS.map(
         ({ label, marker }) =>
@@ -474,12 +647,13 @@ async function runGoalCheck(): Promise<string[]> {
 const failures = await runGoalCheck();
 if (failures.length === 0) {
   console.log(
-    `\nPASS — the coordinator's terminal answer carried BOTH independent markers: the ` +
-      `researcher's secret (its delegated result was synthesized) and the auditor's sign-off ` +
-      `token (the auditor ran, which only happens when the researcher enqueues it mid-drain — ` +
-      `so the fan-out happened). Neither marker is derivable from the other. The no-delegation ` +
-      `baseline, given the identical prompt and request, produced neither — so the pass is ` +
-      `attributable to delegation actually running.`,
+    `\nPASS — the coordinator's terminal answer carried BOTH independent markers (the ` +
+      `researcher's secret and the auditor's sign-off token; neither derivable from the other), ` +
+      `AND the auditor's task was structurally proven to be created mid-drain by the researcher: ` +
+      `an addTask was emitted from inside the researcher's task scope, and the auditor's task was ` +
+      `created after the researcher was claimed — a window in which the coordinator is blocked. ` +
+      `The no-delegation baseline, given the identical prompt and request, produced neither ` +
+      `marker — so the pass is attributable to delegation and fan-out actually running.`,
   );
   process.exit(0);
 } else {
