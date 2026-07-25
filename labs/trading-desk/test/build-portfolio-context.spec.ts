@@ -298,6 +298,78 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map(), new Map());
     expect(out?.health?.lookThrough).toBeNull();
   });
+
+  it("opaqueFundCount counts distinct opaque FUNDS, not failed-axis entries — a fund thin on both axes must count once, not twice (Codex review, FIX-801 sub-PR c)", () => {
+    // A separate, self-contained book: AAPL direct + the well-covered SPY
+    // (attributes AAPL — needed so `lookThrough` is "partial", not "none",
+    // since a fund that is opaque on both axes contributes zero attribution
+    // by itself) + VTI, a fund thin on BOTH axes via two INDEPENDENT reasons
+    // (not a single combined "both" cause) — the exact shape that produces
+    // two entries in `opaqueFunds` for one ticker.
+    const thinBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // 10,000
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // 60,000
+          { ticker: "VTI", quantity: 50, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // 10,000
+        ],
+      }),
+    ];
+    const thinQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "VTI", price: 200, asOf: "2026-05-06" },
+    ];
+    const thinProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      [
+        "VTI",
+        {
+          payload: {
+            leveraged: false,
+            // Both axes reconcile (declared coverage matches the rows'
+            // actual summed weight) but sit well below the 85% floor — so
+            // BOTH axes reject independently, each with its own reason,
+            // rather than a single "both" cause (fund-of-funds / refusal /
+            // leveraged / no-profile all short-circuit to one combined
+            // reason instead).
+            constituents: [{ ticker: "MSFT", weight: 0.5 }],
+            nameCoverage: 0.5,
+            sectors: [{ sector: "Technology", weight: 0.5 }],
+            sectorCoverage: 0.5,
+          },
+          refusalReason: null,
+        },
+      ],
+    ]);
+
+    const out = buildPortfolioContext(thinBook, thinQuotes, "2026-05-06", new Map(), thinProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    // SPY still attributes AAPL, so the axis overall is "partial", not "none".
+    expect(lookThrough).not.toBeNull();
+    // VTI is the only opaque fund. Before the fix this read 2 (one entry per
+    // failed axis); the fix dedupes by ticker.
+    expect(lookThrough?.opaqueFundCount).toBe(1);
+  });
 });
 
 describe("householdTickerWeight (FIX-761)", () => {

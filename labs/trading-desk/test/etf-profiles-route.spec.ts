@@ -186,6 +186,24 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("costs zero fetches for a known bond ETF even with a STALE assetClass (Codex review, FIX-801 sub-PR c)", async () => {
+    // `assetClass` is also a user-editable field (the manual asset-class
+    // override), so a curated bond ETF's row can legitimately read something
+    // other than "fixed_income" — the pre-filter must not rely on that
+    // classified field alone, or a stale row would spend a shared Alpha
+    // Vantage unit on a fund the methodology says is pre-filtered for free.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "BND", quantity: 10, costBasis: 80, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    const res = await GET(get(USER_ID));
+    expect((await res.json()) as EtfProfilesResponse).toEqual({ profiles: [], refusals: [] });
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
   it("excludes an unpriced fund from the fetch set (no budget unit for a profile nothing can use)", async () => {
     await seedAccount(repoState.repo!, {
       accountId: "acc-1",

@@ -33,7 +33,7 @@ import {
 import type { EffectiveNamePosition, LookThroughSectorBucket, OpaqueFund } from "@/domain/portfolio/math/etf-look-through";
 import { toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
 import { useClassifications } from "./use-classifications";
-import { useEtfProfiles } from "./use-etf-profiles";
+import { etfProfilesResponseToRows, useEtfProfiles } from "./use-etf-profiles";
 import { ASSET_CLASS_LABELS, DASH, formatMoney } from "./portfolio-format";
 import { cn } from "@/lib/utils";
 
@@ -136,30 +136,14 @@ export function HealthSection({
   }, [reclassifiedTickers, onAccountsCorrected]);
 
   // Ticker-keyed `FundProfileInput` map the pure leaf expects — one shared
-  // conversion (`toFundProfileMap`) from the route's client projection,
-  // exactly mirroring the analysis seed's own use of the same adapter over
-  // the repository's row shape (FIX-801 sub-PR c).
-  const etfProfiles = useMemo(() => {
-    const rows = [
-      ...[...etfProfileEntries.values()].map((p) => ({
-        ticker: p.ticker,
-        payload: {
-          leveraged: p.leveraged,
-          constituents: p.constituents,
-          nameCoverage: p.nameCoverage,
-          sectors: p.sectors,
-          sectorCoverage: p.sectorCoverage,
-        },
-        refusalReason: null,
-      })),
-      ...[...etfRefusalEntries.values()].map((r) => ({
-        ticker: r.ticker,
-        payload: null,
-        refusalReason: r.reason,
-      })),
-    ];
-    return toFundProfileMap(rows);
-  }, [etfProfileEntries, etfRefusalEntries]);
+  // conversion (`toFundProfileMap`, over `etfProfilesResponseToRows`'s row
+  // projection) from the route's client projection, exactly mirroring the
+  // analysis seed's own use of the same adapter over the repository's row
+  // shape (FIX-801 sub-PR c).
+  const etfProfiles = useMemo(
+    () => toFundProfileMap(etfProfilesResponseToRows(etfProfileEntries, etfRefusalEntries)),
+    [etfProfileEntries, etfRefusalEntries],
+  );
 
   const health = useMemo(() => {
     const quotes: QuoteMap = new Map();

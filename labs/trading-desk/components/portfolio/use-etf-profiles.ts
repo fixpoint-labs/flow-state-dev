@@ -5,6 +5,7 @@ import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
 import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 import type { Quote } from "@/domain/portfolio/services/get-quotes";
+import { isEtfProfileFetchCandidate, type FundProfileRowInput } from "@/domain/portfolio/math/etf-profile-map";
 import type {
   EtfProfileEntry,
   EtfProfileRefusalEntry,
@@ -20,10 +21,13 @@ import type {
  * server-side (no Alpha Vantage fan-out).
  *
  * **The eligibility-refetch fix.** The route's own fetch set (Decision 5) is
- * narrowed to funds that are BOTH priced and classified as a fund — and both
- * of those inputs settle asynchronously after holdings load. `useApiQuery`'s
- * stable-URL query only re-runs when its URL changes, so a fund whose
- * eligibility resolves late is otherwise missed for the whole session:
+ * narrowed to funds that are BOTH priced and fetch-eligible
+ * (`isEtfProfileFetchCandidate` — the same predicate the route and the
+ * analysis seed's `heldFundTickers` use, so all three agree on exactly the
+ * same set) — and both of those inputs settle asynchronously after holdings
+ * load. `useApiQuery`'s stable-URL query only re-runs when its URL changes,
+ * so a fund whose eligibility resolves late is otherwise missed for the whole
+ * session:
  *   - **Prices.** On a cold mount the route runs before any quote exists,
  *     skips every fund as unpriced, and returns nothing.
  *   - **Classifications.** A ticker-shaped ETF imported with no type hint
@@ -53,6 +57,13 @@ import type {
  * the FIX-801 sub-PR c PR description). Order-independent (sorted) so
  * re-fetching in a different account order doesn't spuriously change the
  * signature and trigger a needless refetch.
+ *
+ * Uses `isEtfProfileFetchCandidate`, the SAME predicate the route fetches
+ * against and the seed's `heldFundTickers` reads — not a looser "is this
+ * fund-shaped" check. A holding the route will never fetch (a mutual fund, a
+ * curated bond ETF, a flagged inconsistent-history row) must not change this
+ * signature either, or a household holding one would trigger a spurious
+ * refetch/cache-bust for a ticker that was never going to be warmed.
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,
@@ -62,9 +73,9 @@ export function computeEtfEligibilitySignature(
   for (const acc of accounts) {
     for (const h of acc.holdings) {
       const ticker = h.ticker.toUpperCase();
-      const isFundTyped = h.assetType === "etf" || h.assetType === "mutual_fund";
+      const isCandidate = isEtfProfileFetchCandidate(h);
       const isPriced = priceMap.has(ticker);
-      rows.push(`${ticker}:${isFundTyped ? 1 : 0}:${isPriced ? 1 : 0}`);
+      rows.push(`${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}`);
     }
   }
   return rows.sort().join(",");
@@ -102,4 +113,38 @@ export function useEtfProfiles(
   }, [data]);
 
   return { profiles, refusals };
+}
+
+/**
+ * Convert this hook's two ticker-keyed maps into the flat row shape
+ * `toFundProfileMap` (`domain/portfolio/math/etf-profile-map.ts`) expects —
+ * the client-side half of the "one conversion, two consumers" adapter (the
+ * analysis seed converts the repository's `EtfProfileRow[]` directly; this is
+ * the Health UI's equivalent over the route's two-array client projection).
+ * Pulled out of `health-section.tsx` (a review trim, FIX-801 sub-PR c) so the
+ * component doesn't hand-rebuild payload objects inline — one place knows the
+ * `EtfProfileEntry` → `NormalizedFundProfile`-shaped payload mapping.
+ */
+export function etfProfilesResponseToRows(
+  profiles: ReadonlyMap<string, EtfProfileEntry>,
+  refusals: ReadonlyMap<string, EtfProfileRefusalEntry>,
+): FundProfileRowInput[] {
+  return [
+    ...[...profiles.values()].map((p) => ({
+      ticker: p.ticker,
+      payload: {
+        leveraged: p.leveraged,
+        constituents: p.constituents,
+        nameCoverage: p.nameCoverage,
+        sectors: p.sectors,
+        sectorCoverage: p.sectorCoverage,
+      },
+      refusalReason: null,
+    })),
+    ...[...refusals.values()].map((r) => ({
+      ticker: r.ticker,
+      payload: null,
+      refusalReason: r.reason,
+    })),
+  ];
 }

@@ -111,7 +111,14 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
                 ? `${f.ticker} ${f.weightPct.toFixed(1)}% (${f.level}, look-through)`
                 : `${f.sector} ${f.weightPct.toFixed(1)}% (warn, look-through)`,
             ),
-            opaqueFundCount: health.lookThroughExposure.opaqueFunds.length,
+            // `opaqueFunds` holds one entry per FAILED AXIS, not per fund — a
+            // fund opaque on both the name and sector axes (via two separate
+            // entries, when it isn't a single combined "both" reason) would
+            // double-count under a bare `.length`. Dedupe by ticker so the
+            // seed reports the true opaque-FUND count to the analysis model
+            // (Codex review, FIX-801 sub-PR c).
+            opaqueFundCount: new Set(health.lookThroughExposure.opaqueFunds.map((f) => f.ticker))
+              .size,
           }
         : null,
   };

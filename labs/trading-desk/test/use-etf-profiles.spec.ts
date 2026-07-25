@@ -1,19 +1,24 @@
 /**
  * Tests for `computeEtfEligibilitySignature` — the derived key behind the
  * `useEtfProfiles` eligibility-refetch fix (FIX-801 §8 step 6: "a real bug,
- * not a nit"). The route's own fetch set is narrowed to funds that are BOTH
- * priced and classified as a fund, and both settle asynchronously after
- * holdings load; `useApiQuery`'s stable-URL query only re-runs when its URL
- * changes, so this signature — fed into that URL — is what makes a late-
- * settling eligibility input actually trigger a refetch instead of being
- * missed for the whole session.
+ * not a nit"). The route's own fetch set is narrowed to holdings that are
+ * BOTH priced and a fetch candidate per `isEtfProfileFetchCandidate`
+ * (`domain/portfolio/math/etf-profile-map.ts` — ETF-typed, not a curated bond
+ * ETF, not flagged inconsistent-history), and the eligibility inputs settle
+ * asynchronously after holdings load; `useApiQuery`'s stable-URL query only
+ * re-runs when its URL changes, so this signature — fed into that URL — is
+ * what makes a late-settling eligibility input actually trigger a refetch
+ * instead of being missed for the whole session.
  *
  * A React-rendering assertion of the hook itself (mount → resolve → refetch)
  * would need jsdom + a component-test harness, which this codebase doesn't
  * have yet (no `.spec.tsx` files exist) — flagged in the PR description as a
  * follow-up rather than added speculatively here. These tests instead pin the
  * PURE logic the fix rests on: the two concrete triggers from the spec text
- * (prices resolving; a classification correction) each change the signature.
+ * (prices resolving; a classification correction) each change the signature,
+ * and a holding the route will NEVER fetch (a mutual fund, a curated bond ETF)
+ * does NOT change the signature the way a real candidate does — the
+ * eligibility-filter-mismatch fix (a review round on this PR, #927).
  */
 import { describe, expect, it } from "vitest";
 import { computeEtfEligibilitySignature } from "../components/portfolio/use-etf-profiles";
@@ -88,5 +93,93 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
 
   it("is empty for a fund-less, holding-less book", () => {
     expect(computeEtfEligibilitySignature([], new Map())).toBe("");
+  });
+
+  it("does NOT flip the candidate bit for a mutual fund — the route never fetches one", () => {
+    const priceMap = new Map([["FXAIX", quote("FXAIX", 150)]]);
+    // A mutual fund and a plain equity are both fetch-INeligible; the
+    // signature must treat them identically (candidate bit 0), not the old
+    // behavior of treating a mutual fund as fund-typed (bit 1) — that
+    // mismatch against the route's actual (ETF-only) fetch set was a spurious
+    // refetch trigger for a ticker that was never going to be warmed.
+    const mutualFund = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "FXAIX", assetType: "mutual_fund" })] }],
+      priceMap,
+    );
+    const equity = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "FXAIX", assetType: "equity" })] }],
+      priceMap,
+    );
+    expect(mutualFund).toBe(equity);
+    expect(mutualFund).toBe("FXAIX:0:1");
+  });
+
+  it("does NOT flip the candidate bit for a curated bond ETF (assetClass fixed_income) — Decision 5's local pre-filter", () => {
+    const priceMap = new Map([["BND", quote("BND", 75)]]);
+    // assetType stays "etf" for a bond ETF (it's still ETF-typed for
+    // valuation), but assetClass is "fixed_income" — the route's own
+    // pre-filter excludes it from the fetch set at zero cost. The signature
+    // must agree, not just check assetType === "etf".
+    const bondEtf = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "BND", assetType: "etf", assetClass: "fixed_income" })] }],
+      priceMap,
+    );
+    const equity = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "BND", assetType: "equity", assetClass: "equity" })] }],
+      priceMap,
+    );
+    expect(bondEtf).toBe(equity);
+    expect(bondEtf).toBe("BND:0:1");
+  });
+
+  it("does NOT flip the candidate bit for a curated bond ETF even with a STALE assetClass (Codex review, FIX-801 sub-PR c)", () => {
+    // BND is in the curated KNOWN_BOND_ETFS list. Its stored `assetClass`
+    // would normally already read "fixed_income" (the classifier
+    // short-circuits ahead of any hint), but `assetClass` is also a
+    // user-editable field (the manual asset-class override) — so a row
+    // manually (or otherwise) left at "equity" must still be excluded via
+    // `isKnownBondEtf`, not just the `assetClass` check. Otherwise a stale
+    // row would spend a shared Alpha Vantage unit fetching a profile for a
+    // fund the methodology says is pre-filtered at zero cost.
+    const priceMap = new Map([["BND", quote("BND", 75)]]);
+    const staleAssetClass = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "BND", assetType: "etf", assetClass: "equity" })] }],
+      priceMap,
+    );
+    const equity = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "BND", assetType: "equity", assetClass: "equity" })] }],
+      priceMap,
+    );
+    expect(staleAssetClass).toBe(equity);
+    expect(staleAssetClass).toBe("BND:0:1");
+  });
+
+  it("does NOT flip the candidate bit for a flagged inconsistent-history row", () => {
+    const priceMap = new Map([["NVDA", quote("NVDA", 130)]]);
+    const flagged = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "NVDA", assetType: "etf", dataQuality: "inconsistent_history" }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    const equity = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "NVDA", assetType: "equity" })] }],
+      priceMap,
+    );
+    expect(flagged).toBe(equity);
+    expect(flagged).toBe("NVDA:0:1");
+  });
+
+  it("DOES flip the candidate bit for a genuine ETF fetch candidate (control)", () => {
+    const priceMap = new Map([["SPY", quote("SPY", 400)]]);
+    const candidate = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "SPY", assetType: "etf", assetClass: "equity" })] }],
+      priceMap,
+    );
+    expect(candidate).toBe("SPY:1:1");
   });
 });

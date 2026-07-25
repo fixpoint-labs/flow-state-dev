@@ -18,7 +18,13 @@
  * Pure, no IO — takes plain data, not `db/repository.ts` or the route's response
  * types, so this stays a BP-019 leaf either caller can import without pulling in
  * a runtime dependency on the other's module graph.
+ *
+ * Also exports {@link isEtfProfileFetchCandidate}, the second shared judgment
+ * call this feature needs three copies of: which holdings the route will ever
+ * spend an Alpha Vantage unit fetching a profile for.
  */
+import type { Holding } from "../schema/portfolio-schema";
+import { isKnownBondEtf } from "./classify-instrument";
 import type { FundProfileInput, NormalizedFundProfile } from "./etf-look-through";
 
 /** The common shape both callers can trivially produce: a repository row
@@ -54,4 +60,44 @@ export function toFundProfileMap(
     }
   }
   return map;
+}
+
+/**
+ * Whether a holding is one `GET /api/portfolio/etf-profiles` will ever fetch
+ * a profile for — the single definition of "fetch-eligible", so the route's
+ * own eligible-ticker derivation, the analysis seed's `heldFundTickers`, and
+ * the Health UI's eligibility-refetch signature
+ * (`computeEtfEligibilitySignature`) all agree on exactly the same set.
+ *
+ * ETF-only (the endpoint never fetches mutual funds — Non-goals), excludes a
+ * curated bond ETF, and excludes a flagged inconsistent-history row (never a
+ * fetch target). Before this was extracted, `heldFundTickers` and the
+ * signature both independently treated `mutual_fund` as fund-typed and
+ * neither excluded a bond ETF / `inconsistent_history` — so a household
+ * holding a mutual fund or a bond ETF (which the route will NEVER fetch)
+ * still changed the hook's signature, triggering a spurious refetch/
+ * cache-bust, and still cost the seed an unnecessary DB read. One predicate,
+ * three call sites, no drift.
+ *
+ * **Bond-ETF exclusion checks BOTH `assetClass !== "fixed_income"` AND
+ * `!isKnownBondEtf(ticker)`, not just the classified field.** The stored
+ * `assetClass` is normally `fixed_income` for a known bond ETF (the
+ * classifier short-circuits ahead of any hint), but it is also a
+ * user-editable field (`setHoldingAssetClass`, the manual asset-class
+ * override) — so a curated bond ETF whose row was manually reclassified away
+ * from `fixed_income` would otherwise still pass this predicate and get
+ * fetched, spending a shared 25/day Alpha Vantage unit on a fund the
+ * methodology says is pre-filtered at zero cost. Checking the curated list
+ * directly closes that gap regardless of what the stored field currently
+ * says.
+ */
+export function isEtfProfileFetchCandidate(
+  holding: Pick<Holding, "ticker" | "assetType" | "assetClass" | "dataQuality">,
+): boolean {
+  return (
+    holding.assetType === "etf" &&
+    holding.assetClass !== "fixed_income" &&
+    !isKnownBondEtf(holding.ticker) &&
+    holding.dataQuality !== "inconsistent_history"
+  );
 }
