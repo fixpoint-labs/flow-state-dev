@@ -88,7 +88,14 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].ticker).toBe("SPY");
   });
 
-  it("overwrites in place on a conflicting upsert — a refusal supersedes a stale success", async () => {
+  it("a refusal upsert does NOT overwrite an existing success — the atomic cross-process guard (Codex review, FIX-801 sub-PR a)", async () => {
+    // This is the repository-level enforcement of the same invariant the
+    // route's JS-side `hasStoredSuccess` guard already applies — pushed into
+    // the upsert's SQL so it holds atomically across concurrent Postgres
+    // writers (multiple route instances), not just within one Node process.
+    // Simulates the race directly: two upserts in sequence where the SECOND
+    // (the refusal) is the "loser" case and must be silently dropped, not
+    // applied — exactly what a losing concurrent writer's commit would do.
     await repo.upsertEtfProfiles([{ ticker: "VXX", payload: SAMPLE_PROFILE, refusalReason: null }]);
     await repo.upsertEtfProfiles([
       {
@@ -102,8 +109,25 @@ describe("ETF profiles repository (FIX-801)", () => {
     ]);
     const rows = await repo.getEtfProfiles(["VXX"]);
     expect(rows).toHaveLength(1);
+    // The success payload survives — the refusal write was a no-op.
+    expect(rows[0].payload).toEqual(SAMPLE_PROFILE);
+    expect(rows[0].refusalReason).toBeNull();
+  });
+
+  it("a success upsert for a genuinely new ticker (no existing row) is never blocked by the guard", async () => {
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NEWT",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["NEWT"]);
     expect(rows[0].payload).toBeNull();
-    expect(rows[0].refusalReason).toBe("malformed");
+    expect(rows[0].refusalReason).toBe("not_an_etf");
   });
 
   it("overwrites in place — a success supersedes a stale refusal (coverage improved on refresh)", async () => {

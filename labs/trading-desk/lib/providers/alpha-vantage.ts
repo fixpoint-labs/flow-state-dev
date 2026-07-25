@@ -76,11 +76,38 @@ export class AlphaVantageBudgetError extends AlphaVantageError {
 
 const DEFAULT_DAILY_LIMIT = 25;
 
-/** Process-level daily-budget counter. Module scope, not session state. */
-const budget: { dayUtc: string; count: number } = { dayUtc: "", count: 0 };
+// Anchored on `globalThis`, not module-level `let`/`const`s — this module gets
+// bundled separately per Next.js route graph (the `db/portfolio-db.ts`
+// precedent: `/api/flows/[...path]` and `/api/portfolio/*` each load their
+// OWN copy of this module). A plain module-scoped counter/array would then
+// give each route graph its own independent budget/pacing state — a
+// concurrent analysis run and an ETF-profile fill could each independently
+// admit 5 calls/min, so the two together could issue 10/min against the
+// provider's real 5/min cap, defeating the whole point of the pacing guard
+// (Codex review, FIX-801 sub-PR a). `globalThis` is shared across every
+// module instance in the one Node process, however many times this file gets
+// re-bundled — same fix, same reason, as the portfolio DB backing.
+const STATE_KEY = Symbol.for("flow-state-dev.trading-desk.alpha-vantage.state");
+type AlphaVantageState = {
+  /** Process-level daily-budget counter. Not session state. */
+  budget: { dayUtc: string; count: number };
+  /** Process-level per-minute admission window (FIX-801 Decision 5, §8 step 0)
+   *  — timestamps (ms) of requests admitted within the trailing 60s. A
+   *  sliding window, not a calendar-minute bucket, so it can't burst 10
+   *  requests across a minute boundary the way a fixed window would. */
+  minuteWindow: number[];
+};
+type GlobalWithAvState = typeof globalThis & { [STATE_KEY]?: AlphaVantageState };
+
+function getAvState(): AlphaVantageState {
+  const g = globalThis as GlobalWithAvState;
+  g[STATE_KEY] ??= { budget: { dayUtc: "", count: 0 }, minuteWindow: [] };
+  return g[STATE_KEY];
+}
 
 /** Test hook — reset the in-process daily counter between specs. Not in the barrel. */
 export function _resetBudget(): void {
+  const budget = getAvState().budget;
   budget.dayUtc = "";
   budget.count = 0;
 }
@@ -108,15 +135,9 @@ function resolveDailyLimit(): number {
 const DEFAULT_MINUTE_LIMIT = 5;
 const MINUTE_MS = 60_000;
 
-/** Process-level per-minute admission window (FIX-801 Decision 5, §8 step 0) —
- *  timestamps (ms) of requests admitted within the trailing 60s. Module scope,
- *  not session state; a sliding window, not a calendar-minute bucket, so it
- *  can't burst 10 requests across a minute boundary the way a fixed window would. */
-const minuteWindow: number[] = [];
-
 /** Test hook — reset the in-process minute-pacing window between specs. Not in the barrel. */
 export function _resetMinutePacing(): void {
-  minuteWindow.length = 0;
+  getAvState().minuteWindow.length = 0;
 }
 
 /**
@@ -146,6 +167,7 @@ function resolveMinuteLimit(): number {
 async function awaitMinutePacing(): Promise<void> {
   const limit = resolveMinuteLimit();
   if (limit <= 0) return; // unlimited — a paid plan has no 5/min cap
+  const minuteWindow = getAvState().minuteWindow;
   for (;;) {
     const now = Date.now();
     while (minuteWindow.length > 0 && now - minuteWindow[0]! >= MINUTE_MS) {
@@ -190,6 +212,7 @@ export async function alphaVantageRequest(
   // check-and-reserve below is fine either way, since that reserve remains the
   // real correctness boundary; this is purely a latency short-circuit (Codex
   // review, FIX-801 sub-PR a).
+  const budget = getAvState().budget;
   const precheckLimit = resolveDailyLimit();
   if (precheckLimit > 0) {
     const today = new Date().toISOString().slice(0, 10);

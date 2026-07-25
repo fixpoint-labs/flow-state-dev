@@ -1913,6 +1913,22 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               transientAttempts: sql`excluded.transient_attempts`,
               fetchedAt: sql`excluded.fetched_at`,
             },
+            // Cross-PROCESS guard (Codex review, FIX-801 sub-PR a): the
+            // route's `withLease`/re-read-under-lease protects the write
+            // within ONE Node process, but this route can run as several
+            // concurrent instances against the same Postgres backing, each
+            // with its own lease map — two instances can each read the same
+            // stale/missing row and both fetch, and whichever writes SECOND
+            // must not silently clobber a fresh success with a refusal. This
+            // WHERE mirrors the same guard already enforced in JS
+            // (`hasStoredSuccess`), pushed into SQL so Postgres enforces it
+            // atomically: a REFUSAL-shaped write (`excluded.refusal_reason`
+            // set) is simply dropped — not applied, per ON CONFLICT ... DO
+            // UPDATE ... WHERE semantics — when the row it would land on
+            // already carries a real payload. A success-shaped write
+            // (`refusal_reason` null, including the preserved-payload
+            // backoff-only case) is never blocked here.
+            where: sql`${etfProfiles.payload} is null or excluded.refusal_reason is null`,
           });
       });
     },

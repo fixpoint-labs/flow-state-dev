@@ -226,8 +226,23 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
 
   const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
   if (rawHoldings.length > 0 && !hasResolvableConstituent) {
-    // Every holding row is AV's "n/a" — a commodity/bond fund whose lines are
-    // bullion or unsymboled debt, or another shape with nothing to attribute.
+    // "No resolvable constituent" has two DIFFERENT causes that must not
+    // share a verdict (Codex review, FIX-801 sub-PR a): a genuinely
+    // unsymboled book (bullion, unsymboled debt) is a permanent fact about
+    // the fund — `ineligible`, ~90-day backoff. Symbols that WERE resolvable
+    // but whose weights all failed to parse (corrupted/out-of-range) is a
+    // provider-side data glitch that may well be fixed on the next fetch —
+    // `malformed`, ~7-day backoff. Checked independently of weight validity,
+    // so a response with fine symbols and garbage weights isn't suppressed
+    // for 12x longer than it should be.
+    const hasResolvableSymbol = rawHoldings.some((row) => !isAbsent(row.symbol));
+    if (hasResolvableSymbol) {
+      return {
+        kind: "refused",
+        reason: "malformed",
+        detail: "resolvable constituent symbols present but no weight parsed",
+      };
+    }
     return { kind: "refused", reason: "ineligible", detail: "no resolvable constituent tickers" };
   }
 

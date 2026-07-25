@@ -136,6 +136,22 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
   });
 
+  it("classifies resolvable symbols with ALL-unparseable/out-of-range weights as malformed, not ineligible (Codex review)", async () => {
+    // Distinct from the all-n/a case above: the SYMBOLS are fine here, only
+    // the weights are corrupted — a recoverable provider glitch (~7-day
+    // backoff), not a permanent fact about the fund (~90-day backoff).
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [],
+      holdings: [
+        { symbol: "AAPL", weight: "not-a-number" },
+        { symbol: "MSFT", weight: "1.5" }, // out of [0,1]
+      ],
+    });
+    const out = await fetchEtfProfile("CORRUPT_SYMBOLS_OK");
+    expect(out).toMatchObject({ kind: "refused", reason: "malformed" });
+  });
+
   it("treats a completely empty profile response as not_an_etf", async () => {
     mockFetchOnce({});
     const out = await fetchEtfProfile("NOTANETF");
