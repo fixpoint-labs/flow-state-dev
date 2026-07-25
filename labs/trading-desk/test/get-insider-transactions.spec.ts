@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { get_insider_transactions } from "../flows/analysis/tools/data/get_insider_transactions";
 import { _resetCache } from "../lib/cache";
-import { _resetBudget } from "../lib/providers/alpha-vantage";
+import { _resetBudget, _resetMinutePacing } from "../lib/providers/alpha-vantage";
 
 const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");
 
@@ -18,13 +18,20 @@ const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
   _resetCache();
+  // FIX-801 minute pacing defaults to 5/min and is module-scoped; disabled
+  // here (this suite predates pacing and doesn't exercise it) so cumulative
+  // AV calls across tests never wait on a real 60s window.
+  _resetMinutePacing();
+  process.env.ALPHAVANTAGE_MINUTE_LIMIT = "0";
 });
 afterEach(() => {
   process.chdir(originalCwd);
   vi.restoreAllMocks();
   delete process.env.FINNHUB_API_KEY;
   delete process.env.ALPHAVANTAGE_API_KEY;
+  delete process.env.ALPHAVANTAGE_MINUTE_LIMIT;
   _resetBudget();
+  _resetMinutePacing();
 });
 
 // Minimal stand-in for BlockContext — the handler only reads

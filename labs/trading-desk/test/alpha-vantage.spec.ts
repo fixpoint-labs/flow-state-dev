@@ -18,6 +18,7 @@ import {
   fetchAlphaVantageInsiderTransactions,
   hasAlphaVantageKey,
   _resetBudget,
+  _resetMinutePacing,
 } from "../lib/providers/alpha-vantage";
 
 // A fresh Response per call — a single shared Response's body can only be read
@@ -46,13 +47,21 @@ function mockFetchByFunction(byFn: Record<string, unknown>, status = 200) {
 beforeEach(() => {
   process.env.ALPHAVANTAGE_API_KEY = "test-key";
   delete process.env.ALPHAVANTAGE_DAILY_LIMIT;
+  // Minute pacing defaults to OFF for the suite — every pre-existing spec here
+  // predates pacing and exercises the daily guard in isolation (often looping
+  // 25-30 calls with real timers); the dedicated pacing describe block below
+  // opts back in per test. Keeps "the daily guard's existing behaviour and its
+  // spec are unchanged" (FIX-801 §8 step 0) literally true, not just in intent.
+  process.env.ALPHAVANTAGE_MINUTE_LIMIT = "0";
   _resetBudget();
+  _resetMinutePacing();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.ALPHAVANTAGE_API_KEY;
   delete process.env.ALPHAVANTAGE_DAILY_LIMIT;
+  delete process.env.ALPHAVANTAGE_MINUTE_LIMIT;
 });
 
 describe("hasAlphaVantageKey", () => {
@@ -198,6 +207,82 @@ describe("alphaVantageRequest — daily budget guard", () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe("alphaVantageRequest — per-minute pacing (FIX-801 Decision 5)", () => {
+  it("a sixth call inside one minute waits rather than firing, and does not consume a daily unit while waiting", async () => {
+    process.env.ALPHAVANTAGE_MINUTE_LIMIT = "5";
+    process.env.ALPHAVANTAGE_DAILY_LIMIT = "100";
+    vi.useFakeTimers();
+    try {
+      const spy = mockFetchOnce({ ok: 1 });
+      for (let i = 0; i < 5; i++) {
+        await alphaVantageRequest({ function: `F${i}`, symbol: "X" });
+      }
+      expect(spy).toHaveBeenCalledTimes(5);
+
+      // The sixth call is paced — it must not resolve (or fetch, or debit the
+      // daily budget) until the oldest admission ages out of the 60s window.
+      let sixthSettled = false;
+      const sixth = alphaVantageRequest({ function: "F5", symbol: "X" }).then(() => {
+        sixthSettled = true;
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(sixthSettled).toBe(false);
+      expect(spy).toHaveBeenCalledTimes(5); // still not fetched — no daily unit spent yet
+
+      await vi.advanceTimersByTimeAsync(30_001);
+      await sixth;
+      expect(sixthSettled).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(6);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the daily guard's existing behavior unchanged when pacing has headroom", async () => {
+    process.env.ALPHAVANTAGE_MINUTE_LIMIT = "5";
+    process.env.ALPHAVANTAGE_DAILY_LIMIT = "2";
+    const spy = mockFetchOnce({ ok: 1 });
+    await alphaVantageRequest({ function: "A", symbol: "X" });
+    await alphaVantageRequest({ function: "B", symbol: "X" });
+    expect(spy).toHaveBeenCalledTimes(2);
+    await expect(
+      alphaVantageRequest({ function: "C", symbol: "X" }),
+    ).rejects.toBeInstanceOf(AlphaVantageBudgetError);
+  });
+
+  it("disables pacing only when the limit is exactly '0' (a paid plan has no 5/min cap)", async () => {
+    process.env.ALPHAVANTAGE_MINUTE_LIMIT = "0";
+    mockFetchOnce({ ok: 1 });
+    for (let i = 0; i < 10; i++) {
+      await alphaVantageRequest({ function: "A", symbol: "X" });
+    }
+    // No throw and no hang = pacing disabled.
+    expect(true).toBe(true);
+  });
+
+  it.each(["", "  ", "-5", "5.5", "five", "0.0", "00", "-0"])(
+    "keeps pacing ON (default 5/min) for the malformed limit %j",
+    async (bad) => {
+      process.env.ALPHAVANTAGE_MINUTE_LIMIT = bad;
+      vi.useFakeTimers();
+      try {
+        mockFetchOnce({ ok: 1 });
+        for (let i = 0; i < 5; i++) {
+          await alphaVantageRequest({ function: "A", symbol: "X" });
+        }
+        let settled = false;
+        void alphaVantageRequest({ function: "A", symbol: "X" }).then(() => {
+          settled = true;
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(settled).toBe(false); // still paced — guard did NOT silently disable
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });
 
 describe("fetchAlphaVantageInsiderTransactions", () => {

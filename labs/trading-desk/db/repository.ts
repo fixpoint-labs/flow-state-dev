@@ -46,9 +46,12 @@ import { splitAttributesSchema } from "@/domain/portfolio/schema/ledger-schema";
 import { deriveLots } from "@/domain/portfolio/math/lots";
 import type { RealizedDisposal } from "@/domain/portfolio/math/realized-gains";
 import type { TaxProfileInput } from "@/domain/portfolio/schema/tax-schema";
+import type { NormalizedEtfProfile } from "@/lib/providers/etf-profile";
+import type { EtfProfileRefusalClass } from "@/lib/etf-profile-backoff";
 import type { Db } from "./client";
 import {
   accounts,
+  etfProfiles,
   holdings,
   instrumentClassifications,
   ledgerEvents,
@@ -302,6 +305,28 @@ export interface PortfolioRepository {
    * reference data — no `userId` guard.
    */
   upsertInstrumentClassifications(rows: InstrumentClassificationInput[]): Promise<void>;
+  /**
+   * Stored ETF holdings profiles for a set of fund tickers (FIX-801), for the
+   * Portfolio pane's fill route and the analysis seed (read-only there — see
+   * `upsertEtfProfiles`). Tickers are upper-cased before the lookup (the
+   * canonical PK); an empty input returns `[]` without a query. A ticker with
+   * no row is simply a miss — the caller (the fill route) decides whether to
+   * fetch it. GLOBAL reference data — no `userId` guard (the `getQuotes` /
+   * `getInstrumentClassifications` precedent: a fund's holdings composition is
+   * a public fact, not a household-scoped one).
+   */
+  getEtfProfiles(tickers: string[]): Promise<EtfProfileRow[]>;
+  /**
+   * Persist a batch of ETF profile fill outcomes (FIX-801), transactionally —
+   * upsert on the `ticker` PK. Two shapes: a SUCCESS row (`payload` set,
+   * `refusalReason: null`, even when the profile is thin/below the coverage
+   * floor — Decision 4: a thin profile is stored, not refused) or a REFUSAL
+   * row (`payload: null`, `refusalReason` + `retryAt` set — a genuine fetch
+   * failure or permanent ineligibility, per the `lib/etf-profile-backoff.ts`
+   * policy). Tickers are upper-cased and in-memory deduped by ticker (last
+   * write wins — the `upsertQuotes` precedent). Empty input is a no-op.
+   */
+  upsertEtfProfiles(rows: EtfProfileUpsertInput[]): Promise<void>;
 }
 
 /** One `(account, ticker)` income aggregate — see
@@ -396,6 +421,35 @@ export type InstrumentClassificationInput = {
   sector: string;
   source: string;
 };
+
+/** One persisted ETF profile fill outcome (FIX-801) — the read shape of
+ *  `app.etf_profiles`, timestamps normalized to ISO-8601. Exactly one of
+ *  `payload` / `refusalReason` is non-null (never both, never neither) — see
+ *  {@link EtfProfileUpsertInput}. */
+export type EtfProfileRow = {
+  ticker: string;
+  payload: NormalizedEtfProfile | null;
+  refusalReason: EtfProfileRefusalClass | null;
+  refusalDetail: string | null;
+  retryAt: string | null;
+  transientAttempts: number;
+  fetchedAt: string;
+};
+
+/** Fields a caller supplies to persist one ETF profile fill outcome (FIX-801).
+ *  A discriminated union so a caller can't accidentally set both `payload` and
+ *  `refusalReason` (or neither) — the fill route always has exactly one
+ *  outcome per ticker per attempt. */
+export type EtfProfileUpsertInput =
+  | { ticker: string; payload: NormalizedEtfProfile; refusalReason: null }
+  | {
+      ticker: string;
+      payload: null;
+      refusalReason: EtfProfileRefusalClass;
+      refusalDetail: string | null;
+      retryAt: string;
+      transientAttempts: number;
+    };
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
  *  Note: this narrows arbitrary-precision `numeric` to a JS double — fine for
@@ -580,6 +634,22 @@ function mapInstrumentClassification(
     ticker: row.ticker,
     sector: row.sector,
     source: row.source,
+    fetchedAt: new Date(row.fetchedAt).toISOString(),
+  };
+}
+
+/** Map an `app.etf_profiles` row to its read shape (FIX-801). `payload` is a
+ *  jsonb column typed `unknown` by Drizzle — cast to {@link NormalizedEtfProfile}
+ *  at this one read boundary rather than at every call site (the row was only
+ *  ever written by `upsertEtfProfiles`, which accepts the same type). */
+function mapEtfProfile(row: typeof etfProfiles.$inferSelect): EtfProfileRow {
+  return {
+    ticker: row.ticker,
+    payload: (row.payload as NormalizedEtfProfile | null) ?? null,
+    refusalReason: (row.refusalReason as EtfProfileRefusalClass | null) ?? null,
+    refusalDetail: row.refusalDetail,
+    retryAt: row.retryAt === null ? null : new Date(row.retryAt).toISOString(),
+    transientAttempts: row.transientAttempts,
     fetchedAt: new Date(row.fetchedAt).toISOString(),
   };
 }
@@ -1765,6 +1835,46 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             set: {
               sector: sql`excluded.sector`,
               source: sql`excluded.source`,
+              fetchedAt: sql`now()`,
+            },
+          });
+      });
+    },
+
+    async getEtfProfiles(tickers) {
+      const wanted = [...new Set(tickers.map((t) => t.toUpperCase()))];
+      if (wanted.length === 0) return [];
+      const rows = await db.select().from(etfProfiles).where(inArray(etfProfiles.ticker, wanted));
+      return rows.map(mapEtfProfile);
+    },
+
+    async upsertEtfProfiles(rows) {
+      if (rows.length === 0) return;
+      // In-memory dedupe by ticker first (the `upsertQuotes` precedent): two
+      // rows for the same ticker in one batch would trip an intra-statement
+      // ON CONFLICT.
+      const byTicker = new Map<string, EtfProfileUpsertInput>();
+      for (const r of rows) byTicker.set(r.ticker.toUpperCase(), r);
+      const values = [...byTicker.entries()].map(([ticker, r]) => ({
+        ticker,
+        payload: r.payload,
+        refusalReason: r.refusalReason,
+        refusalDetail: r.refusalReason === null ? null : r.refusalDetail,
+        retryAt: r.refusalReason === null ? null : r.retryAt,
+        transientAttempts: r.refusalReason === null ? 0 : r.transientAttempts,
+      }));
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(etfProfiles)
+          .values(values)
+          .onConflictDoUpdate({
+            target: etfProfiles.ticker,
+            set: {
+              payload: sql`excluded.payload`,
+              refusalReason: sql`excluded.refusal_reason`,
+              refusalDetail: sql`excluded.refusal_detail`,
+              retryAt: sql`excluded.retry_at`,
+              transientAttempts: sql`excluded.transient_attempts`,
               fetchedAt: sql`now()`,
             },
           });

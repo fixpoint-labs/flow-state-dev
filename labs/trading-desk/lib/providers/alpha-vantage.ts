@@ -18,12 +18,24 @@
  * cold-start resets it; AV's server-side throttle (→ Note body → throw) is the
  * real-exhaustion backstop. See `docs/specs/FIX-798.md`.
  *
+ * `alphaVantageRequest` ALSO runs per-minute admission pacing (FIX-801 Decision
+ * 5, §8 step 0), governed by `ALPHAVANTAGE_MINUTE_LIMIT` (`0` = unlimited, same
+ * sentinel convention as the daily knob). Unlike the daily guard, pacing never
+ * throws — a call past the per-minute cap WAITS for a slot rather than firing,
+ * because the free tier's 5/min cap is a genuine rate limit, not an exhaustion
+ * signal. It gates BEFORE the daily-budget reservation below, so a request
+ * queued on pacing never debits a daily unit for an answer it hasn't received
+ * yet. Every AV caller inherits this from the one shared request function
+ * (composition over per-consumer pacing, tenet 5) — FIX-801 added it because it
+ * is the first caller to fan out over more than a handful of tickers.
+ *
  * Every fetch function throws on any failure (no key, budget spent, rate-limit
  * body, non-2xx, parse error) so the calling tool falls through with one
  * `try { ... } catch {}`, per the desk's provider convention.
  */
 import type { TickerDatedProviderInput } from "./types";
 import { INSIDER_ROW_CAP, INSIDER_WINDOW_DAYS, isoDateDaysBefore } from "./dates";
+import { sleep } from "../concurrency";
 
 const AV_BASE = "https://www.alphavantage.co/query";
 
@@ -93,6 +105,61 @@ function resolveDailyLimit(): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_DAILY_LIMIT;
 }
 
+const DEFAULT_MINUTE_LIMIT = 5;
+const MINUTE_MS = 60_000;
+
+/** Process-level per-minute admission window (FIX-801 Decision 5, §8 step 0) —
+ *  timestamps (ms) of requests admitted within the trailing 60s. Module scope,
+ *  not session state; a sliding window, not a calendar-minute bucket, so it
+ *  can't burst 10 requests across a minute boundary the way a fixed window would. */
+const minuteWindow: number[] = [];
+
+/** Test hook — reset the in-process minute-pacing window between specs. Not in the barrel. */
+export function _resetMinutePacing(): void {
+  minuteWindow.length = 0;
+}
+
+/**
+ * Resolve the active per-minute admission limit from `ALPHAVANTAGE_MINUTE_LIMIT`,
+ * fail-safe exactly like {@link resolveDailyLimit}: only the exact string "0"
+ * disables pacing (a paid plan has no 5/min cap); blank, non-numeric, negative,
+ * non-integer, and zero-like typos all fall back to the free-tier default of 5
+ * rather than silently disabling it.
+ */
+function resolveMinuteLimit(): number {
+  const raw = process.env.ALPHAVANTAGE_MINUTE_LIMIT?.trim();
+  if (raw === "0") return 0; // the explicit unlimited sentinel — exact match only
+  if (raw === undefined) return DEFAULT_MINUTE_LIMIT;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MINUTE_LIMIT;
+}
+
+/**
+ * Per-minute admission control (FIX-801 Decision 5, §8 step 0). Admits
+ * immediately when fewer than `limit` requests have been admitted in the
+ * trailing 60s; otherwise sleeps until the oldest admission ages out of the
+ * window, then re-checks (another caller may have admitted meanwhile — this is
+ * a loop, not a single wait, so concurrent callers can't all wake and overshoot
+ * together). Disabled by the same unlimited sentinel `resolveMinuteLimit`
+ * resolves to `0` for. Never throws.
+ */
+async function awaitMinutePacing(): Promise<void> {
+  const limit = resolveMinuteLimit();
+  if (limit <= 0) return; // unlimited — a paid plan has no 5/min cap
+  for (;;) {
+    const now = Date.now();
+    while (minuteWindow.length > 0 && now - minuteWindow[0]! >= MINUTE_MS) {
+      minuteWindow.shift();
+    }
+    if (minuteWindow.length < limit) {
+      minuteWindow.push(now);
+      return;
+    }
+    const waitMs = MINUTE_MS - (now - minuteWindow[0]!) + 1;
+    await sleep(waitMs);
+  }
+}
+
 /**
  * Shared AV request. Injects `apikey=ALPHAVANTAGE_API_KEY` (callers pass only
  * the endpoint params — `function`, `symbol`, `quarter`, …), reserves one unit
@@ -115,6 +182,11 @@ export async function alphaVantageRequest(
   // HTTP-200 `Information` body. Fail locally instead.
   const key = process.env.ALPHAVANTAGE_API_KEY?.trim();
   if (!key) throw new AlphaVantageError("ALPHAVANTAGE_API_KEY is not set");
+
+  // Pacing gates BEFORE the daily reservation below — a call queued on the
+  // per-minute cap must not debit a daily unit for an answer it hasn't
+  // received yet (FIX-801 Decision 5).
+  await awaitMinutePacing();
 
   const limit = resolveDailyLimit();
   if (limit > 0) {
