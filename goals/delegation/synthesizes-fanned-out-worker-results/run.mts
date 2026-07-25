@@ -30,36 +30,61 @@ const MODEL = "openai/gpt-5.4-mini";
 
 const fx = JSON.parse(
   readFileSync(new URL("./fixtures/team.json", import.meta.url), "utf8"),
-) as { researcherSecret: string; auditSuffix: string };
+) as { researcherSecret: string; auditToken: string };
 
 /**
- * Sequences the skills runtime's `substitute()` rewrites in a worker prompt
- * before invocation (`$ARGUMENTS`, `$1`–`$9`, `${...}` such as `${SKILL_DIR}`).
- * A fixture marker containing one would be erased from the prompt while the
- * grader still expects the literal, so a CORRECT implementation would fail. That
- * is a loud false negative rather than a false pass, so it is fenced off by
- * contract (see goal.md → Input) instead of by escaping logic here.
+ * Required marker format: an unambiguous sentinel — at least 6 chars, starts
+ * with a letter, alphanumeric-plus-hyphen, no leading/trailing punctuation.
+ *
+ * This is a VALIDATION rule, not grader logic. It fences off two ways a fixture
+ * could make a correct implementation mis-grade, without adding any matcher
+ * machinery: (a) punctuation-only or punctuation-edged markers collide with
+ * response formatting — with `researcherSecret = "-"`, a Markdown answer's list
+ * bullet reads as a bounded standalone `-`; (b) `$`-substitution sequences
+ * (`$ARGUMENTS`, `$1`–`$9`, `${SKILL_DIR}`) are rewritten by the skills
+ * runtime's `substitute()` before a worker prompt is invoked, erasing the marker
+ * from the prompt while the grader still expects the literal. The format below
+ * excludes both by construction.
  */
-const SUBSTITUTION_SEQUENCE = /\$\{[^}]*\}|\$ARGUMENTS\b|\$[1-9]\b/;
+const MARKER_FORMAT = /^[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]$/;
+const MARKER_MIN_LENGTH = 6;
 
-for (const [field, value] of [
-  ["researcherSecret", fx.researcherSecret],
-  ["auditSuffix", fx.auditSuffix],
-] as const) {
-  const hit = SUBSTITUTION_SEQUENCE.exec(value ?? "");
-  if (hit) {
+function assertValidMarker(field: string, value: string): void {
+  if (typeof value !== "string" || value.length < MARKER_MIN_LENGTH || !MARKER_FORMAT.test(value)) {
     throw new Error(
-      `fixture invalid: ${field} ${JSON.stringify(value)} contains the substitution sequence ` +
-        `"${hit[0]}". Worker prompts pass through the skills runtime's substitute(), which would ` +
-        `erase it from the prompt while the grader still expects the literal — a correct ` +
-        `implementation would fail. Choose a marker with no $ARGUMENTS, $1–$9, or \${...}.`,
+      `fixture invalid: ${field} ${JSON.stringify(value)} is not a valid marker. Markers must be ` +
+        `at least ${MARKER_MIN_LENGTH} characters, start with a letter, contain only letters, ` +
+        `digits and hyphens, and not start or end with punctuation (e.g. "QORVIX-7788"). This ` +
+        `keeps a marker from colliding with response formatting or with the skills runtime's ` +
+        `$-substitution.`,
     );
   }
 }
 
-const SECRET = fx.researcherSecret;
-const SUFFIX = fx.auditSuffix;
-const FANNED = SECRET + SUFFIX; // the auditor's output — reachable ONLY via fan-out
+assertValidMarker("researcherSecret", fx.researcherSecret);
+assertValidMarker("auditToken", fx.auditToken);
+
+const SECRET = fx.researcherSecret; // the researcher's result
+const AUDIT_TOKEN = fx.auditToken; // the auditor's OWN result — NOT derived from SECRET
+
+/**
+ * The two markers must be mutually underivable, or the whole point collapses: if
+ * one contained the other, a coordinator handed only the auditor's result could
+ * print the researcher's marker too and pass both checks with the researcher's
+ * own output dropped. Asserted at load so it cannot silently regress.
+ */
+{
+  const a = SECRET.toLowerCase();
+  const b = AUDIT_TOKEN.toLowerCase();
+  if (a === b || a.includes(b) || b.includes(a)) {
+    throw new Error(
+      `fixture invalid: researcherSecret ${JSON.stringify(SECRET)} and auditToken ` +
+        `${JSON.stringify(AUDIT_TOKEN)} overlap — neither may contain the other. They must be ` +
+        `independent, or one worker's result would be derivable from the other's and the check ` +
+        `would pass without both results being synthesized.`,
+    );
+  }
+}
 
 const USER_TURN = "Collect the codes from your team and report all of them.";
 
@@ -85,11 +110,15 @@ function messageText(item: { content?: unknown; text?: unknown }): string {
 }
 
 // ---------------------------------------------------------------------------
-// Marker matching — EXACT and case-sensitive, so the fixture code must survive
-// verbatim (a lowercased echo is not the fixture's code). Matching is plain
-// substring + boundary, never tokenization, so the goal.md contract "swap them
-// for any other two distinct strings" genuinely holds: a fixture containing
-// underscores, spaces, punctuation, or non-ASCII grades the same way.
+// Marker matching — EXACT and case-sensitive, so the fixture marker must survive
+// verbatim (a lowercased echo is not the fixture's marker). Plain substring +
+// boundary, never tokenization.
+//
+// There is no nesting/derivation logic here, and deliberately so: the two
+// markers are asserted INDEPENDENT at load (neither contains the other), which
+// is a strictly stronger guarantee than any exclusion rule the grader could
+// apply after the fact. Independence is what makes each marker's presence prove
+// its own worker's result was synthesized.
 // ---------------------------------------------------------------------------
 
 /** A char that would make an adjacent match part of a longer run. */
@@ -109,49 +138,33 @@ function isBounded(text: string, at: number, marker: string): boolean {
   return (!before || !WORDISH.test(before)) && (!after || !WORDISH.test(after));
 }
 
-/**
- * Does `text` carry `marker` on its own — as a bounded occurrence that is not
- * merely part of one of the `longer` graded markers that contain it? Passing
- * `longer` is what makes "standalone SECRET" distinct from "SECRET inside
- * FANNED", for any fixture strings (not just hyphenated ASCII ones).
- */
-function hasMarker(text: string, marker: string, longer: readonly string[] = []): boolean {
-  return occurrences(text, marker).some(
-    (i) =>
-      isBounded(text, i, marker) &&
-      // Nested check must consider EVERY offset at which `marker` sits inside
-      // the longer marker, not just the first. With a fixture like
-      // SECRET="A" / SUFFIX="+A" (so FANNED="A+A"), the auditor-only answer
-      // "A+A" contains `A` at offsets 0 and 2; checking only the first offset
-      // would accept the second `A` as a standalone researcher result and pass
-      // an answer where the researcher's own output was dropped.
-      !longer.some((l) =>
-        occurrences(l, marker).some((offset) => text.startsWith(l, i - offset)),
-      ),
-  );
+/** Does `text` carry `marker` as a standalone (bounded) occurrence? */
+function hasMarker(text: string, marker: string): boolean {
+  return occurrences(text, marker).some((i) => isBounded(text, i, marker));
 }
 
 /**
  * The graded markers, in ONE list so the two sides of the A/B cannot drift
  * apart: the delegation-ON answer must carry EVERY marker here, and the
- * no-delegation baseline must carry NONE of them. (A baseline that emits the
- * fanned code is just as disqualifying as one that emits the bare secret —
- * either means the marker was reachable without delegation.)
+ * no-delegation baseline must carry NONE of them.
+ *
+ * The two are INDEPENDENT fixture values, not one derived from the other, so
+ * each proves its own worker's result reached the answer:
+ *   - SECRET       — only the researcher holds it → the researcher's result was synthesized.
+ *   - AUDIT_TOKEN  — only the auditor holds it, and the auditor only ever lands
+ *                    on the board when the researcher enqueues it MID-DRAIN →
+ *                    the fan-out happened. The auditor running IS the fan-out proof.
  */
 const GRADED_MARKERS = [
   {
-    label: "researcher's standalone secret",
+    label: "researcher's secret",
     marker: SECRET,
-    // SECRET is a prefix of FANNED, so an occurrence inside FANNED does not
-    // count as the researcher's own distinct result.
-    notPartOf: [FANNED] as const,
     why: "the researcher's own result was not synthesized",
   },
   {
-    label: "fanned-out auditor code",
-    marker: FANNED,
-    notPartOf: [] as const,
-    why: "the mid-drain fan-out did not reach the answer",
+    label: "auditor's sign-off token (fan-out proof)",
+    marker: AUDIT_TOKEN,
+    why: "the auditor never ran, so the mid-drain fan-out did not happen",
   },
 ] as const;
 
@@ -177,12 +190,16 @@ const RESEARCHER_PROMPT = [
   `2. Then reply with exactly your secret code ${SECRET} and nothing else.`,
 ].join("\n");
 
+// The auditor returns its OWN independent token — never a transform of, and
+// never echoing, the researcher's secret. Its token appearing in the answer is
+// the fan-out proof: the auditor only ever lands on the board when the
+// researcher enqueues it mid-drain, so nothing else can put this token there.
 const AUDITOR_PROMPT = [
-  "Verifies a code it is handed and returns the verified form.", // roster line — generic
-  "Your task Input contains a code.",
-  `Reply with that exact code immediately followed by the suffix ${SUFFIX},`,
-  "and nothing else. For example, if the Input code is ABC then you reply",
-  `ABC${SUFFIX}.`,
+  "Verifies a code it is handed and reports its own sign-off.", // roster line — generic
+  `Your sign-off token is ${AUDIT_TOKEN}.`,
+  "Your task Input contains a code to verify. Check that it is present,",
+  `then reply with exactly your sign-off token ${AUDIT_TOKEN} and nothing else.`,
+  "Never repeat or quote the code you were given — reply only with your own token.",
 ].join("\n");
 
 /** Indent a prompt body so it nests under a YAML `prompt: |` block scalar. */
@@ -319,7 +336,7 @@ function assertNoRosterLeak(): string[] {
     const lower = line.toLowerCase();
     for (const [label, marker] of [
       ["researcher secret", SECRET],
-      ["audit suffix", SUFFIX],
+      ["auditor sign-off token", AUDIT_TOKEN],
     ] as const) {
       if (lower.includes(marker.toLowerCase())) {
         failures.push(
@@ -337,26 +354,16 @@ function assertNoRosterLeak(): string[] {
 async function runGoalCheck(): Promise<string[]> {
   const failures: string[] = [];
 
-  // Fixture sanity: the two held-out strings must be non-empty and distinct, or
-  // the standalone-vs-fanned distinction collapses. Any other pair is fair game
-  // (the matcher is exact + boundary-based, not tokenized).
-  if (!SECRET || !SUFFIX || SECRET === SUFFIX) {
-    return [
-      `fixture invalid: researcherSecret and auditSuffix must be non-empty and distinct ` +
-        `(got ${JSON.stringify(SECRET)} / ${JSON.stringify(SUFFIX)})`,
-    ];
-  }
-
-  // Honesty guard part 1: neither secret nor suffix may appear in the
+  // Honesty guard part 1: neither marker may appear in the
   // coordinator's own prompt or the user turn. Case-folded ON PURPOSE — unlike
   // grading (which demands the fixture code verbatim), a leak guard should be
   // broad, so a lowercased echo of a marker still trips it.
   const coordinatorContext = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
   if (
     coordinatorContext.includes(SECRET.toLowerCase()) ||
-    coordinatorContext.includes(SUFFIX.toLowerCase())
+    coordinatorContext.includes(AUDIT_TOKEN.toLowerCase())
   ) {
-    return ["setup invalid: a secret/suffix leaked into the coordinator's own context"];
+    return ["setup invalid: a graded marker leaked into the coordinator's own context"];
   }
 
   // Honesty guard part 2 — the ROSTER leak. `agentPurpose()` copies each
@@ -386,13 +393,12 @@ async function runGoalCheck(): Promise<string[]> {
     ];
   }
 
-  // The delegation-ON answer must carry EVERY graded marker: the researcher's
-  // standalone secret (proving its own result was synthesized, not just echoed
-  // inside the auditor's longer code) and the auditor's fanned-out code
-  // (reachable only if the researcher enqueued it mid-drain and handed it the
-  // secret — the coordinator never learns the suffix).
-  for (const { label, marker, notPartOf, why } of GRADED_MARKERS) {
-    if (!hasMarker(onOutput, marker, notPartOf)) {
+  // The delegation-ON answer must carry EVERY graded marker. The two are
+  // independent, so neither can be derived from the other: the secret proves the
+  // researcher's result was synthesized, and the auditor's token proves the
+  // auditor ran — which it only does when the researcher enqueues it mid-drain.
+  for (const { label, marker, why } of GRADED_MARKERS) {
+    if (!hasMarker(onOutput, marker)) {
       failures.push(
         `coordinator's terminal answer has no ${label} "${marker}" — ${why}. ` +
           `Output: ${JSON.stringify(onOutput.slice(0, 400))}`,
@@ -450,8 +456,8 @@ async function runGoalCheck(): Promise<string[]> {
       `\n` +
       `delegation ON terminal output:  ${JSON.stringify(onOutput.slice(0, 300))}\n` +
       GRADED_MARKERS.map(
-        ({ label, marker, notPartOf }) =>
-          `  ${label} "${marker}" present: ${hasMarker(onOutput, marker, notPartOf)} (must be true)\n`,
+        ({ label, marker }) =>
+          `  ${label} "${marker}" present: ${hasMarker(onOutput, marker)} (must be true)\n`,
       ).join("") +
       `  worker stream outputs (corroboration):\n    ${workerOutputs.join("\n    ") || "(none)"}\n` +
       `  auditor worker executed: ${ranAuditor}\n` +
@@ -468,10 +474,12 @@ async function runGoalCheck(): Promise<string[]> {
 const failures = await runGoalCheck();
 if (failures.length === 0) {
   console.log(
-    `\nPASS — the coordinator's terminal answer carried BOTH the researcher's standalone secret ` +
-      `and the auditor's fanned-out code, so it synthesized a delegated result and a mid-drain ` +
-      `fan-out. The no-delegation baseline, given the identical prompt and request, could not ` +
-      `produce the held-out secret — so the pass is attributable to delegation actually running.`,
+    `\nPASS — the coordinator's terminal answer carried BOTH independent markers: the ` +
+      `researcher's secret (its delegated result was synthesized) and the auditor's sign-off ` +
+      `token (the auditor ran, which only happens when the researcher enqueues it mid-drain — ` +
+      `so the fan-out happened). Neither marker is derivable from the other. The no-delegation ` +
+      `baseline, given the identical prompt and request, produced neither — so the pass is ` +
+      `attributable to delegation actually running.`,
   );
   process.exit(0);
 } else {
