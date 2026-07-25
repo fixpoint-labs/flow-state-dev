@@ -337,10 +337,13 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     // has a successful stored ETF profile (fetched because AOA's holdings
     // include VTI). Two DISTINCT bugs shared this one evidence-ordering root
     // cause, fixed in two rounds: round 2 fixed how AOA's VTI CONSTITUENT
-    // slice gets judged (`resolveConstituentIsFund`); round 3 fixed how
-    // VTI's own DIRECT position gets routed (the main loop's `isFund` check)
-    // — both used to trust the stale "equity" classification over the
-    // stronger stored-profile evidence. With both fixed, VTI is recognized
+    // slice gets judged (`resolveTickerIsFund`); round 3 fixed how VTI's own
+    // DIRECT position gets routed (the main loop's `isFund` check) — both
+    // used to trust the stale "equity" classification over the stronger
+    // stored-profile evidence. Round 4 then consolidated the direct-holding
+    // check into a call to `resolveTickerIsFund` itself, so this scenario now
+    // exercises ONE shared function rather than two independently-maintained
+    // ones. With both fixed, VTI is recognized
     // as a fund EVERYWHERE it appears — as AOA's constituent AND as its own
     // direct holding — so it decomposes via its OWN profile into AAPL
     // instead of ever reading as a name itself.
@@ -386,6 +389,27 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     const aapl = out.positions.find((p) => p.ticker === "AAPL")!;
     expect(aapl.marketValue).toBeCloseTo(100_000);
     expect(aapl.sources).toEqual([{ from: "VTI", marketValue: 100_000 }]);
+  });
+
+  it("a fund-proving REFUSAL (not a success) also outweighs a stale direct-holding classification (Codex review round 4)", () => {
+    // The round-3 fix only checked for a SUCCESSFUL stored profile
+    // (`profile.payload !== null`), missing the fund-proving REFUSAL reasons
+    // (`"ineligible"` / `"malformed"`) `resolveTickerIsFund` already
+    // recognizes as positive fund evidence for the constituent case. TQQQ is
+    // held directly, stale-classified as "equity", with a stored profile
+    // that's a REFUSAL (leveraged/inverse — "ineligible"), not a success.
+    // Before this fix, the direct-holding branch said "not a fund" and
+    // emitted TQQQ's full value as a single name; now it's recognized as a
+    // fund (just one with no usable payload) and stays opaque instead.
+    const positions = [direct("TQQQ", 100_000, { assetType: "equity" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["TQQQ", refusal("ineligible")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "TQQQ", axis: "both", reason: "ineligible" }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "TQQQ")).toBe(false);
   });
 });
 

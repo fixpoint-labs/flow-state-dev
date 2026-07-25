@@ -34,7 +34,7 @@
  *   per-constituent classification lookups. A constituent is a "name" by
  *   DEFAULT; fund-ness is a positive finding from an ordered oracle (layers
  *   1–3 here — layer 4, a description-text signal, is not yet reachable; see
- *   the module-level note on `resolveConstituentIsFund`).
+ *   the module-level note on `resolveTickerIsFund`).
  * - Decision 8: the look-through axis gets its own concentration flags, at
  *   the SAME thresholds as the wrapper basis, tagged separately.
  */
@@ -212,23 +212,42 @@ function pctOf(value: number, denom: number): number {
 }
 
 /**
- * The ordered fund-detection oracle (§7), layers 1–3. Evidence is checked in
- * STRENGTH order, not simply "held ticker first": a held ticker's OWN
- * classification is authoritative ONLY when it says "fund" (layer 1a) — a
- * `etf`/`mutual_fund` `assetType` is unambiguous positive evidence no matter
- * what else is known. A stored profile (layer 1b) is checked NEXT, before
- * falling back to a held ticker's NON-fund classification, because a direct
- * holding's `assetType` can be stale or simply wrong (an import default, a
- * classification that was never corrected) while a stored profile is a real
- * fetched fact. Concretely: VTI held directly but still classified `equity`
- * (misclassified/stale), where VTI ALSO has a successful stored profile
- * (fetched because ANOTHER fund's holdings include VTI) — the profile must
- * win, or a fund-of-funds situation reports as a 100% single-name
- * concentration alert instead of correctly attributing through (Codex review
- * round 2, FIX-801 sub-PR b). Only once BOTH of those are exhausted does a
- * held ticker's non-fund classification settle it (layer 1c — still
- * authoritative in the ABSENCE of stored-profile evidence); then the curated
- * bond-ETF list (layer 2 — a bond ETF is a fund, just an ineligible one).
+ * The ONE shared "does this ticker have fund evidence" oracle (§7), layers
+ * 1–3 — the SINGLE evidence-ordering check every caller in this file uses,
+ * not a per-caller reimplementation. It takes a bare ticker + the two
+ * lookups every caller already has in scope (`positionsByTicker`,
+ * `fundProfiles`), deliberately NOT shaped around "constituent" — a fund's
+ * constituent, a household's own directly-held position, and a fund-of-funds
+ * candidate are all really asking the SAME question ("is this ticker a
+ * fund?") over the SAME two evidence sources, just from three different call
+ * sites: the fund-of-funds share check, the name-axis constituent-attribution
+ * loop, and the main loop's direct-holding-vs-decompose routing decision.
+ * Three independently-drifting copies of this check were each found missing
+ * a piece of the same evidence-ordering fix in three separate review rounds
+ * (Codex review, FIX-801 sub-PR b) — this is the consolidation instead of a
+ * fourth copy.
+ *
+ * Evidence is checked in STRENGTH order, not simply "held ticker first": a
+ * held ticker's OWN classification is authoritative ONLY when it says "fund"
+ * (layer 1a) — a `etf`/`mutual_fund` `assetType` is unambiguous positive
+ * evidence no matter what else is known. A stored profile (layer 1b) is
+ * checked NEXT, before falling back to a held ticker's NON-fund
+ * classification, because a direct holding's `assetType` can be stale or
+ * simply wrong (an import default, a classification that was never
+ * corrected) while a stored profile is a real fetched fact. Concretely: VTI
+ * held directly but still classified `equity` (misclassified/stale), where
+ * VTI ALSO has a successful stored profile (fetched because ANOTHER fund's
+ * holdings include VTI) — the profile must win, or a fund-of-funds situation
+ * reports as a 100% single-name concentration alert instead of correctly
+ * attributing through (Codex review round 2, FIX-801 sub-PR b). Only once
+ * BOTH of those are exhausted does a held ticker's non-fund classification
+ * settle it (layer 1c — still authoritative in the ABSENCE of
+ * stored-profile evidence); then the curated bond-ETF list (layer 2 — a
+ * bond ETF is a fund, just an ineligible one). Layer 1c means this function
+ * ALWAYS terminates by layer 1c for a ticker the household holds directly
+ * (layer 2 / the final default are only reachable for a ticker that is
+ * NOT held — e.g. a pure fund-of-funds constituent) — which is exactly why
+ * it's also correct as the main loop's direct-holding routing predicate.
  *
  * The stored-profile check also reads a REFUSED profile's own reason:
  * `"ineligible"` (e.g. a leveraged/inverse fund, or a fund with no resolvable
@@ -253,7 +272,7 @@ function pctOf(value: number, denom: number): number {
  * Threading `description` through sub-PR a's fetcher/table is a documented
  * follow-up, not a blocker for this leaf.
  */
-function resolveConstituentIsFund(
+function resolveTickerIsFund(
   ticker: string,
   positionsByTicker: ReadonlyMap<string, LookThroughPositionInput>,
   fundProfiles: ReadonlyMap<string, FundProfileInput>,
@@ -338,15 +357,16 @@ export function computeLookThroughExposure(
     if (mv === 0) continue; // no mass to attribute either way
 
     const profile = fundProfiles.get(pos.ticker);
-    // Same evidence-ordering fix as `resolveConstituentIsFund` (Codex review
-    // round 3, FIX-801), applied to the DIRECT-holding routing decision: a
-    // held ticker's own `assetType` is trusted as "not a fund" only in the
-    // ABSENCE of a successful stored profile. A stale/misclassified direct
-    // holding (assetType still "equity") whose ticker ALSO has a successful
-    // stored fund profile — fetched because it's a constituent of ANOTHER
-    // fund the household holds — must be decomposed via ITS OWN profile
-    // below, not attributed whole to itself as a single name.
-    const isFund = isFundAssetType(pos.assetType) || (profile !== undefined && profile.payload !== null);
+    // The DIRECT-holding routing decision is the SAME "does this ticker have
+    // fund evidence" question the constituent checks below ask — reusing
+    // `resolveTickerIsFund` here (rather than a narrower reimplementation)
+    // is what keeps this branch, the fund-of-funds check, and the name-axis
+    // attribution loop from drifting out of sync one evidence-ordering fix
+    // at a time (Codex review round 4, FIX-801 — see that function's
+    // docblock). Layer 1c means it always terminates for a HELD ticker
+    // (never falls through to the bond-ETF list or the final default),
+    // which is exactly the behavior this direct-holding branch needs.
+    const isFund = resolveTickerIsFund(pos.ticker, positionsByTicker, fundProfiles);
     if (!isFund) {
       // A direct holding is unambiguously itself (§7).
       pushSource(pos.ticker, "direct", mv);
@@ -374,7 +394,7 @@ export function computeLookThroughExposure(
     let fundShare = 0;
     for (const c of fp.constituents) {
       if (c.ticker === null) continue;
-      if (resolveConstituentIsFund(c.ticker, positionsByTicker, fundProfiles)) fundShare += c.weight;
+      if (resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) fundShare += c.weight;
     }
     if (fundShare * 100 >= FUND_OF_FUNDS_THRESHOLD_PCT) {
       nameResidualMass += mv;
@@ -396,7 +416,7 @@ export function computeLookThroughExposure(
     } else {
       for (const c of fp.constituents) {
         const slice = c.weight * mv;
-        if (c.ticker === null || resolveConstituentIsFund(c.ticker, positionsByTicker, fundProfiles)) {
+        if (c.ticker === null || resolveTickerIsFund(c.ticker, positionsByTicker, fundProfiles)) {
           nameResidualMass += slice; // non-attributable line, or routed away from the name axis
         } else {
           pushSource(c.ticker, pos.ticker, slice);
@@ -480,7 +500,7 @@ export function computeLookThroughExposure(
     // record, so it independently checks the ticker's own SHAPE via the
     // classifier rather than assuming every non-"direct" source is a
     // flag-eligible name: the upstream bond-ETF pre-filter and the
-    // fund-detection oracle (`resolveConstituentIsFund`) both curate/infer
+    // fund-detection oracle (`resolveTickerIsFund`) both curate/infer
     // FUND-ness, but neither is exhaustive, and a fixed-income ETF that
     // slips past them could resolve constituents to Treasury/CUSIP-shaped
     // tickers — this is the leaf's own defense-in-depth against exactly that
