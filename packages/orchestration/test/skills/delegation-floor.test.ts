@@ -36,7 +36,11 @@ vi.mock("../../src/skills/worker-materializer", async (importOriginal) => {
 });
 
 import { createSkillsLibrary } from "../../src/skills/library";
-import { buildDelegationTools, FLOOR_WORKER_KEY } from "../../src/skills/delegation-surface";
+import {
+  buildDelegationGuidance,
+  buildDelegationTools,
+  FLOOR_WORKER_KEY,
+} from "../../src/skills/delegation-surface";
 import { taskBoard } from "../../src/task-board";
 import { materializeWorker } from "../../src/skills/worker-materializer";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
@@ -203,11 +207,10 @@ describe("delegation floor — wiring", () => {
     const { ctx } = buildExecCtx();
     await resolveTools(gen, ctx);
 
-    // Exactly one worker was materialized — the floor — under the reserved key.
-    expect(materializeWorkerSpy).toHaveBeenCalledTimes(1);
-    expect(materializeWorkerSpy.mock.calls[0]![0]).toBe(FLOOR_WORKER_KEY);
+    // The materialized roster is exactly the floor — no phantom workers.
+    // (Build COUNTS are the memo-once test's job, not this one's.)
+    expect(materializeWorkerSpy.mock.calls.map((c) => c[0])).toEqual([FLOOR_WORKER_KEY]);
     // The board was built with a defaultWorker.
-    expect(taskBoardSpy).toHaveBeenCalledTimes(1);
     const cfg = taskBoardSpy.mock.calls[0]![0] as { defaultWorker?: unknown };
     expect(cfg.defaultWorker).toBeDefined();
   });
@@ -250,18 +253,22 @@ describe("delegation floor — reserved agent keys", () => {
    * describe `agents`, so a manifest written out-of-band arrives unparsed. This
    * pins the re-check that stands between such a map and the board's registry.
    */
-  async function toolsForAgents(agents: Record<string, unknown>) {
-    const collection = createMockSkillsCollection();
-    const { ctx } = buildExecCtx(collection);
-    return buildDelegationTools(ctx, {
+  function plantedDeps(agents: Record<string, unknown>, allowEmptyRoster = true) {
+    return {
       catalog: {},
       collectionKey: "skills",
-      location: { kind: "block" },
+      location: { kind: "block" as const },
       staticSources: [{ skillName: "planted", agents: agents as never }],
       bundledAgentIndex: new Map(),
       dynamicEligible: false,
-      allowEmptyRoster: true,
-    });
+      allowEmptyRoster,
+    };
+  }
+
+  async function toolsForAgents(agents: Record<string, unknown>) {
+    const collection = createMockSkillsCollection();
+    const { ctx } = buildExecCtx(collection);
+    return buildDelegationTools(ctx, plantedDeps(agents));
   }
 
   it.each([
@@ -302,6 +309,44 @@ describe("delegation floor — reserved agent keys", () => {
       const built = materializeWorkerSpy.mock.calls.map((c) => c[0]);
       expect(built).toContain("briefer");
       expect(built).not.toContain("__no_assignee__");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // One roster, not two: the coordinator must never be TOLD about an agent the
+  // worker registry refused to build. Otherwise it assigns to a name that
+  // silently falls to the generic floor.
+  it("does not advertise a rejected agent in the guidance roster", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const collection = createMockSkillsCollection();
+      const { ctx } = buildExecCtx(collection);
+      const deps = plantedDeps({
+        briefer: { prompt: "You write briefs." },
+        __no_assignee__: { prompt: "planted" },
+      });
+      const guidance = await buildDelegationGuidance(deps as never)(undefined, ctx);
+      expect(guidance).toContain("briefer");
+      expect(guidance).not.toContain("__no_assignee__");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  // The degenerate case: every declared key is illegal, and delegation was
+  // DERIVED from the roster (allowEmptyRoster false) rather than forced on. The
+  // roster is empty, so no tools install — the guidance must not claim a board.
+  it("contributes no guidance when every key is rejected and the floor is off", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const collection = createMockSkillsCollection();
+      const { ctx } = buildExecCtx(collection);
+      const deps = plantedDeps({ __no_assignee__: { prompt: "planted" } }, false);
+      const tools = await buildDelegationTools(ctx, deps as never);
+      const guidance = await buildDelegationGuidance(deps as never)(undefined, ctx);
+      expect(tools).toEqual([]);
+      expect(guidance).toBeNull();
     } finally {
       warn.mockRestore();
     }

@@ -150,8 +150,10 @@ const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
  * whose state schema is `.passthrough()` and does not describe `agents` at all,
  * so a manifest written out-of-band (an app block holding the collection ref, a
  * store-level write, a migration) never passes through here. That reader
- * re-checks with this predicate. Relax the pattern and both call sites — and the
- * two reserved names above — must be revisited together.
+ * re-checks with this predicate in `validateAgentKeys`, which filters the roster
+ * once so the board's worker registry and the coordinator's guidance are built
+ * from the same list. Relax the pattern and both call sites — and the two
+ * reserved names above — must be revisited together.
  */
 export function isValidAgentKey(key: string): boolean {
   return AGENT_KEY_PATTERN.test(key);

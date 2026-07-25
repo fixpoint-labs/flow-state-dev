@@ -235,22 +235,40 @@ export function buildWorkerStep(
   // adaptation through its `select`. The connectInput closure captures
   // the inbound `task` so dep-output resolution happens at runtime
   // against the live collection state.
-  const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
-  for (const [assignee, worker] of Object.entries(workers)) {
-    connectedWorkers[assignee] = worker.connectInput<Task>(async (task, ctx) =>
+  //
+  // Connect each worker IDENTITY exactly once and reuse the result. A block may
+  // legitimately appear more than once on a board — under two registry keys, or
+  // as both a registry worker and the `defaultWorker` ("route unknown assignees
+  // to my generalist, who is also on the roster"). `connectInput` rebuilds the
+  // definition from the same config, so calling it twice yields two DISTINCT
+  // objects carrying the SAME block name, which the router rejects as a
+  // duplicate route name — it could not tell them apart when validating a
+  // recorded router decision on resume. Reference-equal routes are explicitly
+  // tolerated, so connecting once makes every alias collapse to one route.
+  const connectedByWorker = new Map<TaskWorker, BlockDefinition<any, any>>();
+  const connectOnce = (worker: TaskWorker): BlockDefinition<any, any> => {
+    const existing = connectedByWorker.get(worker);
+    if (existing !== undefined) return existing;
+    const connected = worker.connectInput<Task>(async (task, ctx) =>
       packWorkerInput(task, await collectionFactory(ctx), packOpts(ctx))
     );
+    connectedByWorker.set(worker, connected);
+    return connected;
+  };
+
+  const connectedWorkers: Record<string, BlockDefinition<any, any>> = {};
+  for (const [assignee, worker] of Object.entries(workers)) {
+    connectedWorkers[assignee] = connectOnce(worker);
   }
 
-  // Pre-connect the default worker with the SAME Task → TaskWorkerInput
-  // adaptation the registry entries get, so a floor-routed task carries
-  // deps/priorWork identically. Passed as the router `fallback` (FIX-940).
+  // The default worker gets the SAME Task → TaskWorkerInput adaptation the
+  // registry entries get, so a floor-routed task carries deps/priorWork
+  // identically. Passed as the router `fallback` (FIX-940). When it aliases a
+  // registry worker this IS that same connected definition, which `keyedRouter`
+  // then recognises as an already-registered route rather than appending a
+  // duplicate.
   const connectedFallback =
-    defaultWorker !== undefined
-      ? defaultWorker.connectInput<Task>(async (task, ctx) =>
-          packWorkerInput(task, await collectionFactory(ctx), packOpts(ctx))
-        )
-      : undefined;
+    defaultWorker !== undefined ? connectOnce(defaultWorker) : undefined;
 
   return utility.keyedRouter({
     name: `${name}-worker-router`,

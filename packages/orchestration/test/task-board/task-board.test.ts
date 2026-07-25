@@ -600,6 +600,62 @@ describe("taskBoard - default worker (the floor)", () => {
     },
   );
 
+  // "Route unknown assignees to my generalist, who is also on the roster" — the
+  // same block instance as both a registry worker and the defaultWorker. Each
+  // worker identity must be connected ONCE and the connected definition reused,
+  // or the two `connectInput` calls produce distinct definitions carrying the
+  // same block name and router construction throws `duplicate route name`.
+  it("accepts the same block as both a registry worker and the defaultWorker", async () => {
+    const trace: string[] = [];
+    const generalist = makeEchoWorker("generalist", trace);
+    const board = taskBoard({
+      name: "floor-aliased",
+      collection: { collectionId: "floor-aliased" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { generalist },
+      defaultWorker: generalist,
+      initialTasks: [
+        { id: "d", goal: "declared", assignee: "generalist", input: { topic: "d" } },
+        { id: "u", goal: "unclaimed", assignee: "nobody", input: { topic: "u" } },
+        { id: "a", goal: "no assignee", input: { topic: "a" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("d")).toBe("completed");
+    expect(final.get("u")).toBe("completed");
+    expect(final.get("a")).toBe("completed");
+    expect(trace.sort()).toEqual(["generalist:a", "generalist:d", "generalist:u"]);
+  });
+
+  // Two registry keys aliasing one block instance hit the same seam: without
+  // connect-once each key gets its own wrapper — same name, distinct identity.
+  it("accepts two registry keys aliasing the same block", async () => {
+    const trace: string[] = [];
+    const shared = makeEchoWorker("shared", trace);
+    const board = taskBoard({
+      name: "aliased-keys",
+      collection: { collectionId: "aliased-keys" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { alice: shared, bob: shared },
+      initialTasks: [
+        { id: "x", goal: "a", assignee: "alice", input: { topic: "x" } },
+        { id: "y", goal: "b", assignee: "bob", input: { topic: "y" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("x")).toBe("completed");
+    expect(final.get("y")).toBe("completed");
+    expect(trace.sort()).toEqual(["shared:x", "shared:y"]);
+  });
+
   it("I2: with no defaultWorker, an absent assignee still fails the task", async () => {
     const trace: string[] = [];
     const board = taskBoard({

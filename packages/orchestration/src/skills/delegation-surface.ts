@@ -73,19 +73,12 @@ export const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as c
 const BOARD_CONCURRENCY = 4;
 
 /**
- * Reserved worker key for the on-demand default worker — the delegation
- * floor (FIX-940). Its leading underscore makes it unrepresentable as a
- * declared agent key: `isValidAgentKey` (`skill-md.ts`) requires a leading
- * `[a-z0-9]`, enforced by `parseAgentsField` on the authoring path and
- * re-checked by `buildTools` below on the live-manifest path. Combined with a
- * skill name that can never contain an underscore (skill names match
- * `/^[a-z0-9][a-z0-9-]*$/`), the floor's synthesised block name
- * (`skillWorker_${FLOOR_SKILL_NAME}_${FLOOR_WORKER_KEY}`, i.e.
- * `skillWorker_delegation___floor__`) is unreachable by any real
- * `skillWorker_<skill>_<agentKey>`: no real skill name splits to leave an
- * underscore-led agent-key segment. Used as the `materializeWorker` agent
- * key; the floor is passed as the board's `defaultWorker` (the router
- * fallback), not registered under this key in the participant registry.
+ * Reserved worker key for the on-demand default worker — the delegation floor
+ * (FIX-940). Its leading underscore puts it (and the derived block name
+ * `skillWorker_delegation___floor__`) out of reach of any declared agent or
+ * skill — see `isValidAgentKey` in `skill-md.ts` for the rules and why they are
+ * load-bearing. Used as the `materializeWorker` agent key; the floor is passed
+ * as the board's `defaultWorker`, not registered in the participant registry.
  */
 export const FLOOR_WORKER_KEY = "__floor__";
 
@@ -390,15 +383,74 @@ function buildRunBoardTool(
  * `buildDelegationGuidance` call this, so the roster is walked and built
  * once per snapshot and shared between them (D1).
  */
+/**
+ * Drop agent keys that could never have come through the SKILL.md parser, so
+ * the roster the coordinator is TOLD about and the roster that becomes board
+ * workers are the same list — one roster, not two.
+ *
+ * `parseAgentsField` rejects an illegal key on the authoring path, but
+ * `collectAgentSources` also reads `agents` straight off a live skill manifest
+ * whose state schema is `.passthrough()` and does not describe `agents`, so a
+ * manifest written out-of-band never passed through the parser. An unfiltered
+ * key would let a planted `__no_assignee__` shadow the absent-assignee sentinel
+ * (unassigned tasks would run on it instead of the floor), `__floor__` collide
+ * with the floor's own worker key, and `__proto__` hit the prototype setter
+ * instead of creating an own key — silently emptying the registry.
+ *
+ * A source whose every key is rejected is dropped entirely, not left behind as
+ * an empty husk: `sources.length === 0` is what makes `buildTools` contribute
+ * no tools and `buildGuidance` contribute no roster, and those two must agree.
+ * Filtering rather than throwing is deliberate — the key is unreachable through
+ * every supported authoring path, so this is defense against a corrupt
+ * manifest, and dropping the entry is what preserves the invariant.
+ */
+function validateAgentKeys(sources: DelegationAgentSource[]): {
+  sources: DelegationAgentSource[];
+  rejected: Array<{ skillName: string; key: string }>;
+} {
+  const rejected: Array<{ skillName: string; key: string }> = [];
+  const validated: DelegationAgentSource[] = [];
+
+  for (const source of sources) {
+    const entries = Object.entries(source.agents);
+    const legal = entries.filter(([key]) => isValidAgentKey(key));
+    if (legal.length === entries.length) {
+      validated.push(source);
+      continue;
+    }
+    for (const [key] of entries) {
+      if (!isValidAgentKey(key)) rejected.push({ skillName: source.skillName, key });
+    }
+    if (legal.length === 0) continue; // nothing survives — drop the source
+    validated.push({ ...source, agents: Object.fromEntries(legal) });
+  }
+
+  return { sources: validated, rejected };
+}
+
 async function resolveBuild(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
-  const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
-  return resolveDelegationBuild(ctx, sources, deps.allowEmptyRoster, async () => ({
-    tools: await buildTools(ctx, deps, sources),
-    guidance: buildGuidance(sources, deps.allowEmptyRoster),
-  }));
+  const collected = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
+  // Validate BEFORE the memo so the snapshot keys on the roster that is actually
+  // built, and both builders below see the identical list.
+  const { sources, rejected } = validateAgentKeys(collected);
+  return resolveDelegationBuild(ctx, sources, deps.allowEmptyRoster, async () => {
+    // Warn inside the build closure, so a corrupt manifest reports once per
+    // snapshot rather than on every step of the tool loop.
+    for (const { skillName, key } of rejected) {
+      console.warn(
+        `[skills] delegation agent key "${key}" (skill "${skillName}") is not a legal agent ` +
+          `key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led names are ` +
+          `reserved by the delegation board.`,
+      );
+    }
+    return {
+      tools: await buildTools(ctx, deps, sources),
+      guidance: buildGuidance(sources, deps.allowEmptyRoster),
+    };
+  });
 }
 
 /**
@@ -472,28 +524,9 @@ async function buildTools(
 
   for (const source of sources) {
     for (const [agentKey, spec] of Object.entries(source.agents)) {
-      // Re-check the agent key here, where it becomes a plain-object registry
-      // key on the board's worker router. `parseAgentsField` already rejects
-      // an illegal key on the authoring path, but `collectAgentSources` also
-      // reads `agents` straight off a live skill manifest whose state schema is
-      // `.passthrough()` and does not describe `agents` — so a manifest written
-      // out-of-band never passed through the parser. Without this, a planted
-      // `__no_assignee__` would shadow the absent-assignee sentinel (unassigned
-      // tasks would run on it instead of the floor), `__floor__` would collide
-      // with the floor's own worker key, and `__proto__` would hit the
-      // prototype setter rather than create an own key — silently emptying the
-      // registry and disabling the whole surface. Skip rather than throw: the
-      // key is unreachable through every supported authoring path, so this is
-      // defense against a corrupt manifest, and dropping the entry is what
-      // preserves the invariant.
-      if (!isValidAgentKey(agentKey)) {
-        console.warn(
-          `[skills] delegation agent key "${agentKey}" (skill "${source.skillName}") is not a ` +
-            `legal agent key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led ` +
-            `names are reserved by the delegation board.`,
-        );
-        continue;
-      }
+      // Agent keys are already validated by `validateAgentKeys` in
+      // `resolveBuild`, so this registry and the guidance roster are built from
+      // the identical list.
       if (seenSpecs.has(agentKey)) {
         // Two skills sharing an agent key: an IDENTICAL spec dedupes into the
         // already-built board worker. A DIFFERENT spec under the same key is a
