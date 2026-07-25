@@ -306,16 +306,29 @@ function resolveTickerIsFund(
   fundProfiles: ReadonlyMap<string, FundProfileInput>,
 ): boolean {
   const held = positionsByTicker.get(ticker);
+  const profile = fundProfiles.get(ticker);
+
   // Layer 1a — a held ticker's OWN classification, but ONLY as positive
   // evidence: "yes, this is a fund" is unambiguous no matter what else is
   // known. A non-fund classification is NOT trusted yet — a stored profile
-  // (checked next) can outweigh it.
-  if (held && isFundAssetType(held.assetType)) return true;
+  // (checked next) can outweigh it. EXCEPT when a stored `not_an_etf`
+  // refusal already disproves it: this is the 5th evidence-ordering case,
+  // but in the OPPOSITE direction from the other four (which were all about
+  // POSITIVE evidence beating a stale non-fund tag) — here it's NEGATIVE
+  // evidence beating a stale FUND-TYPE tag. AV's own fetcher already
+  // determined the ticker isn't actually an ETP, a stronger and more
+  // specific signal than a possibly-stale `assetType: "etf"/"mutual_fund"`
+  // classification (e.g. an import default that was never corrected).
+  // Without this, a ticker held-and-tagged as a fund but proven NOT to be
+  // one gets routed to residual as an opaque fund instead of being treated
+  // as a direct name with its own effective exposure and its own
+  // concentration eligibility (Codex review, FIX-801 sub-PR b).
+  const disprovenByProfile = profile?.payload === null && profile.refusalReason === "not_an_etf";
+  if (held && isFundAssetType(held.assetType) && !disprovenByProfile) return true;
 
   // Layer 1b — a stored profile, checked BEFORE a held ticker's non-fund
   // classification is allowed to settle the question (see the docblock
   // above for why: a direct holding's assetType can be stale/misclassified).
-  const profile = fundProfiles.get(ticker);
   if (profile) {
     if (profile.payload !== null) return true; // a stored profile proves it's a fund
     if (profile.refusalReason === "not_an_etf") return false; // proven NOT a fund
@@ -452,6 +465,23 @@ export function computeLookThroughExposure(
       continue;
     }
     const fp = profile.payload;
+
+    // A leveraged/inverse fund's constituent weights don't represent honest
+    // household exposure at all (2x/3x leverage, or inverse positioning) —
+    // the spec's own non-goal explicitly excludes "leveraged, inverse...
+    // fund attribution" (Decision 4's eligibility gate). Refused the same
+    // way a fund-of-funds or a below-floor axis is refused: whole mass to
+    // residual, opaque on BOTH axes, never decomposed as an ordinary long
+    // fund. This mirrors the fetch-time `"leveraged/inverse fund"` REFUSAL
+    // reason (a fund AV itself flagged before ever returning a payload) —
+    // this is the same call for a fund whose payload made it through with
+    // `leveraged: true` set (Codex review, FIX-801 sub-PR b).
+    if (fp.leveraged) {
+      nameResidualMass += mv;
+      sectorResidualMass += mv;
+      opaqueByTicker.set(pos.ticker, { both: "leveraged/inverse fund" });
+      continue;
+    }
 
     // Fund-of-funds check — a material share resolving as OTHER funds makes
     // the WHOLE fund ineligible rather than half-decomposed (§7).

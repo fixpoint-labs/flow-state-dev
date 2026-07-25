@@ -697,6 +697,27 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "BND")).toBe(false);
     expect(out.maxPosition?.ticker).not.toBe("BND");
   });
+
+  it("a stored `not_an_etf` refusal outweighs a held ticker's own fund-type classification tag — the 5th evidence-ordering case, in the opposite direction (Codex review, coverage reconciliation round)", () => {
+    // The prior four evidence-ordering fixes were all about POSITIVE
+    // evidence (a stored profile, or the curated bond-ETF list) beating a
+    // stale NON-fund classification tag. This is the inverse: NEGATIVE
+    // evidence — a stored `not_an_etf` refusal, Alpha Vantage's own
+    // determination that the ticker isn't actually an ETP — must beat a
+    // stale FUND-type classification tag. Before this fix, layer 1a
+    // returned true immediately on `assetType: "etf"` without ever
+    // consulting the profile, so a position like this routed to residual as
+    // an opaque fund instead of being treated as a direct name with its own
+    // effective exposure.
+    const positions = [direct("MISTAG", 100_000, { assetType: "etf" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["MISTAG", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([
+      { ticker: "MISTAG", marketValue: 100_000, weightPct: 100, sources: [{ from: "direct", marketValue: 100_000 }] },
+    ]);
+    expect(out.residual.marketValue).toBeCloseTo(0);
+    expect(out.opaqueFunds).toEqual([]);
+  });
 });
 
 describe("computeLookThroughExposure — Decision 8: flags at the same thresholds, tagged separately", () => {
@@ -831,6 +852,39 @@ describe("computeLookThroughExposure — §9 edge cases", () => {
     expect(out.opaqueFunds).toEqual([
       expect.objectContaining({ ticker: "TQQQ", axis: "both", reason: "leveraged/inverse fund" }),
     ]);
+  });
+
+  it("a stored SUCCESS payload with leveraged: true is refused, not decomposed as an ordinary long fund (Codex review, coverage reconciliation round)", () => {
+    // Distinct from the sibling REFUSAL test above: this fund's fetch
+    // resolved a full, well-formed payload (leveraged funds can have
+    // legitimate constituent/coverage data) — before this fix, nothing
+    // inspected `fp.leveraged`, so it decomposed exactly like an ordinary
+    // long fund. A 2x/3x leveraged (or inverse) fund's constituent weights
+    // don't represent honest household exposure, so it must be refused
+    // (both axes to residual, opaque) regardless of how complete its
+    // payload otherwise looks.
+    const positions = [fund("SPXL", 10_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SPXL",
+        profile({
+          leveraged: true,
+          nameCoverage: 1,
+          constituents: [{ ticker: "AAPL", weight: 1 }],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 10_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // not decomposed into AAPL
+    expect(out.sectorExposure).toEqual([]);
+    expect(out.residual.marketValue).toBeCloseTo(10_000);
+    expect(out.sectorResidual.marketValue).toBeCloseTo(10_000);
+    expect(out.opaqueFunds).toEqual([
+      expect.objectContaining({ ticker: "SPXL", axis: "both", reason: "leveraged/inverse fund" }),
+    ]);
+    expect(out.hasAttribution).toBe(false);
   });
 });
 
