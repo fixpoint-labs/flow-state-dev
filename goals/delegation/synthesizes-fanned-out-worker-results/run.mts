@@ -94,10 +94,15 @@ function hasMarker(text: string, marker: string, longer: readonly string[] = [])
   return occurrences(text, marker).some(
     (i) =>
       isBounded(text, i, marker) &&
-      !longer.some((l) => {
-        const offset = l.indexOf(marker);
-        return offset !== -1 && text.startsWith(l, i - offset);
-      }),
+      // Nested check must consider EVERY offset at which `marker` sits inside
+      // the longer marker, not just the first. With a fixture like
+      // SECRET="A" / SUFFIX="+A" (so FANNED="A+A"), the auditor-only answer
+      // "A+A" contains `A` at offsets 0 and 2; checking only the first offset
+      // would accept the second `A` as a standalone researcher result and pass
+      // an answer where the researcher's own output was dropped.
+      !longer.some((l) =>
+        occurrences(l, marker).some((offset) => text.startsWith(l, i - offset)),
+      ),
   );
 }
 
@@ -257,27 +262,18 @@ async function run(actionName: "withTeam" | "solo", sessionId: string) {
 }
 
 /**
- * The coordinator's OWN terminal answer — never a worker's message. Inline
- * workers default to client-visible messages, so their secret-bearing outputs
- * land in `res.items`; grading the coordinator's terminal output alone is what
- * makes "the COORDINATOR synthesized it" checkable (not "a worker emitted it").
+ * The coordinator's TERMINAL answer — `res.output` and nothing else.
+ *
+ * Deliberately has no message fallback. Inline workers default to client-visible
+ * messages, so their secret-bearing outputs land in `res.items`; and the
+ * coordinator's own intermediate turns (e.g. text emitted alongside a tool call)
+ * land there too. Aggregating any of those would let a run where the terminal
+ * output is EMPTY — nothing actually synthesized — grade as a success off an
+ * earlier turn. `z.string()` permits "", so that is a reachable state, and it is
+ * a genuine failure: the caller received no answer.
  */
-function coordinatorOutput(res: {
-  output?: unknown;
-  items: { type: string; role?: string; agentName?: string; content?: unknown; text?: unknown }[];
-}): string {
-  if (typeof res.output === "string" && res.output.length > 0) return res.output;
-  // Fallback only if the terminal output is empty: the coordinator's own final
-  // assistant message (worker messages carry an agentName prefixed "skill-").
-  return res.items
-    .filter(
-      (i) =>
-        i.type === "message" &&
-        i.role === "assistant" &&
-        !String(i.agentName ?? "").startsWith("skill-"),
-    )
-    .map(messageText)
-    .join("\n");
+function coordinatorOutput(res: { output?: unknown }): string {
+  return typeof res.output === "string" ? res.output : "";
 }
 
 /** The roster lines the coordinator actually sees, via the real `agentPurpose`. */
@@ -353,6 +349,17 @@ async function runGoalCheck(): Promise<string[]> {
   const on = await run("withTeam", "deleg-on");
   if (on.error) return [`delegation-ON run failed: ${on.error.message}`];
   const onOutput = coordinatorOutput(on);
+
+  // An empty terminal output is a real failure, not a grading technicality: the
+  // caller got no answer, so nothing was synthesized — regardless of what the
+  // coordinator may have said in an earlier turn or what the workers emitted.
+  if (onOutput.trim() === "") {
+    return [
+      `coordinator's TERMINAL output is empty — nothing was synthesized for the caller. ` +
+        `(Worker messages and the coordinator's intermediate turns are deliberately not ` +
+        `graded, so an earlier turn carrying the codes cannot rescue this.)`,
+    ];
+  }
 
   // The delegation-ON answer must carry EVERY graded marker: the researcher's
   // standalone secret (proving its own result was synthesized, not just echoed
