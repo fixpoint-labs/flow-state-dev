@@ -288,6 +288,81 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(body.profiles).toEqual([]);
   });
 
+  it("stamps a retry boundary on a preserved-payload refresh failure — a repeatedly-failing refresh does not retry on every read (Codex review P1)", async () => {
+    await seedEtf("SPY");
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: SAMPLE_PROFILE });
+    await GET(get(USER_ID));
+
+    await backdateFetchedAt("SPY", 31);
+    fetcherMock.fetchEtfProfile.mockClear();
+    fetcherMock.fetchEtfProfile.mockRejectedValueOnce(new Error("network blip"));
+    await GET(get(USER_ID)); // the refresh attempt fails; the payload is preserved
+
+    const stored = (await repoState.repo!.getEtfProfiles(["SPY"]))[0]!;
+    expect(stored.payload).not.toBeNull(); // preserved (the existing guard)
+    expect(stored.retryAt).not.toBeNull(); // NEW: a backoff boundary was recorded
+
+    // A second read, still within that backoff window and still "stale" by
+    // fetchedAt, must NOT retry the refresh — the retryAt boundary is what
+    // stops a repeatedly-failing refresh from re-attempting on every read.
+    fetcherMock.fetchEtfProfile.mockClear();
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+  });
+
+  it("a sequential race: a caller whose own pre-fetch snapshot is stale re-checks fresh state under the lease and skips a redundant fetch (Codex review P2)", async () => {
+    await seedEtf("SPY");
+    await backdateFetchedAt("SPY", 31); // force both callers to see it as stale up front
+
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: SAMPLE_PROFILE });
+
+    // Start call2 but let it only begin its own initial repo reads before
+    // call1 runs all the way to completion (fetch + persist + lease
+    // release) — call2's OWN request-local snapshot is taken from THIS
+    // point, before call1's write lands.
+    const call2Promise = GET(get(USER_ID));
+    await Promise.resolve();
+
+    const res1 = await GET(get(USER_ID));
+    const body1 = (await res1.json()) as EtfProfilesResponse;
+    expect(body1.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+
+    // call2 now reaches its own fetch decision. Without the lease-scoped
+    // fresh re-read, its stale local snapshot would say "still a miss" and
+    // it would spend a second unit (and, if that attempt failed, risk
+    // clobbering call1's fresh success per the earlier guard).
+    const res2 = await call2Promise;
+    const body2 = (await res2.json()) as EtfProfilesResponse;
+    expect(body2.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1); // NOT called again
+  });
+
+  it("propagates a quota hit to a caller deduped onto another caller's lease for the same ticker (Codex review P2)", async () => {
+    // Both concurrent requests need the SAME new ticker — the lease dedupes
+    // them onto one execution. Whichever caller actually runs the fetch sets
+    // its OWN local `quotaHit`; the deduped caller must independently learn
+    // the same thing from the lease's shared return value, not just receive
+    // the row.
+    await seedEtf("SPY");
+    const { AlphaVantageBudgetError } = await import("@/lib/providers/alpha-vantage");
+    fetcherMock.fetchEtfProfile.mockRejectedValue(new AlphaVantageBudgetError(25));
+
+    const [res1, res2] = await Promise.all([GET(get(USER_ID)), GET(get(USER_ID))]);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1); // deduped to one attempt
+    const body1 = (await res1.json()) as EtfProfilesResponse;
+    const body2 = (await res2.json()) as EtfProfilesResponse;
+    // Both callers see the SAME quota refusal — the deduped one didn't fall
+    // back to some other (stale or empty) view of the ticker.
+    for (const body of [body1, body2]) {
+      expect(body.refusals).toEqual([
+        expect.objectContaining({ ticker: "SPY", reason: "quota" }),
+      ]);
+    }
+  });
+
   it("400s without a userId query param", async () => {
     expect((await GET(get(undefined))).status).toBe(400);
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();

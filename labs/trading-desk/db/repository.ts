@@ -439,9 +439,25 @@ export type EtfProfileRow = {
 /** Fields a caller supplies to persist one ETF profile fill outcome (FIX-801).
  *  A discriminated union so a caller can't accidentally set both `payload` and
  *  `refusalReason` (or neither) — the fill route always has exactly one
- *  outcome per ticker per attempt. */
+ *  outcome per ticker per attempt.
+ *
+ *  The success variant's `retryAt`/`transientAttempts` are OPTIONAL and exist
+ *  for one narrow case: a REFRESH attempt on an already-good `payload` that
+ *  itself failed (threw, or came back refused) — the route keeps the known-
+ *  good payload (never clobbers it) but still needs to record WHEN the next
+ *  refresh attempt is allowed, via the same per-failure-class backoff the
+ *  refusal variant uses (reviewer follow-up on FIX-801 sub-PR a: without
+ *  this, a stale row whose refresh keeps failing is retried on every single
+ *  read, burning the shared daily budget). Omitted (a normal fresh success)
+ *  clears any prior backoff, matching the pre-existing behavior. */
 export type EtfProfileUpsertInput =
-  | { ticker: string; payload: NormalizedEtfProfile; refusalReason: null }
+  | {
+      ticker: string;
+      payload: NormalizedEtfProfile;
+      refusalReason: null;
+      retryAt?: string | null;
+      transientAttempts?: number;
+    }
   | {
       ticker: string;
       payload: null;
@@ -1860,8 +1876,11 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
         payload: r.payload,
         refusalReason: r.refusalReason,
         refusalDetail: r.refusalReason === null ? null : r.refusalDetail,
-        retryAt: r.refusalReason === null ? null : r.retryAt,
-        transientAttempts: r.refusalReason === null ? 0 : r.transientAttempts,
+        // The success variant's retryAt/transientAttempts are optional — set
+        // only for a "refresh failed, kept the good payload, deferred the
+        // next attempt" write; omitted (undefined) clears any prior backoff.
+        retryAt: r.refusalReason === null ? (r.retryAt ?? null) : r.retryAt,
+        transientAttempts: r.refusalReason === null ? (r.transientAttempts ?? 0) : r.transientAttempts,
       }));
       await db.transaction(async (tx) => {
         await tx

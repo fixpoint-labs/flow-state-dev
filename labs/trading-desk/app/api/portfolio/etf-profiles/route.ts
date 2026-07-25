@@ -115,8 +115,8 @@ function toStoredRow(input: EtfProfileUpsertInput, fetchedAt: string): EtfProfil
       payload: input.payload,
       refusalReason: null,
       refusalDetail: null,
-      retryAt: null,
-      transientAttempts: 0,
+      retryAt: input.retryAt ?? null,
+      transientAttempts: input.transientAttempts ?? 0,
       fetchedAt,
     };
   }
@@ -129,6 +129,23 @@ function toStoredRow(input: EtfProfileUpsertInput, fetchedAt: string): EtfProfil
     transientAttempts: input.transientAttempts,
     fetchedAt,
   };
+}
+
+/** Whether a stored row is still due for a fetch attempt right now — the
+ *  SAME rule the outer `misses` filter uses, re-applied under the lease
+ *  against a FRESH read (see the `GET` handler for why: a sequential, not
+ *  just concurrent, race can leave the request-local snapshot stale). */
+function isDueForFetch(stored: EtfProfileRow | undefined, now: Date): boolean {
+  if (!stored) return true; // never fetched
+  if (stored.payload !== null) {
+    if (!isStale(stored.fetchedAt, now)) return false; // fresh success
+    // Stale, but a prior refresh attempt may have deferred the next one
+    // (the retryAt-on-preserved-payload case) — honor that backoff too.
+    if (stored.retryAt && new Date(stored.retryAt).getTime() > now.getTime()) return false;
+    return true;
+  }
+  if (!stored.retryAt) return true; // defensive — shouldn't happen, but never stall a genuine miss
+  return new Date(stored.retryAt).getTime() <= now.getTime(); // refusal past backoff
 }
 
 export async function GET(req: NextRequest) {
@@ -176,13 +193,7 @@ export async function GET(req: NextRequest) {
   // job, FIX-801 §8 step 6 — a client-side concern, not this route's).
   const fetchCandidates = eligibleTickers.filter((t) => pricedTickers.has(t));
 
-  const misses = fetchCandidates.filter((ticker) => {
-    const stored = storedByTicker.get(ticker);
-    if (!stored) return true; // never fetched
-    if (stored.payload !== null) return isStale(stored.fetchedAt, now); // stale success
-    if (!stored.retryAt) return true; // defensive — shouldn't happen, but never stall a genuine miss
-    return new Date(stored.retryAt).getTime() <= now.getTime(); // refusal past backoff
-  });
+  const misses = fetchCandidates.filter((ticker) => isDueForFetch(storedByTicker.get(ticker), now));
   const missesToFetch = misses.slice(0, ETF_PROFILE_MISS_CAP);
 
   let quotaHit = false;
@@ -195,16 +206,23 @@ export async function GET(req: NextRequest) {
     // browser tabs, or a mount racing a refresh) see a DB miss during that
     // window and spend a second budget unit on a ticker just fetched, which
     // defeats the whole point of the lease (Codex review, FIX-801 sub-PR a).
-    //
-    // IMPORTANT: `storedByTicker` is REQUEST-LOCAL (one per `GET` call), so a
-    // deduped concurrent caller's lease body never actually runs — it just
-    // awaits the FIRST caller's shared promise. The upsert therefore has to
-    // come back as `withLease`'s RETURN VALUE and be reflected into THIS
-    // caller's own `storedByTicker`, not as a side effect buried inside the
-    // executing caller's closure (which a deduped sibling request would
-    // never see, leaving ITS OWN map — and its response — stale).
-    const result = await withLease(`etf-profile:${ticker}`, async () => {
-      const storedBefore = storedByTicker.get(ticker);
+    const { row, hitQuota } = await withLease(`etf-profile:${ticker}`, async () => {
+      // Re-check under the lease against a FRESH read, not the request-local
+      // `storedByTicker` snapshot: a SEQUENTIAL race — caller A fetches,
+      // persists, and fully releases the lease BEFORE caller B (in this
+      // request's own batch, or a different overlapping request) reaches
+      // this ticker's lease acquisition — leaves B's snapshot unaware A's
+      // write already landed. Re-reading here is what protects BOTH the
+      // "should I even fetch" decision below AND the "should I clobber"
+      // guard from acting on stale information (Codex review, FIX-801
+      // sub-PR a).
+      const storedBefore = (await repo.getEtfProfiles([ticker]))[0];
+      if (!isDueForFetch(storedBefore, now)) {
+        // Resolved already by someone else while we were queued — no fetch,
+        // no write, just hand back what's already there.
+        return { row: storedBefore ?? null, hitQuota: false };
+      }
+
       // Refresh guard, applied uniformly to BOTH outcome paths below (Cursor
       // review + follow-up, FIX-801 sub-PR a): a REFRESH attempt on a ticker
       // that already has a valid, if stale, stored profile must never
@@ -213,17 +231,38 @@ export async function GET(req: NextRequest) {
       // overturn an already-attributed fund. Alpha Vantage's documented
       // flakiness means even a clean "not_an_etf" response on a refresh
       // could be a transient hiccup, not a real change in the fund's nature.
-      // Only a fresh SUCCESS overwrites existing data; only a genuinely NEW
-      // miss (no prior payload) gets a refusal written.
+      // Only a fresh SUCCESS overwrites the payload; a genuinely NEW miss
+      // (no prior payload) gets a normal refusal written. Either way the
+      // outcome STILL stamps a retry boundary (reviewer follow-up on
+      // sub-PR a): keeping the payload with no backoff would retry the same
+      // failing refresh on every single read, burning the shared budget.
       const hasStoredSuccess = storedBefore !== undefined && storedBefore.payload !== null;
+      // `transientAttempts` is only ever nonzero for a `transient`-class
+      // outcome (the backoff module resets it to 0 for every other class),
+      // so reading it unconditionally — regardless of whether the row is
+      // currently shaped as a success (payload kept) or a refusal — correctly
+      // continues an escalating transient streak either way.
+      const priorTransientAttempts = storedBefore?.transientAttempts ?? 0;
 
       let upsert: EtfProfileUpsertInput;
+      let hitQuotaHere = false;
       try {
         const outcome = await fetchEtfProfile(ticker);
         if (outcome.kind === "profile") {
           upsert = { ticker, payload: outcome.profile, refusalReason: null };
         } else if (hasStoredSuccess) {
-          return null; // refused judgment on a refresh — leave the good row intact
+          const { retryAt, transientAttempts } = computeRefusalBackoff(
+            outcome.reason,
+            now,
+            priorTransientAttempts,
+          );
+          upsert = {
+            ticker,
+            payload: storedBefore!.payload!,
+            refusalReason: null,
+            retryAt: retryAt.toISOString(),
+            transientAttempts,
+          };
         } else {
           const { retryAt } = computeRefusalBackoff(outcome.reason, now, 0);
           upsert = {
@@ -238,31 +277,46 @@ export async function GET(req: NextRequest) {
       } catch (err) {
         const isQuota =
           err instanceof AlphaVantageBudgetError || err instanceof AlphaVantageRateLimitError;
-        if (isQuota) quotaHit = true;
-        if (hasStoredSuccess) return null; // thrown error on a refresh — leave the good row intact
+        if (isQuota) hitQuotaHere = true;
         const reason: EtfProfileRefusalClass = isQuota ? "quota" : "transient";
-        const priorTransientAttempts =
-          storedBefore?.refusalReason === "transient" ? storedBefore.transientAttempts : 0;
         const { retryAt, transientAttempts } = computeRefusalBackoff(
           reason,
           now,
           priorTransientAttempts,
         );
-        upsert = {
-          ticker,
-          payload: null,
-          refusalReason: reason,
-          refusalDetail: err instanceof Error ? err.message : String(err),
-          retryAt: retryAt.toISOString(),
-          transientAttempts,
-        };
+        if (hasStoredSuccess) {
+          upsert = {
+            ticker,
+            payload: storedBefore!.payload!,
+            refusalReason: null,
+            retryAt: retryAt.toISOString(),
+            transientAttempts,
+          };
+        } else {
+          upsert = {
+            ticker,
+            payload: null,
+            refusalReason: reason,
+            refusalDetail: err instanceof Error ? err.message : String(err),
+            retryAt: retryAt.toISOString(),
+            transientAttempts,
+          };
+        }
       }
 
       await repo.upsertEtfProfiles([upsert]);
-      return upsert;
+      return { row: toStoredRow(upsert, now.toISOString()), hitQuota: hitQuotaHere };
     });
 
-    if (result) storedByTicker.set(ticker, toStoredRow(result, now.toISOString()));
+    // Propagate quota state to THIS caller's own request-local flag — even
+    // when this caller was deduped onto another (executing) caller's lease,
+    // possibly from a DIFFERENT overlapping request, whose fetch is what
+    // actually hit quota. Without this, a caller whose ticker happened to
+    // share a lease with the one that discovered exhaustion would keep
+    // scheduling paced calls for the REST of its own batch that were always
+    // going to fail (Codex review, FIX-801 sub-PR a).
+    if (hitQuota) quotaHit = true;
+    if (row) storedByTicker.set(ticker, row);
   });
 
   const profiles: EtfProfileEntry[] = [];
