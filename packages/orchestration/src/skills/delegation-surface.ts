@@ -48,6 +48,7 @@ import { readActivations, type ActivationLocation } from "./activation-store";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
+import { isValidAgentKey } from "./skill-md";
 import { materializeWorker } from "./worker-materializer";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import { resolveDelegationBuild } from "./internal/delegation-memo";
@@ -74,8 +75,10 @@ const BOARD_CONCURRENCY = 4;
 /**
  * Reserved worker key for the on-demand default worker — the delegation
  * floor (FIX-940). Its leading underscore makes it unrepresentable as a
- * declared agent key (`/^[a-z0-9][a-z0-9_-]*$/`). Combined with a skill
- * name that can never contain an underscore (skill names match
+ * declared agent key: `isValidAgentKey` (`skill-md.ts`) requires a leading
+ * `[a-z0-9]`, enforced by `parseAgentsField` on the authoring path and
+ * re-checked by `buildTools` below on the live-manifest path. Combined with a
+ * skill name that can never contain an underscore (skill names match
  * `/^[a-z0-9][a-z0-9-]*$/`), the floor's synthesised block name
  * (`skillWorker_${FLOOR_SKILL_NAME}_${FLOOR_WORKER_KEY}`, i.e.
  * `skillWorker_delegation___floor__`) is unreachable by any real
@@ -94,8 +97,11 @@ const FLOOR_SKILL_NAME = "delegation";
  * capable, with no identity or tools — the floor is the same kind of
  * worker a declared inline agent is (FIX-641 later swaps this for an
  * identity-bearing spec on the same `materializeWorker` seam).
+ *
+ * Exported so the out-of-CI goal check drives the floor on the prompt that
+ * actually ships rather than a copy that could drift from it.
  */
-const DEFAULT_WORKER_PROMPT = [
+export const DEFAULT_WORKER_PROMPT = [
   "You are a capable, careful generalist worker on a delegation team.",
   "You are handed one task at a time: read its goal, any input payload, and any upstream",
   "results, then do the work and return a complete, self-contained result for that task.",
@@ -161,7 +167,7 @@ export interface DelegationSurfaceDeps {
    * surface builds (roster or rosterless) — this flag governs only whether
    * an empty roster is still buildable.
    */
-  floorOn: boolean;
+  allowEmptyRoster: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,9 +395,9 @@ async function resolveBuild(
   deps: DelegationSurfaceDeps,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
   const sources = await collectAgentSources(ctx, deps); // per-step eligibility (unchanged)
-  return resolveDelegationBuild(ctx, sources, deps.floorOn, async () => ({
+  return resolveDelegationBuild(ctx, sources, deps.allowEmptyRoster, async () => ({
     tools: await buildTools(ctx, deps, sources),
-    guidance: buildGuidance(sources, deps.floorOn),
+    guidance: buildGuidance(sources, deps.allowEmptyRoster),
   }));
 }
 
@@ -415,9 +421,9 @@ export async function buildDelegationTools(
  * delegation skill must fail loud, not silently lose its team. A *runtime*
  * activation whose agent key collides with a divergent spill from another active
  * skill is skipped with a warning instead (a model-driven activation must not
- * crash the turn). Called when `sources.length > 0`, or when `deps.floorOn` (a
- * rosterless `delegation: true` binding) — in which case the roster is empty and
- * the default floor is the board's only worker.
+ * crash the turn). Called when `sources.length > 0`, or when
+ * `deps.allowEmptyRoster` (a rosterless `delegation: true` binding) — in which
+ * case the roster is empty and the default floor is the board's only worker.
  */
 async function buildTools(
   ctx: BlockContext,
@@ -466,6 +472,28 @@ async function buildTools(
 
   for (const source of sources) {
     for (const [agentKey, spec] of Object.entries(source.agents)) {
+      // Re-check the agent key here, where it becomes a plain-object registry
+      // key on the board's worker router. `parseAgentsField` already rejects
+      // an illegal key on the authoring path, but `collectAgentSources` also
+      // reads `agents` straight off a live skill manifest whose state schema is
+      // `.passthrough()` and does not describe `agents` — so a manifest written
+      // out-of-band never passed through the parser. Without this, a planted
+      // `__no_assignee__` would shadow the absent-assignee sentinel (unassigned
+      // tasks would run on it instead of the floor), `__floor__` would collide
+      // with the floor's own worker key, and `__proto__` would hit the
+      // prototype setter rather than create an own key — silently emptying the
+      // registry and disabling the whole surface. Skip rather than throw: the
+      // key is unreachable through every supported authoring path, so this is
+      // defense against a corrupt manifest, and dropping the entry is what
+      // preserves the invariant.
+      if (!isValidAgentKey(agentKey)) {
+        console.warn(
+          `[skills] delegation agent key "${agentKey}" (skill "${source.skillName}") is not a ` +
+            `legal agent key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led ` +
+            `names are reserved by the delegation board.`,
+        );
+        continue;
+      }
       if (seenSpecs.has(agentKey)) {
         // Two skills sharing an agent key: an IDENTICAL spec dedupes into the
         // already-built board worker. A DIFFERENT spec under the same key is a
@@ -505,7 +533,7 @@ async function buildTools(
   // Empty roster: normally nothing to delegate to, so contribute no tools —
   // UNLESS the floor is on (`delegation: true`), where the default worker IS
   // the board and the surface must still install (FIX-940).
-  if (Object.keys(boardWorkers).length === 0 && !deps.floorOn) return [];
+  if (Object.keys(boardWorkers).length === 0 && !deps.allowEmptyRoster) return [];
 
   // The floor is wired as the board's fallback whenever the surface builds —
   // roster+floor and rosterless alike (decision 3: unconditional when
@@ -557,8 +585,8 @@ const FLOOR_ADVISORY =
  * the guidance leads with the floor rather than an empty "Your agents:" list;
  * the floor advisory is appended in both roster states (FIX-940, decision 5).
  */
-function buildGuidance(sources: DelegationAgentSource[], floorOn: boolean): string | null {
-  if (sources.length === 0 && !floorOn) return null;
+function buildGuidance(sources: DelegationAgentSource[], allowEmptyRoster: boolean): string | null {
+  if (sources.length === 0 && !allowEmptyRoster) return null;
   // Dedupe by agent key — two skills sharing an agent list it once,
   // mirroring the board's participant registry.
   const roster = new Map<string, string>();

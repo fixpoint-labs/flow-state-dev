@@ -136,11 +136,24 @@ export async function packWorkerInput(
 
 /**
  * Reserved `select` return value that steers a task with **no** assignee
- * to the router's `fallback` (the default worker). It can never collide
- * with a real registry key: agent/assignee keys must match
- * `/^[a-z0-9][a-z0-9_-]*$/`, so a leading underscore is unrepresentable.
- * Only used when a `defaultWorker` is configured; without one an absent
- * assignee still throws (I2).
+ * to the router's `fallback` (the default worker). Only used when a
+ * `defaultWorker` is configured; without one an absent assignee still
+ * throws (I2).
+ *
+ * It cannot collide with a delegation board's registry key: agent keys must
+ * match `/^[a-z0-9][a-z0-9_-]*$/`, so a leading underscore is unrepresentable.
+ * That constraint is enforced in `skills/skill-md.ts` (`isValidAgentKey`, from
+ * `parseAgentsField` on the authoring path) and re-checked in
+ * `skills/delegation-surface.ts` `buildTools` before a key becomes a registry
+ * entry — the live-manifest read there bypasses the parser. Relaxing the
+ * pattern to admit a leading underscore would let a declared agent shadow this
+ * sentinel; both sites name this constant so the change trips over it.
+ *
+ * A caller outside the skills layer may pass any registry it likes, so this is
+ * a *delegation* guarantee, not a board-wide one. A board whose registry
+ * genuinely contains this key would route unassigned tasks there instead of to
+ * `defaultWorker` — no crash, and no such caller exists (blackboard and the
+ * patterns registries pass no `defaultWorker` at all).
  */
 const ABSENT_ASSIGNEE_ROUTE = "__no_assignee__";
 

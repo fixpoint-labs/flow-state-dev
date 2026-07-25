@@ -543,6 +543,63 @@ describe("taskBoard - default worker (the floor)", () => {
     expect(trace.sort()).toEqual(["floor:a", "floor:b"]);
   });
 
+  // The worker registry is a plain object, so an assignee naming an inherited
+  // Object.prototype member used to resolve off the prototype chain and be
+  // dispatched as if it were a registered worker — the task errored on the
+  // route-candidate check instead of reaching the floor. Assignees are
+  // model-authored (addTask), so these names are reachable input.
+  it.each(["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"])(
+    "I1: routes the Object.prototype name %s to the floor, not off the prototype chain",
+    async (protoAssignee) => {
+      const trace: string[] = [];
+      const board = taskBoard({
+        name: `floor-proto-${protoAssignee.replace(/_/g, "")}`,
+        collection: { collectionId: `floor-proto-${protoAssignee.replace(/_/g, "")}` },
+        concurrency: 1,
+        dispatcher: "fifo",
+        workers: { only: makeEchoWorker("only", trace) },
+        defaultWorker: makeEchoWorker("floor", trace),
+        initialTasks: [
+          { id: "p", goal: "prototype-named assignee", assignee: protoAssignee, input: { topic: "p" } },
+        ],
+        onError: "skip",
+      });
+
+      const result = await testBlock(board.drain, { input: undefined });
+      expect(result.error).toBeNull();
+      const final = lastTaskState(result.items);
+      expect(final.get("p")).toBe("completed");
+      expect(trace).toEqual(["floor:p"]);
+    },
+  );
+
+  it.each(["toString", "constructor", "__proto__"])(
+    "I2: with no defaultWorker, the Object.prototype name %s still fails the task",
+    async (protoAssignee) => {
+      const trace: string[] = [];
+      const board = taskBoard({
+        name: `no-floor-proto-${protoAssignee.replace(/_/g, "")}`,
+        collection: { collectionId: `no-floor-proto-${protoAssignee.replace(/_/g, "")}` },
+        concurrency: 1,
+        dispatcher: "fifo",
+        workers: { only: makeEchoWorker("only", trace) },
+        // No defaultWorker — a prototype-named miss must fail like any other.
+        initialTasks: [
+          { id: "p", goal: "prototype-named assignee", assignee: protoAssignee },
+          { id: "y", goal: "ok", assignee: "only", input: { topic: "y" } },
+        ],
+        onError: "skip",
+      });
+
+      const result = await testBlock(board.drain, { input: undefined });
+      expect(result.error).toBeNull();
+      const final = lastTaskState(result.items);
+      expect(final.get("p")).toBe("errored");
+      expect(final.get("y")).toBe("completed");
+      expect(trace).toEqual(["only:y"]);
+    },
+  );
+
   it("I2: with no defaultWorker, an absent assignee still fails the task", async () => {
     const trace: string[] = [];
     const board = taskBoard({

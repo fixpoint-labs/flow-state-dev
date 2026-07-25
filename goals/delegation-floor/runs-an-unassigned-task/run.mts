@@ -8,17 +8,20 @@
  *
  * What makes this a goal check, not a dressed-up unit test:
  *   - The floor is the REAL thing FIX-940 wires: `materializeWorker` builds a
- *     board worker from a synthetic `{ prompt }` spec (no tools, no identity),
- *     and `taskBoard({ defaultWorker })` threads it into `buildWorkerStep` as the
- *     `keyedRouter` fallback. Nothing here mocks the model — the floor generator
- *     actually runs through the REAL engine (`runAction`) and must produce the
- *     held-out answer for the task to record output.
- *   - Two anti-game contrasts over the SAME two seeded tasks:
- *       A) floor-ON vs floor-OFF: with the floor the unassigned task completes
- *          and carries the answer; without it (the identical board minus
- *          `defaultWorker`) the identical task ERRORS with no output. That the
- *          floor-off board cannot produce the answer is what proves the floor —
- *          not leakage, not a hardcoded string — did the work.
+ *     board worker from the SHIPPED baseline `{ prompt }` spec (no tools, no
+ *     identity), and `taskBoard({ defaultWorker })` threads it into
+ *     `buildWorkerStep` as the `keyedRouter` fallback. Nothing here mocks the
+ *     model — the floor generator actually runs through the REAL engine
+ *     (`runAction`) and must produce the held-out answer to record output.
+ *   - BOTH miss routes are exercised, because they reach the floor differently:
+ *     an UNSET assignee (steered by the reserved absent-assignee sentinel) and
+ *     one that NAMES NO DECLARED WORKER (native keyed-router fallthrough).
+ *   - Two anti-game contrasts over the SAME three seeded tasks:
+ *       A) floor-ON vs floor-OFF: with the floor each miss completes and carries
+ *          the answer; without it (the identical board minus `defaultWorker`)
+ *          the identical tasks ERROR with no output. That the floor-off board
+ *          cannot produce the answer is what proves the floor — not leakage,
+ *          not a hardcoded string — did the work.
  *       B) declared vs floor: a task assigned to a declared worker still runs on
  *          THAT worker (its deterministic marker), never the floor — proving the
  *          floor is reached only on a genuine miss.
@@ -34,7 +37,11 @@ import {
   createInMemoryStores,
   createModelResolver,
 } from "@flow-state-dev/engine";
-import { materializeWorker } from "@flow-state-dev/orchestration";
+import {
+  DEFAULT_WORKER_PROMPT,
+  FLOOR_WORKER_KEY,
+  materializeWorker,
+} from "@flow-state-dev/orchestration";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { z } from "zod";
 
@@ -50,16 +57,14 @@ for (const k of Object.keys(process.env)) {
   if (k === "FSDEV_DEFAULT_MODEL" || k.startsWith("FSDEV_INTENT_")) delete process.env[k];
 }
 
-// The floor — materialized exactly the way the delegation surface does: a
-// synthetic baseline `{ prompt }` spec, no tools, model from the deps default.
-const FLOOR_PROMPT =
-  "You are a capable, careful generalist worker on a delegation team. You are handed one " +
-  "task at a time: read its goal and do the work, returning a complete, self-contained answer. " +
-  "Answer concisely with the value asked for.";
+// The floor — materialized exactly the way the delegation surface does: the
+// SHIPPED baseline `{ prompt }` spec under the SHIPPED reserved key, no tools,
+// model from the deps default. Both are imported rather than copied, so this
+// check cannot pass on a prompt the product doesn't actually use.
 const floor = await materializeWorker(
-  "__floor__",
-  { prompt: FLOOR_PROMPT },
-  { catalog: {}, skillName: "floor", defaultModelId: MODEL },
+  FLOOR_WORKER_KEY,
+  { prompt: DEFAULT_WORKER_PROMPT },
+  { catalog: {}, skillName: "delegation", defaultModelId: MODEL },
 );
 
 // A declared worker — deterministic, so its output is an unmistakable marker
@@ -71,10 +76,15 @@ const specialist = handler({
   execute: () => fx.specialistMarker,
 });
 
-// The two seeded tasks the "coordinator" planned: one with NO assignee (floor
-// territory) and one assigned to the declared specialist (must not touch the floor).
+// The three seeded tasks the "coordinator" planned. Both halves of the claimed
+// outcome get their own task — an assignee that is UNSET, and one that NAMES NO
+// DECLARED WORKER — because they reach the floor by different routes: the unset
+// one via the reserved absent-assignee sentinel in `buildWorkerStep.select`, the
+// unknown one by falling through the keyed router natively. The third is
+// assigned to the declared specialist and must never touch the floor.
 const initialTasks = [
   { id: "unassigned", goal: fx.question },
+  { id: "unknown-assignee", goal: fx.question, assignee: "nobody-declared-this" },
   { id: "declared", goal: "Return your marker.", assignee: "specialist" },
 ];
 
@@ -84,7 +94,7 @@ const boardOn = taskBoard({
   workers: { specialist } as never,
   defaultWorker: floor as never,
   dispatcher: "fifo",
-  concurrency: 2,
+  concurrency: 3,
   onError: "skip",
   initialTasks,
 });
@@ -95,7 +105,7 @@ const boardOff = taskBoard({
   workers: { specialist } as never,
   // No defaultWorker — the unassigned task must error (I2).
   dispatcher: "fifo",
-  concurrency: 2,
+  concurrency: 3,
   onError: "skip",
   initialTasks,
 });
@@ -158,33 +168,40 @@ async function runGoalCheck(): Promise<string[]> {
   const on = await drain("drainOn");
   const off = await drain("drainOff");
 
-  const onUnassigned = on.get("unassigned");
   const onDeclared = on.get("declared");
-  const offUnassigned = off.get("unassigned");
   const offDeclared = off.get("declared");
 
-  // A/I1 — floor ON: the unassigned task completed and its recorded output
-  // carries the real-model answer.
-  if (onUnassigned?.status !== "completed") {
-    failures.push(
-      `floor-on: unassigned task status is ${JSON.stringify(onUnassigned?.status)}, expected completed`,
-    );
-  } else if (!has(onUnassigned.output, fx.answer)) {
-    failures.push(
-      `floor-on: unassigned task completed but output did not contain "${fx.answer}" — ` +
-        `the floor did not actually run. Output: ${JSON.stringify(String(onUnassigned.output).slice(0, 200))}`,
-    );
-  }
+  // Both miss routes: assignee UNSET (sentinel) and assignee NAMES NO DECLARED
+  // WORKER (native keyed-router fallthrough). Each must behave identically.
+  const missTasks = ["unassigned", "unknown-assignee"] as const;
 
-  // A/I2 — floor OFF: the identical task errors, with no answer output.
-  if (offUnassigned?.status !== "errored") {
-    failures.push(
-      `floor-off: unassigned task status is ${JSON.stringify(offUnassigned?.status)}, expected errored ` +
-        `(no defaultWorker → the miss must fail, proving the floor is what completed it in floor-on)`,
-    );
-  }
-  if (has(offUnassigned?.output, fx.answer)) {
-    failures.push(`floor-off: unassigned task produced the answer without a floor — contrast is void`);
+  for (const id of missTasks) {
+    const onMiss = on.get(id);
+    const offMiss = off.get(id);
+
+    // A/I1 — floor ON: the miss completed and its recorded output carries the
+    // real-model answer.
+    if (onMiss?.status !== "completed") {
+      failures.push(
+        `floor-on: "${id}" task status is ${JSON.stringify(onMiss?.status)}, expected completed`,
+      );
+    } else if (!has(onMiss.output, fx.answer)) {
+      failures.push(
+        `floor-on: "${id}" task completed but output did not contain "${fx.answer}" — ` +
+          `the floor did not actually run. Output: ${JSON.stringify(String(onMiss.output).slice(0, 200))}`,
+      );
+    }
+
+    // A/I2 — floor OFF: the identical task errors, with no answer output.
+    if (offMiss?.status !== "errored") {
+      failures.push(
+        `floor-off: "${id}" task status is ${JSON.stringify(offMiss?.status)}, expected errored ` +
+          `(no defaultWorker → the miss must fail, proving the floor is what completed it in floor-on)`,
+      );
+    }
+    if (has(offMiss?.output, fx.answer)) {
+      failures.push(`floor-off: "${id}" task produced the answer without a floor — contrast is void`);
+    }
   }
 
   // B/I3 — declared vs floor: the declared task ran on the declared worker in
@@ -202,10 +219,14 @@ async function runGoalCheck(): Promise<string[]> {
   }
 
   if (failures.length === 0) {
+    for (const id of missTasks) {
+      console.log(
+        `floor-on  ${id} → ${JSON.stringify(String(on.get(id)!.output).slice(0, 120))}  (contains "${fx.answer}")\n` +
+          `floor-off ${id} → status "${off.get(id)?.status}", output ${JSON.stringify(off.get(id)?.output)}`,
+      );
+    }
     console.log(
-      `floor-on  unassigned → ${JSON.stringify(String(onUnassigned!.output).slice(0, 120))}  (contains "${fx.answer}")\n` +
-        `floor-off unassigned → status "${offUnassigned?.status}", output ${JSON.stringify(offUnassigned?.output)}\n` +
-        `declared task → "${String(onDeclared!.output)}" (the specialist marker, never the floor)`,
+      `declared task → "${String(onDeclared!.output)}" (the specialist marker, never the floor)`,
     );
   }
   return failures;
@@ -214,9 +235,9 @@ async function runGoalCheck(): Promise<string[]> {
 const failures = await runGoalCheck();
 if (failures.length === 0) {
   console.log(
-    `\nPASS — an unassigned task ran on the default worker (real model) and recorded the held-out ` +
-      `answer; the identical board with no floor errored the same task; a declared assignee ran on ` +
-      `its own worker, never the floor.`,
+    `\nPASS — an unassigned task AND a task naming no declared worker both ran on the default ` +
+      `worker (real model) and recorded the held-out answer; the identical board with no floor ` +
+      `errored both; a declared assignee ran on its own worker, never the floor.`,
   );
   process.exit(0);
 } else {

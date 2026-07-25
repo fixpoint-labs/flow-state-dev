@@ -91,7 +91,7 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
  * under the new snapshot.
  *
  * `build` is skipped for an empty source list ONLY when the floor is off
- * (`floorOn === false`) — there is genuinely nothing to materialize. With the
+ * (`allowEmptyRoster === false`) — there is genuinely nothing to materialize. With the
  * floor on (a rosterless `delegation: true` binding, FIX-940), an empty source
  * list still has one thing to build — the default worker — so `build` runs and
  * caches under the empty snapshot `[]`. Subsequent tool-loop steps with the
@@ -101,7 +101,7 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
 export async function resolveDelegationBuild(
   ctx: object,
   sources: readonly SnapshotSourceLike[],
-  floorOn: boolean,
+  allowEmptyRoster: boolean,
   build: () => Promise<{ tools: GeneratorTool[]; guidance: string | null }>,
 ): Promise<{ tools: GeneratorTool[]; guidance: string | null }> {
   const snapshot = snapshotSources(sources);
@@ -110,7 +110,7 @@ export async function resolveDelegationBuild(
     return { tools: cached.tools, guidance: cached.guidance };
   }
   const result =
-    sources.length === 0 && !floorOn ? { tools: [], guidance: null } : await build();
+    sources.length === 0 && !allowEmptyRoster ? { tools: [], guidance: null } : await build();
   delegationMemo.set(ctx, { snapshot, tools: result.tools, guidance: result.guidance });
   return result;
 }

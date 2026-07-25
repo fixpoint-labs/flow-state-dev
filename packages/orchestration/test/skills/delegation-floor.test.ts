@@ -36,7 +36,7 @@ vi.mock("../../src/skills/worker-materializer", async (importOriginal) => {
 });
 
 import { createSkillsLibrary } from "../../src/skills/library";
-import { FLOOR_WORKER_KEY } from "../../src/skills/delegation-surface";
+import { buildDelegationTools, FLOOR_WORKER_KEY } from "../../src/skills/delegation-surface";
 import { taskBoard } from "../../src/task-board";
 import { materializeWorker } from "../../src/skills/worker-materializer";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
@@ -234,6 +234,77 @@ describe("delegation floor — wiring", () => {
     expect(keys).toContain(FLOOR_WORKER_KEY);
     const cfg = taskBoardSpy.mock.calls[0]![0] as { defaultWorker?: unknown };
     expect(cfg.defaultWorker).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reserved keys — an agent map that never went through the SKILL.md parser
+// ---------------------------------------------------------------------------
+
+describe("delegation floor — reserved agent keys", () => {
+  /**
+   * `buildDelegationTools` is driven directly here with a hand-built source
+   * list. That is the point: `parseAgentsField` rejects these keys on the
+   * authoring path, but `collectAgentSources` also reads `agents` straight off
+   * a live skill manifest whose state schema is `.passthrough()` and does not
+   * describe `agents`, so a manifest written out-of-band arrives unparsed. This
+   * pins the re-check that stands between such a map and the board's registry.
+   */
+  async function toolsForAgents(agents: Record<string, unknown>) {
+    const collection = createMockSkillsCollection();
+    const { ctx } = buildExecCtx(collection);
+    return buildDelegationTools(ctx, {
+      catalog: {},
+      collectionKey: "skills",
+      location: { kind: "block" },
+      staticSources: [{ skillName: "planted", agents: agents as never }],
+      bundledAgentIndex: new Map(),
+      dynamicEligible: false,
+      allowEmptyRoster: true,
+    });
+  }
+
+  it.each([
+    // Would shadow the absent-assignee sentinel: unassigned tasks would route
+    // to this agent instead of the floor.
+    "__no_assignee__",
+    // Would collide with the floor's own reserved worker key.
+    FLOOR_WORKER_KEY,
+    // Hits the Object.prototype setter rather than creating an own key, which
+    // would leave the registry empty and silently disable the surface.
+    "__proto__",
+    // Uppercase — outside the agent-key pattern.
+    "ToString",
+  ])("skips the illegal agent key %s and still builds the floor", async (key) => {
+    materializeWorkerSpy.mockClear();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const names = (await toolsForAgents({ [key]: { prompt: "planted" } })).map(toolName);
+      // The surface still installs — on the floor alone.
+      expect(names).toEqual(expect.arrayContaining(["addTask", "runBoard"]));
+      // The planted key never became a board worker; only the floor was built.
+      const built = materializeWorkerSpy.mock.calls.map((c) => c[0]);
+      expect(built).toEqual([FLOOR_WORKER_KEY]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(key));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("keeps a legal agent key declared alongside an illegal one", async () => {
+    materializeWorkerSpy.mockClear();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await toolsForAgents({
+        briefer: { prompt: "You write briefs." },
+        __no_assignee__: { prompt: "planted" },
+      });
+      const built = materializeWorkerSpy.mock.calls.map((c) => c[0]);
+      expect(built).toContain("briefer");
+      expect(built).not.toContain("__no_assignee__");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

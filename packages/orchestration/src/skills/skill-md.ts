@@ -138,6 +138,26 @@ export function validateSkillName(name: string): void {
 const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
 /**
+ * True when `key` is a legal agent key. The leading-`[a-z0-9]` requirement is
+ * load-bearing beyond tidiness: the delegation board reserves underscore-led
+ * names for routes an author must never be able to claim — the floor's worker
+ * key (`__floor__`) and the absent-assignee sentinel (`__no_assignee__`,
+ * `task-board/blocks/worker-step.ts`). It also keeps prototype-poisoning names
+ * (`__proto__`, `toString`, `valueOf`) out of the plain-object worker registry.
+ *
+ * Exported because this parser is NOT the only way an agent map reaches the
+ * board: `delegation-surface.ts` also reads `agents` off a live skill manifest,
+ * whose state schema is `.passthrough()` and does not describe `agents` at all,
+ * so a manifest written out-of-band (an app block holding the collection ref, a
+ * store-level write, a migration) never passes through here. That reader
+ * re-checks with this predicate. Relax the pattern and both call sites — and the
+ * two reserved names above — must be revisited together.
+ */
+export function isValidAgentKey(key: string): boolean {
+  return AGENT_KEY_PATTERN.test(key);
+}
+
+/**
  * Parse the `agents:` frontmatter field into a typed agent map. Declaring
  * `agents:` is what turns on the delegation surface in `createSkillsLibrary`:
  * the skill assigns work as tasks and drains its board; the board runs the
@@ -150,7 +170,7 @@ function parseAgentsField(v: unknown): Record<string, AgentSpec> {
   }
   const out: Record<string, AgentSpec> = {};
   for (const [key, value] of Object.entries(v)) {
-    if (!AGENT_KEY_PATTERN.test(key)) {
+    if (!isValidAgentKey(key)) {
       throw new Error(
         `SKILL.md agent key "${key}" must match /^[a-z0-9][a-z0-9_-]*$/`,
       );

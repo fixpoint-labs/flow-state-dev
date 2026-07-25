@@ -91,6 +91,14 @@ export {
   type WorkerMaterializationDeps,
 } from "./worker-materializer";
 
+// The delegation floor's baseline (FIX-940). The surface itself stays internal;
+// these two are exported so the floor's key and prompt can be exercised against
+// the shipped values rather than a copy that could drift from them.
+export {
+  DEFAULT_WORKER_PROMPT,
+  FLOOR_WORKER_KEY,
+} from "./delegation-surface";
+
 export {
   createTaskToolsCapability,
   taskTools,

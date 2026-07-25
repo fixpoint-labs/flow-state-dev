@@ -422,7 +422,7 @@ export function createSkillsLibrary(
     // even if the roster later empties mid-turn. Merely deriving delegation from
     // a declared roster does NOT set this — an emptied derived roster tears the
     // surface down as before.
-    const floorOn = cfg.delegation === true;
+    const allowEmptyRoster = cfg.delegation === true;
     const staticAgentSkills = delegationOn
       ? active
           .map((name) => ({ name, entry: index.get(name)! }))
@@ -503,7 +503,7 @@ export function createSkillsLibrary(
           // it defaults to an empty record) (FIX-928, D4).
           true);
     const delegationPossible =
-      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible || floorOn);
+      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible || allowEmptyRoster);
     if (delegationPossible) {
       ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
     }
@@ -537,7 +537,7 @@ export function createSkillsLibrary(
         bundledAgentIndex: buildBundledAgentIndex(index),
         ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
         dynamicEligible: dynamicAgentEligible,
-        floorOn,
+        allowEmptyRoster,
       };
       // Static tools (catalog superset + load tool) are known now; the
       // taskTools and runBoard resolve per execution.
