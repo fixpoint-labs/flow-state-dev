@@ -411,6 +411,27 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     );
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "TQQQ")).toBe(false);
   });
+
+  it("the curated bond-ETF list also outweighs a stale direct-holding classification (Codex review round 5)", () => {
+    // A 4th instance of the same evidence-ordering gap, this time for the
+    // curated bond-ETF list: BND is held directly, stale-classified as
+    // "equity", and — because BND is a curated bond ETF — it's pre-filtered
+    // from the ETF_PROFILE fill entirely (Decision 5), so it can NEVER reach
+    // the stored-profile check (layer 1b). Before this fix, the curated list
+    // (layer 2) was only ever consulted for a ticker NOT held directly, so a
+    // held-but-misclassified BND fell through to its own stale classification
+    // and emitted its full value as a single name. Fixed by checking the
+    // curated list BEFORE the held-ticker fallback, same as layer 1b.
+    const positions = [direct("BND", 100_000, { assetType: "equity" })];
+    const out = computeLookThroughExposure(positions, 100_000, new Map())!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "BND", axis: "both" }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "BND")).toBe(false);
+    expect(out.maxPosition?.ticker).not.toBe("BND");
+  });
 });
 
 describe("computeLookThroughExposure — Decision 8: flags at the same thresholds, tagged separately", () => {
@@ -479,6 +500,18 @@ describe("computeLookThroughExposure — §9 edge cases", () => {
   it("refuses the WHOLE axis (returns null) when any priced non-cash position is short (negative market value)", () => {
     const positions = [direct("AAPL", 1_000), fund("SHORT_ETF", -500)];
     expect(computeLookThroughExposure(positions, 500, new Map())).toBeNull();
+  });
+
+  it("refuses the WHOLE axis (returns null) when any priced non-cash position carries a non-finite market value (Codex review round 5)", () => {
+    // Guarded division, never NaN/Infinity output — the leaf's own stated
+    // contract. The eligibility guard previously only rejected negative
+    // values; an Infinity/NaN market value on a direct equity would otherwise
+    // silently produce infinite position/sector weights and a NaN
+    // effectivePositions bound.
+    const infinitePositions = [direct("AAPL", 1_000), direct("BROKEN", Number.POSITIVE_INFINITY)];
+    expect(computeLookThroughExposure(infinitePositions, 500, new Map())).toBeNull();
+    const nanPositions = [direct("AAPL", 1_000), direct("BROKEN", Number.NaN)];
+    expect(computeLookThroughExposure(nanPositions, 500, new Map())).toBeNull();
   });
 
   it("returns null for a zero or negative invested NAV", () => {

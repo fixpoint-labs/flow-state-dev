@@ -239,15 +239,26 @@ function pctOf(value: number, denom: number): number {
  * VTI ALSO has a successful stored profile (fetched because ANOTHER fund's
  * holdings include VTI) — the profile must win, or a fund-of-funds situation
  * reports as a 100% single-name concentration alert instead of correctly
- * attributing through (Codex review round 2, FIX-801 sub-PR b). Only once
- * BOTH of those are exhausted does a held ticker's non-fund classification
- * settle it (layer 1c — still authoritative in the ABSENCE of
- * stored-profile evidence); then the curated bond-ETF list (layer 2 — a
- * bond ETF is a fund, just an ineligible one). Layer 1c means this function
- * ALWAYS terminates by layer 1c for a ticker the household holds directly
- * (layer 2 / the final default are only reachable for a ticker that is
- * NOT held — e.g. a pure fund-of-funds constituent) — which is exactly why
- * it's also correct as the main loop's direct-holding routing predicate.
+ * attributing through (Codex review round 2, FIX-801 sub-PR b). Once BOTH of
+ * those are exhausted, the curated bond-ETF list (layer 2) is checked NEXT —
+ * BEFORE falling back to a held ticker's own non-fund classification, for the
+ * SAME reason layer 1b jumps the queue: the curated list is a deterministic,
+ * externally-verified fact about the ticker, stronger than a possibly-stale
+ * local `assetType` field. Concretely: BND held directly but still classified
+ * `equity` (stale/never re-classified) — BND is never fetched at all (it's
+ * pre-filtered from the ETF_PROFILE fill by Decision 5, so it can never reach
+ * layer 1b), so without this ordering the curated list would never be
+ * consulted for a HELD ticker and the stale classification would flow
+ * straight through to the flag logic as a false single-name alert on a bond
+ * ETF (a 4th instance of the same evidence-ordering gap, Codex review round
+ * 5, FIX-801 sub-PR b). Only once ALL THREE of those are exhausted does a
+ * held ticker's non-fund classification settle it (layer 1c — still
+ * authoritative in the ABSENCE of any stronger evidence). Layer 1c means this
+ * function ALWAYS terminates by layer 1c for a ticker the household holds
+ * directly UNLESS the curated list already proved it a fund (the final
+ * default is only reachable for a ticker that is NOT held AND not on the
+ * curated list — e.g. a pure fund-of-funds constituent) — which is exactly
+ * why it's also correct as the main loop's direct-holding routing predicate.
  *
  * The stored-profile check also reads a REFUSED profile's own reason:
  * `"ineligible"` (e.g. a leveraged/inverse fund, or a fund with no resolvable
@@ -294,12 +305,20 @@ function resolveTickerIsFund(
     if (profile.refusalReason === "ineligible" || profile.refusalReason === "malformed") return true; // the fetch resolved an ETF_PROFILE; refusal is about the DATA, not fund-ness
   }
 
-  // Layer 1c — a held ticker with NO stored-profile evidence falls back to
-  // its own (non-fund) classification, authoritative in the absence of
-  // anything stronger.
+  // Layer 2 — the curated bond-ETF list, checked BEFORE a held ticker's
+  // non-fund classification is allowed to settle the question, same
+  // reasoning as layer 1b: a curated bond ETF (e.g. BND) is pre-filtered
+  // from the ETF_PROFILE fill (Decision 5) and so can NEVER reach layer 1b —
+  // this is the only remaining evidence source for it, and it's stronger
+  // than a possibly-stale local `assetType` field (Codex review round 5,
+  // FIX-801 sub-PR b).
+  if (isKnownBondEtf(ticker)) return true;
+
+  // Layer 1c — a held ticker with NO evidence from either the stored
+  // profile OR the curated list falls back to its own (non-fund)
+  // classification, authoritative in the absence of anything stronger.
   if (held) return false;
 
-  if (isKnownBondEtf(ticker)) return true; // layer 2 — curated bond-ETF list
   return false; // default: a name (§7 — fund-ness is a positive finding only)
 }
 
@@ -312,9 +331,12 @@ function add(map: Map<string, number>, key: string, amount: number): void {
  * Compute the look-through exposure axis from a household's positions and
  * its fund profiles. Returns `null` when `investedNav` is not usable (≤ 0 or
  * null — the guarded-division rule every leaf in this domain follows) or
- * when any priced non-cash position carries a negative market value (a short
- * position anywhere makes the shared invested-NAV denominator uninterpretable
- * for a look-through weight — Decision 4's "Also refused" edge case, §9).
+ * when any priced non-cash position carries a negative OR non-finite
+ * (`Infinity` / `NaN`) market value (a short position anywhere makes the
+ * shared invested-NAV denominator uninterpretable for a look-through weight —
+ * Decision 4's "Also refused" edge case, §9; a non-finite value would
+ * silently produce infinite/`NaN` weights downstream, violating this leaf's
+ * own guarded-division contract — Codex review round 5, FIX-801 sub-PR b).
  *
  * Empty `fundProfiles` (no funds fetched, or no fund positions at all) is NOT
  * itself a reason to return null — it produces a well-formed axis with 100%
@@ -333,7 +355,12 @@ export function computeLookThroughExposure(
   const eligible = positions.filter(
     (p) => p.marketValue !== null && !isCashPosition(p.assetClass, p.assetType),
   );
-  if (eligible.some((p) => (p.marketValue as number) < 0)) return null; // any short → refuse the axis
+  // Any short (negative) OR non-finite (Infinity/NaN) market value makes the
+  // shared invested-NAV denominator uninterpretable → refuse the whole axis,
+  // never silently produce an infinite/NaN weight downstream.
+  if (eligible.some((p) => !Number.isFinite(p.marketValue as number) || (p.marketValue as number) < 0)) {
+    return null;
+  }
 
   const positionsByTicker = new Map(positions.map((p) => [p.ticker.toUpperCase(), p]));
 
@@ -362,10 +389,11 @@ export function computeLookThroughExposure(
     // `resolveTickerIsFund` here (rather than a narrower reimplementation)
     // is what keeps this branch, the fund-of-funds check, and the name-axis
     // attribution loop from drifting out of sync one evidence-ordering fix
-    // at a time (Codex review round 4, FIX-801 — see that function's
-    // docblock). Layer 1c means it always terminates for a HELD ticker
-    // (never falls through to the bond-ETF list or the final default),
-    // which is exactly the behavior this direct-holding branch needs.
+    // at a time (Codex review rounds 4-5, FIX-801 — see that function's
+    // docblock, including why the curated bond-ETF list is now checked
+    // BEFORE a held ticker's own classification too — exactly the same
+    // "don't trust stale local metadata over stronger external evidence"
+    // rule this branch relies on).
     const isFund = resolveTickerIsFund(pos.ticker, positionsByTicker, fundProfiles);
     if (!isFund) {
       // A direct holding is unambiguously itself (§7).
