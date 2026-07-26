@@ -12,7 +12,10 @@ import {
   householdTickerWeight,
 } from "../flows/analysis/build-portfolio-context";
 import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
-import type { FundProfileInput } from "../domain/portfolio/math/etf-look-through";
+import {
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  type FundProfileInput,
+} from "../domain/portfolio/math/etf-look-through";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {
@@ -436,6 +439,62 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough).not.toBeNull();
     expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — never fetched
+  });
+
+  it("a wrapper withdrawn by guards.ts's constituent-broadening-failure fix (round 14) counts toward opaqueUnavailableFundCount, not the data-quality default (Codex review, FIX-801 sub-PR c round 15)", () => {
+    // Same shape as the test above, but QQQ's map entry is the ROUND-14
+    // withdrawal refusal (`CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`) instead
+    // of simply absent from the map. This reason predates neither `quota` nor
+    // `transient` nor "no stored profile" in `UNAVAILABLE_REASONS` — it's a
+    // NEW reason class round 14 introduced, and round 4's set (this file)
+    // didn't know about it, so a withdrawn wrapper fell into the default
+    // data-quality bucket and misreported a transient DB hiccup as a real
+    // data-quality finding ("thin/ineligible data") to the trader/PM.
+    const mixedBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "QQQ", quantity: 50, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const mixedQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "QQQ", price: 200, asOf: "2026-05-06" },
+    ];
+    const mixedProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      // QQQ was withdrawn (its own constituent-broadening read failed) —
+      // guards.ts writes exactly this shape (etf-look-through.ts round 14).
+      ["QQQ", { payload: null, refusalReason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }],
+    ]);
+
+    const out = buildPortfolioContext(mixedBook, mixedQuotes, "2026-05-06", new Map(), mixedProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — "not yet available", not "thin/ineligible data"
   });
 });
 

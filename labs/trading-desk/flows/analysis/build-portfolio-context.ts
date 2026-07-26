@@ -59,7 +59,11 @@ import {
   type PortfolioHealth,
   type QuoteMap,
 } from "@/domain/portfolio/math/portfolio-health";
-import type { FundProfileInput, OpaqueFund } from "@/domain/portfolio/math/etf-look-through";
+import {
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  type FundProfileInput,
+  type OpaqueFund,
+} from "@/domain/portfolio/math/etf-look-through";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
@@ -74,16 +78,26 @@ export type QuoteLike = { ticker: string; price: number | null; asOf: string | n
  * "(thin/ineligible data)" phrase in the analysis prompt misrepresents a fund
  * nobody has looked at yet as a data-quality finding (Codex review, FIX-801
  * sub-PR c). This is a closed set — every `opaqueByTicker.set(...)` call site
- * in `etf-look-through.ts` is enumerated here; a reason string not in
- * `UNAVAILABLE_REASONS` is treated as data-quality by default (the safer
- * default: a NEW reason class this set doesn't yet know about is far more
- * likely to be a fresh structural-exclusion case than a fresh flavor of
- * "temporarily missing").
+ * in `etf-look-through.ts` (INCLUDING a caller-written withdrawal entry like
+ * `guards.ts`'s `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`, round 14) is
+ * enumerated here; a reason string not in `UNAVAILABLE_REASONS` is treated as
+ * data-quality by default (the safer default: a NEW reason class this set
+ * doesn't yet know about is far more likely to be a fresh structural-exclusion
+ * case than a fresh flavor of "temporarily missing").
  */
 const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
   "no stored profile", // never fetched
   "quota", // Alpha Vantage daily budget exhausted — retried next reset
   "transient", // network/parse failure — retried within ~15 min
+  // A wrapper's own profile was fine; a DB read failure while broadening its
+  // fund-of-funds constituents made its verdict unverifiable, so `guards.ts`
+  // withdrew it (Codex review, FIX-801 sub-PR c round 14). A transient read
+  // failure, not a structural judgment about the fund's data — belongs here,
+  // not in the default data-quality bucket (Codex review, FIX-801 sub-PR c
+  // round 15: this set predates round 14's new reason and didn't include it,
+  // so a withdrawn wrapper misreported to the trader/PM as "thin/ineligible
+  // data" instead of "not yet available").
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
 ]);
 
 /** The compact household-health block projected into `<portfolioContext>` (top 6
