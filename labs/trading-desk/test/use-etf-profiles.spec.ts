@@ -185,6 +185,77 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
     );
     expect(candidate).toBe("SPY:1:1");
   });
+
+  it("changes when a quantity update flips which lot is DOMINANT for a conflicting-classification ticker (trigger 3: the dominant-lot verdict) — Codex review, FIX-801 sub-PR c round 18", () => {
+    // The route's fetch-eligibility now also requires the DOMINANT
+    // (largest-market-value) lot's assetClass to not be fixed_income
+    // (round 17/18, dominantClassificationByTicker). SPY is held in two
+    // accounts with conflicting classifications; a per-row signature can't
+    // see which lot is dominant, only that "some row passes" — so a
+    // quantity change that flips dominance from the equity-classified lot
+    // to the fixed_income-classified one (making the route newly EXCLUDE
+    // it, or the reverse, newly INCLUDE it) must still change the signature.
+    const priceMap = new Map([["SPY", quote("SPY", 100)]]);
+    // Equity lot dominant (1,000 shares) over a tiny fixed_income lot (1 share).
+    const equityDominant = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "equity", quantity: 1_000 }),
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "fixed_income", quantity: 1 }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    // A quantity update flips it: fixed_income lot now dominant (1,000
+    // shares) over a tiny equity lot (1 share) — same two rows, same
+    // per-row candidate bits individually, but the FINAL ticker-level
+    // verdict flips from eligible to ineligible.
+    const fixedIncomeDominant = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "equity", quantity: 1 }),
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "fixed_income", quantity: 1_000 }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    expect(equityDominant).toBe("SPY:1:1");
+    expect(fixedIncomeDominant).toBe("SPY:0:1");
+    expect(equityDominant).not.toBe(fixedIncomeDominant);
+  });
+
+  it("is stable when a quantity update does NOT flip the dominant-lot verdict (no spurious refetch)", () => {
+    const priceMap = new Map([["SPY", quote("SPY", 100)]]);
+    const before = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "equity", quantity: 1_000 }),
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "fixed_income", quantity: 1 }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    // The equity lot's quantity changes, but it's still overwhelmingly
+    // dominant — the final verdict (eligible) is unchanged.
+    const after = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "equity", quantity: 900 }),
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "fixed_income", quantity: 1 }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    expect(before).toBe(after);
+  });
 });
 
 describe("hashEligibilitySignature (Codex review, FIX-801 sub-PR c)", () => {

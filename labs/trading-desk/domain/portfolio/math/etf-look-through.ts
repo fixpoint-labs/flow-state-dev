@@ -356,13 +356,28 @@ function resolveTickerIsFund(
   // POSITIVE evidence beating a stale non-fund tag) — here it's NEGATIVE
   // evidence beating a stale FUND-TYPE tag. AV's own fetcher already
   // determined the ticker isn't actually an ETP, a stronger and more
-  // specific signal than a possibly-stale `assetType: "etf"/"mutual_fund"`
-  // classification (e.g. an import default that was never corrected).
-  // Without this, a ticker held-and-tagged as a fund but proven NOT to be
-  // one gets routed to residual as an opaque fund instead of being treated
-  // as a direct name with its own effective exposure and its own
-  // concentration eligibility (Codex review, FIX-801 sub-PR b).
-  const disprovenByProfile = profile?.payload === null && profile.refusalReason === "not_an_etf";
+  // specific signal than a possibly-stale `assetType: "etf"` classification
+  // (e.g. an import default that was never corrected). Without this, a
+  // ticker held-and-tagged as a fund but proven NOT to be one gets routed to
+  // residual as an opaque fund instead of being treated as a direct name
+  // with its own effective exposure and its own concentration eligibility
+  // (Codex review, FIX-801 sub-PR b).
+  //
+  // Scoped to `held.assetType === "etf"` ONLY — does NOT disprove a
+  // `mutual_fund` tag (Codex review, FIX-801 sub-PR c round 18, a real bug).
+  // `app.etf_profiles` is GLOBAL reference data (`allHeldTickers`'s own
+  // docblock): a `not_an_etf` refusal on this ticker may have been recorded
+  // because a DIFFERENT household mistyped a mutual fund as an ETF and the
+  // broad read still found it for THIS household's correctly-tagged
+  // `mutual_fund` holding. `not_an_etf` only proves the ticker isn't an ETP
+  // (unsurprising for a mutual fund — the ETF_PROFILE endpoint never covers
+  // mutual funds at all, per the fetcher's own Non-goals) — it says nothing
+  // about whether the ticker is a FUND. A locally `mutual_fund`-tagged
+  // holding's positive evidence must survive this disproof; only an
+  // `"etf"`-tagged holding's evidence is what `not_an_etf` legitimately
+  // overrides.
+  const disprovenByProfile =
+    held?.assetType === "etf" && profile?.payload === null && profile.refusalReason === "not_an_etf";
   if (held && isFundAssetType(held.assetType) && !disprovenByProfile) return true;
 
   // Layer 1b — a stored profile, checked BEFORE a held ticker's non-fund

@@ -1031,6 +1031,27 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(out.opaqueFunds).toEqual([]);
   });
 
+  it("a stored `not_an_etf` refusal does NOT disprove a locally `mutual_fund`-tagged holding — it only disproves ETF-ness, not fund-ness (Codex review, FIX-801 sub-PR c round 18, a real bug)", () => {
+    // `app.etf_profiles` is GLOBAL reference data — the `not_an_etf` refusal
+    // here may have been recorded because a DIFFERENT household mistyped
+    // this same ticker as an ETF (the ETF_PROFILE endpoint never covers
+    // mutual funds at all, so a mutual fund correctly submitted to it always
+    // comes back `not_an_etf` — that's expected, uninformative behavior, not
+    // proof the ticker isn't a fund). A `mutual_fund`-tagged holding's own
+    // positive fund evidence must survive this refusal; only an
+    // `"etf"`-tagged holding's evidence is what `not_an_etf` legitimately
+    // overrides (the sibling test above).
+    const positions = [direct("VFIAX", 100_000, { assetType: "mutual_fund" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["VFIAX", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "VFIAX", axis: "both", reason: "not_an_etf" }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "VFIAX")).toBe(false);
+  });
+
   it("a disproven fund's mass falls back to UNCLASSIFIED_BUCKET on the sector axis, not the wrapper's stale fund-labeled bucket (Codex review, disproven-fund propagation round)", () => {
     // MISTAG is tagged `etf`, so the WRAPPER basis's own sector bucketing
     // (which this leaf normally reuses as-is for a direct position — see the

@@ -6,6 +6,7 @@ import { useApiQuery } from "@/lib/use-api-query";
 import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 import type { Quote } from "@/domain/portfolio/services/get-quotes";
 import { isEtfProfileFetchCandidate, type FundProfileRowInput } from "@/domain/portfolio/math/etf-profile-map";
+import { dominantClassificationByTicker } from "@/domain/portfolio/math/value-holding";
 import type {
   EtfProfileEntry,
   EtfProfileRefusalEntry,
@@ -70,19 +71,39 @@ import type {
  * household holding one would trigger a spurious refetch/cache-bust for a
  * ticker that was never going to be warmed. (The seed's own read set is
  * deliberately NOT filtered by this predicate — see its docblock.)
+ *
+ * **A THIRD trigger: the DOMINANT-lot verdict flipping (Codex review, FIX-801
+ * sub-PR c round 18).** The route's own fetch-eligibility decision isn't
+ * purely per-row anymore — a ticker only enters the fetch set when at least
+ * one row passes `isEtfProfileFetchCandidate` AND its DOMINANT (largest-
+ * market-value) lot's `assetClass` isn't `fixed_income`
+ * (`dominantClassificationByTicker`, `value-holding.ts`, the same rule
+ * `excludeFixedIncomeFromProfileMap` uses). A per-row signature can't see
+ * that: a quantity update that flips which lot is dominant for a
+ * conflicting-classification ticker — making it newly fetch-eligible per the
+ * route's rule — leaves any INDIVIDUAL row's own bits unchanged, so the old
+ * signature never changed and `useApiQuery`'s stable-URL refetch never fired,
+ * missing the newly-eligible fund until an unrelated remount. The signature
+ * is now computed PER TICKER (not per row) with the SAME final verdict the
+ * route computes, so it changes exactly when the route's own eligible set
+ * would.
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,
   priceMap: ReadonlyMap<string, Quote>,
 ): string {
+  const holdings = accounts.flatMap((acc) => acc.holdings);
+  const dominantClassification = dominantClassificationByTicker(holdings, priceMap);
+  const candidateRowTickers = new Set(
+    holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
+  );
+  const tickers = new Set(holdings.map((h) => h.ticker.toUpperCase()));
   const rows: string[] = [];
-  for (const acc of accounts) {
-    for (const h of acc.holdings) {
-      const ticker = h.ticker.toUpperCase();
-      const isCandidate = isEtfProfileFetchCandidate(h);
-      const isPriced = priceMap.has(ticker);
-      rows.push(`${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}`);
-    }
+  for (const ticker of tickers) {
+    const isCandidate =
+      candidateRowTickers.has(ticker) && dominantClassification.get(ticker)?.assetClass !== "fixed_income";
+    const isPriced = priceMap.has(ticker);
+    rows.push(`${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}`);
   }
   return rows.sort().join(",");
 }

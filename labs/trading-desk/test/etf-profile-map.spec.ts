@@ -189,6 +189,34 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
 
     expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
+
+  it("does NOT manufacture a fund-evidence entry for a fixed-income-classified ticker with NO prior map entry — an ordinary held bond stays absent, never fabricated into an opaque 'fixed-income fund' (Codex review, FIX-801 sub-PR c round 18 — the flip side of round 14/17's fix)", () => {
+    // AGG has never been fetched or refused as an ETF profile at all — it's
+    // an ordinary directly-held bond, not a fund. There is nothing in
+    // `profiles` to withdraw. Unconditionally `.set()`-ing a synthetic
+    // refusal here would MANUFACTURE fund identity `resolveTickerIsFund`
+    // doesn't otherwise have: the ticker would report as an opaque
+    // "fixed-income fund" in the residual instead of staying a direct name.
+    const profiles = new Map<string, FundProfileInput>(); // empty — AGG was never looked up
+    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.has("AGG")).toBe(false);
+  });
+
+  it("still replaces an EXISTING entry for a fixed-income ticker even when other, unrelated tickers have no entry — the no-manufacture rule is per-ticker, not all-or-nothing", () => {
+    const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]); // SPY has a cached profile; AGG does not
+    const holdings = [
+      holding({ ticker: "SPY", assetClass: "fixed_income" }),
+      holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" }),
+    ];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("SPY")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
+    expect(out.has("AGG")).toBe(false);
+  });
 });
 
 // Smoke coverage for the file's pre-existing exports — not previously pinned

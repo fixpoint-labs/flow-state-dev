@@ -246,6 +246,18 @@ export function fundsReferencingTickers(
  * the ticker still reads as a fund — just one attribution is out of scope
  * for — and stays opaque-fund on the WRAPPER basis, never decomposed.
  *
+ * **...but ONLY when an entry already exists (Codex review, FIX-801 sub-PR c
+ * round 18 — the flip side of the fix above).** A fixed-income-classified
+ * ticker with NO prior map entry (an ordinary held bond that was never
+ * fetched or refused as an "ETF profile" at all — most held bonds) has NO
+ * fund evidence to withdraw. Replacing unconditionally would MANUFACTURE
+ * fund identity for it: `resolveTickerIsFund`'s layer 1b would see the newly-
+ * synthesized refusal and report a ticker that was never a fund as an opaque
+ * "fixed-income fund" in the residual — pulling it off the direct-name axis
+ * it actually belongs on. This function never creates a new key, only
+ * replaces one that's already there; an absent ticker stays absent, reading
+ * exactly as any other non-fund holding never looked up at all.
+ *
  * **Judged by the DOMINANT lot, not "any row" (Codex review, FIX-801 sub-PR c
  * round 14 — a real inconsistency, not a nit).** `summarizePortfolioHealth`
  * (`portfolio-health.ts`) resolves a ticker's merged classification by its
@@ -298,6 +310,16 @@ export function excludeFixedIncomeFromProfileMap(
   if (fixedIncomeTickers.size === 0) return profiles;
   const suppressed = new Map(profiles);
   for (const ticker of fixedIncomeTickers) {
+    // Only REPLACE an entry that already exists — a ticker with no prior
+    // entry has no fund evidence to withdraw, so manufacturing one here would
+    // fabricate fund identity for an ordinary held bond that was never a fund
+    // to begin with (Codex review, FIX-801 sub-PR c round 18 — the flip side
+    // of the round 14/17 fix: don't invent evidence that was never there,
+    // same as those rounds' "don't lose evidence that WAS there"). Absent
+    // from the map is already the correct, honest state: it reads as a
+    // direct holding via `resolveTickerIsFund`'s layers, same as any other
+    // non-fund ticker never looked up at all.
+    if (!suppressed.has(ticker)) continue;
     suppressed.set(ticker, { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   }
   return suppressed;
