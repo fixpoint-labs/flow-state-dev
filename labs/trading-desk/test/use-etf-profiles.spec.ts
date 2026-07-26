@@ -114,7 +114,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(mutualFund).toBe(equity);
-    expect(mutualFund).toBe("FXAIX:0:1");
+    expect(mutualFund).toBe("FXAIX:0:1:1");
   });
 
   it("does NOT flip the candidate bit for a curated bond ETF (assetClass fixed_income) — Decision 5's local pre-filter", () => {
@@ -132,7 +132,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(bondEtf).toBe(equity);
-    expect(bondEtf).toBe("BND:0:1");
+    expect(bondEtf).toBe("BND:0:1:0");
   });
 
   it("does NOT flip the candidate bit for a curated bond ETF even with a STALE assetClass (Codex review, FIX-801 sub-PR c)", () => {
@@ -154,7 +154,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(staleAssetClass).toBe(equity);
-    expect(staleAssetClass).toBe("BND:0:1");
+    expect(staleAssetClass).toBe("BND:0:1:0");
   });
 
   it("does NOT flip the candidate bit for a flagged inconsistent-history row", () => {
@@ -174,7 +174,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(flagged).toBe(equity);
-    expect(flagged).toBe("NVDA:0:1");
+    expect(flagged).toBe("NVDA:0:1:1");
   });
 
   it("DOES flip the candidate bit for a genuine ETF fetch candidate (control)", () => {
@@ -183,7 +183,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       [{ holdings: [holding({ ticker: "SPY", assetType: "etf", assetClass: "equity" })] }],
       priceMap,
     );
-    expect(candidate).toBe("SPY:1:1");
+    expect(candidate).toBe("SPY:1:1:1");
   });
 
   it("changes when a quantity update flips which lot is DOMINANT for a conflicting-classification ticker (trigger 3: the dominant-lot verdict) — Codex review, FIX-801 sub-PR c round 18", () => {
@@ -223,9 +223,37 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       ],
       priceMap,
     );
-    expect(equityDominant).toBe("SPY:1:1");
-    expect(fixedIncomeDominant).toBe("SPY:0:1");
+    expect(equityDominant).toBe("SPY:1:1:1");
+    expect(fixedIncomeDominant).toBe("SPY:0:1:0");
     expect(equityDominant).not.toBe(fixedIncomeDominant);
+  });
+
+  it("changes when a MISTAGGED (non-etf-local-tag) ticker's dominant classification transitions out of fixed-income suppression (trigger 4: the cache-confirmed refresh path's own dominant verdict) — Codex review, FIX-801 sub-PR c round 36, a real bug", () => {
+    // SPY held as assetType: "equity" (a classification correction that
+    // failed, or a stuck manual override) — round 34's route fix added a
+    // SECOND, independent refresh-eligibility source: an existing successful
+    // cached profile is refresh-eligible regardless of the local tag, but
+    // STILL gated on the dominant lot not being fixed-income-suppressed.
+    // Before this fix, `isCandidate` (bit 2) required
+    // `candidateRowTickers.has(ticker)` FIRST — which is always false for a
+    // ticker whose local tag never reads "etf" — so this transition never
+    // changed the signature at all, and a cache-confirmed profile could stay
+    // stale indefinitely with nothing to trigger a refetch.
+    const priceMap = new Map([["SPY", quote("SPY", 400)]]);
+    const suppressed = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "SPY", assetType: "equity", assetClass: "fixed_income" })] }],
+      priceMap,
+    );
+    const unsuppressed = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "SPY", assetType: "equity", assetClass: "equity" })] }],
+      priceMap,
+    );
+    // The load-bearing assertion: the signature CHANGES across the
+    // transition, despite `candidateRowTickers.has("SPY")` staying false (bit
+    // 2 stuck at 0) in BOTH cases — bit 4 is what catches it.
+    expect(suppressed).not.toBe(unsuppressed);
+    expect(suppressed).toBe("SPY:0:1:0");
+    expect(unsuppressed).toBe("SPY:0:1:1");
   });
 
   it("is stable when a quantity update does NOT flip the dominant-lot verdict (no spurious refetch)", () => {

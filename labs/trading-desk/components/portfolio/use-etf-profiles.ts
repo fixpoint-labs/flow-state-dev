@@ -7,6 +7,7 @@ import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 import type { Quote } from "@/domain/portfolio/services/get-quotes";
 import { isEtfProfileFetchCandidate, type FundProfileRowInput } from "@/domain/portfolio/math/etf-profile-map";
 import { dominantClassificationByTicker } from "@/domain/portfolio/math/value-holding";
+import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
 import type {
   EtfProfileEntry,
   EtfProfileRefusalEntry,
@@ -87,6 +88,27 @@ import type {
  * is now computed PER TICKER (not per row) with the SAME final verdict the
  * route computes, so it changes exactly when the route's own eligible set
  * would.
+ *
+ * **A FOURTH trigger: the dominant verdict for a CACHE-CONFIRMED (but
+ * locally mistagged) ticker (Codex review, FIX-801 sub-PR c round 36 — the
+ * client mirror of round 34's route-side fix).** The route's fetch-eligible
+ * set is now a UNION of two sources: the local-tag candidate set (bit 2,
+ * `isCandidate` below) AND any ticker with an existing successful cached
+ * profile, refresh-eligible regardless of what the local `assetType` tag
+ * says (`route.ts`'s `cacheConfirmedTickers`). Both sources are still gated
+ * on the SAME dominant-lot-not-fixed-income + not-a-curated-bond-ETF check —
+ * but `isCandidate` ANDs that check with `candidateRowTickers.has(ticker)`
+ * FIRST, so for a ticker whose local tag never reads "etf" that bit is
+ * ALWAYS 0 and a fixed-income-suppression transition on it never flips
+ * anything. `dominantEligibleForRefresh` is tracked as its OWN, independent
+ * signature component (bit 4) — not gated behind the local-tag bit — so a
+ * ticker transitioning out of fixed-income suppression (e.g. its dominant
+ * lot's `assetClass` correcting away from `"fixed_income"`) changes the
+ * signature and triggers a refetch even when it was never a local-tag
+ * candidate at all. Mirrors `!isKnownBondEtf(ticker)` too (not just the
+ * dominant-lot check) — the SAME exclusion `route.ts`'s cache-confirmed set
+ * applies — so a curated bond ETF's transitions never spuriously flip this
+ * bit for a ticker the route will never fetch either way.
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,
@@ -100,10 +122,13 @@ export function computeEtfEligibilitySignature(
   const tickers = new Set(holdings.map((h) => h.ticker.toUpperCase()));
   const rows: string[] = [];
   for (const ticker of tickers) {
-    const isCandidate =
-      candidateRowTickers.has(ticker) && dominantClassification.get(ticker)?.assetClass !== "fixed_income";
+    const dominantEligibleForRefresh =
+      dominantClassification.get(ticker)?.assetClass !== "fixed_income" && !isKnownBondEtf(ticker);
+    const isCandidate = candidateRowTickers.has(ticker) && dominantEligibleForRefresh;
     const isPriced = priceMap.has(ticker);
-    rows.push(`${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}`);
+    rows.push(
+      `${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}:${dominantEligibleForRefresh ? 1 : 0}`,
+    );
   }
   return rows.sort().join(",");
 }
