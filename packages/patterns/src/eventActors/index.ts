@@ -253,20 +253,29 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
 
   // Spawns one Task per matching actor at the given depth. Used both
   // for the initial emit and for reEmit fan-out from inside actor bodies.
+  //
+  // ONE atomic `addTasks`, not a per-actor loop (FIX-931). Now that this writer
+  // resolves a CAPPED collection, a loop could commit the first matching actor's
+  // task and then throw on the second when the batch crosses the remaining
+  // budget — leaving the entry PARTIALLY dispatched, which contradicts the
+  // pattern's contract that every matching actor runs. All-or-nothing means a
+  // refused entry dispatches nobody, and the caller sees the typed error.
   async function spawnTasksFor(
     entry: { type: string; topic: string; body: unknown },
     depth: number,
     ctx: BlockContext
   ): Promise<void> {
+    const matched = matchingActors(entry);
+    if (matched.length === 0) return;
     const collection = await getCollection(ctx);
-    for (const matched of matchingActors(entry)) {
-      await collection.addTask({
-        goal: `${matched.name} on ${entry.type}:${entry.topic}`,
-        assignee: matched.name,
+    await collection.addTasks(
+      matched.map((actor) => ({
+        goal: `${actor.name} on ${entry.type}:${entry.topic}`,
+        assignee: actor.name,
         input: entry,
         metadata: { depth, type: entry.type, topic: entry.topic },
-      });
-    }
+      }))
+    );
   }
 
   // Top-of-emit: append the seed entry, spawn depth-1 tasks for matching actors.

@@ -25,6 +25,32 @@ import {
 } from "@flow-state-dev/orchestration";
 import { createSeedTasksFromPlan } from "../src/shared/planning-entry";
 
+/**
+ * Every task id a run ever CREATED on `collectionId`, read from the `added`
+ * task-change items. Counting creations (not the surviving ledger) is what makes
+ * a partial commit visible: a task committed and then orphaned by a mid-loop
+ * throw still emitted its `added` event.
+ */
+function addedTaskIds(items: readonly unknown[], collectionId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const item of items as Array<{
+    type?: string;
+    component?: string;
+    data?: { collectionId?: string; kind?: string; taskId?: string };
+  }>) {
+    if (
+      item.type === "component" &&
+      item.component === "task-change" &&
+      item.data?.collectionId === collectionId &&
+      item.data.kind === "added" &&
+      typeof item.data.taskId === "string"
+    ) {
+      ids.add(item.data.taskId);
+    }
+  }
+  return ids;
+}
+
 /** Run the seed block against a request-backed ledger and report what landed. */
 async function seedWith(
   caps: { maxTotalTasks?: number | null; maxEnqueuedTasks?: number | null } | undefined,
@@ -88,6 +114,81 @@ describe("planner seed — the board's caps reach the writer", () => {
     const out = await seedWith(undefined, 9);
     expect(out.refused).toBe(false);
     expect(out.count).toBe(9);
+  });
+});
+
+describe("eventActors fan-out — all-or-nothing at the cap boundary", () => {
+  it("dispatches NOBODY for an entry whose matching actors cross the remaining budget", async () => {
+    // Routing this writer through a capped collection made it an internal batch
+    // caller, and the rule for those is atomic-or-nothing. A per-actor loop
+    // would commit the first matching actor's task (landing exactly ON the cap)
+    // and throw on the second, leaving the entry half-dispatched — while
+    // eventActors promises every matching actor runs.
+    const { createEventActorsWorkspace, actor, eventActors } = await import(
+      "../src/eventActors"
+    );
+    const { sequencer } = await import("@flow-state-dev/core");
+
+    const entrySchema = z.object({ type: z.string(), topic: z.string(), body: z.any() });
+    const rb = createEventActorsWorkspace({ name: "caps-ea", entries: entrySchema });
+
+    const ran: string[] = [];
+    const mkActor = (n: string) =>
+      actor({
+        name: n,
+        watch: ["request:**"],
+        block: handler({
+          name: `${n}-h`,
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: () => {
+            ran.push(n);
+            return { ok: true };
+          },
+        }),
+      });
+
+    // TWO matching actors, so one entry fans out to two tasks.
+    const { emit } = eventActors({
+      name: "caps-ea",
+      workspace: rb,
+      actors: [mkActor("a"), mkActor("b")],
+    });
+
+    const collectionId = "eventActors:caps-ea";
+    // Fill the shared request ledger to one slot below the 100 enqueue default,
+    // so the two-actor fan-out crosses it by exactly one.
+    const fill = handler({
+      name: "caps-ea-fill",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async (input, ctx) => {
+        const c = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId });
+        await c.addTasks(
+          Array.from({ length: 99 }, (_, i) => ({ id: `pre-${i}`, goal: `pre ${i}` })),
+        );
+        return input;
+      },
+    });
+
+    const pipeline = sequencer({ name: "caps-ea-pipeline", inputSchema: z.any() })
+      .tap(fill)
+      .step(emit as never);
+
+    const result = await testBlock(pipeline as never, {
+      input: { type: "request", topic: "query", body: "hi" } as never,
+      session: { resources: { eventedActors: { entries: [] } } },
+    } as never);
+
+    // The fan-out is refused, so the emit fails loudly rather than silently
+    // dispatching half the actors.
+    expect(result.error).not.toBeNull();
+
+    // The load-bearing assertion: exactly the 99 pre-filled tasks were ever
+    // created. A per-actor loop would leave 100 — the first actor dispatched,
+    // the second dropped, the entry half-handled.
+    expect(addedTaskIds(result.items, collectionId).size).toBe(99);
+    expect(ran).toEqual([]);
   });
 });
 
