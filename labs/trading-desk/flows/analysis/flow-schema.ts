@@ -89,6 +89,15 @@ const portfolioHealthContext = z.object({
       coveragePct: z.number().nullable(),
       sectorCoveragePct: z.number().nullable(),
       maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
+      // The look-through analogue of the wrapper-basis `concentration.effectivePositions`
+      // above, but an uncertainty-aware INTERVAL rather than a point estimate
+      // (Decision 4, docs/etf-look-through.md): the unattributed residual could
+      // sit anywhere from a long tail (`high`) to piling entirely onto the
+      // largest name already seen (`low`). Null exactly when the wrapper leaf's
+      // own `effectivePositions` is null (no attribution). Already computed by
+      // the leaf but never threaded through until now — pure wiring, no b-side
+      // change (Codex review, FIX-801 sub-PR c).
+      effectivePositions: z.object({ low: z.number(), high: z.number() }).nullable(),
       flags: z.array(z.string()), // pre-rendered, e.g. "NVDA 16.9% (alert, look-through)"
       opaqueFundCount: z.number(), // funds left unattributed, total
       // Subset of opaqueFundCount that is merely temporarily unavailable

@@ -128,6 +128,11 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
             coveragePct: health.lookThroughExposure.coveragePct,
             sectorCoveragePct: health.lookThroughExposure.sectorCoveragePct,
             maxPosition: health.lookThroughExposure.maxPosition,
+            // Direct pass-through — the leaf already produces the exact
+            // `{low,high}|null` shape the schema expects (Codex review,
+            // FIX-801 sub-PR c: this figure was computed but never wired to
+            // the prompt/UI).
+            effectivePositions: health.lookThroughExposure.effectivePositions,
             flags: health.lookThroughExposure.flags.map((f) =>
               f.kind === "single_name"
                 ? `${f.ticker} ${f.weightPct.toFixed(1)}% (${f.level}, look-through)`

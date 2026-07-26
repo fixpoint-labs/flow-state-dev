@@ -152,20 +152,34 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
   });
 
-  it("classifies resolvable symbols with ALL-unparseable/out-of-range weights as malformed, not ineligible (Codex review)", async () => {
+  it("keeps a valid SECTOR axis when the NAME axis has resolvable symbols but ALL-unparseable/out-of-range weights, instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — third variant of the same per-axis bug class)", async () => {
     // Distinct from the all-n/a case above: the SYMBOLS are fine here, only
-    // the weights are corrupted — a recoverable provider glitch (~7-day
-    // backoff), not a permanent fact about the fund (~90-day backoff).
+    // the weights are corrupted, so there is nothing to sum on the name axis
+    // at all — this used to be a whole-profile `malformed` refusal
+    // (~7-day backoff) that discarded a possibly-valid sector axis; now it's
+    // treated exactly like the sector-malformed / name-malformed over-sum
+    // cases below: the name axis is discarded and the sector axis is judged
+    // on its own merits.
     mockFetchOnce({
       ...WELL_COVERED,
-      sectors: [],
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.3" },
+        { sector: "HEALTH CARE", weight: "0.12" },
+      ],
       holdings: [
         { symbol: "AAPL", weight: "not-a-number" },
         { symbol: "MSFT", weight: "1.5" }, // out of [0,1]
       ],
     });
-    const out = await fetchEtfProfile("CORRUPT_SYMBOLS_OK");
-    expect(out).toMatchObject({ kind: "refused", reason: "malformed" });
+    const out = await fetchEtfProfile("CORRUPT_SYMBOLS_SECTOR_OK");
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // The name axis is discarded, not fabricated — same shape as "the
+    // provider sent no holdings data".
+    expect(out.profile.constituents).toEqual([]);
+    expect(out.profile.nameCoverage).toBe(0);
+    // The sector axis is fully intact.
+    expect(out.profile.sectors).toHaveLength(2);
+    expect(out.profile.sectorCoverage).toBeCloseTo(0.42);
   });
 
   it("treats a completely empty profile response as not_an_etf", async () => {

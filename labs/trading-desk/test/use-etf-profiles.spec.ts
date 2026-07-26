@@ -21,7 +21,10 @@
  * eligibility-filter-mismatch fix (a review round on this PR, #927).
  */
 import { describe, expect, it } from "vitest";
-import { computeEtfEligibilitySignature } from "../components/portfolio/use-etf-profiles";
+import {
+  computeEtfEligibilitySignature,
+  hashEligibilitySignature,
+} from "../components/portfolio/use-etf-profiles";
 import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
 import type { Quote } from "../domain/portfolio/services/get-quotes";
 
@@ -181,5 +184,31 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(candidate).toBe("SPY:1:1");
+  });
+});
+
+describe("hashEligibilitySignature (Codex review, FIX-801 sub-PR c)", () => {
+  it("is stable — the same signature always hashes to the same token", () => {
+    const a = hashEligibilitySignature("SPY:1:1,AAPL:0:1");
+    const b = hashEligibilitySignature("SPY:1:1,AAPL:0:1");
+    expect(a).toBe(b);
+  });
+
+  it("differs for different signatures (no trivial collision on a realistic pair)", () => {
+    const a = hashEligibilitySignature("SPY:1:1,AAPL:0:1");
+    const b = hashEligibilitySignature("SPY:1:0,AAPL:0:1"); // one bit flipped
+    expect(a).not.toBe(b);
+  });
+
+  it("is a short, fixed-length, URL-safe token regardless of input size — the whole point of hashing instead of embedding the raw signature", () => {
+    const hugeSignature = Array.from({ length: 500 }, (_, i) => `TICKER${i}:1:1`).join(",");
+    const token = hashEligibilitySignature(hugeSignature);
+    expect(token).toMatch(/^[0-9a-f]{8}$/);
+    expect(token.length).toBeLessThan(hugeSignature.length);
+  });
+
+  it("never throws on an empty signature (a fund-less, holding-less book)", () => {
+    expect(() => hashEligibilitySignature("")).not.toThrow();
+    expect(hashEligibilitySignature("")).toMatch(/^[0-9a-f]{8}$/);
   });
 });

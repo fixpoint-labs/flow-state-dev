@@ -408,6 +408,19 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
               : `${exposure.maxPosition.ticker} ${pct(exposure.maxPosition.weightPct)}`
           }
         />
+        {/* An INTERVAL, not a point estimate (Decision 4, docs/etf-look-through.md)
+         *  — the unattributed residual could sit anywhere from a long tail
+         *  (`high`) to piling entirely onto the largest name already seen
+         *  (`low`). Was computed by the leaf but never surfaced here until now
+         *  (Codex review, FIX-801 sub-PR c). */}
+        <Stat
+          label="Effective positions"
+          value={
+            exposure.effectivePositions === null
+              ? DASH
+              : `${exposure.effectivePositions.low.toFixed(1)}–${exposure.effectivePositions.high.toFixed(1)}`
+          }
+        />
       </div>
       {exposure.flags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pb-2">

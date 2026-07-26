@@ -38,13 +38,16 @@ import type {
  *     when that happens — see `reclassifiedTickers`).
  * Rather than a bespoke refetch call per trigger, ONE derived signature over
  * exactly the eligibility-relevant slice of `accounts` (ticker + assetType) +
- * `priceMap` (which tickers are priced) feeds the query URL, so
- * `useApiQuery`'s existing "reload on URL change" behavior does the refetch —
- * a future eligibility input (a third trigger) costs nothing; it just joins
- * the signature. Both known triggers (a quote resolving, a classification
- * correction propagating through the `accounts` refetch) flow through
- * `accounts`/`priceMap`, which are already props re-rendering into this hook,
- * so no additional wiring is needed beyond building the signature from them.
+ * `priceMap` (which tickers are priced) feeds the query URL — HASHED, not
+ * embedded raw (`hashEligibilitySignature`), so a large book's full ticker
+ * list never lands in the URL/access logs and can't blow past a request-
+ * target size limit — so `useApiQuery`'s existing "reload on URL change"
+ * behavior does the refetch — a future eligibility input (a third trigger)
+ * costs nothing; it just joins the signature. Both known triggers (a quote
+ * resolving, a classification correction propagating through the `accounts`
+ * refetch) flow through `accounts`/`priceMap`, which are already props
+ * re-rendering into this hook, so no additional wiring is needed beyond
+ * building the signature from them.
  *
  * Returns two ticker-keyed maps: `profiles` (attributable — even a THIN one
  * below the coverage floor; that gate is the consuming leaf's business, not
@@ -84,6 +87,31 @@ export function computeEtfEligibilitySignature(
   return rows.sort().join(",");
 }
 
+/**
+ * Compact a (potentially large) `computeEtfEligibilitySignature` string into
+ * a short, URL-safe token via a fast, non-cryptographic 32-bit FNV-1a hash.
+ * Embedding the RAW signature directly in the query string — every held
+ * ticker plus its eligibility bits — would leak the household's full ticker
+ * list into browser history / access logs, and for a large book risks
+ * exceeding a proxy's request-target size limit and breaking the request
+ * outright (Codex review, FIX-801 sub-PR c). Only the CHANGE-DETECTION
+ * property matters here, not the content, so a hash token is the right
+ * shape: `useApiQuery`'s stable-URL refetch still fires exactly when the
+ * signature changes. Not cryptographic — a collision would only cause a
+ * missed refetch (self-healing on the next real eligibility change, since
+ * the underlying `accounts`/`priceMap` inputs keep re-rendering), never
+ * wrong data, since the route still derives its own eligible ticker set
+ * server-side regardless of what `sig` says.
+ */
+export function hashEligibilitySignature(signature: string): string {
+  let hash = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < signature.length; i++) {
+    hash ^= signature.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 export function useEtfProfiles(
   accounts: AccountState[],
   priceMap: Map<string, Quote>,
@@ -98,9 +126,14 @@ export function useEtfProfiles(
     () => computeEtfEligibilitySignature(accounts, priceMap),
     [accounts, priceMap],
   );
+  // Hashed, not embedded raw — see `hashEligibilitySignature`'s docblock.
+  const sigToken = useMemo(
+    () => hashEligibilitySignature(eligibilitySignature),
+    [eligibilitySignature],
+  );
 
   const { data } = useApiQuery<EtfProfilesResponse>(
-    `/api/portfolio/etf-profiles?userId=${encodeURIComponent(uid)}&sig=${encodeURIComponent(eligibilitySignature)}`,
+    `/api/portfolio/etf-profiles?userId=${encodeURIComponent(uid)}&sig=${sigToken}`,
   );
 
   const profiles = useMemo(() => {

@@ -583,10 +583,20 @@ function appendLookThroughLines(
   const maxName = lookThrough.maxPosition
     ? `${lookThrough.maxPosition.ticker} ${fmtPct(lookThrough.maxPosition.weightPct)}`
     : "—";
+  // The look-through analogue of the wrapper-basis `effective positions`
+  // figure, but an interval (not a point estimate) — the unattributed
+  // residual could sit anywhere from a long tail to piling entirely onto the
+  // largest name already seen (Decision 4, docs/etf-look-through.md). Was
+  // computed by the leaf but never surfaced here until now (Codex review,
+  // FIX-801 sub-PR c).
+  const effPositions =
+    lookThrough.effectivePositions == null
+      ? "—"
+      : `${lookThrough.effectivePositions.low.toFixed(1)}–${lookThrough.effectivePositions.high.toFixed(1)}`;
   lines.push(
     `ETF look-through (seeing inside funds; a LOWER BOUND — does not move sizing gates): ` +
       `name coverage ${fmtPct(lookThrough.coveragePct)}, sector coverage ${fmtPct(lookThrough.sectorCoveragePct)}, ` +
-      `largest effective name ${maxName}` +
+      `largest effective name ${maxName}, effective positions ${effPositions} (interval — residual placement is uncertain)` +
       `${opaqueFundsSuffix(lookThrough)}.`,
   );
   if (lookThrough.flags.length > 0) {

@@ -71,6 +71,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            effectivePositions: { low: 5.2, high: 8.4 },
             flags: ["AAPL 16.9% (alert, look-through)"],
             opaqueFundCount: 1,
             opaqueUnavailableFundCount: 0,
@@ -85,8 +86,33 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).toContain("does not move sizing gates");
     expect(out).toContain("name coverage 99.0%, sector coverage 96.5%");
     expect(out).toContain("largest effective name AAPL 16.9%");
+    // The uncertainty-aware [low, high] interval — was computed by the leaf
+    // but never rendered here until now (Codex review, FIX-801 sub-PR c).
+    expect(out).toContain("effective positions 5.2–8.4 (interval — residual placement is uncertain)");
     expect(out).toContain("1 fund(s) opaque (thin/ineligible data)");
     expect(out).toContain("Look-through concentration flags: AAPL 16.9% (alert, look-through).");
+  });
+
+  it("renders '—' for the effective-positions interval when null (no attribution to bound)", () => {
+    const out = formatPortfolioContext(
+      snapshot({
+        health: {
+          ...snapshot().health!,
+          lookThrough: {
+            coveragePct: 99.0,
+            sectorCoveragePct: 96.5,
+            maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            effectivePositions: null,
+            flags: [],
+            opaqueFundCount: 0,
+            opaqueUnavailableFundCount: 0,
+          },
+        },
+      }),
+      [],
+      "NVDA",
+    );
+    expect(out).toContain("effective positions — (interval — residual placement is uncertain)");
   });
 
   it("reports an unavailable (not-yet-fetched / quota-limited) opaque fund separately from a data-quality one (Codex review, FIX-801 sub-PR c)", () => {
@@ -98,6 +124,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            effectivePositions: { low: 3.1, high: 6.0 },
             flags: [],
             opaqueFundCount: 2,
             opaqueUnavailableFundCount: 1,
@@ -120,6 +147,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            effectivePositions: { low: 4.0, high: 4.0 },
             flags: [],
             opaqueFundCount: 0,
             opaqueUnavailableFundCount: 0,

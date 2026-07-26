@@ -184,6 +184,91 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].transientAttempts).toBe(0); // cleared on a success
   });
 
+  it("a TRANSPORT-class refusal (transient/quota) does NOT overwrite an existing DOMAIN-class refusal — refusal-type precedence (Codex review, FIX-801 sub-PR c)", async () => {
+    // The prior WHERE-clause guard only distinguished refusal-shaped vs.
+    // success-shaped writes, treating "any refusal beats any refusal" —
+    // which let a network-blip/quota-hit write from a losing concurrent
+    // instance silently downgrade an already-recorded DEFINITIVE domain
+    // judgment (a real AV response saying "this isn't an ETF") down to a
+    // 15-minute/next-reset backoff, causing the very next read to re-spend a
+    // budget unit re-litigating a settled question.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF",
+        payload: null,
+        refusalReason: "transient",
+        refusalDetail: "network error",
+        retryAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        transientAttempts: 1,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["NOTETF"]);
+    expect(rows).toHaveLength(1);
+    // The domain refusal survives — the transport-failure write was a no-op.
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+    expect(rows[0].transientAttempts).toBe(0);
+  });
+
+  it("a fresh DOMAIN-class refusal DOES overwrite an existing DOMAIN-class refusal — a genuine re-judgment on a real fetch, not a transport failure", async () => {
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "RECLASS",
+        payload: null,
+        refusalReason: "malformed",
+        refusalDetail: "weights over 100%",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "RECLASS",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile on retry",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["RECLASS"]);
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+  });
+
+  it("a TRANSPORT-class refusal DOES overwrite an existing TRANSPORT-class refusal — an ordinary continued failure, unaffected by the precedence guard", async () => {
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "FLAKY",
+        payload: null,
+        refusalReason: "transient",
+        refusalDetail: "network error 1",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 1,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "FLAKY",
+        payload: null,
+        refusalReason: "quota",
+        refusalDetail: "budget exhausted",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["FLAKY"]);
+    expect(rows[0].refusalReason).toBe("quota");
+  });
+
   it("dedupes a same-ticker batch (last write wins) without an intra-statement conflict", async () => {
     await repo.upsertEtfProfiles([
       { ticker: "QQQ", payload: SAMPLE_PROFILE, refusalReason: null },

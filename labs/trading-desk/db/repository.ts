@@ -1943,7 +1943,33 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             // it is never blocked by this comparison in the normal case —
             // only a stale preserved-payload write can lose to an
             // already-newer stored row.
-            where: sql`${etfProfiles.payload} is null or (excluded.refusal_reason is null and excluded.fetched_at >= ${etfProfiles.fetchedAt})`,
+            //
+            // A REFUSAL-shaped write also needs its own precedence rule
+            // (third Codex review round): the ORIGINAL "any refusal beats any
+            // refusal" reading let a TRANSPORT-failure write (`quota` /
+            // `transient` — a definitively-owned fact, per
+            // `lib/etf-profile-backoff.ts`'s own class split) silently
+            // downgrade an already-recorded DOMAIN refusal (`not_an_etf` /
+            // `ineligible` / `malformed` — a real judgment made from a
+            // response AV actually returned) to a 15-minute/next-reset
+            // backoff. Two instances racing on the same due ticker — one
+            // reaching AV and getting a definitive `not_an_etf`, the other
+            // hitting a network blip or the shared quota at the same
+            // moment — could then have the transport-failure write land
+            // SECOND and shorten a ticker already proven ineligible, so the
+            // very next Health read re-spends a budget unit re-litigating a
+            // settled question. The extra clause blocks exactly that one
+            // combination (existing = domain, incoming = transport); every
+            // other refusal-vs-refusal pairing (domain replacing domain — a
+            // fresh judgment; transport replacing transport — an ordinary
+            // continued failure; either replacing nothing) stays admitted
+            // unchanged, matching the ORIGINAL behavior for those cases.
+            where: sql`(${etfProfiles.payload} is null
+              and not (
+                ${etfProfiles.refusalReason} in ('not_an_etf', 'ineligible', 'malformed')
+                and excluded.refusal_reason in ('quota', 'transient')
+              ))
+              or (excluded.refusal_reason is null and excluded.fetched_at >= ${etfProfiles.fetchedAt})`,
           });
       });
     },

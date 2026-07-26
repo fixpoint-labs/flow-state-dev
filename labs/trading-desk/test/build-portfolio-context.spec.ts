@@ -293,6 +293,16 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.coveragePct as number).toBeLessThan(100); // never renormalized to 100%
     expect(lookThrough?.opaqueFundCount).toBe(0);
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    // The leaf's own uncertainty-aware [low, high] interval (Decision 4,
+    // docs/etf-look-through.md) — computed by the leaf but never threaded
+    // through the projection until now (Codex review, FIX-801 sub-PR c). A
+    // direct pass-through, so just assert it's a real interval, not that it
+    // stays null.
+    expect(lookThrough?.effectivePositions).not.toBeNull();
+    expect(lookThrough?.effectivePositions?.low).toBeGreaterThan(0);
+    expect(lookThrough?.effectivePositions?.high).toBeGreaterThanOrEqual(
+      lookThrough?.effectivePositions?.low ?? 0,
+    );
   });
 
   it("a fund with no stored profile leaves lookThrough null (nothing attributed) — same 'never fetches' read as an empty map", () => {
