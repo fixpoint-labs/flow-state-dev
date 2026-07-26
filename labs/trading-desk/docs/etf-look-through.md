@@ -159,11 +159,11 @@ allowance.
 A household holds $10,000 of Apple directly, $30,000 in a Nasdaq-100 fund, and
 $60,000 in an S&P 500 fund (the two funds' stated weight in Apple: roughly 10%
 each). The wrapper basis reports Apple at its direct 10.0% of the $100,000
-book. Look-through adds the two funds' Apple slices (~$9,000) to the direct
-holding: an effective **16.9%**, coverage-qualified by however much of each
-fund's own holdings the provider actually reported — 69% higher than the line
-item the old view showed, and the number a concentration read actually needs
-to be honest.
+book. Look-through adds the two funds' Apple slices ($3,000 + $6,000 = $9,000)
+to the direct holding: an effective **19.0%**, coverage-qualified by however
+much of each fund's own holdings the provider actually reported — 90% higher
+than the line item the old view showed, and the number a concentration read
+actually needs to be honest.
 
 ## What it deliberately doesn't do
 
