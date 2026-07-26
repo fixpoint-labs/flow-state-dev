@@ -97,37 +97,33 @@ export const FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON =
 /** Diagnostic-display reason for a directly-held `mutual_fund` position whose
  *  fund-ness `resolveTickerIsFund` already resolved correctly but whose map
  *  entry — an existing raw `"not_an_etf"`/`"quota"`/`"transient"` refusal
- *  (round 18/20's "survives disproof" case for `not_an_etf`: `app.etf_profiles`
- *  is GLOBAL reference data, so a stale row on this ticker may belong to a
- *  different household's ETF mistag, not a live verdict about THIS mutual
- *  fund; `quota`/`transient` are the same stale/neutral-evidence class
- *  `isFundConfirmingProfileEntry`/`notAnEtfDisproves` already treat together
- *  elsewhere in this file — round 32), or NO entry at all (the normal case —
- *  `isEtfProfileFetchCandidate` requires `assetType === "etf"`, so a mutual
- *  fund is never fetched by this app's own route in the first place) —
- *  carries no signal that this is a permanent POLICY exclusion rather than a
- *  DATA-QUALITY gap. Getting the fund/not-fund IDENTITY right isn't enough on
- *  its own: reporting the raw refusal reason or the generic `"no stored
- *  profile"` downstream (the main loop's opaque diagnostic,
- *  `classifyOpaqueFunds`) reads as "thin/ineligible data" or "not yet
- *  available" when the real situation is that the ETF_PROFILE endpoint
- *  fundamentally cannot cover mutual funds at all (the fetcher's own
- *  Non-goals) — never a gap a future fetch could close, since NO refusal
- *  class or absence is ever cleared by a fetch that will never happen. Same
- *  "distinguish permanent policy exclusion from data unavailable" pattern
- *  {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON} already established for
- *  the bond-fund case, applied here for the mutual-fund case (Codex review,
- *  FIX-801 sub-PR c rounds 30-32 — the existing-`not_an_etf`-entry,
- *  no-entry, and existing-`quota`/`transient`-entry cases). Substituted only
- *  at the two opaque-diagnostic display points in
- *  `computeLookThroughExposure`'s main loop — never written back into a
- *  `FundProfileInput` map entry, so it has no bearing on
- *  `resolveTickerIsFund`'s own evidence-ordering (that decision is already
- *  correctly made before this substitution is ever consulted). Unlike the
- *  bond-ETF case, there is no `excludeFixedIncomeFromProfileMap`-equivalent
- *  preprocessing step for mutual funds — nothing upstream ever touches a
- *  mutual-fund ticker's map entry — so the leaf itself is the only place
- *  any of this can be fixed. */
+ *  (`app.etf_profiles` is GLOBAL reference data, so a stale row on this
+ *  ticker may belong to a different household's ETF mistag, not a live
+ *  verdict about THIS mutual fund; `quota`/`transient` are the same
+ *  stale/neutral-evidence class `isFundConfirmingProfileEntry`/
+ *  `notAnEtfDisproves` already treat together elsewhere in this file), or NO
+ *  entry at all (the normal case — `isEtfProfileFetchCandidate` requires
+ *  `assetType === "etf"`, so a mutual fund is never fetched by this app's
+ *  own route in the first place) — carries no signal that this is a
+ *  permanent POLICY exclusion rather than a DATA-QUALITY gap. Getting the
+ *  fund/not-fund IDENTITY right isn't enough on its own: reporting the raw
+ *  refusal reason or the generic `"no stored profile"` downstream (the main
+ *  loop's opaque diagnostic, `classifyOpaqueFunds`) reads as "thin/ineligible
+ *  data" or "not yet available" when the real situation is that the
+ *  ETF_PROFILE endpoint fundamentally cannot cover mutual funds at all (the
+ *  fetcher's own Non-goals) — never a gap a future fetch could close, since
+ *  NO refusal class or absence is ever cleared by a fetch that will never
+ *  happen. Same "distinguish permanent policy exclusion from data
+ *  unavailable" pattern {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON}
+ *  establishes for the bond-fund case. Substituted only at the two
+ *  opaque-diagnostic display points in `computeLookThroughExposure`'s main
+ *  loop — never written back into a `FundProfileInput` map entry, so it has
+ *  no bearing on `resolveTickerIsFund`'s own evidence-ordering (that
+ *  decision is already correctly made before this substitution is ever
+ *  consulted). Unlike the bond-ETF case, there is no
+ *  `excludeFixedIncomeFromProfileMap`-equivalent preprocessing step for
+ *  mutual funds — nothing upstream ever touches a mutual-fund ticker's map
+ *  entry — so the leaf itself is the only place any of this can be fixed. */
 export const MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON =
   "mutual fund — look-through attribution out of scope (ETF_PROFILE never covers mutual funds)";
 
