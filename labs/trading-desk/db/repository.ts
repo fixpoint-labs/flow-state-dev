@@ -423,9 +423,16 @@ export type InstrumentClassificationInput = {
 };
 
 /** One persisted ETF profile fill outcome (FIX-801) — the read shape of
- *  `app.etf_profiles`, timestamps normalized to ISO-8601. Exactly one of
- *  `payload` / `refusalReason` is non-null (never both, never neither) — see
- *  {@link EtfProfileUpsertInput}. */
+ *  `app.etf_profiles`, timestamps normalized to ISO-8601. `payload` and
+ *  `refusalReason` are NOT mutually exclusive: `payload` is non-null exactly
+ *  when a usable profile is stored (a genuine fresh success, OR a preserved
+ *  payload from a refresh attempt that itself failed — see
+ *  {@link EtfProfileUpsertInput}); `refusalReason` is non-null whenever a
+ *  refusal CLASS has been judged, whether that's a genuine miss (`payload`
+ *  null) or the class that produced the retry_at backoff attached to a
+ *  PRESERVED payload (`payload` non-null too, round 10 — Codex review,
+ *  FIX-801 sub-PR c). Both null only for a `payload`-null row that should not
+ *  occur (defensive-only in reads). See {@link EtfProfileUpsertInput}. */
 export type EtfProfileRow = {
   ticker: string;
   payload: NormalizedEtfProfile | null;
@@ -437,9 +444,9 @@ export type EtfProfileRow = {
 };
 
 /** Fields a caller supplies to persist one ETF profile fill outcome (FIX-801).
- *  A discriminated union so a caller can't accidentally set both `payload` and
- *  `refusalReason` (or neither) — the fill route always has exactly one
- *  outcome per ticker per attempt.
+ *  A discriminated union on `payload` (not `refusalReason` — see below) so a
+ *  caller can't accidentally supply a refusal-shaped write with no ticker to
+ *  record it against.
  *
  *  The success variant's `retryAt`/`transientAttempts`/`fetchedAt` are ALL
  *  OPTIONAL and exist for one narrow case: a REFRESH attempt on an already-
@@ -456,12 +463,26 @@ export type EtfProfileRow = {
  *  backoff would never actually be consulted (a second reviewer follow-up:
  *  the fix above only works if the row still LOOKS stale). Omitted (a normal
  *  fresh success) clears any prior backoff and stamps the current time,
- *  matching the pre-existing behavior. */
+ *  matching the pre-existing behavior.
+ *
+ *  **`refusalReason`/`refusalDetail` on the success variant** (round 10 —
+ *  Codex review, FIX-801 sub-PR c) record WHICH refusal class produced the
+ *  attached `retryAt`/`transientAttempts` on a preserved-payload refresh
+ *  failure — `null` for a genuine fresh success. Nothing that reads a stored
+ *  row as "is this a usable profile" (`isDueForFetch`, `hasStoredSuccess`,
+ *  `toFundProfileMap`, the route's own response projection) looks past
+ *  `payload !== null`, so this is inert everywhere EXCEPT the conflict-update
+ *  precedence guard below, which needs it to tell a domain-class preserved
+ *  backoff from a transport-class one even though both keep the payload and
+ *  therefore can't be told apart by `fetchedAt` alone (two racing refresh
+ *  attempts against the SAME stale payload share the SAME preserved
+ *  `fetchedAt`). */
 export type EtfProfileUpsertInput =
   | {
       ticker: string;
       payload: NormalizedEtfProfile;
-      refusalReason: null;
+      refusalReason?: EtfProfileRefusalClass | null;
+      refusalDetail?: string | null;
       retryAt?: string | null;
       transientAttempts?: number;
       fetchedAt?: string;
@@ -1880,25 +1901,35 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
       const byTicker = new Map<string, EtfProfileUpsertInput>();
       for (const r of rows) byTicker.set(r.ticker.toUpperCase(), r);
       const nowIso = new Date().toISOString();
-      const values = [...byTicker.entries()].map(([ticker, r]) => ({
-        ticker,
-        payload: r.payload,
-        refusalReason: r.refusalReason,
-        refusalDetail: r.refusalReason === null ? null : r.refusalDetail,
-        // The success variant's retryAt/transientAttempts are optional — set
-        // only for a "refresh failed, kept the good payload, deferred the
-        // next attempt" write; omitted (undefined) clears any prior backoff.
-        retryAt: r.refusalReason === null ? (r.retryAt ?? null) : r.retryAt,
-        transientAttempts: r.refusalReason === null ? (r.transientAttempts ?? 0) : r.transientAttempts,
-        // fetchedAt is EXPLICIT here (not `now()` in the SQL), so a caller
-        // can PRESERVE the prior successful fetch time on a kept-payload
-        // backoff-only write — bumping it would make the row look freshly
-        // fetched and defeat the retryAt backoff, which the staleness check
-        // gates ahead of (reviewer follow-up, FIX-801 sub-PR a). A refusal
-        // row (a genuinely new miss, never has a prior fetchedAt to keep)
-        // and an omitted `fetchedAt` on the success variant both stamp "now".
-        fetchedAt: r.refusalReason === null ? (r.fetchedAt ?? nowIso) : nowIso,
-      }));
+      const values = [...byTicker.entries()].map(([ticker, r]) => {
+        // Branch on PAYLOAD, not `refusalReason` (round 10 — Codex review,
+        // FIX-801 sub-PR c): `refusalReason` used to be the discriminant
+        // (null exactly meant "success variant"), but the success variant can
+        // now ALSO carry a non-null `refusalReason` (a preserved-payload
+        // refresh failure recording which class produced its backoff) — see
+        // `EtfProfileUpsertInput`'s own docblock. `payload` is the one field
+        // that still cleanly tells the two arms apart.
+        const isSuccessVariant = r.payload !== null;
+        return {
+          ticker,
+          payload: r.payload,
+          refusalReason: r.refusalReason ?? null,
+          refusalDetail: isSuccessVariant ? (r.refusalDetail ?? null) : r.refusalDetail,
+          // The success variant's retryAt/transientAttempts are optional — set
+          // only for a "refresh failed, kept the good payload, deferred the
+          // next attempt" write; omitted (undefined) clears any prior backoff.
+          retryAt: isSuccessVariant ? (r.retryAt ?? null) : r.retryAt,
+          transientAttempts: isSuccessVariant ? (r.transientAttempts ?? 0) : r.transientAttempts,
+          // fetchedAt is EXPLICIT here (not `now()` in the SQL), so a caller
+          // can PRESERVE the prior successful fetch time on a kept-payload
+          // backoff-only write — bumping it would make the row look freshly
+          // fetched and defeat the retryAt backoff, which the staleness check
+          // gates ahead of (reviewer follow-up, FIX-801 sub-PR a). A refusal
+          // row (a genuinely new miss, never has a prior fetchedAt to keep)
+          // and an omitted `fetchedAt` on the success variant both stamp "now".
+          fetchedAt: isSuccessVariant ? (r.fetchedAt ?? nowIso) : nowIso,
+        };
+      });
       await db.transaction(async (tx) => {
         await tx
           .insert(etfProfiles)
@@ -1919,75 +1950,90 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             // concurrent instances against the same Postgres backing, each
             // with its own lease map — two instances can each read the same
             // stale/missing row and both fetch, and whichever writes SECOND
-            // must not silently clobber a fresh success with a refusal. This
-            // WHERE mirrors the same guard already enforced in JS
+            // must not silently clobber a fresh success (or a preserved
+            // payload — round 10, see below) with a payload-less refusal.
+            // This WHERE mirrors the same guard already enforced in JS
             // (`hasStoredSuccess`), pushed into SQL so Postgres enforces it
-            // atomically: a REFUSAL-shaped write (`excluded.refusal_reason`
-            // set) is simply dropped — not applied, per ON CONFLICT ... DO
-            // UPDATE ... WHERE semantics — when the row it would land on
-            // already carries a real payload.
+            // atomically. Rewritten (round 10) to a two-part shape:
             //
-            // A success-shaped write is additionally required to be NO OLDER
-            // than the row it would replace (`excluded.fetched_at >=
-            // etfProfiles.fetchedAt`) — the residual gap this guard's first
-            // version left, independently confirmed by a second Codex review:
-            // instance A persists a fresh success, then instance B's OWN
-            // failed refresh (against the pre-A snapshot it read) produces a
-            // success-shaped PRESERVED-payload write (B's old payload +
-            // backoff stamp, `fetchedAt` = B's old payload's fetch time —
-            // `toStoredRow`/`upsertEtfProfiles` both carry that through
-            // unchanged for exactly this comparison) that the ORIGINAL
-            // refusal-vs-success-only WHERE admitted, clobbering A's fresh
-            // row with B's stale one for up to 90 days. A genuinely fresh
-            // fetch (no explicit `fetchedAt` passed) always stamps "now", so
-            // it is never blocked by this comparison in the normal case —
-            // only a stale preserved-payload write can lose to an
-            // already-newer stored row.
+            // PART 1 — which write is even eligible to land, by PAYLOAD
+            // shape:
+            //   - A payload-less write (`excluded.payload is null` — a
+            //     genuine miss) is eligible only when the row it would land
+            //     on ALSO has no payload. It must never clobber a real
+            //     payload — success or preserved (Codex review, FIX-801
+            //     sub-PR a).
+            //   - A write that itself carries a payload (a genuinely fresh
+            //     success, OR a preserved-payload refresh-failure write — see
+            //     `EtfProfileUpsertInput`'s docblock) is eligible only when it
+            //     is NO OLDER than the row it would replace
+            //     (`excluded.fetched_at >= etfProfiles.fetchedAt`) — the
+            //     residual gap this guard's first version left, independently
+            //     confirmed by a second Codex review: instance A persists a
+            //     fresh success, then instance B's OWN failed refresh
+            //     (against the pre-A snapshot it read) produces a
+            //     preserved-payload write (B's old payload + backoff stamp,
+            //     `fetchedAt` = B's old payload's fetch time — carried
+            //     through unchanged for exactly this comparison) that an
+            //     earlier version of this WHERE admitted, clobbering A's
+            //     fresh row with B's stale one for up to 90 days. A genuinely
+            //     fresh fetch (no explicit `fetchedAt` passed) always stamps
+            //     "now", so it is never blocked by this comparison in the
+            //     normal case — only a stale preserved-payload write can lose
+            //     to an already-newer stored row.
             //
-            // A REFUSAL-shaped write also needs its own precedence rule
-            // (third Codex review round): the ORIGINAL "any refusal beats any
-            // refusal" reading let a TRANSPORT-failure write (`quota` /
-            // `transient` — a definitively-owned fact, per
+            // PART 2 — refusal-CLASS precedence, independent of payload
+            // shape (third Codex review round, extended in the fourth and
+            // tenth): the ORIGINAL "any refusal beats any refusal" reading
+            // let a TRANSPORT-failure write (`quota` / `transient` — per
             // `lib/etf-profile-backoff.ts`'s own class split) silently
             // downgrade an already-recorded DOMAIN refusal (`not_an_etf` /
             // `ineligible` / `malformed` — a real judgment made from a
             // response AV actually returned) to a 15-minute/next-reset
-            // backoff. Two instances racing on the same due ticker — one
+            // backoff — two instances racing on the same due ticker, one
             // reaching AV and getting a definitive `not_an_etf`, the other
-            // hitting a network blip or the shared quota at the same
-            // moment — could then have the transport-failure write land
-            // SECOND and shorten a ticker already proven ineligible, so the
-            // very next Health read re-spends a budget unit re-litigating a
-            // settled question. The extra clause blocks exactly that one
-            // combination (existing = domain, incoming = transport); every
-            // other refusal-vs-refusal pairing (domain replacing domain — a
-            // fresh judgment; transport replacing transport — an ordinary
-            // continued failure; either replacing nothing) stays admitted
-            // unchanged, matching the ORIGINAL behavior for those cases.
+            // hitting a network blip or the shared quota at the same moment,
+            // could have the transport-failure write land SECOND and shorten
+            // a ticker already proven ineligible, so the very next Health
+            // read re-spends a budget unit re-litigating a settled question.
+            // `${etfProfiles.retryAt} > now()` scopes the block to the
+            // domain refusal's still-OPEN backoff window (fourth Codex review
+            // round) — once it has genuinely expired, a subsequent
+            // transient/quota outcome is recording a NEW result, not
+            // clobbering a settled one, so it is admitted like any other
+            // refusal-vs-refusal pairing.
             //
-            // That precedence guard is itself only correct while the DOMAIN
-            // refusal's own backoff window is still open (fourth Codex review
-            // round): it also blocked the ordinary, LEGITIMATE sequential
-            // retry — a domain refusal's ~90-day `retry_at` genuinely
-            // expires, `isDueForFetch` (the route) lets a fresh attempt
-            // through, and that attempt hits a transient/quota failure. That
-            // is not "clobbering a settled verdict" — the settled verdict's
-            // hold period is OVER and a new outcome is being recorded — but
-            // the unconditional guard blocked the write anyway, so
-            // `retry_at` never advanced and every subsequent Health read
-            // immediately re-attempted forever instead of backing off on the
-            // fresh transient/quota failure. The extra `retry_at > now()`
-            // condition scopes the block to exactly the concurrent-race case
-            // the guard exists for: a domain refusal still WITHIN its backoff
-            // window. Once it's expired, a transport-failure write is
-            // admitted like any other refusal-vs-refusal pairing.
-            where: sql`(${etfProfiles.payload} is null
-              and not (
-                ${etfProfiles.refusalReason} in ('not_an_etf', 'ineligible', 'malformed')
-                and excluded.refusal_reason in ('quota', 'transient')
-                and ${etfProfiles.retryAt} > now()
-              ))
-              or (excluded.refusal_reason is null and excluded.fetched_at >= ${etfProfiles.fetchedAt})`,
+            // ROUND 10: two instances can race a REFRESH of the same stale
+            // SUCCESSFUL profile — one gets a domain refusal, the other a
+            // transport failure. Both produce PRESERVED-payload writes with
+            // the SAME old `fetchedAt` (PART 1's freshness check can't tell
+            // them apart — neither is "older"), so without this class check
+            // reaching into the preserved-payload shape too, whichever wrote
+            // SECOND would win regardless of class, same budget-waste
+            // consequence as the payload-less case. `refusalReason` is now
+            // populated on a preserved-payload write specifically so this
+            // check applies uniformly to both row shapes (see
+            // `EtfProfileUpsertInput`'s docblock) — this is the ONLY reason
+            // that field is ever non-null alongside a non-null `payload`.
+            // Both `is not null` guards are required: SQL's `x IN (...)` is
+            // NULL (not false) when `x` is NULL, and `NULL AND anything` is
+            // NULL, which a WHERE clause treats as "no match" — without the
+            // guards, a genuinely fresh success (`excluded.refusal_reason`
+            // null) or a plain, never-refused stored success
+            // (`etfProfiles.refusalReason` null) would silently fail this
+            // whole WHERE instead of falling through to PART 1's own
+            // (correct) verdict.
+            where: sql`(
+              (excluded.payload is null and ${etfProfiles.payload} is null)
+              or (excluded.payload is not null and excluded.fetched_at >= ${etfProfiles.fetchedAt})
+            )
+            and not (
+              ${etfProfiles.refusalReason} is not null
+              and excluded.refusal_reason is not null
+              and ${etfProfiles.refusalReason} in ('not_an_etf', 'ineligible', 'malformed')
+              and excluded.refusal_reason in ('quota', 'transient')
+              and ${etfProfiles.retryAt} > now()
+            )`,
           });
       });
     },

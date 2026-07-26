@@ -258,6 +258,91 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].retryAt).toBe(freshRetryAt);
   });
 
+  it("a TRANSPORT-class PRESERVED-PAYLOAD refresh write does NOT overwrite a DOMAIN-class one recorded first for the SAME stale payload — equal fetchedAt can't be a tiebreaker (Codex review, FIX-801 sub-PR c round 10)", async () => {
+    // Two instances concurrently REFRESH the same stale SUCCESSFUL profile.
+    // Both writes PRESERVE the old payload/fetchedAt (the round-6/7
+    // freshness check can't discriminate "older" between them — they're
+    // equal), one gets a domain refusal, the other a transport failure.
+    // Without extending the refusal-type precedence to this preserved-
+    // payload shape too, whichever wrote SECOND would win regardless of
+    // class — the same budget-waste consequence the payload-less precedence
+    // (rounds 6/7) was built to prevent.
+    await repo.upsertEtfProfiles([
+      { ticker: "REFRESHRACE", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    const staleFetchedAt = (await repo.getEtfProfiles(["REFRESHRACE"]))[0]!.fetchedAt;
+
+    // Instance A: refresh hits a domain refusal (a real AV response).
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile on refresh",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+    // Instance B: refresh hits a transport failure, lands SECOND, same
+    // preserved (stale) fetchedAt.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "transient",
+        refusalDetail: "network error",
+        retryAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        transientAttempts: 1,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+
+    const rows = await repo.getEtfProfiles(["REFRESHRACE"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).not.toBeNull(); // still a usable, attributable profile
+    expect(rows[0].refusalReason).toBe("not_an_etf"); // domain's class survives
+    expect(rows[0].transientAttempts).toBe(0); // the transport write was a no-op
+  });
+
+  it("...and the SAME domain backoff wins regardless of write order — transport landing FIRST still loses to domain landing SECOND", async () => {
+    await repo.upsertEtfProfiles([
+      { ticker: "REFRESHRACE2", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    const staleFetchedAt = (await repo.getEtfProfiles(["REFRESHRACE2"]))[0]!.fetchedAt;
+
+    // Instance B (transport) lands FIRST this time.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE2",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "transient",
+        refusalDetail: "network error",
+        retryAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        transientAttempts: 1,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+    // Instance A (domain) lands SECOND — this direction is a genuine
+    // re-judgment, not a downgrade, so it must be admitted (the
+    // domain-replacing-domain / domain-replacing-transport precedent).
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE2",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile on refresh",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+
+    const rows = await repo.getEtfProfiles(["REFRESHRACE2"]);
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+    expect(rows[0].transientAttempts).toBe(0);
+  });
+
   it("a fresh DOMAIN-class refusal DOES overwrite an existing DOMAIN-class refusal — a genuine re-judgment on a real fetch, not a transport failure", async () => {
     await repo.upsertEtfProfiles([
       {

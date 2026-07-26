@@ -263,7 +263,13 @@ export async function GET(req: NextRequest) {
           upsert = {
             ticker,
             payload: storedBefore!.payload!,
-            refusalReason: null,
+            // Recorded (not forced null) so the repository's conflict-update
+            // precedence guard can tell this DOMAIN-class preserved backoff
+            // apart from a concurrent TRANSPORT-class one (Codex review,
+            // FIX-801 sub-PR c, round 10) — inert everywhere else, since a
+            // stored row is read as "usable" by `payload !== null` alone.
+            refusalReason: outcome.reason,
+            refusalDetail: outcome.detail,
             retryAt: retryAt.toISOString(),
             transientAttempts,
             fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch
@@ -294,7 +300,11 @@ export async function GET(req: NextRequest) {
           upsert = {
             ticker,
             payload: storedBefore!.payload!,
-            refusalReason: null,
+            // Same reasoning as the try-block preserving write above: record
+            // the TRANSPORT class instead of forcing null, so the precedence
+            // guard can see it (round 10).
+            refusalReason: reason,
+            refusalDetail: err instanceof Error ? err.message : String(err),
             retryAt: retryAt.toISOString(),
             transientAttempts,
             fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch

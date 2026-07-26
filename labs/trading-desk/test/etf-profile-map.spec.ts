@@ -61,6 +61,20 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     expect(out.get("SPY")).toEqual(profile());
   });
 
+  it("excludes a curated bond ETF (BND) even with a manually-overridden STALE assetClass: 'equity' — trusts isKnownBondEtf directly, not just the mutable field (Codex review, FIX-801 sub-PR c round 10)", () => {
+    // Same lesson as `isEtfProfileFetchCandidate`'s own bond-ETF check:
+    // `assetClass` is user-editable (`setHoldingAssetClass`), so a curated
+    // bond ETF whose row was manually reclassified away from `fixed_income`
+    // must still be excluded — otherwise a cached profile decomposes a fund
+    // the methodology declares opaque.
+    const profiles = new Map<string, FundProfileInput>([["BND", profile()]]);
+    const holdings = [holding({ ticker: "BND", assetClass: "equity", assetType: "equity" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+
+    expect(out.has("BND")).toBe(false);
+  });
+
   it("does NOT reintroduce the mistyped-equity read bug — a holding still tagged equity locally keeps its stored profile even if it's actually a fund", () => {
     // The exact scenario `allHeldTickers`'s broad read exists to recover: a
     // holding whose LOCAL assetType is stale (`equity`) but whose stored

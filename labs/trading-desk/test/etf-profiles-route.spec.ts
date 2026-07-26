@@ -332,10 +332,21 @@ describe("GET /api/portfolio/etf-profiles", () => {
     const body = (await res.json()) as EtfProfilesResponse;
     expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]); // still a healthy profile
     expect(body.refusals).toEqual([]); // never turned into a refusal
-    // The stored row itself is untouched, not just the response projection.
+    // The stored row's PAYLOAD is untouched, not just the response
+    // projection — this is what "leaves the stored row intact" actually
+    // means (payload preserved, not clobbered with `null`).
     const stored = await repoState.repo!.getEtfProfiles(["SPY"]);
     expect(stored[0]?.payload).not.toBeNull();
-    expect(stored[0]?.refusalReason).toBeNull();
+    expect(stored[0]?.payload).toEqual(SAMPLE_PROFILE);
+    // `refusalReason` IS now recorded alongside the preserved payload (round
+    // 10 — Codex review, FIX-801 sub-PR c): it records which class produced
+    // the attached backoff so a concurrent domain-vs-transport race can be
+    // resolved, but nothing reads it as "this row is refused" while
+    // `payload` is non-null (`isDueForFetch`/response projection/
+    // `toFundProfileMap` all key off `payload !== null` alone) — the ticker
+    // is still a fully healthy, attributable profile, exactly as the
+    // assertions above already prove.
+    expect(stored[0]?.refusalReason).toBe("not_an_etf");
   });
 
   it("a genuinely new ticker whose fetch throws (transient) is persisted as a refusal", async () => {

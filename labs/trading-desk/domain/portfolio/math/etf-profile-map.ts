@@ -106,21 +106,34 @@ export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>)
  * fund-typed, just never decomposed (Codex review, FIX-801 sub-PR c).
  *
  * Deliberately NOT `isEtfProfileFetchCandidate` reapplied here — that
- * predicate is the FETCH decision and is stricter than this single
- * `assetClass` check (it also requires `assetType === "etf"`), which would
- * reintroduce the mistyped-equity bug `allHeldTickers`'s own docblock
- * describes: a holding still tagged `equity` locally (the exact case the
- * broad read exists to recover) would fail that stricter check and get its
- * already-correct stored profile suppressed again. Only the CURRENT
- * `assetClass === "fixed_income"` fact is checked — a narrower, different
- * condition on purpose.
+ * predicate is the FETCH decision and is stricter than this check (it also
+ * requires `assetType === "etf"`), which would reintroduce the
+ * mistyped-equity bug `allHeldTickers`'s own docblock describes: a holding
+ * still tagged `equity` locally (the exact case the broad read exists to
+ * recover) would fail that stricter check and get its already-correct
+ * stored profile suppressed again.
+ *
+ * **Excludes on EITHER `assetClass === "fixed_income"` OR
+ * `isKnownBondEtf(ticker)`, not just the classified field — the same
+ * "trust the curated list directly, don't rely solely on the mutable
+ * `assetClass` field" lesson as `isEtfProfileFetchCandidate`'s own bond-ETF
+ * check.** `assetClass` is a user-editable field (`setHoldingAssetClass`),
+ * so a curated bond ETF (e.g. BND) manually overridden to `assetClass:
+ * "equity"` would otherwise still pass this check and get a cached profile
+ * decomposed by the look-through leaf for a fund the methodology declares
+ * opaque (Codex review, FIX-801 sub-PR c, round 10). Checking the curated
+ * list directly closes that gap regardless of what the stored field
+ * currently says — exactly the fetch predicate's own reasoning, applied
+ * here on the attribution side instead of the fetch side.
  */
 export function excludeFixedIncomeFromProfileMap(
   profiles: Map<string, FundProfileInput>,
   holdings: ReadonlyArray<Pick<Holding, "ticker" | "assetClass">>,
 ): Map<string, FundProfileInput> {
   const fixedIncomeTickers = new Set(
-    holdings.filter((h) => h.assetClass === "fixed_income").map((h) => h.ticker.toUpperCase()),
+    holdings
+      .filter((h) => h.assetClass === "fixed_income" || isKnownBondEtf(h.ticker))
+      .map((h) => h.ticker.toUpperCase()),
   );
   if (fixedIncomeTickers.size === 0) return profiles;
   const filtered = new Map(profiles);
