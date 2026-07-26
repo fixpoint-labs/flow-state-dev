@@ -219,6 +219,78 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].transientAttempts).toBe(0);
   });
 
+  it("a concurrent MALFORMED refusal does NOT overwrite an existing not_an_etf/ineligible refusal either — malformed is a weaker domain verdict, not a transport one (Codex review, FIX-801 sub-PR c round 22)", async () => {
+    // Distinct from the transport-vs-domain case above: `malformed` is
+    // itself a DOMAIN-level judgment (round 8), not a transport failure, but
+    // its own backoff (~7 days) is far shorter than not_an_etf/ineligible's
+    // (~90 days). A race where one instance reaches AV and gets a
+    // definitive `not_an_etf`, while a concurrent instance for the same
+    // ticker gets a malformed response, must not let the weaker 7-day
+    // verdict land and silently shorten the stronger 90-day one while it's
+    // still active.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF2",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF2",
+        payload: null,
+        refusalReason: "malformed",
+        refusalDetail: "weights over 100% on retry",
+        retryAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["NOTETF2"]);
+    expect(rows).toHaveLength(1);
+    // The stronger domain refusal survives — the malformed write was a no-op.
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+  });
+
+  it("a concurrent MALFORMED PRESERVED-PAYLOAD refresh write does NOT overwrite a not_an_etf/ineligible one recorded first for the SAME stale payload (Codex review, FIX-801 sub-PR c round 22)", async () => {
+    // Same equal-fetchedAt shape as the transport preserved-payload race
+    // (round 10) below, but with `malformed` as the weaker incoming class.
+    await repo.upsertEtfProfiles([
+      { ticker: "REFRESHRACE3", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    const staleFetchedAt = (await repo.getEtfProfiles(["REFRESHRACE3"]))[0]!.fetchedAt;
+
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE3",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "ineligible",
+        refusalDetail: "leveraged/inverse on refresh",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE3",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "malformed",
+        refusalDetail: "weights over 100% on refresh",
+        retryAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+
+    const rows = await repo.getEtfProfiles(["REFRESHRACE3"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).not.toBeNull();
+    expect(rows[0].refusalReason).toBe("ineligible"); // the stronger domain class survives
+  });
+
   it("a TRANSPORT-class refusal DOES overwrite a DOMAIN-class refusal once the domain refusal's OWN backoff has expired — the legitimate sequential retry (Codex review, FIX-801 sub-PR c round 7)", async () => {
     // The precedence guard above must only block the CONCURRENT-race case —
     // a domain refusal still WITHIN its backoff window. Once `retry_at` is

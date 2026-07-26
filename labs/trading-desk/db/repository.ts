@@ -1983,25 +1983,34 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             //     to an already-newer stored row.
             //
             // PART 2 — refusal-CLASS precedence, independent of payload
-            // shape (third Codex review round, extended in the fourth and
-            // tenth): the ORIGINAL "any refusal beats any refusal" reading
-            // let a TRANSPORT-failure write (`quota` / `transient` — per
-            // `lib/etf-profile-backoff.ts`'s own class split) silently
-            // downgrade an already-recorded DOMAIN refusal (`not_an_etf` /
-            // `ineligible` / `malformed` — a real judgment made from a
-            // response AV actually returned) to a 15-minute/next-reset
+            // shape (third Codex review round, extended in the fourth,
+            // tenth, and twenty-second): the ORIGINAL "any refusal beats any
+            // refusal" reading let a WEAKER-backoff write silently downgrade
+            // an already-recorded STRONGER domain refusal to a shorter
             // backoff — two instances racing on the same due ticker, one
-            // reaching AV and getting a definitive `not_an_etf`, the other
-            // hitting a network blip or the shared quota at the same moment,
-            // could have the transport-failure write land SECOND and shorten
-            // a ticker already proven ineligible, so the very next Health
-            // read re-spends a budget unit re-litigating a settled question.
+            // reaching AV and getting a definitive `not_an_etf`/`ineligible`
+            // (~90-day backoff, `lib/etf-profile-backoff.ts`), the other
+            // hitting a network blip, the shared quota, or a malformed
+            // response at the same moment, could have the weaker write land
+            // SECOND and shorten a ticker already proven ineligible, so the
+            // very next Health read re-spends a budget unit re-litigating a
+            // settled question. The excluded/weaker side
+            // (`'quota', 'transient', 'malformed'`) covers every class
+            // shorter than the ~90-day `not_an_etf`/`ineligible` backoff:
+            // `quota`/`transient` are TRANSPORT failures (the route classifies
+            // these from an `alphaVantageRequest` throw, the fetcher never
+            // produces them); `malformed` is itself a DOMAIN-level verdict
+            // (round 8) but only a ~7-day one — a race where one instance
+            // gets `not_an_etf`/`ineligible` and the other gets `malformed`
+            // for the same ticker must not let the 7-day verdict overwrite
+            // the 90-day one either (twenty-second Codex review round).
             // `${etfProfiles.retryAt} > now()` scopes the block to the
-            // domain refusal's still-OPEN backoff window (fourth Codex review
-            // round) — once it has genuinely expired, a subsequent
-            // transient/quota outcome is recording a NEW result, not
-            // clobbering a settled one, so it is admitted like any other
-            // refusal-vs-refusal pairing.
+            // stronger refusal's still-OPEN backoff window (fourth Codex
+            // review round) — once it has genuinely expired, a subsequent
+            // weaker-class outcome is recording a NEW result, not clobbering
+            // a settled one, so it is admitted like any other refusal-vs-
+            // refusal pairing (round 7's expiry-aware nuance, unchanged by
+            // adding `malformed` to this set).
             //
             // ROUND 10: two instances can race a REFRESH of the same stale
             // SUCCESSFUL profile — one gets a domain refusal, the other a
@@ -2031,7 +2040,7 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               ${etfProfiles.refusalReason} is not null
               and excluded.refusal_reason is not null
               and ${etfProfiles.refusalReason} in ('not_an_etf', 'ineligible', 'malformed')
-              and excluded.refusal_reason in ('quota', 'transient')
+              and excluded.refusal_reason in ('quota', 'transient', 'malformed')
               and ${etfProfiles.retryAt} > now()
             )`,
           });
