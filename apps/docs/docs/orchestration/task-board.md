@@ -207,6 +207,8 @@ const board = taskBoard({
 
 Defaults: no `defaultWorker` unless configured. This is what the skills delegation surface uses to give every board an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in explicitly.
 
+The rule above is the board's, and it stays as stated: an unmatched assignee falls to `defaultWorker`. The skills delegation surface adds a check further up, refusing an unknown assignee when the task is created, so on those boards an unmatched assignee normally never reaches dispatch. A `taskBoard` you build yourself has no such roster and keeps the plain fallback behavior.
+
 ## Concurrency and error handling
 
 - `concurrency` — max parallel workers. Default `4`.

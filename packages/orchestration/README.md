@@ -124,8 +124,13 @@ with `delegation: true` even with no `agents:`). An agent is a prompt-driven
 teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
 from the registry (`agent-ref`). Every delegation board also gets an on-demand
 **default worker**: it materializes on demand and runs any task whose assignee is
-unset or unrecognized, so a task with no named agent still runs — and an empty
-roster still delegates. Binding the skill installs a private
+unset, so a task with no named agent still runs — and an empty roster still
+delegates. Assignment is checked against the declared roster as the task is
+created: `addTask` (and `assignTask`/`updateTask`) reject an assignee that names
+no declared agent, returning the available agents so the caller can correct it,
+instead of letting a mistyped name fall through to the default worker at drain
+time. A board with no declared agents has no roster to check and accepts any
+assignee. Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 `listTasks`), `runBoard`, and a guidance context. The generator orchestrates by

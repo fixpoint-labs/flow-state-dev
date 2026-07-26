@@ -89,6 +89,60 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
 const noBoardError = { ok: false as const, error: "no_delegation_board" };
 const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_not_found", taskId: id });
 
+// ---------------------------------------------------------------------------
+// Assignee validation (FIX-924)
+// ---------------------------------------------------------------------------
+
+/**
+ * The declared agents a delegation board can be assigned to, plus a
+ * human-readable rendering for error messages. Supplied by the delegation
+ * surface so assignment is checked against the board's real participant
+ * registry — the same list the executive's guidance advertises as "Your
+ * agents:", so context and validation cannot disagree.
+ */
+export interface WorkerRoster {
+  /** True when `assignee` names a declared agent on this board. */
+  has(assignee: string): boolean;
+  /** Roster rendered for an error message, e.g. `researcher (…), writer (…)`. */
+  describe(): string;
+}
+
+const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
+  ok: false as const,
+  error:
+    `unknown_assignee: "${assignee}" is not an agent on this board. ` +
+    `Available: ${roster.describe()}. Name one of these exactly, or leave ` +
+    `assignee unset to run the task on the default worker.`,
+});
+
+/**
+ * The single gate deciding whether an assignee may be written to a task.
+ * Returns an error result when the assignee is invalid, `undefined` when it is
+ * fine to proceed.
+ *
+ * Two shapes pass unchecked, both deliberate:
+ *
+ * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
+ *   default worker (the delegation floor, FIX-940). Reaching the floor by
+ *   *intent* stays open; only reaching it by *accident* (a typo) is closed.
+ * - **No roster.** The standalone `taskTools` singleton, and a delegation board
+ *   with no declared agents at all, supply none — there is nothing to validate
+ *   against, so validation is inert and every assignee is accepted as before
+ *   (BP-030: tolerate the old, roster-less shape).
+ *
+ * This is the one place the definition of "a valid assignee" lives. FIX-923 /
+ * FIX-641 widen it here (to admit an explicit ad-hoc agent spec) rather than
+ * scattering the rule across the three tools that call it.
+ */
+export function checkAssignee(
+  assignee: string | undefined,
+  roster: WorkerRoster | undefined,
+): { ok: false; error: string } | undefined {
+  if (roster === undefined || assignee === undefined) return undefined;
+  if (roster.has(assignee)) return undefined;
+  return unknownAssigneeError(assignee, roster);
+}
+
 /** Shared output shape for the six tasked-by-id mutators. */
 const okOrError = z.union([
   z.object({ ok: z.literal(true) }),
@@ -102,15 +156,24 @@ const parentStateSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSc
 // specific board (own-state default or an injected shared board).
 // ---------------------------------------------------------------------------
 
-function buildTaskTools(resolve: TaskCollectionResolver) {
+function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) {
+  /**
+   * `assignee`, when given, is the assignee this mutation would write; it is
+   * validated after the board and the task resolve, so the three tools all
+   * report the same failure order: no board, then unknown task, then unknown
+   * assignee. The task is left untouched on any of them.
+   */
   async function withTask(
     ctx: BlockContext,
     taskId: string,
     mutator: (collection: TaskCollectionRef) => Promise<void>,
+    assignee?: string,
   ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
     const collection = await resolve(ctx);
     if (!collection) return noBoardError;
     if (!collection.get(taskId)) return taskNotFoundError(taskId);
+    const bad = checkAssignee(assignee, roster);
+    if (bad) return bad;
     await mutator(collection);
     return { ok: true as const };
   }
@@ -119,7 +182,7 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     name: "addTask",
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
-      "assignee optionally names an agent; leave it unset (or name no agent) to run the task " +
+      "assignee optionally names one of your agents; leave it unset to run the task " +
       "on a capable default worker. Set deps to task ids that must finish first, and input " +
       "to a structured payload for the worker. Execute the plan by calling runBoard once " +
       "all tasks are added.",
@@ -142,6 +205,10 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
+      // Reject a phantom assignee here, where it enters the system, rather than
+      // letting the task sit on the board and surface as a dispatch-time miss.
+      const bad = checkAssignee(input.assignee, roster);
+      if (bad) return bad;
       const task = await collection.addTask({
         goal: input.goal,
         ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
@@ -161,7 +228,12 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee)),
+      withTask(
+        ctx,
+        input.taskId,
+        (c) => c.setAssignee(input.taskId, input.assignee),
+        input.assignee,
+      ),
   });
 
   const completeTask = handler({
@@ -221,14 +293,21 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, async (c) => {
-        const { patch } = input;
-        if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
-        if (patch.assignee !== undefined) await c.setAssignee(input.taskId, patch.assignee);
-        if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
-        if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
-        if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
-      }),
+      withTask(
+        ctx,
+        input.taskId,
+        async (c) => {
+          const { patch } = input;
+          if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
+          if (patch.assignee !== undefined) await c.setAssignee(input.taskId, patch.assignee);
+          if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
+          if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
+          if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
+        },
+        // A patch that doesn't touch `assignee` leaves this undefined, so the
+        // gate stays inert for a priority/label-only update.
+        input.patch.assignee,
+      ),
   });
 
   const listTasks = handler({
@@ -285,11 +364,16 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
  * Build the eight `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
+ *
+ * @param roster Optional declared-agent roster. Supply it and `addTask`/
+ *   `assignTask`/`updateTask` reject an assignee that names no declared agent.
+ *   Omit it and assignment is unvalidated, as before.
  */
 export function buildTaskToolsList(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
+  roster?: WorkerRoster,
 ) {
-  return buildTaskTools(resolveCollection);
+  return buildTaskTools(resolveCollection, roster);
 }
 
 // ---------------------------------------------------------------------------
@@ -304,15 +388,19 @@ export function buildTaskToolsList(
  *   generator's own-state board via `ctx.parent`. Pass a resolver targeting a
  *   shared board for the shared-board delegation case (or a drain board for a
  *   Shape 2 fan-out worker).
+ * @param roster Optional declared-agent roster for assignee validation. Supply
+ *   it so a fan-out worker enqueuing follow-up tasks mid-drain is held to the
+ *   same roster the executive is.
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
+  roster?: WorkerRoster,
 ): DefinedCapability {
   return defineCapability({
     name: "taskTools",
     presets: {
       tools: {
-        tools: buildTaskTools(resolveCollection),
+        tools: buildTaskTools(resolveCollection, roster),
       },
       default: ["tools"],
     },

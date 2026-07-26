@@ -78,7 +78,7 @@ const USAGE = `pnpm goal:all [options] [path-filter...]
   --help         This message.
   --timeout=<m>  Per-goal wall-clock cap in minutes (default 20). A goal that
                  exceeds it is killed, recorded TIMEOUT, and the sweep goes on.
-                 Keep it above ~1 — `pnpm`+`tsx` startup alone can trip a
+                 Keep it above ~1 — pnpm+tsx startup alone can trip a
                  smaller cap, marking a goal TIMEOUT after it printed PASS.
 
   Any non-option argument is a substring matched against the goal's path.

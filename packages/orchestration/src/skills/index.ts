@@ -106,6 +106,9 @@ export {
   DELEGATION_BOARD_FIELD,
   delegationBoardSchema,
   type TaskCollectionResolver,
+  // Part of `createTaskToolsCapability`'s signature, so a caller supplying a
+  // roster can name its type.
+  type WorkerRoster,
 } from "./task-tools-capability";
 
 export {
