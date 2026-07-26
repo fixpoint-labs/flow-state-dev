@@ -21,8 +21,10 @@
  *
  * Also exports {@link isEtfProfileFetchCandidate} — a FETCH-decision
  * predicate (which holdings the route will ever spend an Alpha Vantage unit
- * on), deliberately narrower than, and not to be confused with, the broader
- * set of tickers worth a free cache READ (see that function's own docblock).
+ * on), deliberately narrower than, and not to be confused with,
+ * {@link allHeldTickers} — the broader READ-eligibility set both the route
+ * and the analysis seed share (see the fetch predicate's own docblock for
+ * why the two questions are different).
  */
 import type { Holding } from "../schema/portfolio-schema";
 import { isKnownBondEtf } from "./classify-instrument";
@@ -61,6 +63,26 @@ export function toFundProfileMap(
     }
   }
   return map;
+}
+
+/**
+ * Every distinct ticker (upper-cased) in a flat holdings list — the shared
+ * CACHE-READ ticker set: deliberately unfiltered by fetch-eligibility, so a
+ * ticker still tagged `equity`/`mutual_fund`/etc. locally but already
+ * correctly profiled (`app.etf_profiles` is global reference data) is still
+ * looked up, giving the fund-detection oracle's stale-classification
+ * override (`resolveTickerIsFund`'s layer 1b) the evidence it needs.
+ *
+ * Both call sites that need this exact set — the route's own `GET` handler
+ * and the analysis seed's `heldTickersForProfileLookup` — share this one
+ * derivation rather than each reimplementing `new Set(...).map(...)`. The
+ * route ORIGINALLY reimplemented it (using `isEtfProfileFetchCandidate`'s
+ * narrower set for its read, the same bug the seed had) — Codex review on
+ * FIX-801 sub-PR c caught it a second time after the seed's own fix, which is
+ * exactly the drift risk sharing this helper closes.
+ */
+export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>): string[] {
+  return [...new Set(holdings.map((h) => h.ticker.toUpperCase()))];
 }
 
 /**

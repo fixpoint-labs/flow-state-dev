@@ -204,6 +204,40 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("returns an already-cached profile for a MISTYPED-equity holding — the READ set is broader than the fetch set (Codex review, FIX-801 sub-PR c, route mirror of the guards.ts fix)", async () => {
+    // SPY is held as assetType: "equity" — stale/mistyped, not yet corrected
+    // by the classifications route. Its profile was already warmed (fetched
+    // earlier by this household before the mistype, or by another household,
+    // since app.etf_profiles is global reference data). Using the FETCH-
+    // eligibility set (isEtfProfileFetchCandidate, which requires
+    // assetType === "etf") for the READ would mean this ticker is never even
+    // looked up, so the Health UI never receives the stored profile and the
+    // leaf's fund-detection oracle never sees the evidence that could
+    // override the stale tag.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+
+    const res = await GET(get(USER_ID));
+    const body = (await res.json()) as EtfProfilesResponse;
+
+    // The load-bearing assertion: the already-stored profile IS returned,
+    // despite SPY never having been a fetch candidate this call.
+    expect(body.profiles).toHaveLength(1);
+    expect(body.profiles[0]?.ticker).toBe("SPY");
+    expect(body.profiles[0]?.constituents).toEqual(SAMPLE_PROFILE.constituents);
+    // And no fetch was attempted for it — it was purely a cache read, never
+    // eligible for a fill (the fetch-eligibility set stays strict).
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
   it("excludes an unpriced fund from the fetch set (no budget unit for a profile nothing can use)", async () => {
     await seedAccount(repoState.repo!, {
       accountId: "acc-1",

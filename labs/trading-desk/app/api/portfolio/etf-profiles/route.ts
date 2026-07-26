@@ -10,7 +10,7 @@ import {
   hasAlphaVantageKey,
 } from "@/lib/providers/alpha-vantage";
 import { fetchEtfProfile, type NormalizedEtfProfile } from "@/lib/providers/etf-profile";
-import { isEtfProfileFetchCandidate } from "@/domain/portfolio/math/etf-profile-map";
+import { allHeldTickers, isEtfProfileFetchCandidate } from "@/domain/portfolio/math/etf-profile-map";
 
 // The ETF holdings-profile fill surface (FIX-801) — backs the Health view's
 // look-through axis, mirroring the classifications route's shape (a lazy
@@ -130,21 +130,32 @@ export async function GET(req: NextRequest) {
 
   const repo = await getRepository();
   const { holdings } = await repo.getPortfolio(userId);
-  // Eligible = held as an ETF, not a curated bond ETF (pre-filtered locally —
-  // zero fetches, Decision 5), and not a flagged inconsistent-history row.
-  // Mutual funds are never eligible (assetType !== "etf" — the endpoint is
-  // ETF-only, Non-goals). `isEtfProfileFetchCandidate` is the single
-  // definition of this FETCH-eligibility predicate — the Health UI's
-  // eligibility-refetch signature reads it too, so both agree on exactly the
-  // set this route will ever fetch. (The analysis seed's READ set is
-  // deliberately broader than this — see the predicate's own docblock for
-  // why fetch-eligibility and read-eligibility are different questions.)
+  // FETCH-eligible = held as an ETF, not a curated bond ETF (pre-filtered
+  // locally — zero fetches, Decision 5), and not a flagged
+  // inconsistent-history row. Mutual funds are never fetch-eligible
+  // (assetType !== "etf" — the endpoint is ETF-only, Non-goals).
+  // `isEtfProfileFetchCandidate` is the single definition of this predicate —
+  // the Health UI's eligibility-refetch signature reads it too, so both agree
+  // on exactly the set this route will ever spend an Alpha Vantage unit on.
   const eligibleTickers = [
     ...new Set(
       holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
     ),
   ];
-  if (eligibleTickers.length === 0) {
+  // READ-eligible is DELIBERATELY BROADER — every held ticker, not just the
+  // fetch-eligible ones. `app.etf_profiles` is global reference data, and the
+  // pure leaf's fund-detection oracle (`resolveTickerIsFund`) is designed to
+  // let a STORED profile override a stale/mistyped local `assetType` — using
+  // `eligibleTickers` for the READ (as this route originally did) would mean
+  // a ticker still tagged `equity` locally but already correctly profiled
+  // (by this household or another) is never even looked up, so the oracle
+  // never sees the evidence and the Health UI reports it as a direct single
+  // name instead of doing look-through (Codex review, FIX-801 sub-PR c — the
+  // same bug the analysis seed's `heldTickersForProfileLookup` had, fixed
+  // there first; `allHeldTickers` is the shared derivation so this route and
+  // the seed can't drift apart on it again).
+  const allTickers = allHeldTickers(holdings);
+  if (allTickers.length === 0) {
     return NextResponse.json({
       profiles: [] as EtfProfileEntry[],
       refusals: [] as EtfProfileRefusalEntry[],
@@ -153,7 +164,7 @@ export async function GET(req: NextRequest) {
 
   const [quotesRows, storedRows] = await Promise.all([
     repo.getQuotes(eligibleTickers),
-    repo.getEtfProfiles(eligibleTickers),
+    repo.getEtfProfiles(allTickers),
   ]);
   const pricedTickers = new Set(quotesRows.map((q) => q.ticker));
   const storedByTicker = new Map(storedRows.map((r) => [r.ticker, r]));
@@ -314,7 +325,11 @@ export async function GET(req: NextRequest) {
 
   const profiles: EtfProfileEntry[] = [];
   const refusals: EtfProfileRefusalEntry[] = [];
-  for (const ticker of eligibleTickers) {
+  // Walks `allTickers` (READ-eligible), not `eligibleTickers` (FETCH-eligible)
+  // — this is what actually surfaces a mistyped-equity ticker's already-cached
+  // profile to the Health UI. Iterating `eligibleTickers` here would silently
+  // drop it from the response even after the broadened read above found it.
+  for (const ticker of allTickers) {
     const row = storedByTicker.get(ticker);
     if (!row) continue; // never fetched, deferred by the cap, or unpriced — simply absent
     const projected = projectRow(ticker, row);

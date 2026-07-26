@@ -52,7 +52,7 @@ import {
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
 import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
-import { toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
+import { allHeldTickers, toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/db/portfolio-db";
 import { toAccountStates } from "@/db/repository";
@@ -235,10 +235,10 @@ export const seedSession = handler({
     // eligibility and READ eligibility are different questions on purpose:
     // fetching costs a shared, budgeted Alpha Vantage unit and must stay
     // strict; reading is a free indexed lookup and should stay permissive so
-    // the override case can work at all.
-    const heldTickersForProfileLookup = [
-      ...new Set(scoped.flatMap((a) => a.holdings.map((h) => h.ticker.toUpperCase()))),
-    ];
+    // the override case can work at all. `allHeldTickers` is the shared
+    // derivation the route's own `GET` handler uses for the identical reason
+    // (one helper, not two reimplementations that can drift apart again).
+    const heldTickersForProfileLookup = allHeldTickers(scoped.flatMap((a) => a.holdings));
     const etfProfiles: Map<string, FundProfileInput> = new Map();
     try {
       const rows = await repo.getEtfProfiles(heldTickersForProfileLookup);
