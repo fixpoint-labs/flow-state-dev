@@ -183,19 +183,24 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  * a subclass) on any transport/budget/rate-limit failure — the caller
  * degrades exactly as with every other AV fetcher. Returns a `"refused"`
  * outcome (never throws) for a domain-level judgment: no usable profile data
- * at all (`not_an_etf`), a leveraged/inverse fund or one with no resolvable
- * constituents at all — bullion, unsymboled debt (`ineligible`), or
- * CONSTITUENT (name-axis) weights summing past 100% (`malformed`, a
- * provider-side data bug). See the FIX-801 spec §9 edge-case table for the
- * exact refusal→backoff mapping (owned by the REST route, not this module).
+ * at all (`not_an_etf`), a leveraged/inverse fund (`ineligible`), or a
+ * response with resolvable constituent SYMBOLS whose weights are ALL
+ * unparseable/corrupted, leaving nothing on the name axis at all
+ * (`malformed`; genuinely unsymboled holdings — bullion, unsymboled debt —
+ * are `ineligible` instead, a permanent fact rather than a data glitch). See
+ * the FIX-801 spec §9 edge-case table for the exact refusal→backoff mapping
+ * (owned by the REST route, not this module).
  *
- * A malformed SECTOR axis, by contrast, does NOT refuse the whole profile —
- * per-axis malformed handling is the consuming leaf's business (Decision 4's
- * per-axis gate; docs/etf-look-through.md), not this fetcher's. Sector rows
- * summing past 100% are discarded (the profile stores an empty sector axis,
- * read by the leaf exactly like "the provider sent no sector data") while a
- * valid name axis still returns as a usable profile — never suppressed for
- * ~7 days over a sector-only data glitch.
+ * **Per-axis malformed handling does NOT refuse the whole profile** — that
+ * judgment is the consuming leaf's business (Decision 4's per-axis gate;
+ * docs/etf-look-through.md), not this fetcher's, and it applies
+ * symmetrically to both axes. A NAME axis whose rows sum past 100% has its
+ * rows discarded (`constituents: []`, `nameCoverage: 0` — read by the leaf
+ * exactly like "the provider sent no holdings data"); a SECTOR axis with the
+ * same over-sum problem is discarded the same way. Either axis can be
+ * malformed while the OTHER stays fully usable and the fetch still returns a
+ * normal `"profile"` outcome — never suppressed for ~7 days over a
+ * single-axis data glitch when the other axis is fine.
  */
 export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> {
   const body = (await alphaVantageRequest({
@@ -215,7 +220,7 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     return { kind: "refused", reason: "ineligible", detail: "leveraged/inverse fund" };
   }
 
-  const constituents: EtfConstituent[] = [];
+  let constituents: EtfConstituent[] = [];
   let nameCoverage = 0;
   for (const row of rawHoldings) {
     const weight = parseFraction(row.weight);
@@ -224,33 +229,43 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     constituents.push({ ticker: normalizeConstituentTicker(row.symbol), weight });
   }
 
+  // Mirror of the sector-malformed handling below: a malformed NAME axis
+  // must not discard an otherwise-usable SECTOR axis either — the same
+  // per-axis contract applies symmetrically (Codex review, FIX-801 sub-PR c,
+  // follow-up to the sector-side fix). Discard just the malformed name rows
+  // (same shape as "the provider sent no holdings data") and keep going; the
+  // sector axis, checked further below, is still evaluated on its own
+  // merits. `nameMalformed` guards the `hasResolvableConstituent` check
+  // right below from re-deriving a DIFFERENT verdict (`ineligible`/a
+  // duplicate `malformed`) off the now-emptied `constituents` — this branch
+  // already knows exactly why the axis is empty.
+  let nameMalformed = false;
   if (nameCoverage > 1 + COVERAGE_OVERAGE_EPSILON) {
-    return {
-      kind: "refused",
-      reason: "malformed",
-      detail: `constituent weights sum to ${(nameCoverage * 100).toFixed(1)}%`,
-    };
+    nameMalformed = true;
+    constituents = [];
+    nameCoverage = 0;
+  } else {
+    // A sum inside the accepted tolerance (100–101%, pure rounding across
+    // hundreds of rows) still must not EXCEED 1 in what gets stored: the
+    // consuming leaf's `safeWeight` (`etf-look-through.ts`) has a strict
+    // `[0, 1]` contract and zeroes anything outside it — so an unclamped
+    // 1.005 would silently read back as 0% coverage (fully opaque)
+    // downstream instead of the ~100% this profile actually has. Clamping
+    // here, not loosening the leaf's contract, is the fix (Codex review,
+    // FIX-801 sub-PR c): the leaf's strict range is correct; this is the
+    // one place that produces a value outside it. Individual constituent
+    // weights never need this — `parseFraction` already rejects any single
+    // weight > 1 — only the AGGREGATE sum can land just over 1. The leaf's
+    // own over-sum scaling (`nameScale`) still applies correctly afterward:
+    // clamping only the declared coverage (not the individual rows) keeps
+    // `actualNameSum` from re-summing the rows slightly ABOVE the clamped
+    // `nameCoverage`, which the leaf's reconciliation tolerance already
+    // absorbs and its scaling logic already handles.
+    nameCoverage = Math.min(nameCoverage, 1);
   }
-  // A sum inside the accepted tolerance (100–101%, pure rounding across
-  // hundreds of rows) still must not EXCEED 1 in what gets stored: the
-  // consuming leaf's `safeWeight` (`etf-look-through.ts`) has a strict
-  // `[0, 1]` contract and zeroes anything outside it — so an unclamped
-  // 1.005 would silently read back as 0% coverage (fully opaque) downstream
-  // instead of the ~100% this profile actually has. Clamping here, not
-  // loosening the leaf's contract, is the fix (Codex review, FIX-801
-  // sub-PR c): the leaf's strict range is correct; this is the one place
-  // that produces a value outside it. Individual constituent weights never
-  // need this — `parseFraction` already rejects any single weight > 1 — only
-  // the AGGREGATE sum can land just over 1. The leaf's own over-sum scaling
-  // (`nameScale`) still applies correctly afterward: clamping only the
-  // declared coverage (not the individual rows) keeps `actualNameSum` from
-  // re-summing the rows slightly ABOVE the clamped `nameCoverage`, which the
-  // leaf's reconciliation tolerance already absorbs and its scaling logic
-  // already handles.
-  nameCoverage = Math.min(nameCoverage, 1);
 
   const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
-  if (!hasResolvableConstituent) {
+  if (!nameMalformed && !hasResolvableConstituent) {
     // "No resolvable constituent" covers THREE distinct raw shapes, which
     // must not share a verdict (Codex review, FIX-801 sub-PR a): a
     // genuinely unsymboled book (bullion, unsymboled debt) is a permanent

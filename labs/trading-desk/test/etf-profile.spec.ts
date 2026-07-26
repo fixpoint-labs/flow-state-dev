@@ -174,17 +174,27 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "not_an_etf" });
   });
 
-  it("refuses (malformed) when constituent weights sum past 100%", async () => {
+  it("keeps a valid SECTOR axis when only the NAME axis is malformed (weights summing past 100%), instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — the mirror of the sector-side fix)", async () => {
     mockFetchOnce({
       ...WELL_COVERED,
-      sectors: [],
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.3" },
+        { sector: "HEALTH CARE", weight: "0.12" },
+      ],
       holdings: [
         { symbol: "AAPL", weight: "0.7" },
-        { symbol: "MSFT", weight: "0.6" },
+        { symbol: "MSFT", weight: "0.6" }, // sums to 1.3 — genuinely malformed, past the epsilon
       ],
     });
-    const out = await fetchEtfProfile("BROKEN");
-    expect(out).toMatchObject({ kind: "refused", reason: "malformed" });
+    const out = await fetchEtfProfile("NAME_MALFORMED_SECTOR_OK");
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // The name axis is discarded, not fabricated — same shape as "the
+    // provider sent no holdings data".
+    expect(out.profile.constituents).toEqual([]);
+    expect(out.profile.nameCoverage).toBe(0);
+    // The sector axis is fully intact.
+    expect(out.profile.sectorCoverage).toBeCloseTo(0.42);
+    expect(out.profile.sectors).toHaveLength(2);
   });
 
   it("does not refuse on rounding noise just over 100% (epsilon slack)", async () => {
