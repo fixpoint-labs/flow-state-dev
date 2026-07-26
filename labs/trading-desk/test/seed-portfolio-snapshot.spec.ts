@@ -563,10 +563,19 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     // deleting the key outright as round 13 originally did — see the test
     // below for why that distinction matters for a MISTYPED-equity wrapper.
     // Here AOA is correctly typed `assetType: "etf"`, so either withdrawal
-    // shape produces the same opaque verdict. Without the round-13 fix,
-    // AOA's profile would still be sitting in the map (from the successful
-    // first read) and this would read 0, not 1.
-    expect(lookThrough?.opaqueFundCount).toBe(1);
+    // shape produces the same opaque verdict.
+    //
+    // opaqueFundCount is 2 (AOA + SPY), not just AOA: SPY's own NAME axis is
+    // ALSO correctly opaque — its constituents are, by this test's own
+    // design, entirely null-ticker "n/a" rows (chosen specifically so SPY
+    // never enters `missingConstituentTickers`'s failing batch), exactly the
+    // "fully covered, nothing nameable" case the round-16 diagnostic fix
+    // (`etf-look-through.ts`) now correctly flags on the name axis from this
+    // fund's own attribution output, independent of any upstream signal.
+    // SPY's SECTOR axis (the real control for THIS test — see the assertion
+    // above) is unaffected: it still attributes fully and proves the AOA
+    // failure didn't take down look-through entirely.
+    expect(lookThrough?.opaqueFundCount).toBe(2);
     expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });
 

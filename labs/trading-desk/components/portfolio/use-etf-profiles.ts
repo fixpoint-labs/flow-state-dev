@@ -174,7 +174,6 @@ export function etfProfilesResponseToRows(
         nameCoverage: p.nameCoverage,
         sectors: p.sectors,
         sectorCoverage: p.sectorCoverage,
-        hasResolvableConstituent: p.hasResolvableConstituent,
       },
       refusalReason: null,
     })),

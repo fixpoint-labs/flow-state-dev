@@ -641,17 +641,20 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
   });
 });
 
-describe("computeLookThroughExposure — name-axis diagnostic completeness (Codex review, FIX-801 sub-PR c round 14, connecting to round 8's per-axis taxonomy work in lib/providers/etf-profile.ts)", () => {
+describe("computeLookThroughExposure — name-axis diagnostic completeness (Codex review, FIX-801 sub-PR c round 14, refined round 16, connecting to round 8's per-axis taxonomy work in lib/providers/etf-profile.ts)", () => {
   it("flags a fully-covered-but-nothing-nameable fund (GLD-style) as opaque on the name axis, even though it passes the coverage floor and reconciles", () => {
-    // The fetcher's own `hasResolvableConstituent` signal is false when
-    // every NAME-axis row is AV's "n/a" sentinel (foreign lines, futures,
+    // Every NAME-axis row is AV's "n/a" sentinel (foreign lines, futures,
     // cash) — real weight, no ticker to attribute to. The MASS accounting
     // was already correct without this fix (every row routes to the name
     // residual via its null ticker below), but `namesPass` and
     // `nameReconciles` are BOTH true (coverage is genuinely high, the rows
     // aren't corrupted), so neither existing branch ever added an
     // `opaqueFunds` entry — this fund was invisible in the diagnostic list
-    // despite being 100% opaque on names by mass.
+    // despite being 100% opaque on names by mass. Detected here from this
+    // fund's own attribution loop (`anyNameAttributed`) never pushing a
+    // real name — not from an upstream syntactic flag (round 16: the round-14
+    // fix originally checked the fetcher's `hasResolvableConstituent`, which
+    // this round replaced — see the leaf's own comment for why).
     const positions = [fund("GLD", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
@@ -662,7 +665,6 @@ describe("computeLookThroughExposure — name-axis diagnostic completeness (Code
             { ticker: null, weight: 0.98 },
             { ticker: null, weight: 0.02 },
           ],
-          hasResolvableConstituent: false,
           sectorCoverage: 0,
           sectors: [],
         }),
@@ -672,11 +674,11 @@ describe("computeLookThroughExposure — name-axis diagnostic completeness (Code
     // Mass accounting was already correct: fully residual, no fabricated name.
     expect(out.positions).toEqual([]);
     expect(out.residual.marketValue).toBeCloseTo(100_000);
-    // The new diagnostic: GLD now shows up in opaqueFunds on the name axis.
+    // The diagnostic: GLD shows up in opaqueFunds on the name axis.
     expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "GLD", axis: "names" }));
   });
 
-  it("does NOT flag a normal fund that has at least one resolvable constituent", () => {
+  it("does NOT flag a normal fund that actually attributes at least one real name slice", () => {
     const positions = [fund("SPY", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
@@ -684,35 +686,73 @@ describe("computeLookThroughExposure — name-axis diagnostic completeness (Code
         profile({
           nameCoverage: 1,
           constituents: [{ ticker: "AAPL", weight: 1 }],
-          hasResolvableConstituent: true,
           sectorCoverage: 1,
           sectors: [{ sector: "Technology", weight: 1 }],
         }),
       ],
     ]);
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([{ ticker: "AAPL", marketValue: 100_000, weightPct: 100, sources: [{ from: "SPY", marketValue: 100_000 }] }]);
     expect(out.opaqueFunds.some((f) => f.ticker === "SPY" && f.axis !== "sectors")).toBe(false);
   });
 
-  it("treats a MISSING hasResolvableConstituent (a profile stored before this field existed) as 'unknown, don't flag' rather than newly (and wrongly) opaque — BP-030", () => {
-    const positions = [fund("LEGACY", 100_000)];
+  it("flags a fund as opaque on names when its only named constituent carries a ZERO weight — syntactically resolvable (it has a ticker), but nothing is actually attributed (Codex review, FIX-801 sub-PR c round 16)", () => {
+    // The round-14 diagnostic checked the fetcher's `hasResolvableConstituent`
+    // ("did the provider return at least one row with a real ticker symbol"),
+    // which would have read `true` here — AAPL IS a resolvable ticker — even
+    // though the leaf's own `slice > 0` guard correctly never pushes a
+    // zero-weight row, so nothing is really attributed. Basing the diagnostic
+    // on this fund's OWN attribution output instead of the upstream syntactic
+    // signal catches this divergence.
+    const positions = [fund("ZEROWEIGHT", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
       [
-        "LEGACY",
+        "ZEROWEIGHT",
         profile({
           nameCoverage: 1,
-          constituents: [{ ticker: null, weight: 1 }],
-          // `hasResolvableConstituent` intentionally omitted — simulates a
-          // stored row from before this field existed.
+          constituents: [
+            { ticker: "AAPL", weight: 0 }, // resolvable ticker, zero weight — never pushed
+            { ticker: null, weight: 1 }, // the rest is non-attributable n/a mass
+          ],
           sectorCoverage: 1,
           sectors: [{ sector: "Technology", weight: 1 }],
         }),
       ],
     ]);
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
-    expect(
-      out.opaqueFunds.some((f) => f.ticker === "LEGACY" && (f.axis === "names" || f.axis === "both")),
-    ).toBe(false);
+    expect(out.positions).toEqual([]); // AAPL never pushed — zero weight
+    expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "ZEROWEIGHT", axis: "names" }));
+  });
+
+  it("flags a fund as opaque on names when its only named constituent resolves to ANOTHER fund below the fund-of-funds threshold — syntactically resolvable, but routed to the name residual, never attributed as a name (Codex review, FIX-801 sub-PR c round 16)", () => {
+    // SUBFUND is a real, positive-weight, resolvable ticker, but it is
+    // ITSELF a fund (proven via its own stored profile — layer 1b). Its 30%
+    // weight is well below FUND_OF_FUNDS_THRESHOLD_PCT (50%), so the WHOLE
+    // wrapper is NOT vetoed opaque by the fund-of-funds check — but SUBFUND's
+    // slice is still routed to `nameResidualMass` (the `isFundCached`
+    // branch), never pushed as an attributed name. The round-14 diagnostic
+    // would have missed this too: the fetcher's syntactic flag only asks
+    // "does any row have a ticker", with no idea a constituent is itself a
+    // fund.
+    const positions = [fund("WRAPPER", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "WRAPPER",
+        profile({
+          nameCoverage: 0.95,
+          constituents: [
+            { ticker: "SUBFUND", weight: 0.3 },
+            { ticker: null, weight: 0.65 },
+          ],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+      ["SUBFUND", profile()], // proves SUBFUND is itself a fund (layer 1b) — one level of look-through only, its own constituents are never consulted
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // SUBFUND never pushed as a name
+    expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "WRAPPER", axis: "names" }));
   });
 });
 

@@ -102,20 +102,13 @@ export type LookThroughSectorRow = { sector: string; weight: number };
 /** A fund's normalized profile, mirroring `NormalizedEtfProfile`. `constituents`
  *  / `sectors` are `readonly` — this leaf only ever reads them, and both the
  *  fetcher's real output (sub-PR a) and test/fixture literals (which TS often
- *  infers as deeply-readonly tuples) flow in naturally without a cast.
- *
- *  `hasResolvableConstituent` is OPTIONAL — unlike the fetcher's own copy of
- *  this field (`NormalizedEtfProfile`, sub-PR a, always populated on a fresh
- *  fetch), a profile reaching this leaf may be a row stored before this field
- *  existed (BP-030: tolerate the old shape). `undefined` is read the same as
- *  `true` (no new diagnostic) — see the NAME-axis block below. */
+ *  infers as deeply-readonly tuples) flow in naturally without a cast. */
 export type NormalizedFundProfile = {
   leveraged: boolean;
   constituents: readonly LookThroughConstituent[];
   nameCoverage: number;
   sectors: readonly LookThroughSectorRow[];
   sectorCoverage: number;
-  hasResolvableConstituent?: boolean;
 };
 
 /** One fund's stored fill outcome, mirroring `EtfProfileRow`: exactly one of
@@ -653,6 +646,11 @@ export function computeLookThroughExposure(
       // formula below (unchanged from the prior round) becomes correct
       // rather than merely non-negative (Codex review, FIX-801 sub-PR b).
       const nameScale = actualNameSum > 1 ? 1 / actualNameSum : 1;
+      // Tracks whether THIS fund's own loop below actually pushed at least
+      // one positive-weight name slice — the diagnostic further down reads
+      // this, not a syntactic upstream signal (Codex review, FIX-801 sub-PR
+      // c round 16; see that comment for why).
+      let anyNameAttributed = false;
       for (const c of fp.constituents) {
         const slice = safeWeight(c.weight) * nameScale * mv;
         if (c.ticker === null || isFundCached(c.ticker)) {
@@ -668,6 +666,7 @@ export function computeLookThroughExposure(
           // genuinely residual.
           pushSource(c.ticker, pos.ticker, slice);
           hasAttribution = true;
+          anyNameAttributed = true;
         }
       }
       // The unreported remainder — derived from the ACTUAL row sum, not the
@@ -701,16 +700,34 @@ export function computeLookThroughExposure(
       // of the two branches above ever runs. The result is a fund that is
       // 100% opaque on names by MASS but invisible in `opaqueFunds` by
       // REPORT — exactly what round 4's opaque-fund diagnostic work exists
-      // to surface. `hasResolvableConstituent === false` (the fetcher's own
-      // signal, `lib/providers/etf-profile.ts`) is checked with a strict
-      // `false` comparison, not `!fp.hasResolvableConstituent`, so a stored
-      // profile from BEFORE this field existed (`undefined`, BP-030) reads
-      // as "unknown, don't flag" rather than being newly (and wrongly)
-      // marked opaque.
-      if (fp.hasResolvableConstituent === false) {
+      // to surface.
+      //
+      // Based on `anyNameAttributed` — THIS fund's own attribution loop
+      // above, not an upstream syntactic signal (round 14 originally checked
+      // the fetcher's `hasResolvableConstituent`, "did the provider return
+      // at least one resolvable ticker symbol" — Codex review, FIX-801
+      // sub-PR c round 16, found two cases where that diverges from what
+      // actually got attributed):
+      //  1. A named row resolves syntactically (`c.ticker !== null`) but
+      //     carries a ZERO weight. The `slice > 0` guard above correctly
+      //     never pushes it, so nothing is attributed — but the old
+      //     syntactic flag would still read `true` (SOME row has a ticker),
+      //     missing the opaque flag entirely.
+      //  2. A positive-weight named row resolves to a ticker that is
+      //     ITSELF a fund below the fund-of-funds THRESHOLD (routed to
+      //     `nameResidualMass` via `isFundCached(c.ticker)` above, never
+      //     pushed as a name) — syntactically resolvable, semantically
+      //     zero attributable name mass.
+      // `anyNameAttributed` is derived from this loop's own real output, so
+      // both cases correctly read as opaque, with no new data needed from
+      // the fetcher (confined entirely to this function's post-processing —
+      // the fetcher's `hasResolvableConstituent` field and its threading
+      // through the route/hook were removed as dead code once this leaf
+      // stopped reading it).
+      if (!anyNameAttributed) {
         opaqueByTicker.set(pos.ticker, {
           ...opaqueByTicker.get(pos.ticker),
-          names: "no resolvable name-axis constituent (fully covered by non-attributable rows only — e.g. foreign lines, futures, cash)",
+          names: "no resolvable name-axis constituent (fully covered by non-attributable rows only — e.g. foreign lines, futures, cash, or constituents that are themselves funds)",
         });
       }
     }

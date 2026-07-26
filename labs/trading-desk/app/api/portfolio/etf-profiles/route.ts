@@ -66,12 +66,6 @@ export type EtfProfileEntry = {
   sectors: NormalizedEtfProfile["sectors"];
   sectorCoverage: number;
   fetchedAt: string;
-  /** See `NormalizedEtfProfile["hasResolvableConstituent"]` — threaded through
-   *  unmodified (optional here too, for the same BP-030 stored-legacy-row
-   *  reason) so the Health UI's leaf read gets the same name-axis diagnostic
-   *  signal the analysis seed's direct repository read already gets (Codex
-   *  review, FIX-801 sub-PR c round 14). */
-  hasResolvableConstituent?: boolean;
 };
 
 /** One fund the route could not (or could no longer) attribute, with why —
@@ -100,7 +94,6 @@ function projectRow(ticker: string, row: EtfProfileRow): EtfProfileEntry | EtfPr
       sectors: row.payload.sectors,
       sectorCoverage: row.payload.sectorCoverage,
       fetchedAt: row.fetchedAt,
-      hasResolvableConstituent: row.payload.hasResolvableConstituent,
     };
   }
   return {

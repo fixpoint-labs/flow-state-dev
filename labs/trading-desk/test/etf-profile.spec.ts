@@ -67,9 +67,6 @@ describe("fetchEtfProfile — normalization", () => {
     expect(byTicker.get("MSFT")).toBeCloseTo(0.055); // "5.5%" → 0.055
     expect(byTicker.get(null)).toBeCloseTo(0.01); // the n/a row, kept not dropped
     expect(out.profile.constituents).toHaveLength(3);
-    // AAPL/MSFT are resolvable — the diagnostic signal reads true (Codex
-    // review, FIX-801 sub-PR c round 14).
-    expect(out.profile.hasResolvableConstituent).toBe(true);
   });
 
   it("sends the ticker as the ETF_PROFILE symbol param", async () => {
@@ -150,11 +147,6 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out.profile.nameCoverage).toBeCloseTo(1.0);
     expect(out.profile.sectors).toEqual([]);
     expect(out.profile.sectorCoverage).toBe(0);
-    // The diagnostic signal the leaf needs to still surface this fund in
-    // `opaqueFunds` on the name axis, even though nameCoverage/reconciliation
-    // both otherwise read as a normal passing fund (Codex review, FIX-801
-    // sub-PR c round 14, connecting to this test's own round-8 finding).
-    expect(out.profile.hasResolvableConstituent).toBe(false);
   });
 
   it("keeps a valid SECTOR axis for a SECTOR-ONLY response (sector rows present, holdings array empty/absent), instead of refusing the whole profile (Codex review round 2; updated Codex review, FIX-801 sub-PR c round 4 — no longer a whole-profile refusal)", async () => {
