@@ -272,13 +272,8 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
   // follow-up to the sector-side fix). Discard just the malformed name rows
   // (same shape as "the provider sent no holdings data") and keep going; the
   // sector axis, checked further below, is still evaluated on its own
-  // merits. `nameMalformed` guards the `hasResolvableConstituent` check
-  // right below from re-deriving a DIFFERENT verdict (`ineligible`/a
-  // duplicate `malformed`) off the now-emptied `constituents` — this branch
-  // already knows exactly why the axis is empty.
-  let nameMalformed = false;
+  // merits.
   if (nameCoverage > 1 + COVERAGE_OVERAGE_EPSILON) {
-    nameMalformed = true;
     constituents = [];
     nameCoverage = 0;
   } else {
@@ -299,35 +294,6 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     // `nameCoverage`, which the leaf's reconciliation tolerance already
     // absorbs and its scaling logic already handles.
     nameCoverage = Math.min(nameCoverage, 1);
-  }
-
-  const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
-  if (!nameMalformed && !hasResolvableConstituent) {
-    // No ATTRIBUTABLE NAME-axis data — covers THREE distinct raw shapes,
-    // none of which is a fact about the fund as a whole (Codex review,
-    // FIX-801 sub-PR c, fourth variant of the per-axis bug class): an
-    // empty/absent `holdings` array (`constituents`/`nameCoverage` are
-    // already `[]`/`0` — the loop above had nothing to iterate), resolvable
-    // symbols whose weights all failed to parse (also already `[]`/`0` — an
-    // unparseable weight is `continue`d before ever pushing a row), or rows
-    // with NO resolvable symbol at all but VALID weights (bullion,
-    // unsymboled debt) — this last shape is different: those rows WERE
-    // pushed (a `null`-ticker constituent is kept, per this file's own
-    // `EtfConstituent` docblock, "present in even well-covered funds, not
-    // dropped"), so `nameCoverage` can be genuinely non-zero here (e.g. a
-    // fund whose holdings are 100% cash/futures/bonds reports full coverage,
-    // zero attributable names) — that is not malformed data, it is an
-    // honest "fully covered, nothing nameable" fund, so it is intentionally
-    // left as-is rather than zeroed. All three collapse to the same verdict
-    // for THIS check (nothing to attribute a single name to), and per
-    // Decision 4's per-axis contract that must not suppress a possibly-valid
-    // SECTOR axis (docs/etf-look-through.md) — this used to return a
-    // whole-profile refusal here (`ineligible` for the two unsymboled
-    // shapes, `malformed` for the unparseable-weight shape; see the
-    // function's own docblock for the full early-return inventory). Mark the
-    // axis malformed and fall through to sector parsing below, which judges
-    // the sector axis entirely on its own merits.
-    nameMalformed = true;
   }
 
   let sectors: EtfSectorRow[] = [];
