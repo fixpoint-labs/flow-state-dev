@@ -374,14 +374,24 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
           if (depth + 1 <= maxDepth) inits.push(...taskInitsFor(entry, depth + 1));
         }
 
-        // Dispatch first, all-or-nothing. A refused re-emission spawns nobody
-        // AND records nothing, rather than leaving the workspace claiming
-        // entries whose work never ran.
-        if (inits.length > 0) {
-          const collectionForSpawn = await getCollection(widerCtx);
-          await collectionForSpawn.addTasks(inits);
-        }
-
+        // WORKSPACE FIRST, then one atomic dispatch.
+        //
+        // `addTasks` publishes pending tasks and emits their task-change items,
+        // so an idle board worker can claim and run an actor the moment it
+        // returns. Anything that actor needs in the shared log must already be
+        // there. Dispatching first raced on every re-emission under
+        // `concurrency > 1`; the original per-entry loop appended before
+        // spawning, and this keeps that ordering while strengthening it —
+        // EVERY entry is visible before ANY task is dispatched, where the old
+        // loop only guaranteed it for the entry it was on.
+        //
+        // The cost is the reverse case: a re-emission refused by the creation
+        // bound leaves entries recorded whose actors never ran. That is the
+        // better trade. It happens only at the bound rather than on every
+        // re-emission, the workspace is an observation log (the actor really
+        // did emit those entries), and the source task errors loudly at the
+        // same moment — where the racing worker fails silently, with a
+        // half-populated log that looks legitimate.
         for (const entry of toAppend) {
           const wsState = workspaceRef.state as EventActorsWorkspaceState;
           await workspaceRef.patchState({ entries: [...wsState.entries, entry] });
@@ -390,6 +400,11 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
             { type: entry.type, topic: entry.topic, body: entry.body },
             { key: `entry-${wsState.entries.length}` }
           );
+        }
+
+        if (inits.length > 0) {
+          const collectionForSpawn = await getCollection(widerCtx);
+          await collectionForSpawn.addTasks(inits);
         }
         return output;
       },

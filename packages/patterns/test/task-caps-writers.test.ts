@@ -270,6 +270,107 @@ describe("eventActors re-emission — atomic across ALL entries, not per entry",
   });
 });
 
+describe("eventActors re-emission — the workspace is visible before dispatch", () => {
+  it("a downstream actor sees every re-emitted entry in the shared log", async () => {
+    // The ordering race. `addTasks` publishes pending tasks and emits their
+    // task-change items, so an idle worker can claim and run a downstream actor
+    // the moment it returns. If the workspace appends happen after that call,
+    // the actor can execute while the shared log is still missing the entries
+    // that triggered it — silently, with a half-populated log that looks
+    // legitimate. Concurrency is above one here precisely so a sibling worker
+    // is available to win that window.
+    const { createEventActorsWorkspace, actor, eventActors } = await import(
+      "../src/eventActors"
+    );
+
+    const entrySchema = z.object({ type: z.string(), topic: z.string(), body: z.any() });
+    const rb = createEventActorsWorkspace({ name: "caps-race", entries: entrySchema });
+
+    // What each downstream actor could SEE in the shared log when it ran.
+    const observed: Record<string, number> = {};
+
+    const reader = (n: string, watch: string) =>
+      actor({
+        name: n,
+        watch: [watch],
+        block: handler({
+          name: `${n}-h`,
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          resources: { eventedActors: rb.workspace },
+          execute: async (_input, ctx) => {
+            const ws = (ctx.resources as Record<string, { state: { entries: unknown[] } }>)
+              .eventedActors;
+            observed[n] = ws.state.entries.length;
+            return { done: true };
+          },
+        }),
+      });
+
+    const source = actor({
+      name: "source",
+      watch: ["request:**"],
+      block: handler({
+        name: "source-h",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => [
+          { type: "reply", topic: "one", body: 1 },
+          { type: "reply", topic: "two", body: 2 },
+        ],
+      }),
+    });
+
+    const { emit } = eventActors({
+      name: "caps-race",
+      workspace: rb,
+      actors: [source, reader("alpha", "reply:one"), reader("beta", "reply:two")],
+      reEmit: true,
+      concurrency: 4,
+    });
+
+    const result = await testBlock(emit as never, {
+      input: { type: "request", topic: "go", body: "hi" } as never,
+      session: { resources: { eventedActors: { entries: [] } } },
+    } as never);
+    expect(result.error).toBeNull();
+
+    // Both downstream actors ran and each saw the re-emitted entries. This is
+    // the outcome, but on its own it does NOT pin the ordering: with an
+    // in-memory workspace the appends win the window even when they run second,
+    // so it passes under both orderings.
+    expect(Object.keys(observed).sort()).toEqual(["alpha", "beta"]);
+    expect(observed.alpha).toBeGreaterThanOrEqual(2);
+    expect(observed.beta).toBeGreaterThanOrEqual(2);
+
+    // So pin the EFFECT ORDER instead, which is the actual invariant and is
+    // deterministic: every re-emitted entry must be published to the workspace
+    // before any downstream task is published to the board. Racing a scheduler
+    // in a test proves nothing; asserting the order the effects are emitted in
+    // proves exactly the property the fix is about.
+    const items = result.items as Array<{
+      type?: string;
+      component?: string;
+      data?: { topic?: string; task?: { assignee?: string } };
+    }>;
+    const lastEntryIdx = items.reduce(
+      (acc, it, i) =>
+        it.component === "rb-entry" && (it.data?.topic === "one" || it.data?.topic === "two")
+          ? i
+          : acc,
+      -1,
+    );
+    const firstDownstreamTaskIdx = items.findIndex(
+      (it) =>
+        it.component === "task-change" &&
+        (it.data?.task?.assignee === "alpha" || it.data?.task?.assignee === "beta"),
+    );
+    expect(lastEntryIdx).toBeGreaterThanOrEqual(0);
+    expect(firstDownstreamTaskIdx).toBeGreaterThanOrEqual(0);
+    expect(lastEntryIdx).toBeLessThan(firstDownstreamTaskIdx);
+  });
+});
+
 describe("pattern cap options are reachable by callers", () => {
   it("all four capped patterns accept and honor an override", async () => {
     // Without these the 500/100 defaults are unreachable, and the migration

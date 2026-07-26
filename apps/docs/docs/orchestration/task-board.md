@@ -259,6 +259,8 @@ const bounded = await getOrCreateTaskCollection({
 
 `board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
 
+One shipped building block is deliberately in that position. `createApplyReplan` accepts a board `capability`, and when you pass one it writes through the board's own reference and is bounded. Wired the older way — with just a name, no capability — it rebuilds the collection from that name alone, so it has no bounds and can add tasks past the board's. It cannot infer them: nothing in its options identifies which board it is writing to. Pass the `capability` when you want replanned tasks to respect the board's bounds. The bundled patterns already do.
+
 ### Where the bounds apply
 
 They belong to the collection, so the board applies them only when it builds the collection itself — and, per the previous section, only to writers that go through the board's own reference. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead — here, from a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
