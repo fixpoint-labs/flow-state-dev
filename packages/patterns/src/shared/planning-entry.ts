@@ -22,6 +22,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   type TaskInit,
+  type TaskCapOptions,
 } from "@flow-state-dev/orchestration";
 import {
   TASK_BOARD_META_COMPONENT_TYPE,
@@ -59,6 +60,16 @@ export type GoalSynthesisConfig = boolean | BlockDefinition<any, any>;
 export interface SeedTasksFromPlanOptions<TState = unknown> {
   name: string;
   collectionId: string;
+  /**
+   * The owning board's resolved creation caps — pass `board.caps` (FIX-931).
+   *
+   * This block resolves the board's ledger into its OWN `TaskCollectionRef`
+   * rather than going through the board's factory, and the caps are closed over
+   * per-ref: without them the planner's seed inserts past bounds the board
+   * advertises. Threading one value from the board keeps a single definition;
+   * restating the numbers here would be two sites that agree only today.
+   */
+  caps?: TaskCapOptions;
   /** Per-task retry budget. Omit to fall back to substrate default. */
   maxAttemptsPerTask?: number;
   /** `"goal"` replicates parallelTasks behavior (always `input: t.goal`). */
@@ -97,6 +108,7 @@ export function createSeedTasksFromPlan<TState>(
   const {
     name,
     collectionId,
+    caps,
     maxAttemptsPerTask,
     inputDefault = "none",
     idPrefix = "task",
@@ -112,6 +124,9 @@ export function createSeedTasksFromPlan<TState>(
         ctx,
         backing: "request",
         collectionId,
+        // The board's caps, or nothing when the board applied none. A second
+        // ref over the same ledger enforces only what it was built with.
+        ...caps,
       });
 
       const tasks: TaskInit[] = planOutput.tasks.map((t, i) => {
@@ -170,6 +185,8 @@ export interface PlanningEntryOptions<
    * isolated from the outer state the replanner/synthesizer read.
    */
   taskContext?: TaskContextSupply;
+  /** The owning board's resolved creation caps — pass `board.caps` (FIX-931). */
+  caps?: TaskCapOptions;
 }
 
 /**
@@ -323,6 +340,7 @@ export function createPlanningEntry<
     activeStatusMessage,
     idPrefix,
     taskContext = "goal",
+    caps,
   } = options;
   const collectionId = name;
 
@@ -357,6 +375,7 @@ export function createPlanningEntry<
     maxAttemptsPerTask,
     stateSchema,
     ...(idPrefix ? { idPrefix } : {}),
+    ...(caps ? { caps } : {}),
   });
 
   // The (default-on) per-task context enricher.

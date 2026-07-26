@@ -37,7 +37,10 @@ import type {
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
+  resolveTaskCapDefaults,
+  type TaskCapOptions,
   type TaskCollectionRef,
+  type TaskInit,
   type TaskWorkerInput,
   type TaskWorkerRegistry,
 } from "@flow-state-dev/orchestration";
@@ -186,6 +189,15 @@ export interface EventActorsConfig {
    * without further dispatch. Default: 3.
    */
   maxDepth?: number;
+
+  /**
+   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * unchanged behavior when unset. A long-running reactive chain can
+   * legitimately exceed them, so both are reachable here: raise the number, or
+   * pass `null` for explicitly unbounded on that axis.
+   */
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
 }
 
 export interface EventActorsHandle {
@@ -226,11 +238,23 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const RESOURCE_KEY = "eventedActors";
   const appendEntry = createAppendEntry(name, workspaceResource, RESOURCE_KEY);
 
+  // ONE definition of this board's creation bounds (FIX-931), spread into both
+  // the board below and `getCollection` here. Actor spawning resolves the
+  // board's ledger into its own `TaskCollectionRef`, and the caps are closed
+  // over per-ref — so a resolver built without them writes past the bounds the
+  // board advertises. Resolved up here rather than read off `board.caps`
+  // because `getCollection` is declared before the board is built.
+  const boardCaps = resolveTaskCapDefaults(`[eventActors] "${name}"`, {
+    maxTotalTasks: config.maxTotalTasks,
+    maxEnqueuedTasks: config.maxEnqueuedTasks,
+  });
+
   async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
     return getOrCreateTaskCollection({
       ctx,
       backing: "request",
       collectionId,
+      ...boardCaps,
     });
   }
 
@@ -241,22 +265,36 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     );
   }
 
-  // Spawns one Task per matching actor at the given depth. Used both
-  // for the initial emit and for reEmit fan-out from inside actor bodies.
+  /**
+   * The `TaskInit`s one entry would spawn — built, not inserted, so a caller
+   * handling several entries can submit them as ONE batch (FIX-931). Separating
+   * "what to create" from "create it" is what lets the unit of atomicity be the
+   * caller's, rather than being fixed at one entry.
+   */
+  function taskInitsFor(
+    entry: { type: string; topic: string; body: unknown },
+    depth: number
+  ): TaskInit[] {
+    return matchingActors(entry).map((actor) => ({
+      goal: `${actor.name} on ${entry.type}:${entry.topic}`,
+      assignee: actor.name,
+      input: entry,
+      metadata: { depth, type: entry.type, topic: entry.topic },
+    }));
+  }
+
+  // Spawns every Task one entry matches, atomically. The initial emit handles a
+  // single entry, so its batch is that entry's actors; the re-emission path
+  // batches across ALL entries itself (see `reEmitTap`).
   async function spawnTasksFor(
     entry: { type: string; topic: string; body: unknown },
     depth: number,
     ctx: BlockContext
   ): Promise<void> {
+    const inits = taskInitsFor(entry, depth);
+    if (inits.length === 0) return;
     const collection = await getCollection(ctx);
-    for (const matched of matchingActors(entry)) {
-      await collection.addTask({
-        goal: `${matched.name} on ${entry.type}:${entry.topic}`,
-        assignee: matched.name,
-        input: entry,
-        metadata: { depth, type: entry.type, topic: entry.topic },
-      });
-    }
+    await collection.addTasks(inits);
   }
 
   // Top-of-emit: append the seed entry, spawn depth-1 tasks for matching actors.
@@ -308,29 +346,65 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
         if (entries.length === 0) return output;
 
         const workspaceRef = (ctx.resources as Record<string, any>)[RESOURCE_KEY];
+
+        // The unit of atomicity is the whole RE-EMISSION, not one entry
+        // (FIX-931). Making a single entry's actors atomic still left the loop
+        // across entries partial: with the budget nearly full, entry one commits
+        // and entry two throws, so the source task errors with part of its
+        // output already dispatched. Everything this output wants to spawn goes
+        // in ONE `addTasks`, submitted before any state is committed.
+        const seen = new Set(
+          (workspaceRef.state as EventActorsWorkspaceState).entries.map(
+            (e: Record<string, unknown>) => JSON.stringify([e.type, e.topic]),
+          ),
+        );
+        const toAppend: EntryLike[] = [];
+        const inits: TaskInit[] = [];
         for (const entry of entries) {
-          // Append entry to the workspace resource (dedup on type+topic).
-          const wsState =
-            workspaceRef.state as EventActorsWorkspaceState;
-          const entryType = entry.type;
-          const entryTopic = entry.topic;
-          const isDuplicate = wsState.entries.some(
-            (e: Record<string, unknown>) =>
-              e.type === entryType && e.topic === entryTopic
+          // Dedup on type+topic, WITHIN this batch as well as against what the
+          // workspace already holds — the old loop got the within-batch half for
+          // free by re-reading state after each `patchState`.
+          const key = JSON.stringify([entry.type, entry.topic]);
+          if (!seen.has(key)) {
+            seen.add(key);
+            toAppend.push(entry);
+          }
+          // Deliberately NOT gated on the dedup: a repeated entry still spawns
+          // its actors, exactly as before.
+          if (depth + 1 <= maxDepth) inits.push(...taskInitsFor(entry, depth + 1));
+        }
+
+        // WORKSPACE FIRST, then one atomic dispatch.
+        //
+        // `addTasks` publishes pending tasks and emits their task-change items,
+        // so an idle board worker can claim and run an actor the moment it
+        // returns. Anything that actor needs in the shared log must already be
+        // there. Dispatching first raced on every re-emission under
+        // `concurrency > 1`; the original per-entry loop appended before
+        // spawning, and this keeps that ordering while strengthening it —
+        // EVERY entry is visible before ANY task is dispatched, where the old
+        // loop only guaranteed it for the entry it was on.
+        //
+        // The cost is the reverse case: a re-emission refused by the creation
+        // bound leaves entries recorded whose actors never ran. That is the
+        // better trade. It happens only at the bound rather than on every
+        // re-emission, the workspace is an observation log (the actor really
+        // did emit those entries), and the source task errors loudly at the
+        // same moment — where the racing worker fails silently, with a
+        // half-populated log that looks legitimate.
+        for (const entry of toAppend) {
+          const wsState = workspaceRef.state as EventActorsWorkspaceState;
+          await workspaceRef.patchState({ entries: [...wsState.entries, entry] });
+          ctx.emit.component(
+            "rb-entry",
+            { type: entry.type, topic: entry.topic, body: entry.body },
+            { key: `entry-${wsState.entries.length}` }
           );
-          if (!isDuplicate) {
-            await workspaceRef.patchState({
-              entries: [...wsState.entries, entry],
-            });
-            ctx.emit.component(
-              "rb-entry",
-              { type: entryType, topic: entryTopic, body: entry.body },
-              { key: `entry-${wsState.entries.length}` }
-            );
-          }
-          if (depth + 1 <= maxDepth) {
-            await spawnTasksFor(entry, depth + 1, widerCtx);
-          }
+        }
+
+        if (inits.length > 0) {
+          const collectionForSpawn = await getCollection(widerCtx);
+          await collectionForSpawn.addTasks(inits);
         }
         return output;
       },
@@ -361,6 +435,9 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId },
+    // Same resolved bounds `getCollection` uses — spread rather than restated,
+    // so the board and the actor-spawn writer can never disagree (FIX-931).
+    ...boardCaps,
     workers: workerRegistry,
     concurrency,
     dispatcher: "fifo",

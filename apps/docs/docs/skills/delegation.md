@@ -67,6 +67,73 @@ skills.with({ active: ["research-lead"], guidance: false });
 
 A skill that declares no `agents:` and does not set `delegation: true` installs none of this — no board, no `taskTools`, no `runBoard`, no guidance. Ordinary inline skills carry zero delegation overhead.
 
+### How much work the board will take on
+
+Every task is an agent turn, and every turn costs tokens. `concurrency` (fixed at 4 for the delegation board) only paces how many run at once, so the board carries two more bounds on how much work can be *created*:
+
+- `maxEnqueuedTasks` (default 100) — how many tasks the coordinator may add while others are still waiting. It refreshes as the board drains.
+- `maxTotalTasks` (default 500) — how many tasks the board may hold over its whole run, completed ones included. Draining does not give any back.
+
+When a bound is reached, `addTask` returns a soft error rather than throwing, and the coordinator is expected to react:
+
+```
+addTask({ goal: "…" })  → { ok: false, error: "enqueued_task_cap_exceeded" }   // drain, then continue
+addTask({ goal: "…" })  → { ok: false, error: "total_task_cap_exceeded" }      // the run's ceiling
+```
+
+The usual recovery is the loop the guidance already describes: call `runBoard`, let the pending work drain, then add the next wave.
+
+One thing to be precise about. The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own — a retry, an unblock, a resumed review, a reclaimed lease — and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`.
+
+The counts are read off the board's task ledger rather than kept as a separate tally, so they last as long as that ledger does. A delegation board lives on the executive generator's own state, which is restored from its checkpoint when a suspended run resumes — so the tasks are still there afterwards, and so are the counts. Planning a fresh wave of 100 after a resume will not work if the board already holds them. See [how long the counts last](../orchestration/task-board#how-long-the-counts-last) for the full picture across backings.
+
+Both are tunable on the library, beside `workerModelId`:
+
+```ts
+const skills = createSkillsLibrary({
+  catalog,
+  initialSkills,
+  maxTotalTasks: 2_000,
+  maxEnqueuedTasks: null, // explicitly unbounded on this axis
+});
+```
+
+`null` is the opt-out. Omitting an option is not — it reapplies the default.
+
+One boundary worth knowing, because it is easy to assume otherwise. The bounds come from the code that *builds* the board's task collection. Binding a delegating skill does that for you, so those boards are bounded. Wiring the `taskTools` capability by hand — `uses: [taskTools]` on a generator, outside a skill binding — does not: it reaches the generator's own-state board through a plain collection with no bounds at all, and `addTask` there is unbounded.
+
+This is the same path that also has no roster to validate assignees against, so it is worth saying once: the hand-wired capability has **neither** guard. Both come from the skills binding, which is what constructs the board and knows the declared agents. That is intentional rather than an oversight — a capability wired by hand has nowhere to put either — but it means "delegation is bounded and checks assignees" is not a claim about `taskTools` on its own. If you want a bound on that path, build the collection yourself and hand the capability a resolver for it:
+
+Two details make or break this, and both come from where the resolver runs. Each task tool executes as a *child* of the generator, so the generator's own state is `ctx.parent`, not `ctx.sequencer` — `ctx.sequencer` is the enclosing sequencer, which is a different container and often absent entirely. And the resolver has to name the same `stateKey` the board lives under, or it quietly reads and writes a different slot. Mirror the shipped `defaultOwnStateResolver`:
+
+```ts
+import {
+  createTaskToolsCapability,
+  DELEGATION_BOARD_FIELD,
+  delegationBoardSchema,
+  getOrCreateTaskCollection,
+} from "@flow-state-dev/orchestration";
+
+const bounded = (ctx) =>
+  getOrCreateTaskCollection({
+    ctx,
+    backing: "sequencer",
+    // The HOST generator's own state. Each tool runs as a child block, so the
+    // generator's state is `ctx.parent` — `ctx.sequencer` is the per-call scope.
+    sequencer: ctx.parent,
+    stateKey: DELEGATION_BOARD_FIELD,
+    collectionId: DELEGATION_BOARD_FIELD,
+    maxEnqueuedTasks: 25,
+  });
+
+generator({
+  // Declare the slot the resolver targets. The skills binding does this for
+  // you; wiring the capability by hand means declaring it yourself.
+  stateSchema: z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema }),
+  uses: [createTaskToolsCapability(bounded)],
+});
+```
+
 ## Default worker (the floor)
 
 Every delegation board has a **default worker** — a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared agent, that agent runs it. When the `assignee` is unset, the task runs on the default worker instead of erroring.
@@ -106,6 +173,8 @@ addTask({ goal: "Find sources", assignee: "reseacher" })
 ```
 
 No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree. This is a recoverable tool result, not a thrown error — it doesn't end the turn.
+
+When an `addTask` could fail more than one way, the checks run in a fixed order: no board, then an unknown assignee, then the creation bounds. The assignee is checked before the bounds deliberately. Naming a worker that doesn't exist is the more useful thing to hear, and a task rejected for a bad assignee never reaches the board — so a typo can't consume budget that a later, valid task needed.
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 

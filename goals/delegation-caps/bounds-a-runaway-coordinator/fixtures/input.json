@@ -1,0 +1,15 @@
+{
+  "workerSalt": "ZANTHIC-4471",
+  "items": [
+    "alpha-01",
+    "bravo-02",
+    "charlie-03",
+    "delta-04",
+    "echo-05",
+    "foxtrot-06",
+    "golf-07",
+    "hotel-08"
+  ],
+  "enqueueCap": 3,
+  "totalCap": 4
+}

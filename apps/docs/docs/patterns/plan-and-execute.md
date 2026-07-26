@@ -297,6 +297,8 @@ import {
 
 Use these when you want the core task-tracking machinery but with custom orchestration around it.
 
+One thing to know if you wire `createApplyReplan` yourself: pass it the board's `capability`. With it, replanned tasks are written through the board's own collection and respect the bounds on how many tasks that board may hold. Without it, the block rebuilds the collection from the board name alone, which carries no bounds — so a replan can add tasks past a ceiling the board otherwise enforces. `planAndExecute` and the other bundled patterns pass it for you; this only applies to hand-wired use. See [bounding how much work a board takes on](../orchestration/task-board#bounding-how-much-work-a-board-takes-on).
+
 ## Composability
 
 Plan and Execute is a sequencer, so it composes with other sequencer steps.

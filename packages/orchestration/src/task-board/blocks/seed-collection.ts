@@ -46,12 +46,27 @@ export function createSeedCollection<TInput = unknown>(
     execute: async (_input, ctx) => {
       if (initialTasks.length === 0) return;
       const collection = await collectionFactory(ctx);
+      // ONE atomic `addTasks`, not a per-task loop (FIX-931). A loop that awaits
+      // each insert commits tasks up to a creation cap and only then throws — a
+      // partial seed. The batch is all-or-nothing, so an oversized seed leaves
+      // the board exactly as it found it.
+      //
+      // The running `seen` set preserves what the old loop got for free by
+      // re-reading `collection.get` after each awaited insert: it skipped
+      // duplicate ids WITHIN one `initialTasks` list as well as ids already in
+      // the collection. A one-time filter against the collection alone would let
+      // both copies reach `addTasks`, whose duplicate-id guard would then reject
+      // the ENTIRE seed.
+      const seen = new Set<string>();
+      const batch: TaskInit<TInput>[] = [];
       for (const init of initialTasks) {
-        if (init.id !== undefined && collection.get(init.id) !== undefined) {
-          continue;
+        if (init.id !== undefined) {
+          if (seen.has(init.id) || collection.get(init.id) !== undefined) continue;
+          seen.add(init.id);
         }
-        await collection.addTask(init);
+        batch.push(init);
       }
+      if (batch.length > 0) await collection.addTasks(batch);
     },
   });
 }

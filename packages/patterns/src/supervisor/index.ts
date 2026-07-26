@@ -81,6 +81,15 @@ export interface SupervisorConfig<
   maxAttemptsPerTask?: number;
   /** Worker pool size. Default 3. */
   maxConcurrency?: number;
+  /**
+   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * unchanged behavior when unset. A planner that legitimately produces more
+   * than the enqueue bound would otherwise fail its whole seed with no way to
+   * raise the ceiling, so both are reachable here: a number, or `null` for
+   * explicitly unbounded on that axis.
+   */
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
   planner?: BlockDefinition<any, any>;
   /** Reviewer block. Pass `false` to disable per-task review entirely. */
   reviewer?: BlockDefinition<any, any> | false;
@@ -337,6 +346,14 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId: name },
+    // Reachable creation bounds (FIX-931): the board enforces them, so a caller
+    // who legitimately needs a bigger board must be able to say so. Unset falls
+    // through to the 500/100 defaults, and `board.caps` is what the seed writer
+    // is handed, so the two can never disagree.
+    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
+    ...(config.maxEnqueuedTasks !== undefined
+      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
+      : {}),
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",
@@ -353,6 +370,9 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     planner: activePlanner,
     maxAttemptsPerTask,
     ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+    // The board's bounds, so the planner's seed writes through a capped ref
+    // rather than a second uncapped one over the same ledger (FIX-931).
+    caps: board.caps,
   });
 
   // FIX-827: optional goal synthesis at the pipeline top (before

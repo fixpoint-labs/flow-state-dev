@@ -46,6 +46,16 @@ export { createSequencerBackedTaskCollection } from "./collection/sequencer-back
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";
 export type { ResourceBackedOptions } from "./collection/resource-backed";
+// Creation caps (FIX-931) — the two bounds a collection enforces on insertion.
+export {
+  TaskCapExceededError,
+  validateTaskCaps,
+  resolveTaskCapDefaults,
+  DEFAULT_MAX_TOTAL_TASKS,
+  DEFAULT_MAX_ENQUEUED_TASKS,
+  type TaskCapKind,
+  type TaskCapOptions,
+} from "./collection/task-caps";
 export {
   getOrCreateTaskCollection,
   TASK_CHANGE_COMPONENT_TYPE,

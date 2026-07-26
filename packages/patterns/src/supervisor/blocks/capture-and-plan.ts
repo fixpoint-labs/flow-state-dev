@@ -6,6 +6,7 @@
  * `activeStatusMessage: "Planning tasks"`, and the supervisor schemas.
  */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { TaskCapOptions } from "@flow-state-dev/orchestration";
 import {
   createPlanningEntry,
   type TaskContextSupply,
@@ -19,11 +20,13 @@ export interface CaptureAndPlanOptions {
   maxAttemptsPerTask: number;
   /** Per-task context supply (FIX-827). Default `"goal"`. */
   taskContext?: TaskContextSupply;
+  /** The board's resolved creation caps — pass `board.caps` (FIX-931). */
+  caps?: TaskCapOptions;
 }
 
 /** Build the entry sequencer; runs once at the top of the pipeline. */
 export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
-  const { name, planner, maxAttemptsPerTask, taskContext } = options;
+  const { name, planner, maxAttemptsPerTask, taskContext, caps } = options;
 
   return createPlanningEntry({
     name,
@@ -33,5 +36,6 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
     maxAttemptsPerTask,
     activeStatusMessage: "Planning tasks",
     ...(taskContext !== undefined ? { taskContext } : {}),
+    ...(caps !== undefined ? { caps } : {}),
   });
 }

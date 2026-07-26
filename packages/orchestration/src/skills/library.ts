@@ -97,6 +97,25 @@ export interface SkillsLibraryOptions {
    */
   workerModelId?: string;
   /**
+   * Lifetime task ceiling for the delegation board (FIX-931). Counts every task
+   * ever created on the board, terminal ones included, and is never refunded by
+   * draining. Default 500; `null` is explicitly unbounded.
+   *
+   * The delegation board is sequencer-backed (the executive's own state), so on
+   * a checkpoint resume the ledger — and therefore this count — is restored with
+   * it rather than starting over. See the lifetime section in
+   * `tasks/collection/task-caps.ts`.
+   */
+  maxTotalTasks?: number | null;
+  /**
+   * Enqueue-burst ceiling for the delegation board (FIX-931): how many tasks a
+   * coordinator (or a fanning-out worker) may add while others are still
+   * `pending`. Default 100; `null` is explicitly unbounded. Checked at creation,
+   * so it refreshes as tasks drain and does not bound tasks that re-enter
+   * `pending` via a retry, unblock, resume, or reclaimed lease.
+   */
+  maxEnqueuedTasks?: number | null;
+  /**
    * Agent registry for delegation agents declared with `agent-ref:`. Agents
    * materialize at runtime (the tool surface resolves async), so registry
    * lookups can await. A statically-`active` skill with an `agent-ref` agent
@@ -527,6 +546,15 @@ export function createSkillsLibrary(
           : {}),
         ...(options.workerModelId !== undefined
           ? { defaultModelId: options.workerModelId }
+          : {}),
+        // Same forwarding shape as workerModelId: omit when unset so the
+        // delegation surface applies its own defaults, and pass `null` through
+        // verbatim (it is the explicit unbounded opt-out, not an omission).
+        ...(options.maxTotalTasks !== undefined
+          ? { maxTotalTasks: options.maxTotalTasks }
+          : {}),
+        ...(options.maxEnqueuedTasks !== undefined
+          ? { maxEnqueuedTasks: options.maxEnqueuedTasks }
           : {}),
         collectionKey,
         location,
