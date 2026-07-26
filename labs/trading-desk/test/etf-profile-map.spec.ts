@@ -217,6 +217,50 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     expect(out.get("SPY")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
     expect(out.has("AGG")).toBe(false);
   });
+
+  it("does NOT overwrite an existing not_an_etf DISPROOF entry for a directly-held fixed-income ticker — replacing it would flip a proven-non-fund ticker into resolveTickerIsFund's positive-evidence bucket", () => {
+    // AGG was looked up once (e.g. via the broad `allHeldTickers` read after
+    // being mistagged `assetType: "etf"` at some point) and Alpha Vantage
+    // proved it isn't an ETP at all — `not_an_etf` is DISPROOF, not neutral,
+    // and it is certainly not fund-confirming. Overwriting it with
+    // `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON` — a reason
+    // `resolveTickerIsFund`'s layer 1b treats as POSITIVE fund evidence —
+    // would manufacture fund identity for a ticker already proven not to be
+    // one, exactly the round-14/18 manufacture bug in a different guise.
+    const profiles = new Map<string, FundProfileInput>([["AGG", refusal()]]); // refusal() = not_an_etf
+    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("AGG")).toEqual(refusal());
+  });
+
+  it("does NOT overwrite an existing quota/transient NEUTRAL entry for a directly-held fixed-income ticker — a transport failure is not a judgment about fund-ness either way", () => {
+    // AGG's lookup hit a transient network blip on its one prior read — that
+    // says nothing about whether AGG is a fund (resolveTickerIsFund's layer
+    // 1b falls through both "quota" and "transient", giving neither a
+    // verdict). Overwriting it would still manufacture fund identity, same
+    // as the no-prior-entry case.
+    const profiles = new Map<string, FundProfileInput>([
+      ["AGG", { payload: null, refusalReason: "transient" }],
+    ]);
+    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("AGG")).toEqual({ payload: null, refusalReason: "transient" });
+  });
+
+  it("control: DOES replace an existing fund-confirming refusal (ineligible/malformed/withdrawn) for a directly-held fixed-income ticker — the legitimate round-18 path still works", () => {
+    const profiles = new Map<string, FundProfileInput>([
+      ["BND", { payload: null, refusalReason: "ineligible" }],
+    ]);
+    const holdings = [holding({ ticker: "BND", assetClass: "fixed_income", assetType: "etf" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
+  });
 });
 
 // Smoke coverage for the file's pre-existing exports — not previously pinned

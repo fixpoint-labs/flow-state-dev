@@ -1,19 +1,16 @@
 /**
- * One shared conversion from a flat, stored ETF-profile row (`payload | null` +
- * `refusalReason | null`, the sub-PR a `EtfProfileRow` shape and its client-side
- * projection) into the pure look-through leaf's `FundProfileInput` discriminated
- * union (FIX-801 sub-PR c).
+ * Shared adapters between the stored ETF-profile row shape (`payload | null` +
+ * `refusalReason | null`) and the pure look-through leaf's `FundProfileInput`
+ * discriminated union — used by both the Health pane (reading the route's
+ * client projection) and the analysis seed (reading the repository row
+ * directly), so the row→map judgment call lives in exactly one place.
  *
  * The leaf's own header notes that `NormalizedFundProfile` mirrors
  * `NormalizedEtfProfile` FIELD-FOR-FIELD, so no PAYLOAD reshaping is needed — a
  * stored payload satisfies `NormalizedFundProfile` structurally as-is (TS
  * variable assignment tolerates its two extra fields, `netExpenseRatio` /
- * `inceptionDate`). What IS needed, and is genuinely shared by both consumers
- * (the Health pane, reading the route's client projection, and the analysis
- * seed, reading the repository row directly), is turning a flat "exactly one of
- * these two is non-null" row into the leaf's union + a ticker-keyed map — the
- * SAME judgment call twice would be exactly the kind of duplicated money-math
- * this codebase's `distill-lessons` pattern flags. One copy, here.
+ * `inceptionDate`). What IS needed is turning a flat "exactly one of these two
+ * is non-null" row into the leaf's union + a ticker-keyed map.
  *
  * Pure, no IO — takes plain data, not `db/repository.ts` or the route's response
  * types, so this stays a BP-019 leaf either caller can import without pulling in
@@ -30,6 +27,7 @@ import type { Holding } from "../schema/portfolio-schema";
 import { isKnownBondEtf } from "./classify-instrument";
 import {
   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
+  isFundConfirmingProfileEntry,
   type FundProfileInput,
   type NormalizedFundProfile,
 } from "./etf-look-through";
@@ -80,11 +78,8 @@ export function toFundProfileMap(
  *
  * Both call sites that need this exact set — the route's own `GET` handler
  * and the analysis seed's `heldTickersForProfileLookup` — share this one
- * derivation rather than each reimplementing `new Set(...).map(...)`. The
- * route ORIGINALLY reimplemented it (using `isEtfProfileFetchCandidate`'s
- * narrower set for its read, the same bug the seed had) — Codex review on
- * FIX-801 sub-PR c caught it a second time after the seed's own fix, which is
- * exactly the drift risk sharing this helper closes.
+ * derivation rather than each reimplementing `new Set(...).map(...)`, which
+ * would let the two read sets drift apart.
  */
 export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>): string[] {
   return [...new Set(holdings.map((h) => h.ticker.toUpperCase()))];
@@ -97,19 +92,15 @@ export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>)
  * `resolveTickerIsFund`'s evidence-ordering oracle (`etf-look-through.ts`) can
  * correctly judge them.
  *
- * **The gap this closes (Codex review, FIX-801 sub-PR c round 12, P1 — the
- * same evidence-ordering mechanics that took 32+ review rounds to get right in
- * sub-PR b).** `allHeldTickers`'s broad read (above) covers every ticker the
- * HOUSEHOLD holds directly, but the oracle also needs evidence for a fund's
- * CONSTITUENTS that the household does NOT separately hold — a held
+ * **Why this exists.** `allHeldTickers`'s broad read (above) covers every
+ * ticker the HOUSEHOLD holds directly, but the oracle also needs evidence for
+ * a fund's CONSTITUENTS that the household does NOT separately hold — a held
  * allocation ETF (e.g. AOA) that itself holds component ETFs (e.g. VTI) which
  * aren't ALSO a household position. Without VTI's profile in the map, all
  * three of the oracle's evidence layers fail for it (no stored profile, not
  * on the curated bond-ETF list, not a household holding), so it decomposes as
  * an ordinary single-name stock inside AOA instead of being recognized as
- * fund-of-funds — exactly the regression sub-PR b's own fund-of-funds tests
- * pin, except reachable here through wiring this PR (sub-PR c) controls, not
- * the leaf's own logic.
+ * fund-of-funds.
  *
  * **Call this EXACTLY ONCE per snapshot, merge the result, and stop —
  * never loop it to a fixed point.** The leaf never inspects a constituent's
@@ -132,11 +123,11 @@ export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>)
  * `GET` handler each call this exactly once against the held-tickers read,
  * merge, and never call it again.
  *
- * Read-only, same Decision-1-style posture as every other broadening in this
- * file: never fetches a constituent, only surfaces whatever the shared,
- * global `app.etf_profiles` table already has cached for it (from this
- * household warming it directly, or another household's fund-of-funds
- * lookup, or a prior constituent broadening elsewhere).
+ * Read-only, same posture as every other broadening in this file: never
+ * fetches a constituent, only surfaces whatever the shared, global
+ * `app.etf_profiles` table already has cached for it (from this household
+ * warming it directly, or another household's fund-of-funds lookup, or a
+ * prior constituent broadening elsewhere).
  */
 export function missingConstituentTickers(
   profiles: ReadonlyMap<
@@ -160,23 +151,20 @@ export function missingConstituentTickers(
  * Every (upper-cased) key in `profiles` whose OWN constituents include at
  * least one of `tickers` — the wrapper funds a caller must WITHDRAW when a
  * `missingConstituentTickers` follow-up read fails partway through the
- * broadening pass (Codex review, FIX-801 sub-PR c round 13).
+ * broadening pass.
  *
- * **The gap this closes.** `missingConstituentTickers` and the second read it
+ * **Why this exists.** `missingConstituentTickers` and the second read it
  * drives are two separate steps; if the second read throws (a genuine DB
  * error), a caller that already merged the FIRST read's wrapper profiles into
  * the map — then swallows the second read's error and moves on — leaves those
  * wrappers in a "looks complete, isn't" state: their fund-of-funds verdict
- * depends on constituent evidence that never arrived, exactly the broken
- * state `missingConstituentTickers`'s own fix exists to prevent, just reached
- * through an error path instead of the original missing-broadening path. A
- * caller passes the SAME `tickers` list it just failed to read (the exact
- * output of the `missingConstituentTickers` call that preceded the failed
- * read) to find every wrapper whose verdict is now unverifiable.
+ * depends on constituent evidence that never arrived. A caller passes the
+ * SAME `tickers` list it just failed to read (the exact output of the
+ * `missingConstituentTickers` call that preceded the failed read) to find
+ * every wrapper whose verdict is now unverifiable.
  *
- * **What a caller does with the result: WITHDRAW, don't delete (Codex
- * review, FIX-801 sub-PR c round 14 — a real gap in round 13's own fix).**
- * `guards.ts` REPLACES each affected wrapper's map entry with
+ * **What a caller does with the result: WITHDRAW, don't delete.** `guards.ts`
+ * REPLACES each affected wrapper's map entry with
  * `{ payload: null, refusalReason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }`
  * (`etf-look-through.ts`) rather than deleting the key outright. Deleting
  * would also delete the wrapper's OWN fund evidence: if the wrapper's local
@@ -229,45 +217,48 @@ export function fundsReferencingTickers(
  * a fixed-income fund) regardless of whether a profile happens to be cached
  * from before the reclassification, or from another household.
  *
- * **REPLACES the entry with an opaque-but-fund-evidence refusal, does NOT
- * delete it (Codex review, FIX-801 sub-PR c round 17 — the same gap round 14
- * closed for the constituent-broadening withdrawal path, `guards.ts`).**
- * `{ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }`
- * (`etf-look-through.ts`) — deleting the key outright would ALSO delete the
- * ticker's only positive fund evidence when its local `assetType` is stale
- * (still tagged `equity` while `assetClass` is now `fixed_income`, the
- * manual-override state): `resolveTickerIsFund`'s layer 1a fails (not
- * fund-typed), and with the stored profile gone (layer 1b) the oracle falls
- * all the way to layer 1c — the ticker's own stale `equity` tag — reporting
- * it as an ordinary direct stock, a fabricated single-name concentration for
- * what's actually a bond fund. `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON`
- * is recognized by layer 1b as positive fund evidence (same bucket as
- * `"ineligible"`/`"malformed"`/`CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`), so
- * the ticker still reads as a fund — just one attribution is out of scope
- * for — and stays opaque-fund on the WRAPPER basis, never decomposed.
+ * **REPLACES a fund-confirming entry with an opaque-but-fund-evidence
+ * refusal — never deletes, never touches a non-fund-confirming entry, and
+ * never manufactures a new one.** `resolveTickerIsFund`'s (`etf-look-through.ts`)
+ * evidence-ordering oracle treats a ticker's map entry as one of three
+ * things: POSITIVE fund evidence (a real `payload`, or a refusal reason that
+ * only withholds attribution — `"ineligible"`, `"malformed"`,
+ * `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`,
+ * `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON`), DISPROOF (`"not_an_etf"`),
+ * or NEUTRAL — no entry at all, or a transport-failure refusal
+ * (`"quota"`/`"transient"`) that says nothing about fund-ness either way.
+ * This function must preserve that three-way distinction, not collapse it:
  *
- * **...but ONLY when an entry already exists (Codex review, FIX-801 sub-PR c
- * round 18 — the flip side of the fix above).** A fixed-income-classified
- * ticker with NO prior map entry (an ordinary held bond that was never
- * fetched or refused as an "ETF profile" at all — most held bonds) has NO
- * fund evidence to withdraw. Replacing unconditionally would MANUFACTURE
- * fund identity for it: `resolveTickerIsFund`'s layer 1b would see the newly-
- * synthesized refusal and report a ticker that was never a fund as an opaque
- * "fixed-income fund" in the residual — pulling it off the direct-name axis
- * it actually belongs on. This function never creates a new key, only
- * replaces one that's already there; an absent ticker stays absent, reading
- * exactly as any other non-fund holding never looked up at all.
+ * - **Fund-confirming entry** (`isFundConfirmingProfileEntry`, exported by
+ *   `etf-look-through.ts` — the same check the oracle's own layer 1b makes) —
+ *   REPLACE with `{ payload: null, refusalReason:
+ *   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }`. Deleting the key outright
+ *   would lose the ticker's only positive fund evidence when its local
+ *   `assetType` is stale (still tagged `equity` while `assetClass` is now
+ *   `fixed_income`, the manual-override state): the oracle would fall all the
+ *   way to the ticker's own stale `equity` tag and report it as an ordinary
+ *   direct stock — a fabricated single-name concentration for what's actually
+ *   a bond fund. Replacing with a reason the oracle still recognizes as
+ *   positive evidence keeps it reading as a fund, just with this one
+ *   attribution suppressed — opaque-fund on the WRAPPER basis, never
+ *   decomposed.
+ * - **No entry, disproof (`"not_an_etf"`), or neutral (`"quota"`/`"transient"`)**
+ *   — LEAVE UNTOUCHED. None of these is fund evidence to withdraw; replacing
+ *   any of them would MANUFACTURE or FLIP fund identity the oracle doesn't
+ *   otherwise have — an ordinary held bond (no entry), a ticker AV has
+ *   already proven isn't a fund (`"not_an_etf"`), or a ticker with only a
+ *   transient/quota hiccup on record (still, by the oracle's own rules, no
+ *   evidence either way) would all incorrectly start reading as an opaque
+ *   "fixed-income fund" in the residual instead of the direct name they
+ *   actually are.
  *
- * **Judged by the DOMINANT lot, not "any row" (Codex review, FIX-801 sub-PR c
- * round 14 — a real inconsistency, not a nit).** `summarizePortfolioHealth`
+ * **Judged by the DOMINANT lot, not "any row".** `summarizePortfolioHealth`
  * (`portfolio-health.ts`) resolves a ticker's merged classification by its
- * LARGEST-market-value lot when accounts disagree, not by whether any row at
- * all carries a given class — an "any row" test here disagreed with that: a
- * tiny manually-reclassified `fixed_income` lot of, say, SPY could suppress
- * attribution for a much larger equity-classified SPY position elsewhere in
- * the household, even though the household's own merged Health view would
- * classify that ticker as equity (the dominant lot). `quotes` is required so
- * the dominant-lot comparison uses real market value, not row order.
+ * LARGEST-market-value lot when accounts disagree — this check matches that:
+ * a tiny manually-reclassified `fixed_income` lot of, say, SPY does not
+ * suppress attribution for a much larger equity-classified SPY position
+ * elsewhere in the household. `quotes` is required so the dominant-lot
+ * comparison uses real market value, not row order.
  *
  * Deliberately NOT `isEtfProfileFetchCandidate` reapplied here — that
  * predicate is the FETCH decision and is stricter than this check (it also
@@ -285,13 +276,12 @@ export function fundsReferencingTickers(
  * so a curated bond ETF (e.g. BND) manually overridden to `assetClass:
  * "equity"` would otherwise still pass this check and get a cached profile
  * decomposed by the look-through leaf for a fund the methodology declares
- * opaque (Codex review, FIX-801 sub-PR c, round 10). Checking the curated
- * list directly closes that gap regardless of what the stored field
- * currently says — exactly the fetch predicate's own reasoning, applied
- * here on the attribution side instead of the fetch side. The bond-ETF-list
- * check runs over EVERY held ticker (not just the dominant-lot-fixed-income
- * ones) — a curated bond ETF is fixed income regardless of how any lot of it
- * happens to be classified locally.
+ * opaque. Checking the curated list directly closes that gap regardless of
+ * what the stored field currently says — exactly the fetch predicate's own
+ * reasoning, applied here on the attribution side instead of the fetch side.
+ * The bond-ETF-list check runs over EVERY held ticker (not just the
+ * dominant-lot-fixed-income ones) — a curated bond ETF is fixed income
+ * regardless of how any lot of it happens to be classified locally.
  */
 export function excludeFixedIncomeFromProfileMap(
   profiles: Map<string, FundProfileInput>,
@@ -310,16 +300,22 @@ export function excludeFixedIncomeFromProfileMap(
   if (fixedIncomeTickers.size === 0) return profiles;
   const suppressed = new Map(profiles);
   for (const ticker of fixedIncomeTickers) {
-    // Only REPLACE an entry that already exists — a ticker with no prior
-    // entry has no fund evidence to withdraw, so manufacturing one here would
-    // fabricate fund identity for an ordinary held bond that was never a fund
-    // to begin with (Codex review, FIX-801 sub-PR c round 18 — the flip side
-    // of the round 14/17 fix: don't invent evidence that was never there,
-    // same as those rounds' "don't lose evidence that WAS there"). Absent
-    // from the map is already the correct, honest state: it reads as a
-    // direct holding via `resolveTickerIsFund`'s layers, same as any other
-    // non-fund ticker never looked up at all.
-    if (!suppressed.has(ticker)) continue;
+    // Only REPLACE an entry that already exists AND is itself fund-confirming
+    // evidence — a ticker with no prior entry has no fund evidence to
+    // withdraw, so manufacturing one here would fabricate fund identity for
+    // an ordinary held bond that was never a fund to begin with. An existing
+    // entry that DISPROVES fund identity (`not_an_etf`) or is NEUTRAL
+    // (`quota`/`transient` — a transport failure, not a judgment) is the
+    // same manufacture bug in a different guise: overwriting either with
+    // `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON` would flip a proven-or-
+    // unproven-non-fund ticker into `resolveTickerIsFund`'s positive-evidence
+    // bucket. `isFundConfirmingProfileEntry` (`etf-look-through.ts`) is the
+    // same judgment `resolveTickerIsFund`'s own layer 1b makes — shared, not
+    // re-derived, so the two can't drift apart. Absent from the map, or left
+    // untouched here, both read as a direct holding via `resolveTickerIsFund`'s
+    // layers, same as any other ticker with no fund evidence.
+    const existing = suppressed.get(ticker);
+    if (existing === undefined || !isFundConfirmingProfileEntry(existing)) continue;
     suppressed.set(ticker, { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   }
   return suppressed;
@@ -342,19 +338,14 @@ export function excludeFixedIncomeFromProfileMap(
  * STORED profile override a stale/mistyped local `assetType` — narrowing the
  * read to fetch-eligible tickers would silently defeat that override for
  * exactly the ticker it exists to catch (a holding still tagged `equity`
- * locally but already correctly profiled). An earlier version of this file
- * unified both concerns into one predicate; Codex review on FIX-801 sub-PR c
- * caught that this made the seed's cache READ too strict, not just its own
- * fetch decision.
+ * locally but already correctly profiled).
  *
  * ETF-only (the endpoint never fetches mutual funds — Non-goals), excludes a
  * curated bond ETF, and excludes a flagged inconsistent-history row (never a
- * fetch target). Before this was extracted, the eligibility signature
- * independently treated `mutual_fund` as fund-typed and didn't exclude a
- * bond ETF / `inconsistent_history` — so a household holding a mutual fund
- * or a bond ETF (which the route will NEVER fetch) still changed the hook's
- * signature, triggering a spurious refetch/cache-bust. One predicate, two
- * fetch-decision call sites, no drift.
+ * fetch target). Shared by the route's own eligible-ticker derivation and the
+ * Health UI's eligibility-refetch signature so a household holding a mutual
+ * fund or a bond ETF (which the route will NEVER fetch) can't change the
+ * hook's signature and trigger a spurious refetch/cache-bust.
  *
  * **Bond-ETF exclusion checks BOTH `assetClass !== "fixed_income"` AND
  * `!isKnownBondEtf(ticker)`, not just the classified field.** The stored

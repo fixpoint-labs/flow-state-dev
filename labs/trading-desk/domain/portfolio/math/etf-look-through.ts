@@ -263,6 +263,30 @@ function pctOf(value: number, denom: number): number {
 }
 
 /**
+ * Whether a stored `FundProfileInput` entry is POSITIVE fund evidence — the
+ * same set `resolveTickerIsFund`'s layer 1b treats as proof the ticker is a
+ * fund: a real payload, or a refusal reason that only withholds/suppresses
+ * attribution without disputing fund identity (`"ineligible"`, `"malformed"`,
+ * {@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON},
+ * {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON}). `"not_an_etf"` is
+ * DISPROOF (the opposite), and `"quota"`/`"transient"` are NEUTRAL (no fund
+ * evidence either way) — both read `false` here; a caller that needs to tell
+ * disproof from neutral must still check `refusalReason === "not_an_etf"`
+ * itself. Exported so a caller deciding whether REPLACING an entry would
+ * manufacture or preserve fund evidence (`excludeFixedIncomeFromProfileMap`,
+ * `etf-profile-map.ts`) shares this exact judgment instead of re-deriving it.
+ */
+export function isFundConfirmingProfileEntry(entry: FundProfileInput): boolean {
+  if (entry.payload !== null) return true;
+  return (
+    entry.refusalReason === "ineligible" ||
+    entry.refusalReason === "malformed" ||
+    entry.refusalReason === CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON ||
+    entry.refusalReason === FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON
+  );
+}
+
+/**
  * The ONE shared "does this ticker have fund evidence" oracle (§7), layers
  * 1–3 — the SINGLE evidence-ordering check every caller in this file uses,
  * not a per-caller reimplementation. It takes a bare ticker + the two
@@ -384,16 +408,8 @@ function resolveTickerIsFund(
   // classification is allowed to settle the question (see the docblock
   // above for why: a direct holding's assetType can be stale/misclassified).
   if (profile) {
-    if (profile.payload !== null) return true; // a stored profile proves it's a fund
     if (profile.refusalReason === "not_an_etf") return false; // proven NOT a fund
-    if (
-      profile.refusalReason === "ineligible" ||
-      profile.refusalReason === "malformed" ||
-      profile.refusalReason === CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON ||
-      profile.refusalReason === FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON
-    ) {
-      return true; // the fetch resolved an ETF_PROFILE, or a caller withheld/suppressed attribution for a reason unrelated to fund-ness
-    }
+    if (isFundConfirmingProfileEntry(profile)) return true;
   }
 
   // Layer 2 — the curated bond-ETF list, checked BEFORE a held ticker's

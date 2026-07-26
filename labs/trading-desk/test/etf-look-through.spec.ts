@@ -28,6 +28,7 @@ import {
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
   FUND_OF_FUNDS_THRESHOLD_PCT,
+  isFundConfirmingProfileEntry,
   LOOK_THROUGH_COVERAGE_FLOOR_PCT,
   type FundProfileInput,
   type LookThroughPositionInput,
@@ -1339,5 +1340,27 @@ describe("computeLookThroughExposure — Decision 7: sector axis from the fund's
     expect(financials.marketValue).toBeCloseTo(20_000 + 0.13 * 80_000);
     const tech = out.sectorExposure.find((s) => s.bucket === "Technology")!;
     expect(tech.marketValue).toBeCloseTo(0.3 * 80_000);
+  });
+});
+
+describe("isFundConfirmingProfileEntry — the shared fund-evidence predicate resolveTickerIsFund's layer 1b uses", () => {
+  it("reads true for a real payload", () => {
+    expect(isFundConfirmingProfileEntry(profile())).toBe(true);
+  });
+
+  it("reads true for each reason that withholds attribution without disputing fund identity", () => {
+    expect(isFundConfirmingProfileEntry(refusal("ineligible"))).toBe(true);
+    expect(isFundConfirmingProfileEntry(refusal("malformed"))).toBe(true);
+    expect(isFundConfirmingProfileEntry(refusal(CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON))).toBe(true);
+    expect(isFundConfirmingProfileEntry(refusal(FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON))).toBe(true);
+  });
+
+  it("reads false for not_an_etf — disproof, not evidence", () => {
+    expect(isFundConfirmingProfileEntry(refusal("not_an_etf"))).toBe(false);
+  });
+
+  it("reads false for quota/transient — neutral transport failures, not a judgment either way", () => {
+    expect(isFundConfirmingProfileEntry(refusal("quota"))).toBe(false);
+    expect(isFundConfirmingProfileEntry(refusal("transient"))).toBe(false);
   });
 });
