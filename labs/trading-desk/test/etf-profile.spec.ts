@@ -200,6 +200,57 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out.kind).toBe("profile");
   });
 
+  it("clamps nameCoverage to 1 when rows sum just over 100% — the consuming leaf's safeWeight has a strict [0,1] contract and would zero an unclamped 1.005 (Codex review, FIX-801 sub-PR c)", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [],
+      holdings: [
+        { symbol: "AAPL", weight: "0.5" },
+        { symbol: "MSFT", weight: "0.505" }, // sums to 1.005 — within the accepted epsilon
+      ],
+    });
+    const out = await fetchEtfProfile("NAME_OVERAGE");
+    if (out.kind !== "profile") throw new Error("expected a profile");
+    expect(out.profile.nameCoverage).toBe(1);
+  });
+
+  it("clamps sectorCoverage to 1 when sector rows sum just over 100%, same reasoning as nameCoverage above", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.5" },
+        { sector: "HEALTH CARE", weight: "0.505" }, // sums to 1.005 — within the accepted epsilon
+      ],
+    });
+    const out = await fetchEtfProfile("SECTOR_OVERAGE");
+    if (out.kind !== "profile") throw new Error("expected a profile");
+    expect(out.profile.sectorCoverage).toBe(1);
+  });
+
+  it("keeps a valid NAME axis when only the SECTOR axis is malformed, instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — per-axis malformed handling belongs to the consuming leaf, not this fetcher)", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.9" },
+        { sector: "HEALTH CARE", weight: "0.9" }, // sums to 1.8 — genuinely malformed, past the epsilon
+      ],
+      holdings: [
+        { symbol: "AAPL", weight: "0.5" },
+        { symbol: "MSFT", weight: "0.4" },
+      ],
+    });
+    const out = await fetchEtfProfile("SECTOR_MALFORMED_NAME_OK");
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // The name axis is fully intact.
+    expect(out.profile.nameCoverage).toBeCloseTo(0.9);
+    expect(out.profile.constituents).toHaveLength(2);
+    // The sector axis is discarded, not fabricated — same shape as "the
+    // provider sent no sector data", which the leaf's own per-axis floor
+    // gate already renders honestly as sector-axis-opaque.
+    expect(out.profile.sectors).toEqual([]);
+    expect(out.profile.sectorCoverage).toBe(0);
+  });
+
   it("rejects an individual weight outside [0, 1] rather than letting it corrupt the aggregate sum (Codex review)", async () => {
     // A negative weight offsets an oversized positive one so the AGGREGATE
     // sum still lands near 100% — the malformed-sum check alone would miss

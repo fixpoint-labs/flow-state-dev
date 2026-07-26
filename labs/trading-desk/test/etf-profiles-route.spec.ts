@@ -454,6 +454,44 @@ describe("GET /api/portfolio/etf-profiles", () => {
     }
   });
 
+  it("computes retryAt from a FRESH timestamp captured after the outcome, not the stale request-entry now — a fetch queued across UTC midnight must not compute an already-past retryAt (Codex review, FIX-801 sub-PR c)", async () => {
+    // Fake ONLY the Date global (`toFake: ["Date"]`) — setTimeout/promises/
+    // PGlite's own internal scheduling stay completely real, so this is safe
+    // against a real embedded-PGlite-backed route test.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await seedEtf("QUOTA_MIDNIGHT");
+      // The request starts one minute before UTC midnight — this is the
+      // route's captured `now` used for the outer isDueForFetch gates.
+      vi.setSystemTime(new Date("2026-07-25T23:59:30.000Z"));
+
+      const { AlphaVantageBudgetError } = await import("@/lib/providers/alpha-vantage");
+      fetcherMock.fetchEtfProfile.mockImplementation(async () => {
+        // Simulate the fetch resolving AFTER being queued behind the shared
+        // per-minute AV pacing, straddling midnight.
+        vi.setSystemTime(new Date("2026-07-26T00:02:00.000Z"));
+        throw new AlphaVantageBudgetError(25);
+      });
+
+      const res = await GET(get(USER_ID));
+      const body = (await res.json()) as EtfProfilesResponse;
+      const refusal = body.refusals.find((r) => r.ticker === "QUOTA_MIDNIGHT");
+      expect(refusal?.reason).toBe("quota");
+      // The bug: computing retryAt from the STALE pre-midnight `now`
+      // (23:59:30) resolves "next UTC reset after now" to 2026-07-26T00:00:00Z
+      // — a timestamp already 2 minutes in the PAST relative to when the
+      // outcome was actually recorded (00:02:00). The fix uses a timestamp
+      // captured AFTER the fetch settles, so the boundary must be the
+      // FOLLOWING day's reset, strictly after the actual outcome time.
+      expect(refusal!.retryAt).toBe("2026-07-27T00:00:00.000Z");
+      expect(new Date(refusal!.retryAt!).getTime()).toBeGreaterThan(
+        new Date("2026-07-26T00:02:00.000Z").getTime(),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("when this instance's own write loses the cross-process freshness race, the response reflects what's actually stored, not the local write attempt (Codex review round 2, FIX-801 sub-PR a)", async () => {
     await seedEtf("SPY");
     // Establish a first stored success, then force it stale so the next GET

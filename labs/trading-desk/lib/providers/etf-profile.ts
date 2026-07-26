@@ -185,9 +185,17 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  * outcome (never throws) for a domain-level judgment: no usable profile data
  * at all (`not_an_etf`), a leveraged/inverse fund or one with no resolvable
  * constituents at all — bullion, unsymboled debt (`ineligible`), or
- * constituent weights summing past 100% (`malformed`, a provider-side data
- * bug). See the FIX-801 spec §9 edge-case table for the exact refusal→backoff
- * mapping (owned by the REST route, not this module).
+ * CONSTITUENT (name-axis) weights summing past 100% (`malformed`, a
+ * provider-side data bug). See the FIX-801 spec §9 edge-case table for the
+ * exact refusal→backoff mapping (owned by the REST route, not this module).
+ *
+ * A malformed SECTOR axis, by contrast, does NOT refuse the whole profile —
+ * per-axis malformed handling is the consuming leaf's business (Decision 4's
+ * per-axis gate; docs/etf-look-through.md), not this fetcher's. Sector rows
+ * summing past 100% are discarded (the profile stores an empty sector axis,
+ * read by the leaf exactly like "the provider sent no sector data") while a
+ * valid name axis still returns as a usable profile — never suppressed for
+ * ~7 days over a sector-only data glitch.
  */
 export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> {
   const body = (await alphaVantageRequest({
@@ -223,6 +231,23 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
       detail: `constituent weights sum to ${(nameCoverage * 100).toFixed(1)}%`,
     };
   }
+  // A sum inside the accepted tolerance (100–101%, pure rounding across
+  // hundreds of rows) still must not EXCEED 1 in what gets stored: the
+  // consuming leaf's `safeWeight` (`etf-look-through.ts`) has a strict
+  // `[0, 1]` contract and zeroes anything outside it — so an unclamped
+  // 1.005 would silently read back as 0% coverage (fully opaque) downstream
+  // instead of the ~100% this profile actually has. Clamping here, not
+  // loosening the leaf's contract, is the fix (Codex review, FIX-801
+  // sub-PR c): the leaf's strict range is correct; this is the one place
+  // that produces a value outside it. Individual constituent weights never
+  // need this — `parseFraction` already rejects any single weight > 1 — only
+  // the AGGREGATE sum can land just over 1. The leaf's own over-sum scaling
+  // (`nameScale`) still applies correctly afterward: clamping only the
+  // declared coverage (not the individual rows) keeps `actualNameSum` from
+  // re-summing the rows slightly ABOVE the clamped `nameCoverage`, which the
+  // leaf's reconciliation tolerance already absorbs and its scaling logic
+  // already handles.
+  nameCoverage = Math.min(nameCoverage, 1);
 
   const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
   if (!hasResolvableConstituent) {
@@ -253,7 +278,7 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     return { kind: "refused", reason: "ineligible", detail: "no resolvable constituent tickers" };
   }
 
-  const sectors: EtfSectorRow[] = [];
+  let sectors: EtfSectorRow[] = [];
   let sectorCoverage = 0;
   for (const row of rawSectors) {
     const weight = parseFraction(row.weight);
@@ -263,11 +288,25 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
   }
 
   if (sectorCoverage > 1 + COVERAGE_OVERAGE_EPSILON) {
-    return {
-      kind: "refused",
-      reason: "malformed",
-      detail: `sector weights sum to ${(sectorCoverage * 100).toFixed(1)}%`,
-    };
+    // A malformed SECTOR axis must not discard an otherwise-usable NAME axis
+    // (docs/etf-look-through.md's own per-axis contract — a fund can pass on
+    // names while failing sectors, and per-axis malformed handling is the
+    // consuming leaf's business, not the fetcher's — see the leaf's own
+    // "sector data malformed" reconciliation check, which exists precisely
+    // because a per-axis judgment, not a whole-profile refusal, is the
+    // correct granularity here). Refusing the WHOLE profile — and backing it
+    // off for ~7 days — would suppress a fund's fully-usable name-axis data
+    // over a sector-only data glitch (Codex review, FIX-801 sub-PR c).
+    // Discard just the malformed sector rows (same shape as "the provider
+    // sent no sector data at all" — the leaf's existing below-floor handling
+    // already renders that honestly as sector-axis-opaque) and keep going;
+    // the profile still returns as a usable "profile" outcome, not a refusal.
+    sectors = [];
+    sectorCoverage = 0;
+  } else {
+    // Same clamp, same reason as `nameCoverage` above — a within-tolerance
+    // over-sum must not persist above the leaf's strict `[0, 1]` contract.
+    sectorCoverage = Math.min(sectorCoverage, 1);
   }
 
   const profile: NormalizedEtfProfile = {

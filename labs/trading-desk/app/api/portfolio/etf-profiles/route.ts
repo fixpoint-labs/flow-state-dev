@@ -239,12 +239,25 @@ export async function GET(req: NextRequest) {
       let hitQuotaHere = false;
       try {
         const outcome = await fetchEtfProfile(ticker);
+        // Fresh timestamp for the BACKOFF computation, captured only now that
+        // the outcome is actually known — NOT the outer `now` from function
+        // entry. `fetchEtfProfile` can block behind the shared per-minute AV
+        // pacing (`alphaVantageRequest`), and a request queued across a UTC
+        // midnight would otherwise compute `nextUtcDailyReset` from a
+        // pre-midnight timestamp: "the next reset after `now`" resolves to a
+        // reset that has ALREADY PASSED by the time this code runs, producing
+        // a `retryAt` already in the past — the very next read immediately
+        // retries and burns another shared budget unit instead of respecting
+        // the backoff (Codex review, FIX-801 sub-PR c). `now` itself stays
+        // correct for the outer `isDueForFetch` gates (deciding WHETHER to
+        // attempt), just not for the boundary this attempt's OWN outcome sets.
+        const outcomeAt = new Date();
         if (outcome.kind === "profile") {
           upsert = { ticker, payload: outcome.profile, refusalReason: null };
         } else if (hasStoredSuccess) {
           const { retryAt, transientAttempts } = computeRefusalBackoff(
             outcome.reason,
-            now,
+            outcomeAt,
             priorTransientAttempts,
           );
           upsert = {
@@ -256,7 +269,7 @@ export async function GET(req: NextRequest) {
             fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch
           };
         } else {
-          const { retryAt } = computeRefusalBackoff(outcome.reason, now, 0);
+          const { retryAt } = computeRefusalBackoff(outcome.reason, outcomeAt, 0);
           upsert = {
             ticker,
             payload: null,
@@ -267,13 +280,14 @@ export async function GET(req: NextRequest) {
           };
         }
       } catch (err) {
+        const outcomeAt = new Date(); // same fresh-timestamp reasoning as the try block above
         const isQuota =
           err instanceof AlphaVantageBudgetError || err instanceof AlphaVantageRateLimitError;
         if (isQuota) hitQuotaHere = true;
         const reason: EtfProfileRefusalClass = isQuota ? "quota" : "transient";
         const { retryAt, transientAttempts } = computeRefusalBackoff(
           reason,
-          now,
+          outcomeAt,
           priorTransientAttempts,
         );
         if (hasStoredSuccess) {
