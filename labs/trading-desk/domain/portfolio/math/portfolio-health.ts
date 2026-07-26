@@ -22,10 +22,28 @@
  * silently shrinking the book. Every division is guarded — a zero/negative
  * denominator yields `null`, never `NaN`/`Infinity`.
  *
- * Fund positions (ETF / mutual fund) are honestly opaque in v1: no look-through
- * (`lookThrough: "none"`), exempt from single-name concentration flags, and
- * bucketed as "Funds (no look-through)" in the sector view. FIX-801 refines this
- * without reshaping the payload.
+ * Fund positions (ETF / mutual fund) are honest on the WRAPPER basis — the
+ * fields above — exactly as before FIX-801: exempt from single-name
+ * concentration flags and bucketed as "Funds (no look-through)" in the
+ * sector view (Decision 2 — these fields keep their exact pre-FIX-801
+ * meaning). FIX-801 adds an ADDITIVE second read: pass an optional
+ * `etfProfiles` map (the caller's stored ETF holdings profiles, ticker →
+ * fetch outcome — see `etf-look-through.ts`) and `lookThrough` widens from
+ * the literal `"none"` to `"partial"`, with `lookThroughExposure` carrying
+ * the effective, look-through basis (a directly-held name and the same name
+ * held inside a fund add up instead of sitting apart). Called with no
+ * profiles (or none fetched yet), the output is byte-identical to today's
+ * (BP-030) — `lookThrough: "none"`, `lookThroughExposure: null`.
+ *
+ * ONE KNOWN DIVERGENCE, surfaced rather than hidden (FIX-801 §7): this leaf
+ * still computes ONE household picture per call, but the PANE (which fetches
+ * profiles through the fill route) and the analysis seed (which reads the
+ * stored table read-only and never fetches, Decision 1) can pass DIFFERENT
+ * `etfProfiles` maps for the same household — so the same book can read
+ * `"partial"` in the browser and `"none"` in a headless run whose funds
+ * nobody has warmed yet. Accepted: the alternative (the seed spending shared
+ * AV budget mid-run) is worse, and the seed's numbers are always a SUBSET,
+ * never a contradiction — both surfaces label their own coverage.
  *
  * Mandate drift / standing-constraint compliance (`computeAllocationDrift`) is
  * the FIX-761-gated follow-up slice; it is intentionally NOT in this module yet.
@@ -33,6 +51,23 @@
  */
 import type { AssetClass, AssetType, AccountState } from "../schema/portfolio-schema";
 import { holdingMarketValue } from "@/domain/portfolio/math/value-holding";
+import {
+  SECTOR_WARN_PCT,
+  SINGLE_NAME_ALERT_PCT,
+  SINGLE_NAME_WARN_PCT,
+  UNCLASSIFIED_BUCKET,
+} from "@/domain/portfolio/math/concentration-thresholds";
+import {
+  computeLookThroughExposure,
+  type FundProfileInput,
+  type LookThroughExposure,
+} from "@/domain/portfolio/math/etf-look-through";
+
+// Re-exported for existing importers (BP-030) — the thresholds and the
+// unclassified-sector label moved to `concentration-thresholds.ts` so the
+// look-through leaf can share them without importing this module (which now
+// imports the look-through leaf, and a two-way import would be a cycle).
+export { SECTOR_WARN_PCT, SINGLE_NAME_ALERT_PCT, SINGLE_NAME_WARN_PCT, UNCLASSIFIED_BUCKET };
 
 /** Quote map as the pane and seed already hold it: UPPER ticker → { price, asOf }. */
 export type QuoteMap = Map<string, { price: number | null; asOf: string | null }>;
@@ -40,19 +75,12 @@ export type QuoteMap = Map<string, { price: number | null; asOf: string | null }
 /** UPPER ticker → Yahoo sector string, or null when unresolved. */
 export type ClassificationMap = Map<string, string | null>;
 
-/** Sector bucket label for a position whose every constituent row is a fund. */
+/** Sector bucket label for a position whose every constituent row is a fund
+ *  on the WRAPPER basis (Decision 2) — the look-through axis, when present,
+ *  replaces this with the fund's own attributed sector breakdown instead. */
 export const FUNDS_BUCKET = "Funds (no look-through)";
-/** Sector bucket label for a single-name equity whose sector didn't resolve. */
-export const UNCLASSIFIED_BUCKET = "Unclassified";
-
-/** Single-name concentration thresholds (% of invested NAV). Warn ≥ these; the
- *  industry rules of thumb (J.P. Morgan / T. Rowe) converge on ~10% / ~25%.
- *  Exported so the UI and context formatter label the same lines; configurability
- *  is deferred (Non-Goals) — if made configurable, the mandate is the home. */
-export const SINGLE_NAME_WARN_PCT = 10;
-export const SINGLE_NAME_ALERT_PCT = 25;
-/** Sector-concentration warn threshold (% of invested NAV). ~25–30% rule of thumb. */
-export const SECTOR_WARN_PCT = 30;
+/** Sector bucket label for a single-name equity whose sector didn't resolve —
+ *  re-exported from `concentration-thresholds.ts` above (see that import). */
 
 /** One ticker-merged household position (summed across accounts). */
 export type HealthPosition = {
@@ -96,8 +124,18 @@ export type HealthFlag =
 export type PortfolioHealth = {
   /** Pass-through quote snapshot as-of (staleness label). */
   asOf: string | null;
-  /** Explicit v1 caveat: funds are opaque, no look-through (Key Decision 5). */
-  lookThrough: "none";
+  /** `"none"` when nothing was attributed (no funds held, no `etfProfiles`
+   *  passed, or none of the household's funds were attributable) — the
+   *  wrapper-basis fields above are the whole picture, exactly as before
+   *  FIX-801. `"partial"` when at least one name was attributed through a
+   *  fund; `lookThroughExposure` carries that read. There is deliberately no
+   *  `"full"` state — coverage is never 100%, and a state that can't occur
+   *  would invite consumers to branch on it (FIX-801 §7). */
+  lookThrough: "none" | "partial";
+  /** The look-through basis (FIX-801) — null exactly when `lookThrough` is
+   *  `"none"`. Additive: every wrapper-basis field above keeps its current
+   *  meaning regardless of whether this is present (Decision 2). */
+  lookThroughExposure: LookThroughExposure | null;
   /** Σ priced MV + Σ account cash; null when nothing priceable and no cash. */
   totalNav: number | null;
   /** totalNav − cash bucket; null when totalNav is null. */
@@ -180,6 +218,10 @@ function pctOf(value: number | null, denom: number | null): number | null {
  * `quotes` is a UPPER-ticker → { price, asOf } map from any source (the pane's
  * quotes resource / seed's `app.quotes`); `classifications` maps equity tickers
  * to a Yahoo sector (or null). `asOf` is the snapshot label passed through.
+ * `etfProfiles` (FIX-801) is an OPTIONAL trailing argument — omitted or
+ * `undefined` reproduces today's exact output (`lookThrough: "none"`,
+ * `lookThroughExposure: null`), matching how `buildPortfolioContext` already
+ * appends its optional classifications map (BP-030).
  *
  * Pure and total: never throws on any typechecking input; every division is
  * guarded; empty inputs produce nulls / empty arrays.
@@ -189,6 +231,7 @@ export function summarizePortfolioHealth(
   quotes: QuoteMap,
   classifications: ClassificationMap,
   asOf: string | null,
+  etfProfiles?: ReadonlyMap<string, FundProfileInput>,
 ): PortfolioHealth {
   // --- Pass 1: ticker-merge holdings across accounts, valuing included rows. ---
   type Merged = {
@@ -350,9 +393,35 @@ export function summarizePortfolioHealth(
   // --- Concentration (of investedNav). ---
   const concentration = computeConcentration(positions, investedNav, sectorExposure);
 
+  // --- Look-through (FIX-801), additive — delegates to the pure leaf. ---
+  let lookThrough: PortfolioHealth["lookThrough"] = "none";
+  let lookThroughExposure: LookThroughExposure | null = null;
+  if (etfProfiles !== undefined) {
+    const lookThroughPositions = [...merged.values()].map((m) => ({
+      ticker: m.ticker,
+      assetType: m.assetType,
+      assetClass: m.assetClass,
+      marketValue: m.marketValue,
+      sectorBucket: sectorBucket(m.assetType, classifications.get(m.ticker) ?? null),
+    }));
+    lookThroughExposure = computeLookThroughExposure(lookThroughPositions, investedNav, etfProfiles);
+    // "partial" only once something was actually attributed THROUGH a fund
+    // (Decision 7) — a book with funds that are all opaque/refused, or a
+    // book with no funds at all, both read "none" (the wrapper-basis fields
+    // are the whole picture either way). Checked on EITHER axis
+    // (`hasAttribution`), not just the name axis — a fund can clear the
+    // sector floor while failing the name floor (or the reverse), and that
+    // lone successful axis must still surface as "partial" rather than being
+    // discarded (Codex review, FIX-801).
+    const anyFundAttributed = lookThroughExposure !== null && lookThroughExposure.hasAttribution;
+    lookThrough = anyFundAttributed ? "partial" : "none";
+    if (lookThrough === "none") lookThroughExposure = null;
+  }
+
   return {
     asOf,
-    lookThrough: "none",
+    lookThrough,
+    lookThroughExposure,
     totalNav,
     investedNav,
     cash: { amount: cashAmount, pct: pctOf(cashAmount, totalNav) },
