@@ -23,8 +23,10 @@ import type { DefinedCapability, GeneratorTool, InitialSkill } from "@flow-state
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
+import { getOrCreateTaskCollection } from "../../src/tasks";
 import {
   buildTaskToolsList,
+  createTaskToolsCapability,
   DELEGATION_BOARD_FIELD,
 } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
@@ -279,6 +281,51 @@ describe("delegation board addTask — failure ORDER across both gates", () => {
     )) as AddTaskResult;
     // A phantom assignee is present, but the board gate answers first.
     expect(result.error).toBe("no_delegation_board");
+  });
+});
+
+describe("the documented hand-wired bounded board actually runs", () => {
+  // `apps/docs/docs/skills/delegation.md` shows how to bound a `taskTools`
+  // capability wired by hand. Nothing in CI executes a docs snippet, so the
+  // recipe is pinned here instead — an example that does not run is a bug with
+  // a longer fuse than a failing test.
+  //
+  // The first version of that snippet resolved `sequencer: ctx.sequencer!` with
+  // no `stateKey`. Both were wrong, and wrong in different ways: with no
+  // enclosing sequencer it THREW ("Cannot read properties of undefined"), and
+  // with one it silently wrote to a `tasks` slot instead of the board's. The
+  // second is the dangerous one — it looks like it worked.
+  const boundedResolver = (ctx: never) =>
+    getOrCreateTaskCollection({
+      ctx,
+      backing: "sequencer",
+      // The HOST generator's own state. Each tool runs as a child block, so the
+      // generator's state is `ctx.parent`, not `ctx.sequencer`.
+      sequencer: (ctx as unknown as { parent: never }).parent,
+      stateKey: DELEGATION_BOARD_FIELD,
+      collectionId: DELEGATION_BOARD_FIELD,
+      maxEnqueuedTasks: 2,
+    });
+
+  it("resolves the host generator's board and enforces the bound", async () => {
+    const cap = createTaskToolsCapability(boundedResolver as never);
+    const addTask = capabilityAddTask(cap);
+    const { ctx, selfState } = buildExecCtx();
+
+    const results: AddTaskResult[] = [];
+    for (let i = 0; i < 3; i++) {
+      results.push((await runForTest(addTask, { goal: `t${i}` }, ctx)) as AddTaskResult);
+    }
+
+    // Two land, the third is refused by the bound the recipe configures.
+    expect(results.slice(0, 2).every((r) => r.ok)).toBe(true);
+    expect(results[2]).toEqual({ ok: false, error: "enqueued_task_cap_exceeded" });
+
+    // And they landed on the DELEGATION BOARD slot — not some adjacent `tasks`
+    // slot the host never reads. This is the assertion the broken snippet failed.
+    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, unknown>;
+    expect(Object.keys(board)).toHaveLength(2);
+    expect(selfState.tasks).toBeUndefined();
   });
 });
 

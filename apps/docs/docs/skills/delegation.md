@@ -104,17 +104,34 @@ One boundary worth knowing, because it is easy to assume otherwise. The bounds c
 
 This is the same path that also has no roster to validate assignees against, so it is worth saying once: the hand-wired capability has **neither** guard. Both come from the skills binding, which is what constructs the board and knows the declared agents. That is intentional rather than an oversight — a capability wired by hand has nowhere to put either — but it means "delegation is bounded and checks assignees" is not a claim about `taskTools` on its own. If you want a bound on that path, build the collection yourself and hand the capability a resolver for it:
 
+Two details make or break this, and both come from where the resolver runs. Each task tool executes as a *child* of the generator, so the generator's own state is `ctx.parent`, not `ctx.sequencer` — `ctx.sequencer` is the enclosing sequencer, which is a different container and often absent entirely. And the resolver has to name the same `stateKey` the board lives under, or it quietly reads and writes a different slot. Mirror the shipped `defaultOwnStateResolver`:
+
 ```ts
+import {
+  createTaskToolsCapability,
+  DELEGATION_BOARD_FIELD,
+  delegationBoardSchema,
+  getOrCreateTaskCollection,
+} from "@flow-state-dev/orchestration";
+
 const bounded = (ctx) =>
   getOrCreateTaskCollection({
     ctx,
     backing: "sequencer",
-    collectionId: "my-board",
-    sequencer: ctx.sequencer!,
+    // The HOST generator's own state. Each tool runs as a child block, so the
+    // generator's state is `ctx.parent` — `ctx.sequencer` is the per-call scope.
+    sequencer: ctx.parent,
+    stateKey: DELEGATION_BOARD_FIELD,
+    collectionId: DELEGATION_BOARD_FIELD,
     maxEnqueuedTasks: 25,
   });
 
-generator({ uses: [createTaskToolsCapability(bounded)] });
+generator({
+  // Declare the slot the resolver targets. The skills binding does this for
+  // you; wiring the capability by hand means declaring it yourself.
+  stateSchema: z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema }),
+  uses: [createTaskToolsCapability(bounded)],
+});
 ```
 
 ## Default worker (the floor)

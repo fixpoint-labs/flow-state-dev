@@ -261,7 +261,7 @@ const bounded = await getOrCreateTaskCollection({
 
 ### Where the bounds apply
 
-They belong to the collection, so the board applies them only when it builds the collection itself — and, per the previous section, only to writers that go through the board's own reference. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead:
+They belong to the collection, so the board applies them only when it builds the collection itself — and, per the previous section, only to writers that go through the board's own reference. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead — here, from a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
 
 ```ts
 const tasks = await getOrCreateTaskCollection({
@@ -272,6 +272,8 @@ const tasks = await getOrCreateTaskCollection({
   maxTotalTasks: 2000,
 });
 ```
+
+Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly — you get a working collection over the wrong slot. From a block *inside* the sequencer, it is `ctx.sequencer`. From a tool running as a child of a generator that owns the board, it is `ctx.parent` (see [wiring a bounded board by hand](../skills/delegation#board-and-overrides)).
 
 The bounds live on the sequencer and request backing specs only. `backing: "resource"` does not accept them yet and does not enforce them, so asking there is a type error rather than a ceiling that quietly does nothing.
 

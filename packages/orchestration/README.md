@@ -166,7 +166,12 @@ refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 > capped" as "`taskTools` is capped". For a bounded board on that path, build the
 > collection yourself with
 > `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
-> resolver for it to `createTaskToolsCapability(resolver)`.
+> resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
+> target the host generator's own state via `ctx.parent` (each tool runs as a
+> child block, so `ctx.sequencer` is the wrong container) and name the board's
+> `stateKey` — see
+> [Delegation](https://flow-state.dev/docs/skills/delegation#board-and-overrides)
+> for the full recipe.
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.
