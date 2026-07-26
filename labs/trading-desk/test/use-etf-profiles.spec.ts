@@ -114,7 +114,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(mutualFund).toBe(equity);
-    expect(mutualFund).toBe("FXAIX:0:1:1");
+    expect(mutualFund).toBe("FXAIX:0:1:1:1");
   });
 
   it("does NOT flip the candidate bit for a curated bond ETF (assetClass fixed_income) — Decision 5's local pre-filter", () => {
@@ -132,7 +132,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(bondEtf).toBe(equity);
-    expect(bondEtf).toBe("BND:0:1:0");
+    expect(bondEtf).toBe("BND:0:1:0:1");
   });
 
   it("does NOT flip the candidate bit for a curated bond ETF even with a STALE assetClass (Codex review, FIX-801 sub-PR c)", () => {
@@ -154,10 +154,10 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(staleAssetClass).toBe(equity);
-    expect(staleAssetClass).toBe("BND:0:1:0");
+    expect(staleAssetClass).toBe("BND:0:1:0:1");
   });
 
-  it("does NOT flip the candidate bit for a flagged inconsistent-history row", () => {
+  it("does NOT flip the candidate bit for a flagged inconsistent-history row — but the clean-row bit (round 39) tells it apart from a plain non-ETF holding now", () => {
     const priceMap = new Map([["NVDA", quote("NVDA", 130)]]);
     const flagged = computeEtfEligibilitySignature(
       [
@@ -173,8 +173,15 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       [{ holdings: [holding({ ticker: "NVDA", assetType: "equity" })] }],
       priceMap,
     );
-    expect(flagged).toBe(equity);
-    expect(flagged).toBe("NVDA:0:1:1");
+    // The candidate bit (field 2) still agrees — neither is a local-tag fetch
+    // candidate, matching `isEtfProfileFetchCandidate`'s own exclusion for a
+    // flagged row and for a plain non-ETF holding alike. The FULL signature no
+    // longer matches, though: the flagged row has NO clean held row at all
+    // (bit 5 = 0), while the plain equity holding does (bit 5 = 1) — genuinely
+    // different states for the cache-confirmed refresh path (round 37), so the
+    // signature must tell them apart now (round 39's own trigger, below).
+    expect(flagged).toBe("NVDA:0:1:1:0");
+    expect(equity).toBe("NVDA:0:1:1:1");
   });
 
   it("DOES flip the candidate bit for a genuine ETF fetch candidate (control)", () => {
@@ -183,7 +190,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       [{ holdings: [holding({ ticker: "SPY", assetType: "etf", assetClass: "equity" })] }],
       priceMap,
     );
-    expect(candidate).toBe("SPY:1:1:1");
+    expect(candidate).toBe("SPY:1:1:1:1");
   });
 
   it("changes when a quantity update flips which lot is DOMINANT for a conflicting-classification ticker (trigger 3: the dominant-lot verdict) — Codex review, FIX-801 sub-PR c round 18", () => {
@@ -223,8 +230,8 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       ],
       priceMap,
     );
-    expect(equityDominant).toBe("SPY:1:1:1");
-    expect(fixedIncomeDominant).toBe("SPY:0:1:0");
+    expect(equityDominant).toBe("SPY:1:1:1:1");
+    expect(fixedIncomeDominant).toBe("SPY:0:1:0:1");
     expect(equityDominant).not.toBe(fixedIncomeDominant);
   });
 
@@ -252,8 +259,8 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
     // transition, despite `candidateRowTickers.has("SPY")` staying false (bit
     // 2 stuck at 0) in BOTH cases — bit 4 is what catches it.
     expect(suppressed).not.toBe(unsuppressed);
-    expect(suppressed).toBe("SPY:0:1:0");
-    expect(unsuppressed).toBe("SPY:0:1:1");
+    expect(suppressed).toBe("SPY:0:1:0:1");
+    expect(unsuppressed).toBe("SPY:0:1:1:1");
   });
 
   it("is stable when a quantity update does NOT flip the dominant-lot verdict (no spurious refetch)", () => {
@@ -283,6 +290,54 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(before).toBe(after);
+  });
+
+  it("changes when a MISTAGGED ticker's ONLY holding transitions from inconsistent-history to clean (trigger 5: the cache-confirmed refresh path's own clean-row verdict) — Codex review, FIX-801 sub-PR c round 39, a real bug", () => {
+    // SPY held as assetType: "equity" (mistagged, so `isCandidate` — bit 2 —
+    // stays 0 throughout; the local-tag bit never sees this ticker) with its
+    // only holding row flagged `inconsistent_history` (FIX-876). Round 37's
+    // route fix requires at least one non-flagged held row before a
+    // cache-confirmed ticker is refresh-eligible; before THIS fix, nothing in
+    // the signature (bits 1-4) changed when the flag cleared, so a
+    // cache-confirmed profile could stay stale indefinitely with nothing to
+    // trigger a refetch — the same "route added a trigger the client
+    // couldn't see" gap round 36 fixed for the dominant-lot verdict.
+    const priceMap = new Map([["SPY", quote("SPY", 400)]]);
+    const flagged = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "SPY", assetType: "equity", dataQuality: "inconsistent_history" }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    const clean = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "SPY", assetType: "equity", dataQuality: null })] }],
+      priceMap,
+    );
+    // The load-bearing assertion: the signature CHANGES across the
+    // transition, despite the candidate bit staying 0 in BOTH cases (SPY is
+    // never a local-tag candidate here, since assetType never reads "etf") —
+    // bit 5 is what catches it.
+    expect(flagged).not.toBe(clean);
+    expect(flagged).toBe("SPY:0:1:1:0");
+    expect(clean).toBe("SPY:0:1:1:1");
+  });
+
+  it("is stable for a ticker with no dataQuality flag involved at all (control, Codex review, FIX-801 sub-PR c round 39) — the common case's signature format doesn't change shape", () => {
+    const priceMap = new Map([["SPY", quote("SPY", 400)]]);
+    const first = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "SPY", assetType: "etf", assetClass: "equity" })] }],
+      priceMap,
+    );
+    const second = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "SPY", assetType: "etf", assetClass: "equity" })] }],
+      priceMap,
+    );
+    expect(first).toBe(second);
+    expect(first).toBe("SPY:1:1:1:1");
   });
 });
 

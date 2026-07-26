@@ -109,6 +109,21 @@ import type {
  * dominant-lot check) — the SAME exclusion `route.ts`'s cache-confirmed set
  * applies — so a curated bond ETF's transitions never spuriously flip this
  * bit for a ticker the route will never fetch either way.
+ *
+ * **A FIFTH trigger: the clean-row verdict for a CACHE-CONFIRMED ticker
+ * (Codex review, FIX-801 sub-PR c round 39 — the client mirror of round 37's
+ * route-side fix, same pattern as round 36 mirroring round 34).** Round 37
+ * added a guard to `route.ts`'s cache-confirmed refresh path: a ticker needs
+ * at least one held row that ISN'T flagged `inconsistent_history` (FIX-876)
+ * before it's refresh-eligible — a ticker held only in flagged rows still
+ * seeds a `dominantClassification` verdict (see `dominantEligibleForRefresh`
+ * above), so without this guard it could clear the fixed-income check on a
+ * cached profile the route can't actually use. Same shape as the fourth
+ * trigger: `hasCleanRow` is its own, independent signature component (bit
+ * 5), NOT gated behind `isCandidate` — so a ticker whose only holding
+ * transitions from flagged to clean (or the reverse) changes the signature
+ * even when it was never a local-tag candidate at all (a cache-confirmed,
+ * locally-mistagged ticker, the same scenario the fourth trigger covers).
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,
@@ -119,6 +134,9 @@ export function computeEtfEligibilitySignature(
   const candidateRowTickers = new Set(
     holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
   );
+  const cleanRowTickers = new Set(
+    holdings.filter((h) => h.dataQuality !== "inconsistent_history").map((h) => h.ticker.toUpperCase()),
+  );
   const tickers = new Set(holdings.map((h) => h.ticker.toUpperCase()));
   const rows: string[] = [];
   for (const ticker of tickers) {
@@ -126,8 +144,9 @@ export function computeEtfEligibilitySignature(
       dominantClassification.get(ticker)?.assetClass !== "fixed_income" && !isKnownBondEtf(ticker);
     const isCandidate = candidateRowTickers.has(ticker) && dominantEligibleForRefresh;
     const isPriced = priceMap.has(ticker);
+    const hasCleanRow = cleanRowTickers.has(ticker);
     rows.push(
-      `${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}:${dominantEligibleForRefresh ? 1 : 0}`,
+      `${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}:${dominantEligibleForRefresh ? 1 : 0}:${hasCleanRow ? 1 : 0}`,
     );
   }
   return rows.sort().join(",");
