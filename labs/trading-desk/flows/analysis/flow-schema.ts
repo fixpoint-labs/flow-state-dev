@@ -150,7 +150,19 @@ const portfolioHealthContext = z.object({
         }),
       ),
     })
-    .nullable(),
+    // `.default(null)` alongside `.nullable()` (BP-030) — `lookThrough` is a
+    // NEW field on an ALREADY-PERSISTED `health` object (FIX-762's
+    // `portfolioHealthContext` predates this PR and is already in production
+    // checkpoints). A session interrupted before this PR deploys can be
+    // resumed after deploy with a `health` object that has every OTHER field
+    // but no `lookThrough` key at all — a genuinely absent key, not an
+    // explicit `null`, which `.nullable()` alone does not tolerate. Without
+    // the default, that resume fails schema validation, and per
+    // `packages/core/src/blocks/sequencer.ts`'s checkpoint-validation gate a
+    // failed validation means the durable write is skipped — so a session
+    // interrupted a second time after a failed resume can't recover either.
+    .nullable()
+    .default(null),
 });
 
 /**
