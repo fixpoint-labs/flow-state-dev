@@ -94,6 +94,29 @@ export const CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON =
 export const FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON =
   "fixed-income fund — look-through attribution out of scope";
 
+/** Diagnostic-display reason substituted for a raw `"not_an_etf"` refusal when
+ *  the ticker is a directly-held `mutual_fund` that SURVIVED that refusal as
+ *  disproof (`resolveTickerIsFund`'s layer 1a scopes `not_an_etf` disproof to
+ *  `assetType === "etf"` only — round 18/20 — because `app.etf_profiles` is
+ *  GLOBAL reference data and a `not_an_etf` row on this ticker may belong to a
+ *  different household's ETF mistag, not a live verdict about THIS mutual
+ *  fund). Getting the fund/not-fund IDENTITY right isn't enough on its own:
+ *  reporting the raw `"not_an_etf"` reason downstream (the main loop's opaque
+ *  diagnostic, `classifyOpaqueFunds`) reads as a DATA-QUALITY finding ("thin/
+ *  ineligible data") when the real situation is a structural POLICY fact —
+ *  the ETF_PROFILE endpoint fundamentally cannot cover mutual funds at all
+ *  (the fetcher's own Non-goals), this is never a gap a future fetch could
+ *  close. Same "distinguish permanent policy exclusion from data
+ *  unavailable" pattern {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON}
+ *  already established for the bond-fund case, applied here for the mutual-
+ *  fund case (Codex review, FIX-801 sub-PR c round 30). Substituted only at
+ *  the opaque-diagnostic display point in `computeLookThroughExposure`'s main
+ *  loop — never written back into a `FundProfileInput` map entry, so it has
+ *  no bearing on `resolveTickerIsFund`'s own evidence-ordering (that decision
+ *  is already correctly made before this substitution is ever consulted). */
+export const MUTUAL_FUND_NOT_AN_ETF_REASON =
+  "mutual fund — look-through attribution out of scope (ETF_PROFILE never covers mutual funds)";
+
 /** Tolerance (as a `[0, 1]` fraction) for reconciling a stored profile's
  *  declared `nameCoverage`/`sectorCoverage` against the ACTUAL sum of that
  *  axis's row weights. A profile can pass the floor check on a coverage
@@ -598,7 +621,18 @@ export function computeLookThroughExposure(
     if (profile.payload === null) {
       nameResidualMass += mv;
       sectorResidualMass += mv;
-      opaqueByTicker.set(pos.ticker, { both: profile.refusalReason });
+      // A `not_an_etf` refusal on a directly-held MUTUAL FUND is round
+      // 18/20's "survives disproof" case (layer 1a above) — the ticker
+      // still correctly resolves as a fund, but the raw ETF-specific
+      // disproof reason says nothing true about THIS mutual fund's own
+      // data quality; relabel with the policy-exclusion reason so the
+      // diagnostic matches reality, not just the identity verdict (see
+      // MUTUAL_FUND_NOT_AN_ETF_REASON's own docblock).
+      const reason =
+        profile.refusalReason === "not_an_etf" && pos.assetType === "mutual_fund"
+          ? MUTUAL_FUND_NOT_AN_ETF_REASON
+          : profile.refusalReason;
+      opaqueByTicker.set(pos.ticker, { both: reason });
       continue;
     }
     const fp = profile.payload;

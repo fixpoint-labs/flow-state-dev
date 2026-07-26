@@ -30,6 +30,7 @@ import {
   FUND_OF_FUNDS_THRESHOLD_PCT,
   isFundConfirmingProfileEntry,
   LOOK_THROUGH_COVERAGE_FLOOR_PCT,
+  MUTUAL_FUND_NOT_AN_ETF_REASON,
   type FundProfileInput,
   type LookThroughPositionInput,
   type NormalizedFundProfile,
@@ -1047,10 +1048,30 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
     expect(out.positions).toEqual([]); // never attributed as a direct name
     expect(out.residual.marketValue).toBeCloseTo(100_000);
+    // The opaque diagnostic reads the mutual-fund-specific policy-exclusion
+    // reason, NOT the raw `"not_an_etf"` refusal — round 20 got the fund/
+    // not-fund IDENTITY right, but reporting the raw ETF-specific disproof
+    // reason here would still mislabel a structural policy fact ("ETF_PROFILE
+    // never covers mutual funds") as a data-quality finding downstream
+    // (`classifyOpaqueFunds` → "thin/ineligible data") (Codex review,
+    // FIX-801 sub-PR c round 30).
     expect(out.opaqueFunds).toContainEqual(
-      expect.objectContaining({ ticker: "VFIAX", axis: "both", reason: "not_an_etf" }),
+      expect.objectContaining({ ticker: "VFIAX", axis: "both", reason: MUTUAL_FUND_NOT_AN_ETF_REASON }),
     );
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "VFIAX")).toBe(false);
+  });
+
+  it("control: the mutual-fund relabel is scoped to a `not_an_etf` refusal specifically — a mutual fund refused for another reason (e.g. `ineligible`) reports that reason verbatim, not blanket-relabeled (Codex review, FIX-801 sub-PR c round 30)", () => {
+    // MUTUALFD's stored profile is genuinely `ineligible` (e.g. a leveraged
+    // share class) — not the round 18/20 stale-cross-household `not_an_etf`
+    // case at all. The relabel must not fire for every mutual-fund refusal,
+    // only the one shape it exists to fix.
+    const positions = [direct("MUTUALFD", 100_000, { assetType: "mutual_fund" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["MUTUALFD", refusal("ineligible")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "MUTUALFD", axis: "both", reason: "ineligible" }),
+    );
   });
 
   it("a stored `not_an_etf` refusal does NOT disprove a ticker on the curated bond-ETF list either — the curated list is stronger, externally-verified evidence than a stale/pre-curation AV response (Codex review, FIX-801 sub-PR c round 27, a real bug)", () => {
