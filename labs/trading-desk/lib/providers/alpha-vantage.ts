@@ -18,12 +18,24 @@
  * cold-start resets it; AV's server-side throttle (→ Note body → throw) is the
  * real-exhaustion backstop. See `docs/specs/FIX-798.md`.
  *
+ * `alphaVantageRequest` ALSO runs per-minute admission pacing (FIX-801 Decision
+ * 5, §8 step 0), governed by `ALPHAVANTAGE_MINUTE_LIMIT` (`0` = unlimited, same
+ * sentinel convention as the daily knob). Unlike the daily guard, pacing never
+ * throws — a call past the per-minute cap WAITS for a slot rather than firing,
+ * because the free tier's 5/min cap is a genuine rate limit, not an exhaustion
+ * signal. It gates BEFORE the daily-budget reservation below, so a request
+ * queued on pacing never debits a daily unit for an answer it hasn't received
+ * yet. Every AV caller inherits this from the one shared request function
+ * (composition over per-consumer pacing, tenet 5) — FIX-801 added it because it
+ * is the first caller to fan out over more than a handful of tickers.
+ *
  * Every fetch function throws on any failure (no key, budget spent, rate-limit
  * body, non-2xx, parse error) so the calling tool falls through with one
  * `try { ... } catch {}`, per the desk's provider convention.
  */
 import type { TickerDatedProviderInput } from "./types";
 import { INSIDER_ROW_CAP, INSIDER_WINDOW_DAYS, isoDateDaysBefore } from "./dates";
+import { sleep } from "../concurrency";
 
 const AV_BASE = "https://www.alphavantage.co/query";
 
@@ -64,11 +76,38 @@ export class AlphaVantageBudgetError extends AlphaVantageError {
 
 const DEFAULT_DAILY_LIMIT = 25;
 
-/** Process-level daily-budget counter. Module scope, not session state. */
-const budget: { dayUtc: string; count: number } = { dayUtc: "", count: 0 };
+// Anchored on `globalThis`, not module-level `let`/`const`s — this module gets
+// bundled separately per Next.js route graph (the `db/portfolio-db.ts`
+// precedent: `/api/flows/[...path]` and `/api/portfolio/*` each load their
+// OWN copy of this module). A plain module-scoped counter/array would then
+// give each route graph its own independent budget/pacing state — a
+// concurrent analysis run and an ETF-profile fill could each independently
+// admit 5 calls/min, so the two together could issue 10/min against the
+// provider's real 5/min cap, defeating the whole point of the pacing guard
+// (Codex review, FIX-801 sub-PR a). `globalThis` is shared across every
+// module instance in the one Node process, however many times this file gets
+// re-bundled — same fix, same reason, as the portfolio DB backing.
+const STATE_KEY = Symbol.for("flow-state-dev.trading-desk.alpha-vantage.state");
+type AlphaVantageState = {
+  /** Process-level daily-budget counter. Not session state. */
+  budget: { dayUtc: string; count: number };
+  /** Process-level per-minute admission window (FIX-801 Decision 5, §8 step 0)
+   *  — timestamps (ms) of requests admitted within the trailing 60s. A
+   *  sliding window, not a calendar-minute bucket, so it can't burst 10
+   *  requests across a minute boundary the way a fixed window would. */
+  minuteWindow: number[];
+};
+type GlobalWithAvState = typeof globalThis & { [STATE_KEY]?: AlphaVantageState };
+
+function getAvState(): AlphaVantageState {
+  const g = globalThis as GlobalWithAvState;
+  g[STATE_KEY] ??= { budget: { dayUtc: "", count: 0 }, minuteWindow: [] };
+  return g[STATE_KEY];
+}
 
 /** Test hook — reset the in-process daily counter between specs. Not in the barrel. */
 export function _resetBudget(): void {
+  const budget = getAvState().budget;
   budget.dayUtc = "";
   budget.count = 0;
 }
@@ -93,6 +132,56 @@ function resolveDailyLimit(): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_DAILY_LIMIT;
 }
 
+const DEFAULT_MINUTE_LIMIT = 5;
+const MINUTE_MS = 60_000;
+
+/** Test hook — reset the in-process minute-pacing window between specs. Not in the barrel. */
+export function _resetMinutePacing(): void {
+  getAvState().minuteWindow.length = 0;
+}
+
+/**
+ * Resolve the active per-minute admission limit from `ALPHAVANTAGE_MINUTE_LIMIT`,
+ * fail-safe exactly like {@link resolveDailyLimit}: only the exact string "0"
+ * disables pacing (a paid plan has no 5/min cap); blank, non-numeric, negative,
+ * non-integer, and zero-like typos all fall back to the free-tier default of 5
+ * rather than silently disabling it.
+ */
+function resolveMinuteLimit(): number {
+  const raw = process.env.ALPHAVANTAGE_MINUTE_LIMIT?.trim();
+  if (raw === "0") return 0; // the explicit unlimited sentinel — exact match only
+  if (raw === undefined) return DEFAULT_MINUTE_LIMIT;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MINUTE_LIMIT;
+}
+
+/**
+ * Per-minute admission control (FIX-801 Decision 5, §8 step 0). Admits
+ * immediately when fewer than `limit` requests have been admitted in the
+ * trailing 60s; otherwise sleeps until the oldest admission ages out of the
+ * window, then re-checks (another caller may have admitted meanwhile — this is
+ * a loop, not a single wait, so concurrent callers can't all wake and overshoot
+ * together). Disabled by the same unlimited sentinel `resolveMinuteLimit`
+ * resolves to `0` for. Never throws.
+ */
+async function awaitMinutePacing(): Promise<void> {
+  const limit = resolveMinuteLimit();
+  if (limit <= 0) return; // unlimited — a paid plan has no 5/min cap
+  const minuteWindow = getAvState().minuteWindow;
+  for (;;) {
+    const now = Date.now();
+    while (minuteWindow.length > 0 && now - minuteWindow[0]! >= MINUTE_MS) {
+      minuteWindow.shift();
+    }
+    if (minuteWindow.length < limit) {
+      minuteWindow.push(now);
+      return;
+    }
+    const waitMs = MINUTE_MS - (now - minuteWindow[0]!) + 1;
+    await sleep(waitMs);
+  }
+}
+
 /**
  * Shared AV request. Injects `apikey=ALPHAVANTAGE_API_KEY` (callers pass only
  * the endpoint params — `function`, `symbol`, `quarter`, …), reserves one unit
@@ -115,6 +204,27 @@ export async function alphaVantageRequest(
   // HTTP-200 `Information` body. Fail locally instead.
   const key = process.env.ALPHAVANTAGE_API_KEY?.trim();
   if (!key) throw new AlphaVantageError("ALPHAVANTAGE_API_KEY is not set");
+
+  // Fast-path precheck BEFORE pacing: if the day's budget is ALREADY spent, fail
+  // immediately rather than waiting out a pacing slot (up to ~a minute) for a
+  // call that was never going to fetch anyway. Deliberately racy — day-rollover
+  // or another caller freeing a unit between this check and the atomic
+  // check-and-reserve below is fine either way, since that reserve remains the
+  // real correctness boundary; this is purely a latency short-circuit (Codex
+  // review, FIX-801 sub-PR a).
+  const budget = getAvState().budget;
+  const precheckLimit = resolveDailyLimit();
+  if (precheckLimit > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (budget.dayUtc === today && budget.count >= precheckLimit) {
+      throw new AlphaVantageBudgetError(precheckLimit);
+    }
+  }
+
+  // Pacing gates BEFORE the daily reservation below — a call queued on the
+  // per-minute cap must not debit a daily unit for an answer it hasn't
+  // received yet (FIX-801 Decision 5).
+  await awaitMinutePacing();
 
   const limit = resolveDailyLimit();
   if (limit > 0) {

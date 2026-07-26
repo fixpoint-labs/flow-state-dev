@@ -308,6 +308,48 @@ export const instrumentClassifications = appSchema.table("instrument_classificat
 });
 
 /**
+ * Per-ticker ETF holdings profile (FIX-801) — one GLOBAL row per fund ticker,
+ * lazily filled from Alpha Vantage's `ETF_PROFILE` endpoint. The second
+ * ticker-keyed reference table beside `instrument_classifications` (FIX-762),
+ * joining the "minimal security-master seam" that table's own header names —
+ * same reasoning: a fund's holdings composition is a public, near-immutable
+ * fact, not a household-scoped one.
+ *
+ * `payload` carries the full normalized profile as jsonb — constituents,
+ * sector allocation, both coverage totals — always read whole, by ticker (no
+ * cross-fund query, no join, no aggregation), so a jsonb document is the
+ * simplest match: see `lib/providers/etf-profile.ts`'s `NormalizedEtfProfile`.
+ * `payload` is null for a REFUSAL row (`refusal_reason` set instead) — a
+ * ticker AV has no profile for, a leveraged/inverse or unattributable fund, or
+ * a malformed response. A THIN but valid profile (below Decision 4's coverage
+ * floor) is still a `payload` row, never a refusal — coverage is a
+ * presentation verdict made at read time, not a fetch-time one, because
+ * coverage can improve on the next ordinary refresh.
+ *
+ * `retry_at` is the per-failure-class backoff stamp (FIX-801 §9): a refusal is
+ * not re-attempted until this moment passes, so a shared 25-per-day budget
+ * can't be drained by re-mounting the Health view against an unfetchable
+ * ticker. Null for a stored profile (it refreshes on the ordinary ~30-day
+ * staleness bound instead, checked against `fetched_at`). `transient_attempts`
+ * counts CONSECUTIVE `transient`-class refusals only (reset to 0 by any
+ * successful fetch or any non-transient outcome) — the route escalates from
+ * the ~15-minute transient backoff to the long-lived quiet-outage backoff
+ * after a few in a row, so a persistent upstream outage stops being retried
+ * every 15 minutes forever.
+ */
+export const etfProfiles = appSchema.table("etf_profiles", {
+  ticker: text("ticker").primaryKey(),
+  payload: jsonb("payload"),
+  refusalReason: text("refusal_reason"), // null | not_an_etf | ineligible | malformed | quota | transient
+  refusalDetail: text("refusal_detail"),
+  retryAt: timestamp("retry_at", { withTimezone: true, mode: "string" }),
+  transientAttempts: integer("transient_attempts").notNull().default(0),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .default(sql`now()`),
+});
+
+/**
  * A household's tax profile (FIX-874) — one row per user. Drives the upper-bound
  * current-year estimate (OQ #7): the user's marginal ordinary rate and long-term
  * capital-gains rate are applied directly to each bucket. `filing_status` sets
