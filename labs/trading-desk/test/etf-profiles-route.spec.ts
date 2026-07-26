@@ -204,6 +204,37 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("costs zero fetches for a ticker whose DOMINANT lot is fixed_income, even though a MINORITY lot is etf/equity-typed (Codex review, FIX-801 sub-PR c round 17, P2 — a wasted-budget bug)", async () => {
+    // SPY held in TWO accounts: a large fixed_income-reclassified lot (1,000
+    // shares — the DOMINANT lot by market value) and a tiny etf-typed,
+    // equity-classified lot (1 share). Before this fix, the tiny minority row
+    // ALONE made SPY fetch-eligible (`isEtfProfileFetchCandidate` tested each
+    // row independently, then deduped tickers) — spending a shared Alpha
+    // Vantage unit on a profile that `excludeFixedIncomeFromProfileMap`
+    // (`guards.ts` / `health-section.tsx`, judged by the SAME dominant lot)
+    // would exclude from attribution anyway once fetched. The fix applies the
+    // identical dominant-lot rule at the fetch-eligibility decision point.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-large-bond",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 1_000, costBasis: 300, acquiredDate: null, assetClass: "fixed_income", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-small-equity",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 1, costBasis: 400, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+
+    const res = await GET(get(USER_ID));
+    expect(res.status).toBe(200);
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
   it("returns an already-cached profile for a MISTYPED-equity holding — the READ set is broader than the fetch set (Codex review, FIX-801 sub-PR c, route mirror of the guards.ts fix)", async () => {
     // SPY is held as assetType: "equity" — stale/mistyped, not yet corrected
     // by the classifications route. Its profile was already warmed (fetched

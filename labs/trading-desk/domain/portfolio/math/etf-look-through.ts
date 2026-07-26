@@ -73,6 +73,27 @@ export const FUND_OF_FUNDS_THRESHOLD_PCT = 50;
 export const CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON =
   "fund-of-funds constituent data temporarily unavailable (read failed)";
 
+/** Refusal reason a caller (`excludeFixedIncomeFromProfileMap`,
+ *  `etf-profile-map.ts`) writes into a ticker's map entry when its DOMINANT
+ *  lot is `fixed_income` (or it's on the curated bond-ETF list) — bond/
+ *  commodity-fund attribution is out of scope for this feature regardless of
+ *  whether a stored profile happens to be cached (Codex review, FIX-801
+ *  sub-PR c round 17 — the same gap round 14 closed for the constituent-
+ *  broadening withdrawal path, applied here). Deliberately recognized by
+ *  `resolveTickerIsFund`'s layer 1b as POSITIVE fund evidence, same bucket as
+ *  `"ineligible"`/`"malformed"`/{@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON}
+ *  — REPLACING the map entry (not deleting it) matters when the ticker's
+ *  local `assetType` is stale (still tagged `equity` while `assetClass` is
+ *  now `fixed_income`, the manual-override state): deleting would lose the
+ *  only positive fund evidence, so `resolveTickerIsFund` would fall back to
+ *  the stale `equity` tag and report the wrapper as a direct name — a false
+ *  single-name concentration, the identical failure mode round 14 fixed for
+ *  the constituent-read-failure withdrawal path. A caller uses this exact
+ *  exported string rather than an inline copy, so the write side and
+ *  `resolveTickerIsFund`'s read side can never drift apart. */
+export const FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON =
+  "fixed-income fund — look-through attribution out of scope";
+
 /** Tolerance (as a `[0, 1]` fraction) for reconciling a stored profile's
  *  declared `nameCoverage`/`sectorCoverage` against the ACTUAL sum of that
  *  axis's row weights. A profile can pass the floor check on a coverage
@@ -292,13 +313,15 @@ function pctOf(value: number, denom: number): number {
  *
  * The stored-profile check also reads a REFUSED profile's own reason:
  * `"ineligible"` (e.g. a leveraged/inverse fund, or a fund with no resolvable
- * constituent tickers), `"malformed"` (corrupted holdings data), and
+ * constituent tickers), `"malformed"` (corrupted holdings data),
  * {@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON} (a caller's own
  * fund-of-funds constituent-broadening read failed, FIX-801 sub-PR c round
- * 14) all mean the ticker WAS resolved as a fund at some point — the refusal
- * is about the fund's data (or, for the round-14 case, about a caller's
- * inability to verify its constituents), not about whether it's a fund — so
- * all three are fund evidence, same as a stored success payload. `"not_an_etf"`
+ * 14), and {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON} (a caller
+ * suppressed attribution for a fixed-income fund, round 17) all mean the
+ * ticker WAS resolved as a fund at some point — the refusal is about the
+ * fund's data, or about a caller's inability/unwillingness to attribute
+ * through it, not about whether it's a fund — so all four are fund evidence,
+ * same as a stored success payload. `"not_an_etf"`
  * (an empty profile response) is the only refusal reason that disproves
  * fund-ness. `"quota"` / `"transient"` (the route's own classification of a
  * request-level failure, never reaching the fetcher's own judgment) carry no
@@ -351,9 +374,10 @@ function resolveTickerIsFund(
     if (
       profile.refusalReason === "ineligible" ||
       profile.refusalReason === "malformed" ||
-      profile.refusalReason === CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON
+      profile.refusalReason === CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON ||
+      profile.refusalReason === FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON
     ) {
-      return true; // the fetch resolved an ETF_PROFILE (or a caller's own broadening read failed); refusal is not about fund-ness
+      return true; // the fetch resolved an ETF_PROFILE, or a caller withheld/suppressed attribution for a reason unrelated to fund-ness
     }
   }
 

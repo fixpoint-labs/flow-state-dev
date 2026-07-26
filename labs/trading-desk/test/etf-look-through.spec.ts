@@ -26,6 +26,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeLookThroughExposure,
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
   FUND_OF_FUNDS_THRESHOLD_PCT,
   LOOK_THROUGH_COVERAGE_FLOOR_PCT,
   type FundProfileInput,
@@ -964,6 +965,28 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
       expect.objectContaining({ ticker: "AOA", axis: "both", reason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }),
     );
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "AOA")).toBe(false);
+  });
+
+  it("the fixed-income-attribution-suppressed reason also outweighs a stale direct-holding classification (Codex review, FIX-801 sub-PR c round 17 — reusing round 14's established withdraw-by-replace pattern)", () => {
+    // `excludeFixedIncomeFromProfileMap` suppresses attribution for a ticker
+    // whose DOMINANT lot is fixed_income by REPLACING the map entry with a
+    // refusal carrying this reason — not by deleting the key (the same round-
+    // 14 lesson: deleting a fixed-income-reclassified holding's ONLY fund
+    // evidence, when its local assetType is still stale-tagged "equity" — the
+    // manual-override state — would report it as a fabricated single-name
+    // direct stock instead of a bond fund). BND is held directly,
+    // stale-classified as "equity", with no OTHER fund evidence available.
+    const positions = [direct("BND_LIKE", 100_000, { assetType: "equity" })];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      ["BND_LIKE", refusal(FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON)],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "BND_LIKE", axis: "both", reason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "BND_LIKE")).toBe(false);
   });
 
   it("the curated bond-ETF list also outweighs a stale direct-holding classification (Codex review round 5)", () => {

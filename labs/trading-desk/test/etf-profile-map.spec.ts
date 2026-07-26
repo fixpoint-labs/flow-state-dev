@@ -18,7 +18,10 @@ import {
   missingConstituentTickers,
   toFundProfileMap,
 } from "../domain/portfolio/math/etf-profile-map";
-import type { FundProfileInput } from "../domain/portfolio/math/etf-look-through";
+import {
+  FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
+  type FundProfileInput,
+} from "../domain/portfolio/math/etf-look-through";
 import type { Holding } from "../domain/portfolio/schema/portfolio-schema";
 
 function holding(over: Partial<Holding> = {}): Holding {
@@ -53,13 +56,16 @@ function refusal(): FundProfileInput {
 }
 
 describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round 7)", () => {
-  it("removes a ticker from the map when its CURRENT holding assetClass is fixed_income, even though a normal profile is cached", () => {
+  it("suppresses a ticker's attribution when its CURRENT holding assetClass is fixed_income, even though a normal profile is cached — REPLACES the entry with an opaque-but-fund-evidence refusal, does not delete it (Codex review, FIX-801 sub-PR c round 17)", () => {
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "SPY", assetClass: "fixed_income" })];
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.has("SPY")).toBe(false);
+    // Not deleted — replaced with a refusal that still proves fund-ness
+    // (`resolveTickerIsFund`'s layer 1b), so a stale-equity-tagged holding
+    // isn't misreported as a direct stock once its profile is suppressed.
+    expect(out.get("SPY")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
   it("leaves a non-fixed-income ticker's cached profile untouched", () => {
@@ -82,7 +88,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.has("BND")).toBe(false);
+    expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
   it("does NOT reintroduce the mistyped-equity read bug — a holding still tagged equity locally keeps its stored profile even if it's actually a fund", () => {
@@ -98,7 +104,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     expect(out.has("SPY")).toBe(true);
   });
 
-  it("only removes the fixed-income ticker, leaving other funds' profiles intact", () => {
+  it("only suppresses the fixed-income ticker, leaving other funds' profiles intact", () => {
     const profiles = new Map<string, FundProfileInput>([
       ["SPY", profile()],
       ["BND", profile()],
@@ -110,8 +116,8 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.has("SPY")).toBe(true);
-    expect(out.has("BND")).toBe(false);
+    expect(out.get("SPY")).toEqual(profile());
+    expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
   it("is a no-op (and returns the same map instance) when nothing held is fixed_income", () => {
@@ -138,7 +144,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.has("SPY")).toBe(false);
+    expect(out.get("SPY")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
   it("a tiny fixed-income lot no longer suppresses a much larger equity-classified position in the same ticker — judged by the DOMINANT lot, not ANY row (Codex review, FIX-801 sub-PR c round 14: a real inconsistency, `summarizePortfolioHealth` already classifies a ticker by its dominant lot, this used to disagree with an 'any row' test)", () => {
@@ -164,7 +170,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, quotes);
 
-    expect(out.has("SPY")).toBe(false);
+    expect(out.get("SPY")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
   it("the curated bond-ETF list check runs over EVERY held ticker regardless of the dominant classification result", () => {
@@ -181,7 +187,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, quotes);
 
-    expect(out.has("BND")).toBe(false);
+    expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 });
 

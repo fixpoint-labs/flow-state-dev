@@ -28,7 +28,11 @@
  */
 import type { Holding } from "../schema/portfolio-schema";
 import { isKnownBondEtf } from "./classify-instrument";
-import type { FundProfileInput, NormalizedFundProfile } from "./etf-look-through";
+import {
+  FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
+  type FundProfileInput,
+  type NormalizedFundProfile,
+} from "./etf-look-through";
 import { dominantClassificationByTicker } from "./value-holding";
 
 /** The common shape both callers can trivially produce: a repository row
@@ -209,10 +213,10 @@ export function fundsReferencingTickers(
 }
 
 /**
- * Removes any ticker whose DOMINANT lot (the largest `|marketValue|` row
- * across accounts — {@link dominantClassificationByTicker}) is classified
- * `assetClass === "fixed_income"` from an already-built `FundProfileInput`
- * map, before it reaches the look-through leaf.
+ * Suppresses attribution for any ticker whose DOMINANT lot (the largest
+ * `|marketValue|` row across accounts — {@link dominantClassificationByTicker})
+ * is classified `assetClass === "fixed_income"`, in an already-built
+ * `FundProfileInput` map, before it reaches the look-through leaf.
  *
  * `allHeldTickers`'s broad cache read (above) deliberately still looks up a
  * profile for a bond ETF, or for a holding a manual override has since
@@ -223,11 +227,24 @@ export function fundsReferencingTickers(
  * (`etf-look-through.ts`), and bond/commodity-fund attribution is out of
  * scope for this feature (docs/etf-look-through.md — no look-through inside
  * a fixed-income fund) regardless of whether a profile happens to be cached
- * from before the reclassification, or from another household. This closes
- * that gap by removing the entry entirely — the ticker then reads exactly as
- * "never looked up" to the leaf, which is the correct fallback: still
- * classified opaque-fund on the WRAPPER basis if its own `assetType` is
- * fund-typed, just never decomposed (Codex review, FIX-801 sub-PR c).
+ * from before the reclassification, or from another household.
+ *
+ * **REPLACES the entry with an opaque-but-fund-evidence refusal, does NOT
+ * delete it (Codex review, FIX-801 sub-PR c round 17 — the same gap round 14
+ * closed for the constituent-broadening withdrawal path, `guards.ts`).**
+ * `{ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }`
+ * (`etf-look-through.ts`) — deleting the key outright would ALSO delete the
+ * ticker's only positive fund evidence when its local `assetType` is stale
+ * (still tagged `equity` while `assetClass` is now `fixed_income`, the
+ * manual-override state): `resolveTickerIsFund`'s layer 1a fails (not
+ * fund-typed), and with the stored profile gone (layer 1b) the oracle falls
+ * all the way to layer 1c — the ticker's own stale `equity` tag — reporting
+ * it as an ordinary direct stock, a fabricated single-name concentration for
+ * what's actually a bond fund. `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON`
+ * is recognized by layer 1b as positive fund evidence (same bucket as
+ * `"ineligible"`/`"malformed"`/`CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`), so
+ * the ticker still reads as a fund — just one attribution is out of scope
+ * for — and stays opaque-fund on the WRAPPER basis, never decomposed.
  *
  * **Judged by the DOMINANT lot, not "any row" (Codex review, FIX-801 sub-PR c
  * round 14 — a real inconsistency, not a nit).** `summarizePortfolioHealth`
@@ -279,9 +296,11 @@ export function excludeFixedIncomeFromProfileMap(
     ),
   );
   if (fixedIncomeTickers.size === 0) return profiles;
-  const filtered = new Map(profiles);
-  for (const ticker of fixedIncomeTickers) filtered.delete(ticker);
-  return filtered;
+  const suppressed = new Map(profiles);
+  for (const ticker of fixedIncomeTickers) {
+    suppressed.set(ticker, { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
+  }
+  return suppressed;
 }
 
 /**

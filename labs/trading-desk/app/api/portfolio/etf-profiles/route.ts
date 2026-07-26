@@ -15,6 +15,7 @@ import {
   isEtfProfileFetchCandidate,
   missingConstituentTickers,
 } from "@/domain/portfolio/math/etf-profile-map";
+import { dominantClassificationByTicker } from "@/domain/portfolio/math/value-holding";
 
 // The ETF holdings-profile fill surface (FIX-801) — backs the Health view's
 // look-through axis, mirroring the classifications route's shape (a lazy
@@ -134,18 +135,6 @@ export async function GET(req: NextRequest) {
 
   const repo = await getRepository();
   const { holdings } = await repo.getPortfolio(userId);
-  // FETCH-eligible = held as an ETF, not a curated bond ETF (pre-filtered
-  // locally — zero fetches, Decision 5), and not a flagged
-  // inconsistent-history row. Mutual funds are never fetch-eligible
-  // (assetType !== "etf" — the endpoint is ETF-only, Non-goals).
-  // `isEtfProfileFetchCandidate` is the single definition of this predicate —
-  // the Health UI's eligibility-refetch signature reads it too, so both agree
-  // on exactly the set this route will ever spend an Alpha Vantage unit on.
-  const eligibleTickers = [
-    ...new Set(
-      holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
-    ),
-  ];
   // READ-eligible is DELIBERATELY BROADER — every held ticker, not just the
   // fetch-eligible ones. `app.etf_profiles` is global reference data, and the
   // pure leaf's fund-detection oracle (`resolveTickerIsFund`) is designed to
@@ -166,10 +155,45 @@ export async function GET(req: NextRequest) {
     } satisfies EtfProfilesResponse);
   }
 
+  // Quotes are read for EVERY held ticker (not just the fetch-eligible ones)
+  // — widened from the original narrower read (Codex review, FIX-801 sub-PR c
+  // round 17) because the dominant-lot classification below needs real market
+  // value for every row that might compete for a ticker's classification, not
+  // just the rows a per-row predicate already accepted.
   const [quotesRows, storedRows] = await Promise.all([
-    repo.getQuotes(eligibleTickers),
+    repo.getQuotes(allTickers),
     repo.getEtfProfiles(allTickers),
   ]);
+  const quoteMap = new Map(quotesRows.map((q) => [q.ticker, { price: q.price }]));
+  // Judged by the DOMINANT (largest-market-value) lot, the same rule
+  // `excludeFixedIncomeFromProfileMap` uses to suppress ATTRIBUTION (round
+  // 14) — applied HERE too, at the FETCH decision (Codex review, FIX-801
+  // sub-PR c round 17, P2). Before this, a ticker whose accounts disagreed on
+  // classification could still get fetched off a MINORITY row's `etf`/
+  // non-fixed-income tag even though the dominant lot is `fixed_income` — the
+  // profile would then be excluded from attribution downstream anyway
+  // (guards.ts / health-section.tsx both apply the dominant-lot exclusion),
+  // so the fetch was a wasted unit against the shared 25/day Alpha Vantage
+  // budget for a profile that could never be used. The curated bond-ETF list
+  // check (inside `isEtfProfileFetchCandidate`) is unaffected — it's already
+  // ticker-level, not row-dependent.
+  const dominantClassification = dominantClassificationByTicker(holdings, quoteMap);
+  // FETCH-eligible = held as an ETF (a per-row signal — is there evidence
+  // ANYWHERE this ticker is an ETF), not a curated bond ETF (pre-filtered
+  // locally — zero fetches, Decision 5), not a flagged inconsistent-history
+  // row, AND the ticker's DOMINANT lot is not fixed_income (see above).
+  // Mutual funds are never fetch-eligible (assetType !== "etf" — the endpoint
+  // is ETF-only, Non-goals). `isEtfProfileFetchCandidate` is the single
+  // definition of the per-row predicate — the Health UI's eligibility-refetch
+  // signature reads it too.
+  const eligibleTickers = [
+    ...new Set(
+      holdings
+        .filter(isEtfProfileFetchCandidate)
+        .map((h) => h.ticker.toUpperCase())
+        .filter((ticker) => dominantClassification.get(ticker)?.assetClass !== "fixed_income"),
+    ),
+  ];
   const pricedTickers = new Set(quotesRows.map((q) => q.ticker));
   const storedByTicker = new Map(storedRows.map((r) => [r.ticker, r]));
 
