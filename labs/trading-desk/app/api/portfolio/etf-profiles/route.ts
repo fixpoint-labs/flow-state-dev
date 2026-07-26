@@ -205,10 +205,29 @@ export async function GET(req: NextRequest) {
   //    never refresh. Still excludes the SAME fixed-income evidence
   //    (`isKnownBondEtf` here, the dominant-lot check below for both sets) —
   //    a stale cached profile is not grounds to keep re-fetching a ticker
-  //    look-through has no use for.
+  //    look-through has no use for. ALSO requires at least one held row that
+  //    ISN'T flagged `inconsistent_history` (Codex review, FIX-801 sub-PR c) —
+  //    unlike set 1, this path bypasses `isEtfProfileFetchCandidate` entirely
+  //    (that per-row predicate already excludes a flagged row), so without
+  //    this guard a ticker held ONLY in flagged rows could still enter the
+  //    refresh set: `dominantClassificationByTicker` still SEEDS a
+  //    classification from a flagged row's own fields even though it skips
+  //    that row for its VALUE comparison (so it doesn't pick a "wrong"
+  //    dominant lot off bad data) — enough to clear the fixed-income check
+  //    below and burn a shared Alpha Vantage request on a refresh Portfolio
+  //    Health can't even use, since it excludes those same rows from money
+  //    math entirely.
+  const nonInconsistentTickers = new Set(
+    holdings.filter((h) => h.dataQuality !== "inconsistent_history").map((h) => h.ticker.toUpperCase()),
+  );
   const cacheConfirmedTickers = allTickers.filter((ticker) => {
     const stored = storedByTicker.get(ticker);
-    return stored !== undefined && stored.payload !== null && !isKnownBondEtf(ticker);
+    return (
+      stored !== undefined &&
+      stored.payload !== null &&
+      !isKnownBondEtf(ticker) &&
+      nonInconsistentTickers.has(ticker)
+    );
   });
   const eligibleTickers = [
     ...new Set(

@@ -11,14 +11,14 @@
  */
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { seedAccount } from "./_helpers/portfolio-repo";
 import { _resetLeases } from "@/lib/singleflight";
 import { createMigratedPgliteDb, type Db } from "@/db/client";
 import { createPortfolioRepository, type PortfolioRepository } from "@/db/repository";
-import { etfProfiles } from "@/db/schema";
+import { etfProfiles, holdings } from "@/db/schema";
 import type { NormalizedEtfProfile } from "@/lib/providers/etf-profile";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
@@ -44,6 +44,19 @@ async function backdateFetchedAt(ticker: string, daysAgo: number): Promise<void>
     .update(etfProfiles)
     .set({ fetchedAt: sql`now() - (${daysAgo} || ' days')::interval` })
     .where(eq(etfProfiles.ticker, ticker.toUpperCase()));
+}
+
+/** Flag a held row `inconsistent_history` (FIX-876) — `upsertHoldings` (what
+ *  `seedAccount` calls) never writes this column at all; it is DERIVED-ONLY,
+ *  set exclusively by `materializePositions`'s ledger-oversell reconciliation
+ *  and explicitly cleared to `null` on every snapshot upsert. Forcing the
+ *  flagged state for a route-level test needs a direct write against the
+ *  migrated table — the same `backdateFetchedAt` precedent above. */
+async function flagInconsistentHistory(accountId: string, ticker: string): Promise<void> {
+  await repoState.db!
+    .update(holdings)
+    .set({ dataQuality: "inconsistent_history" })
+    .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker.toUpperCase())));
 }
 
 const fetcherMock = vi.hoisted(() => ({ fetchEtfProfile: vi.fn() }));
@@ -332,6 +345,103 @@ describe("GET /api/portfolio/etf-profiles", () => {
     // set), just never refetched.
     const body = (await res.json()) as EtfProfilesResponse;
     expect(body.profiles.map((p) => p.ticker)).toEqual(["BND"]);
+  });
+
+  it("does not refresh a STALE cached profile via the cache-confirmed path when the ticker is held ONLY in inconsistent-history-flagged rows (Codex review, FIX-801 sub-PR c round 37, a real bug)", async () => {
+    // SPY's only held row is flagged `inconsistent_history` (FIX-876 — an
+    // oversell the ledger couldn't reconcile, e.g. an unrecorded split).
+    // `dominantClassificationByTicker` still SEEDS a classification from this
+    // row's own fields (it only skips the row for its VALUE comparison, so it
+    // doesn't pick a "wrong" dominant lot off bad data) — enough to clear the
+    // fixed-income check on its own. Without the round-37 guard, the
+    // cache-confirmed path (round 34) doesn't check `dataQuality` at all
+    // (unlike the local-tag path, which goes through `isEtfProfileFetchCandidate`
+    // and excludes a flagged row per-row), so a stale profile on a
+    // flagged-only ticker would still enter `misses` and burn a shared Alpha
+    // Vantage request for data Portfolio Health can't even use (it excludes
+    // these same rows from money math entirely).
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        {
+          ticker: "SPY",
+          quantity: 5,
+          costBasis: 300,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+    });
+    // `seedAccount` (via `upsertHoldings`) can't set this column at all — it's
+    // DERIVED-ONLY (see `flagInconsistentHistory`'s own docblock).
+    await flagInconsistentHistory("acc-1", "SPY");
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("SPY", 31);
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    // Still returned from cache (the READ set stays broader than the fetch
+    // set), just never refetched.
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+  });
+
+  it("DOES refresh a STALE cached profile via the cache-confirmed path when at least one held row is clean, even alongside a flagged row (control, Codex review, FIX-801 sub-PR c round 37)", async () => {
+    // Two accounts hold SPY: one row flagged `inconsistent_history`, one
+    // clean. The guard only requires AT LEAST ONE non-flagged row for the
+    // ticker — the flagged row doesn't poison the whole ticker's eligibility.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-flagged",
+      userId: USER_ID,
+      holdings: [
+        {
+          ticker: "SPY",
+          quantity: 5,
+          costBasis: 300,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+    });
+    await flagInconsistentHistory("acc-flagged", "SPY");
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-clean",
+      userId: USER_ID,
+      holdings: [
+        {
+          ticker: "SPY",
+          quantity: 3,
+          costBasis: 300,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("SPY", 31);
+
+    const FRESHER_PROFILE: NormalizedEtfProfile = { ...SAMPLE_PROFILE, nameCoverage: 0.42 };
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: FRESHER_PROFILE });
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    const body = (await res.json()) as EtfProfilesResponse;
+    const spy = body.profiles.find((p) => p.ticker === "SPY");
+    expect(spy?.nameCoverage).toBeCloseTo(0.42);
   });
 
   it("surfaces a fund-of-funds constituent's own stored profile even though the household does not separately hold it — the constituent-broadening fix (Codex review, FIX-801 sub-PR c round 12, P1)", async () => {
