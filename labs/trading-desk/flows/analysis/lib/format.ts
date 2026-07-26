@@ -602,6 +602,15 @@ function appendLookThroughLines(
   if (lookThrough.flags.length > 0) {
     lines.push(`Look-through concentration flags: ${lookThrough.flags.join(", ")}.`);
   }
+  // The actual attributed sector distribution, not just its coverage number —
+  // an ordinary diversified fund allocation that never crosses the warn
+  // threshold produces no flag, so without this line the model only ever sees
+  // a coverage percentage for it, never what it's actually IN (Codex review,
+  // FIX-801 sub-PR c round 28, same spirit as the opaque-fund detail below).
+  if (lookThrough.sectorExposure.length > 0) {
+    const sectors = lookThrough.sectorExposure.map((s) => `${s.bucket} ${fmtPct(s.pct)}`).join(", ");
+    lines.push(`Look-through sector exposure: ${sectors}.`);
+  }
   // Per-fund identity behind the counts above: WHICH wrapper, on WHICH axis,
   // for WHY — the summary line's counts alone give the model no way to trace
   // "1 fund opaque" back to a specific holding, risking a warning attributed

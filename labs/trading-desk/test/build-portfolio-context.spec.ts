@@ -14,6 +14,7 @@ import {
 import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
 import {
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
   type FundProfileInput,
 } from "../domain/portfolio/math/etf-look-through";
 
@@ -297,6 +298,16 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.opaqueFundCount).toBe(0);
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
     expect(lookThrough?.opaqueFundDetails).toEqual([]);
+    // The actual attributed sector DISTRIBUTION, not just its coverage number
+    // (Codex review, FIX-801 sub-PR c round 28) — SPY's reported sectors
+    // (Technology 30%, Financial Services 66% of its own $60,000) plus AAPL's
+    // own direct (unclassified, no classification map passed) bucket, all as a
+    // % of the $70,000 invested NAV, sorted by market value desc.
+    expect(lookThrough?.sectorExposure).toEqual([
+      { bucket: "Financial Services", pct: expect.closeTo((0.66 * 60_000 * 100) / 70_000, 5) },
+      { bucket: "Technology", pct: expect.closeTo((0.3 * 60_000 * 100) / 70_000, 5) },
+      { bucket: "Unclassified", pct: expect.closeTo((10_000 * 100) / 70_000, 5) },
+    ]);
     // The leaf's own uncertainty-aware [low, high] interval (Decision 4,
     // docs/etf-look-through.md) — computed by the leaf but never threaded
     // through the projection until now (Codex review, FIX-801 sub-PR c). A
@@ -510,6 +521,68 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — "not yet available", not "thin/ineligible data"
     expect(lookThrough?.opaqueFundDetails).toEqual([
       { ticker: "QQQ", axis: "both", reason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON, unavailable: true },
+    ]);
+  });
+
+  it("a curated bond ETF proactively suppressed by excludeFixedIncomeFromProfileMap (round 28) reports as permanently policy-suppressed, not 'not yet available' (Codex review, FIX-801 sub-PR c round 28)", () => {
+    // This is the downstream half of the round-28 fix: `excludeFixedIncomeFromProfileMap`
+    // (etf-profile-map.ts) now proactively seeds a curated bond ETF with no
+    // prior cache entry with FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
+    // instead of leaving it absent (which the leaf would report as the
+    // generic "no stored profile" — an UNAVAILABLE_REASONS member, implying a
+    // future fetch might fill it in). This test simulates the caller-side
+    // effect directly: BND's entry is ALREADY the post-suppression shape (as
+    // `excludeFixedIncomeFromProfileMap` would produce it), never the raw
+    // "absent" state a pre-fix caller would have passed through.
+    const mixedBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "BND", quantity: 50, costBasis: 80, acquiredDate: null, assetClass: "fixed_income", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const mixedQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "BND", price: 75, asOf: "2026-05-06" },
+    ];
+    const mixedProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      ["BND", { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }],
+    ]);
+
+    const out = buildPortfolioContext(mixedBook, mixedQuotes, "2026-05-06", new Map(), mixedProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.opaqueFundCount).toBe(1); // BND
+    // The critical assertion: NOT counted as "not yet available" — the
+    // suppression reason is fund-confirming but is not in
+    // UNAVAILABLE_REASONS, so it correctly reads as a genuine, permanent
+    // policy exclusion rather than a pending fetch.
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "BND", axis: "both", reason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON, unavailable: false },
     ]);
   });
 });

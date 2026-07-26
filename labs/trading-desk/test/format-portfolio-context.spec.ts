@@ -70,6 +70,10 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
           lookThrough: {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
+            sectorExposure: [
+              { bucket: "Technology", pct: 55.2 },
+              { bucket: "Financial Services", pct: 30.1 },
+            ],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: { low: 5.2, high: 8.4 },
             flags: ["AAPL 16.9% (alert, look-through)"],
@@ -94,6 +98,9 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).toContain("effective positions 5.2–8.4 (interval — residual placement is uncertain)");
     expect(out).toContain("1 fund(s) opaque (thin/ineligible data)");
     expect(out).toContain("Look-through concentration flags: AAPL 16.9% (alert, look-through).");
+    // The actual attributed sector distribution, not just its coverage number
+    // (Codex review, FIX-801 sub-PR c round 28).
+    expect(out).toContain("Look-through sector exposure: Technology 55.2%, Financial Services 30.1%.");
     // The per-fund identity behind the count above — traceable to the actual
     // holding, not just a bare number (Codex review, FIX-801 sub-PR c round 25).
     expect(out).toContain("Opaque fund detail: QQQ (both: thin coverage).");
@@ -107,6 +114,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
           lookThrough: {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
+            sectorExposure: [],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: null,
             flags: [],
@@ -130,6 +138,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
           lookThrough: {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
+            sectorExposure: [],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: { low: 3.1, high: 6.0 },
             flags: [],
@@ -163,6 +172,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
           lookThrough: {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
+            sectorExposure: [],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: { low: 4.0, high: 4.0 },
             flags: [],
@@ -178,6 +188,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).not.toContain("fund(s) opaque");
     expect(out).not.toContain("fund(s) not yet available");
     expect(out).not.toContain("Look-through concentration flags");
+    expect(out).not.toContain("Look-through sector exposure");
     expect(out).not.toContain("Opaque fund detail");
   });
 

@@ -190,32 +190,60 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
-  it("does NOT manufacture a fund-evidence entry for a fixed-income-classified ticker with NO prior map entry — an ordinary held bond stays absent, never fabricated into an opaque 'fixed-income fund' (Codex review, FIX-801 sub-PR c round 18 — the flip side of round 14/17's fix)", () => {
-    // AGG has never been fetched or refused as an ETF profile at all — it's
-    // an ordinary directly-held bond, not a fund. There is nothing in
-    // `profiles` to withdraw. Unconditionally `.set()`-ing a synthetic
-    // refusal here would MANUFACTURE fund identity `resolveTickerIsFund`
-    // doesn't otherwise have: the ticker would report as an opaque
-    // "fixed-income fund" in the residual instead of staying a direct name.
-    const profiles = new Map<string, FundProfileInput>(); // empty — AGG was never looked up
-    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" })];
+  it("does NOT manufacture a fund-evidence entry for a fixed-income-classified ticker with NO prior map entry AND no curated-list membership — an ordinary held bond stays absent, never fabricated into an opaque 'fixed-income fund' (Codex review, FIX-801 sub-PR c round 18 — the flip side of round 14/17's fix)", () => {
+    // XCORPB has never been fetched or refused as an ETF profile at all, and
+    // is NOT on the curated bond-ETF list — an ordinary directly-held bond,
+    // not a fund. There is nothing in `profiles` to withdraw, and no
+    // independent evidence (curated-list membership) to seed one from.
+    // Unconditionally `.set()`-ing a synthetic refusal here would MANUFACTURE
+    // fund identity `resolveTickerIsFund` doesn't otherwise have: the ticker
+    // would report as an opaque "fixed-income fund" in the residual instead
+    // of staying a direct name.
+    const profiles = new Map<string, FundProfileInput>(); // empty — XCORPB was never looked up
+    const holdings = [holding({ ticker: "XCORPB", assetClass: "fixed_income", assetType: "bond" })];
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.has("AGG")).toBe(false);
+    expect(out.has("XCORPB")).toBe(false);
   });
 
-  it("still replaces an EXISTING entry for a fixed-income ticker even when other, unrelated tickers have no entry — the no-manufacture rule is per-ticker, not all-or-nothing", () => {
-    const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]); // SPY has a cached profile; AGG does not
+  it("still replaces an EXISTING entry for a fixed-income ticker even when other, unrelated (non-curated) tickers have no entry — the no-manufacture rule is per-ticker, not all-or-nothing", () => {
+    const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]); // SPY has a cached profile; XCORPB does not
     const holdings = [
       holding({ ticker: "SPY", assetClass: "fixed_income" }),
-      holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" }),
+      holding({ ticker: "XCORPB", assetClass: "fixed_income", assetType: "bond" }),
     ];
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.get("SPY")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
-    expect(out.has("AGG")).toBe(false);
+    expect(out.has("XCORPB")).toBe(false);
+  });
+
+  it("PROACTIVELY SEEDS a permanent-suppression entry for a curated bond ETF with NO prior map entry at all — Decision 5 guarantees it will never be fetched, so leaving it absent would misreport it as 'not yet available' rather than permanently policy-suppressed (Codex review, FIX-801 sub-PR c round 28)", () => {
+    // AGG (a real curated bond ETF, unlike XCORPB above) has never been
+    // fetched or refused — but unlike an ordinary bond, curated-list
+    // membership IS independent evidence of fund-ness on its own.
+    // `resolveTickerIsFund` already resolves AGG as a fund without any map
+    // entry (its own assetType tag, or the curated list directly), so this
+    // seed doesn't change the fund verdict — it upgrades the OPACITY REASON
+    // from the leaf's generic "no stored profile" (implies pending) to the
+    // correct, permanent policy-suppression reason.
+    const profiles = new Map<string, FundProfileInput>(); // empty — AGG was never looked up
+    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "etf" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("AGG")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
+  });
+
+  it("also seeds a curated bond ETF held with a STALE non-fixed-income assetClass (assetType still etf) — the curated-list check runs independently of the dominant-lot classification, same as the existing-entry replace path", () => {
+    const profiles = new Map<string, FundProfileInput>(); // empty — BND was never looked up
+    const holdings = [holding({ ticker: "BND", assetClass: "equity", assetType: "etf" })]; // stale assetClass
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
   it("does NOT overwrite an existing not_an_etf DISPROOF entry for a directly-held fixed-income ticker — replacing it would flip a proven-non-fund ticker into resolveTickerIsFund's positive-evidence bucket", () => {

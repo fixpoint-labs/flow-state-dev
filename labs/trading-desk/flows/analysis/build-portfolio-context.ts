@@ -100,16 +100,28 @@ const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
 ]);
 
+/** Truncate a sector-exposure list to the top 6 buckets by declared order +
+ *  a rolled-up `"Other"` for the remainder — the one place this projection
+ *  (wrapper basis and look-through alike) decides how much sector detail the
+ *  prompt gets. Both bucket lists are already sorted by the leaf that
+ *  produced them (`portfolio-health.ts` / `etf-look-through.ts`), so this is
+ *  a pure slice-and-sum, not a re-sort. */
+function topSectorBuckets(
+  sectorExposure: ReadonlyArray<{ bucket: string; pct: number | null }>,
+): Array<{ bucket: string; pct: number | null }> {
+  const top = sectorExposure.slice(0, 6).map((s) => ({ bucket: s.bucket, pct: s.pct }));
+  if (sectorExposure.length > 6) {
+    const restPct = sectorExposure.slice(6).reduce((sum, s) => sum + (s.pct ?? 0), 0);
+    top.push({ bucket: "Other", pct: restPct });
+  }
+  return top;
+}
+
 /** The compact household-health block projected into `<portfolioContext>` (top 6
  *  sector buckets + `Other`; concentration flags pre-rendered). Null when the
  *  book has nothing priceable (health not computable). */
 function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"] {
   if (health.totalNav === null) return null;
-  const sectors = health.sectorExposure.slice(0, 6).map((s) => ({ bucket: s.bucket, pct: s.pct }));
-  if (health.sectorExposure.length > 6) {
-    const restPct = health.sectorExposure.slice(6).reduce((sum, s) => sum + (s.pct ?? 0), 0);
-    sectors.push({ bucket: "Other", pct: restPct });
-  }
   return {
     cashPct: health.cash.pct,
     coveragePct:
@@ -120,7 +132,7 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
       assetClass: a.assetClass,
       pct: a.pct,
     })),
-    sectorExposure: sectors,
+    sectorExposure: topSectorBuckets(health.sectorExposure),
     concentration: {
       maxPosition: health.concentration.maxPosition,
       top5Pct: health.concentration.top5Pct,
@@ -141,6 +153,14 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
         ? {
             coveragePct: health.lookThroughExposure.coveragePct,
             sectorCoveragePct: health.lookThroughExposure.sectorCoveragePct,
+            // The actual attributed sector DISTRIBUTION, not just its coverage
+            // number — the leaf already computes this (same shape/truncation
+            // as the wrapper-basis `sectorExposure` above), it just wasn't
+            // threaded through until now (Codex review, FIX-801 sub-PR c round
+            // 28, same spirit as round 25's `opaqueFundDetails`: coverage/flags
+            // alone tell the model an ordinary diversified fund allocation
+            // stayed below the warn threshold, but not what it actually IS).
+            sectorExposure: topSectorBuckets(health.lookThroughExposure.sectorExposure),
             maxPosition: health.lookThroughExposure.maxPosition,
             // Direct pass-through — the leaf already produces the exact
             // `{low,high}|null` shape the schema expects (Codex review,

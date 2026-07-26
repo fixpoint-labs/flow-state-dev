@@ -88,6 +88,14 @@ const portfolioHealthContext = z.object({
     .object({
       coveragePct: z.number().nullable(),
       sectorCoveragePct: z.number().nullable(),
+      // The actual attributed sector DISTRIBUTION (top 6 + "Other", same shape
+      // and truncation as the wrapper-basis `sectorExposure` above) — not just
+      // its coverage number. `sectorCoveragePct` alone tells the model HOW MUCH
+      // of a fund's sector data is attributed, not WHAT it is; an ordinary
+      // diversified fund allocation that stays below the warn threshold never
+      // fires a flag, so without this the model has no way to describe it
+      // (Codex review, FIX-801 sub-PR c round 28).
+      sectorExposure: z.array(z.object({ bucket: z.string(), pct: z.number().nullable() })),
       maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
       // The look-through analogue of the wrapper-basis `concentration.effectivePositions`
       // above, but an uncertainty-aware INTERVAL rather than a point estimate
