@@ -292,6 +292,7 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.coveragePct).not.toBeNull();
     expect(lookThrough?.coveragePct as number).toBeLessThan(100); // never renormalized to 100%
     expect(lookThrough?.opaqueFundCount).toBe(0);
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
   });
 
   it("a fund with no stored profile leaves lookThrough null (nothing attributed) — same 'never fetches' read as an empty map", () => {
@@ -369,6 +370,62 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     // VTI is the only opaque fund. Before the fix this read 2 (one entry per
     // failed axis); the fix dedupes by ticker.
     expect(lookThrough?.opaqueFundCount).toBe(1);
+    // VTI's opacity is a genuine data-quality finding (thin coverage on both
+    // axes), not a temporary unavailability — it must NOT count toward
+    // opaqueUnavailableFundCount.
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+  });
+
+  it("opaqueUnavailableFundCount counts a never-fetched fund separately from a data-quality one (Codex review, FIX-801 sub-PR c)", () => {
+    // AAPL direct + the well-covered SPY (attributes AAPL, so lookThrough is
+    // "partial") + QQQ, held as an ETF but with NO entry in the profiles map
+    // at all — the leaf still recognizes it as a fund from its own assetType
+    // (resolveTickerIsFund layer 1a) but has nothing to attribute, so it's
+    // opaque with reason "no stored profile": temporarily unavailable, not a
+    // data-quality judgment.
+    const mixedBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "QQQ", quantity: 50, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const mixedQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "QQQ", price: 200, asOf: "2026-05-06" },
+    ];
+    // Only SPY has a stored profile — QQQ is never fetched.
+    const mixedProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+    ]);
+
+    const out = buildPortfolioContext(mixedBook, mixedQuotes, "2026-05-06", new Map(), mixedProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — never fetched
   });
 });
 

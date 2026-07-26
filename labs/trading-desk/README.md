@@ -422,14 +422,16 @@ Accounts perspective, since they don't apply on the other views:
   is plain arithmetic over stored quantities and sourced prices — no model calls
   of its own (the *input* is a third party's stated fund composition — see
   below). A second **look-through** read sits beside the first: it sees inside
-  ETFs and mutual funds, so a name you hold directly and the same name held
-  through a fund add up instead of sitting apart, and a fund's sector mix
-  attributes to real sectors instead of a "Funds" placeholder. It's additive,
-  never a replacement — the plain per-account figures above are unchanged — and
-  it's coverage-qualified: a fund whose holdings data is too thin, or that's
-  leveraged/inverse/bond/commodity, stays honestly opaque by design rather than
-  half-attributed. See [`docs/etf-look-through.md`](docs/etf-look-through.md) for
-  the methodology and its limits. Drift versus a target allocation lands once a
+  ETFs, so a name you hold directly and the same name held through a fund add
+  up instead of sitting apart, and a fund's sector mix attributes to real
+  sectors instead of a "Funds" placeholder. It's additive, never a
+  replacement — the plain per-account figures above are unchanged — and it's
+  coverage-qualified: a fund whose holdings data is too thin, or that's
+  leveraged/inverse/bond/commodity, stays honestly opaque by design rather
+  than half-attributed. Mutual funds are out of scope entirely (the provider
+  endpoint is ETF-only) and stay opaque like any other unfetched fund. See
+  [`docs/etf-look-through.md`](docs/etf-look-through.md) for the methodology
+  and its limits. Drift versus a target allocation lands once a
   portfolio mandate exists.
 
 Click a card in the Accounts perspective to open the account, which has four

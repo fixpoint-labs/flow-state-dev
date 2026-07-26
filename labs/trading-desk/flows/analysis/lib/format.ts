@@ -587,11 +587,33 @@ function appendLookThroughLines(
     `ETF look-through (seeing inside funds; a LOWER BOUND — does not move sizing gates): ` +
       `name coverage ${fmtPct(lookThrough.coveragePct)}, sector coverage ${fmtPct(lookThrough.sectorCoveragePct)}, ` +
       `largest effective name ${maxName}` +
-      `${lookThrough.opaqueFundCount > 0 ? `; ${lookThrough.opaqueFundCount} fund(s) still opaque (thin/ineligible data)` : ""}.`,
+      `${opaqueFundsSuffix(lookThrough)}.`,
   );
   if (lookThrough.flags.length > 0) {
     lines.push(`Look-through concentration flags: ${lookThrough.flags.join(", ")}.`);
   }
+}
+
+/**
+ * The opaque-fund clause of the look-through line, split by WHY a fund is
+ * opaque so the model doesn't read "not yet available" as a data-quality
+ * finding (Codex review, FIX-801 sub-PR c): `opaqueUnavailableFundCount` (never
+ * fetched, or quota/rate-limited and pending retry) is reported separately
+ * from the remainder, which is a genuine thin/malformed/ineligible-data
+ * judgment.
+ */
+function opaqueFundsSuffix(
+  lookThrough: NonNullable<NonNullable<PortfolioContextInput["health"]>["lookThrough"]>,
+): string {
+  const dataQualityCount = lookThrough.opaqueFundCount - lookThrough.opaqueUnavailableFundCount;
+  const clauses: string[] = [];
+  if (dataQualityCount > 0) {
+    clauses.push(`${dataQualityCount} fund(s) opaque (thin/ineligible data)`);
+  }
+  if (lookThrough.opaqueUnavailableFundCount > 0) {
+    clauses.push(`${lookThrough.opaqueUnavailableFundCount} fund(s) not yet available (unfetched or temporarily rate/quota-limited)`);
+  }
+  return clauses.length > 0 ? `; ${clauses.join(", ")}` : "";
 }
 
 /**

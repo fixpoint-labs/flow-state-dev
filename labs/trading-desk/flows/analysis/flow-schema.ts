@@ -90,7 +90,16 @@ const portfolioHealthContext = z.object({
       sectorCoveragePct: z.number().nullable(),
       maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
       flags: z.array(z.string()), // pre-rendered, e.g. "NVDA 16.9% (alert, look-through)"
-      opaqueFundCount: z.number(), // funds left unattributed (thin/ineligible/unfetched)
+      opaqueFundCount: z.number(), // funds left unattributed, total
+      // Subset of opaqueFundCount that is merely temporarily unavailable
+      // (never fetched yet, or a fetch that's quota/rate-limited and will be
+      // retried) rather than a genuine data-quality finding (thin coverage,
+      // malformed data, leveraged/fund-of-funds exclusion, or a
+      // provider-confirmed non-ETF). Lets the prompt distinguish "we haven't
+      // looked yet" from "we looked and it's not attributable" instead of
+      // uniformly reporting every opaque fund as a data-quality judgment
+      // (Codex review, FIX-801 sub-PR c).
+      opaqueUnavailableFundCount: z.number(),
     })
     .nullable(),
 });

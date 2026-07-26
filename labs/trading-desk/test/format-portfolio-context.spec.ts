@@ -73,6 +73,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             flags: ["AAPL 16.9% (alert, look-through)"],
             opaqueFundCount: 1,
+            opaqueUnavailableFundCount: 0,
           },
         },
       }),
@@ -84,8 +85,30 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).toContain("does not move sizing gates");
     expect(out).toContain("name coverage 99.0%, sector coverage 96.5%");
     expect(out).toContain("largest effective name AAPL 16.9%");
-    expect(out).toContain("1 fund(s) still opaque");
+    expect(out).toContain("1 fund(s) opaque (thin/ineligible data)");
     expect(out).toContain("Look-through concentration flags: AAPL 16.9% (alert, look-through).");
+  });
+
+  it("reports an unavailable (not-yet-fetched / quota-limited) opaque fund separately from a data-quality one (Codex review, FIX-801 sub-PR c)", () => {
+    const out = formatPortfolioContext(
+      snapshot({
+        health: {
+          ...snapshot().health!,
+          lookThrough: {
+            coveragePct: 99.0,
+            sectorCoveragePct: 96.5,
+            maxPosition: { ticker: "AAPL", weightPct: 16.9 },
+            flags: [],
+            opaqueFundCount: 2,
+            opaqueUnavailableFundCount: 1,
+          },
+        },
+      }),
+      [],
+      "NVDA",
+    );
+    expect(out).toContain("1 fund(s) opaque (thin/ineligible data)");
+    expect(out).toContain("1 fund(s) not yet available (unfetched or temporarily rate/quota-limited)");
   });
 
   it("omits the opaque-fund clause and the flags line when there's nothing to report", () => {
@@ -99,13 +122,15 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             flags: [],
             opaqueFundCount: 0,
+            opaqueUnavailableFundCount: 0,
           },
         },
       }),
       [],
       "NVDA",
     );
-    expect(out).not.toContain("fund(s) still opaque");
+    expect(out).not.toContain("fund(s) opaque");
+    expect(out).not.toContain("fund(s) not yet available");
     expect(out).not.toContain("Look-through concentration flags");
   });
 
