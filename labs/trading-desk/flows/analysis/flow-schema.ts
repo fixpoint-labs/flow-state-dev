@@ -109,6 +109,23 @@ const portfolioHealthContext = z.object({
       // uniformly reporting every opaque fund as a data-quality judgment
       // (Codex review, FIX-801 sub-PR c).
       opaqueUnavailableFundCount: z.number(),
+      // The per-fund identity the two counts above collapse away: WHICH
+      // wrapper, on WHICH axis, for WHY (Codex review, FIX-801 sub-PR c round
+      // 25) — without this the trader/PM sees "1 fund opaque" with no way to
+      // tell which holding a warning belongs to. NOT deduped by ticker like
+      // the counts — a fund thin on names but fine on sectors (or the
+      // reverse) has two genuinely distinct reasons, both preserved as
+      // separate entries. `unavailable` mirrors `opaqueUnavailableFundCount`'s
+      // classification per entry (only ever true on an `axis: "both"` entry
+      // — see `classifyOpaqueFunds`'s docblock).
+      opaqueFundDetails: z.array(
+        z.object({
+          ticker: z.string(),
+          axis: z.enum(["names", "sectors", "both"]),
+          reason: z.string(),
+          unavailable: z.boolean(),
+        }),
+      ),
     })
     .nullable(),
 });

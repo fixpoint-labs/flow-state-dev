@@ -159,8 +159,13 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
             // seed reports the true opaque-FUND count to the analysis model
             // (Codex review, FIX-801 sub-PR c), and separately count how many
             // of those are merely temporarily unavailable rather than a
-            // data-quality finding (Codex review round 2 — see
-            // `classifyOpaqueFunds`).
+            // data-quality finding (Codex review round 2). Both counts
+            // collapse the per-axis detail to a number — `opaqueFundDetails`
+            // (Codex review round 25) preserves the identity behind them:
+            // WHICH wrapper, on WHICH axis, for WHY, so the prompt can say
+            // "QQQ (sectors: thin coverage)" instead of a bare "1 fund
+            // opaque" the trader/PM has no way to trace to a holding — see
+            // `classifyOpaqueFunds`.
             ...classifyOpaqueFunds(health.lookThroughExposure.opaqueFunds),
           }
         : null,
@@ -168,20 +173,28 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
 }
 
 /**
- * Reduce a fund's-worth of `OpaqueFund` entries to the two counts the prompt
- * line needs: the true per-fund opaque count (deduped by ticker — see the
- * call site's comment) and the subset of those that are merely
- * temporarily unavailable (`UNAVAILABLE_REASONS`) rather than a genuine
- * data-quality finding. A ticker's reason is availability-class in EVERY
- * entry it has, or in NONE of them — the availability reasons all
- * short-circuit via a single combined `{ axis: "both" }` entry in
- * `etf-look-through.ts` before the code ever reaches the per-axis
- * (names/sectors) logic that can split one ticker into two entries, so
- * checking just the first entry per ticker is sufficient.
+ * Reduce a fund's-worth of `OpaqueFund` entries to what the prompt needs: the
+ * two summary counts (true per-fund opaque count, deduped by ticker — see the
+ * call site's comment — and the subset of those merely temporarily
+ * unavailable per `UNAVAILABLE_REASONS` rather than a genuine data-quality
+ * finding), AND `opaqueFundDetails` — the per-entry identity (ticker, axis,
+ * reason) the counts collapse away, so the prompt can name WHICH wrapper is
+ * incomplete and WHY instead of a bare count the trader/PM can't trace to a
+ * holding (Codex review, FIX-801 sub-PR c round 25). Unlike the counts,
+ * `opaqueFundDetails` is NOT deduped by ticker — a fund thin on names but
+ * fine on sectors (or the reverse) has two genuinely distinct reasons, and
+ * collapsing them would silently drop one. A ticker's reason is
+ * availability-class in EVERY entry it has, or in NONE of them — the
+ * availability reasons all short-circuit via a single combined
+ * `{ axis: "both" }` entry in `etf-look-through.ts` before the code ever
+ * reaches the per-axis (names/sectors) logic that can split one ticker into
+ * two entries, so `unavailable` only ever fires on a `"both"` entry.
  */
-function classifyOpaqueFunds(
-  opaqueFunds: ReadonlyArray<OpaqueFund>,
-): { opaqueFundCount: number; opaqueUnavailableFundCount: number } {
+function classifyOpaqueFunds(opaqueFunds: ReadonlyArray<OpaqueFund>): {
+  opaqueFundCount: number;
+  opaqueUnavailableFundCount: number;
+  opaqueFundDetails: Array<{ ticker: string; axis: OpaqueFund["axis"]; reason: string; unavailable: boolean }>;
+} {
   const uniqueByTicker = new Map(opaqueFunds.map((f) => [f.ticker, f]));
   let opaqueUnavailableFundCount = 0;
   for (const f of uniqueByTicker.values()) {
@@ -189,7 +202,13 @@ function classifyOpaqueFunds(
       opaqueUnavailableFundCount++;
     }
   }
-  return { opaqueFundCount: uniqueByTicker.size, opaqueUnavailableFundCount };
+  const opaqueFundDetails = opaqueFunds.map((f) => ({
+    ticker: f.ticker,
+    axis: f.axis,
+    reason: f.reason,
+    unavailable: f.axis === "both" && UNAVAILABLE_REASONS.has(f.reason),
+  }));
+  return { opaqueFundCount: uniqueByTicker.size, opaqueUnavailableFundCount, opaqueFundDetails };
 }
 
 /**

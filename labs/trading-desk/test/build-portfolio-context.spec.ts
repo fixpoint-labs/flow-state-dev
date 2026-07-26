@@ -296,6 +296,7 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.coveragePct as number).toBeLessThan(100); // never renormalized to 100%
     expect(lookThrough?.opaqueFundCount).toBe(0);
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    expect(lookThrough?.opaqueFundDetails).toEqual([]);
     // The leaf's own uncertainty-aware [low, high] interval (Decision 4,
     // docs/etf-look-through.md) — computed by the leaf but never threaded
     // through the projection until now (Codex review, FIX-801 sub-PR c). A
@@ -387,6 +388,15 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     // axes), not a temporary unavailability — it must NOT count toward
     // opaqueUnavailableFundCount.
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    // Unlike the count, `opaqueFundDetails` is NOT deduped by ticker — VTI's
+    // two INDEPENDENT axis failures both survive as distinct entries, each
+    // naming its own reason, so the prompt can say exactly what's wrong with
+    // each axis rather than a single collapsed "VTI opaque" (Codex review,
+    // FIX-801 sub-PR c round 25).
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "VTI", axis: "names", reason: "holdings data incomplete (50.0% coverage, floor 85%)", unavailable: false },
+      { ticker: "VTI", axis: "sectors", reason: "sector data incomplete (50.0% coverage, floor 85%)", unavailable: false },
+    ]);
   });
 
   it("opaqueUnavailableFundCount counts a never-fetched fund separately from a data-quality one (Codex review, FIX-801 sub-PR c)", () => {
@@ -439,6 +449,9 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough).not.toBeNull();
     expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — never fetched
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "QQQ", axis: "both", reason: "no stored profile", unavailable: true },
+    ]);
   });
 
   it("a wrapper withdrawn by guards.ts's constituent-broadening-failure fix (round 14) counts toward opaqueUnavailableFundCount, not the data-quality default (Codex review, FIX-801 sub-PR c round 15)", () => {
@@ -495,6 +508,9 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough).not.toBeNull();
     expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
     expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — "not yet available", not "thin/ineligible data"
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "QQQ", axis: "both", reason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON, unavailable: true },
+    ]);
   });
 });
 

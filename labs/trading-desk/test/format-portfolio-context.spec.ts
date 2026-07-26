@@ -75,6 +75,9 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             flags: ["AAPL 16.9% (alert, look-through)"],
             opaqueFundCount: 1,
             opaqueUnavailableFundCount: 0,
+            opaqueFundDetails: [
+              { ticker: "QQQ", axis: "both", reason: "thin coverage", unavailable: false },
+            ],
           },
         },
       }),
@@ -91,6 +94,9 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).toContain("effective positions 5.2–8.4 (interval — residual placement is uncertain)");
     expect(out).toContain("1 fund(s) opaque (thin/ineligible data)");
     expect(out).toContain("Look-through concentration flags: AAPL 16.9% (alert, look-through).");
+    // The per-fund identity behind the count above — traceable to the actual
+    // holding, not just a bare number (Codex review, FIX-801 sub-PR c round 25).
+    expect(out).toContain("Opaque fund detail: QQQ (both: thin coverage).");
   });
 
   it("renders '—' for the effective-positions interval when null (no attribution to bound)", () => {
@@ -106,6 +112,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             flags: [],
             opaqueFundCount: 0,
             opaqueUnavailableFundCount: 0,
+            opaqueFundDetails: [],
           },
         },
       }),
@@ -128,6 +135,10 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             flags: [],
             opaqueFundCount: 2,
             opaqueUnavailableFundCount: 1,
+            opaqueFundDetails: [
+              { ticker: "QQQ", axis: "both", reason: "no stored profile", unavailable: true },
+              { ticker: "IVV", axis: "both", reason: "holdings data incomplete", unavailable: false },
+            ],
           },
         },
       }),
@@ -136,6 +147,12 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     );
     expect(out).toContain("1 fund(s) opaque (thin/ineligible data)");
     expect(out).toContain("1 fund(s) not yet available (unfetched or temporarily rate/quota-limited)");
+    // The per-fund breakdown names each ticker, marking the temporarily
+    // unavailable one distinctly from the data-quality one (Codex review,
+    // FIX-801 sub-PR c round 25).
+    expect(out).toContain(
+      "Opaque fund detail: QQQ (both: no stored profile, not yet available); IVV (both: holdings data incomplete).",
+    );
   });
 
   it("omits the opaque-fund clause and the flags line when there's nothing to report", () => {
@@ -151,6 +168,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             flags: [],
             opaqueFundCount: 0,
             opaqueUnavailableFundCount: 0,
+            opaqueFundDetails: [],
           },
         },
       }),
@@ -160,6 +178,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).not.toContain("fund(s) opaque");
     expect(out).not.toContain("fund(s) not yet available");
     expect(out).not.toContain("Look-through concentration flags");
+    expect(out).not.toContain("Opaque fund detail");
   });
 
   it("omits the drift line when there is no mandate (drift null)", () => {

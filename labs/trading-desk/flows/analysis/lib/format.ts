@@ -602,6 +602,22 @@ function appendLookThroughLines(
   if (lookThrough.flags.length > 0) {
     lines.push(`Look-through concentration flags: ${lookThrough.flags.join(", ")}.`);
   }
+  // Per-fund identity behind the counts above: WHICH wrapper, on WHICH axis,
+  // for WHY — the summary line's counts alone give the model no way to trace
+  // "1 fund opaque" back to a specific holding, risking a warning attributed
+  // to the wrong one (Codex review, FIX-801 sub-PR c round 25). One clause per
+  // `OpaqueFund` entry (not deduped by ticker — a fund thin on names but fine
+  // on sectors has two distinct, both-preserved reasons; see
+  // `opaqueFundDetails`'s docblock in `build-portfolio-context.ts`).
+  if (lookThrough.opaqueFundDetails.length > 0) {
+    const details = lookThrough.opaqueFundDetails
+      .map(
+        (f) =>
+          `${f.ticker} (${f.axis}: ${f.reason}${f.unavailable ? ", not yet available" : ""})`,
+      )
+      .join("; ");
+    lines.push(`Opaque fund detail: ${details}.`);
+  }
 }
 
 /**
