@@ -55,7 +55,9 @@ import { resolveDelegationBuild } from "./internal/delegation-memo";
 import {
   buildTaskToolsList,
   createTaskToolsCapability,
+  defaultOwnStateResolver,
   DELEGATION_BOARD_FIELD,
+  type WorkerRoster,
 } from "./task-tools-capability";
 
 /** Model-facing name of the board-drain tool. */
@@ -359,7 +361,7 @@ function buildRunBoardTool(
       "Run your task board: executes every runnable task with its assigned agent — " +
       "independent tasks in parallel, dependency-gated tasks once their deps complete — " +
       "and returns the settled board with each task's output. Assign work first with addTask " +
-      "(assignee optionally names an agent — an unnamed or unrecognized one runs on a default " +
+      "(assignee optionally names one of your agents — leave it unset to use the default " +
       "worker; deps order them; input carries a payload), then call this once.",
     inputSchema: z.object({}),
     outputSchema: runBoardOutputSchema,
@@ -490,11 +492,38 @@ async function resolveBuild(
   // be cached when only the rejected set changed, and the report must still land.
   reportRejectedAgentKeys(ctx, rejected);
   return resolveDelegationBuild(ctx, sources, async () => {
+    // ONE roster derivation, shared by everything that needs to know which
+    // agents exist: the board's participant registry, the assignment gate, and
+    // the guidance the coordinator reads. Two independent views of "the roster"
+    // is the shape that lets the model be told about an agent it is then
+    // refused for naming, so the invariant is literal here rather than
+    // true-by-inspection in two places.
+    const rosterPurposes = buildRosterPurposes(sources);
     return {
-      tools: await buildTools(ctx, deps, sources),
-      guidance: buildGuidance(sources, deps.allowEmptyRoster),
+      tools: await buildTools(ctx, deps, sources, rosterPurposes),
+      guidance: buildGuidance(rosterPurposes, deps.allowEmptyRoster),
     };
   });
+}
+
+/**
+ * Derive `agentKey → one-line purpose` from the resolved source list, first
+ * occurrence winning.
+ *
+ * First-wins matches how `buildTools` fills the board registry: a key seen
+ * twice with an identical spec dedupes to the first, a divergent runtime spec
+ * is skipped, and a divergent static spec throws the whole build. So every key
+ * reachable here maps to exactly the spec the board dispatches to.
+ */
+function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, string> {
+  const purposes = new Map<string, string>();
+  for (const source of sources) {
+    for (const [key, spec] of Object.entries(source.agents)) {
+      if (purposes.has(key)) continue;
+      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files), source.files));
+    }
+  }
+  return purposes;
 }
 
 /**
@@ -525,6 +554,7 @@ async function buildTools(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,
   sources: DelegationAgentSource[],
+  rosterPurposes: Map<string, string>,
 ): Promise<GeneratorTool[]> {
   // The board lives on the generator's own block state. The tools resolver
   // runs in the generator's own scope, so `ctx.self` IS that state ref — the
@@ -549,13 +579,28 @@ async function buildTools(
       changeVisibility: DELEGATION_BOARD_VISIBILITY,
     });
 
+  // The declared-agent roster assignment is validated against (FIX-924) — the
+  // same map `buildGuidance` renders, derived once in `resolveBuild`, so what
+  // the coordinator is told and what it may assign to are one list by
+  // construction. The worker loop below builds `boardWorkers` from the same
+  // sources under the same first-wins rule, so the registry agrees too.
+  const roster: WorkerRoster = {
+    has: (assignee) => rosterPurposes.has(assignee),
+    describe: () =>
+      [...rosterPurposes].map(([key, purpose]) => `${key} (${purpose})`).join(", "),
+  };
+
   // Two task-tools shapes are deliberately both in play here: `buildTaskToolsList()`
   // below produces the flat, model-facing eight tools the executive sees, while
   // `createTaskToolsCapability(...)` closes over THIS board so an inline agent that
   // declares `tools: [taskTools]` fans out mid-drain onto the same ledger the drain
   // is watching. They are not redundant — one is the host surface, one is the
   // worker's board-bound capability (FIX-928, D4).
-  const boardTaskTools = createTaskToolsCapability(() => boardCollection());
+  //
+  // The roster is passed unconditionally here: these tools only ever reach a
+  // worker from inside the loop below, so by the time any of them executes at
+  // least one agent is declared and the roster is non-empty.
+  const boardTaskTools = createTaskToolsCapability(() => boardCollection(), roster);
 
   const staticNames = new Set(deps.staticSources.map((s) => s.skillName));
   const seenSpecs = new Map<string, AgentSpec>();
@@ -618,7 +663,15 @@ async function buildTools(
   const defaultWorker = await materializeFloor(deps);
 
   return [
-    ...(buildTaskToolsList() as GeneratorTool[]),
+    // With declared agents, assignment is validated against them: an assignee
+    // naming none of them is rejected at addTask instead of quietly landing on
+    // the floor at drain time (FIX-924). A rosterless `delegation: true` board
+    // has nothing to validate against, so it passes no roster and every task
+    // runs on the floor exactly as before.
+    ...(buildTaskToolsList(
+      defaultOwnStateResolver,
+      rosterPurposes.size > 0 ? roster : undefined,
+    ) as GeneratorTool[]),
     buildRunBoardTool(boardCollection, boardWorkers, defaultWorker),
   ];
 }
@@ -644,39 +697,52 @@ export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
 /** The static delegation playbook, prefixed to the live agent roster. */
 const DELEGATION_PLAYBOOK = [
   "You can delegate work to a team of agents. You have a private task board and the task tools.",
-  "Assign work as tasks: addTask each unit (assignee optionally names an agent — an unnamed or",
-  "unrecognized assignee runs on a capable default worker; deps name the task ids that must finish",
+  "Assign work as tasks: addTask each unit (assignee optionally names one of your agents — leave it",
+  "unset to use a capable default worker; deps name the task ids that must finish",
   "first; input carries a structured payload), then call runBoard once. The board runs your workers —",
   "independent tasks in parallel, dependency-gated tasks once their deps complete —",
   "and returns each task's result. Synthesize the results into your own answer.",
 ].join(" ");
 
-/** One-line advisory that the board always has a default worker for unclaimed tasks. */
-const FLOOR_ADVISORY =
-  "A capable default worker handles any task whose assignee is unset or does not name one of your agents.";
+/**
+ * Roster advisory. Says how to reach the default worker (leave the assignee
+ * unset) and that a misnamed one is refused — the copy must match the gate in
+ * `checkAssignee`, or the coordinator is told it can do something addTask will
+ * reject.
+ */
+const FLOOR_ADVISORY_WITH_ROSTER =
+  "A capable default worker handles any task you leave unassigned. An assignee that does not name " +
+  "one of your agents is rejected when you add the task, so name an agent exactly or leave it unset.";
 
 /**
- * Build the roster text from an already-resolved source list. Returns `null`
+ * Rosterless advisory (a `delegation: true` board with no declared agents).
+ * There is no roster to validate against, so assignment is unvalidated and
+ * every task lands on the floor.
+ */
+const FLOOR_ADVISORY_ROSTERLESS =
+  "A capable default worker handles every task on this board — leave each task's assignee unset.";
+
+/**
+ * Render the guidance from the roster `resolveBuild` already derived — the same
+ * map the assignment gate validates against, so the agents the coordinator is
+ * told about are exactly the ones it may assign to. Returns `null`
  * (contributes nothing) when no bound skill declares agents AND the floor is
  * off. With the floor on but an empty roster (rosterless `delegation: true`),
  * the guidance leads with the floor rather than an empty "Your agents:" list;
- * the floor advisory is appended in both roster states (FIX-940, decision 5).
+ * a floor advisory is appended in both roster states (FIX-940, decision 5) — but a
+ * different one each way, since only a roster-carrying board validates assignment (FIX-924).
  */
-function buildGuidance(sources: DelegationAgentSource[], allowEmptyRoster: boolean): string | null {
-  if (sources.length === 0 && !allowEmptyRoster) return null;
-  // Dedupe by agent key — two skills sharing an agent list it once,
-  // mirroring the board's participant registry.
-  const roster = new Map<string, string>();
-  for (const source of sources) {
-    for (const [key, spec] of Object.entries(source.agents)) {
-      if (!roster.has(key)) roster.set(key, `- ${key}: ${agentPurpose(spec, source.files)}`);
-    }
-  }
-  if (roster.size === 0) {
+function buildGuidance(
+  rosterPurposes: Map<string, string>,
+  allowEmptyRoster: boolean,
+): string | null {
+  if (rosterPurposes.size === 0 && !allowEmptyRoster) return null;
+  if (rosterPurposes.size === 0) {
     // Rosterless: no "Your agents:" list — the floor is the whole team.
-    return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY}`;
+    return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY_ROSTERLESS}`;
   }
-  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${[...roster.values()].join("\n")}\n\n${FLOOR_ADVISORY}`;
+  const lines = [...rosterPurposes].map(([key, purpose]) => `- ${key}: ${purpose}`);
+  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${lines.join("\n")}\n\n${FLOOR_ADVISORY_WITH_ROSTER}`;
 }
 
 /**
