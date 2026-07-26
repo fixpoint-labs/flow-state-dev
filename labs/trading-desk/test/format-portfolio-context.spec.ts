@@ -116,11 +116,55 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     // which wrapper each slice came through, not just a bare max position
     // (Codex review, FIX-801 sub-PR c round 32).
     expect(out).toContain(
-      "Look-through top positions by weight: AAPL 16.9% (direct + SPY), MSFT 8.4% (direct).",
+      "Look-through top positions by weight: AAPL 16.9% (direct 11.9% + SPY 5.0%), MSFT 8.4% (direct).",
     );
     // The per-fund identity behind the count above — traceable to the actual
     // holding, not just a bare number (Codex review, FIX-801 sub-PR c round 25).
     expect(out).toContain("Opaque fund detail: QQQ (both: thin coverage).");
+  });
+
+  it("renders each source's OWN contribution when a position is attributed through more than one source, not just the source names (Codex review, FIX-801 sub-PR c round 41, a real gap)", () => {
+    // round 32 rendered only "direct + QQQ + SPY" — the total split across
+    // three sources but not how much came from each. Clean numbers so the
+    // per-source math is exactly checkable: direct $5,000, QQQ $3,000, SPY
+    // $2,000 (sum $10,000) against a 20.0% total position weight — each
+    // source's share of that total is its share of the $10,000 sum.
+    const out = formatPortfolioContext(
+      snapshot({
+        health: {
+          ...snapshot().health!,
+          lookThrough: {
+            coveragePct: 99.0,
+            sectorCoveragePct: 96.5,
+            sectorExposure: [],
+            positions: [
+              {
+                ticker: "AAPL",
+                weightPct: 20.0,
+                sources: [
+                  { from: "direct", marketValue: 5_000 },
+                  { from: "QQQ", marketValue: 3_000 },
+                  { from: "SPY", marketValue: 2_000 },
+                ],
+              },
+            ],
+            maxPosition: { ticker: "AAPL", weightPct: 20.0 },
+            effectivePositions: null,
+            flags: [],
+            opaqueFundCount: 0,
+            opaqueUnavailableFundCount: 0,
+            opaqueFundDetails: [],
+          },
+        },
+      }),
+      [],
+      "NVDA",
+    );
+    // direct: 5,000/10,000 * 20.0% = 10.0%; QQQ: 3,000/10,000 * 20.0% = 6.0%;
+    // SPY: 2,000/10,000 * 20.0% = 4.0% — reconciles exactly to the 20.0% total.
+    expect(out).toContain(
+      "Look-through top positions by weight: AAPL 20.0% (direct 10.0% + QQQ 6.0% + SPY 4.0%).",
+    );
   });
 
   it("renders '—' for the effective-positions interval when null (no attribution to bound)", () => {

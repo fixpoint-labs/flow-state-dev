@@ -617,9 +617,30 @@ function appendLookThroughLines(
   // invisible entirely. Same "Top positions by weight" style as the
   // wrapper-basis line, so the model can trace a concentration read to an
   // actual holding (Codex review, FIX-801 sub-PR c round 32).
+  //
+  // WITH each source's own contribution when there's more than one (Codex
+  // review, FIX-801 sub-PR c round 41) — round 32 rendered only the source
+  // NAMES ("direct + SPY"), telling the model the total split across sources
+  // but not how much came from each. Each source's `marketValue` is already
+  // on the projection (the leaf's own `nameSources` accounting — the exact
+  // same amounts that sum to the position's total, by construction); a
+  // source's own weight is derived from that ratio against the position's
+  // already-computed `weightPct` rather than a separate NAV division, so it
+  // reconciles to the total exactly. A single-source position stays a bare
+  // name — the percent would just repeat the total already shown.
   if (lookThrough.positions.length > 0) {
     const positions = lookThrough.positions
-      .map((p) => `${p.ticker} ${fmtPct(p.weightPct)} (${p.sources.map((s) => s.from).join(" + ")})`)
+      .map((p) => {
+        const totalSourceMv = p.sources.reduce((sum, s) => sum + s.marketValue, 0);
+        const sourceLabel = p.sources
+          .map((s) =>
+            p.sources.length > 1
+              ? `${s.from} ${fmtPct(totalSourceMv > 0 ? (s.marketValue / totalSourceMv) * p.weightPct : 0)}`
+              : s.from,
+          )
+          .join(" + ");
+        return `${p.ticker} ${fmtPct(p.weightPct)} (${sourceLabel})`;
+      })
       .join(", ");
     lines.push(`Look-through top positions by weight: ${positions}.`);
   }
