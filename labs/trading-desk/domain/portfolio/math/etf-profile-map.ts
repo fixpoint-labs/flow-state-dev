@@ -86,6 +86,49 @@ export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>)
 }
 
 /**
+ * Removes any ticker currently classified `assetClass === "fixed_income"`
+ * from an already-built `FundProfileInput` map, before it reaches the
+ * look-through leaf.
+ *
+ * `allHeldTickers`'s broad cache read (above) deliberately still looks up a
+ * profile for a bond ETF, or for a holding a manual override has since
+ * reclassified to `fixed_income` — that read has to stay broad for the
+ * mistyped-equity recovery case. But a STORED profile surviving that read is
+ * not itself permission to attribute through it: any ticker present in the
+ * map with a `payload` gets decomposed by `computeLookThroughExposure`
+ * (`etf-look-through.ts`), and bond/commodity-fund attribution is out of
+ * scope for this feature (docs/etf-look-through.md — no look-through inside
+ * a fixed-income fund) regardless of whether a profile happens to be cached
+ * from before the reclassification, or from another household. This closes
+ * that gap by removing the entry entirely — the ticker then reads exactly as
+ * "never looked up" to the leaf, which is the correct fallback: still
+ * classified opaque-fund on the WRAPPER basis if its own `assetType` is
+ * fund-typed, just never decomposed (Codex review, FIX-801 sub-PR c).
+ *
+ * Deliberately NOT `isEtfProfileFetchCandidate` reapplied here — that
+ * predicate is the FETCH decision and is stricter than this single
+ * `assetClass` check (it also requires `assetType === "etf"`), which would
+ * reintroduce the mistyped-equity bug `allHeldTickers`'s own docblock
+ * describes: a holding still tagged `equity` locally (the exact case the
+ * broad read exists to recover) would fail that stricter check and get its
+ * already-correct stored profile suppressed again. Only the CURRENT
+ * `assetClass === "fixed_income"` fact is checked — a narrower, different
+ * condition on purpose.
+ */
+export function excludeFixedIncomeFromProfileMap(
+  profiles: Map<string, FundProfileInput>,
+  holdings: ReadonlyArray<Pick<Holding, "ticker" | "assetClass">>,
+): Map<string, FundProfileInput> {
+  const fixedIncomeTickers = new Set(
+    holdings.filter((h) => h.assetClass === "fixed_income").map((h) => h.ticker.toUpperCase()),
+  );
+  if (fixedIncomeTickers.size === 0) return profiles;
+  const filtered = new Map(profiles);
+  for (const ticker of fixedIncomeTickers) filtered.delete(ticker);
+  return filtered;
+}
+
+/**
  * Whether a holding is one `GET /api/portfolio/etf-profiles` will ever
  * SPEND AN ALPHA VANTAGE UNIT FETCHING a profile for — the single definition
  * of "fetch-eligible". Used by the route's own eligible-ticker derivation and

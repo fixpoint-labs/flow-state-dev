@@ -1964,10 +1964,28 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
             // fresh judgment; transport replacing transport — an ordinary
             // continued failure; either replacing nothing) stays admitted
             // unchanged, matching the ORIGINAL behavior for those cases.
+            //
+            // That precedence guard is itself only correct while the DOMAIN
+            // refusal's own backoff window is still open (fourth Codex review
+            // round): it also blocked the ordinary, LEGITIMATE sequential
+            // retry — a domain refusal's ~90-day `retry_at` genuinely
+            // expires, `isDueForFetch` (the route) lets a fresh attempt
+            // through, and that attempt hits a transient/quota failure. That
+            // is not "clobbering a settled verdict" — the settled verdict's
+            // hold period is OVER and a new outcome is being recorded — but
+            // the unconditional guard blocked the write anyway, so
+            // `retry_at` never advanced and every subsequent Health read
+            // immediately re-attempted forever instead of backing off on the
+            // fresh transient/quota failure. The extra `retry_at > now()`
+            // condition scopes the block to exactly the concurrent-race case
+            // the guard exists for: a domain refusal still WITHIN its backoff
+            // window. Once it's expired, a transport-failure write is
+            // admitted like any other refusal-vs-refusal pairing.
             where: sql`(${etfProfiles.payload} is null
               and not (
                 ${etfProfiles.refusalReason} in ('not_an_etf', 'ineligible', 'malformed')
                 and excluded.refusal_reason in ('quota', 'transient')
+                and ${etfProfiles.retryAt} > now()
               ))
               or (excluded.refusal_reason is null and excluded.fetched_at >= ${etfProfiles.fetchedAt})`,
           });

@@ -219,6 +219,45 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].transientAttempts).toBe(0);
   });
 
+  it("a TRANSPORT-class refusal DOES overwrite a DOMAIN-class refusal once the domain refusal's OWN backoff has expired — the legitimate sequential retry (Codex review, FIX-801 sub-PR c round 7)", async () => {
+    // The precedence guard above must only block the CONCURRENT-race case —
+    // a domain refusal still WITHIN its backoff window. Once `retry_at` is
+    // in the past, the route's own `isDueForFetch` gate lets a fresh attempt
+    // through, and if THAT attempt hits a transient/quota failure, this is
+    // not "clobbering a settled verdict" — the verdict's hold period is over
+    // and a new outcome is being recorded. Without this expiry check, that
+    // legitimate write would be silently dropped, `retry_at` would never
+    // advance, and every subsequent read would immediately re-attempt
+    // forever instead of backing off on the fresh transient/quota failure.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "EXPIRED",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date(Date.now() - 1000).toISOString(), // already past
+        transientAttempts: 0,
+      },
+    ]);
+    const freshRetryAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "EXPIRED",
+        payload: null,
+        refusalReason: "transient",
+        refusalDetail: "network error on retry",
+        retryAt: freshRetryAt,
+        transientAttempts: 1,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["EXPIRED"]);
+    expect(rows).toHaveLength(1);
+    // The write landed — retry_at advanced to the fresh transient backoff.
+    expect(rows[0].refusalReason).toBe("transient");
+    expect(rows[0].transientAttempts).toBe(1);
+    expect(rows[0].retryAt).toBe(freshRetryAt);
+  });
+
   it("a fresh DOMAIN-class refusal DOES overwrite an existing DOMAIN-class refusal — a genuine re-judgment on a real fetch, not a transport failure", async () => {
     await repo.upsertEtfProfiles([
       {

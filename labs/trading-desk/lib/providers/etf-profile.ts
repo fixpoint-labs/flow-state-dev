@@ -182,31 +182,45 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  * Fetch and normalize one ticker's ETF profile. Throws `AlphaVantageError` (or
  * a subclass) on any transport/budget/rate-limit failure — the caller
  * degrades exactly as with every other AV fetcher. Returns a `"refused"`
- * outcome (never throws) for a domain-level judgment: no usable profile data
- * at all (`not_an_etf`), a leveraged/inverse fund (`ineligible`), or a
- * response with genuinely unsymboled holdings — bullion, unsymboled debt —
- * (`ineligible`, a permanent fact about the fund rather than a data glitch).
- * See the FIX-801 spec §9 edge-case table for the exact refusal→backoff
- * mapping (owned by the REST route, not this module).
+ * outcome (never throws) for a domain-level judgment. See the FIX-801 spec §9
+ * edge-case table for the exact refusal→backoff mapping (owned by the REST
+ * route, not this module).
  *
- * **Per-axis malformed handling does NOT refuse the whole profile** — that
- * judgment is the consuming leaf's business (Decision 4's per-axis gate;
- * docs/etf-look-through.md), not this fetcher's, and it applies
- * symmetrically to both axes, and to every way an axis can turn out
- * unusable. A NAME axis whose rows sum past 100% has its rows discarded
- * (`constituents: []`, `nameCoverage: 0` — read by the leaf exactly like "the
- * provider sent no holdings data"); a SECTOR axis with the same over-sum
- * problem is discarded the same way; a response with resolvable constituent
- * SYMBOLS whose weights are ALL unparseable/corrupted (leaving nothing to sum
- * on the name axis at all) discards the same way too, rather than refusing
- * the whole profile the way it used to (Codex review, FIX-801 sub-PR c —
- * this was the third variant of the same bug class: the `malformed`
- * `EtfRefusalReason` is consequently no longer produced by this fetcher at
- * all, though the type/backoff-table entry stays for any future path that
- * needs it). Either axis can be malformed — by any of these routes — while
- * the OTHER stays fully usable, and the fetch still returns a normal
- * `"profile"` outcome — never suppressed for ~7 days over a single-axis data
- * glitch when the other axis is fine.
+ * **Every early return in this function is one of exactly two kinds — kept
+ * enumerated here on purpose (Codex review, FIX-801 sub-PR c) so this
+ * function doesn't grow a fifth per-axis bug the same shape as the first
+ * four:**
+ *
+ * 1. **Legitimately WHOLE-PROFILE** — a permanent, structural fact about the
+ *    FUND, true independent of any per-axis data quality, so refusing (and
+ *    backing off) the whole profile is correct:
+ *    - `not_an_etf` — BOTH raw arrays are empty. There is nothing on either
+ *      axis to degrade to.
+ *    - `ineligible` (leveraged) — a leveraged/inverse fund. Out of scope by
+ *      policy (spec Non-goals), regardless of what either axis' data says.
+ *
+ * 2. **Per-axis degradation — NEVER refuses the whole profile.** That
+ *    judgment belongs to the consuming leaf (Decision 4's per-axis gate;
+ *    docs/etf-look-through.md), not this fetcher: a fund can pass on one axis
+ *    while failing the other, and every one of these discards just the
+ *    affected axis's rows/coverage (`[]` / `0` — read by the leaf exactly
+ *    like "the provider sent nothing on this axis") and falls through so the
+ *    OTHER axis is still evaluated on its own merits:
+ *    - NAME axis rows sum past 100% (over-sum malformed).
+ *    - NAME axis has no resolvable constituent — whether from an empty/absent
+ *      `holdings` array, rows with no resolvable symbol at all (bullion,
+ *      unsymboled debt), or resolvable symbols whose weights all failed to
+ *      parse. All three collapse to the same "nothing to attribute on the
+ *      name axis" outcome; none of them is a fact about the SECTOR axis, so
+ *      none of them may suppress it (this was the case still refusing the
+ *      whole profile as of the third review round — the fourth variant of
+ *      this same bug class).
+ *    - SECTOR axis rows sum past 100% (over-sum malformed).
+ *
+ * The `malformed` `EtfRefusalReason` is consequently no longer produced by
+ * this fetcher at all — every case that used to return it now degrades that
+ * one axis instead. The type/backoff-table entry stays for any future path
+ * that needs it.
  */
 export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> {
   const body = (await alphaVantageRequest({
@@ -272,32 +286,30 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
 
   const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
   if (!nameMalformed && !hasResolvableConstituent) {
-    // "No resolvable constituent" covers TWO distinct raw shapes, which must
-    // not share a verdict (Codex review, FIX-801 sub-PR a): a genuinely
-    // unsymboled book (bullion, unsymboled debt) is a permanent fact about
-    // the fund — `ineligible`, ~90-day backoff, the one remaining
-    // whole-profile refusal in this block. A response with sector rows but
-    // an EMPTY/absent `holdings` array (`rawHoldings.length === 0`) falls
-    // through to this same check too — this is no longer gated on
-    // `rawHoldings.length > 0`, since an empty holdings array trivially has
-    // no resolvable symbol either and must not silently pass through as a
-    // zero-constituent "profile" (a second Codex review, FIX-801 sub-PR a —
-    // distinct from the initial both-empty `not_an_etf` check above, which
-    // only fires when sectors are ALSO empty).
-    const hasResolvableSymbol = rawHoldings.some((row) => !isAbsent(row.symbol));
-    if (!hasResolvableSymbol) {
-      return { kind: "refused", reason: "ineligible", detail: "no resolvable constituent tickers" };
-    }
-    // Symbols WERE resolvable but every weight failed to parse (corrupted/
-    // out-of-range) — a NAME-axis data glitch, not a permanent fact about
-    // the fund. Per the same per-axis contract as the two over-sum branches
-    // below, this must not refuse the whole profile and discard a
-    // possibly-valid sector axis (Codex review, FIX-801 sub-PR c, third
-    // variant of the same bug class as the sector-malformed / name-malformed
-    // over-sum fixes). `constituents`/`nameCoverage` are already `[]`/`0`
-    // here (nothing parsed) — mark the axis malformed and fall through to
-    // sector parsing below, which judges the sector axis entirely on its own
-    // merits.
+    // No ATTRIBUTABLE NAME-axis data — covers THREE distinct raw shapes,
+    // none of which is a fact about the fund as a whole (Codex review,
+    // FIX-801 sub-PR c, fourth variant of the per-axis bug class): an
+    // empty/absent `holdings` array (`constituents`/`nameCoverage` are
+    // already `[]`/`0` — the loop above had nothing to iterate), resolvable
+    // symbols whose weights all failed to parse (also already `[]`/`0` — an
+    // unparseable weight is `continue`d before ever pushing a row), or rows
+    // with NO resolvable symbol at all but VALID weights (bullion,
+    // unsymboled debt) — this last shape is different: those rows WERE
+    // pushed (a `null`-ticker constituent is kept, per this file's own
+    // `EtfConstituent` docblock, "present in even well-covered funds, not
+    // dropped"), so `nameCoverage` can be genuinely non-zero here (e.g. a
+    // fund whose holdings are 100% cash/futures/bonds reports full coverage,
+    // zero attributable names) — that is not malformed data, it is an
+    // honest "fully covered, nothing nameable" fund, so it is intentionally
+    // left as-is rather than zeroed. All three collapse to the same verdict
+    // for THIS check (nothing to attribute a single name to), and per
+    // Decision 4's per-axis contract that must not suppress a possibly-valid
+    // SECTOR axis (docs/etf-look-through.md) — this used to return a
+    // whole-profile refusal here (`ineligible` for the two unsymboled
+    // shapes, `malformed` for the unparseable-weight shape; see the
+    // function's own docblock for the full early-return inventory). Mark the
+    // axis malformed and fall through to sector parsing below, which judges
+    // the sector axis entirely on its own merits.
     nameMalformed = true;
   }
 

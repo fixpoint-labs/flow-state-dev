@@ -31,7 +31,7 @@ import {
   type QuoteMap,
 } from "@/domain/portfolio/math/portfolio-health";
 import type { EffectiveNamePosition, LookThroughSectorBucket, OpaqueFund } from "@/domain/portfolio/math/etf-look-through";
-import { toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
+import { excludeFixedIncomeFromProfileMap, toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
 import { useClassifications } from "./use-classifications";
 import { etfProfilesResponseToRows, useEtfProfiles } from "./use-etf-profiles";
 import { ASSET_CLASS_LABELS, DASH, formatMoney } from "./portfolio-format";
@@ -140,9 +140,19 @@ export function HealthSection({
   // projection) from the route's client projection, exactly mirroring the
   // analysis seed's own use of the same adapter over the repository's row
   // shape (FIX-801 sub-PR c).
+  // A stored profile surviving the broad cache read is not itself permission
+  // to attribute through it — a bond ETF, or a holding since manually
+  // reclassified to fixed_income, must stay opaque regardless of a
+  // (possibly stale, possibly another household's) cached profile (Codex
+  // review, FIX-801 sub-PR c; see `excludeFixedIncomeFromProfileMap`'s
+  // docblock).
   const etfProfiles = useMemo(
-    () => toFundProfileMap(etfProfilesResponseToRows(etfProfileEntries, etfRefusalEntries)),
-    [etfProfileEntries, etfRefusalEntries],
+    () =>
+      excludeFixedIncomeFromProfileMap(
+        toFundProfileMap(etfProfilesResponseToRows(etfProfileEntries, etfRefusalEntries)),
+        accounts.flatMap((a) => a.holdings),
+      ),
+    [etfProfileEntries, etfRefusalEntries, accounts],
   );
 
   const health = useMemo(() => {
@@ -462,7 +472,11 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
 /** Effective names on the look-through basis, expandable to show which
  *  wrapper each slice came from (including the direct holding itself as one
  *  of the sources) — the same two-level disclosure idiom `TopPositions` and
- *  `SectorExposure` already use. */
+ *  `SectorExposure` already use. A SINGLE-source name (through exactly one
+ *  fund, or direct-only) needs no expand affordance, but the Sources column
+ *  still names that one source inline instead of a bare "1" — dropping the
+ *  per-wrapper breakdown in the single-fund case understates the methodology
+ *  (Codex review, FIX-801 sub-PR c). */
 function LookThroughPositions({ positions }: { positions: EffectiveNamePosition[] }): ReactElement {
   const [expanded, setExpanded] = useState<string | null>(null);
   const top = positions.slice(0, 10);
@@ -497,7 +511,19 @@ function LookThroughPositions({ positions }: { positions: EffectiveNamePosition[
                     {p.ticker}
                   </td>
                   <td className="px-2 py-1 text-right font-mono text-[color:var(--c-fg)]">{pct(p.weightPct)}</td>
-                  <td className="px-2 py-1 text-right font-mono text-[color:var(--c-fg-muted)]">{p.sources.length}</td>
+                  <td className="px-2 py-1 text-right font-mono text-[color:var(--c-fg-muted)]">
+                    {multi
+                      ? p.sources.length
+                      : // A single source needs no expand affordance, but
+                        // still owes the same per-wrapper breakdown the
+                        // multi-source expanded view gives — a bare "1"
+                        // dropped which single fund (or the direct holding)
+                        // this name came through (Codex review, FIX-801
+                        // sub-PR c).
+                        p.sources[0].from === "direct"
+                        ? "Direct"
+                        : p.sources[0].from}
+                  </td>
                 </tr>
                 {isOpen &&
                   p.sources.map((s, i) => (

@@ -273,6 +273,61 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });
 
+  it("suppresses attribution for a fund whose CURRENT holding is classified fixed_income, even though a cached profile exists (Codex review, FIX-801 sub-PR c round 7)", async () => {
+    // The broad cache read (`allHeldTickers`) still looks up SPY's profile —
+    // needed for the mistyped-equity recovery case above — but a bond ETF, or
+    // a holding a manual override has since reclassified to `fixed_income`,
+    // must never be attributed through even if a normal profile happens to
+    // be cached (from before the reclassification, or from another
+    // household — the table is global). Without the exclusion, this profile
+    // would decompose exactly like the two tests above.
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 0,
+      holdings: [
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "fixed_income", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+    ]);
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "SPY",
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "AAPL", weight: 0.925 },
+            { ticker: "MSFT", weight: 0.07 },
+          ],
+          nameCoverage: 0.995,
+          sectors: [
+            { sector: "Technology", weight: 0.3 },
+            { sector: "Financial Services", weight: 0.66 },
+          ],
+          sectorCoverage: 0.96,
+          netExpenseRatio: 0.0945,
+          inceptionDate: "1993-01-22",
+        },
+        refusalReason: null,
+      },
+    ]);
+
+    const result = await testBlock(seedSession, { input: { ...baseInput, ticker: "SPY" }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: { health: { lookThrough: unknown } | null } | null;
+    };
+    // No fund is attributed — SPY is excluded despite the cached profile —
+    // so lookThrough stays null exactly as it would with no profile at all.
+    expect(sessionState.portfolio?.health?.lookThrough).toBeNull();
+    expect(fetchEtfProfileMock).not.toHaveBeenCalled();
+  });
+
   it("leaves the look-through axis null when a fund is held but its profile has never been fetched — no budget spent finding out", async () => {
     await seedAccount(repoState.repo!, {
       accountId: ACCOUNT_ID,

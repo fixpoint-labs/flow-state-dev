@@ -52,7 +52,11 @@ import {
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
 import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
-import { allHeldTickers, toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
+import {
+  allHeldTickers,
+  excludeFixedIncomeFromProfileMap,
+  toFundProfileMap,
+} from "@/domain/portfolio/math/etf-profile-map";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/db/portfolio-db";
 import { toAccountStates } from "@/db/repository";
@@ -238,14 +242,23 @@ export const seedSession = handler({
     // the override case can work at all. `allHeldTickers` is the shared
     // derivation the route's own `GET` handler uses for the identical reason
     // (one helper, not two reimplementations that can drift apart again).
-    const heldTickersForProfileLookup = allHeldTickers(scoped.flatMap((a) => a.holdings));
-    const etfProfiles: Map<string, FundProfileInput> = new Map();
+    const scopedHoldings = scoped.flatMap((a) => a.holdings);
+    const heldTickersForProfileLookup = allHeldTickers(scopedHoldings);
+    let etfProfiles: Map<string, FundProfileInput> = new Map();
     try {
       const rows = await repo.getEtfProfiles(heldTickersForProfileLookup);
       for (const [ticker, profile] of toFundProfileMap(rows)) etfProfiles.set(ticker, profile);
     } catch (err) {
       console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
     }
+    // The broad read above intentionally still looks up a bond ETF (or a
+    // holding since manually reclassified to fixed_income) — but a stored
+    // profile surviving that read is not itself permission to attribute
+    // through it. Suppress those tickers from the map the leaf actually
+    // decomposes (Codex review, FIX-801 sub-PR c) — see the function's own
+    // docblock for why this is a narrower, different check than the fetch
+    // predicate.
+    etfProfiles = excludeFixedIncomeFromProfileMap(etfProfiles, scopedHoldings);
     const portfolio = buildPortfolioContext(
       scoped,
       quoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),

@@ -123,7 +123,13 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
   });
 
-  it("refuses a fund with no resolvable constituents (commodity/bond — all n/a rows)", async () => {
+  it("keeps a valid (though zero-attributable) NAME axis reading for a commodity/bond fund — all n/a symbols, real weights — instead of refusing the whole profile (Codex review, FIX-801 sub-PR c, fourth variant of the per-axis bug class)", async () => {
+    // The symbols are genuinely unresolvable (bullion/cash have no ticker),
+    // but the WEIGHTS are real — per this file's own `EtfConstituent`
+    // docblock, an n/a row is kept (not dropped) and still counts toward
+    // `nameCoverage`. That is an honest "fully covered, nothing nameable"
+    // fund, not a data-quality problem, so it must not refuse the whole
+    // profile (this used to return `kind: "refused", reason: "ineligible"`).
     mockFetchOnce({
       ...WELL_COVERED,
       sectors: [],
@@ -133,23 +139,33 @@ describe("fetchEtfProfile — eligibility refusals", () => {
       ],
     });
     const out = await fetchEtfProfile("GLD");
-    expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // Both rows are kept (not dropped) with a null ticker — genuinely
+    // non-zero coverage, zero attributable names.
+    expect(out.profile.constituents).toHaveLength(2);
+    expect(out.profile.constituents.every((c) => c.ticker === null)).toBe(true);
+    expect(out.profile.nameCoverage).toBeCloseTo(1.0);
+    expect(out.profile.sectors).toEqual([]);
+    expect(out.profile.sectorCoverage).toBe(0);
   });
 
-  it("refuses a SECTOR-ONLY response (sector rows present, holdings array empty/absent) rather than caching a zero-constituent profile (Codex review round 2)", async () => {
+  it("keeps a valid SECTOR axis for a SECTOR-ONLY response (sector rows present, holdings array empty/absent), instead of refusing the whole profile (Codex review round 2; updated Codex review, FIX-801 sub-PR c round 4 — no longer a whole-profile refusal)", async () => {
     // Distinct from the all-n/a case above (which has holdings ROWS, just
     // unresolvable ones) and from the both-empty case (already caught by the
     // earlier not_an_etf guard): here `sectors` is non-empty but `holdings`
-    // itself is empty, so nothing in the earlier "no resolvable constituent"
-    // check fired (it used to be gated on `rawHoldings.length > 0`) and a
-    // profile with zero constituents/zero nameCoverage would otherwise be
-    // cached as valid for 30 days.
+    // itself is empty. The name axis has genuinely nothing to attribute —
+    // `constituents: []`, `nameCoverage: 0` — but the sector axis, evaluated
+    // independently, is fully usable and must not be discarded with it.
     mockFetchOnce({
       ...WELL_COVERED,
       holdings: [],
     });
     const out = await fetchEtfProfile("SECTORONLY");
-    expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    expect(out.profile.constituents).toEqual([]);
+    expect(out.profile.nameCoverage).toBe(0);
+    expect(out.profile.sectors.length).toBeGreaterThan(0);
+    expect(out.profile.sectorCoverage).toBeGreaterThan(0);
   });
 
   it("keeps a valid SECTOR axis when the NAME axis has resolvable symbols but ALL-unparseable/out-of-range weights, instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — third variant of the same per-axis bug class)", async () => {
