@@ -16,6 +16,7 @@ import {
   missingConstituentTickers,
 } from "@/domain/portfolio/math/etf-profile-map";
 import { dominantClassificationByTicker } from "@/domain/portfolio/math/value-holding";
+import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
 
 // The ETF holdings-profile fill surface (FIX-801) — backs the Health view's
 // look-through axis, mirroring the classifications route's shape (a lazy
@@ -178,24 +179,46 @@ export async function GET(req: NextRequest) {
   // check (inside `isEtfProfileFetchCandidate`) is unaffected — it's already
   // ticker-level, not row-dependent.
   const dominantClassification = dominantClassificationByTicker(holdings, quoteMap);
-  // FETCH-eligible = held as an ETF (a per-row signal — is there evidence
-  // ANYWHERE this ticker is an ETF), not a curated bond ETF (pre-filtered
-  // locally — zero fetches, Decision 5), not a flagged inconsistent-history
-  // row, AND the ticker's DOMINANT lot is not fixed_income (see above).
-  // Mutual funds are never fetch-eligible (assetType !== "etf" — the endpoint
-  // is ETF-only, Non-goals). `isEtfProfileFetchCandidate` is the single
-  // definition of the per-row predicate — the Health UI's eligibility-refetch
-  // signature reads it too.
+  const storedByTicker = new Map(storedRows.map((r) => [r.ticker, r]));
+  // FETCH-eligible is the UNION of two evidence sources, not just one:
+  //
+  // 1. Held as an ETF by LOCAL tag (a per-row signal — is there evidence
+  //    ANYWHERE this ticker is an ETF), not a curated bond ETF (pre-filtered
+  //    locally — zero fetches, Decision 5), not a flagged inconsistent-history
+  //    row. Mutual funds are never fetch-eligible this way (assetType !==
+  //    "etf" — the endpoint is ETF-only, Non-goals). `isEtfProfileFetchCandidate`
+  //    is the single definition of the per-row predicate — the Health UI's
+  //    eligibility-refetch signature reads it too. This is the right (and only)
+  //    gate for an UNCONFIRMED ticker — deciding whether to spend a budget unit
+  //    fetching something with no fund evidence yet at all.
+  //
+  // 2. Already CONFIRMED a fund by an existing successful cached profile,
+  //    regardless of what the local tag currently says (Codex review, FIX-801
+  //    sub-PR c). A local `assetType` tag can go stale (a classification
+  //    correction that failed, or a stuck manual override) even after
+  //    `app.etf_profiles` has already proven the ticker is a real fund — and
+  //    unlike an unconfirmed ticker, this one doesn't need the local-tag gate
+  //    to decide whether it's worth a budget unit; the cached profile already
+  //    answered that question once. Without this, set 1 alone permanently
+  //    excludes such a ticker from `eligibleTickers`, so `isDueForFetch`'s
+  //    30-day staleness check never even runs and the confirmed profile can
+  //    never refresh. Still excludes the SAME fixed-income evidence
+  //    (`isKnownBondEtf` here, the dominant-lot check below for both sets) —
+  //    a stale cached profile is not grounds to keep re-fetching a ticker
+  //    look-through has no use for.
+  const cacheConfirmedTickers = allTickers.filter((ticker) => {
+    const stored = storedByTicker.get(ticker);
+    return stored !== undefined && stored.payload !== null && !isKnownBondEtf(ticker);
+  });
   const eligibleTickers = [
     ...new Set(
-      holdings
-        .filter(isEtfProfileFetchCandidate)
-        .map((h) => h.ticker.toUpperCase())
-        .filter((ticker) => dominantClassification.get(ticker)?.assetClass !== "fixed_income"),
+      [
+        ...holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
+        ...cacheConfirmedTickers,
+      ].filter((ticker) => dominantClassification.get(ticker)?.assetClass !== "fixed_income"),
     ),
   ];
   const pricedTickers = new Set(quotesRows.map((q) => q.ticker));
-  const storedByTicker = new Map(storedRows.map((r) => [r.ticker, r]));
 
   const now = new Date();
   // A fund with no quote yet contributes no numerator/denominator on either

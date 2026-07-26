@@ -269,6 +269,71 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("refreshes a STALE cached profile for a MISTYPED-equity holding — an existing successful profile is sufficient refresh evidence on its own, independent of the local tag (Codex review, FIX-801 sub-PR c round 34, a real bug)", async () => {
+    // SPY is held as assetType: "equity" (a classification correction that
+    // failed, or a stuck manual override) but ALREADY has a successful cached
+    // profile proving it's a fund. Before this fix, `eligibleTickers` was
+    // built solely from `isEtfProfileFetchCandidate` (requires assetType ===
+    // "etf" locally), so a mistagged-but-confirmed ticker was excluded from
+    // the fetch-candidate set entirely and `isDueForFetch`'s 30-day staleness
+    // check never even ran — the confirmed profile could never refresh, no
+    // matter how stale it got.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("SPY", 31); // force genuine staleness
+
+    const FRESHER_PROFILE: NormalizedEtfProfile = { ...SAMPLE_PROFILE, nameCoverage: 0.42 };
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: FRESHER_PROFILE });
+
+    const res = await GET(get(USER_ID));
+
+    // The load-bearing assertion: the refresh WAS attempted, despite SPY
+    // never passing `isEtfProfileFetchCandidate` (assetType is "equity", not
+    // "etf") — the existing successful cached profile is what makes it
+    // fetch-eligible for a REFRESH.
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    const body = (await res.json()) as EtfProfilesResponse;
+    const spy = body.profiles.find((p) => p.ticker === "SPY");
+    expect(spy?.nameCoverage).toBeCloseTo(0.42); // the fresh profile landed, not the stale one
+  });
+
+  it("does not refresh a curated bond ETF's cached profile via the cache-confirmed path, even when it's mistyped and stale — the fixed-income exclusion still applies (Codex review, FIX-801 sub-PR c round 34)", async () => {
+    // BND is a curated bond ETF (isKnownBondEtf) held with a stale assetClass
+    // ("equity" — a manual-override edge case, the round-17ish precedent
+    // above) and an existing successful cached profile. The new
+    // cache-confirmed refresh path must not bypass the fixed-income
+    // exclusion any more than the local-tag path does.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "BND", quantity: 10, costBasis: 80, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "BND", price: 75, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "BND", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("BND", 31);
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    // Still returned from cache (the READ set stays broader than the fetch
+    // set), just never refetched.
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["BND"]);
+  });
+
   it("surfaces a fund-of-funds constituent's own stored profile even though the household does not separately hold it — the constituent-broadening fix (Codex review, FIX-801 sub-PR c round 12, P1)", async () => {
     // AOA (an allocation ETF) holds VTI at 90% of its own weight; VTI is
     // itself a fund but is NOT held by this household at all — only its
