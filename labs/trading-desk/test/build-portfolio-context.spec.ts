@@ -318,6 +318,25 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.effectivePositions?.high).toBeGreaterThanOrEqual(
       lookThrough?.effectivePositions?.low ?? 0,
     );
+    // Top effective-name positions WITH source identity (Codex review,
+    // FIX-801 sub-PR c round 32) — AAPL's slice traces to BOTH the direct
+    // holding and SPY's 92.5% stake; MSFT's traces ONLY to SPY (never held
+    // directly). Sorted by |weightPct| desc, matching `positions`' own order.
+    expect(lookThrough?.positions).toEqual([
+      {
+        ticker: "AAPL",
+        weightPct: expect.closeTo((65_500 * 100) / 70_000, 5),
+        sources: expect.arrayContaining([
+          { from: "direct", marketValue: 10_000 },
+          { from: "SPY", marketValue: 55_500 },
+        ]),
+      },
+      {
+        ticker: "MSFT",
+        weightPct: expect.closeTo((4_200 * 100) / 70_000, 5),
+        sources: [{ from: "SPY", marketValue: 4_200 }],
+      },
+    ]);
   });
 
   it("a fund with no stored profile leaves lookThrough null (nothing attributed) — same 'never fetches' read as an empty map", () => {

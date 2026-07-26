@@ -96,6 +96,21 @@ const portfolioHealthContext = z.object({
       // fires a flag, so without this the model has no way to describe it
       // (Codex review, FIX-801 sub-PR c round 28).
       sectorExposure: z.array(z.object({ bucket: z.string(), pct: z.number().nullable() })),
+      // Top 6 effective-name positions by |weightPct| (a direct holding and
+      // the same name held through a fund add up first, per the leaf's own
+      // aggregation) — `maxPosition` below names only the single largest;
+      // this carries the next several plus WHICH wrapper each one came
+      // through (`sources`), so the model can trace a concentration read to
+      // an actual holding instead of a bare number (Codex review, FIX-801
+      // sub-PR c round 32, same spirit as `sectorExposure` above and
+      // `opaqueFundDetails` below).
+      positions: z.array(
+        z.object({
+          ticker: z.string(),
+          weightPct: z.number(),
+          sources: z.array(z.object({ from: z.string(), marketValue: z.number() })),
+        }),
+      ),
       maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
       // The look-through analogue of the wrapper-basis `concentration.effectivePositions`
       // above, but an uncertainty-aware INTERVAL rather than a point estimate

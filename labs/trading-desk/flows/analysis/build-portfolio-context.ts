@@ -161,6 +161,20 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
             // alone tell the model an ordinary diversified fund allocation
             // stayed below the warn threshold, but not what it actually IS).
             sectorExposure: topSectorBuckets(health.lookThroughExposure.sectorExposure),
+            // Top 6 effective-name positions (already sorted by |weightPct|
+            // desc — a plain truncation, not a re-sort), same bound as the
+            // wrapper-basis "Top positions by weight" line above and
+            // sectorExposure's top-6 truncation. `maxPosition` alone doesn't
+            // say whether it came directly or through a wrapper, and nothing
+            // below the max/warning threshold was visible at all — the leaf
+            // already computes the full attributed list with per-source
+            // identity (`sources`), it just wasn't threaded through (Codex
+            // review, FIX-801 sub-PR c round 32, same spirit as rounds 25/28).
+            positions: health.lookThroughExposure.positions.slice(0, 6).map((p) => ({
+              ticker: p.ticker,
+              weightPct: p.weightPct,
+              sources: p.sources,
+            })),
             maxPosition: health.lookThroughExposure.maxPosition,
             // Direct pass-through — the leaf already produces the exact
             // `{low,high}|null` shape the schema expects (Codex review,

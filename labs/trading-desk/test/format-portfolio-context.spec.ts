@@ -74,6 +74,17 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
               { bucket: "Technology", pct: 55.2 },
               { bucket: "Financial Services", pct: 30.1 },
             ],
+            positions: [
+              {
+                ticker: "AAPL",
+                weightPct: 16.9,
+                sources: [
+                  { from: "direct", marketValue: 10_000 },
+                  { from: "SPY", marketValue: 4_200 },
+                ],
+              },
+              { ticker: "MSFT", weightPct: 8.4, sources: [{ from: "direct", marketValue: 8_400 }] },
+            ],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: { low: 5.2, high: 8.4 },
             flags: ["AAPL 16.9% (alert, look-through)"],
@@ -101,6 +112,12 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     // The actual attributed sector distribution, not just its coverage number
     // (Codex review, FIX-801 sub-PR c round 28).
     expect(out).toContain("Look-through sector exposure: Technology 55.2%, Financial Services 30.1%.");
+    // The top effective-name positions WITH source identity — traceable to
+    // which wrapper each slice came through, not just a bare max position
+    // (Codex review, FIX-801 sub-PR c round 32).
+    expect(out).toContain(
+      "Look-through top positions by weight: AAPL 16.9% (direct + SPY), MSFT 8.4% (direct).",
+    );
     // The per-fund identity behind the count above — traceable to the actual
     // holding, not just a bare number (Codex review, FIX-801 sub-PR c round 25).
     expect(out).toContain("Opaque fund detail: QQQ (both: thin coverage).");
@@ -115,6 +132,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
             sectorExposure: [],
+            positions: [],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: null,
             flags: [],
@@ -139,6 +157,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
             sectorExposure: [],
+            positions: [],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: { low: 3.1, high: 6.0 },
             flags: [],
@@ -173,6 +192,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
             coveragePct: 99.0,
             sectorCoveragePct: 96.5,
             sectorExposure: [],
+            positions: [],
             maxPosition: { ticker: "AAPL", weightPct: 16.9 },
             effectivePositions: { low: 4.0, high: 4.0 },
             flags: [],
@@ -189,6 +209,7 @@ describe("formatPortfolioContext — health block (FIX-762)", () => {
     expect(out).not.toContain("fund(s) not yet available");
     expect(out).not.toContain("Look-through concentration flags");
     expect(out).not.toContain("Look-through sector exposure");
+    expect(out).not.toContain("Look-through top positions");
     expect(out).not.toContain("Opaque fund detail");
   });
 

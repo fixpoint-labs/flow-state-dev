@@ -611,6 +611,18 @@ function appendLookThroughLines(
     const sectors = lookThrough.sectorExposure.map((s) => `${s.bucket} ${fmtPct(s.pct)}`).join(", ");
     lines.push(`Look-through sector exposure: ${sectors}.`);
   }
+  // The top effective-name positions, WITH source identity — `maxPosition`
+  // above names only the single largest and never says whether it's a direct
+  // holding or attributed through a wrapper; everything below it was
+  // invisible entirely. Same "Top positions by weight" style as the
+  // wrapper-basis line, so the model can trace a concentration read to an
+  // actual holding (Codex review, FIX-801 sub-PR c round 32).
+  if (lookThrough.positions.length > 0) {
+    const positions = lookThrough.positions
+      .map((p) => `${p.ticker} ${fmtPct(p.weightPct)} (${p.sources.map((s) => s.from).join(" + ")})`)
+      .join(", ");
+    lines.push(`Look-through top positions by weight: ${positions}.`);
+  }
   // Per-fund identity behind the counts above: WHICH wrapper, on WHICH axis,
   // for WHY — the summary line's counts alone give the model no way to trace
   // "1 fund opaque" back to a specific holding, risking a warning attributed
