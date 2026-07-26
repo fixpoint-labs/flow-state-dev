@@ -165,6 +165,15 @@ export interface PlanAndExecuteConfig<
    * fan out independent dep-free steps within a single drain.
    */
   maxConcurrency?: number;
+  /**
+   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * unchanged behavior when unset. A planner that legitimately produces more
+   * than the enqueue bound would otherwise fail its whole seed with no way to
+   * raise the ceiling, so both are reachable here: a number, or `null` for
+   * explicitly unbounded on that axis.
+   */
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
 
   // -------------------------------------------------------------------------
   // FIX-827 additions
@@ -692,6 +701,14 @@ export function planAndExecute<
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId: name },
+    // Reachable creation bounds (FIX-931): the board enforces them, so a caller
+    // who legitimately needs a bigger board must be able to say so. Unset falls
+    // through to the 500/100 defaults, and `board.caps` is what the seed writer
+    // is handed, so the two can never disagree.
+    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
+    ...(config.maxEnqueuedTasks !== undefined
+      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
+      : {}),
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",

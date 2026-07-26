@@ -26,23 +26,26 @@ import {
 import { createSeedTasksFromPlan } from "../src/shared/planning-entry";
 
 /**
- * Every task id a run ever CREATED on `collectionId`, read from the `added`
- * task-change items. Counting creations (not the surviving ledger) is what makes
- * a partial commit visible: a task committed and then orphaned by a mid-loop
- * throw still emitted its `added` event.
+ * Every task id a run ever created on `collectionId`.
+ *
+ * Counts DISTINCT task ids across all `task-change` items, not items whose kind
+ * is `"added"`. Those items are emitted with `key: <collectionId>/<taskId>`, so
+ * they upsert — a task that was later claimed or errored no longer shows
+ * `"added"` at all, and filtering on that kind silently misses every task the
+ * run actually progressed. One item survives per task, which is exactly the
+ * creation count, and a partially-committed batch shows up as an extra id.
  */
-function addedTaskIds(items: readonly unknown[], collectionId: string): Set<string> {
+function createdTaskIds(items: readonly unknown[], collectionId: string): Set<string> {
   const ids = new Set<string>();
   for (const item of items as Array<{
     type?: string;
     component?: string;
-    data?: { collectionId?: string; kind?: string; taskId?: string };
+    data?: { collectionId?: string; taskId?: string };
   }>) {
     if (
       item.type === "component" &&
       item.component === "task-change" &&
       item.data?.collectionId === collectionId &&
-      item.data.kind === "added" &&
       typeof item.data.taskId === "string"
     ) {
       ids.add(item.data.taskId);
@@ -187,8 +190,144 @@ describe("eventActors fan-out — all-or-nothing at the cap boundary", () => {
     // The load-bearing assertion: exactly the 99 pre-filled tasks were ever
     // created. A per-actor loop would leave 100 — the first actor dispatched,
     // the second dropped, the entry half-handled.
-    expect(addedTaskIds(result.items, collectionId).size).toBe(99);
+    expect(createdTaskIds(result.items, collectionId).size).toBe(99);
     expect(ran).toEqual([]);
+  });
+});
+
+describe("eventActors re-emission — atomic across ALL entries, not per entry", () => {
+  it("dispatches nobody when one output's entries together cross the bound", async () => {
+    // The level that matters. Making a single ENTRY's actors atomic still left
+    // the loop across entries partial: two single-actor entries from one actor
+    // output would commit the first and throw on the second, so the source task
+    // errors with part of its output already dispatched. The unit of atomicity
+    // has to be the whole re-emission.
+    const { createEventActorsWorkspace, actor, eventActors } = await import(
+      "../src/eventActors"
+    );
+
+    const entrySchema = z.object({ type: z.string(), topic: z.string(), body: z.any() });
+    const rb = createEventActorsWorkspace({ name: "caps-reemit", entries: entrySchema });
+
+    const ran: string[] = [];
+    const downstream = (n: string, watch: string) =>
+      actor({
+        name: n,
+        watch: [watch],
+        block: handler({
+          name: `${n}-h`,
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: () => {
+            ran.push(n);
+            return { done: true };
+          },
+        }),
+      });
+
+    // The source actor emits TWO entries, each matching exactly ONE downstream
+    // actor — so the per-entry batch is 1 and only the cross-entry batch is 2.
+    const source = actor({
+      name: "source",
+      watch: ["request:**"],
+      block: handler({
+        name: "source-h",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => {
+          ran.push("source");
+          return [
+            { type: "reply", topic: "one", body: 1 },
+            { type: "reply", topic: "two", body: 2 },
+          ];
+        },
+      }),
+    });
+
+    const { emit } = eventActors({
+      name: "caps-reemit",
+      workspace: rb,
+      actors: [source, downstream("alpha", "reply:one"), downstream("beta", "reply:two")],
+      reEmit: true,
+      // Reachable because the cap options are now on EventActorsConfig — the
+      // migration path this test also exercises. One slot: the initial task
+      // fits, the two-entry re-emission does not.
+      maxEnqueuedTasks: 1,
+    });
+
+    const result = await testBlock(emit as never, {
+      input: { type: "request", topic: "go", body: "hi" } as never,
+      session: { resources: { eventedActors: { entries: [] } } },
+    } as never);
+
+    const created = createdTaskIds(result.items, "eventActors:caps-reemit");
+    // Only the initial `source` task was ever created. A per-entry loop would
+    // leave 2 — alpha dispatched, beta dropped.
+    expect(created.size).toBe(1);
+    expect(ran).toEqual(["source"]);
+    expect(ran).not.toContain("alpha");
+    expect(ran).not.toContain("beta");
+  });
+});
+
+describe("pattern cap options are reachable by callers", () => {
+  it("all four capped patterns accept and honor an override", async () => {
+    // Without these the 500/100 defaults are unreachable, and the migration
+    // path the release notes promise does not exist for anyone consuming these
+    // patterns. `null` is the opt-out; a number raises the bound.
+    const { planAndExecute } = await import("../src/plan-and-execute");
+    const { supervisor } = await import("../src/supervisor");
+    const { parallelTasks } = await import("../src/parallelTasks");
+    const { createEventActorsWorkspace, actor, eventActors } = await import(
+      "../src/eventActors"
+    );
+
+    const worker = handler({
+      name: "caps-opt-worker",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      execute: () => "ok",
+    });
+
+    // An invalid value must be REJECTED at construction, which is the proof the
+    // option is genuinely forwarded rather than accepted and dropped.
+    expect(() =>
+      parallelTasks({ name: "pt-bad", worker: worker as never, maxTotalTasks: 0 }),
+    ).toThrow(/maxTotalTasks/);
+    expect(() =>
+      planAndExecute({ name: "pae-bad", worker: worker as never, maxEnqueuedTasks: 1.5 }),
+    ).toThrow(/maxEnqueuedTasks/);
+    expect(() =>
+      supervisor({ name: "sup-bad", worker: worker as never, maxTotalTasks: -1 }),
+    ).toThrow(/maxTotalTasks/);
+
+    const rb = createEventActorsWorkspace({
+      name: "ea-bad",
+      entries: z.object({ type: z.string(), topic: z.string(), body: z.any() }),
+    });
+    const noop = actor({
+      name: "n",
+      watch: ["**"],
+      block: handler({
+        name: "n-h",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => ({}),
+      }),
+    });
+    expect(() =>
+      eventActors({ name: "ea-bad", workspace: rb, actors: [noop], maxTotalTasks: 0 }),
+    ).toThrow(/maxTotalTasks/);
+
+    // And valid overrides construct, including the `null` opt-out.
+    expect(() =>
+      parallelTasks({
+        name: "pt-ok",
+        worker: worker as never,
+        maxTotalTasks: null,
+        maxEnqueuedTasks: null,
+      }),
+    ).not.toThrow();
   });
 });
 
