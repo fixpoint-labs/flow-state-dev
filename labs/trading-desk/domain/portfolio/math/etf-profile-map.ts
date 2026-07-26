@@ -217,18 +217,41 @@ export function fundsReferencingTickers(
  * a fixed-income fund) regardless of whether a profile happens to be cached
  * from before the reclassification, or from another household.
  *
- * **REPLACES a fund-confirming entry with an opaque-but-fund-evidence
- * refusal; PROACTIVELY SEEDS one for a curated ticker with no entry at all;
- * never touches a non-fund-confirming entry or manufactures one for a
- * non-curated ticker.** `resolveTickerIsFund`'s (`etf-look-through.ts`)
- * evidence-ordering oracle treats a ticker's map entry as one of three
- * things: POSITIVE fund evidence (a real `payload`, or a refusal reason that
- * only withholds attribution — `"ineligible"`, `"malformed"`,
- * `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`,
- * `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON`), DISPROOF (`"not_an_etf"`),
- * or NEUTRAL — no entry at all, or a transport-failure refusal
- * (`"quota"`/`"transient"`) that says nothing about fund-ness either way.
- * This function must preserve that distinction, not collapse it:
+ * **A curated ticker is ALWAYS suppressed, regardless of what (if anything) is
+ * already in the map — checked ONCE, up front, before any existing-entry
+ * branching.** Curated-list membership (`isKnownBondEtf`) is independent,
+ * externally-verified evidence of fund-ness on its own — stronger than, and
+ * independent of, whatever happens to be cached for the ticker. Decision 5's
+ * pre-filter (`isEtfProfileFetchCandidate`) guarantees a currently-curated
+ * ticker is NEVER fetched by this app, so ANY existing entry on one —
+ * fund-confirming, disproof (`"not_an_etf"`), or neutral
+ * (`"quota"`/`"transient"`) — can only be stale/pre-curation data, and no
+ * entry at all is simply the never-fetched default. All four collapse to the
+ * same outcome: `{ payload: null, refusalReason:
+ * FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }`. This does not change the
+ * fund/not-fund VERDICT — `resolveTickerIsFund` already resolves a curated
+ * ticker as a fund regardless of any map entry (layer 1a off its own
+ * `assetType`, or layer 2 off the curated list directly) — it fixes the
+ * OPACITY REASON the leaf reports: left as a stale disproof/neutral entry or
+ * absent, `computeLookThroughExposure`'s main loop reports either the stale
+ * refusal reason (misleadingly implying AV disproved it, or a transient
+ * hiccup that will resolve) or the generic `"no stored profile"` (an
+ * `UNAVAILABLE_REASONS` member, `build-portfolio-context.ts` — implying a
+ * future fetch might fill it in), when Decision 5 guarantees a fetch never
+ * will and the ticker is a fund either way.
+ *
+ * **A NON-curated ticker is judged by whether its EXISTING entry is itself
+ * fund-confirming evidence — never manufactured, never flipped.**
+ * `resolveTickerIsFund`'s (`etf-look-through.ts`) evidence-ordering oracle
+ * treats a ticker's map entry as one of three things: POSITIVE fund evidence
+ * (a real `payload`, or a refusal reason that only withholds attribution —
+ * `"ineligible"`, `"malformed"`, `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`,
+ * `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON`), DISPROOF (`"not_an_etf"`), or
+ * NEUTRAL — no entry at all, or a transport-failure refusal
+ * (`"quota"`/`"transient"`) that says nothing about fund-ness either way. A
+ * ticker whose dominant lot merely happens to be classified `fixed_income`
+ * (not curated) has no independent fund evidence beyond what's already
+ * cached, so:
  *
  * - **Fund-confirming entry** (`isFundConfirmingProfileEntry`, exported by
  *   `etf-look-through.ts` — the same check the oracle's own layer 1b makes) —
@@ -243,31 +266,11 @@ export function fundsReferencingTickers(
  *   positive evidence keeps it reading as a fund, just with this one
  *   attribution suppressed — opaque-fund on the WRAPPER basis, never
  *   decomposed.
- * - **Disproof (`"not_an_etf"`) or neutral (`"quota"`/`"transient"`)** — LEAVE
- *   UNTOUCHED. Neither is fund evidence to withdraw; replacing either would
- *   FLIP fund identity the oracle doesn't otherwise have — a ticker AV has
- *   already proven isn't a fund, or one with only a transient/quota hiccup on
- *   record (still, by the oracle's own rules, no evidence either way), would
- *   incorrectly start reading as an opaque "fixed-income fund" in the
+ * - **Disproof, neutral, or no entry at all** — LEAVE AS-IS. None of these is
+ *   fund evidence to withdraw; manufacturing or flipping one would give the
+ *   oracle fund identity it doesn't otherwise have — an ordinary held bond
+ *   would incorrectly start reading as an opaque "fixed-income fund" in the
  *   residual instead of the direct name it actually is.
- * - **No entry, NOT on the curated list** — LEAVE ABSENT. An ordinary held
- *   bond whose dominant lot merely happens to be classified `fixed_income`
- *   has no independent fund evidence at all; manufacturing one would fabricate
- *   fund identity from nothing, same as the disproof/neutral case above.
- * - **No entry, ON the curated list** — SEED `{ payload: null, refusalReason:
- *   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }`. Unlike an ordinary bond,
- *   curated-list membership IS independent, externally-verified fund evidence
- *   — no fetch is needed to establish it, and Decision 5's pre-filter
- *   (`isEtfProfileFetchCandidate`) guarantees a curated ticker is NEVER
- *   fetched, so it can never earn a "real" entry on its own. `resolveTickerIsFund`
- *   already resolves the ticker as a fund without this entry (layer 1a off its
- *   own `assetType`, or layer 2 off the curated list directly), so this seed
- *   doesn't change the fund/not-fund verdict — it fixes the OPACITY REASON the
- *   leaf reports: absent this seed, `computeLookThroughExposure`'s main loop
- *   falls back to `"no stored profile"` for an unentried fund position, which
- *   `UNAVAILABLE_REASONS` (`build-portfolio-context.ts`) reports to the
- *   trader/PM as merely "not yet available" — implying a future fetch might
- *   fill it in, when Decision 5 guarantees one never will.
  *
  * **Judged by the DOMINANT lot, not "any row".** `summarizePortfolioHealth`
  * (`portfolio-health.ts`) resolves a ticker's merged classification by its
@@ -317,44 +320,27 @@ export function excludeFixedIncomeFromProfileMap(
   if (fixedIncomeTickers.size === 0) return profiles;
   const suppressed = new Map(profiles);
   for (const ticker of fixedIncomeTickers) {
-    const existing = suppressed.get(ticker);
-    if (existing !== undefined) {
-      // Only REPLACE an entry that is itself fund-confirming evidence — an
-      // existing entry that DISPROVES fund identity (`not_an_etf`) or is
-      // NEUTRAL (`quota`/`transient` — a transport failure, not a judgment)
-      // must be left untouched: overwriting either with
-      // `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON` would flip a proven-or-
-      // unproven-non-fund ticker into `resolveTickerIsFund`'s positive-
-      // evidence bucket. `isFundConfirmingProfileEntry` (`etf-look-through.ts`)
-      // is the same judgment `resolveTickerIsFund`'s own layer 1b makes —
-      // shared, not re-derived, so the two can't drift apart.
-      if (isFundConfirmingProfileEntry(existing)) {
-        suppressed.set(ticker, { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
-      }
+    // Curated status is checked ONCE, up front, before any existing-entry
+    // branching — deliberately NOT nested inside an "existing entry?" check
+    // (round 29: that ordering previously let an existing not_an_etf/quota/
+    // transient row on a curated ticker win before the curated-list check
+    // ever ran). A curated ticker is ALWAYS suppressed regardless of what's
+    // already there — see the docblock's "always suppressed" paragraph for
+    // why any existing row on a currently-curated ticker can only be
+    // stale/pre-curation data.
+    if (isKnownBondEtf(ticker)) {
+      suppressed.set(ticker, { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
       continue;
     }
-    // No prior entry. For an ORDINARY ticker whose dominant lot merely
-    // happens to be classified `fixed_income` (not on the curated list), that
-    // classification alone is no independent evidence it's a fund at all — an
-    // ordinary held bond that was never fetched or refused stays absent,
-    // reading as a direct holding, same as any other ticker with no fund
-    // evidence (the round-18/20 no-manufacture rule).
-    //
-    // A CURATED bond ETF is different: the curated list itself is
-    // independent, externally-verified evidence the ticker is a fund — no
-    // fetch is needed to establish that, and no fetch will EVER happen for it
-    // (Decision 5's pre-filter, `isEtfProfileFetchCandidate`, permanently
-    // excludes every curated ticker from the ETF_PROFILE fill). Leaving it
-    // absent doesn't misreport its FUND-NESS (layer 1a/2 already resolve that
-    // correctly regardless of a map entry — see `resolveTickerIsFund`), but it
-    // does misreport its OPACITY REASON: the leaf's main loop falls back to
-    // `"no stored profile"` for an unentried fund position, which
-    // `UNAVAILABLE_REASONS` (`build-portfolio-context.ts`) reports to the
-    // trader/PM as "not yet available" — implying a future fetch might fill
-    // it in, when Decision 5 guarantees one never will. Proactively seeding
-    // the permanent-suppression entry reports the true, permanent state
-    // instead.
-    if (isKnownBondEtf(ticker)) {
+    // Not curated — only the dominant-lot fixed_income classification says
+    // so, which alone is no independent fund evidence. Only REPLACE an
+    // EXISTING entry that is itself fund-confirming evidence
+    // (`isFundConfirmingProfileEntry` — the same check `resolveTickerIsFund`'s
+    // own layer 1b makes, shared not re-derived). Disproof, neutral, or no
+    // entry at all is left exactly as-is: manufacturing or flipping any of
+    // them would give the oracle fund identity it doesn't otherwise have.
+    const existing = suppressed.get(ticker);
+    if (existing !== undefined && isFundConfirmingProfileEntry(existing)) {
       suppressed.set(ticker, { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
     }
   }

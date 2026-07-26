@@ -246,48 +246,77 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
-  it("does NOT overwrite an existing not_an_etf DISPROOF entry for a directly-held fixed-income ticker — replacing it would flip a proven-non-fund ticker into resolveTickerIsFund's positive-evidence bucket", () => {
-    // AGG was looked up once (e.g. via the broad `allHeldTickers` read after
-    // being mistagged `assetType: "etf"` at some point) and Alpha Vantage
-    // proved it isn't an ETP at all — `not_an_etf` is DISPROOF, not neutral,
-    // and it is certainly not fund-confirming. Overwriting it with
-    // `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON` — a reason
-    // `resolveTickerIsFund`'s layer 1b treats as POSITIVE fund evidence —
-    // would manufacture fund identity for a ticker already proven not to be
-    // one, exactly the round-14/18 manufacture bug in a different guise.
+  it("does NOT overwrite an existing not_an_etf DISPROOF entry for a directly-held, NON-CURATED fixed-income ticker — replacing it would flip a proven-non-fund ticker into resolveTickerIsFund's positive-evidence bucket", () => {
+    // XCORPB was looked up once (e.g. via the broad `allHeldTickers` read
+    // after being mistagged `assetType: "etf"` at some point) and Alpha
+    // Vantage proved it isn't an ETP at all — `not_an_etf` is DISPROOF, not
+    // neutral, and it is certainly not fund-confirming. XCORPB is NOT on the
+    // curated list, so it has no independent evidence overriding that
+    // disproof. Overwriting it with `FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON`
+    // — a reason `resolveTickerIsFund`'s layer 1b treats as POSITIVE fund
+    // evidence — would manufacture fund identity for a ticker already proven
+    // not to be one, exactly the round-14/18 manufacture bug in a different
+    // guise.
+    const profiles = new Map<string, FundProfileInput>([["XCORPB", refusal()]]); // refusal() = not_an_etf
+    const holdings = [holding({ ticker: "XCORPB", assetClass: "fixed_income", assetType: "bond" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("XCORPB")).toEqual(refusal());
+  });
+
+  it("does NOT overwrite an existing quota/transient NEUTRAL entry for a directly-held, NON-CURATED fixed-income ticker — a transport failure is not a judgment about fund-ness either way", () => {
+    // XCORPB's lookup hit a transient network blip on its one prior read —
+    // that says nothing about whether it's a fund (resolveTickerIsFund's
+    // layer 1b falls through both "quota" and "transient", giving neither a
+    // verdict), and it has no curated-list membership to supply independent
+    // evidence either. Overwriting it would still manufacture fund identity,
+    // same as the no-prior-entry case.
+    const profiles = new Map<string, FundProfileInput>([
+      ["XCORPB", { payload: null, refusalReason: "transient" }],
+    ]);
+    const holdings = [holding({ ticker: "XCORPB", assetClass: "fixed_income", assetType: "bond" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("XCORPB")).toEqual({ payload: null, refusalReason: "transient" });
+  });
+
+  it("control: DOES replace an existing fund-confirming refusal (ineligible/malformed/withdrawn) for a directly-held, NON-CURATED fixed-income ticker — the legitimate round-18 path still works", () => {
+    const profiles = new Map<string, FundProfileInput>([
+      ["XCORPB", { payload: null, refusalReason: "ineligible" }],
+    ]);
+    const holdings = [holding({ ticker: "XCORPB", assetClass: "fixed_income", assetType: "etf" })];
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
+
+    expect(out.get("XCORPB")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
+  });
+
+  it("DOES override an existing not_an_etf DISPROOF entry for a CURATED bond ETF — curated-list membership wins regardless of what's already cached (Codex review, FIX-801 sub-PR c round 29 — the branch-ordering gap in round 28's own fix)", () => {
+    // Unlike XCORPB above, AGG IS on the curated list — Decision 5 guarantees
+    // it is never fetched by this app, so an existing `not_an_etf` row on it
+    // can only be stale/pre-curation data, never a live verdict. Before this
+    // fix, the existing-entry branch checked (and left untouched) before the
+    // curated-list check ever ran, so a curated ticker's stale disproof won
+    // over its own curation.
     const profiles = new Map<string, FundProfileInput>([["AGG", refusal()]]); // refusal() = not_an_etf
-    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" })];
+    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "etf" })];
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.get("AGG")).toEqual(refusal());
+    expect(out.get("AGG")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 
-  it("does NOT overwrite an existing quota/transient NEUTRAL entry for a directly-held fixed-income ticker — a transport failure is not a judgment about fund-ness either way", () => {
-    // AGG's lookup hit a transient network blip on its one prior read — that
-    // says nothing about whether AGG is a fund (resolveTickerIsFund's layer
-    // 1b falls through both "quota" and "transient", giving neither a
-    // verdict). Overwriting it would still manufacture fund identity, same
-    // as the no-prior-entry case.
+  it("DOES override an existing quota/transient NEUTRAL entry for a CURATED bond ETF, same as the not_an_etf case (Codex review, FIX-801 sub-PR c round 29)", () => {
     const profiles = new Map<string, FundProfileInput>([
-      ["AGG", { payload: null, refusalReason: "transient" }],
+      ["AGG", { payload: null, refusalReason: "quota" }],
     ]);
-    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "bond" })];
+    const holdings = [holding({ ticker: "AGG", assetClass: "fixed_income", assetType: "etf" })];
 
     const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
-    expect(out.get("AGG")).toEqual({ payload: null, refusalReason: "transient" });
-  });
-
-  it("control: DOES replace an existing fund-confirming refusal (ineligible/malformed/withdrawn) for a directly-held fixed-income ticker — the legitimate round-18 path still works", () => {
-    const profiles = new Map<string, FundProfileInput>([
-      ["BND", { payload: null, refusalReason: "ineligible" }],
-    ]);
-    const holdings = [holding({ ticker: "BND", assetClass: "fixed_income", assetType: "etf" })];
-
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
-
-    expect(out.get("BND")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
+    expect(out.get("AGG")).toEqual({ payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON });
   });
 });
 
