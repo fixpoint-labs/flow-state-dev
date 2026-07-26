@@ -186,10 +186,10 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  * edge-case table for the exact refusal→backoff mapping (owned by the REST
  * route, not this module).
  *
- * **Every early return in this function is one of exactly two kinds — kept
+ * **Every early return in this function is one of exactly three kinds — kept
  * enumerated here on purpose (Codex review, FIX-801 sub-PR c) so this
  * function doesn't grow a fifth per-axis bug the same shape as the first
- * four:**
+ * four, or lose the combined-failure bucket a fifth review round had to add:**
  *
  * 1. **Legitimately WHOLE-PROFILE** — a permanent, structural fact about the
  *    FUND, true independent of any per-axis data quality, so refusing (and
@@ -199,8 +199,8 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  *    - `ineligible` (leveraged) — a leveraged/inverse fund. Out of scope by
  *      policy (spec Non-goals), regardless of what either axis' data says.
  *
- * 2. **Per-axis degradation — NEVER refuses the whole profile.** That
- *    judgment belongs to the consuming leaf (Decision 4's per-axis gate;
+ * 2. **Per-axis degradation — NEVER refuses the whole profile on its own.**
+ *    That judgment belongs to the consuming leaf (Decision 4's per-axis gate;
  *    docs/etf-look-through.md), not this fetcher: a fund can pass on one axis
  *    while failing the other, and every one of these discards just the
  *    affected axis's rows/coverage (`[]` / `0` — read by the leaf exactly
@@ -217,10 +217,27 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  *      this same bug class).
  *    - SECTOR axis rows sum past 100% (over-sum malformed).
  *
- * The `malformed` `EtfRefusalReason` is consequently no longer produced by
- * this fetcher at all — every case that used to return it now degrades that
- * one axis instead. The type/backoff-table entry stays for any future path
- * that needs it.
+ * 3. **COMBINED-axis fallback — refuses `malformed`, checked AFTER both axes
+ *    are independently evaluated.** Bucket 2 says either axis degrading ALONE
+ *    is fine; it does not say BOTH degrading together is fine. If neither axis
+ *    survives (`constituents` ends up empty AND `sectors` ends up empty — by
+ *    any combination of the bucket-2 routes, or one axis malformed and the
+ *    other simply never present), that is not a thin-but-real profile — the
+ *    provider returned something (bucket 1's both-raw-empty check already
+ *    caught a literal empty response), but nothing on it survived to store.
+ *    Falling through to an unconditional `"profile"` success here would (a)
+ *    misreport a corrupted/garbage response as merely "thin coverage", and
+ *    (b) earn the standard ~30-day freshness window instead of `malformed`'s
+ *    ~7-day retry, leaving a fund that gave garbage data opaque for a month
+ *    (Codex review, FIX-801 sub-PR c, round 8 — the fifth review pass on this
+ *    function). The GLD-style "fully covered, nothing nameable" profile
+ *    (bucket 2's unsymboled-but-priced case) never lands here: it keeps its
+ *    null-ticker rows in `constituents`, so `constituents.length` is never 0
+ *    for it even though nothing is attributable.
+ *
+ * The `malformed` `EtfRefusalReason` is consequently produced ONLY by bucket
+ * 3 — every bucket-2 case that used to return it now degrades that one axis
+ * instead.
  */
 export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> {
   const body = (await alphaVantageRequest({
@@ -342,6 +359,29 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     // Same clamp, same reason as `nameCoverage` above — a within-tolerance
     // over-sum must not persist above the leaf's strict `[0, 1]` contract.
     sectorCoverage = Math.min(sectorCoverage, 1);
+  }
+
+  // The third bucket the per-axis taxonomy needs (Codex review, FIX-801
+  // sub-PR c, round 8): each axis degrading independently is correct, but if
+  // BOTH axes end up with nothing usable — `constituents` empty (no
+  // attributable name AND no real coverage figure either — the GLD-style
+  // "fully covered, nothing nameable" case above always leaves at least one
+  // null-ticker row, so it never lands here) and `sectors` empty, regardless
+  // of whether either got there via the over-sum branch or was simply never
+  // present — that is not a thin-but-real profile. It is a malformed
+  // response: the provider returned SOMETHING (the top-of-function
+  // both-raw-empty check already caught a literal empty response), but
+  // nothing on it survives to store. Persisting this as a normal `"profile"`
+  // success would (1) misrepresent a corrupted/garbage response as merely
+  // "thin coverage", and (2) earn the standard ~30-day freshness window
+  // instead of the `malformed` refusal's ~7-day retry, leaving a fund that
+  // genuinely gave garbage data opaque for a month before trying again.
+  if (constituents.length === 0 && sectors.length === 0) {
+    return {
+      kind: "refused",
+      reason: "malformed",
+      detail: "no usable data on either axis",
+    };
   }
 
   const profile: NormalizedEtfProfile = {

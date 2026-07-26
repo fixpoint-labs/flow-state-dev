@@ -204,6 +204,25 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "not_an_etf" });
   });
 
+  it("refuses as malformed when BOTH axes end up with nothing usable — holdings present but every weight garbage/over-summed, AND sectors absent — instead of falling through to a normal profile success (Codex review, FIX-801 sub-PR c, round 8 — the third bucket the per-axis taxonomy needs beyond 'each axis degrades independently')", async () => {
+    // Distinct from every per-axis test above: there, at least ONE axis
+    // survives with real data. Here neither does — the provider's response
+    // isn't empty (so the top-of-function not_an_etf guard doesn't fire),
+    // but nothing on it is usable. Falling through to `kind: "profile"`
+    // would misreport a corrupted response as thin-but-real AND earn the
+    // 30-day freshness window instead of malformed's ~7-day retry.
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [], // never provided
+      holdings: [
+        { symbol: "AAPL", weight: "not-a-number" }, // unparseable
+        { symbol: "MSFT", weight: "-0.3" }, // out of [0,1]
+      ],
+    });
+    const out = await fetchEtfProfile("BOTH_AXES_GARBAGE");
+    expect(out).toMatchObject({ kind: "refused", reason: "malformed" });
+  });
+
   it("keeps a valid SECTOR axis when only the NAME axis is malformed (weights summing past 100%), instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — the mirror of the sector-side fix)", async () => {
     mockFetchOnce({
       ...WELL_COVERED,
