@@ -1309,6 +1309,27 @@ describe("computeLookThroughExposure — §9 edge cases", () => {
     ]);
   });
 
+  it("a directly-held mutual fund with NO map entry at all reports as permanently policy-excluded, not 'no stored profile' — a mutual fund is never fetched by this app's own route in the first place (Codex review, FIX-801 sub-PR c round 31, the no-entry half of round 30's fix)", () => {
+    // This is the FAR more common shape than round 30's existing-entry case:
+    // `isEtfProfileFetchCandidate` requires `assetType === "etf"`, so a
+    // mutual-fund holding NEVER earns a map entry via this app's own fetch
+    // path. Reporting the generic "no stored profile" (an
+    // `UNAVAILABLE_REASONS` member downstream) would tell the trader/PM a
+    // future fetch might fill it in — one never will.
+    const positions = [fund("VFIAX2", 100_000, { assetType: "mutual_fund" })];
+    const out = computeLookThroughExposure(positions, 100_000, new Map())!;
+    expect(out.opaqueFunds).toEqual([
+      expect.objectContaining({ ticker: "VFIAX2", axis: "both", reason: MUTUAL_FUND_NOT_AN_ETF_REASON }),
+    ]);
+  });
+
+  it("control: an ordinary ETF-tagged fund with no map entry at all still reports the generic 'no stored profile' reason — the mutual-fund relabel is scoped to assetType === 'mutual_fund', not a blanket no-entry relabel", () => {
+    const out = computeLookThroughExposure([fund("NEWETF", 100_000, { assetType: "etf" })], 100_000, new Map())!;
+    expect(out.opaqueFunds).toEqual([
+      expect.objectContaining({ ticker: "NEWETF", axis: "both", reason: "no stored profile" }),
+    ]);
+  });
+
   it("a stored REFUSAL row (leveraged, not_an_etf, etc.) sends the whole fund to residual, named opaque with the refusal reason", () => {
     const positions = [fund("TQQQ", 10_000)];
     const fundProfiles = new Map<string, FundProfileInput>([["TQQQ", refusal("leveraged/inverse fund")]]);
