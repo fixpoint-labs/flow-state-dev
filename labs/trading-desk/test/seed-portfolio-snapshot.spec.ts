@@ -328,6 +328,119 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });
 
+  it("recognizes a fund-of-funds constituent (VTI, inside a held AOA) as a fund even though the household does NOT separately hold VTI — the constituent-broadening fix (Codex review, FIX-801 sub-PR c round 12, P1)", async () => {
+    // AOA (an allocation ETF) holds VTI at 90% of its own weight — VTI is
+    // itself a fund. The household holds ONLY AOA; VTI is not a household
+    // position at all. Without loading VTI's own stored profile into the
+    // leaf's `fundProfiles` map, `resolveTickerIsFund` has NO evidence VTI is
+    // a fund (no stored profile, not on the curated bond-ETF list, not a
+    // household holding) — all three evidence layers fail, so VTI decomposes
+    // as an ordinary single-name stock at ~90% of AOA's weight instead of
+    // being recognized as fund-of-funds and marked opaque. This is exactly
+    // the fund-of-funds regression sub-PR b's own tests pin, reachable here
+    // through sub-PR c's wiring gap, not the leaf's logic.
+    //
+    // SPY is held too, purely so `hasAttribution` stays true regardless of
+    // AOA's fate (otherwise `lookThrough` would collapse to the whole-block
+    // "none" state and this test couldn't observe anything).
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 0,
+      holdings: [
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+        { ticker: "AOA", quantity: 200, costBasis: 40, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: "2026-05-06T00:00:00.000Z", source: "live" }, // 150 × 400 = 60,000
+      { ticker: "AOA", price: 50, asOf: "2026-05-06T00:00:00.000Z", source: "live" }, // 200 × 50 = 10,000
+    ]);
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "SPY",
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "AAPL", weight: 0.925 },
+            { ticker: "MSFT", weight: 0.07 },
+          ],
+          nameCoverage: 0.995,
+          sectors: [
+            { sector: "Technology", weight: 0.3 },
+            { sector: "Financial Services", weight: 0.66 },
+          ],
+          sectorCoverage: 0.96,
+          netExpenseRatio: 0.0945,
+          inceptionDate: "1993-01-22",
+        },
+        refusalReason: null,
+      },
+      {
+        ticker: "AOA",
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "VTI", weight: 0.9 }, // itself a fund — the case under test
+            { ticker: "NVDA", weight: 0.05 }, // a real stock, unaffected either way
+          ],
+          nameCoverage: 0.95,
+          sectors: [{ sector: "Technology", weight: 0.5 }],
+          sectorCoverage: 0.5,
+          netExpenseRatio: null,
+          inceptionDate: null,
+        },
+        refusalReason: null,
+      },
+      // VTI's OWN stored profile — the evidence that proves it's a fund.
+      // Never separately held by this household; only reachable via the
+      // constituent-broadening pass, not the ordinary held-ticker read.
+      {
+        ticker: "VTI",
+        payload: {
+          leveraged: false,
+          constituents: [{ ticker: "MSFT", weight: 0.5 }],
+          nameCoverage: 0.5,
+          sectors: [],
+          sectorCoverage: 0,
+          netExpenseRatio: null,
+          inceptionDate: null,
+        },
+        refusalReason: null,
+      },
+    ]);
+
+    const result = await testBlock(seedSession, { input: { ...baseInput, ticker: "SPY" }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: {
+        health: {
+          lookThrough: {
+            maxPosition: { ticker: string; weightPct: number } | null;
+            opaqueFundCount: number;
+          } | null;
+        } | null;
+      } | null;
+    };
+    const lookThrough = sessionState.portfolio?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    // AOA is recognized as fund-of-funds (90% of its own weight resolves to
+    // VTI, itself a fund) and marked ENTIRELY opaque — this is the load-
+    // bearing assertion: without the constituent-broadening fix, VTI would
+    // never be recognized as a fund at all, AOA would decompose normally, and
+    // `opaqueFundCount` would read 0, not 1.
+    expect(lookThrough?.opaqueFundCount).toBe(1);
+    // SPY's own attribution is untouched — the largest effective name is
+    // AAPL (from SPY), never a fabricated "VTI" stock-name position.
+    expect(lookThrough?.maxPosition?.ticker).toBe("AAPL");
+    // Read-only broadening — the seed never fetches (Decision 1), for VTI or
+    // anything else.
+    expect(fetchEtfProfileMock).not.toHaveBeenCalled();
+  });
+
   it("leaves the look-through axis null when a fund is held but its profile has never been fetched — no budget spent finding out", async () => {
     await seedAccount(repoState.repo!, {
       accountId: ACCOUNT_ID,

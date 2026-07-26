@@ -2,14 +2,17 @@
  * Tests for `domain/portfolio/math/etf-profile-map.ts`'s pure helpers — the
  * shared row→map conversion (`toFundProfileMap`), the broad cache-read ticker
  * set (`allHeldTickers`), the strict fetch-eligibility predicate
- * (`isEtfProfileFetchCandidate`), and the fixed-income attribution suppressor
- * (`excludeFixedIncomeFromProfileMap`, FIX-801 sub-PR c round 7).
+ * (`isEtfProfileFetchCandidate`), the fixed-income attribution suppressor
+ * (`excludeFixedIncomeFromProfileMap`, FIX-801 sub-PR c round 7), and the
+ * fund-of-funds constituent-broadening helper
+ * (`missingConstituentTickers`, FIX-801 sub-PR c round 12).
  */
 import { describe, expect, it } from "vitest";
 import {
   allHeldTickers,
   excludeFixedIncomeFromProfileMap,
   isEtfProfileFetchCandidate,
+  missingConstituentTickers,
   toFundProfileMap,
 } from "../domain/portfolio/math/etf-profile-map";
 import type { FundProfileInput } from "../domain/portfolio/math/etf-look-through";
@@ -29,17 +32,21 @@ function holding(over: Partial<Holding> = {}): Holding {
   };
 }
 
-function profile(): FundProfileInput {
+function profile(constituentTickers: Array<string | null> = ["AAPL"]): FundProfileInput {
   return {
     payload: {
       leveraged: false,
-      constituents: [{ ticker: "AAPL", weight: 0.9 }],
+      constituents: constituentTickers.map((ticker) => ({ ticker, weight: 0.9 / constituentTickers.length })),
       nameCoverage: 0.9,
       sectors: [{ sector: "Technology", weight: 0.9 }],
       sectorCoverage: 0.9,
     },
     refusalReason: null,
   };
+}
+
+function refusal(): FundProfileInput {
+  return { payload: null, refusalReason: "not_an_etf" };
 }
 
 describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round 7)", () => {
@@ -151,5 +158,100 @@ describe("toFundProfileMap / allHeldTickers / isEtfProfileFetchCandidate", () =>
 
   it("isEtfProfileFetchCandidate rejects a fixed_income holding regardless of assetType", () => {
     expect(isEtfProfileFetchCandidate(holding({ assetType: "etf", assetClass: "fixed_income" }))).toBe(false);
+  });
+});
+
+describe("missingConstituentTickers (Codex review, FIX-801 sub-PR c round 12, P1 — fund-of-funds constituent broadening)", () => {
+  it("returns a held fund's constituent ticker when it is not itself a key in the map (AOA holds VTI, VTI not separately held/loaded)", () => {
+    const profiles = new Map<string, FundProfileInput>([["AOA", profile(["VTI", "NVDA"])]]);
+
+    expect(missingConstituentTickers(profiles)).toEqual(["VTI", "NVDA"]);
+  });
+
+  it("does not return a ticker that is already a key in the map", () => {
+    const profiles = new Map<string, FundProfileInput>([
+      ["AOA", profile(["VTI"])],
+      ["VTI", profile(["AAPL"])], // VTI's own profile already present
+    ]);
+
+    // VTI itself is no longer missing (it's a key) — only VTI's OWN
+    // constituent (AAPL) is surfaced, because this function has no memory of
+    // which entries came from the ORIGINAL held-tickers read versus an
+    // already-merged constituent; it just scans every entry currently in the
+    // map. This is exactly why the docblock says call it ONCE, never loop it
+    // — a caller who merged VTI in and called this AGAIN would incorrectly
+    // go a level deeper (chasing VTI's own AAPL holding), which the oracle
+    // never needs (it only asks whether VTI itself is a fund).
+    expect(missingConstituentTickers(profiles)).toEqual(["AAPL"]);
+  });
+
+  it("skips a fund with no payload (a refusal) — nothing to extract constituents from", () => {
+    const profiles = new Map<string, FundProfileInput>([["NOTETF", refusal()]]);
+
+    expect(missingConstituentTickers(profiles)).toEqual([]);
+  });
+
+  it("skips a null-ticker constituent row (AV's n/a sentinel — nothing to look up)", () => {
+    const profiles = new Map<string, FundProfileInput>([["AOA", profile([null, "VTI"])]]);
+
+    expect(missingConstituentTickers(profiles)).toEqual(["VTI"]);
+  });
+
+  it("dedupes a constituent shared by two different held funds", () => {
+    const profiles = new Map<string, FundProfileInput>([
+      ["AOA", profile(["VTI"])],
+      ["ITOT", profile(["VTI"])], // a second allocation fund holding the same VTI
+    ]);
+
+    expect(missingConstituentTickers(profiles)).toEqual(["VTI"]);
+  });
+
+  it("upper-cases the returned ticker and treats an already-present lower-case-equivalent key as satisfied", () => {
+    const profiles = new Map<string, FundProfileInput>([["AOA", profile(["vti"])]]);
+    expect(missingConstituentTickers(profiles)).toEqual(["VTI"]);
+
+    // Once "VTI" (upper-case) is a key, it's no longer missing — regardless
+    // of the lower-case form the constituent row itself carried.
+    const alreadyLoaded = new Map<string, FundProfileInput>([
+      ["AOA", profile(["vti"])],
+      ["VTI", profile([])], // no further constituents to avoid a second-level result here
+    ]);
+    expect(missingConstituentTickers(alreadyLoaded)).toEqual([]);
+  });
+
+  it("returns [] for an empty map", () => {
+    expect(missingConstituentTickers(new Map())).toEqual([]);
+  });
+
+  it("works over a raw EtfProfileRow-shaped map too, not just FundProfileInput — the route's own map shape, structurally compatible without conversion", () => {
+    // `db/repository.ts`'s `EtfProfileRow` mirrors `NormalizedFundProfile`
+    // field-for-field by design (this file's own module docblock) — the
+    // route (`app/api/portfolio/etf-profiles/route.ts`) calls this function
+    // directly on its `Map<string, EtfProfileRow>` without converting to
+    // `FundProfileInput` first.
+    const rawRowShaped = new Map([
+      [
+        "AOA",
+        {
+          ticker: "AOA",
+          payload: {
+            leveraged: false,
+            constituents: [{ ticker: "VTI", weight: 0.9 }],
+            nameCoverage: 0.9,
+            sectors: [],
+            sectorCoverage: 0,
+            netExpenseRatio: null,
+            inceptionDate: null,
+          },
+          refusalReason: null,
+          refusalDetail: null,
+          retryAt: null,
+          transientAttempts: 0,
+          fetchedAt: "2026-05-06T00:00:00.000Z",
+        },
+      ],
+    ]);
+
+    expect(missingConstituentTickers(rawRowShaped)).toEqual(["VTI"]);
   });
 });

@@ -10,7 +10,11 @@ import {
   hasAlphaVantageKey,
 } from "@/lib/providers/alpha-vantage";
 import { fetchEtfProfile, type NormalizedEtfProfile } from "@/lib/providers/etf-profile";
-import { allHeldTickers, isEtfProfileFetchCandidate } from "@/domain/portfolio/math/etf-profile-map";
+import {
+  allHeldTickers,
+  isEtfProfileFetchCandidate,
+  missingConstituentTickers,
+} from "@/domain/portfolio/math/etf-profile-map";
 
 // The ETF holdings-profile fill surface (FIX-801) — backs the Health view's
 // look-through axis, mirroring the classifications route's shape (a lazy
@@ -347,13 +351,35 @@ export async function GET(req: NextRequest) {
     if (row) storedByTicker.set(ticker, row);
   });
 
+  // Fund-of-funds constituent broadening (Codex review, FIX-801 sub-PR c,
+  // round 12, P1): a held allocation fund's own constituents need to reach
+  // the client too, even when the household doesn't separately hold them —
+  // the Health UI builds its `fundProfiles` map from THIS response
+  // (`toFundProfileMap` over `profiles`/`refusals`), and `resolveTickerIsFund`'s
+  // oracle needs a stored profile for a fund-of-funds constituent (e.g. VTI
+  // inside a held AOA) or it reports as an ordinary single-name stock instead
+  // of being recognized as a fund. Computed AFTER the fetch loop above so a
+  // fund freshly fetched in THIS request still has its constituents picked
+  // up. Call `missingConstituentTickers` EXACTLY ONCE (never loop it) — see
+  // its own docblock for why looping would incorrectly go a level deeper
+  // each time, chasing a constituent's own constituents the leaf never
+  // consults. Read-only (never fetches).
+  const missingConstituents = missingConstituentTickers(storedByTicker);
+  if (missingConstituents.length > 0) {
+    const constituentRows = await repo.getEtfProfiles(missingConstituents);
+    for (const row of constituentRows) storedByTicker.set(row.ticker, row);
+  }
+
   const profiles: EtfProfileEntry[] = [];
   const refusals: EtfProfileRefusalEntry[] = [];
-  // Walks `allTickers` (READ-eligible), not `eligibleTickers` (FETCH-eligible)
-  // — this is what actually surfaces a mistyped-equity ticker's already-cached
-  // profile to the Health UI. Iterating `eligibleTickers` here would silently
-  // drop it from the response even after the broadened read above found it.
-  for (const ticker of allTickers) {
+  // Walks `allTickers` (READ-eligible) PLUS the constituent tickers just
+  // broadened in above — this is what actually surfaces a mistyped-equity
+  // ticker's already-cached profile, AND a fund-of-funds constituent's, to
+  // the Health UI. Iterating `eligibleTickers` (or `allTickers` alone) here
+  // would silently drop either from the response even after the broadened
+  // reads above found them.
+  const projectionTickers = missingConstituents.length === 0 ? allTickers : [...allTickers, ...missingConstituents];
+  for (const ticker of projectionTickers) {
     const row = storedByTicker.get(ticker);
     if (!row) continue; // never fetched, deferred by the cap, or unpriced — simply absent
     const projected = projectRow(ticker, row);

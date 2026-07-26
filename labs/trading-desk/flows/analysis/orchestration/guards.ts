@@ -55,6 +55,7 @@ import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through"
 import {
   allHeldTickers,
   excludeFixedIncomeFromProfileMap,
+  missingConstituentTickers,
   toFundProfileMap,
 } from "@/domain/portfolio/math/etf-profile-map";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
@@ -248,6 +249,24 @@ export const seedSession = handler({
     try {
       const rows = await repo.getEtfProfiles(heldTickersForProfileLookup);
       for (const [ticker, profile] of toFundProfileMap(rows)) etfProfiles.set(ticker, profile);
+      // Fund-of-funds constituent broadening (Codex review, FIX-801 sub-PR c,
+      // round 12, P1): a held allocation fund's own constituents need to be
+      // IN this map too, even when the household doesn't separately hold
+      // them, or `resolveTickerIsFund`'s oracle has no evidence for them and
+      // reports a fund-of-funds constituent (e.g. VTI inside a held AOA) as
+      // an ordinary single-name stock. Call `missingConstituentTickers`
+      // EXACTLY ONCE (never loop it) — the leaf only ever needs one level of
+      // evidence (see its own docblock for why looping would incorrectly go
+      // a level deeper each time, chasing a constituent's own constituents
+      // the leaf never consults). Read-only, same Decision-1-style posture
+      // as the read above.
+      const missingConstituents = missingConstituentTickers(etfProfiles);
+      if (missingConstituents.length > 0) {
+        const constituentRows = await repo.getEtfProfiles(missingConstituents);
+        for (const [ticker, profile] of toFundProfileMap(constituentRows)) {
+          etfProfiles.set(ticker, profile);
+        }
+      }
     } catch (err) {
       console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
     }
@@ -257,7 +276,10 @@ export const seedSession = handler({
     // through it. Suppress those tickers from the map the leaf actually
     // decomposes (Codex review, FIX-801 sub-PR c) — see the function's own
     // docblock for why this is a narrower, different check than the fetch
-    // predicate.
+    // predicate. Applied LAST, after the constituent broadening above, so a
+    // directly-held bond ETF that also happens to be another held fund's
+    // constituent stays excluded either way — the constituent pass could
+    // otherwise re-add an entry this exclusion already removed.
     etfProfiles = excludeFixedIncomeFromProfileMap(etfProfiles, scopedHoldings);
     const portfolio = buildPortfolioContext(
       scoped,

@@ -238,6 +238,56 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("surfaces a fund-of-funds constituent's own stored profile even though the household does not separately hold it — the constituent-broadening fix (Codex review, FIX-801 sub-PR c round 12, P1)", async () => {
+    // AOA (an allocation ETF) holds VTI at 90% of its own weight; VTI is
+    // itself a fund but is NOT held by this household at all — only its
+    // profile is cached (warmed by another household's fund-of-funds lookup,
+    // or an earlier direct holding). Without this route surfacing VTI's row
+    // in the response too, the Health UI's `fundProfiles` map (built purely
+    // from this response) never gets VTI's evidence, and
+    // `resolveTickerIsFund` reports VTI as an ordinary single-name stock
+    // instead of recognizing AOA as fund-of-funds.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "AOA", quantity: 5, costBasis: 40, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "AOA",
+        payload: {
+          leveraged: false,
+          constituents: [{ ticker: "VTI", weight: 0.9 }],
+          nameCoverage: 0.9,
+          sectors: [],
+          sectorCoverage: 0,
+          netExpenseRatio: null,
+          inceptionDate: null,
+        },
+        refusalReason: null,
+      },
+      // VTI's own stored profile — never fetched for THIS household (no
+      // quote seeded for it, no fetch mocked below), only reachable via the
+      // constituent broadening.
+      { ticker: "VTI", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+
+    const res = await GET(get(USER_ID));
+    const body = (await res.json()) as EtfProfilesResponse;
+
+    // The load-bearing assertion: VTI's profile reaches the response even
+    // though it was never a household holding, never fetch-eligible, and
+    // never in the household's own `allTickers` read set.
+    const tickers = body.profiles.map((p) => p.ticker).sort();
+    expect(tickers).toEqual(["AOA", "VTI"]);
+    const vti = body.profiles.find((p) => p.ticker === "VTI");
+    expect(vti?.constituents).toEqual(SAMPLE_PROFILE.constituents);
+    // Purely a cache read — never fetched for VTI (or AOA).
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
   it("excludes an unpriced fund from the fetch set (no budget unit for a profile nothing can use)", async () => {
     await seedAccount(repoState.repo!, {
       accountId: "acc-1",

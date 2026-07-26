@@ -86,6 +86,72 @@ export function allHeldTickers(holdings: ReadonlyArray<Pick<Holding, "ticker">>)
 }
 
 /**
+ * Every constituent ticker (upper-cased, deduped) referenced by any fund
+ * profile ALREADY in the map, that is not itself already a key in the map —
+ * i.e. exactly the tickers a caller still needs to read before
+ * `resolveTickerIsFund`'s evidence-ordering oracle (`etf-look-through.ts`) can
+ * correctly judge them.
+ *
+ * **The gap this closes (Codex review, FIX-801 sub-PR c round 12, P1 — the
+ * same evidence-ordering mechanics that took 32+ review rounds to get right in
+ * sub-PR b).** `allHeldTickers`'s broad read (above) covers every ticker the
+ * HOUSEHOLD holds directly, but the oracle also needs evidence for a fund's
+ * CONSTITUENTS that the household does NOT separately hold — a held
+ * allocation ETF (e.g. AOA) that itself holds component ETFs (e.g. VTI) which
+ * aren't ALSO a household position. Without VTI's profile in the map, all
+ * three of the oracle's evidence layers fail for it (no stored profile, not
+ * on the curated bond-ETF list, not a household holding), so it decomposes as
+ * an ordinary single-name stock inside AOA instead of being recognized as
+ * fund-of-funds — exactly the regression sub-PR b's own fund-of-funds tests
+ * pin, except reachable here through wiring this PR (sub-PR c) controls, not
+ * the leaf's own logic.
+ *
+ * **Call this EXACTLY ONCE per snapshot, merge the result, and stop —
+ * never loop it to a fixed point.** The leaf never inspects a constituent's
+ * OWN constituents: it only ever decomposes the household's own DIRECT
+ * positions (the `positions` argument to `computeLookThroughExposure`); a
+ * constituent ticker that resolves as a fund becomes residual mass for the
+ * axis, never itself decomposed (see `etf-look-through.ts`'s main loop and
+ * its module docblock's "one level of look-through only"). The oracle also
+ * never reads a constituent profile's CONTENTS, only whether one is present
+ * at all (`payload !== null`, or a specific refusal reason) — so there is
+ * never a reason to go deeper.
+ *
+ * This function itself has NO memory of which entries were the ORIGINAL
+ * held-fund reads versus already-merged constituent entries — it simply
+ * scans every entry currently in the map. So calling it a SECOND time on a
+ * map that already contains a merged constituent's own profile (e.g. VTI's)
+ * WOULD surface VTI's own constituents (e.g. MSFT) as "missing" too — the
+ * function is not itself idempotent once looped. The single-call discipline
+ * lives at the call site, not in this function: `guards.ts` and the route's
+ * `GET` handler each call this exactly once against the held-tickers read,
+ * merge, and never call it again.
+ *
+ * Read-only, same Decision-1-style posture as every other broadening in this
+ * file: never fetches a constituent, only surfaces whatever the shared,
+ * global `app.etf_profiles` table already has cached for it (from this
+ * household warming it directly, or another household's fund-of-funds
+ * lookup, or a prior constituent broadening elsewhere).
+ */
+export function missingConstituentTickers(
+  profiles: ReadonlyMap<
+    string,
+    { payload: { constituents: ReadonlyArray<{ ticker: string | null }> } | null } | undefined
+  >,
+): string[] {
+  const missing = new Set<string>();
+  for (const entry of profiles.values()) {
+    if (entry === undefined || entry.payload === null) continue;
+    for (const c of entry.payload.constituents) {
+      if (c.ticker === null) continue;
+      const ticker = c.ticker.toUpperCase();
+      if (!profiles.has(ticker)) missing.add(ticker);
+    }
+  }
+  return [...missing];
+}
+
+/**
  * Removes any ticker currently classified `assetClass === "fixed_income"`
  * from an already-built `FundProfileInput` map, before it reaches the
  * look-through leaf.
