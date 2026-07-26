@@ -152,6 +152,47 @@ export function missingConstituentTickers(
 }
 
 /**
+ * Every (upper-cased) key in `profiles` whose OWN constituents include at
+ * least one of `tickers` — the wrapper funds a caller must WITHDRAW when a
+ * `missingConstituentTickers` follow-up read fails partway through the
+ * broadening pass (Codex review, FIX-801 sub-PR c round 13).
+ *
+ * **The gap this closes.** `missingConstituentTickers` and the second read it
+ * drives are two separate steps; if the second read throws (a genuine DB
+ * error), a caller that already merged the FIRST read's wrapper profiles into
+ * the map — then swallows the second read's error and moves on — leaves those
+ * wrappers in a "looks complete, isn't" state: their fund-of-funds verdict
+ * depends on constituent evidence that never arrived, exactly the broken
+ * state `missingConstituentTickers`'s own fix exists to prevent, just reached
+ * through an error path instead of the original missing-broadening path. A
+ * caller passes the SAME `tickers` list it just failed to read (the exact
+ * output of the `missingConstituentTickers` call that preceded the failed
+ * read) to find every wrapper whose verdict is now unverifiable, and deletes
+ * them from the map — falling back to whatever "no profile at all" already
+ * produces (opaque on the WRAPPER basis if fund-typed, never decomposed) —
+ * rather than leaving a stale, half-broadened entry that misrepresents a
+ * fund-of-funds constituent as an ordinary name.
+ */
+export function fundsReferencingTickers(
+  profiles: ReadonlyMap<
+    string,
+    { payload: { constituents: ReadonlyArray<{ ticker: string | null }> } | null } | undefined
+  >,
+  tickers: ReadonlyArray<string>,
+): string[] {
+  const tickerSet = new Set(tickers.map((t) => t.toUpperCase()));
+  const affected: string[] = [];
+  for (const [key, entry] of profiles.entries()) {
+    if (entry === undefined || entry.payload === null) continue;
+    const references = entry.payload.constituents.some(
+      (c) => c.ticker !== null && tickerSet.has(c.ticker.toUpperCase()),
+    );
+    if (references) affected.push(key);
+  }
+  return affected;
+}
+
+/**
  * Removes any ticker currently classified `assetClass === "fixed_income"`
  * from an already-built `FundProfileInput` map, before it reaches the
  * look-through leaf.

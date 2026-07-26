@@ -55,6 +55,7 @@ import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through"
 import {
   allHeldTickers,
   excludeFixedIncomeFromProfileMap,
+  fundsReferencingTickers,
   missingConstituentTickers,
   toFundProfileMap,
 } from "@/domain/portfolio/math/etf-profile-map";
@@ -249,26 +250,46 @@ export const seedSession = handler({
     try {
       const rows = await repo.getEtfProfiles(heldTickersForProfileLookup);
       for (const [ticker, profile] of toFundProfileMap(rows)) etfProfiles.set(ticker, profile);
-      // Fund-of-funds constituent broadening (Codex review, FIX-801 sub-PR c,
-      // round 12, P1): a held allocation fund's own constituents need to be
-      // IN this map too, even when the household doesn't separately hold
-      // them, or `resolveTickerIsFund`'s oracle has no evidence for them and
-      // reports a fund-of-funds constituent (e.g. VTI inside a held AOA) as
-      // an ordinary single-name stock. Call `missingConstituentTickers`
-      // EXACTLY ONCE (never loop it) — the leaf only ever needs one level of
-      // evidence (see its own docblock for why looping would incorrectly go
-      // a level deeper each time, chasing a constituent's own constituents
-      // the leaf never consults). Read-only, same Decision-1-style posture
-      // as the read above.
-      const missingConstituents = missingConstituentTickers(etfProfiles);
-      if (missingConstituents.length > 0) {
+    } catch (err) {
+      console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
+    }
+    // Fund-of-funds constituent broadening (Codex review, FIX-801 sub-PR c,
+    // round 12, P1): a held allocation fund's own constituents need to be
+    // IN this map too, even when the household doesn't separately hold
+    // them, or `resolveTickerIsFund`'s oracle has no evidence for them and
+    // reports a fund-of-funds constituent (e.g. VTI inside a held AOA) as
+    // an ordinary single-name stock. Call `missingConstituentTickers`
+    // EXACTLY ONCE (never loop it) — the leaf only ever needs one level of
+    // evidence (see its own docblock for why looping would incorrectly go
+    // a level deeper each time, chasing a constituent's own constituents
+    // the leaf never consults). Read-only, same Decision-1-style posture
+    // as the read above.
+    //
+    // A SEPARATE try/catch from the read above (Codex review, FIX-801
+    // sub-PR c, round 13): the original shared catch let a genuine failure
+    // on THIS read silently leave the wrapper profiles from the FIRST read
+    // (e.g. AOA) sitting in the map with their constituents (e.g. VTI)
+    // never merged in — exactly the "looks complete, isn't" state the round
+    // 12 fix exists to prevent, just reached through an error path instead
+    // of the original missing-broadening path. On failure, withdraw every
+    // wrapper whose fund-of-funds verdict depends on this read
+    // (`fundsReferencingTickers`) rather than leave them half-broadened —
+    // they fall back to whatever "no profile at all" already produces
+    // (opaque on the wrapper basis if fund-typed), the same safe default a
+    // ticker that was never looked up at all gets.
+    const missingConstituents = missingConstituentTickers(etfProfiles);
+    if (missingConstituents.length > 0) {
+      try {
         const constituentRows = await repo.getEtfProfiles(missingConstituents);
         for (const [ticker, profile] of toFundProfileMap(constituentRows)) {
           etfProfiles.set(ticker, profile);
         }
+      } catch (err) {
+        console.warn(`[trading-desk] seed: ETF profile constituent broadening read failed`, err);
+        for (const ticker of fundsReferencingTickers(etfProfiles, missingConstituents)) {
+          etfProfiles.delete(ticker);
+        }
       }
-    } catch (err) {
-      console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
     }
     // The broad read above intentionally still looks up a bond ETF (or a
     // holding since manually reclassified to fixed_income) — but a stored

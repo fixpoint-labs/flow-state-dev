@@ -364,6 +364,18 @@ export async function GET(req: NextRequest) {
   // its own docblock for why looping would incorrectly go a level deeper
   // each time, chasing a constituent's own constituents the leaf never
   // consults. Read-only (never fetches).
+  // NOT wrapped in a try/catch, deliberately (Codex review, FIX-801 sub-PR c,
+  // round 13 — the sibling fix for guards.ts's shared-catch bug that let a
+  // failed constituent read leave already-loaded wrapper profiles in a
+  // "looks complete, isn't" state). This whole `GET` handler has no
+  // try/catch anywhere; a throw here propagates to a 500 like any other read
+  // failure in this route, and NOTHING is written by this read (no
+  // `upsertEtfProfiles` call on this path) — so there is no half-broadened
+  // state to leak: either the response is built from a fully-loaded map, or
+  // the response is never sent at all. The guards.ts bug was specific to its
+  // swallow-and-degrade posture (a caught error there still returns a
+  // "successful" seed with a stale map); this route has no such posture to
+  // repeat the bug in.
   const missingConstituents = missingConstituentTickers(storedByTicker);
   if (missingConstituents.length > 0) {
     const constituentRows = await repo.getEtfProfiles(missingConstituents);

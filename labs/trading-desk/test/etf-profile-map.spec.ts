@@ -3,14 +3,17 @@
  * shared row→map conversion (`toFundProfileMap`), the broad cache-read ticker
  * set (`allHeldTickers`), the strict fetch-eligibility predicate
  * (`isEtfProfileFetchCandidate`), the fixed-income attribution suppressor
- * (`excludeFixedIncomeFromProfileMap`, FIX-801 sub-PR c round 7), and the
+ * (`excludeFixedIncomeFromProfileMap`, FIX-801 sub-PR c round 7), the
  * fund-of-funds constituent-broadening helper
- * (`missingConstituentTickers`, FIX-801 sub-PR c round 12).
+ * (`missingConstituentTickers`, FIX-801 sub-PR c round 12), and the
+ * broadening-failure withdrawal helper
+ * (`fundsReferencingTickers`, FIX-801 sub-PR c round 13).
  */
 import { describe, expect, it } from "vitest";
 import {
   allHeldTickers,
   excludeFixedIncomeFromProfileMap,
+  fundsReferencingTickers,
   isEtfProfileFetchCandidate,
   missingConstituentTickers,
   toFundProfileMap,
@@ -253,5 +256,49 @@ describe("missingConstituentTickers (Codex review, FIX-801 sub-PR c round 12, P1
     ]);
 
     expect(missingConstituentTickers(rawRowShaped)).toEqual(["VTI"]);
+  });
+});
+
+describe("fundsReferencingTickers (Codex review, FIX-801 sub-PR c round 13 — the broadening-failure withdrawal helper)", () => {
+  it("returns the wrapper whose constituent list includes a given ticker", () => {
+    const profiles = new Map<string, FundProfileInput>([
+      ["AOA", profile(["VTI", "NVDA"])],
+      ["SPY", profile(["AAPL", "MSFT"])],
+    ]);
+
+    expect(fundsReferencingTickers(profiles, ["VTI"])).toEqual(["AOA"]);
+  });
+
+  it("returns every wrapper referencing ANY of the given tickers, not just the first match", () => {
+    const profiles = new Map<string, FundProfileInput>([
+      ["AOA", profile(["VTI"])],
+      ["ITOT", profile(["VTI"])], // a second wrapper referencing the same failed ticker
+      ["SPY", profile(["AAPL"])], // unaffected — doesn't reference VTI at all
+    ]);
+
+    expect(fundsReferencingTickers(profiles, ["VTI"]).sort()).toEqual(["AOA", "ITOT"]);
+  });
+
+  it("excludes a wrapper whose own constituents were all already resolved (does not reference any failed ticker)", () => {
+    const profiles = new Map<string, FundProfileInput>([["SPY", profile(["AAPL", "MSFT"])]]);
+
+    expect(fundsReferencingTickers(profiles, ["VTI"])).toEqual([]);
+  });
+
+  it("skips a fund with no payload (a refusal) — nothing to check its constituents against", () => {
+    const profiles = new Map<string, FundProfileInput>([["NOTETF", refusal()]]);
+
+    expect(fundsReferencingTickers(profiles, ["VTI"])).toEqual([]);
+  });
+
+  it("upper-cases both sides of the comparison", () => {
+    const profiles = new Map<string, FundProfileInput>([["AOA", profile(["vti"])]]);
+
+    expect(fundsReferencingTickers(profiles, ["vti"])).toEqual(["AOA"]);
+  });
+
+  it("returns [] for an empty map or an empty tickers list", () => {
+    expect(fundsReferencingTickers(new Map(), ["VTI"])).toEqual([]);
+    expect(fundsReferencingTickers(new Map([["AOA", profile(["VTI"])]]), [])).toEqual([]);
   });
 });

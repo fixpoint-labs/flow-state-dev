@@ -441,6 +441,132 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });
 
+  it("withdraws a wrapper fund from the map when its constituent-broadening read fails, instead of leaving it half-broadened with a fabricated single-name position (Codex review, FIX-801 sub-PR c round 13)", async () => {
+    // Similar AOA/VTI setup as the test above, but the constituent-
+    // broadening `getEtfProfiles` call throws (a genuine DB error). The
+    // original shared try/catch let this silently leave AOA's profile (from
+    // the FIRST, successful read) sitting in the map with VTI never merged
+    // in: `resolveTickerIsFund` would have no evidence VTI is a fund,
+    // decompose it as an ordinary single-name stock at ~90% of AOA's
+    // weight, and inject a false single-name concentration into the
+    // trader/PM context — exactly the broken state the round-12 fix exists
+    // to prevent, just reached through an error path.
+    //
+    // SPY's own constituents are deliberately ALL null-ticker ("n/a") rows
+    // here — real AV rows for unresolvable foreign/futures/cash lines — so
+    // SPY contributes NOTHING to the constituent-broadening ticker set
+    // (`missingConstituentTickers` already skips null tickers) and the one
+    // failing batched read is scoped to exactly AOA's own constituents
+    // (VTI, NVDA), not swept up with SPY's. SPY still sets `hasAttribution`
+    // via its SECTOR axis alone (independent of the name axis having any
+    // real constituents) — the "control" that proves the failure didn't
+    // take down look-through entirely, just the one fund whose evidence
+    // failed to load.
+    await seedAccount(repoState.repo!, {
+      accountId: ACCOUNT_ID,
+      userId: TEST_USER,
+      name: "Taxable",
+      type: "taxable",
+      cashBalance: 0,
+      holdings: [
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+        { ticker: "AOA", quantity: 200, costBasis: 40, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+      { ticker: "AOA", price: 50, asOf: "2026-05-06T00:00:00.000Z", source: "live" },
+    ]);
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "SPY",
+        payload: {
+          leveraged: false,
+          constituents: [{ ticker: null, weight: 0.99 }], // n/a row only — no real name-axis tickers
+          nameCoverage: 0.99,
+          sectors: [{ sector: "Technology", weight: 0.96 }],
+          sectorCoverage: 0.96,
+          netExpenseRatio: 0.0945,
+          inceptionDate: "1993-01-22",
+        },
+        refusalReason: null,
+      },
+      {
+        ticker: "AOA",
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "VTI", weight: 0.9 },
+            { ticker: "NVDA", weight: 0.05 },
+          ],
+          nameCoverage: 0.95,
+          sectors: [{ sector: "Technology", weight: 0.5 }],
+          sectorCoverage: 0.5,
+          netExpenseRatio: null,
+          inceptionDate: null,
+        },
+        refusalReason: null,
+      },
+      // VTI's row exists in the DB — a healthy read WOULD find it — but the
+      // read itself is about to be made to throw below.
+      {
+        ticker: "VTI",
+        payload: {
+          leveraged: false,
+          constituents: [{ ticker: "MSFT", weight: 0.5 }],
+          nameCoverage: 0.5,
+          sectors: [],
+          sectorCoverage: 0,
+          netExpenseRatio: null,
+          inceptionDate: null,
+        },
+        refusalReason: null,
+      },
+    ]);
+
+    // The FIRST getEtfProfiles call (held tickers: SPY, AOA) succeeds
+    // normally; the SECOND call (the constituent broadening: VTI, NVDA)
+    // throws.
+    const realGetEtfProfiles = repoState.repo!.getEtfProfiles.bind(repoState.repo!);
+    let callCount = 0;
+    vi.spyOn(repoState.repo!, "getEtfProfiles").mockImplementation((tickers: string[]) => {
+      callCount += 1;
+      if (callCount === 2) return Promise.reject(new Error("simulated DB error"));
+      return realGetEtfProfiles(tickers);
+    });
+
+    const result = await testBlock(seedSession, { input: { ...baseInput, ticker: "SPY" }, flow });
+    expect(result.error).toBeNull();
+
+    const sessionState = result.state.session as {
+      portfolio?: {
+        health: {
+          lookThrough: {
+            sectorCoveragePct: number | null;
+            opaqueFundCount: number;
+          } | null;
+        } | null;
+      } | null;
+    };
+    const lookThrough = sessionState.portfolio?.health?.lookThrough;
+    // The load-bearing assertion: the seed did NOT collapse to the whole-
+    // block "none" state — SPY's own sector-axis attribution survives
+    // completely untouched by AOA's withdrawal, proving the failure was
+    // correctly scoped to the one fund whose constituent evidence failed
+    // to load, not swallowed into losing look-through entirely.
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.sectorCoveragePct).not.toBeNull();
+    // AOA was withdrawn from the map entirely (its constituent-broadening
+    // read failed) — it falls back to "no stored profile" (the SAME safe
+    // opaque state a fund whose profile was never looked up at all
+    // produces), not a fabricated VTI single-name position and not a
+    // (potentially wrong) fund-of-funds verdict computed from stale data.
+    // Without the round-13 fix, AOA's profile would still be sitting in the
+    // map (from the successful first read) and this would read 0, not 1.
+    expect(lookThrough?.opaqueFundCount).toBe(1);
+    expect(fetchEtfProfileMock).not.toHaveBeenCalled();
+  });
+
   it("leaves the look-through axis null when a fund is held but its profile has never been fetched — no budget spent finding out", async () => {
     await seedAccount(repoState.repo!, {
       accountId: ACCOUNT_ID,
