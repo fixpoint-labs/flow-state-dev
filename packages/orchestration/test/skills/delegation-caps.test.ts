@@ -23,7 +23,10 @@ import type { DefinedCapability, GeneratorTool, InitialSkill } from "@flow-state
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
-import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
+import {
+  buildTaskToolsList,
+  DELEGATION_BOARD_FIELD,
+} from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
 import { createMockSkillsCollection } from "./mocks";
 
@@ -212,6 +215,70 @@ describe("delegation board caps — the executive's addTask", () => {
     const { tools, ctx } = await buildSurface({ maxEnqueuedTasks: null });
     const results = await addN(toolNamed(tools, "addTask"), ctx, 105);
     expect(results.every((r) => r.ok)).toBe(true);
+  });
+});
+
+describe("delegation board addTask — failure ORDER across both gates", () => {
+  // `addTask` now has four failure modes, and their order is a deliberate
+  // contract rather than an artifact of how two PRs merged:
+  //
+  //   no board  ->  unknown assignee  ->  creation cap  ->  created
+  //
+  // The cap is LAST on purpose. "That worker doesn't exist" is the more
+  // actionable message, and a task refused for a phantom assignee must never
+  // reach the ledger — otherwise a typo'd add could be what consumes the budget
+  // that a later valid add needed. Cap-first would also dead-end a caller at the
+  // boundary: it would answer "board full" to someone whose real problem is the
+  // assignee, which they would then hit again after fixing it.
+  it("reports the unknown assignee, not the cap, when BOTH would fire", async () => {
+    const { tools, ctx, selfState } = await buildSurface({ maxEnqueuedTasks: 2 });
+    const addTask = toolNamed(tools, "addTask");
+
+    // Fill the board to its enqueue bound with valid, unassigned tasks.
+    const filled = await addN(addTask, ctx, 2);
+    expect(filled.every((r) => r.ok)).toBe(true);
+
+    // At the cap AND naming an agent that does not exist. Both gates would
+    // refuse this; the assignee gate must be the one that answers.
+    const both = (await runForTest(
+      addTask,
+      { goal: "over the cap with a phantom assignee", assignee: "ghost-agent" },
+      ctx,
+    )) as AddTaskResult;
+    expect(both.ok).toBe(false);
+    expect(both.error).toMatch(/^unknown_assignee/);
+    expect(both.error).not.toMatch(/cap_exceeded/);
+
+    // ...and it never reached the ledger, so it consumed no budget.
+    const board = selfState[DELEGATION_BOARD_FIELD] as Record<string, unknown>;
+    expect(Object.keys(board)).toHaveLength(2);
+
+    // With a REAL agent, the same add at the same boundary reports the cap —
+    // proving the assignee gate isn't simply masking it.
+    const capped = (await runForTest(
+      addTask,
+      { goal: "over the cap with a real assignee", assignee: "analyst" },
+      ctx,
+    )) as AddTaskResult;
+    expect(capped).toEqual({ ok: false, error: "enqueued_task_cap_exceeded" });
+  });
+
+  it("reports no_delegation_board ahead of both gates", async () => {
+    // Pinned at the tool-factory level, not through the delegation surface.
+    // That surface closes its resolver over the board it built, so `resolve`
+    // ignores the ctx handed to the tool at call time and a board is always
+    // returned — "no board WITH a roster" is unreachable through the shipped
+    // wiring. Building the tools directly is what makes the code's ordering
+    // observable, without pretending the combination is a production path.
+    const roster = { has: () => false, describe: () => "analyst (…)" };
+    const [addTaskOnly] = buildTaskToolsList(async () => undefined, roster);
+    const result = (await runForTest(
+      addTaskOnly as never,
+      { goal: "x", assignee: "ghost-agent" },
+      buildExecCtx().ctx,
+    )) as AddTaskResult;
+    // A phantom assignee is present, but the board gate answers first.
+    expect(result.error).toBe("no_delegation_board");
   });
 });
 

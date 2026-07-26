@@ -100,7 +100,9 @@ const skills = createSkillsLibrary({
 
 `null` is the opt-out. Omitting an option is not — it reapplies the default.
 
-One boundary worth knowing, because it is easy to assume otherwise. The bounds come from the code that *builds* the board's task collection. Binding a delegating skill does that for you, so those boards are bounded. Wiring the `taskTools` capability by hand — `uses: [taskTools]` on a generator, outside a skill binding — does not: it reaches the generator's own-state board through a plain collection with no bounds at all, and `addTask` there is unbounded. That is intentional, since a hand-wired capability has nowhere to put the options, but it means "delegation is bounded" is not the same claim as "`taskTools` is bounded". If you want a bound on that path, build the collection yourself and hand the capability a resolver for it:
+One boundary worth knowing, because it is easy to assume otherwise. The bounds come from the code that *builds* the board's task collection. Binding a delegating skill does that for you, so those boards are bounded. Wiring the `taskTools` capability by hand — `uses: [taskTools]` on a generator, outside a skill binding — does not: it reaches the generator's own-state board through a plain collection with no bounds at all, and `addTask` there is unbounded.
+
+This is the same path that also has no roster to validate assignees against, so it is worth saying once: the hand-wired capability has **neither** guard. Both come from the skills binding, which is what constructs the board and knows the declared agents. That is intentional rather than an oversight — a capability wired by hand has nowhere to put either — but it means "delegation is bounded and checks assignees" is not a claim about `taskTools` on its own. If you want a bound on that path, build the collection yourself and hand the capability a resolver for it:
 
 ```ts
 const bounded = (ctx) =>
@@ -154,6 +156,8 @@ addTask({ goal: "Find sources", assignee: "reseacher" })
 ```
 
 No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree. This is a recoverable tool result, not a thrown error — it doesn't end the turn.
+
+When an `addTask` could fail more than one way, the checks run in a fixed order: no board, then an unknown assignee, then the creation bounds. The assignee is checked before the bounds deliberately. Naming a worker that doesn't exist is the more useful thing to hear, and a task rejected for a bad assignee never reaches the board — so a typo can't consume budget that a later, valid task needed.
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 
