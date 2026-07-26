@@ -3,11 +3,11 @@
  * shared row→map conversion (`toFundProfileMap`), the broad cache-read ticker
  * set (`allHeldTickers`), the strict fetch-eligibility predicate
  * (`isEtfProfileFetchCandidate`), the fixed-income attribution suppressor
- * (`excludeFixedIncomeFromProfileMap`, FIX-801 sub-PR c round 7), the
- * fund-of-funds constituent-broadening helper
- * (`missingConstituentTickers`, FIX-801 sub-PR c round 12), and the
- * broadening-failure withdrawal helper
- * (`fundsReferencingTickers`, FIX-801 sub-PR c round 13).
+ * (`excludeFixedIncomeFromProfileMap`, FIX-801 sub-PR c round 7 — judged by
+ * the DOMINANT lot since round 14), the fund-of-funds constituent-broadening
+ * helper (`missingConstituentTickers`, FIX-801 sub-PR c round 12), and the
+ * broadening-failure withdrawal helper (`fundsReferencingTickers`, FIX-801
+ * sub-PR c round 13).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -57,7 +57,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "SPY", assetClass: "fixed_income" })];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.has("SPY")).toBe(false);
   });
@@ -66,7 +66,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "SPY", assetClass: "equity" })];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.get("SPY")).toEqual(profile());
   });
@@ -80,7 +80,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["BND", profile()]]);
     const holdings = [holding({ ticker: "BND", assetClass: "equity", assetType: "equity" })];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.has("BND")).toBe(false);
   });
@@ -93,7 +93,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "SPY", assetClass: "equity", assetType: "equity" })];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.has("SPY")).toBe(true);
   });
@@ -108,7 +108,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
       holding({ ticker: "BND", assetClass: "fixed_income" }),
     ];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.has("SPY")).toBe(true);
     expect(out.has("BND")).toBe(false);
@@ -118,7 +118,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "SPY", assetClass: "equity" })];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out).toBe(profiles);
   });
@@ -127,7 +127,7 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "SPY", assetClass: "fixed_income" })];
 
-    excludeFixedIncomeFromProfileMap(profiles, holdings);
+    excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(profiles.has("SPY")).toBe(true);
   });
@@ -136,9 +136,52 @@ describe("excludeFixedIncomeFromProfileMap (Codex review, FIX-801 sub-PR c round
     const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
     const holdings = [holding({ ticker: "spy", assetClass: "fixed_income" })];
 
-    const out = excludeFixedIncomeFromProfileMap(profiles, holdings);
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, new Map());
 
     expect(out.has("SPY")).toBe(false);
+  });
+
+  it("a tiny fixed-income lot no longer suppresses a much larger equity-classified position in the same ticker — judged by the DOMINANT lot, not ANY row (Codex review, FIX-801 sub-PR c round 14: a real inconsistency, `summarizePortfolioHealth` already classifies a ticker by its dominant lot, this used to disagree with an 'any row' test)", () => {
+    const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
+    const holdings = [
+      holding({ ticker: "SPY", assetClass: "fixed_income", quantity: 1 }), // 1 share @ $100 = $100
+      holding({ ticker: "SPY", assetClass: "equity", quantity: 1_000 }), // 1,000 shares @ $100 = $100,000 — dominant
+    ];
+    const quotes = new Map([["SPY", { price: 100 }]]);
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, quotes);
+
+    expect(out.has("SPY")).toBe(true);
+  });
+
+  it("still excludes when the DOMINANT lot is fixed_income, even with a smaller equity-classified lot of the same ticker present", () => {
+    const profiles = new Map<string, FundProfileInput>([["SPY", profile()]]);
+    const holdings = [
+      holding({ ticker: "SPY", assetClass: "equity", quantity: 1 }), // 1 share @ $100 = $100
+      holding({ ticker: "SPY", assetClass: "fixed_income", quantity: 1_000 }), // 1,000 shares @ $100 = $100,000 — dominant
+    ];
+    const quotes = new Map([["SPY", { price: 100 }]]);
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, quotes);
+
+    expect(out.has("SPY")).toBe(false);
+  });
+
+  it("the curated bond-ETF list check runs over EVERY held ticker regardless of the dominant classification result", () => {
+    // BND's dominant lot happens to be equity-classified (a manual override
+    // on the larger lot), but the curated list still wins — same "trust the
+    // list directly" rule as round 10's fix, now applied on top of the
+    // dominant-lot comparison rather than instead of it.
+    const profiles = new Map<string, FundProfileInput>([["BND", profile()]]);
+    const holdings = [
+      holding({ ticker: "BND", assetClass: "fixed_income", quantity: 1 }),
+      holding({ ticker: "BND", assetClass: "equity", quantity: 1_000 }), // dominant, but BND is still curated
+    ];
+    const quotes = new Map([["BND", { price: 100 }]]);
+
+    const out = excludeFixedIncomeFromProfileMap(profiles, holdings, quotes);
+
+    expect(out.has("BND")).toBe(false);
   });
 });
 

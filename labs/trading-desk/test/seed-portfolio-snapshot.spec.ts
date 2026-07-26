@@ -556,13 +556,16 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     // to load, not swallowed into losing look-through entirely.
     expect(lookThrough).not.toBeNull();
     expect(lookThrough?.sectorCoveragePct).not.toBeNull();
-    // AOA was withdrawn from the map entirely (its constituent-broadening
-    // read failed) — it falls back to "no stored profile" (the SAME safe
-    // opaque state a fund whose profile was never looked up at all
-    // produces), not a fabricated VTI single-name position and not a
-    // (potentially wrong) fund-of-funds verdict computed from stale data.
-    // Without the round-13 fix, AOA's profile would still be sitting in the
-    // map (from the successful first read) and this would read 0, not 1.
+    // AOA was withdrawn (its constituent-broadening read failed) — opaque,
+    // not a fabricated VTI single-name position and not a (potentially
+    // wrong) fund-of-funds verdict computed from stale data. Withdrawal
+    // REPLACES the map entry with a refusal (round 14), rather than
+    // deleting the key outright as round 13 originally did — see the test
+    // below for why that distinction matters for a MISTYPED-equity wrapper.
+    // Here AOA is correctly typed `assetType: "etf"`, so either withdrawal
+    // shape produces the same opaque verdict. Without the round-13 fix,
+    // AOA's profile would still be sitting in the map (from the successful
+    // first read) and this would read 0, not 1.
     expect(lookThrough?.opaqueFundCount).toBe(1);
     expect(fetchEtfProfileMock).not.toHaveBeenCalled();
   });

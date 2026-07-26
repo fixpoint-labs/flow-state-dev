@@ -29,6 +29,7 @@
 import type { Holding } from "../schema/portfolio-schema";
 import { isKnownBondEtf } from "./classify-instrument";
 import type { FundProfileInput, NormalizedFundProfile } from "./etf-look-through";
+import { dominantClassificationByTicker } from "./value-holding";
 
 /** The common shape both callers can trivially produce: a repository row
  *  (`EtfProfileRow`) already has these three fields; the route's client
@@ -167,11 +168,26 @@ export function missingConstituentTickers(
  * through an error path instead of the original missing-broadening path. A
  * caller passes the SAME `tickers` list it just failed to read (the exact
  * output of the `missingConstituentTickers` call that preceded the failed
- * read) to find every wrapper whose verdict is now unverifiable, and deletes
- * them from the map — falling back to whatever "no profile at all" already
- * produces (opaque on the WRAPPER basis if fund-typed, never decomposed) —
- * rather than leaving a stale, half-broadened entry that misrepresents a
- * fund-of-funds constituent as an ordinary name.
+ * read) to find every wrapper whose verdict is now unverifiable.
+ *
+ * **What a caller does with the result: WITHDRAW, don't delete (Codex
+ * review, FIX-801 sub-PR c round 14 — a real gap in round 13's own fix).**
+ * `guards.ts` REPLACES each affected wrapper's map entry with
+ * `{ payload: null, refusalReason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }`
+ * (`etf-look-through.ts`) rather than deleting the key outright. Deleting
+ * would also delete the wrapper's OWN fund evidence: if the wrapper's local
+ * `assetType` is stale/mistyped (not fund-typed), `resolveTickerIsFund`'s
+ * layer 1a can't prove it's a fund either, and with the stored profile gone
+ * (layer 1b) the oracle falls all the way to layer 1c — the wrapper's own
+ * non-fund classification — and reports it as an ordinary direct stock,
+ * potentially a huge fabricated single-name concentration, instead of a
+ * diversified fund. The withdrawal reason is deliberately recognized by
+ * `resolveTickerIsFund`'s layer 1b as POSITIVE fund evidence (the same bucket
+ * as `"ineligible"`/`"malformed"` — the fetch resolved something for this
+ * ticker at some point; what's missing is confidence in its CONSTITUENTS, not
+ * whether it's a fund), so the wrapper still reads as an opaque fund-of-funds
+ * — never decomposed (constituent evidence is unverified), never mistaken for
+ * a direct name.
  */
 export function fundsReferencingTickers(
   profiles: ReadonlyMap<
@@ -193,9 +209,10 @@ export function fundsReferencingTickers(
 }
 
 /**
- * Removes any ticker currently classified `assetClass === "fixed_income"`
- * from an already-built `FundProfileInput` map, before it reaches the
- * look-through leaf.
+ * Removes any ticker whose DOMINANT lot (the largest `|marketValue|` row
+ * across accounts — {@link dominantClassificationByTicker}) is classified
+ * `assetClass === "fixed_income"` from an already-built `FundProfileInput`
+ * map, before it reaches the look-through leaf.
  *
  * `allHeldTickers`'s broad cache read (above) deliberately still looks up a
  * profile for a bond ETF, or for a holding a manual override has since
@@ -212,6 +229,17 @@ export function fundsReferencingTickers(
  * classified opaque-fund on the WRAPPER basis if its own `assetType` is
  * fund-typed, just never decomposed (Codex review, FIX-801 sub-PR c).
  *
+ * **Judged by the DOMINANT lot, not "any row" (Codex review, FIX-801 sub-PR c
+ * round 14 — a real inconsistency, not a nit).** `summarizePortfolioHealth`
+ * (`portfolio-health.ts`) resolves a ticker's merged classification by its
+ * LARGEST-market-value lot when accounts disagree, not by whether any row at
+ * all carries a given class — an "any row" test here disagreed with that: a
+ * tiny manually-reclassified `fixed_income` lot of, say, SPY could suppress
+ * attribution for a much larger equity-classified SPY position elsewhere in
+ * the household, even though the household's own merged Health view would
+ * classify that ticker as equity (the dominant lot). `quotes` is required so
+ * the dominant-lot comparison uses real market value, not row order.
+ *
  * Deliberately NOT `isEtfProfileFetchCandidate` reapplied here — that
  * predicate is the FETCH decision and is stricter than this check (it also
  * requires `assetType === "etf"`), which would reintroduce the
@@ -220,7 +248,7 @@ export function fundsReferencingTickers(
  * recover) would fail that stricter check and get its already-correct
  * stored profile suppressed again.
  *
- * **Excludes on EITHER `assetClass === "fixed_income"` OR
+ * **Excludes on EITHER the dominant lot's `assetClass === "fixed_income"` OR
  * `isKnownBondEtf(ticker)`, not just the classified field — the same
  * "trust the curated list directly, don't rely solely on the mutable
  * `assetClass` field" lesson as `isEtfProfileFetchCandidate`'s own bond-ETF
@@ -231,16 +259,24 @@ export function fundsReferencingTickers(
  * opaque (Codex review, FIX-801 sub-PR c, round 10). Checking the curated
  * list directly closes that gap regardless of what the stored field
  * currently says — exactly the fetch predicate's own reasoning, applied
- * here on the attribution side instead of the fetch side.
+ * here on the attribution side instead of the fetch side. The bond-ETF-list
+ * check runs over EVERY held ticker (not just the dominant-lot-fixed-income
+ * ones) — a curated bond ETF is fixed income regardless of how any lot of it
+ * happens to be classified locally.
  */
 export function excludeFixedIncomeFromProfileMap(
   profiles: Map<string, FundProfileInput>,
-  holdings: ReadonlyArray<Pick<Holding, "ticker" | "assetClass">>,
+  holdings: ReadonlyArray<
+    Pick<Holding, "ticker" | "assetClass" | "assetType" | "quantity" | "attributes" | "dataQuality">
+  >,
+  quotes: ReadonlyMap<string, { price: number | null }>,
 ): Map<string, FundProfileInput> {
+  const dominantClassification = dominantClassificationByTicker(holdings, quotes);
+  const heldTickers = new Set(holdings.map((h) => h.ticker.toUpperCase()));
   const fixedIncomeTickers = new Set(
-    holdings
-      .filter((h) => h.assetClass === "fixed_income" || isKnownBondEtf(h.ticker))
-      .map((h) => h.ticker.toUpperCase()),
+    [...heldTickers].filter(
+      (ticker) => dominantClassification.get(ticker)?.assetClass === "fixed_income" || isKnownBondEtf(ticker),
+    ),
   );
   if (fixedIncomeTickers.size === 0) return profiles;
   const filtered = new Map(profiles);

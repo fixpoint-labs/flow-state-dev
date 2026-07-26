@@ -64,6 +64,20 @@ export type NormalizedEtfProfile = {
   sectorCoverage: number;
   netExpenseRatio: number | null;
   inceptionDate: string | null;
+  /** True when at least one `constituents` row has a resolvable (non-null)
+   *  ticker. False for the "fully covered, nothing nameable" case (e.g. GLD —
+   *  every row is an `n/a` symbol with a real weight): `nameCoverage` reads
+   *  high and the rows reconcile, so nothing about the mass accounting flags
+   *  it, but the consuming leaf (`etf-look-through.ts`) reads this field to
+   *  still surface the fund in `opaqueFunds` on the name axis — a diagnostic
+   *  signal, not a mass-routing one (every row already routes to the name
+   *  residual via its null ticker regardless of this field). Optional on
+   *  every OTHER type this normalized shape flows through
+   *  (`NormalizedFundProfile`, the leaf's own copy) because a row stored
+   *  before this field existed won't have it (BP-030); always populated HERE,
+   *  by this fetcher, on every fresh fetch (Codex review, FIX-801 sub-PR c
+   *  round 14, connecting to round 8's per-axis taxonomy work). */
+  hasResolvableConstituent?: boolean;
 };
 
 /** Why a fetched ticker was refused attribution — a JUDGMENT about the
@@ -392,6 +406,7 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     sectorCoverage,
     netExpenseRatio: parseNumber(body.net_expense_ratio),
     inceptionDate: isAbsent(body.inception_date) ? null : (body.inception_date as string),
+    hasResolvableConstituent,
   };
   return { kind: "profile", profile };
 }

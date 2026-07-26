@@ -51,7 +51,7 @@ import {
 } from "@/domain/portfolio/schema/portfolio-mandate-schema";
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
-import type { FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
+import { CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON, type FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
 import {
   allHeldTickers,
   excludeFixedIncomeFromProfileMap,
@@ -273,10 +273,24 @@ export const seedSession = handler({
     // 12 fix exists to prevent, just reached through an error path instead
     // of the original missing-broadening path. On failure, withdraw every
     // wrapper whose fund-of-funds verdict depends on this read
-    // (`fundsReferencingTickers`) rather than leave them half-broadened —
-    // they fall back to whatever "no profile at all" already produces
-    // (opaque on the wrapper basis if fund-typed), the same safe default a
-    // ticker that was never looked up at all gets.
+    // (`fundsReferencingTickers`) rather than leave them half-broadened.
+    //
+    // WITHDRAW by REPLACING with a refusal entry, not by deleting the key
+    // (Codex review, FIX-801 sub-PR c round 14 — a real gap in round 13's
+    // own fix). Deleting the wrapper's map entry also deletes its OWN fund
+    // evidence: if the wrapper's local `assetType` is stale/mistyped (not
+    // fund-typed), `resolveTickerIsFund`'s layer 1a can't prove it's a fund
+    // either, and with the stored profile now gone (layer 1b) the oracle
+    // falls all the way to layer 1c — the wrapper's own non-fund
+    // classification — reporting it as an ordinary direct stock (a
+    // fabricated single-name concentration) instead of a diversified,
+    // now-opaque fund. `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON` is
+    // recognized by layer 1b as positive fund evidence (same bucket as
+    // `"ineligible"`/`"malformed"`), so the wrapper still reads as a fund —
+    // just one whose constituents can't currently be verified, so it falls
+    // back to whatever "opaque, no decomposition" already produces (see
+    // `etf-look-through.ts`'s `if (profile.payload === null)` branch), the
+    // same safe default a ticker that was never looked up at all gets.
     const missingConstituents = missingConstituentTickers(etfProfiles);
     if (missingConstituents.length > 0) {
       try {
@@ -287,7 +301,7 @@ export const seedSession = handler({
       } catch (err) {
         console.warn(`[trading-desk] seed: ETF profile constituent broadening read failed`, err);
         for (const ticker of fundsReferencingTickers(etfProfiles, missingConstituents)) {
-          etfProfiles.delete(ticker);
+          etfProfiles.set(ticker, { payload: null, refusalReason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON });
         }
       }
     }
@@ -297,11 +311,14 @@ export const seedSession = handler({
     // through it. Suppress those tickers from the map the leaf actually
     // decomposes (Codex review, FIX-801 sub-PR c) — see the function's own
     // docblock for why this is a narrower, different check than the fetch
-    // predicate. Applied LAST, after the constituent broadening above, so a
-    // directly-held bond ETF that also happens to be another held fund's
-    // constituent stays excluded either way — the constituent pass could
-    // otherwise re-add an entry this exclusion already removed.
-    etfProfiles = excludeFixedIncomeFromProfileMap(etfProfiles, scopedHoldings);
+    // predicate, and why it is judged by the DOMINANT (largest-market-value)
+    // lot rather than an "any row" test (round 14). Applied LAST, after the
+    // constituent broadening above, so a directly-held bond ETF that also
+    // happens to be another held fund's constituent stays excluded either
+    // way — the constituent pass could otherwise re-add an entry this
+    // exclusion already removed.
+    const quoteMap = new Map(quoteRows.map((r) => [r.ticker, { price: r.price }]));
+    etfProfiles = excludeFixedIncomeFromProfileMap(etfProfiles, scopedHoldings, quoteMap);
     const portfolio = buildPortfolioContext(
       scoped,
       quoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),

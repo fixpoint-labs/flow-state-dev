@@ -145,14 +145,17 @@ export function HealthSection({
   // reclassified to fixed_income, must stay opaque regardless of a
   // (possibly stale, possibly another household's) cached profile (Codex
   // review, FIX-801 sub-PR c; see `excludeFixedIncomeFromProfileMap`'s
-  // docblock).
+  // docblock). Judged by the DOMINANT (largest-market-value) lot, hence
+  // `priceMap` passed through — the same rule `summarizePortfolioHealth`
+  // itself uses below (Codex review, FIX-801 sub-PR c round 14).
   const etfProfiles = useMemo(
     () =>
       excludeFixedIncomeFromProfileMap(
         toFundProfileMap(etfProfilesResponseToRows(etfProfileEntries, etfRefusalEntries)),
         accounts.flatMap((a) => a.holdings),
+        priceMap,
       ),
-    [etfProfileEntries, etfRefusalEntries, accounts],
+    [etfProfileEntries, etfRefusalEntries, accounts, priceMap],
   );
 
   const health = useMemo(() => {

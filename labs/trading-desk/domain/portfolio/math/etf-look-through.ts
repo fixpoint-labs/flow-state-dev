@@ -60,6 +60,19 @@ export const LOOK_THROUGH_COVERAGE_FLOOR_PCT = 85;
  *  all-ETF allocation fund) sits far above it. */
 export const FUND_OF_FUNDS_THRESHOLD_PCT = 50;
 
+/** Refusal reason a caller (`guards.ts`) writes into a wrapper fund's map
+ *  entry when its fund-of-funds constituent-broadening read fails partway
+ *  through (Codex review, FIX-801 sub-PR c round 14 — see
+ *  `fundsReferencingTickers`'s docblock in `etf-profile-map.ts` for the full
+ *  gap this closes). Deliberately recognized by `resolveTickerIsFund`'s
+ *  layer 1b as POSITIVE fund evidence, the same bucket as `"ineligible"`/
+ *  `"malformed"` — this ticker WAS resolved as a fund at some point; what's
+ *  missing is confidence in its constituents, not whether it's a fund. A
+ *  caller uses this exact exported string rather than an inline copy, so the
+ *  write side and `resolveTickerIsFund`'s read side can never drift apart. */
+export const CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON =
+  "fund-of-funds constituent data temporarily unavailable (read failed)";
+
 /** Tolerance (as a `[0, 1]` fraction) for reconciling a stored profile's
  *  declared `nameCoverage`/`sectorCoverage` against the ACTUAL sum of that
  *  axis's row weights. A profile can pass the floor check on a coverage
@@ -89,13 +102,20 @@ export type LookThroughSectorRow = { sector: string; weight: number };
 /** A fund's normalized profile, mirroring `NormalizedEtfProfile`. `constituents`
  *  / `sectors` are `readonly` — this leaf only ever reads them, and both the
  *  fetcher's real output (sub-PR a) and test/fixture literals (which TS often
- *  infers as deeply-readonly tuples) flow in naturally without a cast. */
+ *  infers as deeply-readonly tuples) flow in naturally without a cast.
+ *
+ *  `hasResolvableConstituent` is OPTIONAL — unlike the fetcher's own copy of
+ *  this field (`NormalizedEtfProfile`, sub-PR a, always populated on a fresh
+ *  fetch), a profile reaching this leaf may be a row stored before this field
+ *  existed (BP-030: tolerate the old shape). `undefined` is read the same as
+ *  `true` (no new diagnostic) — see the NAME-axis block below. */
 export type NormalizedFundProfile = {
   leveraged: boolean;
   constituents: readonly LookThroughConstituent[];
   nameCoverage: number;
   sectors: readonly LookThroughSectorRow[];
   sectorCoverage: number;
+  hasResolvableConstituent?: boolean;
 };
 
 /** One fund's stored fill outcome, mirroring `EtfProfileRow`: exactly one of
@@ -279,12 +299,15 @@ function pctOf(value: number, denom: number): number {
  *
  * The stored-profile check also reads a REFUSED profile's own reason:
  * `"ineligible"` (e.g. a leveraged/inverse fund, or a fund with no resolvable
- * constituent tickers) and `"malformed"` (corrupted holdings data) both mean
- * the upstream fetch DID resolve an ETF_PROFILE for the ticker — the refusal
- * is about the fund's data, not about whether it's a fund — so both are fund
- * evidence, same as a stored success payload. `"not_an_etf"` (an empty
- * profile response) is the only refusal reason that disproves fund-ness.
- * `"quota"` / `"transient"` (the route's own classification of a
+ * constituent tickers), `"malformed"` (corrupted holdings data), and
+ * {@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON} (a caller's own
+ * fund-of-funds constituent-broadening read failed, FIX-801 sub-PR c round
+ * 14) all mean the ticker WAS resolved as a fund at some point — the refusal
+ * is about the fund's data (or, for the round-14 case, about a caller's
+ * inability to verify its constituents), not about whether it's a fund — so
+ * all three are fund evidence, same as a stored success payload. `"not_an_etf"`
+ * (an empty profile response) is the only refusal reason that disproves
+ * fund-ness. `"quota"` / `"transient"` (the route's own classification of a
  * request-level failure, never reaching the fetcher's own judgment) carry no
  * evidence either way and fall through to the next layer (Codex review,
  * FIX-801).
@@ -332,7 +355,13 @@ function resolveTickerIsFund(
   if (profile) {
     if (profile.payload !== null) return true; // a stored profile proves it's a fund
     if (profile.refusalReason === "not_an_etf") return false; // proven NOT a fund
-    if (profile.refusalReason === "ineligible" || profile.refusalReason === "malformed") return true; // the fetch resolved an ETF_PROFILE; refusal is about the DATA, not fund-ness
+    if (
+      profile.refusalReason === "ineligible" ||
+      profile.refusalReason === "malformed" ||
+      profile.refusalReason === CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON
+    ) {
+      return true; // the fetch resolved an ETF_PROFILE (or a caller's own broadening read failed); refusal is not about fund-ness
+    }
   }
 
   // Layer 2 — the curated bond-ETF list, checked BEFORE a held ticker's
@@ -659,6 +688,31 @@ export function computeLookThroughExposure(
       // and the scale are the same fix applied to the two halves of this
       // axis's total (Codex review, FIX-801 sub-PR b).
       nameResidualMass += (1 - Math.min(actualNameSum, 1)) * mv;
+
+      // Diagnostic completeness (Codex review, FIX-801 sub-PR c round 14,
+      // connecting to round 8's work): the mass accounting above is already
+      // correct for a fund whose name axis is "fully covered, nothing
+      // nameable" (the GLD-style case — every constituent row is `n/a`
+      // sector/futures/cash with a null ticker, so every dollar already
+      // routes to `nameResidualMass` via the `c.ticker === null` branch
+      // above). But this branch alone never adds an `opaqueByTicker` entry
+      // for the name axis — `namesPass` is true (coverage is genuinely high)
+      // and `nameReconciles` is true (the rows aren't corrupted), so neither
+      // of the two branches above ever runs. The result is a fund that is
+      // 100% opaque on names by MASS but invisible in `opaqueFunds` by
+      // REPORT — exactly what round 4's opaque-fund diagnostic work exists
+      // to surface. `hasResolvableConstituent === false` (the fetcher's own
+      // signal, `lib/providers/etf-profile.ts`) is checked with a strict
+      // `false` comparison, not `!fp.hasResolvableConstituent`, so a stored
+      // profile from BEFORE this field existed (`undefined`, BP-030) reads
+      // as "unknown, don't flag" rather than being newly (and wrongly)
+      // marked opaque.
+      if (fp.hasResolvableConstituent === false) {
+        opaqueByTicker.set(pos.ticker, {
+          ...opaqueByTicker.get(pos.ticker),
+          names: "no resolvable name-axis constituent (fully covered by non-attributable rows only — e.g. foreign lines, futures, cash)",
+        });
+      }
     }
 
     // SECTOR axis — gated independently of names (Decision 4/7). Same coverage

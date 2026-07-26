@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeLookThroughExposure,
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
   FUND_OF_FUNDS_THRESHOLD_PCT,
   LOOK_THROUGH_COVERAGE_FLOOR_PCT,
   type FundProfileInput,
@@ -640,6 +641,81 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
   });
 });
 
+describe("computeLookThroughExposure — name-axis diagnostic completeness (Codex review, FIX-801 sub-PR c round 14, connecting to round 8's per-axis taxonomy work in lib/providers/etf-profile.ts)", () => {
+  it("flags a fully-covered-but-nothing-nameable fund (GLD-style) as opaque on the name axis, even though it passes the coverage floor and reconciles", () => {
+    // The fetcher's own `hasResolvableConstituent` signal is false when
+    // every NAME-axis row is AV's "n/a" sentinel (foreign lines, futures,
+    // cash) — real weight, no ticker to attribute to. The MASS accounting
+    // was already correct without this fix (every row routes to the name
+    // residual via its null ticker below), but `namesPass` and
+    // `nameReconciles` are BOTH true (coverage is genuinely high, the rows
+    // aren't corrupted), so neither existing branch ever added an
+    // `opaqueFunds` entry — this fund was invisible in the diagnostic list
+    // despite being 100% opaque on names by mass.
+    const positions = [fund("GLD", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "GLD",
+        profile({
+          nameCoverage: 1,
+          constituents: [
+            { ticker: null, weight: 0.98 },
+            { ticker: null, weight: 0.02 },
+          ],
+          hasResolvableConstituent: false,
+          sectorCoverage: 0,
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    // Mass accounting was already correct: fully residual, no fabricated name.
+    expect(out.positions).toEqual([]);
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    // The new diagnostic: GLD now shows up in opaqueFunds on the name axis.
+    expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "GLD", axis: "names" }));
+  });
+
+  it("does NOT flag a normal fund that has at least one resolvable constituent", () => {
+    const positions = [fund("SPY", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SPY",
+        profile({
+          nameCoverage: 1,
+          constituents: [{ ticker: "AAPL", weight: 1 }],
+          hasResolvableConstituent: true,
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.opaqueFunds.some((f) => f.ticker === "SPY" && f.axis !== "sectors")).toBe(false);
+  });
+
+  it("treats a MISSING hasResolvableConstituent (a profile stored before this field existed) as 'unknown, don't flag' rather than newly (and wrongly) opaque — BP-030", () => {
+    const positions = [fund("LEGACY", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "LEGACY",
+        profile({
+          nameCoverage: 1,
+          constituents: [{ ticker: null, weight: 1 }],
+          // `hasResolvableConstituent` intentionally omitted — simulates a
+          // stored row from before this field existed.
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(
+      out.opaqueFunds.some((f) => f.ticker === "LEGACY" && (f.axis === "names" || f.axis === "both")),
+    ).toBe(false);
+  });
+});
+
 describe("computeLookThroughExposure — Decision 4: effective-position interval", () => {
   it("matches the §1 worked overlap example: four 20% names + a 20% residual overlapping the largest gives 3.57 at the low end", () => {
     const positions = [
@@ -822,6 +898,32 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
       expect.objectContaining({ ticker: "TQQQ", axis: "both", reason: "ineligible" }),
     );
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "TQQQ")).toBe(false);
+  });
+
+  it("the constituent-evidence-unavailable withdrawal reason also outweighs a stale direct-holding classification (Codex review, FIX-801 sub-PR c round 14 — a real gap in round 13's own fix)", () => {
+    // `guards.ts` withdraws a wrapper fund's profile when its fund-of-funds
+    // constituent-broadening read fails, by REPLACING the map entry with a
+    // refusal carrying this reason — not by deleting the key (round 13
+    // originally deleted; round 14 fixed it). AOA is held directly,
+    // stale-classified as "equity" (the exact mistyped-equity recovery case
+    // `allHeldTickers`'s own docblock describes), with no OTHER fund
+    // evidence available: deleting the key would have left NOTHING proving
+    // AOA is a fund, so `resolveTickerIsFund` would fall all the way through
+    // to AOA's own stale "equity" tag and emit its full value as a
+    // fabricated single-name position. The withdrawal reason must be
+    // recognized as fund evidence, same as "ineligible"/"malformed", so AOA
+    // stays opaque instead.
+    const positions = [direct("AOA", 100_000, { assetType: "equity" })];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      ["AOA", refusal(CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON)],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "AOA", axis: "both", reason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "AOA")).toBe(false);
   });
 
   it("the curated bond-ETF list also outweighs a stale direct-holding classification (Codex review round 5)", () => {
