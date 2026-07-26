@@ -1053,6 +1053,46 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "VFIAX")).toBe(false);
   });
 
+  it("a stored `not_an_etf` refusal does NOT disprove a ticker on the curated bond-ETF list either — the curated list is stronger, externally-verified evidence than a stale/pre-curation AV response (Codex review, FIX-801 sub-PR c round 27, a real bug)", () => {
+    // BND is pre-filtered from the ETF_PROFILE fill entirely (Decision 5 —
+    // `isEtfProfileFetchCandidate` excludes every currently-curated ticker
+    // from ever being fetched by this app's own route), so a `not_an_etf`
+    // row on BND can only be stale data from before it was added to the
+    // curated list (or from before the pre-filter existed) — never a live
+    // verdict about a fetch this app would make today. Held directly and
+    // still tagged `etf` (the classifier's own bond-ETF short-circuit keeps
+    // `assetType: "etf"` so valuation stays on the live quote), with a
+    // legacy `not_an_etf` row sitting in the map: before this fix, layer 1b's
+    // unconditional `not_an_etf` check returned `false` before layer 2's
+    // curated-list check ever ran, so BND was misrouted as a direct name —
+    // exactly the false single-name concentration the curated-list ordering
+    // (the sibling test above) exists to prevent.
+    const positions = [direct("BND", 100_000, { assetType: "etf" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["BND", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "BND", axis: "both", reason: "not_an_etf" }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "BND")).toBe(false);
+  });
+
+  it("control: a stored `not_an_etf` refusal STILL disproves an ordinary (non-curated) directly-held ETF-tagged ticker — the round-27 fix is scoped to the curated list, not a blanket override", () => {
+    // The exact scenario the round-27 fix must NOT regress: a genuinely
+    // mistagged ticker (not on the curated bond-ETF list) with a real
+    // `not_an_etf` disproof must still resolve as a direct name, same as the
+    // very first evidence-ordering test above.
+    const positions = [direct("MISTAG2", 100_000, { assetType: "etf" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["MISTAG2", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([
+      { ticker: "MISTAG2", marketValue: 100_000, weightPct: 100, sources: [{ from: "direct", marketValue: 100_000 }] },
+    ]);
+    expect(out.residual.marketValue).toBeCloseTo(0);
+    expect(out.opaqueFunds).toEqual([]);
+  });
+
   it("a disproven fund's mass falls back to UNCLASSIFIED_BUCKET on the sector axis, not the wrapper's stale fund-labeled bucket (Codex review, disproven-fund propagation round)", () => {
     // MISTAG is tagged `etf`, so the WRAPPER basis's own sector bucketing
     // (which this leaf normally reuses as-is for a direct position — see the

@@ -347,7 +347,11 @@ export function isFundConfirmingProfileEntry(entry: FundProfileInput): boolean {
  * through it, not about whether it's a fund — so all four are fund evidence,
  * same as a stored success payload. `"not_an_etf"`
  * (an empty profile response) is the only refusal reason that disproves
- * fund-ness. `"quota"` / `"transient"` (the route's own classification of a
+ * fund-ness — EXCEPT for a ticker the curated bond-ETF list already proves
+ * is a fund (round 27, `notAnEtfDisproves` in layer 1a's block below): a
+ * curated ticker is pre-filtered from ever being fetched, so a `not_an_etf`
+ * row on one is necessarily stale/pre-curation data, not a live verdict.
+ * `"quota"` / `"transient"` (the route's own classification of a
  * request-level failure, never reaching the fetcher's own judgment) carry no
  * evidence either way and fall through to the next layer (Codex review,
  * FIX-801).
@@ -400,15 +404,32 @@ function resolveTickerIsFund(
   // holding's positive evidence must survive this disproof; only an
   // `"etf"`-tagged holding's evidence is what `not_an_etf` legitimately
   // overrides.
-  const disprovenByProfile =
-    held?.assetType === "etf" && profile?.payload === null && profile.refusalReason === "not_an_etf";
+  //
+  // ALSO does not disprove a ticker on the curated bond-ETF list (Codex
+  // review, FIX-801 sub-PR c round 27, a real bug — the same "not_an_etf
+  // proves less than it looks like it proves" class as round 18, reached
+  // through a different ticker shape). A curated bond ETF is pre-filtered
+  // from the ETF_PROFILE fill entirely (Decision 5 — `isEtfProfileFetchCandidate`
+  // excludes every currently-curated ticker from ever being fetched), so any
+  // `not_an_etf` row on a ticker CURRENTLY in the curated list can only be
+  // stale data from before it was curated, or from before this app's own
+  // pre-filter existed — never a live judgment about a fetch this app would
+  // make today. The curated list is a stronger, externally-verified fact
+  // than an empty AV response for exactly the fund category the methodology
+  // already treats as a fund regardless of what ETF_PROFILE reports (bond-
+  // fund attribution is out of scope by policy, not because these aren't
+  // real funds). `notAnEtfDisproves` is the ONE place this determination is
+  // made — reused by layer 1b below so the two checks can't drift apart.
+  const notAnEtfDisproves =
+    profile?.payload === null && profile.refusalReason === "not_an_etf" && !isKnownBondEtf(ticker);
+  const disprovenByProfile = held?.assetType === "etf" && notAnEtfDisproves;
   if (held && isFundAssetType(held.assetType) && !disprovenByProfile) return true;
 
   // Layer 1b — a stored profile, checked BEFORE a held ticker's non-fund
   // classification is allowed to settle the question (see the docblock
   // above for why: a direct holding's assetType can be stale/misclassified).
   if (profile) {
-    if (profile.refusalReason === "not_an_etf") return false; // proven NOT a fund
+    if (notAnEtfDisproves) return false; // proven NOT a fund
     if (isFundConfirmingProfileEntry(profile)) return true;
   }
 
@@ -418,7 +439,9 @@ function resolveTickerIsFund(
   // from the ETF_PROFILE fill (Decision 5) and so can NEVER reach layer 1b —
   // this is the only remaining evidence source for it, and it's stronger
   // than a possibly-stale local `assetType` field (Codex review round 5,
-  // FIX-801 sub-PR b).
+  // FIX-801 sub-PR b). Also the layer a stale `not_an_etf` row on a
+  // currently-curated ticker falls through to (round 27, see
+  // `notAnEtfDisproves` above).
   if (isKnownBondEtf(ticker)) return true;
 
   // Layer 1c — a held ticker with NO evidence from either the stored
