@@ -153,8 +153,10 @@ waits on both. `deps` is the only thing expressing the ordering. You never write
 because nothing says they can't.
 
 The board is what makes that work. Its runner hands out tasks whose dependencies
-have all completed, up to four at once, and holds the rest back. The full config
-surface is in [Task board](/docs/orchestration/task-board).
+have all completed and holds the rest back. A delegation board runs four at a
+time, and that isn't tunable from the skill. For the primitive underneath, and
+the knobs you do get when you build a board yourself, see
+[Task board](/docs/orchestration/task-board).
 
 ## 4. Draining is the running
 
