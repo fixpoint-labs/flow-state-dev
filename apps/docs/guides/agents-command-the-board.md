@@ -296,17 +296,34 @@ errored. (Delegation has no opt-in cascade that cancels stranded dependents. Som
 patterns do, like [Supervisor](/docs/patterns/supervisor), but it isn't wired
 into this drain.)
 
-The other cause is deliberate. A coordinator can park a task with `blockTask`
-while it waits on something outside the board, and a parked task is unresolved
-too, so the drain settles as `blocked` with nothing wrong. Same status, opposite
-meaning. Inspect the tasks before you treat a `blocked` board as a failure.
+The other cause is deliberate. A coordinator can mark a task with `blockTask`
+when it's waiting on something outside the board, and such a task counts as
+unresolved, so the drain settles as `blocked` with nothing having failed. Same
+status, opposite meaning. Inspect the tasks before you treat a `blocked` board as
+a failure.
 
-You may meet the word "blocked" twice in these docs, meaning two different
-things. A code-defined board reports `terminationReason: "blocked-by-failures"`
-on its final item, which the tutorial covers in
+Know what `blockTask` commits you to, though: it's one-way. No task tool moves a
+task back out of `blocked` — `cancelTask` is the only exit. So it retires a task
+with a reason attached rather than pausing one you can resume. If work needs to
+wait and then continue, keep it off the board until its precondition holds.
+
+You'll meet the word "blocked" on both board surfaces. They are two different
+contracts with different triggers, so don't read one as the other:
+
+- **Delegation.** `runBoard` returns `status: "blocked"` when a task is left
+  `pending`, `in_progress`, `awaiting_review`, or `blocked`. Terminal tasks don't
+  count toward it.
+- **A code-defined board.** Its final item carries
+  `terminationReason: "blocked-by-failures"` whenever any task is not
+  `completed` — `errored` and `cancelled` included.
+
+They can disagree about the identical board. One errored task with everything
+else complete reports `blocked-by-failures` on the code-first side and `drained`
+on the delegation side. The code-first name is loose on its own terms too: the
+classification is purely structural, so a board that stops with tasks still
+pending reports `blocked-by-failures` even when nothing failed. On that surface,
+read the `counts` rather than the reason string. The tutorial covers it in
 [When the board stops, and when it waits](/guides/building-a-research-team#7-when-the-board-stops-and-when-it-waits).
-`runBoard`'s `status: "blocked"` is the delegation surface's version of the same
-idea.
 
 **Too much work.** A board won't accept new tasks forever, and it stops in two
 ways that recover differently.

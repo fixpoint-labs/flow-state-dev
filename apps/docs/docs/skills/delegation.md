@@ -173,12 +173,14 @@ The exceptions are `completeTask`, `failTask`, and `blockTask`. They are soft fo
 | `assignTask` | `taskId`, `assignee` | Reassigns an existing task to a different worker. |
 | `completeTask` | `taskId`, `output` | Marks a task complete and records its output. |
 | `failTask` | `taskId`, `error` | Marks a task failed with an error message. Its dependents stay `pending` — nothing cascades. |
-| `blockTask` | `taskId`, optional `reason` | Parks a task pending an external condition. A board still holding one does not fully drain, so `runBoard` reports `blocked`. |
+| `blockTask` | `taskId`, optional `reason` | Marks a task as waiting on an external condition. The board stops treating it as runnable, so `runBoard` reports `blocked`. **One-way** — no task tool moves it back (see below). |
 | `cancelTask` | `taskId`, optional `reason` | Cancels a task. Terminal — use it when the work is no longer needed. |
 | `updateTask` | `taskId`, `patch` | Patches mutable fields: `priority`, `metadata`, `assignee`, `addLabel`, `removeLabel`. All optional; a patch that omits `assignee` skips the roster check. |
 | `listTasks` | optional `status`, optional `assignee` | Reads the board back, filtered. `status` is one of `pending`, `in_progress`, `awaiting_review`, `completed`, `errored`, `cancelled`, `blocked`. |
 
-Most skills only need `addTask` and `runBoard`. The rest matter when the coordinator has to steer a board mid-flight — parking work on an external dependency, cancelling a plan that turned out to be wrong, or reading back what settled.
+Most skills only need `addTask` and `runBoard`. The rest matter when the coordinator has to steer a board mid-flight — cancelling a plan that turned out to be wrong, or reading back what settled.
+
+**`blockTask` does not pause a task you can later resume.** The tool surface has no unblock: `updateTask` cannot change a status, and `failTask` on a blocked task throws rather than releasing it, because tasks created through `addTask` carry no retry budget and `blocked → errored` is not a permitted transition. `cancelTask` is the only exit. Treat blocking as retiring a task with a reason recorded on it, not as parking one you intend to pick back up — if work needs to wait for something and then continue, keep it off the board until its precondition holds. (The underlying collection does have an unblock operation; it just isn't exposed to a coordinator.)
 
 Assignment is checked as the task is created. `addTask`, `assignTask`, and `updateTask` reject an `assignee` that isn't one of the declared agents, and say which agents exist:
 
@@ -199,7 +201,7 @@ When an `addTask` could fail more than one way, the checks run in a fixed order:
 
 The division of labor to keep straight: `addTask` writes a task — it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph. Draining the board is running it; there is no other path to executing a delegated agent. Nothing drains the board behind the model's back — the skill decides when to run it.
 
-`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `awaiting_review`, or `blocked`. It is a statement about outstanding work, not about failure — an errored dependency and a task parked with `blockTask` both produce it. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `cascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
+`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `awaiting_review`, or `blocked`. It is a statement about outstanding work, not about failure — an errored dependency and a task marked with `blockTask` both produce it, and terminal tasks do not, so a board whose only problem is one errored task still reports `drained`. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `cascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
 
 ```ts
 const skills = createSkillsLibrary({ catalog, initialSkills });
