@@ -25,10 +25,20 @@ import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   getOrCreateTaskCollection,
+  IllegalTaskTransitionError,
+  isTerminalStatus,
+  isTransitionAllowed,
   taskSchema,
   TaskCapExceededError,
+  type Task,
   type TaskCollectionRef,
+  type TaskStatus,
 } from "../tasks";
+// `shouldRetryOnFail` is the collection's own routing predicate for `fail()`.
+// Imported from the module rather than the package barrel so the recovery
+// composer stays in step with `fail()` without widening the public surface —
+// same deep-import shape `task-board/capability.ts` uses for `safe-key`.
+import { shouldRetryOnFail } from "../tasks/collection/internal";
 
 /**
  * Own-state field the delegation board lives on. `createSkillsLibrary`
@@ -159,6 +169,107 @@ const capError = (err: TaskCapExceededError) => ({
       : ("total_task_cap_exceeded" as const),
 });
 
+// ---------------------------------------------------------------------------
+// Illegal status transitions (FIX-950)
+// ---------------------------------------------------------------------------
+
+/**
+ * The status-changing tools on THIS surface, paired with the status each moves a
+ * task to, in the order an error message lists them.
+ *
+ * `runBoard` is deliberately absent. It is not one of the eight `taskTools` —
+ * the delegation surface installs it separately, and `taskTools` also ships
+ * standalone — so naming it would point a directly-wired consumer at a tool it
+ * does not have.
+ *
+ * @param task The task as it stands now, used only to route `failTask`. Absent
+ *   (a task removed underneath us) is read as "no retry budget".
+ */
+function statusChangingTools(task: Task | undefined): Array<{ name: string; target: TaskStatus }> {
+  return [
+    { name: "blockTask", target: "blocked" },
+    { name: "cancelTask", target: "cancelled" },
+    { name: "completeTask", target: "completed" },
+    // `failTask` routes on the retry budget at call time: budget left soft-fails
+    // back to `pending`, otherwise it goes terminal `errored`. Asking the
+    // collection's own predicate keeps this in step with `fail()` rather than
+    // restating the rule here.
+    {
+      name: "failTask",
+      target: task !== undefined && shouldRetryOnFail(task) ? "pending" : "errored",
+    },
+  ];
+}
+
+/** Render tool names as `a`, `a or b`, `a, b, or c`. */
+function listCalls(names: string[]): string {
+  if (names.length === 1) return names[0]!;
+  if (names.length === 2) return `${names[0]} or ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
+}
+
+/**
+ * Turn a refused transition into the recoverable result shape the rest of this
+ * surface uses, naming the task's current status and the calls actually
+ * available from it.
+ *
+ * **The recovery list is derived from tool-reachable actions, not from
+ * `allowedTransitionsFrom`.** That helper answers a question about the
+ * *collection*; the model is standing at the *tool* layer. It would advertise
+ * `awaiting_review` and `in_progress`, which no task tool can reach, sending the
+ * model at operations it cannot perform. Here each tool's own target is tested
+ * instead.
+ *
+ * **No separate "exclude the rejected tool" step is needed.** The rejected
+ * target is by definition not allowed from this status, so the
+ * `isTransitionAllowed` test already drops any tool aiming there. That is also
+ * why this needs no knowledge of which tool it serves — `withTask` receives an
+ * opaque mutator and never learns.
+ *
+ * **There is no same-status filter, deliberately.** The rule is "would this call
+ * succeed", not "does it change the status". A budgeted `failTask` on a
+ * `pending` task targets `pending` yet still writes `feedback`, clears
+ * `error`/`leaseUntil`, and emits a `retried` change; `blockTask` on an
+ * already-`blocked` task updates the reason. Both are real work and stay listed.
+ *
+ * A non-terminal source always yields at least `cancelTask` (every non-terminal
+ * status permits `cancelled`), so the action list is never empty — terminal
+ * sources take the other branch rather than rendering an empty list.
+ */
+const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task | undefined) => {
+  const subject = `illegal_status_transition: task "${err.taskId}" is ${err.from}`;
+
+  // Terminal sources name no target status. That is load-bearing for `failTask`,
+  // whose attempted target (`pending` on a budgeted retry) can differ from what
+  // the model meant by "fail this" — all of its terminal-source rejections land
+  // here, where no target is quoted, so the divergence is never rendered.
+  if (isTerminalStatus(err.from)) {
+    return {
+      ok: false as const,
+      taskId: err.taskId,
+      error:
+        `${subject}, which is terminal. Its status will not change again. ` +
+        `Add a new task instead.`,
+    };
+  }
+
+  const available = statusChangingTools(task)
+    .filter((t) => isTransitionAllowed(err.from, t.target))
+    .map((t) => t.name);
+
+  // Said without asserting how a task gets started — this surface does not know
+  // whether its consumer has a drain tool.
+  const because = err.from === "pending" ? " — a pending task has not been started yet" : "";
+
+  return {
+    ok: false as const,
+    taskId: err.taskId,
+    error:
+      `${subject}, so transitioning to ${err.to} is not available${because}. ` +
+      `From here you can call ${listCalls(available)}.`,
+  };
+};
+
 /** Shared output shape for the six tasked-by-id mutators. */
 const okOrError = z.union([
   z.object({ ok: z.literal(true) }),
@@ -190,7 +301,25 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     if (!collection.get(taskId)) return taskNotFoundError(taskId);
     const bad = checkAssignee(assignee, roster);
     if (bad) return bad;
-    await mutator(collection);
+    try {
+      await mutator(collection);
+    } catch (err) {
+      // A refused status change is a recoverable mistake the model can act on,
+      // so it becomes the same `{ ok: false, error }` result the rest of this
+      // surface returns (FIX-950). The catch is by TYPE and the soft set is
+      // exactly this one class: a blanket `catch (err)` would also swallow CAS
+      // conflicts, scope-mutation timeouts, storage failures, and ordinary bugs
+      // into a polite result the model reads as its own mistake and narrates
+      // past. Everything else still propagates.
+      //
+      // Read the task after the failure so `failTask`'s retry budget is as
+      // fresh as possible; the status itself comes from the error, which the
+      // guard captured inside the CAS write.
+      if (err instanceof IllegalTaskTransitionError) {
+        return illegalTransitionToolError(err, collection.get(taskId));
+      }
+      throw err;
+    }
     return { ok: true as const };
   }
 
