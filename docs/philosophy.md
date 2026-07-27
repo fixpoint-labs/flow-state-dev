@@ -116,7 +116,10 @@ primitive?").
 The default answer to "should this exist?" is no. Every new export, option, and
 dependency is a contract you can't take back, so it has to earn its place against
 what's already there. Prefer a default over a knob; prefer extending an existing
-shape over introducing one.
+shape over introducing one. Where a config surface already exists, "a default"
+means a *defaulted option* on that surface. A value buried in a constant doesn't
+shrink the footprint; it defers the knob to the moment a caller needs it and
+can't have it.
 
 And subtract as you go: a change that supersedes a path deletes it in the same
 change. Old and new side by side is how incoherence starts.
@@ -145,6 +148,12 @@ gate's single-vendor-leakage signals.
 When a failure forces a workaround at the call site, the bug usually lives one layer
 down. Push the fix to the layer that owns the behavior so it's cured for every
 caller, not repeated at each. A workaround every caller must copy is a smell.
+
+**Depth is only half of it.** The owning layer is where the paths *converge*: an
+invariant with five writers is not enforced until the guard sits where all five pass
+through, and a check is only as strong as the producers it rules out. If you can't
+find that convergence point, you haven't found the owning layer — you're patching
+call sites, and review will keep finding more of them.
 
 *Derives:* BP-028.
 

@@ -398,6 +398,8 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 2. **Declining** — the concrete reason no change is being made (a spec/BP/scope citation), per the non-actionable path.
 3. **Escalated** — a comment that needs a decision you can't make (a spec-level call, a scope question only the maintainer can settle): reply saying you've surfaced it and are holding on that thread, rather than leaving it silent. Under the fleet, also return it as a blocker so the fleet surfaces it — but the thread still gets the reply.
 
+**Reconcile the prose with the diff.** Before closing a round that changed behavior, re-read the PR body, the changeset, and any docs the change touches against the *current* diff — not the plan — and correct every sentence that now misstates it. The body was written at Step 9; this loop has been changing the code ever since, and a claim written before the last commit is the one that ships wrong.
+
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 
 #### 10.7: Continue until merged

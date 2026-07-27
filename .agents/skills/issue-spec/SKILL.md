@@ -289,6 +289,11 @@ How this workflow's research feeds the template:
   issue, the sequence includes a PR plan** — a small DAG of sub-PRs (`id · deliverables ·
   depends_on`) that `issue-lifecycle` builds in parallel where independent; record its
   shape as a Part I §6 decision (per the template).
+- **When the change introduces or tightens an invariant** — a cap, a guard, a uniqueness
+  rule, a graded property — Part II names its **convergence point** and every writer or
+  producer that must pass through it, including legacy helpers and pattern-internal
+  construction sites (tenet 5). An invariant enumerated at one entry point is the most
+  expensive review class we have: the reviewer ends up finding the other writers for you.
 - **The Step 3.5 verdict shapes Part I.** A "refine the substrate" or "build smaller"
   verdict changes what the Case argues for — reflect it in §1–§3, don't bury it.
 - **Part I and Part II are drafted together, and Part I stays honest to Part II.** Write the Case
