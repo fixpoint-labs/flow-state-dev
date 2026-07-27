@@ -173,6 +173,36 @@ refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 > [Delegation](https://flow-state.dev/docs/skills/delegation#board-and-overrides)
 > for the full recipe.
 
+**Every `taskTools` call reports a problem the same way.** A status change the
+task's current status does not permit is a recoverable tool result too, not a
+throw: `completeTask` on a task that was never started answers
+`{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
+status and the calls actually available from it. So the recoverable set across
+the eight tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`, and
+`illegal_status_transition` — a coordinator rule like "when a tool returns
+`ok: false`, re-plan" covers all of them.
+
+Only the *tool* boundary translates. Driving a collection directly still throws,
+and the error is an exported class you can catch:
+
+```ts
+import { IllegalTaskTransitionError } from "@flow-state-dev/orchestration";
+
+try {
+  await collection.complete(taskId, output);
+} catch (err) {
+  if (err instanceof IllegalTaskTransitionError) {
+    // err.taskId, err.from, err.to — the refused move.
+  }
+  throw err;
+}
+```
+
+Catch it by type, not with a blanket `catch`: a CAS conflict, a scope-mutation
+timeout, or a storage failure is not a task-state problem and should keep
+propagating.
+
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.
 generator({ uses: [skills.with({ active: ["research-lead"] })] });

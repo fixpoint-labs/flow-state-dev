@@ -43,7 +43,9 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 
 ### The status state machine
 
-A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state.
+A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state, and the error is an `IllegalTaskTransitionError` carrying the task id and the refused move.
+
+That is what you get driving a collection from your own code. A model driving a board through the delegation task tools sees something different: those tools catch this one error and return `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current status and the calls available from it, so a refused change reads like every other bad tool call. See [Delegation](../skills/delegation.md) for the coordinator's view.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
