@@ -15,12 +15,11 @@ category, review a document section by section. Those want a small team.
 Declaring a team is what this guide is about. You add one field to the skill's
 frontmatter, and the generator that binds the skill gets a private **task
 board** — a ledger of work with dependency ordering and a concurrent runner over
-it. The model then plans the work as tasks and runs the whole graph in one call.
-Nothing about the plan is fixed in your code. The model decides how many tasks
-there are and who does what, per request.
+it. That generator is the **coordinator**: it plans the work as tasks and runs
+the whole graph in one call. The teammates it hands tasks to are **agents**.
 
-Throughout, the generator that plans the work is the **coordinator**, and the
-teammates it assigns work to are **agents**.
+Nothing about the plan is fixed in your code. The coordinator decides how many
+tasks there are and who does what, per request.
 
 **Before you start.** You should have skills wired into your app already
 ([Adding skills to your app](/guides/adding-skills-to-your-app)) and know what a
@@ -29,9 +28,12 @@ board seeds, runs, and settles helps too, but you can pick it up as you go
 ([The board lifecycle](/guides/board-lifecycle)).
 
 :::tip Full, runnable code
-Every `SKILL.md`, persona, and agent in this guide is a trimmed copy from
-[`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team).
-Open the example for the complete source. To watch a team actually run:
+Every `SKILL.md` snippet in this guide is a trimmed copy from
+[`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team);
+open the example for the complete source. Two short illustrations are generic
+rather than from it: the rosterless binding under
+[Without a roster](#6-without-a-roster), and the rejected-assignee error under
+[When it goes wrong](#7-when-it-goes-wrong). To watch a team actually run:
 
 ```bash
 cd examples/guides/research-team
@@ -120,7 +122,9 @@ and [Agents](/docs/orchestration/agents) for the registry side.
 One thing that surprises people: the one-line blurb the coordinator sees for each
 agent is not something you write. For an inline agent it's the first non-blank
 line of the persona, truncated. So make that line say what the agent is for. A
-registry agent shows up as its `agent-ref` name instead.
+registry agent doesn't get a blurb at all — it's listed as ``agent `competitor-analyst` ``,
+its reference name and nothing else. The `description` you gave `defineAgent`
+isn't used here.
 
 ## 3. Plan the work as a graph
 
@@ -172,17 +176,18 @@ output.
 So the whole shape of a delegating skill is: plan with `addTask`, run with
 `runBoard`, read the result. There is no other way to execute a delegated agent.
 There is no per-agent tool the coordinator calls directly, and nothing drains the
-board behind the model's back. The skill body decides when to run it.
+board behind the coordinator's back. The skill body decides when to run it.
 
 Reading results works the same way inside the team. The synthesizer's persona
 gets its dependencies' outputs on `input.deps`, keyed by task id, so it can read
 both analyst reports without either of them being in its conversation.
 
-`addTask` and `runBoard` are the two you'll write instructions for. Six more come
-with them — `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`,
-`listTasks` — for steering a board mid-flight rather than planning one. They're
-documented in
-[Delegation](/docs/skills/delegation#what-the-coordinator-gets).
+`addTask` and `runBoard` are the two you'll write instructions for. Seven more
+task tools come with them — `assignTask`, `completeTask`, `failTask`,
+`blockTask`, `cancelTask`, `updateTask`, `listTasks` — for steering a board
+mid-flight rather than planning one. They're documented in
+[Delegation](/docs/skills/delegation#what-the-coordinator-gets), including which
+of them can throw rather than returning a soft error.
 
 ## 5. A worker that plans more work
 
@@ -245,9 +250,9 @@ you're relying on the rejection to catch mistakes, declare the team.
 
 ## 7. When it goes wrong
 
-Four situations are worth knowing before you ship. They look similar from the
-outside and behave differently, so lumping them together will send you down the
-wrong path. One of them isn't even an error.
+Three assignment outcomes behave differently from each other, and one of them
+isn't an error at all. Caps are a separate topic and come last. Lumping any of
+these together will send you down the wrong path.
 
 **A wrong assignee, on a board with a declared roster.** `addTask` refuses. No
 task is created, and the error names the agents that do exist so the coordinator
@@ -316,7 +321,7 @@ a suspended run are in
 
 ## When the graph belongs in code instead
 
-Delegation is for when the *model* should decide the tasks. When your code
+Delegation is for when the *coordinator* should decide the tasks. When your code
 already knows the graph — a fixed set of seeded tasks, a custom collection
 backing, a tuned dispatcher — you don't need `agents:` or `runBoard` at all.
 
@@ -329,8 +334,8 @@ only the finished result.
 
 The two shapes, side by side:
 
-- **The model plans the work per request** — a delegation skill with `agents:`.
-  The coordinator assigns tasks and drains the board with `runBoard`. This guide.
+- **The coordinator plans the work per request** — a delegation skill with
+  `agents:`. It assigns tasks and drains the board with `runBoard`. This guide.
 - **The graph is fixed in code** — a code-defined `taskBoard` called as a tool, or
   mounted directly in a flow. Your code seeds the tasks and the board's own
   dispatcher runs them.

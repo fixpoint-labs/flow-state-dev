@@ -161,7 +161,9 @@ Note what the floor does *not* catch. Once a skill declares agents, an assignee 
 
 Two things land on the generator when an agent-declaring skill is active: the tools to plan work on the board, and the tool to run it.
 
-**`taskTools` — the planning ledger.** Eight tools let the generator plan and steer multi-step work on its private board. Every one of them returns `{ ok: true }` or a soft `{ ok: false, error }` rather than throwing, so a bad call doesn't end the turn.
+**`taskTools` — the planning ledger.** Eight tools let the generator plan and steer multi-step work on its private board.
+
+How they report a problem depends on the tool. `addTask`, `assignTask`, `updateTask`, and `listTasks` are uniformly soft: they return `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct, not something that ends the turn. The four that change a task's status — `completeTask`, `failTask`, `blockTask`, `cancelTask` — are soft for a missing board (`no_delegation_board`) and an unknown id (`task_not_found`), but a status change the task's current status doesn't permit **throws**. Completing a task that was never claimed, or cancelling one that already finished, is that case. Sequence these against what the board actually holds rather than issuing them speculatively.
 
 | Tool | Input | What it does |
 |------|-------|--------------|
