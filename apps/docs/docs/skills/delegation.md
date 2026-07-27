@@ -13,7 +13,7 @@ There are no per-agent tools the generator calls directly. All delegated work go
 
 Reach for delegation when a single agent isn't the right shape and you want the agent itself to stay in charge of the orchestration. If the graph is fixed in code (not planned by the model), a task board block in the generator's `tools:` is still the right shape — see [Running a board as a tool](#running-a-board-as-a-tool) below.
 
-This page is the reference: every field, every override, every bound. For the authoring path end to end — declaring a team, staffing each seat, planning the graph, and what the failures look like — start with [Authoring a delegating skill](/guides/agents-command-the-board).
+This page is the reference: every field, every override, every bound. For the authoring path end to end (declaring a team, staffing each seat, planning the graph, and what the failures look like), start with [Authoring a delegating skill](/guides/agents-command-the-board).
 
 ## Declaring agents
 
@@ -58,7 +58,7 @@ skills.with({ active: ["research-lead"], delegation: false });
 
 // Force it ON even though the skill declares NO agents. The full surface
 // installs, and the only worker is the default floor (see below).
-skills.with({ active: ["coordinator"], delegation: true });
+skills.with({ active: ["triage"], delegation: true });
 ```
 
 The delegation surface also injects a **guidance context** — a short capability-supplied prompt fragment that tells the model it has a board and a roster of agents, lists the current agents by name, and reminds it to assign tasks and drain. It means the skill body doesn't have to hand-write "how to delegate" boilerplate; it carries only skill-specific content (purpose, when to delegate, what "done" looks like). Turn it off with `guidance: false` if you'd rather write the orchestration instructions yourself:
@@ -147,8 +147,8 @@ That gives you two ways to reach it:
 
 ```ts
 // A rosterless coordinator: no agents declared, floor on.
-const coordinator = generator({
-  uses: [skills.with({ active: ["coordinator"], delegation: true })],
+const planner = generator({
+  uses: [skills.with({ active: ["triage"], delegation: true })],
 });
 // addTask({ goal }) with no assignee runs on the default worker; runBoard drains it.
 ```
@@ -163,7 +163,9 @@ Two things land on the generator when an agent-declaring skill is active: the to
 
 **`taskTools` — the planning ledger.** Eight tools let the generator plan and steer multi-step work on its private board.
 
-How they report a problem depends on the tool. `addTask`, `assignTask`, `updateTask`, and `listTasks` are uniformly soft: they return `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct, not something that ends the turn. The four that change a task's status — `completeTask`, `failTask`, `blockTask`, `cancelTask` — are soft for a missing board (`no_delegation_board`) and an unknown id (`task_not_found`), but a status change the task's current status doesn't permit **throws**. Completing a task that was never claimed, or cancelling one that already finished, is that case. Sequence these against what the board actually holds rather than issuing them speculatively.
+How they report a problem depends on the tool. `addTask`, `assignTask`, `updateTask`, `listTasks`, and `cancelTask` are soft: they return `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct, not something that ends the turn. `cancelTask` is soft even against a task that already finished, which it treats as a no-op.
+
+The exceptions are `completeTask`, `failTask`, and `blockTask`. They are soft for a missing board (`no_delegation_board`) and an unknown id (`task_not_found`), but a status change the task's current status doesn't permit **throws**. Completing a task that was never claimed is that case, as is blocking one already running. Sequence these against what the board actually holds rather than issuing them speculatively.
 
 | Tool | Input | What it does |
 |------|-------|--------------|
@@ -197,12 +199,7 @@ When an `addTask` could fail more than one way, the checks run in a fixed order:
 
 The division of labor to keep straight: `addTask` writes a task — it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph. Draining the board is running it; there is no other path to executing a delegated agent. Nothing drains the board behind the model's back — the skill decides when to run it.
 
-`runBoard` reports how the drain ended. `status: "drained"` means every task settled. `status: "blocked"` means at least one did not — any task still `pending`, `in_progress`, `awaiting_review`, or `blocked` when the drain stops. It is a statement about outstanding work, not about failure, and it has two causes worth telling apart:
-
-- **A dependency errored.** A dependency counts as satisfied only when it *completes*, so a dependent of an errored task is never dispatched. It is not skipped or failed either — it stays `pending`, and the settled board comes back with it so you can see which task errored underneath. There is no cascade here that cancels stranded dependents; `cascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain.
-- **A task was parked deliberately.** `blockTask` holds a task pending an external condition. The board is then correctly incomplete, and settle reports `blocked` with nothing having gone wrong.
-
-Read the settled tasks before deciding which one you have.
+`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `awaiting_review`, or `blocked`. It is a statement about outstanding work, not about failure — an errored dependency and a task parked with `blockTask` both produce it. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `cascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
 
 ```ts
 const skills = createSkillsLibrary({ catalog, initialSkills });

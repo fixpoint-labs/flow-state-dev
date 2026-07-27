@@ -21,6 +21,13 @@ the whole graph in one call. The teammates it hands tasks to are **agents**.
 Nothing about the plan is fixed in your code. The coordinator decides how many
 tasks there are and who does what, per request.
 
+**Which page you want.** This one takes a single skill from empty frontmatter to
+a running team, the model-plans-the-work way.
+[Building a research team](/guides/building-a-research-team) is the tutorial: it
+builds the same team several ways starting from code you write yourself, which is
+the better entry if you'd rather see the board before the skill.
+[Delegation](/docs/skills/delegation) is the reference for the fields and knobs.
+
 **Before you start.** You should have skills wired into your app already
 ([Adding skills to your app](/guides/adding-skills-to-your-app)) and know what a
 `SKILL.md` looks like ([Authoring skills](/docs/skills/authoring)). Knowing how a
@@ -183,13 +190,13 @@ gets its dependencies' outputs on `input.deps`, keyed by task id, so it can read
 both analyst reports without either of them being in its conversation.
 
 `addTask` and `runBoard` are the two you'll write instructions for. Seven more
-task tools come with them — `assignTask`, `completeTask`, `failTask`,
-`blockTask`, `cancelTask`, `updateTask`, `listTasks` — for steering a board
-mid-flight rather than planning one. They're documented in
+task tools come with them, for steering a board mid-flight rather than planning
+one: `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`,
+`updateTask`, `listTasks`. They're documented in
 [Delegation](/docs/skills/delegation#what-the-coordinator-gets), including which
 of them can throw rather than returning a soft error.
 
-## 5. A worker that plans more work
+## 5. An agent that plans more work
 
 An agent can put work on the board too. Give one `taskTools` in its `tools:` list
 and it can call `addTask` mid-drain, onto the same board:
@@ -233,8 +240,8 @@ persona and no tools, which runs any task the roster doesn't claim. Force
 delegation on with no `agents:` field, and it's the only worker there is.
 
 ```ts
-const coordinator = generator({
-  uses: [skills.with({ active: ["coordinator"], delegation: true })],
+const planner = generator({
+  uses: [skills.with({ active: ["triage"], delegation: true })],
 });
 // addTask({ goal }) with no assignee runs on the default worker.
 ```

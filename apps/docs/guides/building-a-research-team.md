@@ -32,6 +32,8 @@ example for the complete, tested source.
 
 Everything here lives in `@flow-state-dev/orchestration`. If you haven't met the pieces underneath, [Task board](/docs/orchestration/task-board) and [Task substrate](/docs/orchestration/task-substrate) are the reference.
 
+This is the tutorial: it builds the team several ways, starting from code you write yourself. If you already know you want the model to plan the work and you just need to author one skill that does it, [Authoring a delegating skill](/guides/agents-command-the-board) takes that path start to finish instead.
+
 ---
 
 ## 1. The problem
@@ -208,6 +210,11 @@ Both boards above are TypeScript — your code decides the tasks. A skill flips
 that: the SKILL.md declares the *team* in an `agents:` map, and its instructions
 tell the coordinating model how to plan the tasks itself. An agent is a
 prompt-driven teammate — a persona that ships right inside the skill folder.
+
+The next three sections are this tutorial's tour of that path, kept here so the
+arc stays whole. [Authoring a delegating skill](/guides/agents-command-the-board)
+is where it's taught in full, including staffing, the rosterless shortcut, and
+the failure modes.
 Binding an agent-declaring skill gives the generator a private task board, the
 task tools (`addTask`, `listTasks`, …), and `runBoard` — a real board drain over
 that board. The coordinator plans with `addTask` (assignee, deps, structured
