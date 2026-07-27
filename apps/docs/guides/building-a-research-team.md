@@ -215,6 +215,7 @@ The next three sections are this tutorial's tour of that path, kept here so the
 arc stays whole. [Authoring a delegating skill](/guides/agents-command-the-board)
 is where it's taught in full, including staffing, the rosterless shortcut, and
 the failure modes.
+
 Binding an agent-declaring skill gives the generator a private task board, the
 task tools (`addTask`, `listTasks`, …), and `runBoard` — a real board drain over
 that board. The coordinator plans with `addTask` (assignee, deps, structured

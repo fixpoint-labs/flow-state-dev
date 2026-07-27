@@ -171,9 +171,8 @@ the knobs you do get when you build a board yourself, see
 
 ## 4. Draining is the running
 
-Worth stating plainly, because it's the thing people get wrong first: **`addTask`
-writes a task, it does not run one.** Nothing executes until the coordinator
-calls `runBoard`.
+**`addTask` writes a task, it does not run one.** This is the thing people get
+wrong first. Nothing executes until the coordinator calls `runBoard`.
 
 `runBoard` **drains** the board. Draining means dispatching every task whose
 dependencies are satisfied, waiting, dispatching whatever that unblocked, and
@@ -257,9 +256,9 @@ you're relying on the rejection to catch mistakes, declare the team.
 
 ## 7. When it goes wrong
 
-Three assignment outcomes behave differently from each other, and one of them
-isn't an error at all. Caps are a separate topic and come last. Lumping any of
-these together will send you down the wrong path.
+Three assignment outcomes behave differently, and one of them isn't an error at
+all. Treating them as one thing is what sends people down the wrong path. Caps
+are a separate topic and come last.
 
 **A wrong assignee, on a board with a declared roster.** `addTask` refuses. No
 task is created, and the error names the agents that do exist so the coordinator
@@ -268,12 +267,13 @@ It comes back as a tool result, not a thrown error, so the turn continues:
 
 ```
 addTask({ goal: "Find sources", assignee: "reseacher" })
-→ { ok: false,
-    error: 'unknown_assignee: "reseacher" is not an agent on this board.
-            Available: researcher (Researches sources), writer (Drafts prose).
-            Name one of these exactly, or leave assignee unset to run the task
-            on the default worker.' }
+→ { ok: false, error: 'unknown_assignee: "reseacher" is not an agent on this
+                       board. Available: …' }
 ```
+
+The full message lists every declared agent with its blurb and tells the
+coordinator it can leave `assignee` unset instead —
+[Delegation](/docs/skills/delegation#what-the-coordinator-gets) has it verbatim.
 
 Catching it at creation rather than at dispatch is deliberate. A typo can't sit
 on the board and resurface twenty seconds later as a failed task.
@@ -325,22 +325,13 @@ pending reports `blocked-by-failures` even when nothing failed. On that surface,
 read the `counts` rather than the reason string. The tutorial covers it in
 [When the board stops, and when it waits](/guides/building-a-research-team#7-when-the-board-stops-and-when-it-waits).
 
-**Too much work.** A board won't accept new tasks forever, and it stops in two
-ways that recover differently.
-
-Hit the limit on tasks waiting to start and `addTask` returns
-`enqueued_task_cap_exceeded`. That count only measures pending work, so it
-refreshes as the board drains: call `runBoard`, let the queue clear, then add the
-next wave.
-
-Hit the board's lifetime limit and `addTask` returns
-`total_task_cap_exceeded`. Draining does not relieve that one. The budget counts
-every task the board has ever held, completed ones included, so the coordinator
-has to finish the job with a smaller plan rather than retry. Telling it to drain
-and continue here just buys an ineffective loop.
-
-Both are soft tool results. The numbers, how to change them, and how they survive
-a suspended run are in
+**Too much work.** A board won't accept new tasks forever, and it refuses in two
+ways that recover differently. `addTask` returns `enqueued_task_cap_exceeded`
+when too many tasks are waiting to start, and draining with `runBoard` brings
+those slots back. It returns `total_task_cap_exceeded` at the board's lifetime
+ceiling, which draining does *not* relieve — there the coordinator has to finish
+with a smaller plan rather than retry. Both are soft results; the numbers and how
+to change them are in
 [Delegation](/docs/skills/delegation#how-much-work-the-board-will-take-on).
 
 ## When the graph belongs in code instead
