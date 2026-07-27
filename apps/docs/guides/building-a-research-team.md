@@ -267,8 +267,10 @@ skill — plus a `competitor-analysis` variant where the coordinator picks the
 competitors and fans out one analyzer per pick — under
 [`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills).
 From the example directory,
-`pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'` runs it
-(the coordinator and the analyst agents are all models, so it needs an API key).
+`pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'` runs it.
+That one needs two keys: a model key, since the coordinator and the analyst
+agents are all models, and a [search](/docs/tools/search) key, since the
+analysts call `search` and it throws when no provider is configured.
 
 Compared to the frozen graphs in sections 2 and 3, the agent now sets the
 goals, the fan-out, and the dependencies per request. The board still does the

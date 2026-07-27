@@ -44,13 +44,20 @@ rather than from it: the rosterless binding under
 
 ```bash
 cd examples/guides/research-team
-OPENAI_API_KEY=... pnpm fsdev run research-team chat \
+OPENAI_API_KEY=... TAVILY_API_KEY=... pnpm fsdev run research-team chat \
   -i '{"message":"research ACME Corp"}'
 ```
 
-The coordinator and every agent are models, so this path needs a key. (The
-example's other two actions use deterministic handler workers and run without
-one, but they don't go through delegation.)
+That path needs two keys configured, not one. A model key, because the
+coordinator and every agent are models. And a **search** key, because the
+analysts carry `search` and call it on their first step — with no search
+provider configured it throws rather than degrading, so the run dies there. Any
+one supported provider will do; `TAVILY_API_KEY` above is an example, and
+[Search](/docs/tools/search) lists them all. The agents also carry `fetch`,
+which needs no key: it falls back to a built-in reader.
+
+(The example's other two actions use deterministic handler workers and need no
+keys at all, but they don't go through delegation.)
 
 One thing to know before you run it: that flow preloads both of the example's
 skills at once, so a single `chat` turn has two teams available and may start
@@ -327,12 +334,19 @@ read the `counts` rather than the reason string. The tutorial covers it in
 
 **Too much work.** A board won't accept new tasks forever, and it refuses in two
 ways that recover differently. `addTask` returns `enqueued_task_cap_exceeded`
-when too many tasks are waiting to start, and draining with `runBoard` brings
-those slots back. It returns `total_task_cap_exceeded` at the board's lifetime
-ceiling, which draining does *not* relieve — there the coordinator has to finish
-with a smaller plan rather than retry. Both are soft results; the numbers and how
-to change them are in
+when too many tasks are waiting to start, and draining with `runBoard` frees
+those slots, because that bound counts only pending work. It returns
+`total_task_cap_exceeded` at the board's lifetime ceiling, which draining does
+*not* relieve — there the coordinator has to finish with a smaller plan rather
+than retry. Both are soft results; the numbers and how to change them are in
 [Delegation](/docs/skills/delegation#how-much-work-the-board-will-take-on).
+
+There's a trap where that meets the previous section. Draining only frees
+enqueue slots for tasks that can actually run. A task stranded behind a failed
+dependency stays `pending` and keeps its slot, and that's precisely the board
+that comes back `blocked`. So if `runBoard` returns `blocked` and `addTask` is
+still refusing, draining again changes nothing — cancel or replan the stranded
+tasks first.
 
 ## When the graph belongs in code instead
 
