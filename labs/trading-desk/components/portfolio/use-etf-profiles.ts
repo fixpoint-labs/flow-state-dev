@@ -6,8 +6,9 @@ import { useApiQuery } from "@/lib/use-api-query";
 import type { AccountState } from "@/domain/portfolio/schema/portfolio-schema";
 import type { Quote } from "@/domain/portfolio/services/get-quotes";
 import { isEtfProfileFetchCandidate, type FundProfileRowInput } from "@/domain/portfolio/math/etf-profile-map";
-import { dominantClassificationByTicker } from "@/domain/portfolio/math/value-holding";
+import { dominantClassificationByTicker, holdingMarketValue } from "@/domain/portfolio/math/value-holding";
 import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
+import { hasShortPosition } from "@/domain/portfolio/math/etf-look-through";
 import type {
   EtfProfileEntry,
   EtfProfileRefusalEntry,
@@ -124,6 +125,30 @@ import type {
  * transitions from flagged to clean (or the reverse) changes the signature
  * even when it was never a local-tag candidate at all (a cache-confirmed,
  * locally-mistagged ticker, the same scenario the fourth trigger covers).
+ *
+ * **A SIXTH trigger, PORTFOLIO-WIDE rather than per-ticker: the net-short
+ * verdict (Codex review, FIX-801 sub-PR c round 45 — the client mirror of
+ * round 43's route-side fix, corrects that round's own "no client parity
+ * needed" call).** Round 43 added a portfolio-wide short-position check to
+ * `route.ts`: whenever ANY priced non-cash position (ticker-merged across
+ * accounts) has a negative or non-finite market value, the route skips ALL
+ * ETF-profile fetches, since `computeLookThroughExposure` will refuse the
+ * WHOLE axis regardless. That reasoning genuinely doesn't change the
+ * RESPONSE shape — but it IS a new condition gating whether `misses` gets
+ * populated at all, so it still needs to be a REFETCH TRIGGER like every
+ * other server-side eligibility check above: if the view loads while a short
+ * exists (the route already skipped fetching) and the user later COVERS it
+ * with no other trigger changing, nothing in bits 1-5 reflects the
+ * transition, `useApiQuery` never reloads, and profiles stay unfetched until
+ * an unrelated change or remount. Reuses `hasShortPosition`
+ * (`etf-look-through.ts`) directly — the SAME exported predicate `route.ts`
+ * calls — over a ticker-merged market-value map built the same way
+ * (`holdingMarketValue` summed per ticker, excluding `inconsistent_history`
+ * rows, using `dominantClassification` for the cash exclusion). Unlike bits
+ * 1-5, this is ONE portfolio-wide boolean, not a per-ticker bit — appended as
+ * a `|short:0|1` suffix on the whole signature rather than a per-ticker
+ * field, and only when there's at least one ticker at all (an empty,
+ * holding-less book keeps returning `""`, unchanged).
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,
@@ -149,7 +174,27 @@ export function computeEtfEligibilitySignature(
       `${ticker}:${isCandidate ? 1 : 0}:${isPriced ? 1 : 0}:${dominantEligibleForRefresh ? 1 : 0}:${hasCleanRow ? 1 : 0}`,
     );
   }
-  return rows.sort().join(",");
+  if (rows.length === 0) return "";
+
+  // Mirrors route.ts's round-43 hasShortPosition check exactly — see the
+  // sixth-trigger docblock above.
+  const mergedMarketValueByTicker = new Map<string, number>();
+  for (const h of holdings) {
+    if (h.dataQuality === "inconsistent_history") continue;
+    const mv = holdingMarketValue(h, priceMap.get(h.ticker.toUpperCase()));
+    if (mv === null) continue;
+    const ticker = h.ticker.toUpperCase();
+    mergedMarketValueByTicker.set(ticker, (mergedMarketValueByTicker.get(ticker) ?? 0) + mv);
+  }
+  const portfolioHasShortPosition = hasShortPosition(
+    [...mergedMarketValueByTicker].map(([ticker, marketValue]) => ({
+      assetClass: dominantClassification.get(ticker)?.assetClass ?? "equity",
+      assetType: dominantClassification.get(ticker)?.assetType ?? "equity",
+      marketValue,
+    })),
+  );
+
+  return `${rows.sort().join(",")}|short:${portfolioHasShortPosition ? 1 : 0}`;
 }
 
 /**

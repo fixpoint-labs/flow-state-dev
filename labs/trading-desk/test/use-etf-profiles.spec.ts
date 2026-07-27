@@ -114,7 +114,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(mutualFund).toBe(equity);
-    expect(mutualFund).toBe("FXAIX:0:1:1:1");
+    expect(mutualFund).toBe("FXAIX:0:1:1:1|short:0");
   });
 
   it("does NOT flip the candidate bit for a curated bond ETF (assetClass fixed_income) — Decision 5's local pre-filter", () => {
@@ -132,7 +132,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(bondEtf).toBe(equity);
-    expect(bondEtf).toBe("BND:0:1:0:1");
+    expect(bondEtf).toBe("BND:0:1:0:1|short:0");
   });
 
   it("does NOT flip the candidate bit for a curated bond ETF even with a STALE assetClass (Codex review, FIX-801 sub-PR c)", () => {
@@ -154,7 +154,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(staleAssetClass).toBe(equity);
-    expect(staleAssetClass).toBe("BND:0:1:0:1");
+    expect(staleAssetClass).toBe("BND:0:1:0:1|short:0");
   });
 
   it("does NOT flip the candidate bit for a flagged inconsistent-history row — but the clean-row bit (round 39) tells it apart from a plain non-ETF holding now", () => {
@@ -180,8 +180,8 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
     // (bit 5 = 0), while the plain equity holding does (bit 5 = 1) — genuinely
     // different states for the cache-confirmed refresh path (round 37), so the
     // signature must tell them apart now (round 39's own trigger, below).
-    expect(flagged).toBe("NVDA:0:1:1:0");
-    expect(equity).toBe("NVDA:0:1:1:1");
+    expect(flagged).toBe("NVDA:0:1:1:0|short:0");
+    expect(equity).toBe("NVDA:0:1:1:1|short:0");
   });
 
   it("DOES flip the candidate bit for a genuine ETF fetch candidate (control)", () => {
@@ -190,7 +190,7 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       [{ holdings: [holding({ ticker: "SPY", assetType: "etf", assetClass: "equity" })] }],
       priceMap,
     );
-    expect(candidate).toBe("SPY:1:1:1:1");
+    expect(candidate).toBe("SPY:1:1:1:1|short:0");
   });
 
   it("changes when a quantity update flips which lot is DOMINANT for a conflicting-classification ticker (trigger 3: the dominant-lot verdict) — Codex review, FIX-801 sub-PR c round 18", () => {
@@ -230,8 +230,8 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       ],
       priceMap,
     );
-    expect(equityDominant).toBe("SPY:1:1:1:1");
-    expect(fixedIncomeDominant).toBe("SPY:0:1:0:1");
+    expect(equityDominant).toBe("SPY:1:1:1:1|short:0");
+    expect(fixedIncomeDominant).toBe("SPY:0:1:0:1|short:0");
     expect(equityDominant).not.toBe(fixedIncomeDominant);
   });
 
@@ -259,8 +259,8 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
     // transition, despite `candidateRowTickers.has("SPY")` staying false (bit
     // 2 stuck at 0) in BOTH cases — bit 4 is what catches it.
     expect(suppressed).not.toBe(unsuppressed);
-    expect(suppressed).toBe("SPY:0:1:0:1");
-    expect(unsuppressed).toBe("SPY:0:1:1:1");
+    expect(suppressed).toBe("SPY:0:1:0:1|short:0");
+    expect(unsuppressed).toBe("SPY:0:1:1:1|short:0");
   });
 
   it("is stable when a quantity update does NOT flip the dominant-lot verdict (no spurious refetch)", () => {
@@ -322,8 +322,8 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
     // never a local-tag candidate here, since assetType never reads "etf") —
     // bit 5 is what catches it.
     expect(flagged).not.toBe(clean);
-    expect(flagged).toBe("SPY:0:1:1:0");
-    expect(clean).toBe("SPY:0:1:1:1");
+    expect(flagged).toBe("SPY:0:1:1:0|short:0");
+    expect(clean).toBe("SPY:0:1:1:1|short:0");
   });
 
   it("is stable for a ticker with no dataQuality flag involved at all (control, Codex review, FIX-801 sub-PR c round 39) — the common case's signature format doesn't change shape", () => {
@@ -337,7 +337,64 @@ describe("computeEtfEligibilitySignature (FIX-801 eligibility-refetch fix)", () 
       priceMap,
     );
     expect(first).toBe(second);
-    expect(first).toBe("SPY:1:1:1:1");
+    expect(first).toBe("SPY:1:1:1:1|short:0");
+  });
+
+  it("changes when a short position is added or removed, holding everything else constant (trigger 6: the portfolio-wide net-short verdict) — Codex review, FIX-801 sub-PR c round 45, a real bug", () => {
+    // TSLA transitions from a long (+10 shares) to a short (-10 shares)
+    // holding — same ticker, same price, same classification, same
+    // dataQuality. Round 43's route fix skips ALL ETF-profile fetches
+    // whenever the portfolio holds ANY short position
+    // (computeLookThroughExposure refuses the whole axis regardless). Before
+    // this fix, nothing in bits 1-5 changed across this transition, so a
+    // view that loaded while a short existed (route already skipped
+    // fetching) would never refetch once the user covered it.
+    const priceMap = new Map([["TSLA", quote("TSLA", 200)]]);
+    const long = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "TSLA", assetType: "equity", quantity: 10 })] }],
+      priceMap,
+    );
+    const short = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "TSLA", assetType: "equity", quantity: -10 })] }],
+      priceMap,
+    );
+    // The load-bearing assertion: the signature CHANGES across the
+    // transition, purely via the `|short:` suffix — the per-ticker portion
+    // is identical either way (TSLA is never a fetch candidate, priced, and
+    // clean regardless of quantity sign).
+    expect(long).not.toBe(short);
+    expect(long).toBe("TSLA:0:1:1:1|short:0");
+    expect(short).toBe("TSLA:0:1:1:1|short:1");
+  });
+
+  it("is stable when the short-state doesn't change (no spurious refetch) — control, Codex review, FIX-801 sub-PR c round 45", () => {
+    const priceMap = new Map([["TSLA", quote("TSLA", 200)]]);
+    const first = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "TSLA", assetType: "equity", quantity: 10 })] }],
+      priceMap,
+    );
+    // Still long — only the quantity changed, not the sign.
+    const second = computeEtfEligibilitySignature(
+      [{ holdings: [holding({ ticker: "TSLA", assetType: "equity", quantity: 12 })] }],
+      priceMap,
+    );
+    expect(first).toBe(second);
+  });
+
+  it("does NOT flip the portfolio-wide short verdict when a short lot nets positive against a larger long lot for the SAME ticker (merged per-ticker, matching route.ts's own merge)", () => {
+    const priceMap = new Map([["SPY", quote("SPY", 400)]]);
+    const netPositive = computeEtfEligibilitySignature(
+      [
+        {
+          holdings: [
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "equity", quantity: -5 }),
+            holding({ ticker: "SPY", assetType: "etf", assetClass: "equity", quantity: 50 }),
+          ],
+        },
+      ],
+      priceMap,
+    );
+    expect(netPositive).toBe("SPY:1:1:1:1|short:0");
   });
 });
 
