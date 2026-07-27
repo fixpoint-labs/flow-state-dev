@@ -46,8 +46,11 @@ This is **mostly additive feature work on an existing desk**, not a new subsyste
 provider module plus budget discipline, and a set of tools that consume it.
 
 **What ramps when the objective is approved.** Per the objective gate
-(`orchestration.md` §Gates), applying `epic approved` releases the epic's Backlog sub-issues
-(FIX-799 / 801 / 802 / 803 / 804) from NEEDS_SPEC so they can be specced. FIX-798 and FIX-800
+(`orchestration.md` §Gates), the release signal is **an approving comment or GitHub Review
+from a human on this epic PR** — the `epic approved` label is only the durable mirror the
+coordinator writes afterwards, never the gate itself. Applying the label by hand does not
+authorize ramping. On that human signal, the epic's Backlog sub-issues
+(FIX-799 / 802 / 803 / 804) are released from NEEDS_SPEC so they can be specced. FIX-798 and FIX-800
 **predate the epic** — already In Review with open spec PRs — so the epic wraps them for
 coordination and does **not** roll them back. What actually paces the work is not the gate
 but the **sequencing spine**: everything AV-fed sits behind **FIX-798**, the provider
@@ -144,10 +147,10 @@ handles as PRs open.
 
 | Issue | State | Spec PR | Impl PR | Notes |
 |---|---|---|---|---|
-| **FIX-798** | In Review | [#851](https://github.com/fixpoint-labs/flow-state-dev/pull/851) | — | keystone; blocks the AV family |
-| **FIX-800** | In Review | [#802](https://github.com/fixpoint-labs/flow-state-dev/pull/802) | — | movers feed; blocked-by FIX-798 |
+| **FIX-798** | **Merged** | ~~#851~~ (auto-closed at impl) | [#889](https://github.com/fixpoint-labs/flow-state-dev/pull/889) | keystone; **landed** — no longer blocks the AV family |
+| **FIX-800** | On hold | [#802](https://github.com/fixpoint-labs/flow-state-dev/pull/802) | — | movers feed; **reparented out of this epic** into the scanner epic (FIX-937), then paused. Listed here for history only |
 | **FIX-799** | Backlog | — | — | news sentiment; released to spec on `epic approved` |
-| **FIX-801** | Backlog | — | — | ETF profile & holdings |
+| **FIX-801** | **Merged** | — | [#923](https://github.com/fixpoint-labs/flow-state-dev/pull/923) · [#924](https://github.com/fixpoint-labs/flow-state-dev/pull/924) · [#927](https://github.com/fixpoint-labs/flow-state-dev/pull/927) | ETF profile & holdings — **landed** in three sub-PRs (data path / arithmetic / UI wiring). UX redesign of the resulting surface tracked separately as FIX-954 |
 | **FIX-802** | Backlog | — | — | macro & commodities (FRED fallback) |
 | **FIX-803** | Backlog | — | — | technical-indicators **evaluation** (spike when appropriate) |
 | **FIX-804** | Backlog | — | — | corporate events: forward earnings calendar + dividends (incl. declared); **historical** splits only |
