@@ -157,7 +157,7 @@ handles as PRs open.
 | **FIX-800** | On hold | [#802](https://github.com/fixpoint-labs/flow-state-dev/pull/802) | — | movers feed; **reparented out of this epic** into the scanner epic (FIX-937), then paused. Listed here for history only |
 | **FIX-799** | Ready to Spec | — | — | news sentiment; released, not yet specced |
 | **FIX-801** | **Merged** | — | [#923](https://github.com/fixpoint-labs/flow-state-dev/pull/923) · [#924](https://github.com/fixpoint-labs/flow-state-dev/pull/924) · [#927](https://github.com/fixpoint-labs/flow-state-dev/pull/927) | ETF profile & holdings — **landed** in three sub-PRs (data path / arithmetic / UI wiring). UX redesign of the resulting surface tracked separately as FIX-954 |
-| **FIX-802** | Ready to Spec | — | — | macro & commodities (FRED fallback); released, not yet specced |
+| **FIX-802** | Ready to Spec | — | — | macro & commodities — AV **supplements** commodities; FRED stays primary for rates/liquidity (§2c). Released, not yet specced |
 | **FIX-803** | Backlog | — | — | technical-indicators **evaluation** (spike when appropriate) |
 | **FIX-804** | Ready to Spec | — | — | corporate events: forward earnings calendar + dividends (incl. declared); **historical** splits only |
 
