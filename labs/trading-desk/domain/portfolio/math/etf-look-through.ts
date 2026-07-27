@@ -510,15 +510,37 @@ function safeWeight(fraction: number): number {
 }
 
 /**
+ * Whether ANY priced, non-cash position carries a negative OR non-finite
+ * (`Infinity` / `NaN`) market value — the exact condition under which
+ * {@link computeLookThroughExposure} refuses the WHOLE axis (a short
+ * position anywhere makes the shared invested-NAV denominator
+ * uninterpretable for a look-through weight, Decision 4's "Also refused"
+ * edge case, §9). Exported so a caller that hasn't computed a full
+ * `LookThroughExposure` yet — the ETF-profiles route, deciding whether a
+ * fetch is even worth attempting before the whole axis gets discarded
+ * regardless of what it fetches (Codex review, FIX-801 sub-PR c round 43) —
+ * can cheaply predict the same whole-axis refusal without a second,
+ * independent implementation of this judgment call. `computeLookThroughExposure`
+ * itself calls this rather than re-checking inline, so there is exactly one
+ * copy of the rule.
+ */
+export function hasShortPosition(
+  positions: ReadonlyArray<Pick<LookThroughPositionInput, "assetClass" | "assetType" | "marketValue">>,
+): boolean {
+  return positions.some(
+    (p) =>
+      p.marketValue !== null &&
+      !isCashPosition(p.assetClass, p.assetType) &&
+      (!Number.isFinite(p.marketValue) || p.marketValue < 0),
+  );
+}
+
+/**
  * Compute the look-through exposure axis from a household's positions and
  * its fund profiles. Returns `null` when `investedNav` is not usable (≤ 0 or
  * null — the guarded-division rule every leaf in this domain follows) or
  * when any priced non-cash position carries a negative OR non-finite
- * (`Infinity` / `NaN`) market value (a short position anywhere makes the
- * shared invested-NAV denominator uninterpretable for a look-through weight —
- * Decision 4's "Also refused" edge case, §9; a non-finite value would
- * silently produce infinite/`NaN` weights downstream, violating this leaf's
- * own guarded-division contract — Codex review round 5, FIX-801 sub-PR b).
+ * (`Infinity` / `NaN`) market value (see {@link hasShortPosition}).
  *
  * Empty `fundProfiles` (no funds fetched, or no fund positions at all) is NOT
  * itself a reason to return null — it produces a well-formed axis with 100%
@@ -534,15 +556,15 @@ export function computeLookThroughExposure(
 ): LookThroughExposure | null {
   if (investedNav === null || !Number.isFinite(investedNav) || investedNav <= 0) return null;
 
+  // Any short (negative) OR non-finite (Infinity/NaN) market value makes the
+  // shared invested-NAV denominator uninterpretable → refuse the whole axis,
+  // never silently produce an infinite/NaN weight downstream (Codex review
+  // round 5, FIX-801 sub-PR b).
+  if (hasShortPosition(positions)) return null;
+
   const eligible = positions.filter(
     (p) => p.marketValue !== null && !isCashPosition(p.assetClass, p.assetType),
   );
-  // Any short (negative) OR non-finite (Infinity/NaN) market value makes the
-  // shared invested-NAV denominator uninterpretable → refuse the whole axis,
-  // never silently produce an infinite/NaN weight downstream.
-  if (eligible.some((p) => !Number.isFinite(p.marketValue as number) || (p.marketValue as number) < 0)) {
-    return null;
-  }
 
   const positionsByTicker = new Map(positions.map((p) => [p.ticker.toUpperCase(), p]));
 

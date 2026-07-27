@@ -15,8 +15,9 @@ import {
   isEtfProfileFetchCandidate,
   missingConstituentTickers,
 } from "@/domain/portfolio/math/etf-profile-map";
-import { dominantClassificationByTicker } from "@/domain/portfolio/math/value-holding";
+import { dominantClassificationByTicker, holdingMarketValue } from "@/domain/portfolio/math/value-holding";
 import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
+import { hasShortPosition } from "@/domain/portfolio/math/etf-look-through";
 
 // The ETF holdings-profile fill surface (FIX-801) — backs the Health view's
 // look-through axis, mirroring the classifications route's shape (a lazy
@@ -239,6 +240,36 @@ export async function GET(req: NextRequest) {
   ];
   const pricedTickers = new Set(quotesRows.map((q) => q.ticker));
 
+  // Cheap, PORTFOLIO-WIDE short-position check, computed once and used to
+  // short-circuit the whole fetch decision below — never a per-ticker
+  // filter, since the rejection it predicts isn't per-ticker either.
+  // `computeLookThroughExposure` (etf-look-through.ts) refuses the WHOLE
+  // look-through axis whenever ANY priced non-cash position — ticker-merged
+  // across accounts, mirroring `portfolio-health.ts`'s own Pass 1 merge —
+  // has a negative or non-finite market value (the CSV import path permits
+  // short positions). This route doesn't compute that axis itself, but
+  // admitting every eligible ETF into `misses` regardless burns the shared
+  // 25/day Alpha Vantage budget on profiles that can't contribute to the
+  // current Health read no matter what gets fetched — the whole axis is
+  // discarded either way (Codex review, FIX-801 sub-PR c round 43). Reuses
+  // `hasShortPosition`, the leaf's own exported predicate, rather than a
+  // second, independently-drifting implementation of the same judgment call.
+  const mergedMarketValueByTicker = new Map<string, number>();
+  for (const h of holdings) {
+    if (h.dataQuality === "inconsistent_history") continue; // excluded from money math (FIX-876) — matches the leaf's own merge
+    const mv = holdingMarketValue(h, quoteMap.get(h.ticker.toUpperCase()));
+    if (mv === null) continue;
+    const ticker = h.ticker.toUpperCase();
+    mergedMarketValueByTicker.set(ticker, (mergedMarketValueByTicker.get(ticker) ?? 0) + mv);
+  }
+  const portfolioHasShortPosition = hasShortPosition(
+    [...mergedMarketValueByTicker].map(([ticker, marketValue]) => ({
+      assetClass: dominantClassification.get(ticker)?.assetClass ?? "equity",
+      assetType: dominantClassification.get(ticker)?.assetType ?? "equity",
+      marketValue,
+    })),
+  );
+
   const now = new Date();
   // A fund with no quote yet contributes no numerator/denominator on either
   // axis (the existing rule) — no budget unit is spent on a profile nothing
@@ -246,7 +277,9 @@ export async function GET(req: NextRequest) {
   // job, FIX-801 §8 step 6 — a client-side concern, not this route's).
   const fetchCandidates = eligibleTickers.filter((t) => pricedTickers.has(t));
 
-  const misses = fetchCandidates.filter((ticker) => isDueForFetch(storedByTicker.get(ticker), now));
+  const misses = portfolioHasShortPosition
+    ? []
+    : fetchCandidates.filter((ticker) => isDueForFetch(storedByTicker.get(ticker), now));
   // No key configured is a documented, supported state (every other AV
   // consumer in this codebase checks this first) — no fetch attempted,
   // nothing persisted, never a refusal. Without this gate, a keyless

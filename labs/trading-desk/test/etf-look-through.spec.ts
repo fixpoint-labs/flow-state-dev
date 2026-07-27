@@ -28,6 +28,7 @@ import {
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
   FUND_OF_FUNDS_THRESHOLD_PCT,
+  hasShortPosition,
   isFundConfirmingProfileEntry,
   LOOK_THROUGH_COVERAGE_FLOOR_PCT,
   MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON,
@@ -1294,7 +1295,38 @@ describe("computeLookThroughExposure — §9 edge cases", () => {
     expect(computeLookThroughExposure([direct("AAPL", 100)], -100, new Map())).toBeNull();
     expect(computeLookThroughExposure([direct("AAPL", 100)], null, new Map())).toBeNull();
   });
+});
 
+describe("hasShortPosition — the exported predicate a caller without a full LookThroughExposure can use to predict whole-axis refusal (Codex review, FIX-801 sub-PR c round 43)", () => {
+  it("is true when any priced non-cash position is short (negative market value) — the exact trigger computeLookThroughExposure itself refuses on", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), fund("SHORT_ETF", -500)])).toBe(true);
+  });
+
+  it("is true for a non-finite (Infinity/NaN) market value, matching computeLookThroughExposure's own guarded-division contract", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), direct("BROKEN", Number.POSITIVE_INFINITY)])).toBe(true);
+    expect(hasShortPosition([direct("AAPL", 1_000), direct("BROKEN", Number.NaN)])).toBe(true);
+  });
+
+  it("is false when every priced non-cash position is non-negative", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), fund("SPY", 2_000)])).toBe(false);
+  });
+
+  it("ignores a negative CASH position — the same cash exclusion computeLookThroughExposure's own eligible filter applies", () => {
+    expect(
+      hasShortPosition([
+        direct("AAPL", 1_000),
+        direct("MARGIN_CASH", -50, { assetClass: "cash" }),
+        direct("SWEEP_MMF", -25, { assetType: "money_market" }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("ignores an unpriced (null marketValue) position", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), direct("UNPRICED", null)])).toBe(false);
+  });
+});
+
+describe("computeLookThroughExposure — §9 edge cases", () => {
   it("a non-attributable ('n/a') constituent line still counts against coverage rather than being dropped", () => {
     const positions = [fund("FUND", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([

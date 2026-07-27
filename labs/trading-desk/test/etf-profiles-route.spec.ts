@@ -508,6 +508,87 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("skips ALL ETF profile fetches when the portfolio holds ANY short (negative-quantity) position — the whole look-through axis is refused regardless of what gets fetched (Codex review, FIX-801 sub-PR c round 43, a real bug)", async () => {
+    // TSLA is held SHORT (negative quantity) — computeLookThroughExposure
+    // (etf-look-through.ts) refuses the WHOLE look-through axis whenever ANY
+    // priced non-cash position has a negative market value, not just the
+    // shorted ticker. SPY is otherwise a perfectly ordinary fetch-eligible
+    // ETF; before this fix, the route fetched it anyway, spending a shared
+    // Alpha Vantage request on a profile the look-through axis will discard
+    // regardless of what gets fetched.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+        { ticker: "TSLA", quantity: -10, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: null, source: "live" },
+      { ticker: "TSLA", price: 200, asOf: null, source: "live" },
+    ]);
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    // Still a normal 200 response — only the FETCH is skipped; the READ side
+    // (whatever's already cached, if anything) is unaffected.
+    expect(res.status).toBe(200);
+  });
+
+  it("still fetches normally when the portfolio holds no short positions (control, Codex review, FIX-801 sub-PR c round 43)", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+        { ticker: "TSLA", quantity: 10, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: null, source: "live" },
+      { ticker: "TSLA", price: 200, asOf: null, source: "live" },
+    ]);
+    fetcherMock.fetchEtfProfile.mockResolvedValue({ kind: "profile", profile: SAMPLE_PROFILE });
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+  });
+
+  it("does NOT skip fetches when a short lot in one account nets positive against a larger long lot in another account for the SAME ticker — merged PER TICKER, not a blunt per-row check (Codex review, FIX-801 sub-PR c round 43)", async () => {
+    // SPY held -5 shares in one account (short) and +50 in another — the
+    // TICKER-MERGED market value is strongly positive, so
+    // computeLookThroughExposure's own whole-axis check (which operates on
+    // the SAME ticker-merged positions portfolio-health.ts builds) would NOT
+    // refuse the axis for this ticker. The route's short-detection must merge
+    // the same way — flagging the mere existence of a negative ROW would be
+    // an over-conservative false positive here.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-short",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: -5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-long",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 50, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    fetcherMock.fetchEtfProfile.mockResolvedValue({ kind: "profile", profile: SAMPLE_PROFILE });
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    expect(res.status).toBe(200);
+  });
+
   it("caps how many misses one call fetches, deferring the remainder", async () => {
     const tickers = Array.from({ length: ETF_PROFILE_MISS_CAP + 2 }, (_, i) => `ETF${i}`);
     for (const t of tickers) await seedEtf(t);
