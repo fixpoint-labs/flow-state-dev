@@ -198,6 +198,7 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 
 ## Documentation
 
+- [Authoring a delegating skill](https://flow-state.dev/guides/agents-command-the-board)
 - [Orchestration overview](https://flow-state.dev/docs/orchestration/overview)
 - [Task substrate](https://flow-state.dev/docs/orchestration/task-substrate)
 - [Task board](https://flow-state.dev/docs/orchestration/task-board)

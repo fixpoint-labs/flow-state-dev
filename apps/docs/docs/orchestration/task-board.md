@@ -207,7 +207,7 @@ const board = taskBoard({
 
 Defaults: no `defaultWorker` unless configured. This is what the skills delegation surface uses to give every board an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in explicitly.
 
-The rule above is the board's, and it stays as stated: an unmatched assignee falls to `defaultWorker`. The skills delegation surface adds a check further up, refusing an unknown assignee when the task is created, so on those boards an unmatched assignee normally never reaches dispatch. A `taskBoard` you build yourself has no such roster and keeps the plain fallback behavior.
+The rule above is the board's, and it stays as stated: an unmatched assignee falls to `defaultWorker`. The skills delegation surface adds a check further up, refusing an unknown assignee when the task is created, so on those boards an unmatched assignee normally never reaches dispatch. That check needs a roster to check against: a board with no declared agents accepts any assignee, and everything lands on the default worker. A `taskBoard` you build yourself has no roster either and keeps the plain fallback behavior.
 
 ## Concurrency and error handling
 
@@ -224,7 +224,7 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 - `maxTotalTasks` (default `500`) — how many tasks the board may **ever hold**, completed and cancelled ones included. Never refunded by draining, so it also catches a board that keeps draining and re-queueing.
 - `concurrency` (default `4`) — how many run at the same time.
 
-Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead, so a coordinator can drain and continue.
+Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead. The two recover differently, and only one of them recovers by draining: `enqueued_task_cap_exceeded` counts pending work, so a coordinator can drain and continue, while `total_task_cap_exceeded` is the lifetime ceiling and returns nothing on a drain — there, the coordinator has to finish within a smaller plan.
 
 Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`.
 

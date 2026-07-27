@@ -13,9 +13,11 @@ There are no per-agent tools the generator calls directly. All delegated work go
 
 Reach for delegation when a single agent isn't the right shape and you want the agent itself to stay in charge of the orchestration. If the graph is fixed in code (not planned by the model), a task board block in the generator's `tools:` is still the right shape — see [Running a board as a tool](#running-a-board-as-a-tool) below.
 
+This page is the reference: every field, every override, every bound. For the authoring path end to end — declaring a team, staffing each seat, planning the graph, and what the failures look like — start with [Authoring a delegating skill](/guides/agents-command-the-board).
+
 ## Declaring agents
 
-Add an `agents:` map to the skill's frontmatter. Each key is an agent name; each value is a spec that resolves to a runnable participant. Declaring the field is the whole switch — there's no separate flag to set.
+Add an `agents:` map to the skill's frontmatter. Each key is an agent name; each value is a spec that resolves to a runnable participant. Declaring the field is what turns delegation on — there's no separate flag to set for the default case. The binding can override it in either direction with `delegation: true` / `false`, covered in [Board and overrides](#board-and-overrides).
 
 ```yaml
 ---
@@ -42,7 +44,7 @@ Each agent resolves one of two ways: it's defined inline in the skill, or it ref
 
 An inline agent (`prompt` or `prompt-ref`) is fully portable: a skill folder carries its own team with no app wiring beyond the tool catalog. An `agent-ref` agent resolves against the registry the app supplies, so it can't travel alone — the payoff is that one agent definition is reused across many skills. Agents materialize when the generator's tool surface resolves (per execution), so async resolution — a registry lookup, a prompt file read — is fine; a statically-bound skill with missing wiring (an `agent-ref` with no registry) still fails loud at build time.
 
-Per-agent tuning on an inline agent: `tools` (catalog keys the agent may call itself — `taskTools` is a special key that gives the agent the task tools bound to the executive's board, which is how an agent fans out follow-up tasks mid-drain), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`. An `agent-ref` agent tunes through `agent-overrides` instead (replace-semantics for `tools` / `model` / `visibility`).
+Per-agent tuning on an inline agent: `tools` (catalog keys the agent may call itself — `taskTools` is a special key that gives the agent the task tools bound to the coordinator's board, which is how an agent fans out follow-up tasks mid-drain), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`. An `agent-ref` agent tunes through `agent-overrides` instead (replace-semantics for `tools` / `model` / `visibility`).
 
 ## Board and overrides
 
@@ -81,11 +83,11 @@ addTask({ goal: "…" })  → { ok: false, error: "enqueued_task_cap_exceeded" }
 addTask({ goal: "…" })  → { ok: false, error: "total_task_cap_exceeded" }      // the run's ceiling
 ```
 
-The usual recovery is the loop the guidance already describes: call `runBoard`, let the pending work drain, then add the next wave.
+The recovery differs per error, and only one of them is recoverable by draining. `enqueued_task_cap_exceeded` measures pending work, so the loop the guidance already describes clears it: call `runBoard`, let the pending work drain, then add the next wave. `total_task_cap_exceeded` is the board's lifetime ceiling and counts every task it has ever held, so draining returns nothing — the coordinator has to finish the job within a smaller plan instead of retrying the same add.
 
 One thing to be precise about. The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own — a retry, an unblock, a resumed review, a reclaimed lease — and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`.
 
-The counts are read off the board's task ledger rather than kept as a separate tally, so they last as long as that ledger does. A delegation board lives on the executive generator's own state, which is restored from its checkpoint when a suspended run resumes — so the tasks are still there afterwards, and so are the counts. Planning a fresh wave of 100 after a resume will not work if the board already holds them. See [how long the counts last](../orchestration/task-board#how-long-the-counts-last) for the full picture across backings.
+The counts are read off the board's task ledger rather than kept as a separate tally, so they last as long as that ledger does. A delegation board lives on the coordinator generator's own state, which is restored from its checkpoint when a suspended run resumes — so the tasks are still there afterwards, and so are the counts. Planning a fresh wave of 100 after a resume will not work if the board already holds them. See [how long the counts last](../orchestration/task-board#how-long-the-counts-last) for the full picture across backings.
 
 Both are tunable on the library, beside `workerModelId`:
 
@@ -155,11 +157,24 @@ The floor is the same kind of worker a declared inline agent is, so a named agen
 
 Note what the floor does *not* catch. Once a skill declares agents, an assignee that names none of them is rejected when the task is added, not quietly run on the floor (see below). So the floor is reached by leaving the assignee unset, which is a deliberate "anyone can do this" — not by mistyping a specialist's name, which is a mistake worth hearing about. A board with no declared agents has no roster to check against, so it accepts any assignee and everything lands on the floor.
 
-## What the executive gets
+## What the coordinator gets
 
 Two things land on the generator when an agent-declaring skill is active: the tools to plan work on the board, and the tool to run it.
 
-**`taskTools` — the planning ledger.** The eight task tools (`addTask`, `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`, `listTasks`) let the generator plan multi-step work on its private board. `addTask` takes a `goal`, an optional `assignee` (an agent key — leave it unset to run the task on the default worker), `deps` (task ids that must complete first), and an optional structured `input` payload the worker receives.
+**`taskTools` — the planning ledger.** Eight tools let the generator plan and steer multi-step work on its private board. Every one of them returns `{ ok: true }` or a soft `{ ok: false, error }` rather than throwing, so a bad call doesn't end the turn.
+
+| Tool | Input | What it does |
+|------|-------|--------------|
+| `addTask` | `goal`, plus optional `assignee`, `deps`, `input`, `priority`, `metadata` | Creates a task and returns its id. `assignee` is an agent key — leave it unset to run on the default worker. `deps` are task ids that must complete first. `input` is a structured payload handed to the worker. |
+| `assignTask` | `taskId`, `assignee` | Reassigns an existing task to a different worker. |
+| `completeTask` | `taskId`, `output` | Marks a task complete and records its output. |
+| `failTask` | `taskId`, `error` | Marks a task failed with an error message. Its dependents stay `pending` — nothing cascades. |
+| `blockTask` | `taskId`, optional `reason` | Parks a task pending an external condition. A board still holding one does not fully drain, so `runBoard` reports `blocked`. |
+| `cancelTask` | `taskId`, optional `reason` | Cancels a task. Terminal — use it when the work is no longer needed. |
+| `updateTask` | `taskId`, `patch` | Patches mutable fields: `priority`, `metadata`, `assignee`, `addLabel`, `removeLabel`. All optional; a patch that omits `assignee` skips the roster check. |
+| `listTasks` | optional `status`, optional `assignee` | Reads the board back, filtered. `status` is one of `pending`, `in_progress`, `awaiting_review`, `completed`, `errored`, `cancelled`, `blocked`. |
+
+Most skills only need `addTask` and `runBoard`. The rest matter when the coordinator has to steer a board mid-flight — parking work on an external dependency, cancelling a plan that turned out to be wrong, or reading back what settled.
 
 Assignment is checked as the task is created. `addTask`, `assignTask`, and `updateTask` reject an `assignee` that isn't one of the declared agents, and say which agents exist:
 
@@ -179,6 +194,13 @@ When an `addTask` could fail more than one way, the checks run in a fixed order:
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 
 The division of labor to keep straight: `addTask` writes a task — it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph. Draining the board is running it; there is no other path to executing a delegated agent. Nothing drains the board behind the model's back — the skill decides when to run it.
+
+`runBoard` reports how the drain ended. `status: "drained"` means every task settled. `status: "blocked"` means at least one did not — any task still `pending`, `in_progress`, `awaiting_review`, or `blocked` when the drain stops. It is a statement about outstanding work, not about failure, and it has two causes worth telling apart:
+
+- **A dependency errored.** A dependency counts as satisfied only when it *completes*, so a dependent of an errored task is never dispatched. It is not skipped or failed either — it stays `pending`, and the settled board comes back with it so you can see which task errored underneath. There is no cascade here that cancels stranded dependents; `cascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain.
+- **A task was parked deliberately.** `blockTask` holds a task pending an external condition. The board is then correctly incomplete, and settle reports `blocked` with nothing having gone wrong.
+
+Read the settled tasks before deciding which one you have.
 
 ```ts
 const skills = createSkillsLibrary({ catalog, initialSkills });
@@ -249,4 +271,13 @@ The `context: pattern` mode, the `pattern:` / `pattern-config:` / `initial-tasks
 
 ## Where fork went
 
-Fork mode (`context: fork`, a skill that ran as an isolated sub-agent) is also removed. The everyday case it served — run something as a sub-agent and get the result back — is now one task and a drain: declare an agent, `addTask` a single task assigned to it, and call `runBoard`. Read the task's output. The variant where a sub-agent inherits the conversation so far is a separate direction, tracked as a task context-supply mode rather than a resurrected direct-call path.
+Fork mode (`context: fork`, a skill that ran as an isolated sub-agent) is also removed. The everyday case it served — run something as a sub-agent and get the result back — is now one task and a drain: declare an agent, `addTask` a single task assigned to it, and call `runBoard`. Read the task's output. The variant where a sub-agent inherits the conversation so far has shipped as a property of the agent rather than a resurrected direct-call path: set `context-supply: conversation` on an inline agent and it inherits the parent conversation up to the point it was dispatched, while its own steps stay out of the host's history. See [Context supply](../orchestration/context-supply).
+
+## Related
+
+- [Authoring a delegating skill](/guides/agents-command-the-board) — the guide: declaring the team, staffing each seat, planning the graph, draining it, and what the failures look like.
+- [Building a research team](/guides/building-a-research-team) — the tutorial, code-first, with the two ways to staff an agent side by side.
+- [Task board](../orchestration/task-board) — the concurrent-drain primitive the board is built on, and every config option.
+- [Agents](../orchestration/agents) — the registry `agent-ref` resolves against.
+- [Context supply](../orchestration/context-supply) — what prior conversation a delegated agent inherits.
+- [Per-generator binding](./binding) — the `active` / `allowed` / `delegation` binding surface.

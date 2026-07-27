@@ -328,7 +328,9 @@ If you want to ship skill updates alongside code, the pattern most apps use is: 
 
 ## Step 10 (optional): Delegate to sub-workers
 
-Some skills are better handled by a small team than a single agent. A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool when it's bound to a generator. The generator assigns work as tasks (`addTask` with an `assignee` naming one of the skill's agents, `deps` to order them) and runs the whole graph by calling `runBoard`. The board runs the agents — there is no per-agent tool the generator calls by hand. See [Delegation](/docs/skills/delegation) for the frontmatter shape and the board overrides.
+Some skills are better handled by a small team than a single agent. A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool when it's bound to a generator. The generator assigns work as tasks (`addTask` with an `assignee` naming one of the skill's agents, `deps` to order them) and runs the whole graph by calling `runBoard`. The board runs the agents — there is no per-agent tool the generator calls by hand.
+
+[Authoring a delegating skill](/guides/agents-command-the-board) walks the whole path end to end: declaring the team, staffing each seat, planning the graph, draining it, and what the failures look like. See [Delegation](/docs/skills/delegation) for the frontmatter shape and the board overrides.
 
 ## Verifying it works
 

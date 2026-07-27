@@ -1,133 +1,343 @@
 ---
-title: Agents that command the board
-sidebar_label: Agents command the board
-description: Let a model decide the work at runtime — assign tasks to a team of agents on a private delegation board and drain it with runBoard, the taskTools surface a skill's agents field installs.
+title: Authoring a delegating skill
+sidebar_label: Authoring a delegating skill
+description: Write a skill whose agents plan their own work. Declare the team, staff each seat, let the coordinator assign tasks on a private board, and drain it with one runBoard call.
 ---
 
-# Agents that command the board
+# Authoring a delegating skill
 
-So far the tasks on a board were decided by your code — a fixed `initialTasks`
-list, or a router that computed them up front. Sometimes you want the *model* to
-decide the work as it goes: look at the input, then plan however many tasks the
-situation calls for, assign each to a teammate, and run the lot. That's what
-`taskTools` and `runBoard` are for.
+A **skill** is a folder with a `SKILL.md` in it. Its body gets spliced into a
+generator's system prompt when the skill matches, so most skills are just
+instructions. Some jobs are too big for one set of instructions and one model
+turn: research a company from three angles, analyze every competitor in a
+category, review a document section by section. Those want a small team.
 
-`taskTools` is a small tool surface a generator can carry. The model calls these
-tools to plan a task board — the work it's about to run:
+Declaring a team is what this guide is about. You add one field to the skill's
+frontmatter, and the generator that binds the skill gets a private **task
+board** — a ledger of work with dependency ordering and a concurrent runner over
+it. The model then plans the work as tasks and runs the whole graph in one call.
+Nothing about the plan is fixed in your code. The model decides how many tasks
+there are and who does what, per request.
 
-| Tool | What the agent does |
-|------|---------------------|
-| `addTask` | Enqueue a new task with an `assignee` and optional `deps` (returns its id). |
-| `assignTask` | Reassign a task to a different agent. |
-| `completeTask` / `failTask` | Mark a task done or failed with output. |
-| `blockTask` / `cancelTask` | Park a task pending an external condition, or drop it. |
-| `updateTask` | Patch priority, metadata, assignee, or labels. |
-| `listTasks` | Read the board, filtered by status or assignee. |
+Throughout, the generator that plans the work is the **coordinator**, and the
+teammates it assigns work to are **agents**.
 
-Planning is only half of it. `runBoard` is the other tool the surface installs,
-and it's the one that does the work: it drains the board, dispatching every
-runnable task to its assigned agent and returning the settled result.
+**Before you start.** You should have skills wired into your app already
+([Adding skills to your app](/guides/adding-skills-to-your-app)) and know what a
+`SKILL.md` looks like ([Authoring skills](/docs/skills/authoring)). Knowing how a
+board seeds, runs, and settles helps too, but you can pick it up as you go
+([The board lifecycle](/guides/board-lifecycle)).
 
-## Where the board comes from
+:::tip Full, runnable code
+Every `SKILL.md`, persona, and agent in this guide is a trimmed copy from
+[`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team).
+Open the example for the complete source. To watch a team actually run:
 
-`taskTools` and `runBoard` need a board to command. A generator gets one by
-binding a skill that declares `agents:`. When a skill declares agents, the skills
-library installs a **private task board** on that generator — own-state, scoped to
-the one generator, not shared with anything else — plus the `taskTools` and
-`runBoard`. This is delegation. See
-[Delegation](/docs/skills/delegation) for the full authoring surface.
-
-```markdown title="skills/research-lead/SKILL.md (frontmatter)"
-agents:
-  researcher:
-    prompt-ref: ./reference/research.md
-    tools: [search, fetch]
-  writer:
-    prompt-ref: ./reference/write.md
+```bash
+cd examples/guides/research-team
+OPENAI_API_KEY=... pnpm fsdev run research-team chat \
+  -i '{"message":"research ACME Corp"}'
 ```
 
-Binding that skill to a generator gives it the eight `taskTools`, `runBoard`, and
-a private board whose agent registry has a `researcher` and a `writer` ready to be
-assigned tasks. The generator never calls the agents directly — it puts work on
-the board and drains it.
+The coordinator and every agent are models, so this path needs a key. (The
+example's other two actions use deterministic handler workers and run without
+one, but they don't go through delegation.)
 
-## Assign tasks, then drain
+One thing to know before you run it: that flow preloads both of the example's
+skills at once, so a single `chat` turn has two teams available and may start
+the wrong one, or ask a clarifying question that belongs to the other skill.
+This guide teaches `research-company` and names it explicitly.
+:::
 
-The one thing to keep straight: **the drain is the execution.**
-`addTask({ goal, assignee: "researcher" })` writes a task — it does not run
-anything yet. `runBoard` is what runs it. Draining the board dispatches each
-runnable task to its assigned agent, honors `deps`, and hands back every task's
-output. So the model's loop looks like:
+## 1. Declare a team
 
-> Look at the request and `addTask` one research task per subtopic, each
-> `assignee: "researcher"`. `addTask` a write-up assigned to `"writer"`, with
-> `deps` set to the research task ids so it waits for them. Then call `runBoard`
-> once and surface the writer task's output.
+Add an `agents:` map to the skill's frontmatter. Each key is an agent name, each
+value says where that agent's persona comes from.
 
-The board holds the plan; the drain runs it. That split is the whole model — you
-describe the work as tasks, then run the graph in one call. Independent tasks run
-in parallel; a task with `deps` waits until they complete. The model decides what
-the tasks are; the board decides how they run.
-
-## The model decides the tasks at runtime
-
-Because the plan is built by `addTask` calls, the model can shape it from the
-input rather than from a frozen list. The sharpest version of this is an agent
-that plans its *own* fan-out mid-drain. Give one agent `taskTools`, and it can
-`addTask` more work onto the same board while the drain is running:
-
-```markdown title="skills/competitor-analysis/SKILL.md"
+```yaml title="src/skills/research-company/SKILL.md (frontmatter, trimmed)"
 ---
-description: Competitor analysis — the team decides the competitors.
+description: Multi-angle company research delivered by a small team of analysts.
+agents:
+  market-analyst:
+    prompt-ref: ./reference/market.md
+    tools: [search, fetch]
+  financial-analyst:
+    prompt-ref: ./reference/financials.md
+    tools: [search, fetch]
+  synthesizer:
+    prompt-ref: ./reference/synthesis.md
+---
+```
+
+Declaring the field is what turns delegation on. When a generator binds this
+skill, the skills library installs three things on it: a private task board, a
+set of tools for planning work on that board, and a `runBoard` tool that runs it.
+The board is scoped to that one generator. Nothing else in your app can see or
+write to it.
+
+That default holds unless the binding overrides it. `delegation: false` on
+`skills.with({...})` suppresses the whole surface even for a skill that declares
+agents. `delegation: true` installs it for a skill that declares none, which is
+[Without a roster](#6-without-a-roster) below.
+
+The set of declared agents is the board's **roster**. It shows up in two places:
+in a short prompt fragment the library injects so the coordinator knows who it
+has, and in the board's dispatch table, so a task assigned to `market-analyst`
+reaches the persona in `./reference/market.md`.
+
+## 2. Staff each seat
+
+An agent needs a persona, and there are two ways to give it one.
+
+**Inline.** Write the persona in the skill folder and point at it with
+`prompt-ref`, or put it directly in the frontmatter with `prompt`. That is what
+all three agents above do. The payoff is portability: the skill folder carries
+its own team, and copying the folder into another app carries the team with it.
+No app code registers anything.
+
+**From the registry.** Define the agent once in app code with `defineAgent`, then
+borrow it by name with `agent-ref`:
+
+```yaml
+agents:
+  analyzer:
+    agent-ref: competitor-analyst
+```
+
+The tradeoff is the mirror image. A registry agent can't travel alone, because
+it resolves against the `agentRegistry` your app hands to `createSkillsLibrary`.
+What you buy is reuse: one definition, borrowed by as many skills as you like.
+`research-company` is entirely inline, so the snippet above comes from the
+example's other skill, `competitor-analysis`. For the registry form end to end,
+including the `defineAgent` call and the library wiring,
+[the research-team tutorial walks it](/guides/building-a-research-team#5-two-ways-to-staff-an-agent).
+
+Inline agents take a few more keys: `tools` (catalog keys the agent may call
+itself), `model`, `visibility`, and `context-supply`. See
+[Delegation](/docs/skills/delegation#declaring-agents) for the full field list
+and [Agents](/docs/orchestration/agents) for the registry side.
+
+One thing that surprises people: the one-line blurb the coordinator sees for each
+agent is not something you write. For an inline agent it's the first non-blank
+line of the persona, truncated. So make that line say what the agent is for. A
+registry agent shows up as its `agent-ref` name instead.
+
+## 3. Plan the work as a graph
+
+The skill body is where you tell the coordinator what to put on the board. You're
+writing instructions for a model, so write them as steps.
+
+The planning tool is `addTask`. It takes a `goal` and, optionally, an `assignee`
+naming one of your agents, `deps` listing task ids that must finish first, and a
+structured `input` payload the agent receives. It returns the new task's id.
+
+```markdown title="src/skills/research-company/SKILL.md (body, trimmed)"
+You run the board. Extract the target from the user's message, then:
+
+1. `addTask` — goal: `"Analyze market positioning of <target> — category,
+   target customer, key differentiators, recent narrative shifts. Cite
+   sources."`, `assignee: "market-analyst"`.
+2. `addTask` — goal: `"Analyze financial health of <target> — revenue scale
+   and trajectory, funding or public financials, profitability/burn, runway
+   signals. Cite sources."`, `assignee: "financial-analyst"`.
+3. `addTask` — goal: `"Synthesize the prior reports into a single research
+   brief for <target>. Lead with the takeaway, then evidence, then risks."`,
+   `assignee: "synthesizer"`, `deps` set to the two task ids returned above.
+4. Call `runBoard` once. The analysts run in parallel; the synthesizer starts
+   when both complete.
+```
+
+That's a fan-out and a fan-in. Two tasks with no dependencies, and a third that
+waits on both. `deps` is the only thing expressing the ordering. You never write
+"wait for the analysts" anywhere, and the two analysts run at the same time
+because nothing says they can't.
+
+The board is what makes that work. Its runner hands out tasks whose dependencies
+have all completed, up to four at once, and holds the rest back. The full config
+surface is in [Task board](/docs/orchestration/task-board).
+
+## 4. Draining is the running
+
+Worth stating plainly, because it's the thing people get wrong first: **`addTask`
+writes a task, it does not run one.** Nothing executes until the coordinator
+calls `runBoard`.
+
+`runBoard` **drains** the board. Draining means dispatching every task whose
+dependencies are satisfied, waiting, dispatching whatever that unblocked, and
+repeating until nothing runnable is left. It returns once, with every task's
+output.
+
+So the whole shape of a delegating skill is: plan with `addTask`, run with
+`runBoard`, read the result. There is no other way to execute a delegated agent.
+There is no per-agent tool the coordinator calls directly, and nothing drains the
+board behind the model's back. The skill body decides when to run it.
+
+Reading results works the same way inside the team. The synthesizer's persona
+gets its dependencies' outputs on `input.deps`, keyed by task id, so it can read
+both analyst reports without either of them being in its conversation.
+
+`addTask` and `runBoard` are the two you'll write instructions for. Six more come
+with them — `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`,
+`listTasks` — for steering a board mid-flight rather than planning one. They're
+documented in
+[Delegation](/docs/skills/delegation#what-the-coordinator-gets).
+
+## 5. A worker that plans more work
+
+An agent can put work on the board too. Give one `taskTools` in its `tools:` list
+and it can call `addTask` mid-drain, onto the same board:
+
+```yaml title="src/skills/competitor-analysis/SKILL.md (frontmatter, trimmed)"
 agents:
   discoverer:
     prompt-ref: ./reference/discover.md
     tools: [search, taskTools]
   analyzer:
-    prompt-ref: ./reference/analyze.md
-    tools: [search, fetch]
-  synthesizer:
-    prompt-ref: ./reference/synthesize.md
----
-1. addTask({
-     goal: "Identify 3-5 competitors for <topic>, then addTask one 'analyzer'
-            task per competitor plus a single 'synthesizer' task whose deps
-            cover every analyzer you queued.",
-     assignee: "discoverer", input: { topic } })
-2. Call runBoard once. Surface the synthesizer task's output.
+    agent-ref: competitor-analyst
+  comparison-writer:
+    prompt-ref: ./reference/compare.md
 ```
 
-One `addTask`, one `runBoard`. The drain runs the discoverer first; the discoverer
-looks at the topic, decides there are (say) four competitors, and enqueues four
-analyzer tasks plus a gated synthesizer. The same drain picks those up — the
-analyzers in parallel, the synthesizer once all four complete. Nobody wrote the
-number four into code. The team decided the shape of the work at runtime, and the
-board ran it.
+Now the coordinator's plan can be one task:
 
-## When the graph is fixed in code
+```markdown
+1. `addTask` — goal: `"Identify 3 to 5 competitors for <target> across direct /
+   adjacent / DIY-status-quo tiers, then enqueue one analyzer task per
+   competitor plus a single comparison-writer task whose deps cover every
+   analyzer task you queued."`, `assignee: "discoverer"`.
+2. Call `runBoard` once.
+```
 
-Reach for a delegation skill when the *model* should decide the tasks. When the
-graph is fixed in code instead — a known set of seeded `initialTasks`, a custom
-collection backing, a tuned dispatcher — you don't need agents or `runBoard` at
-all. Build a code-defined [task board](/docs/orchestration/task-board) and call it
-as a single tool. A `taskBoard(...).drain` is a block, and
+One `addTask`, one `runBoard`. The drain runs the discoverer, which decides there
+are (say) four competitors and enqueues four analyzer tasks plus a
+comparison-writer gated on all four. The same drain picks those up, runs the
+analyzers in parallel, and runs the writer once they're all done. The number four
+is nowhere in your code.
+
+Reach for `taskTools` on an agent when the shape of the work depends on what an
+earlier step found. Grant it through the agent's `tools:` list, which is the path
+that reaches the coordinator's board.
+
+## 6. Without a roster
+
+You can delegate without declaring a team at all. Every delegation board comes
+with a **default worker** underneath the roster: a generic, capable agent with no
+persona and no tools, which runs any task the roster doesn't claim. Force
+delegation on with no `agents:` field, and it's the only worker there is.
+
+```ts
+const coordinator = generator({
+  uses: [skills.with({ active: ["coordinator"], delegation: true })],
+});
+// addTask({ goal }) with no assignee runs on the default worker.
+```
+
+This is the cheapest way into delegation. You get task planning, dependency
+ordering, and parallel execution without writing a single persona. Reach for it
+when the work decomposes into steps but the steps don't need specialists.
+
+Be aware that it inverts one behavior. With a declared roster, a typo'd assignee
+is rejected. With no roster there is nothing to check a name against, so any
+assignee is accepted and everything lands on the default worker either way. If
+you're relying on the rejection to catch mistakes, declare the team.
+
+## 7. When it goes wrong
+
+Four situations are worth knowing before you ship. They look similar from the
+outside and behave differently, so lumping them together will send you down the
+wrong path. One of them isn't even an error.
+
+**A wrong assignee, on a board with a declared roster.** `addTask` refuses. No
+task is created, and the error names the agents that do exist so the coordinator
+can correct itself and retry. `assignTask` and `updateTask` check the same way.
+It comes back as a tool result, not a thrown error, so the turn continues:
+
+```
+addTask({ goal: "Find sources", assignee: "reseacher" })
+→ { ok: false,
+    error: 'unknown_assignee: "reseacher" is not an agent on this board.
+            Available: researcher (Researches sources), writer (Drafts prose).
+            Name one of these exactly, or leave assignee unset to run the task
+            on the default worker.' }
+```
+
+Catching it at creation rather than at dispatch is deliberate. A typo can't sit
+on the board and resurface twenty seconds later as a failed task.
+
+**No assignee at all.** Not a failure. The task runs on the default worker
+described above. Leaving `assignee` unset is how you say "anyone can do this," and it's the
+only way to reach the default worker on a board that has a roster. Mistyping a
+specialist's name is not the same thing and doesn't get the same treatment.
+
+**A board that didn't fully drain.** `runBoard` reports how it ended:
+`status: "drained"` when every task settled, `status: "blocked"` when any task is
+left unresolved. Read `blocked` as "work is still outstanding," not as "something
+failed." It has more than one cause, and they want different responses.
+
+The one people hit first is a task stranded behind a failed dependency. Its
+dependents don't fail and don't get skipped. They stay pending, because a
+dependency counts as satisfied only when it *completes*. The drain runs out of
+runnable work and stops. Read the settled board it hands back to find which task
+errored. (Delegation has no opt-in cascade that cancels stranded dependents. Some
+patterns do, like [Supervisor](/docs/patterns/supervisor), but it isn't wired
+into this drain.)
+
+The other cause is deliberate. A coordinator can park a task with `blockTask`
+while it waits on something outside the board, and a parked task is unresolved
+too, so the drain settles as `blocked` with nothing wrong. Same status, opposite
+meaning. Inspect the tasks before you treat a `blocked` board as a failure.
+
+You may meet the word "blocked" twice in these docs, meaning two different
+things. A code-defined board reports `terminationReason: "blocked-by-failures"`
+on its final item, which the tutorial covers in
+[When the board stops, and when it waits](/guides/building-a-research-team#7-when-the-board-stops-and-when-it-waits).
+`runBoard`'s `status: "blocked"` is the delegation surface's version of the same
+idea.
+
+**Too much work.** A board won't accept new tasks forever, and it stops in two
+ways that recover differently.
+
+Hit the limit on tasks waiting to start and `addTask` returns
+`enqueued_task_cap_exceeded`. That count only measures pending work, so it
+refreshes as the board drains: call `runBoard`, let the queue clear, then add the
+next wave.
+
+Hit the board's lifetime limit and `addTask` returns
+`total_task_cap_exceeded`. Draining does not relieve that one. The budget counts
+every task the board has ever held, completed ones included, so the coordinator
+has to finish the job with a smaller plan rather than retry. Telling it to drain
+and continue here just buys an ineffective loop.
+
+Both are soft tool results. The numbers, how to change them, and how they survive
+a suspended run are in
+[Delegation](/docs/skills/delegation#how-much-work-the-board-will-take-on).
+
+## When the graph belongs in code instead
+
+Delegation is for when the *model* should decide the tasks. When your code
+already knows the graph — a fixed set of seeded tasks, a custom collection
+backing, a tuned dispatcher — you don't need `agents:` or `runBoard` at all.
+
+Build a code-defined [task board](/docs/orchestration/task-board) and call it as a
+single tool. A `taskBoard(...).drain` is a block, and
 [any block can be a tool](/docs/fundamentals/blocks#any-block-can-be-a-tool).
 Register the drain block in the skills catalog, list it under the skill's
-`allowed-tools`, and the generator calls the whole board as one tool, getting back
-only the finalized result.
+`allowed-tools`, and the generator calls the whole board in one shot, getting back
+only the finished result.
 
-So the two shapes are:
+The two shapes, side by side:
 
-- **The model plans the work per request →** a delegation skill with `agents:`.
-  The model assigns tasks and drains the board with `runBoard`. Parallel and
-  dependency-gated, with the model in charge of what the tasks are (this guide).
-- **The graph is fixed in code →** a code-defined `taskBoard` called as a tool, or
-  mounted directly in a flow. Your code seeds the tasks; the board's own dispatch
-  runs them.
+- **The model plans the work per request** — a delegation skill with `agents:`.
+  The coordinator assigns tasks and drains the board with `runBoard`. This guide.
+- **The graph is fixed in code** — a code-defined `taskBoard` called as a tool, or
+  mounted directly in a flow. Your code seeds the tasks and the board's own
+  dispatcher runs them.
 
 ## Related
 
-- [Delegation](/docs/skills/delegation) — the `agents:` field, the private board, and the `taskTools` + `runBoard` surface.
-- [Building a research team](/guides/building-a-research-team) — the same team built five ways, including a skill that defines its own agents and the three ways to staff one.
-- [The board lifecycle](/guides/board-lifecycle) — the seed → drain → read lifecycle underneath, from a code-first angle.
-- [Task board](/docs/orchestration/task-board) — the concurrent-drain primitive you can call as a tool.
+- [Delegation](/docs/skills/delegation) — the reference: every `agents:` field, the board overrides, the caps, and the default worker.
+- [Building a research team](/guides/building-a-research-team) — the tutorial. Builds the same team several ways from an empty flow, code-first first, and covers the two ways to staff an agent in depth.
+- [The board lifecycle](/guides/board-lifecycle) — seed, drain, read, from a code-first angle.
+- [Agents](/docs/orchestration/agents) — the registry side of `agent-ref`.
+- [Task board](/docs/orchestration/task-board) — the concurrent-drain primitive underneath, and its config.
+- [Context supply](/docs/orchestration/context-supply) — how to let an agent inherit the conversation so far instead of seeing only its task input.

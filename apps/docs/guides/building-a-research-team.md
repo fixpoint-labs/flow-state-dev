@@ -387,5 +387,6 @@ Whether a task blocks the request comes down to the same dependency graph: the s
 - [`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team) — the complete, tested source for this guide.
 - [Task board](/docs/orchestration/task-board) — every config option, dispatcher, and termination mode.
 - [Task substrate](/docs/orchestration/task-substrate) — the `Task` and `TaskCollection` contracts underneath.
+- [Authoring a delegating skill](/guides/agents-command-the-board) — the same ground from the authoring angle: one skill, start to finish, with staffing, the rosterless shortcut, and the failure modes.
 - [Delegation](/docs/skills/delegation) — the `agents:` field, the private board, and the `taskTools` + `runBoard` reference.
 - [Supervisor](/docs/patterns/supervisor) — add a review step before each result is written back.
