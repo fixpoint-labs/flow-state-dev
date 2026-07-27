@@ -36,6 +36,17 @@
  * (exposure, concentration, cash, coverage) the Health pane shows. Drift/
  * compliance is the FIX-761-gated slice — `health.drift` stays null in v1.
  *
+ * FIX-801 addition: an optional `etfProfiles` map (UPPER ticker → stored fund
+ * profile) threaded straight through to `summarizePortfolioHealth`'s own
+ * optional trailing argument, so the trader/PM context gets the SAME
+ * look-through second axis the Health pane shows. Per the spec's Decision 1,
+ * this function does NOT fetch — the caller (`seedSession`, FIX-801 sub-PR c)
+ * reads the profiles table READ-ONLY, so a run sees look-through only for
+ * funds the Portfolio pane has already warmed; omitted (or empty), the health
+ * block's `lookThrough` field stays null exactly as before this change
+ * (BP-030 — the absent-profiles output equality guarantee this file already
+ * makes for `classifications` extends to `etfProfiles`).
+ *
  * Pure leaf: imports the portfolio schema types, the flow input type, and the
  * pure `portfolio-health` leaf (no runtime IO). Unit-testable without a browser.
  */
@@ -48,20 +59,69 @@ import {
   type PortfolioHealth,
   type QuoteMap,
 } from "@/domain/portfolio/math/portfolio-health";
+import {
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  type FundProfileInput,
+  type OpaqueFund,
+} from "@/domain/portfolio/math/etf-look-through";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
+
+/**
+ * `OpaqueFund.reason` (`etf-look-through.ts`) mixes two genuinely different
+ * kinds of "we can't attribute this fund": a TEMPORARY availability gap (never
+ * fetched yet, or a fetch attempt that's currently quota/rate-limited and will
+ * be retried) versus a DATA-QUALITY / structural judgment about a profile the
+ * route DID successfully evaluate (too thin, malformed, leveraged, a
+ * fund-of-funds, or a provider-confirmed non-ETF). Collapsing both into one
+ * "(thin/ineligible data)" phrase in the analysis prompt misrepresents a fund
+ * nobody has looked at yet as a data-quality finding (Codex review, FIX-801
+ * sub-PR c). This is a closed set — every `opaqueByTicker.set(...)` call site
+ * in `etf-look-through.ts` (INCLUDING a caller-written withdrawal entry like
+ * `guards.ts`'s `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`, round 14) is
+ * enumerated here; a reason string not in `UNAVAILABLE_REASONS` is treated as
+ * data-quality by default (the safer default: a NEW reason class this set
+ * doesn't yet know about is far more likely to be a fresh structural-exclusion
+ * case than a fresh flavor of "temporarily missing").
+ */
+const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
+  "no stored profile", // never fetched
+  "quota", // Alpha Vantage daily budget exhausted — retried next reset
+  "transient", // network/parse failure — retried within ~15 min
+  // A wrapper's own profile was fine; a DB read failure while broadening its
+  // fund-of-funds constituents made its verdict unverifiable, so `guards.ts`
+  // withdrew it (Codex review, FIX-801 sub-PR c round 14). A transient read
+  // failure, not a structural judgment about the fund's data — belongs here,
+  // not in the default data-quality bucket (Codex review, FIX-801 sub-PR c
+  // round 15: this set predates round 14's new reason and didn't include it,
+  // so a withdrawn wrapper misreported to the trader/PM as "thin/ineligible
+  // data" instead of "not yet available").
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+]);
+
+/** Truncate a sector-exposure list to the top 6 buckets by declared order +
+ *  a rolled-up `"Other"` for the remainder — the one place this projection
+ *  (wrapper basis and look-through alike) decides how much sector detail the
+ *  prompt gets. Both bucket lists are already sorted by the leaf that
+ *  produced them (`portfolio-health.ts` / `etf-look-through.ts`), so this is
+ *  a pure slice-and-sum, not a re-sort. */
+function topSectorBuckets(
+  sectorExposure: ReadonlyArray<{ bucket: string; pct: number | null }>,
+): Array<{ bucket: string; pct: number | null }> {
+  const top = sectorExposure.slice(0, 6).map((s) => ({ bucket: s.bucket, pct: s.pct }));
+  if (sectorExposure.length > 6) {
+    const restPct = sectorExposure.slice(6).reduce((sum, s) => sum + (s.pct ?? 0), 0);
+    top.push({ bucket: "Other", pct: restPct });
+  }
+  return top;
+}
 
 /** The compact household-health block projected into `<portfolioContext>` (top 6
  *  sector buckets + `Other`; concentration flags pre-rendered). Null when the
  *  book has nothing priceable (health not computable). */
 function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"] {
   if (health.totalNav === null) return null;
-  const sectors = health.sectorExposure.slice(0, 6).map((s) => ({ bucket: s.bucket, pct: s.pct }));
-  if (health.sectorExposure.length > 6) {
-    const restPct = health.sectorExposure.slice(6).reduce((sum, s) => sum + (s.pct ?? 0), 0);
-    sectors.push({ bucket: "Other", pct: restPct });
-  }
   return {
     cashPct: health.cash.pct,
     coveragePct:
@@ -72,7 +132,7 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
       assetClass: a.assetClass,
       pct: a.pct,
     })),
-    sectorExposure: sectors,
+    sectorExposure: topSectorBuckets(health.sectorExposure),
     concentration: {
       maxPosition: health.concentration.maxPosition,
       top5Pct: health.concentration.top5Pct,
@@ -85,7 +145,104 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
     },
     // Drift/compliance is the FIX-761-gated slice — always null until it lands.
     drift: null,
+    // The look-through second axis (FIX-801) — null exactly when `lookThrough`
+    // is `"none"` (no funds attributed), matching `lookThroughExposure`'s own
+    // nullability on the wrapper leaf's output.
+    lookThrough:
+      health.lookThrough === "partial" && health.lookThroughExposure !== null
+        ? {
+            coveragePct: health.lookThroughExposure.coveragePct,
+            sectorCoveragePct: health.lookThroughExposure.sectorCoveragePct,
+            // The actual attributed sector DISTRIBUTION, not just its coverage
+            // number — the leaf already computes this (same shape/truncation
+            // as the wrapper-basis `sectorExposure` above), it just wasn't
+            // threaded through until now (Codex review, FIX-801 sub-PR c round
+            // 28, same spirit as round 25's `opaqueFundDetails`: coverage/flags
+            // alone tell the model an ordinary diversified fund allocation
+            // stayed below the warn threshold, but not what it actually IS).
+            sectorExposure: topSectorBuckets(health.lookThroughExposure.sectorExposure),
+            // Top 6 effective-name positions (already sorted by |weightPct|
+            // desc — a plain truncation, not a re-sort), same bound as the
+            // wrapper-basis "Top positions by weight" line above and
+            // sectorExposure's top-6 truncation. `maxPosition` alone doesn't
+            // say whether it came directly or through a wrapper, and nothing
+            // below the max/warning threshold was visible at all — the leaf
+            // already computes the full attributed list with per-source
+            // identity (`sources`), it just wasn't threaded through (Codex
+            // review, FIX-801 sub-PR c round 32, same spirit as rounds 25/28).
+            positions: health.lookThroughExposure.positions.slice(0, 6).map((p) => ({
+              ticker: p.ticker,
+              weightPct: p.weightPct,
+              sources: p.sources,
+            })),
+            maxPosition: health.lookThroughExposure.maxPosition,
+            // Direct pass-through — the leaf already produces the exact
+            // `{low,high}|null` shape the schema expects (Codex review,
+            // FIX-801 sub-PR c: this figure was computed but never wired to
+            // the prompt/UI).
+            effectivePositions: health.lookThroughExposure.effectivePositions,
+            flags: health.lookThroughExposure.flags.map((f) =>
+              f.kind === "single_name"
+                ? `${f.ticker} ${f.weightPct.toFixed(1)}% (${f.level}, look-through)`
+                : `${f.sector} ${f.weightPct.toFixed(1)}% (warn, look-through)`,
+            ),
+            // `opaqueFunds` holds one entry per FAILED AXIS, not per fund — a
+            // fund opaque on both the name and sector axes (via two separate
+            // entries, when it isn't a single combined "both" reason) would
+            // double-count under a bare `.length`. Dedupe by ticker so the
+            // seed reports the true opaque-FUND count to the analysis model
+            // (Codex review, FIX-801 sub-PR c), and separately count how many
+            // of those are merely temporarily unavailable rather than a
+            // data-quality finding (Codex review round 2). Both counts
+            // collapse the per-axis detail to a number — `opaqueFundDetails`
+            // (Codex review round 25) preserves the identity behind them:
+            // WHICH wrapper, on WHICH axis, for WHY, so the prompt can say
+            // "QQQ (sectors: thin coverage)" instead of a bare "1 fund
+            // opaque" the trader/PM has no way to trace to a holding — see
+            // `classifyOpaqueFunds`.
+            ...classifyOpaqueFunds(health.lookThroughExposure.opaqueFunds),
+          }
+        : null,
   };
+}
+
+/**
+ * Reduce a fund's-worth of `OpaqueFund` entries to what the prompt needs: the
+ * two summary counts (true per-fund opaque count, deduped by ticker — see the
+ * call site's comment — and the subset of those merely temporarily
+ * unavailable per `UNAVAILABLE_REASONS` rather than a genuine data-quality
+ * finding), AND `opaqueFundDetails` — the per-entry identity (ticker, axis,
+ * reason) the counts collapse away, so the prompt can name WHICH wrapper is
+ * incomplete and WHY instead of a bare count the trader/PM can't trace to a
+ * holding (Codex review, FIX-801 sub-PR c round 25). Unlike the counts,
+ * `opaqueFundDetails` is NOT deduped by ticker — a fund thin on names but
+ * fine on sectors (or the reverse) has two genuinely distinct reasons, and
+ * collapsing them would silently drop one. A ticker's reason is
+ * availability-class in EVERY entry it has, or in NONE of them — the
+ * availability reasons all short-circuit via a single combined
+ * `{ axis: "both" }` entry in `etf-look-through.ts` before the code ever
+ * reaches the per-axis (names/sectors) logic that can split one ticker into
+ * two entries, so `unavailable` only ever fires on a `"both"` entry.
+ */
+function classifyOpaqueFunds(opaqueFunds: ReadonlyArray<OpaqueFund>): {
+  opaqueFundCount: number;
+  opaqueUnavailableFundCount: number;
+  opaqueFundDetails: Array<{ ticker: string; axis: OpaqueFund["axis"]; reason: string; unavailable: boolean }>;
+} {
+  const uniqueByTicker = new Map(opaqueFunds.map((f) => [f.ticker, f]));
+  let opaqueUnavailableFundCount = 0;
+  for (const f of uniqueByTicker.values()) {
+    if (f.axis === "both" && UNAVAILABLE_REASONS.has(f.reason)) {
+      opaqueUnavailableFundCount++;
+    }
+  }
+  const opaqueFundDetails = opaqueFunds.map((f) => ({
+    ticker: f.ticker,
+    axis: f.axis,
+    reason: f.reason,
+    unavailable: f.axis === "both" && UNAVAILABLE_REASONS.has(f.reason),
+  }));
+  return { opaqueFundCount: uniqueByTicker.size, opaqueUnavailableFundCount, opaqueFundDetails };
 }
 
 /**
@@ -100,6 +257,7 @@ export function buildPortfolioContext(
   quotes: QuoteLike[],
   snapshotAsOf: string | null,
   classifications: ClassificationMap = new Map(),
+  etfProfiles: ReadonlyMap<string, FundProfileInput> = new Map(),
 ): PortfolioContextInput | null {
   if (accounts.length === 0) return null;
 
@@ -182,7 +340,7 @@ export function buildPortfolioContext(
   const quoteMap: QuoteMap = new Map();
   for (const q of quotes) quoteMap.set(q.ticker.toUpperCase(), { price: q.price, asOf: q.asOf });
   const health = projectHealth(
-    summarizePortfolioHealth(accounts, quoteMap, classifications, snapshotAsOf),
+    summarizePortfolioHealth(accounts, quoteMap, classifications, snapshotAsOf, etfProfiles),
   );
 
   return {

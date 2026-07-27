@@ -50,7 +50,7 @@
  * The analysis-context `drift` block stays `null` until it lands.
  */
 import type { AssetClass, AssetType, AccountState } from "../schema/portfolio-schema";
-import { holdingMarketValue } from "@/domain/portfolio/math/value-holding";
+import { dominantClassificationByTicker, holdingMarketValue } from "@/domain/portfolio/math/value-holding";
 import {
   SECTOR_WARN_PCT,
   SINGLE_NAME_ALERT_PCT,
@@ -242,15 +242,21 @@ export function summarizePortfolioHealth(
     marketValue: number | null; // null when no included row is priceable
     includedRows: number;
     excludedRows: number;
-    // |MV| of the row whose classification currently wins the merge — so the
-    // merged line's class/type is decided deterministically by the DOMINANT lot,
-    // not by iteration order, when two accounts disagree on a symbol's type
-    // (e.g. one CSV tags it `equity`, another `etf`).
-    classifierMass: number;
     accounts: Array<{ accountId: string; label: string; quantity: number; marketValue: number | null }>;
   };
   const merged = new Map<string, Merged>();
   let cashAmount = 0;
+
+  // The merged line's class/type is decided by the DOMINANT (largest
+  // |marketValue|) lot, not by iteration order, when two accounts disagree on
+  // a symbol's type (e.g. one CSV tags it `equity`, another `etf`) — computed
+  // once, up front, via the SAME shared rule `excludeFixedIncomeFromProfileMap`
+  // (`etf-profile-map.ts`) now uses, so the two never independently drift
+  // (Codex review, FIX-801 sub-PR c round 14).
+  const dominantClassification = dominantClassificationByTicker(
+    accounts.flatMap((acc) => acc.holdings),
+    quotes,
+  );
 
   for (const acc of accounts) {
     cashAmount += finiteOrNull(acc.cashBalance) ?? 0;
@@ -258,15 +264,15 @@ export function summarizePortfolioHealth(
       const key = h.ticker.toUpperCase();
       let m = merged.get(key);
       if (!m) {
+        const cls = dominantClassification.get(key)!; // every held ticker was fed into the map above
         m = {
           ticker: key,
-          assetClass: h.assetClass,
-          assetType: h.assetType,
+          assetClass: cls.assetClass,
+          assetType: cls.assetType,
           quantity: 0,
           marketValue: null,
           includedRows: 0,
           excludedRows: 0,
-          classifierMass: -1,
           accounts: [],
         };
         merged.set(key, m);
@@ -282,15 +288,6 @@ export function summarizePortfolioHealth(
       const quote = quotes.get(key);
       const mv = holdingMarketValue(h, quote ? { price: quote.price } : undefined);
       if (mv !== null) m.marketValue = (m.marketValue ?? 0) + mv;
-      // The larger-mass lot defines the merged classification (deterministic).
-      // An unpriced row still wins over the initial placeholder (mass -1) so the
-      // first row seen classifies a fully-unpriced position.
-      const rowMass = mv === null ? 0 : Math.abs(mv);
-      if (rowMass > m.classifierMass) {
-        m.classifierMass = rowMass;
-        m.assetClass = h.assetClass;
-        m.assetType = h.assetType;
-      }
       m.accounts.push({
         accountId: acc.accountId,
         label: acc.name,

@@ -289,9 +289,13 @@ export const quotes = appSchema.table("quotes", {
  * Keyed by `ticker` ALONE, not `(user_id, ticker)`: a ticker's sector is a
  * global, public, near-immutable fact — the same reasoning `app.quotes` (FIX-823)
  * applies to price, so the two sit side by side as the lab's first per-ticker
- * reference tables (a minimal security-master seam FIX-801's ETF profiles can
- * later join). No TTL: sector rarely changes, so rows are refreshed manually
- * (a `source` column leaves room), never on a timer.
+ * reference tables — a minimal security-master seam that `etf_profiles` (below,
+ * FIX-801) has now joined. No TTL: sector rarely changes, so rows are refreshed
+ * manually (a `source` column leaves room), never on a timer.
+ *
+ * A THIRD ticker-keyed reference table is the signal to stop accreting one per
+ * axis and consolidate into a real security-master (flagged, not built, in the
+ * FIX-801 spec's follow-ups) — worth remembering the next time this seam grows.
  *
  * `sector` is nullable in the column, but the fill path NEVER persists a null (a
  * failed Yahoo resolution is returned to the caller but not written), so a

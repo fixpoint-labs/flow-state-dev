@@ -123,7 +123,13 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
   });
 
-  it("refuses a fund with no resolvable constituents (commodity/bond — all n/a rows)", async () => {
+  it("keeps a valid (though zero-attributable) NAME axis reading for a commodity/bond fund — all n/a symbols, real weights — instead of refusing the whole profile (Codex review, FIX-801 sub-PR c, fourth variant of the per-axis bug class)", async () => {
+    // The symbols are genuinely unresolvable (bullion/cash have no ticker),
+    // but the WEIGHTS are real — per this file's own `EtfConstituent`
+    // docblock, an n/a row is kept (not dropped) and still counts toward
+    // `nameCoverage`. That is an honest "fully covered, nothing nameable"
+    // fund, not a data-quality problem, so it must not refuse the whole
+    // profile (this used to return `kind: "refused", reason: "ineligible"`).
     mockFetchOnce({
       ...WELL_COVERED,
       sectors: [],
@@ -133,39 +139,63 @@ describe("fetchEtfProfile — eligibility refusals", () => {
       ],
     });
     const out = await fetchEtfProfile("GLD");
-    expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // Both rows are kept (not dropped) with a null ticker — genuinely
+    // non-zero coverage, zero attributable names.
+    expect(out.profile.constituents).toHaveLength(2);
+    expect(out.profile.constituents.every((c) => c.ticker === null)).toBe(true);
+    expect(out.profile.nameCoverage).toBeCloseTo(1.0);
+    expect(out.profile.sectors).toEqual([]);
+    expect(out.profile.sectorCoverage).toBe(0);
   });
 
-  it("refuses a SECTOR-ONLY response (sector rows present, holdings array empty/absent) rather than caching a zero-constituent profile (Codex review round 2)", async () => {
+  it("keeps a valid SECTOR axis for a SECTOR-ONLY response (sector rows present, holdings array empty/absent), instead of refusing the whole profile (Codex review round 2; updated Codex review, FIX-801 sub-PR c round 4 — no longer a whole-profile refusal)", async () => {
     // Distinct from the all-n/a case above (which has holdings ROWS, just
     // unresolvable ones) and from the both-empty case (already caught by the
     // earlier not_an_etf guard): here `sectors` is non-empty but `holdings`
-    // itself is empty, so nothing in the earlier "no resolvable constituent"
-    // check fired (it used to be gated on `rawHoldings.length > 0`) and a
-    // profile with zero constituents/zero nameCoverage would otherwise be
-    // cached as valid for 30 days.
+    // itself is empty. The name axis has genuinely nothing to attribute —
+    // `constituents: []`, `nameCoverage: 0` — but the sector axis, evaluated
+    // independently, is fully usable and must not be discarded with it.
     mockFetchOnce({
       ...WELL_COVERED,
       holdings: [],
     });
     const out = await fetchEtfProfile("SECTORONLY");
-    expect(out).toMatchObject({ kind: "refused", reason: "ineligible" });
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    expect(out.profile.constituents).toEqual([]);
+    expect(out.profile.nameCoverage).toBe(0);
+    expect(out.profile.sectors.length).toBeGreaterThan(0);
+    expect(out.profile.sectorCoverage).toBeGreaterThan(0);
   });
 
-  it("classifies resolvable symbols with ALL-unparseable/out-of-range weights as malformed, not ineligible (Codex review)", async () => {
+  it("keeps a valid SECTOR axis when the NAME axis has resolvable symbols but ALL-unparseable/out-of-range weights, instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — third variant of the same per-axis bug class)", async () => {
     // Distinct from the all-n/a case above: the SYMBOLS are fine here, only
-    // the weights are corrupted — a recoverable provider glitch (~7-day
-    // backoff), not a permanent fact about the fund (~90-day backoff).
+    // the weights are corrupted, so there is nothing to sum on the name axis
+    // at all — this used to be a whole-profile `malformed` refusal
+    // (~7-day backoff) that discarded a possibly-valid sector axis; now it's
+    // treated exactly like the sector-malformed / name-malformed over-sum
+    // cases below: the name axis is discarded and the sector axis is judged
+    // on its own merits.
     mockFetchOnce({
       ...WELL_COVERED,
-      sectors: [],
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.3" },
+        { sector: "HEALTH CARE", weight: "0.12" },
+      ],
       holdings: [
         { symbol: "AAPL", weight: "not-a-number" },
         { symbol: "MSFT", weight: "1.5" }, // out of [0,1]
       ],
     });
-    const out = await fetchEtfProfile("CORRUPT_SYMBOLS_OK");
-    expect(out).toMatchObject({ kind: "refused", reason: "malformed" });
+    const out = await fetchEtfProfile("CORRUPT_SYMBOLS_SECTOR_OK");
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // The name axis is discarded, not fabricated — same shape as "the
+    // provider sent no holdings data".
+    expect(out.profile.constituents).toEqual([]);
+    expect(out.profile.nameCoverage).toBe(0);
+    // The sector axis is fully intact.
+    expect(out.profile.sectors).toHaveLength(2);
+    expect(out.profile.sectorCoverage).toBeCloseTo(0.42);
   });
 
   it("treats a completely empty profile response as not_an_etf", async () => {
@@ -174,17 +204,46 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     expect(out).toMatchObject({ kind: "refused", reason: "not_an_etf" });
   });
 
-  it("refuses (malformed) when constituent weights sum past 100%", async () => {
+  it("refuses as malformed when BOTH axes end up with nothing usable — holdings present but every weight garbage/over-summed, AND sectors absent — instead of falling through to a normal profile success (Codex review, FIX-801 sub-PR c, round 8 — the third bucket the per-axis taxonomy needs beyond 'each axis degrades independently')", async () => {
+    // Distinct from every per-axis test above: there, at least ONE axis
+    // survives with real data. Here neither does — the provider's response
+    // isn't empty (so the top-of-function not_an_etf guard doesn't fire),
+    // but nothing on it is usable. Falling through to `kind: "profile"`
+    // would misreport a corrupted response as thin-but-real AND earn the
+    // 30-day freshness window instead of malformed's ~7-day retry.
     mockFetchOnce({
       ...WELL_COVERED,
-      sectors: [],
+      sectors: [], // never provided
       holdings: [
-        { symbol: "AAPL", weight: "0.7" },
-        { symbol: "MSFT", weight: "0.6" },
+        { symbol: "AAPL", weight: "not-a-number" }, // unparseable
+        { symbol: "MSFT", weight: "-0.3" }, // out of [0,1]
       ],
     });
-    const out = await fetchEtfProfile("BROKEN");
+    const out = await fetchEtfProfile("BOTH_AXES_GARBAGE");
     expect(out).toMatchObject({ kind: "refused", reason: "malformed" });
+  });
+
+  it("keeps a valid SECTOR axis when only the NAME axis is malformed (weights summing past 100%), instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — the mirror of the sector-side fix)", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.3" },
+        { sector: "HEALTH CARE", weight: "0.12" },
+      ],
+      holdings: [
+        { symbol: "AAPL", weight: "0.7" },
+        { symbol: "MSFT", weight: "0.6" }, // sums to 1.3 — genuinely malformed, past the epsilon
+      ],
+    });
+    const out = await fetchEtfProfile("NAME_MALFORMED_SECTOR_OK");
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // The name axis is discarded, not fabricated — same shape as "the
+    // provider sent no holdings data".
+    expect(out.profile.constituents).toEqual([]);
+    expect(out.profile.nameCoverage).toBe(0);
+    // The sector axis is fully intact.
+    expect(out.profile.sectorCoverage).toBeCloseTo(0.42);
+    expect(out.profile.sectors).toHaveLength(2);
   });
 
   it("does not refuse on rounding noise just over 100% (epsilon slack)", async () => {
@@ -198,6 +257,57 @@ describe("fetchEtfProfile — eligibility refusals", () => {
     });
     const out = await fetchEtfProfile("ROUNDING");
     expect(out.kind).toBe("profile");
+  });
+
+  it("clamps nameCoverage to 1 when rows sum just over 100% — the consuming leaf's safeWeight has a strict [0,1] contract and would zero an unclamped 1.005 (Codex review, FIX-801 sub-PR c)", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [],
+      holdings: [
+        { symbol: "AAPL", weight: "0.5" },
+        { symbol: "MSFT", weight: "0.505" }, // sums to 1.005 — within the accepted epsilon
+      ],
+    });
+    const out = await fetchEtfProfile("NAME_OVERAGE");
+    if (out.kind !== "profile") throw new Error("expected a profile");
+    expect(out.profile.nameCoverage).toBe(1);
+  });
+
+  it("clamps sectorCoverage to 1 when sector rows sum just over 100%, same reasoning as nameCoverage above", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.5" },
+        { sector: "HEALTH CARE", weight: "0.505" }, // sums to 1.005 — within the accepted epsilon
+      ],
+    });
+    const out = await fetchEtfProfile("SECTOR_OVERAGE");
+    if (out.kind !== "profile") throw new Error("expected a profile");
+    expect(out.profile.sectorCoverage).toBe(1);
+  });
+
+  it("keeps a valid NAME axis when only the SECTOR axis is malformed, instead of refusing the whole profile (Codex review, FIX-801 sub-PR c — per-axis malformed handling belongs to the consuming leaf, not this fetcher)", async () => {
+    mockFetchOnce({
+      ...WELL_COVERED,
+      sectors: [
+        { sector: "TECHNOLOGY", weight: "0.9" },
+        { sector: "HEALTH CARE", weight: "0.9" }, // sums to 1.8 — genuinely malformed, past the epsilon
+      ],
+      holdings: [
+        { symbol: "AAPL", weight: "0.5" },
+        { symbol: "MSFT", weight: "0.4" },
+      ],
+    });
+    const out = await fetchEtfProfile("SECTOR_MALFORMED_NAME_OK");
+    if (out.kind !== "profile") throw new Error("expected a profile, not a whole-profile refusal");
+    // The name axis is fully intact.
+    expect(out.profile.nameCoverage).toBeCloseTo(0.9);
+    expect(out.profile.constituents).toHaveLength(2);
+    // The sector axis is discarded, not fabricated — same shape as "the
+    // provider sent no sector data", which the leaf's own per-axis floor
+    // gate already renders honestly as sector-axis-opaque.
+    expect(out.profile.sectors).toEqual([]);
+    expect(out.profile.sectorCoverage).toBe(0);
   });
 
   it("rejects an individual weight outside [0, 1] rather than letting it corrupt the aggregate sum (Codex review)", async () => {

@@ -534,7 +534,7 @@ function fmtPct(value: number | null): string {
 function appendHealthLines(lines: string[], health: PortfolioContextInput["health"]): void {
   if (health == null) return;
   lines.push(
-    `Household health (deterministic; no ETF look-through): cash ${fmtPct(health.cashPct)} of NAV, ` +
+    `Household health (deterministic): cash ${fmtPct(health.cashPct)} of NAV, ` +
       `priced coverage ${fmtPct(health.coveragePct)}.`,
   );
   if (health.assetClassAllocation.length > 0) {
@@ -561,6 +561,127 @@ function appendHealthLines(lines: string[], health: PortfolioContextInput["healt
         `${health.drift.breaches.length > 0 ? ` (${health.drift.breaches.join("; ")})` : ""}.`,
     );
   }
+  appendLookThroughLines(lines, health.lookThrough);
+}
+
+/** Append the ETF look-through second axis (FIX-801) — a separate line, not
+ *  folded into the wrapper-basis lines above (Decision 2: additive, never a
+ *  replacement). No-op when nothing was attributed through a fund (`null`) —
+ *  which covers both the honest "no funds held" case and, on a headless run,
+ *  the documented Decision 1 divergence (the seed reads stored profiles
+ *  read-only and never fetches, so a fund nobody has warmed via the Portfolio
+ *  pane simply doesn't appear here). `maxPosition`/coverage are explicitly
+ *  framed as a LOWER BOUND, and the line states plainly that this reading does
+ *  NOT move the deterministic decision gates — a household 25% in a name
+ *  through funds still clears a policy cap measured on the wrapper basis
+ *  (spec Non-goals; the model must not read a look-through flag as a gate). */
+function appendLookThroughLines(
+  lines: string[],
+  lookThrough: NonNullable<PortfolioContextInput["health"]>["lookThrough"],
+): void {
+  if (lookThrough == null) return;
+  const maxName = lookThrough.maxPosition
+    ? `${lookThrough.maxPosition.ticker} ${fmtPct(lookThrough.maxPosition.weightPct)}`
+    : "—";
+  // The look-through analogue of the wrapper-basis `effective positions`
+  // figure, but an interval (not a point estimate) — the unattributed
+  // residual could sit anywhere from a long tail to piling entirely onto the
+  // largest name already seen (Decision 4, docs/etf-look-through.md). Was
+  // computed by the leaf but never surfaced here until now (Codex review,
+  // FIX-801 sub-PR c).
+  const effPositions =
+    lookThrough.effectivePositions == null
+      ? "—"
+      : `${lookThrough.effectivePositions.low.toFixed(1)}–${lookThrough.effectivePositions.high.toFixed(1)}`;
+  lines.push(
+    `ETF look-through (seeing inside funds; a LOWER BOUND — does not move sizing gates): ` +
+      `name coverage ${fmtPct(lookThrough.coveragePct)}, sector coverage ${fmtPct(lookThrough.sectorCoveragePct)}, ` +
+      `largest effective name ${maxName}, effective positions ${effPositions} (interval — residual placement is uncertain)` +
+      `${opaqueFundsSuffix(lookThrough)}.`,
+  );
+  if (lookThrough.flags.length > 0) {
+    lines.push(`Look-through concentration flags: ${lookThrough.flags.join(", ")}.`);
+  }
+  // The actual attributed sector distribution, not just its coverage number —
+  // an ordinary diversified fund allocation that never crosses the warn
+  // threshold produces no flag, so without this line the model only ever sees
+  // a coverage percentage for it, never what it's actually IN (Codex review,
+  // FIX-801 sub-PR c round 28, same spirit as the opaque-fund detail below).
+  if (lookThrough.sectorExposure.length > 0) {
+    const sectors = lookThrough.sectorExposure.map((s) => `${s.bucket} ${fmtPct(s.pct)}`).join(", ");
+    lines.push(`Look-through sector exposure: ${sectors}.`);
+  }
+  // The top effective-name positions, WITH source identity — `maxPosition`
+  // above names only the single largest and never says whether it's a direct
+  // holding or attributed through a wrapper; everything below it was
+  // invisible entirely. Same "Top positions by weight" style as the
+  // wrapper-basis line, so the model can trace a concentration read to an
+  // actual holding (Codex review, FIX-801 sub-PR c round 32).
+  //
+  // WITH each source's own contribution when there's more than one (Codex
+  // review, FIX-801 sub-PR c round 41) — round 32 rendered only the source
+  // NAMES ("direct + SPY"), telling the model the total split across sources
+  // but not how much came from each. Each source's `marketValue` is already
+  // on the projection (the leaf's own `nameSources` accounting — the exact
+  // same amounts that sum to the position's total, by construction); a
+  // source's own weight is derived from that ratio against the position's
+  // already-computed `weightPct` rather than a separate NAV division, so it
+  // reconciles to the total exactly. A single-source position stays a bare
+  // name — the percent would just repeat the total already shown.
+  if (lookThrough.positions.length > 0) {
+    const positions = lookThrough.positions
+      .map((p) => {
+        const totalSourceMv = p.sources.reduce((sum, s) => sum + s.marketValue, 0);
+        const sourceLabel = p.sources
+          .map((s) =>
+            p.sources.length > 1
+              ? `${s.from} ${fmtPct(totalSourceMv > 0 ? (s.marketValue / totalSourceMv) * p.weightPct : 0)}`
+              : s.from,
+          )
+          .join(" + ");
+        return `${p.ticker} ${fmtPct(p.weightPct)} (${sourceLabel})`;
+      })
+      .join(", ");
+    lines.push(`Look-through top positions by weight: ${positions}.`);
+  }
+  // Per-fund identity behind the counts above: WHICH wrapper, on WHICH axis,
+  // for WHY — the summary line's counts alone give the model no way to trace
+  // "1 fund opaque" back to a specific holding, risking a warning attributed
+  // to the wrong one (Codex review, FIX-801 sub-PR c round 25). One clause per
+  // `OpaqueFund` entry (not deduped by ticker — a fund thin on names but fine
+  // on sectors has two distinct, both-preserved reasons; see
+  // `opaqueFundDetails`'s docblock in `build-portfolio-context.ts`).
+  if (lookThrough.opaqueFundDetails.length > 0) {
+    const details = lookThrough.opaqueFundDetails
+      .map(
+        (f) =>
+          `${f.ticker} (${f.axis}: ${f.reason}${f.unavailable ? ", not yet available" : ""})`,
+      )
+      .join("; ");
+    lines.push(`Opaque fund detail: ${details}.`);
+  }
+}
+
+/**
+ * The opaque-fund clause of the look-through line, split by WHY a fund is
+ * opaque so the model doesn't read "not yet available" as a data-quality
+ * finding (Codex review, FIX-801 sub-PR c): `opaqueUnavailableFundCount` (never
+ * fetched, or quota/rate-limited and pending retry) is reported separately
+ * from the remainder, which is a genuine thin/malformed/ineligible-data
+ * judgment.
+ */
+function opaqueFundsSuffix(
+  lookThrough: NonNullable<NonNullable<PortfolioContextInput["health"]>["lookThrough"]>,
+): string {
+  const dataQualityCount = lookThrough.opaqueFundCount - lookThrough.opaqueUnavailableFundCount;
+  const clauses: string[] = [];
+  if (dataQualityCount > 0) {
+    clauses.push(`${dataQualityCount} fund(s) opaque (thin/ineligible data)`);
+  }
+  if (lookThrough.opaqueUnavailableFundCount > 0) {
+    clauses.push(`${lookThrough.opaqueUnavailableFundCount} fund(s) not yet available (unfetched or temporarily rate/quota-limited)`);
+  }
+  return clauses.length > 0 ? `; ${clauses.join(", ")}` : "";
 }
 
 /**

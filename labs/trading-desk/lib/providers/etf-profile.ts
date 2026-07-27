@@ -182,12 +182,62 @@ const COVERAGE_OVERAGE_EPSILON = 0.01; // 1pp slack for rounding across ~500 row
  * Fetch and normalize one ticker's ETF profile. Throws `AlphaVantageError` (or
  * a subclass) on any transport/budget/rate-limit failure — the caller
  * degrades exactly as with every other AV fetcher. Returns a `"refused"`
- * outcome (never throws) for a domain-level judgment: no usable profile data
- * at all (`not_an_etf`), a leveraged/inverse fund or one with no resolvable
- * constituents at all — bullion, unsymboled debt (`ineligible`), or
- * constituent weights summing past 100% (`malformed`, a provider-side data
- * bug). See the FIX-801 spec §9 edge-case table for the exact refusal→backoff
- * mapping (owned by the REST route, not this module).
+ * outcome (never throws) for a domain-level judgment. See the FIX-801 spec §9
+ * edge-case table for the exact refusal→backoff mapping (owned by the REST
+ * route, not this module).
+ *
+ * **Every early return in this function is one of exactly three kinds — kept
+ * enumerated here on purpose (Codex review, FIX-801 sub-PR c) so this
+ * function doesn't grow a fifth per-axis bug the same shape as the first
+ * four, or lose the combined-failure bucket a fifth review round had to add:**
+ *
+ * 1. **Legitimately WHOLE-PROFILE** — a permanent, structural fact about the
+ *    FUND, true independent of any per-axis data quality, so refusing (and
+ *    backing off) the whole profile is correct:
+ *    - `not_an_etf` — BOTH raw arrays are empty. There is nothing on either
+ *      axis to degrade to.
+ *    - `ineligible` (leveraged) — a leveraged/inverse fund. Out of scope by
+ *      policy (spec Non-goals), regardless of what either axis' data says.
+ *
+ * 2. **Per-axis degradation — NEVER refuses the whole profile on its own.**
+ *    That judgment belongs to the consuming leaf (Decision 4's per-axis gate;
+ *    docs/etf-look-through.md), not this fetcher: a fund can pass on one axis
+ *    while failing the other, and every one of these discards just the
+ *    affected axis's rows/coverage (`[]` / `0` — read by the leaf exactly
+ *    like "the provider sent nothing on this axis") and falls through so the
+ *    OTHER axis is still evaluated on its own merits:
+ *    - NAME axis rows sum past 100% (over-sum malformed).
+ *    - NAME axis has no resolvable constituent — whether from an empty/absent
+ *      `holdings` array, rows with no resolvable symbol at all (bullion,
+ *      unsymboled debt), or resolvable symbols whose weights all failed to
+ *      parse. All three collapse to the same "nothing to attribute on the
+ *      name axis" outcome; none of them is a fact about the SECTOR axis, so
+ *      none of them may suppress it (this was the case still refusing the
+ *      whole profile as of the third review round — the fourth variant of
+ *      this same bug class).
+ *    - SECTOR axis rows sum past 100% (over-sum malformed).
+ *
+ * 3. **COMBINED-axis fallback — refuses `malformed`, checked AFTER both axes
+ *    are independently evaluated.** Bucket 2 says either axis degrading ALONE
+ *    is fine; it does not say BOTH degrading together is fine. If neither axis
+ *    survives (`constituents` ends up empty AND `sectors` ends up empty — by
+ *    any combination of the bucket-2 routes, or one axis malformed and the
+ *    other simply never present), that is not a thin-but-real profile — the
+ *    provider returned something (bucket 1's both-raw-empty check already
+ *    caught a literal empty response), but nothing on it survived to store.
+ *    Falling through to an unconditional `"profile"` success here would (a)
+ *    misreport a corrupted/garbage response as merely "thin coverage", and
+ *    (b) earn the standard ~30-day freshness window instead of `malformed`'s
+ *    ~7-day retry, leaving a fund that gave garbage data opaque for a month
+ *    (Codex review, FIX-801 sub-PR c, round 8 — the fifth review pass on this
+ *    function). The GLD-style "fully covered, nothing nameable" profile
+ *    (bucket 2's unsymboled-but-priced case) never lands here: it keeps its
+ *    null-ticker rows in `constituents`, so `constituents.length` is never 0
+ *    for it even though nothing is attributable.
+ *
+ * The `malformed` `EtfRefusalReason` is consequently produced ONLY by bucket
+ * 3 — every bucket-2 case that used to return it now degrades that one axis
+ * instead.
  */
 export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> {
   const body = (await alphaVantageRequest({
@@ -207,7 +257,7 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     return { kind: "refused", reason: "ineligible", detail: "leveraged/inverse fund" };
   }
 
-  const constituents: EtfConstituent[] = [];
+  let constituents: EtfConstituent[] = [];
   let nameCoverage = 0;
   for (const row of rawHoldings) {
     const weight = parseFraction(row.weight);
@@ -216,44 +266,37 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
     constituents.push({ ticker: normalizeConstituentTicker(row.symbol), weight });
   }
 
+  // Mirror of the sector-malformed handling below: a malformed NAME axis
+  // must not discard an otherwise-usable SECTOR axis either — the same
+  // per-axis contract applies symmetrically (Codex review, FIX-801 sub-PR c,
+  // follow-up to the sector-side fix). Discard just the malformed name rows
+  // (same shape as "the provider sent no holdings data") and keep going; the
+  // sector axis, checked further below, is still evaluated on its own
+  // merits.
   if (nameCoverage > 1 + COVERAGE_OVERAGE_EPSILON) {
-    return {
-      kind: "refused",
-      reason: "malformed",
-      detail: `constituent weights sum to ${(nameCoverage * 100).toFixed(1)}%`,
-    };
+    constituents = [];
+    nameCoverage = 0;
+  } else {
+    // A sum inside the accepted tolerance (100–101%, pure rounding across
+    // hundreds of rows) still must not EXCEED 1 in what gets stored: the
+    // consuming leaf's `safeWeight` (`etf-look-through.ts`) has a strict
+    // `[0, 1]` contract and zeroes anything outside it — so an unclamped
+    // 1.005 would silently read back as 0% coverage (fully opaque)
+    // downstream instead of the ~100% this profile actually has. Clamping
+    // here, not loosening the leaf's contract, is the fix (Codex review,
+    // FIX-801 sub-PR c): the leaf's strict range is correct; this is the
+    // one place that produces a value outside it. Individual constituent
+    // weights never need this — `parseFraction` already rejects any single
+    // weight > 1 — only the AGGREGATE sum can land just over 1. The leaf's
+    // own over-sum scaling (`nameScale`) still applies correctly afterward:
+    // clamping only the declared coverage (not the individual rows) keeps
+    // `actualNameSum` from re-summing the rows slightly ABOVE the clamped
+    // `nameCoverage`, which the leaf's reconciliation tolerance already
+    // absorbs and its scaling logic already handles.
+    nameCoverage = Math.min(nameCoverage, 1);
   }
 
-  const hasResolvableConstituent = constituents.some((c) => c.ticker !== null);
-  if (!hasResolvableConstituent) {
-    // "No resolvable constituent" covers THREE distinct raw shapes, which
-    // must not share a verdict (Codex review, FIX-801 sub-PR a): a
-    // genuinely unsymboled book (bullion, unsymboled debt) is a permanent
-    // fact about the fund — `ineligible`, ~90-day backoff. Symbols that WERE
-    // resolvable but whose weights all failed to parse (corrupted/
-    // out-of-range) is a provider-side data glitch that may well be fixed on
-    // the next fetch — `malformed`, ~7-day backoff. A response with sector
-    // rows but an EMPTY/absent `holdings` array (`rawHoldings.length === 0`)
-    // falls through to this same check now too — this is no longer gated on
-    // `rawHoldings.length > 0`, since an empty holdings array trivially has
-    // no resolvable symbol either and must not silently pass through as a
-    // zero-constituent "profile" (a second Codex review, FIX-801 sub-PR a —
-    // distinct from the initial both-empty `not_an_etf` check above, which
-    // only fires when sectors are ALSO empty). Checked independently of
-    // weight validity, so a response with fine symbols and garbage weights
-    // isn't suppressed for 12x longer than it should be.
-    const hasResolvableSymbol = rawHoldings.some((row) => !isAbsent(row.symbol));
-    if (hasResolvableSymbol) {
-      return {
-        kind: "refused",
-        reason: "malformed",
-        detail: "resolvable constituent symbols present but no weight parsed",
-      };
-    }
-    return { kind: "refused", reason: "ineligible", detail: "no resolvable constituent tickers" };
-  }
-
-  const sectors: EtfSectorRow[] = [];
+  let sectors: EtfSectorRow[] = [];
   let sectorCoverage = 0;
   for (const row of rawSectors) {
     const weight = parseFraction(row.weight);
@@ -263,10 +306,47 @@ export async function fetchEtfProfile(ticker: string): Promise<EtfProfileFetch> 
   }
 
   if (sectorCoverage > 1 + COVERAGE_OVERAGE_EPSILON) {
+    // A malformed SECTOR axis must not discard an otherwise-usable NAME axis
+    // (docs/etf-look-through.md's own per-axis contract — a fund can pass on
+    // names while failing sectors, and per-axis malformed handling is the
+    // consuming leaf's business, not the fetcher's — see the leaf's own
+    // "sector data malformed" reconciliation check, which exists precisely
+    // because a per-axis judgment, not a whole-profile refusal, is the
+    // correct granularity here). Refusing the WHOLE profile — and backing it
+    // off for ~7 days — would suppress a fund's fully-usable name-axis data
+    // over a sector-only data glitch (Codex review, FIX-801 sub-PR c).
+    // Discard just the malformed sector rows (same shape as "the provider
+    // sent no sector data at all" — the leaf's existing below-floor handling
+    // already renders that honestly as sector-axis-opaque) and keep going;
+    // the profile still returns as a usable "profile" outcome, not a refusal.
+    sectors = [];
+    sectorCoverage = 0;
+  } else {
+    // Same clamp, same reason as `nameCoverage` above — a within-tolerance
+    // over-sum must not persist above the leaf's strict `[0, 1]` contract.
+    sectorCoverage = Math.min(sectorCoverage, 1);
+  }
+
+  // The third bucket the per-axis taxonomy needs (Codex review, FIX-801
+  // sub-PR c, round 8): each axis degrading independently is correct, but if
+  // BOTH axes end up with nothing usable — `constituents` empty (no
+  // attributable name AND no real coverage figure either — the GLD-style
+  // "fully covered, nothing nameable" case above always leaves at least one
+  // null-ticker row, so it never lands here) and `sectors` empty, regardless
+  // of whether either got there via the over-sum branch or was simply never
+  // present — that is not a thin-but-real profile. It is a malformed
+  // response: the provider returned SOMETHING (the top-of-function
+  // both-raw-empty check already caught a literal empty response), but
+  // nothing on it survives to store. Persisting this as a normal `"profile"`
+  // success would (1) misrepresent a corrupted/garbage response as merely
+  // "thin coverage", and (2) earn the standard ~30-day freshness window
+  // instead of the `malformed` refusal's ~7-day retry, leaving a fund that
+  // genuinely gave garbage data opaque for a month before trying again.
+  if (constituents.length === 0 && sectors.length === 0) {
     return {
       kind: "refused",
       reason: "malformed",
-      detail: `sector weights sum to ${(sectorCoverage * 100).toFixed(1)}%`,
+      detail: "no usable data on either axis",
     };
   }
 

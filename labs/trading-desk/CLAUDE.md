@@ -38,8 +38,12 @@ lib/                           Shared backend utilities and application services
   cache.ts                      process-wide TTL + in-flight request deduping
   concurrency.ts                mapLimit + sleep for bounded provider fan-out
   portfolio-market-data.ts      live portfolio quote/kind policy over providers
+  singleflight.ts               withLease — per-key in-process lease (FIX-801: collapses duplicate concurrent fills)
+  etf-profile-backoff.ts        per-refusal-class retry-at policy (FIX-801: quota/transient/malformed/not_an_etf/ineligible)
   providers/                    Shared external API clients — stateless, throw on failure
     types.ts                    Provider-owned request + normalized data contracts
+    alpha-vantage.ts            Alpha Vantage shared request — key/body-error handling + daily budget + per-minute pacing (FIX-798/801)
+    etf-profile.ts               ETF_PROFILE fetcher (FIX-801): normalize · sector-vocabulary map · coverage · eligibility
     finnhub.ts                  Finnhub fetch helpers (incl. institutional ownership)
     fred.ts                     FRED per-series fetch + retry (macro indicators + NFCI)
     yahoo.ts                    Yahoo Finance fetch helpers (quoteSummary + fundamentals-timeseries)
@@ -129,7 +133,8 @@ domain/portfolio/               Shared portfolio domain (Spine B) — imported b
                                    transaction-import
   parsers/                       CSV / OFX / PDF reconcile + transaction-file dispatcher
   math/                          Pure leaves: lots, value-holding, health, tax-estimate, holding-period,
-                                   realized-gains, classify-instrument
+                                   realized-gains, classify-instrument, etf-look-through (FIX-801),
+                                   concentration-thresholds, etf-profile-map
   services/                      portfolio-writes + get-quotes + reconcile-fund-classification
                                    (plain functions; market-data dependencies are injected)
 flows/portfolio/                Flow-shaped portfolio work only (not domain CRUD)
@@ -147,7 +152,8 @@ flows/portfolio/                Flow-shaped portfolio work only (not domain CRUD
 fixtures/<TICKER>/<DATE>/        date-addressed snapshots for fixture mode (`FIXTURE_SNAPSHOT` is the default date)
 db/                             App-owned relational layer (FIX-772) — accounts + holdings + prices, NOT a resource
   schema.ts                      Drizzle `app` Postgres schema: accounts + holdings + ledger + realized-gains
-                                   + tax-profiles + quotes (last-known price, FIX-823) tables
+                                   + tax-profiles + quotes (last-known price, FIX-823)
+                                   + instrument_classifications (FIX-762) + etf_profiles (FIX-801) tables
   client.ts                      createDb (node-postgres, deploy) + createMigratedPgliteDb (embedded dev)
   repository.ts                  createPortfolioRepository + toAccountStates — the typed data-access surface
   portfolio-db.ts                getBacking() (PGlite dev / shared pg.Pool deploy) + getRepository() singleton
@@ -160,6 +166,8 @@ app/api/portfolio/              REST surface over domain services + repository �
   transactions/import/route.ts    POST (OFX/QFX/QBO file import)
   income/route.ts                 GET ledger-derived dividends + interest
   quotes/route.ts                 GET last-known prices · quotes/refresh/route.ts POST (fetch live + upsert)
+  classifications/route.ts        GET per-ticker sector (FIX-762) — lazy Yahoo fill, self-heals a stale fund/crypto asset type
+  etf-profiles/route.ts           GET per-fund holdings profile (FIX-801) — lazy Alpha Vantage fill, owns pre-filter/pacing/backoff
 
 fixtures/<TICKER>/2026-05-06/    pinned snapshot for fixture mode
 ```
@@ -317,9 +325,33 @@ sector — is backed by a new global `app.instrument_classifications` table
 returned but never persisted, retried later). The same leaf runs server-side at
 `seedSession` to inject a compact `health` block into the trader/PM
 `<portfolioContext>` (`build-portfolio-context.ts` → `format.ts`), and it gives
-the long-dead `holdings[].sector` field its first producer. Funds (ETF / mutual
-fund) are honestly opaque — `lookThrough: "none"`, exempt from single-name flags,
-bucketed as "Funds (no look-through)"; ETF look-through is FIX-801. Drift-vs-
+the long-dead `holdings[].sector` field its first producer. On the WRAPPER basis
+funds (ETF / mutual fund) stay honestly opaque — exempt from single-name flags,
+bucketed as "Funds (no look-through)" — that basis is untouched by design
+(FIX-801 Decision 2). **ETF look-through (FIX-801)** is a SECOND, additive read
+beside it, computed by the SAME leaf's optional trailing `etfProfiles` argument
+(`domain/portfolio/math/etf-look-through.ts`, `computeLookThroughExposure`):
+`lookThrough` widens from the literal `"none"` to `"none" | "partial"`
+(`"partial"` once at least one fund is actually attributed through), and a
+nullable `lookThroughExposure` carries effective per-name exposure (a direct
+holding and the same name held through a fund add up instead of sitting apart),
+real attributed sectors (no "Funds" bucket on this axis), per-axis coverage
+(names vs. sectors independently gated at an 85% floor — a thin or ineligible
+fund stays opaque and named as incomplete, never half-attributed), and its own
+tagged concentration flags at the same thresholds as the wrapper basis. Every
+figure here is a LOWER BOUND (uncovered fund weight is an explicit residual,
+never renormalized) and does NOT move the analysis pipeline's deterministic
+sizing gates (mandate / policy / evidence) — narrative context only. Backed by
+a second global, ticker-keyed reference table, `app.etf_profiles` (lazily filled
+from Alpha Vantage's `ETF_PROFILE` endpoint via
+`app/api/portfolio/etf-profiles/route.ts` + `use-etf-profiles.ts`, mirroring the
+classifications precedent one row down). The Health section reads it live; the
+analysis seed (`build-portfolio-context.ts`) reads the SAME table READ-ONLY and
+never fetches, so a run sees look-through only for funds the Portfolio view has
+already warmed (a documented, accepted divergence — see
+[`docs/etf-look-through.md`](docs/etf-look-through.md)). Non-equity, leveraged/
+inverse, and thinly-covered funds stay opaque by design (no mutual-fund or
+bond/commodity-fund attribution; one level of look-through only). Drift-vs-
 target and standing-constraint compliance (`computeAllocationDrift`) is the
 FIX-761-gated follow-up slice — the `health.drift` context field and the
 allocation view's target overlay stay empty until the durable mandate lands.
@@ -449,7 +481,8 @@ allocation view's target overlay stay empty until the durable mandate lands.
   holding `priceAsOf` (FIX-823) so a quote-sourced price labels its own staleness
   (par / statement / unavailable carry no as-of). Bonds use the carried statement
   mark in v1; durable last-known-price persistence across sessions is **FIX-823
-  (done — `app.quotes`)**, and ETF look-through is FIX-801 (deferred).
+  (done — `app.quotes`)**, and ETF look-through is **FIX-801 (done — see the
+  Health perspective paragraph above)**.
 - **Derived money math** (market value, weight %, unrealized P/L, rollups) lives
   in `components/portfolio/portfolio-format.ts` (pure) and is computed in
   `useMemo` (BP-010), never stored — it depends on a live quote and the whole-

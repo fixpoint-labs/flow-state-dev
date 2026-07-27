@@ -28,7 +28,7 @@
  * percent-of-par bond and a per-contract-vs-per-share option from valuing 100×
  * off.
  */
-import type { AssetType, Holding } from "../schema/portfolio-schema";
+import type { AssetClass, AssetType, Holding } from "../schema/portfolio-schema";
 
 /** Asset types valued from a LIVE quote (as opposed to a carried statement mark
  *  or par). The Portfolio pane fetches quotes only for these — a bond / option /
@@ -143,4 +143,62 @@ export function holdingUnrealizedPL(
   const cost = finiteOrNull(holding.costBasis);
   if (price === null || cost === null) return null;
   return (price - cost) * holding.quantity;
+}
+
+/** One ticker's classification, resolved from its DOMINANT (largest
+ *  `|marketValue|`) row. */
+export type DominantClassification = { assetClass: AssetClass; assetType: AssetType };
+
+/**
+ * For each ticker across a flat holdings list (possibly spanning multiple
+ * accounts), resolve the `{ assetClass, assetType }` of the row with the
+ * LARGEST `|marketValue|` — the deterministic tie-break `portfolio-health.ts`'s
+ * ticker-merge Pass 1 uses so a merged line's class/type is decided by the
+ * dominant lot, not by iteration order or an "any row" test, when two accounts
+ * (or a single manual reclassification) disagree on a symbol's type. An
+ * `inconsistent_history` row never enters money math, so it is excluded from
+ * the comparison — but the FIRST row encountered for a ticker still seeds the
+ * entry's classification (mass `-1`, beaten by any comparable row's mass,
+ * including an unpriced row's `0`) so a ticker whose every row is excluded
+ * still resolves to SOME classification rather than none (mirrors Pass 1's own
+ * entry-creation-time default).
+ *
+ * Extracted so a caller that needs "this ticker's classification" OUTSIDE
+ * `summarizePortfolioHealth`'s own merge (e.g. `excludeFixedIncomeFromProfileMap`,
+ * which runs BEFORE the leaf and cannot reach into its internal `merged` map)
+ * uses the SAME rule instead of an independently-drifting one — two
+ * implementations of "which lot wins" is exactly the kind of duplicated
+ * judgment call this codebase's `distill-lessons` process flags (Codex review,
+ * FIX-801 sub-PR c round 14: `excludeFixedIncomeFromProfileMap` used to
+ * suppress on ANY row being `fixed_income`, which let a tiny manually-
+ * reclassified lot suppress attribution for a much larger equity-classified
+ * position in the same ticker elsewhere in the household — disagreeing with
+ * what `summarizePortfolioHealth` itself would classify that ticker as).
+ */
+export function dominantClassificationByTicker(
+  holdings: ReadonlyArray<
+    Pick<Holding, "ticker" | "assetClass" | "assetType" | "quantity" | "attributes" | "dataQuality">
+  >,
+  quotes: ReadonlyMap<string, { price: number | null }>,
+): Map<string, DominantClassification> {
+  const dominant = new Map<string, DominantClassification & { mass: number }>();
+  for (const h of holdings) {
+    const key = h.ticker.toUpperCase();
+    let current = dominant.get(key);
+    if (current === undefined) {
+      current = { assetClass: h.assetClass, assetType: h.assetType, mass: -1 };
+      dominant.set(key, current);
+    }
+    if (h.dataQuality === "inconsistent_history") continue;
+    const mv = holdingMarketValue(h, quotes.get(key));
+    const mass = mv === null ? 0 : Math.abs(mv);
+    if (mass > current.mass) {
+      current.assetClass = h.assetClass;
+      current.assetType = h.assetType;
+      current.mass = mass;
+    }
+  }
+  return new Map(
+    [...dominant].map(([ticker, { assetClass, assetType }]) => [ticker, { assetClass, assetType }]),
+  );
 }

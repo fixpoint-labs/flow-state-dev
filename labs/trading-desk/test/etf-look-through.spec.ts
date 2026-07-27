@@ -25,8 +25,13 @@
 import { describe, expect, it } from "vitest";
 import {
   computeLookThroughExposure,
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
   FUND_OF_FUNDS_THRESHOLD_PCT,
+  hasShortPosition,
+  isFundConfirmingProfileEntry,
   LOOK_THROUGH_COVERAGE_FLOOR_PCT,
+  MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON,
   type FundProfileInput,
   type LookThroughPositionInput,
   type NormalizedFundProfile,
@@ -640,6 +645,121 @@ describe("computeLookThroughExposure — Decision 4: per-axis coverage gate", ()
   });
 });
 
+describe("computeLookThroughExposure — name-axis diagnostic completeness (Codex review, FIX-801 sub-PR c round 14, refined round 16, connecting to round 8's per-axis taxonomy work in lib/providers/etf-profile.ts)", () => {
+  it("flags a fully-covered-but-nothing-nameable fund (GLD-style) as opaque on the name axis, even though it passes the coverage floor and reconciles", () => {
+    // Every NAME-axis row is AV's "n/a" sentinel (foreign lines, futures,
+    // cash) — real weight, no ticker to attribute to. The MASS accounting
+    // was already correct without this fix (every row routes to the name
+    // residual via its null ticker below), but `namesPass` and
+    // `nameReconciles` are BOTH true (coverage is genuinely high, the rows
+    // aren't corrupted), so neither existing branch ever added an
+    // `opaqueFunds` entry — this fund was invisible in the diagnostic list
+    // despite being 100% opaque on names by mass. Detected here from this
+    // fund's own attribution loop (`anyNameAttributed`) never pushing a
+    // real name — not from an upstream syntactic flag (round 16: the round-14
+    // fix originally checked the fetcher's `hasResolvableConstituent`, which
+    // this round replaced — see the leaf's own comment for why).
+    const positions = [fund("GLD", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "GLD",
+        profile({
+          nameCoverage: 1,
+          constituents: [
+            { ticker: null, weight: 0.98 },
+            { ticker: null, weight: 0.02 },
+          ],
+          sectorCoverage: 0,
+          sectors: [],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    // Mass accounting was already correct: fully residual, no fabricated name.
+    expect(out.positions).toEqual([]);
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    // The diagnostic: GLD shows up in opaqueFunds on the name axis.
+    expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "GLD", axis: "names" }));
+  });
+
+  it("does NOT flag a normal fund that actually attributes at least one real name slice", () => {
+    const positions = [fund("SPY", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "SPY",
+        profile({
+          nameCoverage: 1,
+          constituents: [{ ticker: "AAPL", weight: 1 }],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([{ ticker: "AAPL", marketValue: 100_000, weightPct: 100, sources: [{ from: "SPY", marketValue: 100_000 }] }]);
+    expect(out.opaqueFunds.some((f) => f.ticker === "SPY" && f.axis !== "sectors")).toBe(false);
+  });
+
+  it("flags a fund as opaque on names when its only named constituent carries a ZERO weight — syntactically resolvable (it has a ticker), but nothing is actually attributed (Codex review, FIX-801 sub-PR c round 16)", () => {
+    // The round-14 diagnostic checked the fetcher's `hasResolvableConstituent`
+    // ("did the provider return at least one row with a real ticker symbol"),
+    // which would have read `true` here — AAPL IS a resolvable ticker — even
+    // though the leaf's own `slice > 0` guard correctly never pushes a
+    // zero-weight row, so nothing is really attributed. Basing the diagnostic
+    // on this fund's OWN attribution output instead of the upstream syntactic
+    // signal catches this divergence.
+    const positions = [fund("ZEROWEIGHT", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "ZEROWEIGHT",
+        profile({
+          nameCoverage: 1,
+          constituents: [
+            { ticker: "AAPL", weight: 0 }, // resolvable ticker, zero weight — never pushed
+            { ticker: null, weight: 1 }, // the rest is non-attributable n/a mass
+          ],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // AAPL never pushed — zero weight
+    expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "ZEROWEIGHT", axis: "names" }));
+  });
+
+  it("flags a fund as opaque on names when its only named constituent resolves to ANOTHER fund below the fund-of-funds threshold — syntactically resolvable, but routed to the name residual, never attributed as a name (Codex review, FIX-801 sub-PR c round 16)", () => {
+    // SUBFUND is a real, positive-weight, resolvable ticker, but it is
+    // ITSELF a fund (proven via its own stored profile — layer 1b). Its 30%
+    // weight is well below FUND_OF_FUNDS_THRESHOLD_PCT (50%), so the WHOLE
+    // wrapper is NOT vetoed opaque by the fund-of-funds check — but SUBFUND's
+    // slice is still routed to `nameResidualMass` (the `isFundCached`
+    // branch), never pushed as an attributed name. The round-14 diagnostic
+    // would have missed this too: the fetcher's syntactic flag only asks
+    // "does any row have a ticker", with no idea a constituent is itself a
+    // fund.
+    const positions = [fund("WRAPPER", 100_000)];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      [
+        "WRAPPER",
+        profile({
+          nameCoverage: 0.95,
+          constituents: [
+            { ticker: "SUBFUND", weight: 0.3 },
+            { ticker: null, weight: 0.65 },
+          ],
+          sectorCoverage: 1,
+          sectors: [{ sector: "Technology", weight: 1 }],
+        }),
+      ],
+      ["SUBFUND", profile()], // proves SUBFUND is itself a fund (layer 1b) — one level of look-through only, its own constituents are never consulted
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // SUBFUND never pushed as a name
+    expect(out.opaqueFunds).toContainEqual(expect.objectContaining({ ticker: "WRAPPER", axis: "names" }));
+  });
+});
+
 describe("computeLookThroughExposure — Decision 4: effective-position interval", () => {
   it("matches the §1 worked overlap example: four 20% names + a 20% residual overlapping the largest gives 3.57 at the low end", () => {
     const positions = [
@@ -824,6 +944,54 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "TQQQ")).toBe(false);
   });
 
+  it("the constituent-evidence-unavailable withdrawal reason also outweighs a stale direct-holding classification (Codex review, FIX-801 sub-PR c round 14 — a real gap in round 13's own fix)", () => {
+    // `guards.ts` withdraws a wrapper fund's profile when its fund-of-funds
+    // constituent-broadening read fails, by REPLACING the map entry with a
+    // refusal carrying this reason — not by deleting the key (round 13
+    // originally deleted; round 14 fixed it). AOA is held directly,
+    // stale-classified as "equity" (the exact mistyped-equity recovery case
+    // `allHeldTickers`'s own docblock describes), with no OTHER fund
+    // evidence available: deleting the key would have left NOTHING proving
+    // AOA is a fund, so `resolveTickerIsFund` would fall all the way through
+    // to AOA's own stale "equity" tag and emit its full value as a
+    // fabricated single-name position. The withdrawal reason must be
+    // recognized as fund evidence, same as "ineligible"/"malformed", so AOA
+    // stays opaque instead.
+    const positions = [direct("AOA", 100_000, { assetType: "equity" })];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      ["AOA", refusal(CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON)],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "AOA", axis: "both", reason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "AOA")).toBe(false);
+  });
+
+  it("the fixed-income-attribution-suppressed reason also outweighs a stale direct-holding classification (Codex review, FIX-801 sub-PR c round 17 — reusing round 14's established withdraw-by-replace pattern)", () => {
+    // `excludeFixedIncomeFromProfileMap` suppresses attribution for a ticker
+    // whose DOMINANT lot is fixed_income by REPLACING the map entry with a
+    // refusal carrying this reason — not by deleting the key (the same round-
+    // 14 lesson: deleting a fixed-income-reclassified holding's ONLY fund
+    // evidence, when its local assetType is still stale-tagged "equity" — the
+    // manual-override state — would report it as a fabricated single-name
+    // direct stock instead of a bond fund). BND is held directly,
+    // stale-classified as "equity", with no OTHER fund evidence available.
+    const positions = [direct("BND_LIKE", 100_000, { assetType: "equity" })];
+    const fundProfiles = new Map<string, FundProfileInput>([
+      ["BND_LIKE", refusal(FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON)],
+    ]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "BND_LIKE", axis: "both", reason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "BND_LIKE")).toBe(false);
+  });
+
   it("the curated bond-ETF list also outweighs a stale direct-holding classification (Codex review round 5)", () => {
     // A 4th instance of the same evidence-ordering gap, this time for the
     // curated bond-ETF list: BND is held directly, stale-classified as
@@ -861,6 +1029,111 @@ describe("computeLookThroughExposure — Decision 7: the fund-of-funds oracle", 
     const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
     expect(out.positions).toEqual([
       { ticker: "MISTAG", marketValue: 100_000, weightPct: 100, sources: [{ from: "direct", marketValue: 100_000 }] },
+    ]);
+    expect(out.residual.marketValue).toBeCloseTo(0);
+    expect(out.opaqueFunds).toEqual([]);
+  });
+
+  it("a stored `not_an_etf` refusal does NOT disprove a locally `mutual_fund`-tagged holding — it only disproves ETF-ness, not fund-ness (Codex review, FIX-801 sub-PR c round 18, a real bug)", () => {
+    // `app.etf_profiles` is GLOBAL reference data — the `not_an_etf` refusal
+    // here may have been recorded because a DIFFERENT household mistyped
+    // this same ticker as an ETF (the ETF_PROFILE endpoint never covers
+    // mutual funds at all, so a mutual fund correctly submitted to it always
+    // comes back `not_an_etf` — that's expected, uninformative behavior, not
+    // proof the ticker isn't a fund). A `mutual_fund`-tagged holding's own
+    // positive fund evidence must survive this refusal; only an
+    // `"etf"`-tagged holding's evidence is what `not_an_etf` legitimately
+    // overrides (the sibling test above).
+    const positions = [direct("VFIAX", 100_000, { assetType: "mutual_fund" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["VFIAX", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    // The opaque diagnostic reads the mutual-fund-specific policy-exclusion
+    // reason, NOT the raw `"not_an_etf"` refusal — round 20 got the fund/
+    // not-fund IDENTITY right, but reporting the raw ETF-specific disproof
+    // reason here would still mislabel a structural policy fact ("ETF_PROFILE
+    // never covers mutual funds") as a data-quality finding downstream
+    // (`classifyOpaqueFunds` → "thin/ineligible data") (Codex review,
+    // FIX-801 sub-PR c round 30).
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({
+        ticker: "VFIAX",
+        axis: "both",
+        reason: MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON,
+      }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "VFIAX")).toBe(false);
+  });
+
+  it("a stored `quota`/`transient` refusal on a directly-held mutual fund is ALSO relabeled as policy-excluded, not left as a transport hiccup that will never actually retry (Codex review, FIX-801 sub-PR c round 32, extending round 30's not_an_etf-only relabel)", () => {
+    // VFIAX2B's map entry is a leftover `quota`/`transient` row (e.g. from a
+    // DIFFERENT household's ETF-mistagged fetch attempt that hit the shared
+    // budget or a network blip). `isEtfProfileFetchCandidate` permanently
+    // excludes mutual funds from ever being fetched by THIS app, so unlike an
+    // ordinary ETF ticker, no future request can ever clear this status —
+    // the same "no future fetch could resolve this" fact round 30 already
+    // established for `not_an_etf`, just a different stale refusal reason.
+    const positions = [direct("VFIAX2B", 100_000, { assetType: "mutual_fund" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["VFIAX2B", refusal("quota")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({
+        ticker: "VFIAX2B",
+        axis: "both",
+        reason: MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON,
+      }),
+    );
+  });
+
+  it("control: the mutual-fund relabel is scoped to the stale/neutral refusal class (`not_an_etf`/`quota`/`transient`) — a mutual fund refused for a genuine reason (e.g. `ineligible`) reports that reason verbatim, not blanket-relabeled (Codex review, FIX-801 sub-PR c rounds 30/32)", () => {
+    // MUTUALFD's stored profile is genuinely `ineligible` (e.g. a leveraged
+    // share class) — not the round 18/20 stale-cross-household `not_an_etf`
+    // case, nor round 32's `quota`/`transient` extension. The relabel must
+    // not fire for every mutual-fund refusal, only the stale/neutral ones.
+    const positions = [direct("MUTUALFD", 100_000, { assetType: "mutual_fund" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["MUTUALFD", refusal("ineligible")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "MUTUALFD", axis: "both", reason: "ineligible" }),
+    );
+  });
+
+  it("a stored `not_an_etf` refusal does NOT disprove a ticker on the curated bond-ETF list either — the curated list is stronger, externally-verified evidence than a stale/pre-curation AV response (Codex review, FIX-801 sub-PR c round 27, a real bug)", () => {
+    // BND is pre-filtered from the ETF_PROFILE fill entirely (Decision 5 —
+    // `isEtfProfileFetchCandidate` excludes every currently-curated ticker
+    // from ever being fetched by this app's own route), so a `not_an_etf`
+    // row on BND can only be stale data from before it was added to the
+    // curated list (or from before the pre-filter existed) — never a live
+    // verdict about a fetch this app would make today. Held directly and
+    // still tagged `etf` (the classifier's own bond-ETF short-circuit keeps
+    // `assetType: "etf"` so valuation stays on the live quote), with a
+    // legacy `not_an_etf` row sitting in the map: before this fix, layer 1b's
+    // unconditional `not_an_etf` check returned `false` before layer 2's
+    // curated-list check ever ran, so BND was misrouted as a direct name —
+    // exactly the false single-name concentration the curated-list ordering
+    // (the sibling test above) exists to prevent.
+    const positions = [direct("BND", 100_000, { assetType: "etf" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["BND", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([]); // never attributed as a direct name
+    expect(out.residual.marketValue).toBeCloseTo(100_000);
+    expect(out.opaqueFunds).toContainEqual(
+      expect.objectContaining({ ticker: "BND", axis: "both", reason: "not_an_etf" }),
+    );
+    expect(out.flags.some((f) => f.kind === "single_name" && f.ticker === "BND")).toBe(false);
+  });
+
+  it("control: a stored `not_an_etf` refusal STILL disproves an ordinary (non-curated) directly-held ETF-tagged ticker — the round-27 fix is scoped to the curated list, not a blanket override", () => {
+    // The exact scenario the round-27 fix must NOT regress: a genuinely
+    // mistagged ticker (not on the curated bond-ETF list) with a real
+    // `not_an_etf` disproof must still resolve as a direct name, same as the
+    // very first evidence-ordering test above.
+    const positions = [direct("MISTAG2", 100_000, { assetType: "etf" })];
+    const fundProfiles = new Map<string, FundProfileInput>([["MISTAG2", refusal("not_an_etf")]]);
+    const out = computeLookThroughExposure(positions, 100_000, fundProfiles)!;
+    expect(out.positions).toEqual([
+      { ticker: "MISTAG2", marketValue: 100_000, weightPct: 100, sources: [{ from: "direct", marketValue: 100_000 }] },
     ]);
     expect(out.residual.marketValue).toBeCloseTo(0);
     expect(out.opaqueFunds).toEqual([]);
@@ -1022,7 +1295,38 @@ describe("computeLookThroughExposure — §9 edge cases", () => {
     expect(computeLookThroughExposure([direct("AAPL", 100)], -100, new Map())).toBeNull();
     expect(computeLookThroughExposure([direct("AAPL", 100)], null, new Map())).toBeNull();
   });
+});
 
+describe("hasShortPosition — the exported predicate a caller without a full LookThroughExposure can use to predict whole-axis refusal (Codex review, FIX-801 sub-PR c round 43)", () => {
+  it("is true when any priced non-cash position is short (negative market value) — the exact trigger computeLookThroughExposure itself refuses on", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), fund("SHORT_ETF", -500)])).toBe(true);
+  });
+
+  it("is true for a non-finite (Infinity/NaN) market value, matching computeLookThroughExposure's own guarded-division contract", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), direct("BROKEN", Number.POSITIVE_INFINITY)])).toBe(true);
+    expect(hasShortPosition([direct("AAPL", 1_000), direct("BROKEN", Number.NaN)])).toBe(true);
+  });
+
+  it("is false when every priced non-cash position is non-negative", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), fund("SPY", 2_000)])).toBe(false);
+  });
+
+  it("ignores a negative CASH position — the same cash exclusion computeLookThroughExposure's own eligible filter applies", () => {
+    expect(
+      hasShortPosition([
+        direct("AAPL", 1_000),
+        direct("MARGIN_CASH", -50, { assetClass: "cash" }),
+        direct("SWEEP_MMF", -25, { assetType: "money_market" }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("ignores an unpriced (null marketValue) position", () => {
+    expect(hasShortPosition([direct("AAPL", 1_000), direct("UNPRICED", null)])).toBe(false);
+  });
+});
+
+describe("computeLookThroughExposure — §9 edge cases", () => {
   it("a non-attributable ('n/a') constituent line still counts against coverage rather than being dropped", () => {
     const positions = [fund("FUND", 100_000)];
     const fundProfiles = new Map<string, FundProfileInput>([
@@ -1058,6 +1362,31 @@ describe("computeLookThroughExposure — §9 edge cases", () => {
     const out = computeLookThroughExposure([fund("NEW", 10_000)], 10_000, new Map())!;
     expect(out.opaqueFunds).toEqual([
       expect.objectContaining({ ticker: "NEW", axis: "both", reason: "no stored profile" }),
+    ]);
+  });
+
+  it("a directly-held mutual fund with NO map entry at all reports as permanently policy-excluded, not 'no stored profile' — a mutual fund is never fetched by this app's own route in the first place (Codex review, FIX-801 sub-PR c round 31, the no-entry half of round 30's fix)", () => {
+    // This is the FAR more common shape than round 30's existing-entry case:
+    // `isEtfProfileFetchCandidate` requires `assetType === "etf"`, so a
+    // mutual-fund holding NEVER earns a map entry via this app's own fetch
+    // path. Reporting the generic "no stored profile" (an
+    // `UNAVAILABLE_REASONS` member downstream) would tell the trader/PM a
+    // future fetch might fill it in — one never will.
+    const positions = [fund("VFIAX2", 100_000, { assetType: "mutual_fund" })];
+    const out = computeLookThroughExposure(positions, 100_000, new Map())!;
+    expect(out.opaqueFunds).toEqual([
+      expect.objectContaining({
+        ticker: "VFIAX2",
+        axis: "both",
+        reason: MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON,
+      }),
+    ]);
+  });
+
+  it("control: an ordinary ETF-tagged fund with no map entry at all still reports the generic 'no stored profile' reason — the mutual-fund relabel is scoped to assetType === 'mutual_fund', not a blanket no-entry relabel", () => {
+    const out = computeLookThroughExposure([fund("NEWETF", 100_000, { assetType: "etf" })], 100_000, new Map())!;
+    expect(out.opaqueFunds).toEqual([
+      expect.objectContaining({ ticker: "NEWETF", axis: "both", reason: "no stored profile" }),
     ]);
   });
 
@@ -1153,5 +1482,27 @@ describe("computeLookThroughExposure — Decision 7: sector axis from the fund's
     expect(financials.marketValue).toBeCloseTo(20_000 + 0.13 * 80_000);
     const tech = out.sectorExposure.find((s) => s.bucket === "Technology")!;
     expect(tech.marketValue).toBeCloseTo(0.3 * 80_000);
+  });
+});
+
+describe("isFundConfirmingProfileEntry — the shared fund-evidence predicate resolveTickerIsFund's layer 1b uses", () => {
+  it("reads true for a real payload", () => {
+    expect(isFundConfirmingProfileEntry(profile())).toBe(true);
+  });
+
+  it("reads true for each reason that withholds attribution without disputing fund identity", () => {
+    expect(isFundConfirmingProfileEntry(refusal("ineligible"))).toBe(true);
+    expect(isFundConfirmingProfileEntry(refusal("malformed"))).toBe(true);
+    expect(isFundConfirmingProfileEntry(refusal(CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON))).toBe(true);
+    expect(isFundConfirmingProfileEntry(refusal(FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON))).toBe(true);
+  });
+
+  it("reads false for not_an_etf — disproof, not evidence", () => {
+    expect(isFundConfirmingProfileEntry(refusal("not_an_etf"))).toBe(false);
+  });
+
+  it("reads false for quota/transient — neutral transport failures, not a judgment either way", () => {
+    expect(isFundConfirmingProfileEntry(refusal("quota"))).toBe(false);
+    expect(isFundConfirmingProfileEntry(refusal("transient"))).toBe(false);
   });
 });

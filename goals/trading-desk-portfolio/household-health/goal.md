@@ -5,11 +5,21 @@ per-account, so the same name held in three accounts shows as three rows and
 nothing answers "how balanced is my portfolio as a whole?". FIX-762 adds a
 deterministic household layer: ticker-merged exposure across every account,
 asset-class and sector breakdowns (funds as their own opaque bucket — no ETF
-look-through), concentration reads (largest single name, top-5/10, effective
-positions = 1/HHI) with warn/alert flags, cash level, and honest coverage. The
-same compact aggregate is injected into the trader/PM analysis context. Drift
-versus a target allocation is the FIX-761-gated follow-up slice (not covered
-here).
+look-through, as of FIX-762), concentration reads (largest single name,
+top-5/10, effective positions = 1/HHI) with warn/alert flags, cash level, and
+honest coverage. The same compact aggregate is injected into the trader/PM
+analysis context. Drift versus a target allocation is the FIX-761-gated
+follow-up slice (not covered here).
+
+**2026-07-25 note (FIX-801):** the "funds as their own opaque bucket" sentence
+above describes the state as of FIX-762 and is now a stale default, not the
+current behavior — FIX-801 adds an additive second axis
+(`docs/etf-look-through.md`) that sees inside a fund's holdings where the
+provider's data supports it. This check's pass criterion and its
+`health.drift === null` anti-game clause are both unaffected by that change
+(Decision 2: look-through is additive, never a restyle of the wrapper-basis
+fields this check pins), so the check itself still passes unchanged — this is
+a description update, not a broken gate.
 
 **Real path.** This path has no model — the household math is deterministic TS
 (`summarizePortfolioHealth`) over the app-owned accounts + `app.quotes` +
@@ -62,3 +72,11 @@ pnpm tsx goals/trading-desk-portfolio/household-health/run.mts
   (1192 tests).
 
 - 2026-07-25 — **PASS** (none). All six real-path specs green over real PGlite. Run during the goals/lib migration (runner scaffolding only; no product code changed).
+
+- 2026-07-25 — **PASS** (none, FIX-801 sub-PR c). Re-run with the ETF
+  look-through wiring in place: 71 tests over real PGlite, including two new
+  `seed-portfolio-snapshot` cases that pin the read-only contract end to
+  end — the seed injects `lookThrough: "partial"` from a stored fund profile,
+  and leaves the axis null (never fetching) when a held fund has no stored
+  profile yet. `health.drift === null` still holds; nothing else in this
+  check's pass criterion moved.

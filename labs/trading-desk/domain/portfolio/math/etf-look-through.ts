@@ -60,6 +60,73 @@ export const LOOK_THROUGH_COVERAGE_FLOOR_PCT = 85;
  *  all-ETF allocation fund) sits far above it. */
 export const FUND_OF_FUNDS_THRESHOLD_PCT = 50;
 
+/** Refusal reason a caller (`guards.ts`) writes into a wrapper fund's map
+ *  entry when its fund-of-funds constituent-broadening read fails partway
+ *  through (Codex review, FIX-801 sub-PR c round 14 — see
+ *  `fundsReferencingTickers`'s docblock in `etf-profile-map.ts` for the full
+ *  gap this closes). Deliberately recognized by `resolveTickerIsFund`'s
+ *  layer 1b as POSITIVE fund evidence, the same bucket as `"ineligible"`/
+ *  `"malformed"` — this ticker WAS resolved as a fund at some point; what's
+ *  missing is confidence in its constituents, not whether it's a fund. A
+ *  caller uses this exact exported string rather than an inline copy, so the
+ *  write side and `resolveTickerIsFund`'s read side can never drift apart. */
+export const CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON =
+  "fund-of-funds constituent data temporarily unavailable (read failed)";
+
+/** Refusal reason a caller (`excludeFixedIncomeFromProfileMap`,
+ *  `etf-profile-map.ts`) writes into a ticker's map entry when its DOMINANT
+ *  lot is `fixed_income` (or it's on the curated bond-ETF list) — bond/
+ *  commodity-fund attribution is out of scope for this feature regardless of
+ *  whether a stored profile happens to be cached (Codex review, FIX-801
+ *  sub-PR c round 17 — the same gap round 14 closed for the constituent-
+ *  broadening withdrawal path, applied here). Deliberately recognized by
+ *  `resolveTickerIsFund`'s layer 1b as POSITIVE fund evidence, same bucket as
+ *  `"ineligible"`/`"malformed"`/{@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON}
+ *  — REPLACING the map entry (not deleting it) matters when the ticker's
+ *  local `assetType` is stale (still tagged `equity` while `assetClass` is
+ *  now `fixed_income`, the manual-override state): deleting would lose the
+ *  only positive fund evidence, so `resolveTickerIsFund` would fall back to
+ *  the stale `equity` tag and report the wrapper as a direct name — a false
+ *  single-name concentration, the identical failure mode round 14 fixed for
+ *  the constituent-read-failure withdrawal path. A caller uses this exact
+ *  exported string rather than an inline copy, so the write side and
+ *  `resolveTickerIsFund`'s read side can never drift apart. */
+export const FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON =
+  "fixed-income fund — look-through attribution out of scope";
+
+/** Diagnostic-display reason for a directly-held `mutual_fund` position whose
+ *  fund-ness `resolveTickerIsFund` already resolved correctly but whose map
+ *  entry — an existing raw `"not_an_etf"`/`"quota"`/`"transient"` refusal
+ *  (`app.etf_profiles` is GLOBAL reference data, so a stale row on this
+ *  ticker may belong to a different household's ETF mistag, not a live
+ *  verdict about THIS mutual fund; `quota`/`transient` are the same
+ *  stale/neutral-evidence class `isFundConfirmingProfileEntry`/
+ *  `notAnEtfDisproves` already treat together elsewhere in this file), or NO
+ *  entry at all (the normal case — `isEtfProfileFetchCandidate` requires
+ *  `assetType === "etf"`, so a mutual fund is never fetched by this app's
+ *  own route in the first place) — carries no signal that this is a
+ *  permanent POLICY exclusion rather than a DATA-QUALITY gap. Getting the
+ *  fund/not-fund IDENTITY right isn't enough on its own: reporting the raw
+ *  refusal reason or the generic `"no stored profile"` downstream (the main
+ *  loop's opaque diagnostic, `classifyOpaqueFunds`) reads as "thin/ineligible
+ *  data" or "not yet available" when the real situation is that the
+ *  ETF_PROFILE endpoint fundamentally cannot cover mutual funds at all (the
+ *  fetcher's own Non-goals) — never a gap a future fetch could close, since
+ *  NO refusal class or absence is ever cleared by a fetch that will never
+ *  happen. Same "distinguish permanent policy exclusion from data
+ *  unavailable" pattern {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON}
+ *  establishes for the bond-fund case. Substituted only at the two
+ *  opaque-diagnostic display points in `computeLookThroughExposure`'s main
+ *  loop — never written back into a `FundProfileInput` map entry, so it has
+ *  no bearing on `resolveTickerIsFund`'s own evidence-ordering (that
+ *  decision is already correctly made before this substitution is ever
+ *  consulted). Unlike the bond-ETF case, there is no
+ *  `excludeFixedIncomeFromProfileMap`-equivalent preprocessing step for
+ *  mutual funds — nothing upstream ever touches a mutual-fund ticker's map
+ *  entry — so the leaf itself is the only place any of this can be fixed. */
+export const MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON =
+  "mutual fund — look-through attribution out of scope (ETF_PROFILE never covers mutual funds)";
+
 /** Tolerance (as a `[0, 1]` fraction) for reconciling a stored profile's
  *  declared `nameCoverage`/`sectorCoverage` against the ACTUAL sum of that
  *  axis's row weights. A profile can pass the floor check on a coverage
@@ -229,6 +296,30 @@ function pctOf(value: number, denom: number): number {
 }
 
 /**
+ * Whether a stored `FundProfileInput` entry is POSITIVE fund evidence — the
+ * same set `resolveTickerIsFund`'s layer 1b treats as proof the ticker is a
+ * fund: a real payload, or a refusal reason that only withholds/suppresses
+ * attribution without disputing fund identity (`"ineligible"`, `"malformed"`,
+ * {@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON},
+ * {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON}). `"not_an_etf"` is
+ * DISPROOF (the opposite), and `"quota"`/`"transient"` are NEUTRAL (no fund
+ * evidence either way) — both read `false` here; a caller that needs to tell
+ * disproof from neutral must still check `refusalReason === "not_an_etf"`
+ * itself. Exported so a caller deciding whether REPLACING an entry would
+ * manufacture or preserve fund evidence (`excludeFixedIncomeFromProfileMap`,
+ * `etf-profile-map.ts`) shares this exact judgment instead of re-deriving it.
+ */
+export function isFundConfirmingProfileEntry(entry: FundProfileInput): boolean {
+  if (entry.payload !== null) return true;
+  return (
+    entry.refusalReason === "ineligible" ||
+    entry.refusalReason === "malformed" ||
+    entry.refusalReason === CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON ||
+    entry.refusalReason === FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON
+  );
+}
+
+/**
  * The ONE shared "does this ticker have fund evidence" oracle (§7), layers
  * 1–3 — the SINGLE evidence-ordering check every caller in this file uses,
  * not a per-caller reimplementation. It takes a bare ticker + the two
@@ -279,11 +370,20 @@ function pctOf(value: number, denom: number): number {
  *
  * The stored-profile check also reads a REFUSED profile's own reason:
  * `"ineligible"` (e.g. a leveraged/inverse fund, or a fund with no resolvable
- * constituent tickers) and `"malformed"` (corrupted holdings data) both mean
- * the upstream fetch DID resolve an ETF_PROFILE for the ticker — the refusal
- * is about the fund's data, not about whether it's a fund — so both are fund
- * evidence, same as a stored success payload. `"not_an_etf"` (an empty
- * profile response) is the only refusal reason that disproves fund-ness.
+ * constituent tickers), `"malformed"` (corrupted holdings data),
+ * {@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON} (a caller's own
+ * fund-of-funds constituent-broadening read failed, FIX-801 sub-PR c round
+ * 14), and {@link FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON} (a caller
+ * suppressed attribution for a fixed-income fund, round 17) all mean the
+ * ticker WAS resolved as a fund at some point — the refusal is about the
+ * fund's data, or about a caller's inability/unwillingness to attribute
+ * through it, not about whether it's a fund — so all four are fund evidence,
+ * same as a stored success payload. `"not_an_etf"`
+ * (an empty profile response) is the only refusal reason that disproves
+ * fund-ness — EXCEPT for a ticker the curated bond-ETF list already proves
+ * is a fund (round 27, `notAnEtfDisproves` in layer 1a's block below): a
+ * curated ticker is pre-filtered from ever being fetched, so a `not_an_etf`
+ * row on one is necessarily stale/pre-curation data, not a live verdict.
  * `"quota"` / `"transient"` (the route's own classification of a
  * request-level failure, never reaching the fetcher's own judgment) carry no
  * evidence either way and fall through to the next layer (Codex review,
@@ -317,22 +417,53 @@ function resolveTickerIsFund(
   // POSITIVE evidence beating a stale non-fund tag) — here it's NEGATIVE
   // evidence beating a stale FUND-TYPE tag. AV's own fetcher already
   // determined the ticker isn't actually an ETP, a stronger and more
-  // specific signal than a possibly-stale `assetType: "etf"/"mutual_fund"`
-  // classification (e.g. an import default that was never corrected).
-  // Without this, a ticker held-and-tagged as a fund but proven NOT to be
-  // one gets routed to residual as an opaque fund instead of being treated
-  // as a direct name with its own effective exposure and its own
-  // concentration eligibility (Codex review, FIX-801 sub-PR b).
-  const disprovenByProfile = profile?.payload === null && profile.refusalReason === "not_an_etf";
+  // specific signal than a possibly-stale `assetType: "etf"` classification
+  // (e.g. an import default that was never corrected). Without this, a
+  // ticker held-and-tagged as a fund but proven NOT to be one gets routed to
+  // residual as an opaque fund instead of being treated as a direct name
+  // with its own effective exposure and its own concentration eligibility
+  // (Codex review, FIX-801 sub-PR b).
+  //
+  // Scoped to `held.assetType === "etf"` ONLY — does NOT disprove a
+  // `mutual_fund` tag (Codex review, FIX-801 sub-PR c round 18, a real bug).
+  // `app.etf_profiles` is GLOBAL reference data (`allHeldTickers`'s own
+  // docblock): a `not_an_etf` refusal on this ticker may have been recorded
+  // because a DIFFERENT household mistyped a mutual fund as an ETF and the
+  // broad read still found it for THIS household's correctly-tagged
+  // `mutual_fund` holding. `not_an_etf` only proves the ticker isn't an ETP
+  // (unsurprising for a mutual fund — the ETF_PROFILE endpoint never covers
+  // mutual funds at all, per the fetcher's own Non-goals) — it says nothing
+  // about whether the ticker is a FUND. A locally `mutual_fund`-tagged
+  // holding's positive evidence must survive this disproof; only an
+  // `"etf"`-tagged holding's evidence is what `not_an_etf` legitimately
+  // overrides.
+  //
+  // ALSO does not disprove a ticker on the curated bond-ETF list (Codex
+  // review, FIX-801 sub-PR c round 27, a real bug — the same "not_an_etf
+  // proves less than it looks like it proves" class as round 18, reached
+  // through a different ticker shape). A curated bond ETF is pre-filtered
+  // from the ETF_PROFILE fill entirely (Decision 5 — `isEtfProfileFetchCandidate`
+  // excludes every currently-curated ticker from ever being fetched), so any
+  // `not_an_etf` row on a ticker CURRENTLY in the curated list can only be
+  // stale data from before it was curated, or from before this app's own
+  // pre-filter existed — never a live judgment about a fetch this app would
+  // make today. The curated list is a stronger, externally-verified fact
+  // than an empty AV response for exactly the fund category the methodology
+  // already treats as a fund regardless of what ETF_PROFILE reports (bond-
+  // fund attribution is out of scope by policy, not because these aren't
+  // real funds). `notAnEtfDisproves` is the ONE place this determination is
+  // made — reused by layer 1b below so the two checks can't drift apart.
+  const notAnEtfDisproves =
+    profile?.payload === null && profile.refusalReason === "not_an_etf" && !isKnownBondEtf(ticker);
+  const disprovenByProfile = held?.assetType === "etf" && notAnEtfDisproves;
   if (held && isFundAssetType(held.assetType) && !disprovenByProfile) return true;
 
   // Layer 1b — a stored profile, checked BEFORE a held ticker's non-fund
   // classification is allowed to settle the question (see the docblock
   // above for why: a direct holding's assetType can be stale/misclassified).
   if (profile) {
-    if (profile.payload !== null) return true; // a stored profile proves it's a fund
-    if (profile.refusalReason === "not_an_etf") return false; // proven NOT a fund
-    if (profile.refusalReason === "ineligible" || profile.refusalReason === "malformed") return true; // the fetch resolved an ETF_PROFILE; refusal is about the DATA, not fund-ness
+    if (notAnEtfDisproves) return false; // proven NOT a fund
+    if (isFundConfirmingProfileEntry(profile)) return true;
   }
 
   // Layer 2 — the curated bond-ETF list, checked BEFORE a held ticker's
@@ -341,7 +472,9 @@ function resolveTickerIsFund(
   // from the ETF_PROFILE fill (Decision 5) and so can NEVER reach layer 1b —
   // this is the only remaining evidence source for it, and it's stronger
   // than a possibly-stale local `assetType` field (Codex review round 5,
-  // FIX-801 sub-PR b).
+  // FIX-801 sub-PR b). Also the layer a stale `not_an_etf` row on a
+  // currently-curated ticker falls through to (round 27, see
+  // `notAnEtfDisproves` above).
   if (isKnownBondEtf(ticker)) return true;
 
   // Layer 1c — a held ticker with NO evidence from either the stored
@@ -377,15 +510,37 @@ function safeWeight(fraction: number): number {
 }
 
 /**
+ * Whether ANY priced, non-cash position carries a negative OR non-finite
+ * (`Infinity` / `NaN`) market value — the exact condition under which
+ * {@link computeLookThroughExposure} refuses the WHOLE axis (a short
+ * position anywhere makes the shared invested-NAV denominator
+ * uninterpretable for a look-through weight, Decision 4's "Also refused"
+ * edge case, §9). Exported so a caller that hasn't computed a full
+ * `LookThroughExposure` yet — the ETF-profiles route, deciding whether a
+ * fetch is even worth attempting before the whole axis gets discarded
+ * regardless of what it fetches (Codex review, FIX-801 sub-PR c round 43) —
+ * can cheaply predict the same whole-axis refusal without a second,
+ * independent implementation of this judgment call. `computeLookThroughExposure`
+ * itself calls this rather than re-checking inline, so there is exactly one
+ * copy of the rule.
+ */
+export function hasShortPosition(
+  positions: ReadonlyArray<Pick<LookThroughPositionInput, "assetClass" | "assetType" | "marketValue">>,
+): boolean {
+  return positions.some(
+    (p) =>
+      p.marketValue !== null &&
+      !isCashPosition(p.assetClass, p.assetType) &&
+      (!Number.isFinite(p.marketValue) || p.marketValue < 0),
+  );
+}
+
+/**
  * Compute the look-through exposure axis from a household's positions and
  * its fund profiles. Returns `null` when `investedNav` is not usable (≤ 0 or
  * null — the guarded-division rule every leaf in this domain follows) or
  * when any priced non-cash position carries a negative OR non-finite
- * (`Infinity` / `NaN`) market value (a short position anywhere makes the
- * shared invested-NAV denominator uninterpretable for a look-through weight —
- * Decision 4's "Also refused" edge case, §9; a non-finite value would
- * silently produce infinite/`NaN` weights downstream, violating this leaf's
- * own guarded-division contract — Codex review round 5, FIX-801 sub-PR b).
+ * (`Infinity` / `NaN`) market value (see {@link hasShortPosition}).
  *
  * Empty `fundProfiles` (no funds fetched, or no fund positions at all) is NOT
  * itself a reason to return null — it produces a well-formed axis with 100%
@@ -401,15 +556,15 @@ export function computeLookThroughExposure(
 ): LookThroughExposure | null {
   if (investedNav === null || !Number.isFinite(investedNav) || investedNav <= 0) return null;
 
+  // Any short (negative) OR non-finite (Infinity/NaN) market value makes the
+  // shared invested-NAV denominator uninterpretable → refuse the whole axis,
+  // never silently produce an infinite/NaN weight downstream (Codex review
+  // round 5, FIX-801 sub-PR b).
+  if (hasShortPosition(positions)) return null;
+
   const eligible = positions.filter(
     (p) => p.marketValue !== null && !isCashPosition(p.assetClass, p.assetType),
   );
-  // Any short (negative) OR non-finite (Infinity/NaN) market value makes the
-  // shared invested-NAV denominator uninterpretable → refuse the whole axis,
-  // never silently produce an infinite/NaN weight downstream.
-  if (eligible.some((p) => !Number.isFinite(p.marketValue as number) || (p.marketValue as number) < 0)) {
-    return null;
-  }
 
   const positionsByTicker = new Map(positions.map((p) => [p.ticker.toUpperCase(), p]));
 
@@ -490,15 +645,45 @@ export function computeLookThroughExposure(
 
     if (!profile) {
       // Never fetched (or the caller didn't warm it) — opaque on both axes.
+      // A MUTUAL FUND is never fetched by this app's own route AT ALL
+      // (`isEtfProfileFetchCandidate` requires `assetType === "etf"` — the
+      // fetcher's own Non-goals mean ETF_PROFILE can't cover mutual funds even
+      // if it tried), so an absent entry for one isn't "not yet warmed," it is
+      // PERMANENT — the same "no future fetch will ever fill this in" fact as
+      // MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON's existing-entry sibling
+      // below and the curated-bond-ETF case (`excludeFixedIncomeFromProfileMap`,
+      // `etf-profile-map.ts`). Report the policy-exclusion reason directly
+      // rather than the generic "no stored profile" (an `UNAVAILABLE_REASONS`
+      // member downstream, implying a pending fetch that will never happen).
       nameResidualMass += mv;
       sectorResidualMass += mv;
-      opaqueByTicker.set(pos.ticker, { both: "no stored profile" });
+      const reason =
+        pos.assetType === "mutual_fund" ? MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON : "no stored profile";
+      opaqueByTicker.set(pos.ticker, { both: reason });
       continue;
     }
     if (profile.payload === null) {
       nameResidualMass += mv;
       sectorResidualMass += mv;
-      opaqueByTicker.set(pos.ticker, { both: profile.refusalReason });
+      // A `not_an_etf`/`quota`/`transient` refusal on a directly-held MUTUAL
+      // FUND is round 18/20's "survives disproof" case (layer 1a above) —
+      // the ticker still correctly resolves as a fund, but the raw ETF-
+      // specific disproof reason (or a transport hiccup that will never
+      // actually retry, since this ticker is never fetched at all) says
+      // nothing true about THIS mutual fund's own data quality; relabel with
+      // the policy-exclusion reason so the diagnostic matches reality, not
+      // just the identity verdict (round 32 extends this from `not_an_etf`
+      // alone to the full stale/neutral class — see
+      // MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON's own docblock).
+      const isStaleOrNeutralRefusal =
+        profile.refusalReason === "not_an_etf" ||
+        profile.refusalReason === "quota" ||
+        profile.refusalReason === "transient";
+      const reason =
+        isStaleOrNeutralRefusal && pos.assetType === "mutual_fund"
+          ? MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON
+          : profile.refusalReason;
+      opaqueByTicker.set(pos.ticker, { both: reason });
       continue;
     }
     const fp = profile.payload;
@@ -624,6 +809,11 @@ export function computeLookThroughExposure(
       // formula below (unchanged from the prior round) becomes correct
       // rather than merely non-negative (Codex review, FIX-801 sub-PR b).
       const nameScale = actualNameSum > 1 ? 1 / actualNameSum : 1;
+      // Tracks whether THIS fund's own loop below actually pushed at least
+      // one positive-weight name slice — the diagnostic further down reads
+      // this, not a syntactic upstream signal (Codex review, FIX-801 sub-PR
+      // c round 16; see that comment for why).
+      let anyNameAttributed = false;
       for (const c of fp.constituents) {
         const slice = safeWeight(c.weight) * nameScale * mv;
         if (c.ticker === null || isFundCached(c.ticker)) {
@@ -639,6 +829,7 @@ export function computeLookThroughExposure(
           // genuinely residual.
           pushSource(c.ticker, pos.ticker, slice);
           hasAttribution = true;
+          anyNameAttributed = true;
         }
       }
       // The unreported remainder — derived from the ACTUAL row sum, not the
@@ -659,6 +850,49 @@ export function computeLookThroughExposure(
       // and the scale are the same fix applied to the two halves of this
       // axis's total (Codex review, FIX-801 sub-PR b).
       nameResidualMass += (1 - Math.min(actualNameSum, 1)) * mv;
+
+      // Diagnostic completeness (Codex review, FIX-801 sub-PR c round 14,
+      // connecting to round 8's work): the mass accounting above is already
+      // correct for a fund whose name axis is "fully covered, nothing
+      // nameable" (the GLD-style case — every constituent row is `n/a`
+      // sector/futures/cash with a null ticker, so every dollar already
+      // routes to `nameResidualMass` via the `c.ticker === null` branch
+      // above). But this branch alone never adds an `opaqueByTicker` entry
+      // for the name axis — `namesPass` is true (coverage is genuinely high)
+      // and `nameReconciles` is true (the rows aren't corrupted), so neither
+      // of the two branches above ever runs. The result is a fund that is
+      // 100% opaque on names by MASS but invisible in `opaqueFunds` by
+      // REPORT — exactly what round 4's opaque-fund diagnostic work exists
+      // to surface.
+      //
+      // Based on `anyNameAttributed` — THIS fund's own attribution loop
+      // above, not an upstream syntactic signal (round 14 originally checked
+      // the fetcher's `hasResolvableConstituent`, "did the provider return
+      // at least one resolvable ticker symbol" — Codex review, FIX-801
+      // sub-PR c round 16, found two cases where that diverges from what
+      // actually got attributed):
+      //  1. A named row resolves syntactically (`c.ticker !== null`) but
+      //     carries a ZERO weight. The `slice > 0` guard above correctly
+      //     never pushes it, so nothing is attributed — but the old
+      //     syntactic flag would still read `true` (SOME row has a ticker),
+      //     missing the opaque flag entirely.
+      //  2. A positive-weight named row resolves to a ticker that is
+      //     ITSELF a fund below the fund-of-funds THRESHOLD (routed to
+      //     `nameResidualMass` via `isFundCached(c.ticker)` above, never
+      //     pushed as a name) — syntactically resolvable, semantically
+      //     zero attributable name mass.
+      // `anyNameAttributed` is derived from this loop's own real output, so
+      // both cases correctly read as opaque, with no new data needed from
+      // the fetcher (confined entirely to this function's post-processing —
+      // the fetcher's `hasResolvableConstituent` field and its threading
+      // through the route/hook were removed as dead code once this leaf
+      // stopped reading it).
+      if (!anyNameAttributed) {
+        opaqueByTicker.set(pos.ticker, {
+          ...opaqueByTicker.get(pos.ticker),
+          names: "no resolvable name-axis constituent (fully covered by non-attributable rows only — e.g. foreign lines, futures, cash, or constituents that are themselves funds)",
+        });
+      }
     }
 
     // SECTOR axis — gated independently of names (Decision 4/7). Same coverage

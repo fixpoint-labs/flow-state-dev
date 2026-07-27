@@ -12,6 +12,11 @@ import {
   householdTickerWeight,
 } from "../flows/analysis/build-portfolio-context";
 import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
+import {
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
+  type FundProfileInput,
+} from "../domain/portfolio/math/etf-look-through";
 
 function account(over: Partial<AccountState> = {}): AccountState {
   return {
@@ -227,6 +232,377 @@ describe("buildPortfolioContext — FIX-762 classifications + health block", () 
       null,
     );
     expect(out?.health).toBeNull();
+  });
+});
+
+describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
+  // AAPL held directly (10k) + a fund (SPY, 60k) whose stored profile says it
+  // holds 10% AAPL — the §1 worked example. Effective AAPL exposure through
+  // the fund must exceed the direct-only weight, and the health block's
+  // `lookThrough` field carries it.
+  const book = [
+    account({
+      cashBalance: 0,
+      holdings: [
+        { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // @100 → 10,000
+        { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // @400 → 60,000
+      ],
+    }),
+  ];
+  const quotes = [
+    { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+    { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+  ];
+  // Row weights reconcile against the declared coverage figures (the leaf's
+  // own reconciliation check, FIX-801 sub-PR b) — mirrors the §1 worked
+  // example's own fixture (`nameCoverage: 0.995` = 0.07 AAPL + 0.925 MSFT).
+  const etfProfiles: Map<string, FundProfileInput> = new Map([
+    [
+      "SPY",
+      {
+        payload: {
+          leveraged: false,
+          constituents: [
+            { ticker: "AAPL", weight: 0.925 },
+            { ticker: "MSFT", weight: 0.07 },
+          ],
+          nameCoverage: 0.995,
+          sectors: [
+            { sector: "Technology", weight: 0.3 },
+            { sector: "Financial Services", weight: 0.66 },
+          ],
+          sectorCoverage: 0.96,
+        },
+        refusalReason: null,
+      },
+    ],
+  ]);
+
+  it("omitted (default), the health block's lookThrough stays null — reproduces today's output exactly (BP-030)", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06");
+    expect(out?.health?.lookThrough).toBeNull();
+  });
+
+  it("passed through, the health block's lookThrough reports effective exposure beyond the direct holding, framed as a coverage-qualified lower bound", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map(), etfProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    // Direct AAPL alone is 10,000 / 70,000 ≈ 14.3%; through SPY's 92.5% AAPL
+    // stake (+55,500) it's 65,500 / 70,000 ≈ 93.6% — strictly more than direct
+    // alone, and now also the largest EFFECTIVE name (the compact block's
+    // `maxPosition` reads the look-through basis, not the wrapper one).
+    expect(lookThrough?.maxPosition?.ticker).toBe("AAPL");
+    expect(lookThrough?.maxPosition?.weightPct).toBeGreaterThan(100 / 7); // > direct-only 14.3%
+    expect(lookThrough?.coveragePct).not.toBeNull();
+    expect(lookThrough?.coveragePct as number).toBeLessThan(100); // never renormalized to 100%
+    expect(lookThrough?.opaqueFundCount).toBe(0);
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    expect(lookThrough?.opaqueFundDetails).toEqual([]);
+    // The actual attributed sector DISTRIBUTION, not just its coverage number
+    // (Codex review, FIX-801 sub-PR c round 28) — SPY's reported sectors
+    // (Technology 30%, Financial Services 66% of its own $60,000) plus AAPL's
+    // own direct (unclassified, no classification map passed) bucket, all as a
+    // % of the $70,000 invested NAV, sorted by market value desc.
+    expect(lookThrough?.sectorExposure).toEqual([
+      { bucket: "Financial Services", pct: expect.closeTo((0.66 * 60_000 * 100) / 70_000, 5) },
+      { bucket: "Technology", pct: expect.closeTo((0.3 * 60_000 * 100) / 70_000, 5) },
+      { bucket: "Unclassified", pct: expect.closeTo((10_000 * 100) / 70_000, 5) },
+    ]);
+    // The leaf's own uncertainty-aware [low, high] interval (Decision 4,
+    // docs/etf-look-through.md) — computed by the leaf but never threaded
+    // through the projection until now (Codex review, FIX-801 sub-PR c). A
+    // direct pass-through, so just assert it's a real interval, not that it
+    // stays null.
+    expect(lookThrough?.effectivePositions).not.toBeNull();
+    expect(lookThrough?.effectivePositions?.low).toBeGreaterThan(0);
+    expect(lookThrough?.effectivePositions?.high).toBeGreaterThanOrEqual(
+      lookThrough?.effectivePositions?.low ?? 0,
+    );
+    // Top effective-name positions WITH source identity (Codex review,
+    // FIX-801 sub-PR c round 32) — AAPL's slice traces to BOTH the direct
+    // holding and SPY's 92.5% stake; MSFT's traces ONLY to SPY (never held
+    // directly). Sorted by |weightPct| desc, matching `positions`' own order.
+    expect(lookThrough?.positions).toEqual([
+      {
+        ticker: "AAPL",
+        weightPct: expect.closeTo((65_500 * 100) / 70_000, 5),
+        sources: expect.arrayContaining([
+          { from: "direct", marketValue: 10_000 },
+          { from: "SPY", marketValue: 55_500 },
+        ]),
+      },
+      {
+        ticker: "MSFT",
+        weightPct: expect.closeTo((4_200 * 100) / 70_000, 5),
+        sources: [{ from: "SPY", marketValue: 4_200 }],
+      },
+    ]);
+  });
+
+  it("a fund with no stored profile leaves lookThrough null (nothing attributed) — same 'never fetches' read as an empty map", () => {
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map(), new Map());
+    expect(out?.health?.lookThrough).toBeNull();
+  });
+
+  it("opaqueFundCount counts distinct opaque FUNDS, not failed-axis entries — a fund thin on both axes must count once, not twice (Codex review, FIX-801 sub-PR c)", () => {
+    // A separate, self-contained book: AAPL direct + the well-covered SPY
+    // (attributes AAPL — needed so `lookThrough` is "partial", not "none",
+    // since a fund that is opaque on both axes contributes zero attribution
+    // by itself) + VTI, a fund thin on BOTH axes via two INDEPENDENT reasons
+    // (not a single combined "both" cause) — the exact shape that produces
+    // two entries in `opaqueFunds` for one ticker.
+    const thinBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null }, // 10,000
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // 60,000
+          { ticker: "VTI", quantity: 50, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null }, // 10,000
+        ],
+      }),
+    ];
+    const thinQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "VTI", price: 200, asOf: "2026-05-06" },
+    ];
+    const thinProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      [
+        "VTI",
+        {
+          payload: {
+            leveraged: false,
+            // Both axes reconcile (declared coverage matches the rows'
+            // actual summed weight) but sit well below the 85% floor — so
+            // BOTH axes reject independently, each with its own reason,
+            // rather than a single "both" cause (fund-of-funds / refusal /
+            // leveraged / no-profile all short-circuit to one combined
+            // reason instead).
+            constituents: [{ ticker: "MSFT", weight: 0.5 }],
+            nameCoverage: 0.5,
+            sectors: [{ sector: "Technology", weight: 0.5 }],
+            sectorCoverage: 0.5,
+          },
+          refusalReason: null,
+        },
+      ],
+    ]);
+
+    const out = buildPortfolioContext(thinBook, thinQuotes, "2026-05-06", new Map(), thinProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    // SPY still attributes AAPL, so the axis overall is "partial", not "none".
+    expect(lookThrough).not.toBeNull();
+    // VTI is the only opaque fund. Before the fix this read 2 (one entry per
+    // failed axis); the fix dedupes by ticker.
+    expect(lookThrough?.opaqueFundCount).toBe(1);
+    // VTI's opacity is a genuine data-quality finding (thin coverage on both
+    // axes), not a temporary unavailability — it must NOT count toward
+    // opaqueUnavailableFundCount.
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    // Unlike the count, `opaqueFundDetails` is NOT deduped by ticker — VTI's
+    // two INDEPENDENT axis failures both survive as distinct entries, each
+    // naming its own reason, so the prompt can say exactly what's wrong with
+    // each axis rather than a single collapsed "VTI opaque" (Codex review,
+    // FIX-801 sub-PR c round 25).
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "VTI", axis: "names", reason: "holdings data incomplete (50.0% coverage, floor 85%)", unavailable: false },
+      { ticker: "VTI", axis: "sectors", reason: "sector data incomplete (50.0% coverage, floor 85%)", unavailable: false },
+    ]);
+  });
+
+  it("opaqueUnavailableFundCount counts a never-fetched fund separately from a data-quality one (Codex review, FIX-801 sub-PR c)", () => {
+    // AAPL direct + the well-covered SPY (attributes AAPL, so lookThrough is
+    // "partial") + QQQ, held as an ETF but with NO entry in the profiles map
+    // at all — the leaf still recognizes it as a fund from its own assetType
+    // (resolveTickerIsFund layer 1a) but has nothing to attribute, so it's
+    // opaque with reason "no stored profile": temporarily unavailable, not a
+    // data-quality judgment.
+    const mixedBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "QQQ", quantity: 50, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const mixedQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "QQQ", price: 200, asOf: "2026-05-06" },
+    ];
+    // Only SPY has a stored profile — QQQ is never fetched.
+    const mixedProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+    ]);
+
+    const out = buildPortfolioContext(mixedBook, mixedQuotes, "2026-05-06", new Map(), mixedProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — never fetched
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "QQQ", axis: "both", reason: "no stored profile", unavailable: true },
+    ]);
+  });
+
+  it("a wrapper withdrawn by guards.ts's constituent-broadening-failure fix (round 14) counts toward opaqueUnavailableFundCount, not the data-quality default (Codex review, FIX-801 sub-PR c round 15)", () => {
+    // Same shape as the test above, but QQQ's map entry is the ROUND-14
+    // withdrawal refusal (`CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`) instead
+    // of simply absent from the map. This reason predates neither `quota` nor
+    // `transient` nor "no stored profile" in `UNAVAILABLE_REASONS` — it's a
+    // NEW reason class round 14 introduced, and round 4's set (this file)
+    // didn't know about it, so a withdrawn wrapper fell into the default
+    // data-quality bucket and misreported a transient DB hiccup as a real
+    // data-quality finding ("thin/ineligible data") to the trader/PM.
+    const mixedBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "QQQ", quantity: 50, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const mixedQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "QQQ", price: 200, asOf: "2026-05-06" },
+    ];
+    const mixedProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      // QQQ was withdrawn (its own constituent-broadening read failed) —
+      // guards.ts writes exactly this shape (etf-look-through.ts round 14).
+      ["QQQ", { payload: null, refusalReason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON }],
+    ]);
+
+    const out = buildPortfolioContext(mixedBook, mixedQuotes, "2026-05-06", new Map(), mixedProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.opaqueFundCount).toBe(1); // QQQ
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(1); // QQQ — "not yet available", not "thin/ineligible data"
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "QQQ", axis: "both", reason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON, unavailable: true },
+    ]);
+  });
+
+  it("a curated bond ETF proactively suppressed by excludeFixedIncomeFromProfileMap (round 28) reports as permanently policy-suppressed, not 'not yet available' (Codex review, FIX-801 sub-PR c round 28)", () => {
+    // This is the downstream half of the round-28 fix: `excludeFixedIncomeFromProfileMap`
+    // (etf-profile-map.ts) now proactively seeds a curated bond ETF with no
+    // prior cache entry with FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
+    // instead of leaving it absent (which the leaf would report as the
+    // generic "no stored profile" — an UNAVAILABLE_REASONS member, implying a
+    // future fetch might fill it in). This test simulates the caller-side
+    // effect directly: BND's entry is ALREADY the post-suppression shape (as
+    // `excludeFixedIncomeFromProfileMap` would produce it), never the raw
+    // "absent" state a pre-fix caller would have passed through.
+    const mixedBook = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "BND", quantity: 50, costBasis: 80, acquiredDate: null, assetClass: "fixed_income", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const mixedQuotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "BND", price: 75, asOf: "2026-05-06" },
+    ];
+    const mixedProfiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      ["BND", { payload: null, refusalReason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON }],
+    ]);
+
+    const out = buildPortfolioContext(mixedBook, mixedQuotes, "2026-05-06", new Map(), mixedProfiles);
+    const lookThrough = out?.health?.lookThrough;
+    expect(lookThrough).not.toBeNull();
+    expect(lookThrough?.opaqueFundCount).toBe(1); // BND
+    // The critical assertion: NOT counted as "not yet available" — the
+    // suppression reason is fund-confirming but is not in
+    // UNAVAILABLE_REASONS, so it correctly reads as a genuine, permanent
+    // policy exclusion rather than a pending fetch.
+    expect(lookThrough?.opaqueUnavailableFundCount).toBe(0);
+    expect(lookThrough?.opaqueFundDetails).toEqual([
+      { ticker: "BND", axis: "both", reason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON, unavailable: false },
+    ]);
   });
 });
 

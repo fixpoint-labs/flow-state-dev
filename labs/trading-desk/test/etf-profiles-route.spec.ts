@@ -11,14 +11,14 @@
  */
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { seedAccount } from "./_helpers/portfolio-repo";
 import { _resetLeases } from "@/lib/singleflight";
 import { createMigratedPgliteDb, type Db } from "@/db/client";
 import { createPortfolioRepository, type PortfolioRepository } from "@/db/repository";
-import { etfProfiles } from "@/db/schema";
+import { etfProfiles, holdings } from "@/db/schema";
 import type { NormalizedEtfProfile } from "@/lib/providers/etf-profile";
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../db/migrations", import.meta.url));
@@ -44,6 +44,19 @@ async function backdateFetchedAt(ticker: string, daysAgo: number): Promise<void>
     .update(etfProfiles)
     .set({ fetchedAt: sql`now() - (${daysAgo} || ' days')::interval` })
     .where(eq(etfProfiles.ticker, ticker.toUpperCase()));
+}
+
+/** Flag a held row `inconsistent_history` (FIX-876) — `upsertHoldings` (what
+ *  `seedAccount` calls) never writes this column at all; it is DERIVED-ONLY,
+ *  set exclusively by `materializePositions`'s ledger-oversell reconciliation
+ *  and explicitly cleared to `null` on every snapshot upsert. Forcing the
+ *  flagged state for a route-level test needs a direct write against the
+ *  migrated table — the same `backdateFetchedAt` precedent above. */
+async function flagInconsistentHistory(accountId: string, ticker: string): Promise<void> {
+  await repoState.db!
+    .update(holdings)
+    .set({ dataQuality: "inconsistent_history" })
+    .where(and(eq(holdings.accountId, accountId), eq(holdings.ticker, ticker.toUpperCase())));
 }
 
 const fetcherMock = vi.hoisted(() => ({ fetchEtfProfile: vi.fn() }));
@@ -186,6 +199,301 @@ describe("GET /api/portfolio/etf-profiles", () => {
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
   });
 
+  it("costs zero fetches for a known bond ETF even with a STALE assetClass (Codex review, FIX-801 sub-PR c)", async () => {
+    // `assetClass` is also a user-editable field (the manual asset-class
+    // override), so a curated bond ETF's row can legitimately read something
+    // other than "fixed_income" — the pre-filter must not rely on that
+    // classified field alone, or a stale row would spend a shared Alpha
+    // Vantage unit on a fund the methodology says is pre-filtered for free.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "BND", quantity: 10, costBasis: 80, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    const res = await GET(get(USER_ID));
+    expect((await res.json()) as EtfProfilesResponse).toEqual({ profiles: [], refusals: [] });
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
+  it("costs zero fetches for a ticker whose DOMINANT lot is fixed_income, even though a MINORITY lot is etf/equity-typed (Codex review, FIX-801 sub-PR c round 17, P2 — a wasted-budget bug)", async () => {
+    // SPY held in TWO accounts: a large fixed_income-reclassified lot (1,000
+    // shares — the DOMINANT lot by market value) and a tiny etf-typed,
+    // equity-classified lot (1 share). Before this fix, the tiny minority row
+    // ALONE made SPY fetch-eligible (`isEtfProfileFetchCandidate` tested each
+    // row independently, then deduped tickers) — spending a shared Alpha
+    // Vantage unit on a profile that `excludeFixedIncomeFromProfileMap`
+    // (`guards.ts` / `health-section.tsx`, judged by the SAME dominant lot)
+    // would exclude from attribution anyway once fetched. The fix applies the
+    // identical dominant-lot rule at the fetch-eligibility decision point.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-large-bond",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 1_000, costBasis: 300, acquiredDate: null, assetClass: "fixed_income", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-small-equity",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 1, costBasis: 400, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+
+    const res = await GET(get(USER_ID));
+    expect(res.status).toBe(200);
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
+  it("returns an already-cached profile for a MISTYPED-equity holding — the READ set is broader than the fetch set (Codex review, FIX-801 sub-PR c, route mirror of the guards.ts fix)", async () => {
+    // SPY is held as assetType: "equity" — stale/mistyped, not yet corrected
+    // by the classifications route. Its profile was already warmed (fetched
+    // earlier by this household before the mistype, or by another household,
+    // since app.etf_profiles is global reference data). Using the FETCH-
+    // eligibility set (isEtfProfileFetchCandidate, which requires
+    // assetType === "etf") for the READ would mean this ticker is never even
+    // looked up, so the Health UI never receives the stored profile and the
+    // leaf's fund-detection oracle never sees the evidence that could
+    // override the stale tag.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+
+    const res = await GET(get(USER_ID));
+    const body = (await res.json()) as EtfProfilesResponse;
+
+    // The load-bearing assertion: the already-stored profile IS returned,
+    // despite SPY never having been a fetch candidate this call.
+    expect(body.profiles).toHaveLength(1);
+    expect(body.profiles[0]?.ticker).toBe("SPY");
+    expect(body.profiles[0]?.constituents).toEqual(SAMPLE_PROFILE.constituents);
+    // And no fetch was attempted for it — it was purely a cache read, never
+    // eligible for a fill (the fetch-eligibility set stays strict).
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a STALE cached profile for a MISTYPED-equity holding — an existing successful profile is sufficient refresh evidence on its own, independent of the local tag (Codex review, FIX-801 sub-PR c round 34, a real bug)", async () => {
+    // SPY is held as assetType: "equity" (a classification correction that
+    // failed, or a stuck manual override) but ALREADY has a successful cached
+    // profile proving it's a fund. Before this fix, `eligibleTickers` was
+    // built solely from `isEtfProfileFetchCandidate` (requires assetType ===
+    // "etf" locally), so a mistagged-but-confirmed ticker was excluded from
+    // the fetch-candidate set entirely and `isDueForFetch`'s 30-day staleness
+    // check never even ran — the confirmed profile could never refresh, no
+    // matter how stale it got.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("SPY", 31); // force genuine staleness
+
+    const FRESHER_PROFILE: NormalizedEtfProfile = { ...SAMPLE_PROFILE, nameCoverage: 0.42 };
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: FRESHER_PROFILE });
+
+    const res = await GET(get(USER_ID));
+
+    // The load-bearing assertion: the refresh WAS attempted, despite SPY
+    // never passing `isEtfProfileFetchCandidate` (assetType is "equity", not
+    // "etf") — the existing successful cached profile is what makes it
+    // fetch-eligible for a REFRESH.
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    const body = (await res.json()) as EtfProfilesResponse;
+    const spy = body.profiles.find((p) => p.ticker === "SPY");
+    expect(spy?.nameCoverage).toBeCloseTo(0.42); // the fresh profile landed, not the stale one
+  });
+
+  it("does not refresh a curated bond ETF's cached profile via the cache-confirmed path, even when it's mistyped and stale — the fixed-income exclusion still applies (Codex review, FIX-801 sub-PR c round 34)", async () => {
+    // BND is a curated bond ETF (isKnownBondEtf) held with a stale assetClass
+    // ("equity" — a manual-override edge case, the round-17ish precedent
+    // above) and an existing successful cached profile. The new
+    // cache-confirmed refresh path must not bypass the fixed-income
+    // exclusion any more than the local-tag path does.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "BND", quantity: 10, costBasis: 80, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "BND", price: 75, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "BND", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("BND", 31);
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    // Still returned from cache (the READ set stays broader than the fetch
+    // set), just never refetched.
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["BND"]);
+  });
+
+  it("does not refresh a STALE cached profile via the cache-confirmed path when the ticker is held ONLY in inconsistent-history-flagged rows (Codex review, FIX-801 sub-PR c round 37, a real bug)", async () => {
+    // SPY's only held row is flagged `inconsistent_history` (FIX-876 — an
+    // oversell the ledger couldn't reconcile, e.g. an unrecorded split).
+    // `dominantClassificationByTicker` still SEEDS a classification from this
+    // row's own fields (it only skips the row for its VALUE comparison, so it
+    // doesn't pick a "wrong" dominant lot off bad data) — enough to clear the
+    // fixed-income check on its own. Without the round-37 guard, the
+    // cache-confirmed path (round 34) doesn't check `dataQuality` at all
+    // (unlike the local-tag path, which goes through `isEtfProfileFetchCandidate`
+    // and excludes a flagged row per-row), so a stale profile on a
+    // flagged-only ticker would still enter `misses` and burn a shared Alpha
+    // Vantage request for data Portfolio Health can't even use (it excludes
+    // these same rows from money math entirely).
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        {
+          ticker: "SPY",
+          quantity: 5,
+          costBasis: 300,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+    });
+    // `seedAccount` (via `upsertHoldings`) can't set this column at all — it's
+    // DERIVED-ONLY (see `flagInconsistentHistory`'s own docblock).
+    await flagInconsistentHistory("acc-1", "SPY");
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("SPY", 31);
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    // Still returned from cache (the READ set stays broader than the fetch
+    // set), just never refetched.
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+  });
+
+  it("DOES refresh a STALE cached profile via the cache-confirmed path when at least one held row is clean, even alongside a flagged row (control, Codex review, FIX-801 sub-PR c round 37)", async () => {
+    // Two accounts hold SPY: one row flagged `inconsistent_history`, one
+    // clean. The guard only requires AT LEAST ONE non-flagged row for the
+    // ticker — the flagged row doesn't poison the whole ticker's eligibility.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-flagged",
+      userId: USER_ID,
+      holdings: [
+        {
+          ticker: "SPY",
+          quantity: 5,
+          costBasis: 300,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+    });
+    await flagInconsistentHistory("acc-flagged", "SPY");
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-clean",
+      userId: USER_ID,
+      holdings: [
+        {
+          ticker: "SPY",
+          quantity: 3,
+          costBasis: 300,
+          acquiredDate: null,
+          assetClass: "equity",
+          assetType: "equity",
+          attributes: { kind: "none" },
+        },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    await repoState.repo!.upsertEtfProfiles([
+      { ticker: "SPY", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    await backdateFetchedAt("SPY", 31);
+
+    const FRESHER_PROFILE: NormalizedEtfProfile = { ...SAMPLE_PROFILE, nameCoverage: 0.42 };
+    fetcherMock.fetchEtfProfile.mockResolvedValueOnce({ kind: "profile", profile: FRESHER_PROFILE });
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    const body = (await res.json()) as EtfProfilesResponse;
+    const spy = body.profiles.find((p) => p.ticker === "SPY");
+    expect(spy?.nameCoverage).toBeCloseTo(0.42);
+  });
+
+  it("surfaces a fund-of-funds constituent's own stored profile even though the household does not separately hold it — the constituent-broadening fix (Codex review, FIX-801 sub-PR c round 12, P1)", async () => {
+    // AOA (an allocation ETF) holds VTI at 90% of its own weight; VTI is
+    // itself a fund but is NOT held by this household at all — only its
+    // profile is cached (warmed by another household's fund-of-funds lookup,
+    // or an earlier direct holding). Without this route surfacing VTI's row
+    // in the response too, the Health UI's `fundProfiles` map (built purely
+    // from this response) never gets VTI's evidence, and
+    // `resolveTickerIsFund` reports VTI as an ordinary single-name stock
+    // instead of recognizing AOA as fund-of-funds.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "AOA", quantity: 5, costBasis: 40, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertEtfProfiles([
+      {
+        ticker: "AOA",
+        payload: {
+          leveraged: false,
+          constituents: [{ ticker: "VTI", weight: 0.9 }],
+          nameCoverage: 0.9,
+          sectors: [],
+          sectorCoverage: 0,
+          netExpenseRatio: null,
+          inceptionDate: null,
+        },
+        refusalReason: null,
+      },
+      // VTI's own stored profile — never fetched for THIS household (no
+      // quote seeded for it, no fetch mocked below), only reachable via the
+      // constituent broadening.
+      { ticker: "VTI", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+
+    const res = await GET(get(USER_ID));
+    const body = (await res.json()) as EtfProfilesResponse;
+
+    // The load-bearing assertion: VTI's profile reaches the response even
+    // though it was never a household holding, never fetch-eligible, and
+    // never in the household's own `allTickers` read set.
+    const tickers = body.profiles.map((p) => p.ticker).sort();
+    expect(tickers).toEqual(["AOA", "VTI"]);
+    const vti = body.profiles.find((p) => p.ticker === "VTI");
+    expect(vti?.constituents).toEqual(SAMPLE_PROFILE.constituents);
+    // Purely a cache read — never fetched for VTI (or AOA).
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
   it("excludes an unpriced fund from the fetch set (no budget unit for a profile nothing can use)", async () => {
     await seedAccount(repoState.repo!, {
       accountId: "acc-1",
@@ -198,6 +506,87 @@ describe("GET /api/portfolio/etf-profiles", () => {
     const res = await GET(get(USER_ID));
     expect((await res.json()) as EtfProfilesResponse).toEqual({ profiles: [], refusals: [] });
     expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+  });
+
+  it("skips ALL ETF profile fetches when the portfolio holds ANY short (negative-quantity) position — the whole look-through axis is refused regardless of what gets fetched (Codex review, FIX-801 sub-PR c round 43, a real bug)", async () => {
+    // TSLA is held SHORT (negative quantity) — computeLookThroughExposure
+    // (etf-look-through.ts) refuses the WHOLE look-through axis whenever ANY
+    // priced non-cash position has a negative market value, not just the
+    // shorted ticker. SPY is otherwise a perfectly ordinary fetch-eligible
+    // ETF; before this fix, the route fetched it anyway, spending a shared
+    // Alpha Vantage request on a profile the look-through axis will discard
+    // regardless of what gets fetched.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+        { ticker: "TSLA", quantity: -10, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: null, source: "live" },
+      { ticker: "TSLA", price: 200, asOf: null, source: "live" },
+    ]);
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).not.toHaveBeenCalled();
+    // Still a normal 200 response — only the FETCH is skipped; the READ side
+    // (whatever's already cached, if anything) is unaffected.
+    expect(res.status).toBe(200);
+  });
+
+  it("still fetches normally when the portfolio holds no short positions (control, Codex review, FIX-801 sub-PR c round 43)", async () => {
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-1",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+        { ticker: "TSLA", quantity: 10, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([
+      { ticker: "SPY", price: 400, asOf: null, source: "live" },
+      { ticker: "TSLA", price: 200, asOf: null, source: "live" },
+    ]);
+    fetcherMock.fetchEtfProfile.mockResolvedValue({ kind: "profile", profile: SAMPLE_PROFILE });
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    const body = (await res.json()) as EtfProfilesResponse;
+    expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]);
+  });
+
+  it("does NOT skip fetches when a short lot in one account nets positive against a larger long lot in another account for the SAME ticker — merged PER TICKER, not a blunt per-row check (Codex review, FIX-801 sub-PR c round 43)", async () => {
+    // SPY held -5 shares in one account (short) and +50 in another — the
+    // TICKER-MERGED market value is strongly positive, so
+    // computeLookThroughExposure's own whole-axis check (which operates on
+    // the SAME ticker-merged positions portfolio-health.ts builds) would NOT
+    // refuse the axis for this ticker. The route's short-detection must merge
+    // the same way — flagging the mere existence of a negative ROW would be
+    // an over-conservative false positive here.
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-short",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: -5, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await seedAccount(repoState.repo!, {
+      accountId: "acc-long",
+      userId: USER_ID,
+      holdings: [
+        { ticker: "SPY", quantity: 50, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" } },
+      ],
+    });
+    await repoState.repo!.upsertQuotes([{ ticker: "SPY", price: 400, asOf: null, source: "live" }]);
+    fetcherMock.fetchEtfProfile.mockResolvedValue({ kind: "profile", profile: SAMPLE_PROFILE });
+
+    const res = await GET(get(USER_ID));
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledTimes(1);
+    expect(fetcherMock.fetchEtfProfile).toHaveBeenCalledWith("SPY");
+    expect(res.status).toBe(200);
   });
 
   it("caps how many misses one call fetches, deferring the remainder", async () => {
@@ -280,10 +669,21 @@ describe("GET /api/portfolio/etf-profiles", () => {
     const body = (await res.json()) as EtfProfilesResponse;
     expect(body.profiles.map((p) => p.ticker)).toEqual(["SPY"]); // still a healthy profile
     expect(body.refusals).toEqual([]); // never turned into a refusal
-    // The stored row itself is untouched, not just the response projection.
+    // The stored row's PAYLOAD is untouched, not just the response
+    // projection — this is what "leaves the stored row intact" actually
+    // means (payload preserved, not clobbered with `null`).
     const stored = await repoState.repo!.getEtfProfiles(["SPY"]);
     expect(stored[0]?.payload).not.toBeNull();
-    expect(stored[0]?.refusalReason).toBeNull();
+    expect(stored[0]?.payload).toEqual(SAMPLE_PROFILE);
+    // `refusalReason` IS now recorded alongside the preserved payload (round
+    // 10 — Codex review, FIX-801 sub-PR c): it records which class produced
+    // the attached backoff so a concurrent domain-vs-transport race can be
+    // resolved, but nothing reads it as "this row is refused" while
+    // `payload` is non-null (`isDueForFetch`/response projection/
+    // `toFundProfileMap` all key off `payload !== null` alone) — the ticker
+    // is still a fully healthy, attributable profile, exactly as the
+    // assertions above already prove.
+    expect(stored[0]?.refusalReason).toBe("not_an_etf");
   });
 
   it("a genuinely new ticker whose fetch throws (transient) is persisted as a refusal", async () => {
@@ -399,6 +799,44 @@ describe("GET /api/portfolio/etf-profiles", () => {
       expect(body.refusals).toEqual([
         expect.objectContaining({ ticker: "SPY", reason: "quota" }),
       ]);
+    }
+  });
+
+  it("computes retryAt from a FRESH timestamp captured after the outcome, not the stale request-entry now — a fetch queued across UTC midnight must not compute an already-past retryAt (Codex review, FIX-801 sub-PR c)", async () => {
+    // Fake ONLY the Date global (`toFake: ["Date"]`) — setTimeout/promises/
+    // PGlite's own internal scheduling stay completely real, so this is safe
+    // against a real embedded-PGlite-backed route test.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await seedEtf("QUOTA_MIDNIGHT");
+      // The request starts one minute before UTC midnight — this is the
+      // route's captured `now` used for the outer isDueForFetch gates.
+      vi.setSystemTime(new Date("2026-07-25T23:59:30.000Z"));
+
+      const { AlphaVantageBudgetError } = await import("@/lib/providers/alpha-vantage");
+      fetcherMock.fetchEtfProfile.mockImplementation(async () => {
+        // Simulate the fetch resolving AFTER being queued behind the shared
+        // per-minute AV pacing, straddling midnight.
+        vi.setSystemTime(new Date("2026-07-26T00:02:00.000Z"));
+        throw new AlphaVantageBudgetError(25);
+      });
+
+      const res = await GET(get(USER_ID));
+      const body = (await res.json()) as EtfProfilesResponse;
+      const refusal = body.refusals.find((r) => r.ticker === "QUOTA_MIDNIGHT");
+      expect(refusal?.reason).toBe("quota");
+      // The bug: computing retryAt from the STALE pre-midnight `now`
+      // (23:59:30) resolves "next UTC reset after now" to 2026-07-26T00:00:00Z
+      // — a timestamp already 2 minutes in the PAST relative to when the
+      // outcome was actually recorded (00:02:00). The fix uses a timestamp
+      // captured AFTER the fetch settles, so the boundary must be the
+      // FOLLOWING day's reset, strictly after the actual outcome time.
+      expect(refusal!.retryAt).toBe("2026-07-27T00:00:00.000Z");
+      expect(new Date(refusal!.retryAt!).getTime()).toBeGreaterThan(
+        new Date("2026-07-26T00:02:00.000Z").getTime(),
+      );
+    } finally {
+      vi.useRealTimers();
     }
   });
 

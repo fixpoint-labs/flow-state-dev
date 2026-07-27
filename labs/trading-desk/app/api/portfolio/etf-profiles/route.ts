@@ -10,6 +10,14 @@ import {
   hasAlphaVantageKey,
 } from "@/lib/providers/alpha-vantage";
 import { fetchEtfProfile, type NormalizedEtfProfile } from "@/lib/providers/etf-profile";
+import {
+  allHeldTickers,
+  isEtfProfileFetchCandidate,
+  missingConstituentTickers,
+} from "@/domain/portfolio/math/etf-profile-map";
+import { dominantClassificationByTicker, holdingMarketValue } from "@/domain/portfolio/math/value-holding";
+import { isKnownBondEtf } from "@/domain/portfolio/math/classify-instrument";
+import { hasShortPosition } from "@/domain/portfolio/math/etf-look-through";
 
 // The ETF holdings-profile fill surface (FIX-801) — backs the Health view's
 // look-through axis, mirroring the classifications route's shape (a lazy
@@ -129,35 +137,138 @@ export async function GET(req: NextRequest) {
 
   const repo = await getRepository();
   const { holdings } = await repo.getPortfolio(userId);
-  // Eligible = held as an ETF, not a curated bond ETF (pre-filtered locally —
-  // zero fetches, Decision 5), and not a flagged inconsistent-history row.
-  // Mutual funds are never eligible (assetType !== "etf" — the endpoint is
-  // ETF-only, Non-goals).
-  const eligibleTickers = [
-    ...new Set(
-      holdings
-        .filter(
-          (h) =>
-            h.assetType === "etf" &&
-            h.assetClass !== "fixed_income" &&
-            h.dataQuality !== "inconsistent_history",
-        )
-        .map((h) => h.ticker.toUpperCase()),
-    ),
-  ];
-  if (eligibleTickers.length === 0) {
+  // READ-eligible is DELIBERATELY BROADER — every held ticker, not just the
+  // fetch-eligible ones. `app.etf_profiles` is global reference data, and the
+  // pure leaf's fund-detection oracle (`resolveTickerIsFund`) is designed to
+  // let a STORED profile override a stale/mistyped local `assetType` — using
+  // `eligibleTickers` for the READ (as this route originally did) would mean
+  // a ticker still tagged `equity` locally but already correctly profiled
+  // (by this household or another) is never even looked up, so the oracle
+  // never sees the evidence and the Health UI reports it as a direct single
+  // name instead of doing look-through (Codex review, FIX-801 sub-PR c — the
+  // same bug the analysis seed's `heldTickersForProfileLookup` had, fixed
+  // there first; `allHeldTickers` is the shared derivation so this route and
+  // the seed can't drift apart on it again).
+  const allTickers = allHeldTickers(holdings);
+  if (allTickers.length === 0) {
     return NextResponse.json({
       profiles: [] as EtfProfileEntry[],
       refusals: [] as EtfProfileRefusalEntry[],
     } satisfies EtfProfilesResponse);
   }
 
+  // Quotes are read for EVERY held ticker (not just the fetch-eligible ones)
+  // — widened from the original narrower read (Codex review, FIX-801 sub-PR c
+  // round 17) because the dominant-lot classification below needs real market
+  // value for every row that might compete for a ticker's classification, not
+  // just the rows a per-row predicate already accepted.
   const [quotesRows, storedRows] = await Promise.all([
-    repo.getQuotes(eligibleTickers),
-    repo.getEtfProfiles(eligibleTickers),
+    repo.getQuotes(allTickers),
+    repo.getEtfProfiles(allTickers),
   ]);
-  const pricedTickers = new Set(quotesRows.map((q) => q.ticker));
+  const quoteMap = new Map(quotesRows.map((q) => [q.ticker, { price: q.price }]));
+  // Judged by the DOMINANT (largest-market-value) lot, the same rule
+  // `excludeFixedIncomeFromProfileMap` uses to suppress ATTRIBUTION (round
+  // 14) — applied HERE too, at the FETCH decision (Codex review, FIX-801
+  // sub-PR c round 17, P2). Before this, a ticker whose accounts disagreed on
+  // classification could still get fetched off a MINORITY row's `etf`/
+  // non-fixed-income tag even though the dominant lot is `fixed_income` — the
+  // profile would then be excluded from attribution downstream anyway
+  // (guards.ts / health-section.tsx both apply the dominant-lot exclusion),
+  // so the fetch was a wasted unit against the shared 25/day Alpha Vantage
+  // budget for a profile that could never be used. The curated bond-ETF list
+  // check (inside `isEtfProfileFetchCandidate`) is unaffected — it's already
+  // ticker-level, not row-dependent.
+  const dominantClassification = dominantClassificationByTicker(holdings, quoteMap);
   const storedByTicker = new Map(storedRows.map((r) => [r.ticker, r]));
+  // FETCH-eligible is the UNION of two evidence sources, not just one:
+  //
+  // 1. Held as an ETF by LOCAL tag (a per-row signal — is there evidence
+  //    ANYWHERE this ticker is an ETF), not a curated bond ETF (pre-filtered
+  //    locally — zero fetches, Decision 5), not a flagged inconsistent-history
+  //    row. Mutual funds are never fetch-eligible this way (assetType !==
+  //    "etf" — the endpoint is ETF-only, Non-goals). `isEtfProfileFetchCandidate`
+  //    is the single definition of the per-row predicate — the Health UI's
+  //    eligibility-refetch signature reads it too. This is the right (and only)
+  //    gate for an UNCONFIRMED ticker — deciding whether to spend a budget unit
+  //    fetching something with no fund evidence yet at all.
+  //
+  // 2. Already CONFIRMED a fund by an existing successful cached profile,
+  //    regardless of what the local tag currently says (Codex review, FIX-801
+  //    sub-PR c). A local `assetType` tag can go stale (a classification
+  //    correction that failed, or a stuck manual override) even after
+  //    `app.etf_profiles` has already proven the ticker is a real fund — and
+  //    unlike an unconfirmed ticker, this one doesn't need the local-tag gate
+  //    to decide whether it's worth a budget unit; the cached profile already
+  //    answered that question once. Without this, set 1 alone permanently
+  //    excludes such a ticker from `eligibleTickers`, so `isDueForFetch`'s
+  //    30-day staleness check never even runs and the confirmed profile can
+  //    never refresh. Still excludes the SAME fixed-income evidence
+  //    (`isKnownBondEtf` here, the dominant-lot check below for both sets) —
+  //    a stale cached profile is not grounds to keep re-fetching a ticker
+  //    look-through has no use for. ALSO requires at least one held row that
+  //    ISN'T flagged `inconsistent_history` (Codex review, FIX-801 sub-PR c) —
+  //    unlike set 1, this path bypasses `isEtfProfileFetchCandidate` entirely
+  //    (that per-row predicate already excludes a flagged row), so without
+  //    this guard a ticker held ONLY in flagged rows could still enter the
+  //    refresh set: `dominantClassificationByTicker` still SEEDS a
+  //    classification from a flagged row's own fields even though it skips
+  //    that row for its VALUE comparison (so it doesn't pick a "wrong"
+  //    dominant lot off bad data) — enough to clear the fixed-income check
+  //    below and burn a shared Alpha Vantage request on a refresh Portfolio
+  //    Health can't even use, since it excludes those same rows from money
+  //    math entirely.
+  const nonInconsistentTickers = new Set(
+    holdings.filter((h) => h.dataQuality !== "inconsistent_history").map((h) => h.ticker.toUpperCase()),
+  );
+  const cacheConfirmedTickers = allTickers.filter((ticker) => {
+    const stored = storedByTicker.get(ticker);
+    return (
+      stored !== undefined &&
+      stored.payload !== null &&
+      !isKnownBondEtf(ticker) &&
+      nonInconsistentTickers.has(ticker)
+    );
+  });
+  const eligibleTickers = [
+    ...new Set(
+      [
+        ...holdings.filter(isEtfProfileFetchCandidate).map((h) => h.ticker.toUpperCase()),
+        ...cacheConfirmedTickers,
+      ].filter((ticker) => dominantClassification.get(ticker)?.assetClass !== "fixed_income"),
+    ),
+  ];
+  const pricedTickers = new Set(quotesRows.map((q) => q.ticker));
+
+  // Cheap, PORTFOLIO-WIDE short-position check, computed once and used to
+  // short-circuit the whole fetch decision below — never a per-ticker
+  // filter, since the rejection it predicts isn't per-ticker either.
+  // `computeLookThroughExposure` (etf-look-through.ts) refuses the WHOLE
+  // look-through axis whenever ANY priced non-cash position — ticker-merged
+  // across accounts, mirroring `portfolio-health.ts`'s own Pass 1 merge —
+  // has a negative or non-finite market value (the CSV import path permits
+  // short positions). This route doesn't compute that axis itself, but
+  // admitting every eligible ETF into `misses` regardless burns the shared
+  // 25/day Alpha Vantage budget on profiles that can't contribute to the
+  // current Health read no matter what gets fetched — the whole axis is
+  // discarded either way (Codex review, FIX-801 sub-PR c round 43). Reuses
+  // `hasShortPosition`, the leaf's own exported predicate, rather than a
+  // second, independently-drifting implementation of the same judgment call.
+  const mergedMarketValueByTicker = new Map<string, number>();
+  for (const h of holdings) {
+    if (h.dataQuality === "inconsistent_history") continue; // excluded from money math (FIX-876) — matches the leaf's own merge
+    const mv = holdingMarketValue(h, quoteMap.get(h.ticker.toUpperCase()));
+    if (mv === null) continue;
+    const ticker = h.ticker.toUpperCase();
+    mergedMarketValueByTicker.set(ticker, (mergedMarketValueByTicker.get(ticker) ?? 0) + mv);
+  }
+  const portfolioHasShortPosition = hasShortPosition(
+    [...mergedMarketValueByTicker].map(([ticker, marketValue]) => ({
+      assetClass: dominantClassification.get(ticker)?.assetClass ?? "equity",
+      assetType: dominantClassification.get(ticker)?.assetType ?? "equity",
+      marketValue,
+    })),
+  );
 
   const now = new Date();
   // A fund with no quote yet contributes no numerator/denominator on either
@@ -166,7 +277,9 @@ export async function GET(req: NextRequest) {
   // job, FIX-801 §8 step 6 — a client-side concern, not this route's).
   const fetchCandidates = eligibleTickers.filter((t) => pricedTickers.has(t));
 
-  const misses = fetchCandidates.filter((ticker) => isDueForFetch(storedByTicker.get(ticker), now));
+  const misses = portfolioHasShortPosition
+    ? []
+    : fetchCandidates.filter((ticker) => isDueForFetch(storedByTicker.get(ticker), now));
   // No key configured is a documented, supported state (every other AV
   // consumer in this codebase checks this first) — no fetch attempted,
   // nothing persisted, never a refusal. Without this gate, a keyless
@@ -229,24 +342,43 @@ export async function GET(req: NextRequest) {
       let hitQuotaHere = false;
       try {
         const outcome = await fetchEtfProfile(ticker);
+        // Fresh timestamp for the BACKOFF computation, captured only now that
+        // the outcome is actually known — NOT the outer `now` from function
+        // entry. `fetchEtfProfile` can block behind the shared per-minute AV
+        // pacing (`alphaVantageRequest`), and a request queued across a UTC
+        // midnight would otherwise compute `nextUtcDailyReset` from a
+        // pre-midnight timestamp: "the next reset after `now`" resolves to a
+        // reset that has ALREADY PASSED by the time this code runs, producing
+        // a `retryAt` already in the past — the very next read immediately
+        // retries and burns another shared budget unit instead of respecting
+        // the backoff (Codex review, FIX-801 sub-PR c). `now` itself stays
+        // correct for the outer `isDueForFetch` gates (deciding WHETHER to
+        // attempt), just not for the boundary this attempt's OWN outcome sets.
+        const outcomeAt = new Date();
         if (outcome.kind === "profile") {
           upsert = { ticker, payload: outcome.profile, refusalReason: null };
         } else if (hasStoredSuccess) {
           const { retryAt, transientAttempts } = computeRefusalBackoff(
             outcome.reason,
-            now,
+            outcomeAt,
             priorTransientAttempts,
           );
           upsert = {
             ticker,
             payload: storedBefore!.payload!,
-            refusalReason: null,
+            // Recorded (not forced null) so the repository's conflict-update
+            // precedence guard can tell this DOMAIN-class preserved backoff
+            // apart from a concurrent TRANSPORT-class one (Codex review,
+            // FIX-801 sub-PR c, round 10) — inert everywhere else, since a
+            // stored row is read as "usable" by `payload !== null` alone.
+            refusalReason: outcome.reason,
+            refusalDetail: outcome.detail,
             retryAt: retryAt.toISOString(),
             transientAttempts,
             fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch
           };
         } else {
-          const { retryAt } = computeRefusalBackoff(outcome.reason, now, 0);
+          const { retryAt } = computeRefusalBackoff(outcome.reason, outcomeAt, 0);
           upsert = {
             ticker,
             payload: null,
@@ -257,20 +389,25 @@ export async function GET(req: NextRequest) {
           };
         }
       } catch (err) {
+        const outcomeAt = new Date(); // same fresh-timestamp reasoning as the try block above
         const isQuota =
           err instanceof AlphaVantageBudgetError || err instanceof AlphaVantageRateLimitError;
         if (isQuota) hitQuotaHere = true;
         const reason: EtfProfileRefusalClass = isQuota ? "quota" : "transient";
         const { retryAt, transientAttempts } = computeRefusalBackoff(
           reason,
-          now,
+          outcomeAt,
           priorTransientAttempts,
         );
         if (hasStoredSuccess) {
           upsert = {
             ticker,
             payload: storedBefore!.payload!,
-            refusalReason: null,
+            // Same reasoning as the try-block preserving write above: record
+            // the TRANSPORT class instead of forcing null, so the precedence
+            // guard can see it (round 10).
+            refusalReason: reason,
+            refusalDetail: err instanceof Error ? err.message : String(err),
             retryAt: retryAt.toISOString(),
             transientAttempts,
             fetchedAt: storedBefore!.fetchedAt, // PRESERVE — this is not a new fetch
@@ -313,9 +450,47 @@ export async function GET(req: NextRequest) {
     if (row) storedByTicker.set(ticker, row);
   });
 
+  // Fund-of-funds constituent broadening (Codex review, FIX-801 sub-PR c,
+  // round 12, P1): a held allocation fund's own constituents need to reach
+  // the client too, even when the household doesn't separately hold them —
+  // the Health UI builds its `fundProfiles` map from THIS response
+  // (`toFundProfileMap` over `profiles`/`refusals`), and `resolveTickerIsFund`'s
+  // oracle needs a stored profile for a fund-of-funds constituent (e.g. VTI
+  // inside a held AOA) or it reports as an ordinary single-name stock instead
+  // of being recognized as a fund. Computed AFTER the fetch loop above so a
+  // fund freshly fetched in THIS request still has its constituents picked
+  // up. Call `missingConstituentTickers` EXACTLY ONCE (never loop it) — see
+  // its own docblock for why looping would incorrectly go a level deeper
+  // each time, chasing a constituent's own constituents the leaf never
+  // consults. Read-only (never fetches).
+  // NOT wrapped in a try/catch, deliberately (Codex review, FIX-801 sub-PR c,
+  // round 13 — the sibling fix for guards.ts's shared-catch bug that let a
+  // failed constituent read leave already-loaded wrapper profiles in a
+  // "looks complete, isn't" state). This whole `GET` handler has no
+  // try/catch anywhere; a throw here propagates to a 500 like any other read
+  // failure in this route, and NOTHING is written by this read (no
+  // `upsertEtfProfiles` call on this path) — so there is no half-broadened
+  // state to leak: either the response is built from a fully-loaded map, or
+  // the response is never sent at all. The guards.ts bug was specific to its
+  // swallow-and-degrade posture (a caught error there still returns a
+  // "successful" seed with a stale map); this route has no such posture to
+  // repeat the bug in.
+  const missingConstituents = missingConstituentTickers(storedByTicker);
+  if (missingConstituents.length > 0) {
+    const constituentRows = await repo.getEtfProfiles(missingConstituents);
+    for (const row of constituentRows) storedByTicker.set(row.ticker, row);
+  }
+
   const profiles: EtfProfileEntry[] = [];
   const refusals: EtfProfileRefusalEntry[] = [];
-  for (const ticker of eligibleTickers) {
+  // Walks `allTickers` (READ-eligible) PLUS the constituent tickers just
+  // broadened in above — this is what actually surfaces a mistyped-equity
+  // ticker's already-cached profile, AND a fund-of-funds constituent's, to
+  // the Health UI. Iterating `eligibleTickers` (or `allTickers` alone) here
+  // would silently drop either from the response even after the broadened
+  // reads above found them.
+  const projectionTickers = missingConstituents.length === 0 ? allTickers : [...allTickers, ...missingConstituents];
+  for (const ticker of projectionTickers) {
     const row = storedByTicker.get(ticker);
     if (!row) continue; // never fetched, deferred by the cap, or unpriced — simply absent
     const projected = projectRow(ticker, row);

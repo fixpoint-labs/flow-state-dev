@@ -71,6 +71,98 @@ const portfolioHealthContext = z.object({
       breaches: z.array(z.string()), // pre-rendered, e.g. "fixed_income 24% vs target 30 — LOW"
     })
     .nullable(), // null = no mandate (FIX-761-gated; always null in v1)
+  /**
+   * The ETF look-through second axis (FIX-801) — effective exposure SEEING
+   * INSIDE funds, beside the wrapper-basis fields above (Decision 2: additive,
+   * never a replacement). Null when nothing was attributed through a fund (no
+   * funds held, none attributable, or the analysis seed reads the profiles
+   * table read-only and nobody has warmed it for these tickers yet — Decision
+   * 1's documented "browser sees `partial`, a cold headless run may see
+   * `none`" divergence). `maxPosition`/`flags` are LOWER BOUNDS (Decision 3) —
+   * uncovered fund weight is a residual, never renormalized, so a look-through
+   * flag firing is trustworthy but one NOT firing is not a clean bill of
+   * health. These figures do NOT move the deterministic decision gates
+   * (mandate / policy / evidence) — narrative context only (spec Non-goals).
+   */
+  lookThrough: z
+    .object({
+      coveragePct: z.number().nullable(),
+      sectorCoveragePct: z.number().nullable(),
+      // The actual attributed sector DISTRIBUTION (top 6 + "Other", same shape
+      // and truncation as the wrapper-basis `sectorExposure` above) — not just
+      // its coverage number. `sectorCoveragePct` alone tells the model HOW MUCH
+      // of a fund's sector data is attributed, not WHAT it is; an ordinary
+      // diversified fund allocation that stays below the warn threshold never
+      // fires a flag, so without this the model has no way to describe it
+      // (Codex review, FIX-801 sub-PR c round 28).
+      sectorExposure: z.array(z.object({ bucket: z.string(), pct: z.number().nullable() })),
+      // Top 6 effective-name positions by |weightPct| (a direct holding and
+      // the same name held through a fund add up first, per the leaf's own
+      // aggregation) — `maxPosition` below names only the single largest;
+      // this carries the next several plus WHICH wrapper each one came
+      // through (`sources`), so the model can trace a concentration read to
+      // an actual holding instead of a bare number (Codex review, FIX-801
+      // sub-PR c round 32, same spirit as `sectorExposure` above and
+      // `opaqueFundDetails` below).
+      positions: z.array(
+        z.object({
+          ticker: z.string(),
+          weightPct: z.number(),
+          sources: z.array(z.object({ from: z.string(), marketValue: z.number() })),
+        }),
+      ),
+      maxPosition: z.object({ ticker: z.string(), weightPct: z.number() }).nullable(),
+      // The look-through analogue of the wrapper-basis `concentration.effectivePositions`
+      // above, but an uncertainty-aware INTERVAL rather than a point estimate
+      // (Decision 4, docs/etf-look-through.md): the unattributed residual could
+      // sit anywhere from a long tail (`high`) to piling entirely onto the
+      // largest name already seen (`low`). Null exactly when the wrapper leaf's
+      // own `effectivePositions` is null (no attribution). Already computed by
+      // the leaf but never threaded through until now — pure wiring, no b-side
+      // change (Codex review, FIX-801 sub-PR c).
+      effectivePositions: z.object({ low: z.number(), high: z.number() }).nullable(),
+      flags: z.array(z.string()), // pre-rendered, e.g. "NVDA 16.9% (alert, look-through)"
+      opaqueFundCount: z.number(), // funds left unattributed, total
+      // Subset of opaqueFundCount that is merely temporarily unavailable
+      // (never fetched yet, or a fetch that's quota/rate-limited and will be
+      // retried) rather than a genuine data-quality finding (thin coverage,
+      // malformed data, leveraged/fund-of-funds exclusion, or a
+      // provider-confirmed non-ETF). Lets the prompt distinguish "we haven't
+      // looked yet" from "we looked and it's not attributable" instead of
+      // uniformly reporting every opaque fund as a data-quality judgment
+      // (Codex review, FIX-801 sub-PR c).
+      opaqueUnavailableFundCount: z.number(),
+      // The per-fund identity the two counts above collapse away: WHICH
+      // wrapper, on WHICH axis, for WHY (Codex review, FIX-801 sub-PR c round
+      // 25) — without this the trader/PM sees "1 fund opaque" with no way to
+      // tell which holding a warning belongs to. NOT deduped by ticker like
+      // the counts — a fund thin on names but fine on sectors (or the
+      // reverse) has two genuinely distinct reasons, both preserved as
+      // separate entries. `unavailable` mirrors `opaqueUnavailableFundCount`'s
+      // classification per entry (only ever true on an `axis: "both"` entry
+      // — see `classifyOpaqueFunds`'s docblock).
+      opaqueFundDetails: z.array(
+        z.object({
+          ticker: z.string(),
+          axis: z.enum(["names", "sectors", "both"]),
+          reason: z.string(),
+          unavailable: z.boolean(),
+        }),
+      ),
+    })
+    // `.default(null)` alongside `.nullable()` (BP-030) — `lookThrough` is a
+    // NEW field on an ALREADY-PERSISTED `health` object (FIX-762's
+    // `portfolioHealthContext` predates this PR and is already in production
+    // checkpoints). A session interrupted before this PR deploys can be
+    // resumed after deploy with a `health` object that has every OTHER field
+    // but no `lookThrough` key at all — a genuinely absent key, not an
+    // explicit `null`, which `.nullable()` alone does not tolerate. Without
+    // the default, that resume fails schema validation, and per
+    // `packages/core/src/blocks/sequencer.ts`'s checkpoint-validation gate a
+    // failed validation means the durable write is skipped — so a session
+    // interrupted a second time after a failed resume can't recover either.
+    .nullable()
+    .default(null),
 });
 
 /**

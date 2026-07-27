@@ -38,9 +38,22 @@ const CASH_LIKE_SYMBOLS = new Set(["CASH", "USD"]);
  * trade like equities (ticker-shaped, live-quoted) but their exposure is fixed
  * income — a distinction symbol shape cannot carry (`BND` looks like `AAPL`), so
  * a curated list is the only cheap signal. INTENTIONALLY INCOMPLETE: the failure
- * mode is under-coverage (an unlisted bond ETF stays `equity`), never noise. When
- * a real classification source lands (ETF look-through / a security master), it
- * replaces this set. Extend by adding tickers here.
+ * mode is under-coverage (an unlisted bond ETF stays `equity`), never noise.
+ *
+ * FIX-801 landed a real holdings provider (ETF look-through), and its own
+ * profile even carries a per-fund asset-type field — but that does NOT replace
+ * this set, deliberately (spec §12 open question 2, decided "no, twice over"):
+ * first, the field is absent from live Alpha Vantage responses despite being
+ * documented, so it can't be relied on; second, even present it would feed
+ * CLASSIFICATION, which feeds VALUATION and asset-class allocation — coupling a
+ * holding's asset class to whether anyone had opened the Health view (a
+ * lazily-filled, per-user-triggered table) is the wrong dependency direction
+ * for a fact valuation needs unconditionally. The look-through leaf instead
+ * CONSUMES this list as one of its fund-detection oracle's evidence layers
+ * (`resolveTickerIsFund`, `etf-look-through.ts`) — reading it, not sourcing it.
+ * The fetched profile's own allocation field is a cross-check at best. Fully
+ * superseding this curated list is a separate issue, if a real security master
+ * ever lands. Extend by adding tickers here.
  */
 const KNOWN_BOND_ETFS = new Set([
   // Aggregate / core

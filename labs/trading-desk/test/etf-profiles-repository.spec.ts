@@ -184,6 +184,287 @@ describe("ETF profiles repository (FIX-801)", () => {
     expect(rows[0].transientAttempts).toBe(0); // cleared on a success
   });
 
+  it("a TRANSPORT-class refusal (transient/quota) does NOT overwrite an existing DOMAIN-class refusal — refusal-type precedence (Codex review, FIX-801 sub-PR c)", async () => {
+    // The prior WHERE-clause guard only distinguished refusal-shaped vs.
+    // success-shaped writes, treating "any refusal beats any refusal" —
+    // which let a network-blip/quota-hit write from a losing concurrent
+    // instance silently downgrade an already-recorded DEFINITIVE domain
+    // judgment (a real AV response saying "this isn't an ETF") down to a
+    // 15-minute/next-reset backoff, causing the very next read to re-spend a
+    // budget unit re-litigating a settled question.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF",
+        payload: null,
+        refusalReason: "transient",
+        refusalDetail: "network error",
+        retryAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        transientAttempts: 1,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["NOTETF"]);
+    expect(rows).toHaveLength(1);
+    // The domain refusal survives — the transport-failure write was a no-op.
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+    expect(rows[0].transientAttempts).toBe(0);
+  });
+
+  it("a concurrent MALFORMED refusal does NOT overwrite an existing not_an_etf/ineligible refusal either — malformed is a weaker domain verdict, not a transport one (Codex review, FIX-801 sub-PR c round 22)", async () => {
+    // Distinct from the transport-vs-domain case above: `malformed` is
+    // itself a DOMAIN-level judgment (round 8), not a transport failure, but
+    // its own backoff (~7 days) is far shorter than not_an_etf/ineligible's
+    // (~90 days). A race where one instance reaches AV and gets a
+    // definitive `not_an_etf`, while a concurrent instance for the same
+    // ticker gets a malformed response, must not let the weaker 7-day
+    // verdict land and silently shorten the stronger 90-day one while it's
+    // still active.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF2",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "NOTETF2",
+        payload: null,
+        refusalReason: "malformed",
+        refusalDetail: "weights over 100% on retry",
+        retryAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["NOTETF2"]);
+    expect(rows).toHaveLength(1);
+    // The stronger domain refusal survives — the malformed write was a no-op.
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+  });
+
+  it("a concurrent MALFORMED PRESERVED-PAYLOAD refresh write does NOT overwrite a not_an_etf/ineligible one recorded first for the SAME stale payload (Codex review, FIX-801 sub-PR c round 22)", async () => {
+    // Same equal-fetchedAt shape as the transport preserved-payload race
+    // (round 10) below, but with `malformed` as the weaker incoming class.
+    await repo.upsertEtfProfiles([
+      { ticker: "REFRESHRACE3", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    const staleFetchedAt = (await repo.getEtfProfiles(["REFRESHRACE3"]))[0]!.fetchedAt;
+
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE3",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "ineligible",
+        refusalDetail: "leveraged/inverse on refresh",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE3",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "malformed",
+        refusalDetail: "weights over 100% on refresh",
+        retryAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+
+    const rows = await repo.getEtfProfiles(["REFRESHRACE3"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).not.toBeNull();
+    expect(rows[0].refusalReason).toBe("ineligible"); // the stronger domain class survives
+  });
+
+  it("a TRANSPORT-class refusal DOES overwrite a DOMAIN-class refusal once the domain refusal's OWN backoff has expired — the legitimate sequential retry (Codex review, FIX-801 sub-PR c round 7)", async () => {
+    // The precedence guard above must only block the CONCURRENT-race case —
+    // a domain refusal still WITHIN its backoff window. Once `retry_at` is
+    // in the past, the route's own `isDueForFetch` gate lets a fresh attempt
+    // through, and if THAT attempt hits a transient/quota failure, this is
+    // not "clobbering a settled verdict" — the verdict's hold period is over
+    // and a new outcome is being recorded. Without this expiry check, that
+    // legitimate write would be silently dropped, `retry_at` would never
+    // advance, and every subsequent read would immediately re-attempt
+    // forever instead of backing off on the fresh transient/quota failure.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "EXPIRED",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile",
+        retryAt: new Date(Date.now() - 1000).toISOString(), // already past
+        transientAttempts: 0,
+      },
+    ]);
+    const freshRetryAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "EXPIRED",
+        payload: null,
+        refusalReason: "transient",
+        refusalDetail: "network error on retry",
+        retryAt: freshRetryAt,
+        transientAttempts: 1,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["EXPIRED"]);
+    expect(rows).toHaveLength(1);
+    // The write landed — retry_at advanced to the fresh transient backoff.
+    expect(rows[0].refusalReason).toBe("transient");
+    expect(rows[0].transientAttempts).toBe(1);
+    expect(rows[0].retryAt).toBe(freshRetryAt);
+  });
+
+  it("a TRANSPORT-class PRESERVED-PAYLOAD refresh write does NOT overwrite a DOMAIN-class one recorded first for the SAME stale payload — equal fetchedAt can't be a tiebreaker (Codex review, FIX-801 sub-PR c round 10)", async () => {
+    // Two instances concurrently REFRESH the same stale SUCCESSFUL profile.
+    // Both writes PRESERVE the old payload/fetchedAt (the round-6/7
+    // freshness check can't discriminate "older" between them — they're
+    // equal), one gets a domain refusal, the other a transport failure.
+    // Without extending the refusal-type precedence to this preserved-
+    // payload shape too, whichever wrote SECOND would win regardless of
+    // class — the same budget-waste consequence the payload-less precedence
+    // (rounds 6/7) was built to prevent.
+    await repo.upsertEtfProfiles([
+      { ticker: "REFRESHRACE", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    const staleFetchedAt = (await repo.getEtfProfiles(["REFRESHRACE"]))[0]!.fetchedAt;
+
+    // Instance A: refresh hits a domain refusal (a real AV response).
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile on refresh",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+    // Instance B: refresh hits a transport failure, lands SECOND, same
+    // preserved (stale) fetchedAt.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "transient",
+        refusalDetail: "network error",
+        retryAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        transientAttempts: 1,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+
+    const rows = await repo.getEtfProfiles(["REFRESHRACE"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload).not.toBeNull(); // still a usable, attributable profile
+    expect(rows[0].refusalReason).toBe("not_an_etf"); // domain's class survives
+    expect(rows[0].transientAttempts).toBe(0); // the transport write was a no-op
+  });
+
+  it("...and the SAME domain backoff wins regardless of write order — transport landing FIRST still loses to domain landing SECOND", async () => {
+    await repo.upsertEtfProfiles([
+      { ticker: "REFRESHRACE2", payload: SAMPLE_PROFILE, refusalReason: null },
+    ]);
+    const staleFetchedAt = (await repo.getEtfProfiles(["REFRESHRACE2"]))[0]!.fetchedAt;
+
+    // Instance B (transport) lands FIRST this time.
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE2",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "transient",
+        refusalDetail: "network error",
+        retryAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        transientAttempts: 1,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+    // Instance A (domain) lands SECOND — this direction is a genuine
+    // re-judgment, not a downgrade, so it must be admitted (the
+    // domain-replacing-domain / domain-replacing-transport precedent).
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "REFRESHRACE2",
+        payload: SAMPLE_PROFILE,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile on refresh",
+        retryAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        transientAttempts: 0,
+        fetchedAt: staleFetchedAt,
+      },
+    ]);
+
+    const rows = await repo.getEtfProfiles(["REFRESHRACE2"]);
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+    expect(rows[0].transientAttempts).toBe(0);
+  });
+
+  it("a fresh DOMAIN-class refusal DOES overwrite an existing DOMAIN-class refusal — a genuine re-judgment on a real fetch, not a transport failure", async () => {
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "RECLASS",
+        payload: null,
+        refusalReason: "malformed",
+        refusalDetail: "weights over 100%",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "RECLASS",
+        payload: null,
+        refusalReason: "not_an_etf",
+        refusalDetail: "no profile on retry",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["RECLASS"]);
+    expect(rows[0].refusalReason).toBe("not_an_etf");
+  });
+
+  it("a TRANSPORT-class refusal DOES overwrite an existing TRANSPORT-class refusal — an ordinary continued failure, unaffected by the precedence guard", async () => {
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "FLAKY",
+        payload: null,
+        refusalReason: "transient",
+        refusalDetail: "network error 1",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 1,
+      },
+    ]);
+    await repo.upsertEtfProfiles([
+      {
+        ticker: "FLAKY",
+        payload: null,
+        refusalReason: "quota",
+        refusalDetail: "budget exhausted",
+        retryAt: new Date().toISOString(),
+        transientAttempts: 0,
+      },
+    ]);
+    const rows = await repo.getEtfProfiles(["FLAKY"]);
+    expect(rows[0].refusalReason).toBe("quota");
+  });
+
   it("dedupes a same-ticker batch (last write wins) without an intra-statement conflict", async () => {
     await repo.upsertEtfProfiles([
       { ticker: "QQQ", payload: SAMPLE_PROFILE, refusalReason: null },

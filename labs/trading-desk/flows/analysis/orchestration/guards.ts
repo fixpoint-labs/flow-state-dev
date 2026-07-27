@@ -51,6 +51,14 @@ import {
 } from "@/domain/portfolio/schema/portfolio-mandate-schema";
 import { buildPortfolioContext, householdTickerWeight } from "../build-portfolio-context";
 import type { ClassificationMap } from "@/domain/portfolio/math/portfolio-health";
+import { CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON, type FundProfileInput } from "@/domain/portfolio/math/etf-look-through";
+import {
+  allHeldTickers,
+  excludeFixedIncomeFromProfileMap,
+  fundsReferencingTickers,
+  missingConstituentTickers,
+  toFundProfileMap,
+} from "@/domain/portfolio/math/etf-profile-map";
 import { mostConservativeMandate, resolveMandate } from "../lib/risk-mandate";
 import { getRepository } from "@/db/portfolio-db";
 import { toAccountStates } from "@/db/repository";
@@ -208,11 +216,115 @@ export const seedSession = handler({
     } catch (err) {
       console.warn(`[trading-desk] seed: instrument classifications read failed`, err);
     }
+    // Stored ETF profiles (FIX-801), read-only from `app.etf_profiles` — the
+    // seed NEVER fetches (Decision 1: fetching is the Portfolio pane's job,
+    // via `GET /api/portfolio/etf-profiles`).
+    //
+    // `heldTickersForProfileLookup` is DELIBERATELY BROADER than
+    // `isEtfProfileFetchCandidate` (the route's fetch predicate) — it reads
+    // EVERY held ticker's profile, not just the currently fetch-eligible ones.
+    // `app.etf_profiles` is global reference data, and the pure leaf's
+    // fund-detection oracle (`resolveTickerIsFund` in `etf-look-through.ts`)
+    // is explicitly designed to let a STORED PROFILE override a stale/
+    // mistyped local `assetType` — its layer 1b runs BEFORE a held ticker's
+    // own classification is trusted. A ticker still tagged `equity` locally
+    // (not yet corrected) but already correctly profiled — fetched earlier by
+    // this household, or by another household, since the table is global —
+    // needs to be IN this query for the oracle to ever see that evidence.
+    // Narrowing the read to fetch-eligible tickers would silently defeat the
+    // override: the ticker would never even be looked up, so a mistyped
+    // holding would report as a direct name instead of doing look-through
+    // (wrong effective exposure and concentration numbers) even though the
+    // data to correct it was already sitting in the table (Codex review,
+    // FIX-801 sub-PR c — a real correctness bug, not the fetch-side
+    // eligibility mismatch the shared predicate above already fixes). Fetch
+    // eligibility and READ eligibility are different questions on purpose:
+    // fetching costs a shared, budgeted Alpha Vantage unit and must stay
+    // strict; reading is a free indexed lookup and should stay permissive so
+    // the override case can work at all. `allHeldTickers` is the shared
+    // derivation the route's own `GET` handler uses for the identical reason
+    // (one helper, not two reimplementations that can drift apart again).
+    const scopedHoldings = scoped.flatMap((a) => a.holdings);
+    const heldTickersForProfileLookup = allHeldTickers(scopedHoldings);
+    let etfProfiles: Map<string, FundProfileInput> = new Map();
+    try {
+      const rows = await repo.getEtfProfiles(heldTickersForProfileLookup);
+      for (const [ticker, profile] of toFundProfileMap(rows)) etfProfiles.set(ticker, profile);
+    } catch (err) {
+      console.warn(`[trading-desk] seed: ETF profiles read failed`, err);
+    }
+    // Fund-of-funds constituent broadening (Codex review, FIX-801 sub-PR c,
+    // round 12, P1): a held allocation fund's own constituents need to be
+    // IN this map too, even when the household doesn't separately hold
+    // them, or `resolveTickerIsFund`'s oracle has no evidence for them and
+    // reports a fund-of-funds constituent (e.g. VTI inside a held AOA) as
+    // an ordinary single-name stock. Call `missingConstituentTickers`
+    // EXACTLY ONCE (never loop it) — the leaf only ever needs one level of
+    // evidence (see its own docblock for why looping would incorrectly go
+    // a level deeper each time, chasing a constituent's own constituents
+    // the leaf never consults). Read-only, same Decision-1-style posture
+    // as the read above.
+    //
+    // A SEPARATE try/catch from the read above (Codex review, FIX-801
+    // sub-PR c, round 13): the original shared catch let a genuine failure
+    // on THIS read silently leave the wrapper profiles from the FIRST read
+    // (e.g. AOA) sitting in the map with their constituents (e.g. VTI)
+    // never merged in — exactly the "looks complete, isn't" state the round
+    // 12 fix exists to prevent, just reached through an error path instead
+    // of the original missing-broadening path. On failure, withdraw every
+    // wrapper whose fund-of-funds verdict depends on this read
+    // (`fundsReferencingTickers`) rather than leave them half-broadened.
+    //
+    // WITHDRAW by REPLACING with a refusal entry, not by deleting the key
+    // (Codex review, FIX-801 sub-PR c round 14 — a real gap in round 13's
+    // own fix). Deleting the wrapper's map entry also deletes its OWN fund
+    // evidence: if the wrapper's local `assetType` is stale/mistyped (not
+    // fund-typed), `resolveTickerIsFund`'s layer 1a can't prove it's a fund
+    // either, and with the stored profile now gone (layer 1b) the oracle
+    // falls all the way to layer 1c — the wrapper's own non-fund
+    // classification — reporting it as an ordinary direct stock (a
+    // fabricated single-name concentration) instead of a diversified,
+    // now-opaque fund. `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON` is
+    // recognized by layer 1b as positive fund evidence (same bucket as
+    // `"ineligible"`/`"malformed"`), so the wrapper still reads as a fund —
+    // just one whose constituents can't currently be verified, so it falls
+    // back to whatever "opaque, no decomposition" already produces (see
+    // `etf-look-through.ts`'s `if (profile.payload === null)` branch), the
+    // same safe default a ticker that was never looked up at all gets.
+    const missingConstituents = missingConstituentTickers(etfProfiles);
+    if (missingConstituents.length > 0) {
+      try {
+        const constituentRows = await repo.getEtfProfiles(missingConstituents);
+        for (const [ticker, profile] of toFundProfileMap(constituentRows)) {
+          etfProfiles.set(ticker, profile);
+        }
+      } catch (err) {
+        console.warn(`[trading-desk] seed: ETF profile constituent broadening read failed`, err);
+        for (const ticker of fundsReferencingTickers(etfProfiles, missingConstituents)) {
+          etfProfiles.set(ticker, { payload: null, refusalReason: CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON });
+        }
+      }
+    }
+    // The broad read above intentionally still looks up a bond ETF (or a
+    // holding since manually reclassified to fixed_income) — but a stored
+    // profile surviving that read is not itself permission to attribute
+    // through it. Suppress those tickers from the map the leaf actually
+    // decomposes (Codex review, FIX-801 sub-PR c) — see the function's own
+    // docblock for why this is a narrower, different check than the fetch
+    // predicate, and why it is judged by the DOMINANT (largest-market-value)
+    // lot rather than an "any row" test (round 14). Applied LAST, after the
+    // constituent broadening above, so a directly-held bond ETF that also
+    // happens to be another held fund's constituent stays excluded either
+    // way — the constituent pass could otherwise re-add an entry this
+    // exclusion already removed.
+    const quoteMap = new Map(quoteRows.map((r) => [r.ticker, { price: r.price }]));
+    etfProfiles = excludeFixedIncomeFromProfileMap(etfProfiles, scopedHoldings, quoteMap);
     const portfolio = buildPortfolioContext(
       scoped,
       quoteRows.map((r) => ({ ticker: r.ticker, price: r.price, asOf: r.asOf })),
       snapshotAsOf,
       classifications,
+      etfProfiles,
     );
 
     // Durable household portfolio mandate (FIX-761), read from the user-scoped
