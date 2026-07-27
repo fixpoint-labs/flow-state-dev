@@ -517,6 +517,25 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     expect(error).not.toContain("failTask");
   });
 
+  it("still offers blockTask on a blocked task, because that call does real work", async () => {
+    // Pins the RULE ("would this call succeed") against the alternative reading
+    // that a blocked task should advertise only `cancelTask`. `block()` on an
+    // already-blocked task is a legal same-status transition that rewrites the
+    // reason and emits a `blocked` change, so the rule keeps it. Suppressing it
+    // would require a same-status filter, which is the thing that would also
+    // silently drop a budgeted `failTask` from a `pending` task's list.
+    //
+    // This assertion is the difference between the two readings: without it the
+    // blocked case passes under either, and a filter could be reintroduced
+    // unnoticed.
+    const error = await errorFrom(
+      "completeTask",
+      { taskId: "a", output: "done" },
+      ctxWithTask("blocked"),
+    );
+    expect(error).toContain("From here you can call blockTask or cancelTask.");
+  });
+
   it("names the calls available from awaiting_review without claiming pending", async () => {
     const error = await errorFrom(
       "blockTask",
