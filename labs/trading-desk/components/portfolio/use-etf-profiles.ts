@@ -59,96 +59,60 @@ import type {
  * third state this hook needs to represent.
  */
 /**
- * The one derived key the hole fix rests on — a pure, standalone function
- * (not inlined into the hook) specifically so it is unit-testable without a
- * React render (this codebase has no jsdom/component-test harness yet — see
- * the FIX-801 sub-PR c PR description). Order-independent (sorted) so
- * re-fetching in a different account order doesn't spuriously change the
- * signature and trigger a needless refetch.
+ * The one derived key the eligibility-refetch fix rests on — a pure,
+ * standalone function (not inlined into the hook) so it stays unit-testable
+ * without a React render (this codebase has no jsdom/component-test harness
+ * yet). Order-independent (sorted) so re-fetching in a different account
+ * order doesn't spuriously change the signature and trigger a needless
+ * refetch.
  *
- * Uses `isEtfProfileFetchCandidate`, the SAME predicate the route fetches
- * against — not a looser "is this fund-shaped" check. A holding the route
- * will never fetch (a mutual fund, a curated bond ETF, a flagged
- * inconsistent-history row) must not change this signature either, or a
- * household holding one would trigger a spurious refetch/cache-bust for a
- * ticker that was never going to be warmed. (The seed's own read set is
- * deliberately NOT filtered by this predicate — see its docblock.)
+ * Computed PER TICKER, not per row — the route's own fetch-eligibility
+ * decision is per-ticker too (several holdings of the same ticker across
+ * accounts collapse to one verdict). Each ticker's row is four independent
+ * `:`-separated fields, plus one trailing portfolio-wide suffix; each field
+ * mirrors a distinct condition `route.ts` gates fetching on, kept
+ * independent of the others (never folded into a single combined bit)
+ * specifically so the signature changes exactly when the route's own
+ * eligible set would, regardless of WHICH input resolved late:
  *
- * **A THIRD trigger: the DOMINANT-lot verdict flipping (Codex review, FIX-801
- * sub-PR c round 18).** The route's own fetch-eligibility decision isn't
- * purely per-row anymore — a ticker only enters the fetch set when at least
- * one row passes `isEtfProfileFetchCandidate` AND its DOMINANT (largest-
- * market-value) lot's `assetClass` isn't `fixed_income`
- * (`dominantClassificationByTicker`, `value-holding.ts`, the same rule
- * `excludeFixedIncomeFromProfileMap` uses). A per-row signature can't see
- * that: a quantity update that flips which lot is dominant for a
- * conflicting-classification ticker — making it newly fetch-eligible per the
- * route's rule — leaves any INDIVIDUAL row's own bits unchanged, so the old
- * signature never changed and `useApiQuery`'s stable-URL refetch never fired,
- * missing the newly-eligible fund until an unrelated remount. The signature
- * is now computed PER TICKER (not per row) with the SAME final verdict the
- * route computes, so it changes exactly when the route's own eligible set
- * would.
- *
- * **A FOURTH trigger: the dominant verdict for a CACHE-CONFIRMED (but
- * locally mistagged) ticker (Codex review, FIX-801 sub-PR c round 36 — the
- * client mirror of round 34's route-side fix).** The route's fetch-eligible
- * set is now a UNION of two sources: the local-tag candidate set (bit 2,
- * `isCandidate` below) AND any ticker with an existing successful cached
- * profile, refresh-eligible regardless of what the local `assetType` tag
- * says (`route.ts`'s `cacheConfirmedTickers`). Both sources are still gated
- * on the SAME dominant-lot-not-fixed-income + not-a-curated-bond-ETF check —
- * but `isCandidate` ANDs that check with `candidateRowTickers.has(ticker)`
- * FIRST, so for a ticker whose local tag never reads "etf" that bit is
- * ALWAYS 0 and a fixed-income-suppression transition on it never flips
- * anything. `dominantEligibleForRefresh` is tracked as its OWN, independent
- * signature component (bit 4) — not gated behind the local-tag bit — so a
- * ticker transitioning out of fixed-income suppression (e.g. its dominant
- * lot's `assetClass` correcting away from `"fixed_income"`) changes the
- * signature and triggers a refetch even when it was never a local-tag
- * candidate at all. Mirrors `!isKnownBondEtf(ticker)` too (not just the
- * dominant-lot check) — the SAME exclusion `route.ts`'s cache-confirmed set
- * applies — so a curated bond ETF's transitions never spuriously flip this
- * bit for a ticker the route will never fetch either way.
- *
- * **A FIFTH trigger: the clean-row verdict for a CACHE-CONFIRMED ticker
- * (Codex review, FIX-801 sub-PR c round 39 — the client mirror of round 37's
- * route-side fix, same pattern as round 36 mirroring round 34).** Round 37
- * added a guard to `route.ts`'s cache-confirmed refresh path: a ticker needs
- * at least one held row that ISN'T flagged `inconsistent_history` (FIX-876)
- * before it's refresh-eligible — a ticker held only in flagged rows still
- * seeds a `dominantClassification` verdict (see `dominantEligibleForRefresh`
- * above), so without this guard it could clear the fixed-income check on a
- * cached profile the route can't actually use. Same shape as the fourth
- * trigger: `hasCleanRow` is its own, independent signature component (bit
- * 5), NOT gated behind `isCandidate` — so a ticker whose only holding
- * transitions from flagged to clean (or the reverse) changes the signature
- * even when it was never a local-tag candidate at all (a cache-confirmed,
- * locally-mistagged ticker, the same scenario the fourth trigger covers).
- *
- * **A SIXTH trigger, PORTFOLIO-WIDE rather than per-ticker: the net-short
- * verdict (Codex review, FIX-801 sub-PR c round 45 — the client mirror of
- * round 43's route-side fix, corrects that round's own "no client parity
- * needed" call).** Round 43 added a portfolio-wide short-position check to
- * `route.ts`: whenever ANY priced non-cash position (ticker-merged across
- * accounts) has a negative or non-finite market value, the route skips ALL
- * ETF-profile fetches, since `computeLookThroughExposure` will refuse the
- * WHOLE axis regardless. That reasoning genuinely doesn't change the
- * RESPONSE shape — but it IS a new condition gating whether `misses` gets
- * populated at all, so it still needs to be a REFETCH TRIGGER like every
- * other server-side eligibility check above: if the view loads while a short
- * exists (the route already skipped fetching) and the user later COVERS it
- * with no other trigger changing, nothing in bits 1-5 reflects the
- * transition, `useApiQuery` never reloads, and profiles stay unfetched until
- * an unrelated change or remount. Reuses `hasShortPosition`
- * (`etf-look-through.ts`) directly — the SAME exported predicate `route.ts`
- * calls — over a ticker-merged market-value map built the same way
- * (`holdingMarketValue` summed per ticker, excluding `inconsistent_history`
- * rows, using `dominantClassification` for the cash exclusion). Unlike bits
- * 1-5, this is ONE portfolio-wide boolean, not a per-ticker bit — appended as
- * a `|short:0|1` suffix on the whole signature rather than a per-ticker
- * field, and only when there's at least one ticker at all (an empty,
- * holding-less book keeps returning `""`, unchanged).
+ *   1. `isCandidate` — at least one held row passes `isEtfProfileFetchCandidate`
+ *      (the SAME per-row predicate the route's local-tag fetch path uses:
+ *      ETF-typed, not a curated bond ETF, not flagged `inconsistent_history`)
+ *      AND the ticker clears the fixed-income check (field 3). A holding the
+ *      route will never fetch (a mutual fund, a curated bond ETF, a flagged
+ *      row) must not change this field, or a household holding one would
+ *      trigger a spurious refetch for a ticker that was never going to be
+ *      warmed. (The analysis seed's own read set is deliberately broader —
+ *      see `isEtfProfileFetchCandidate`'s own docblock.)
+ *   2. `isPriced` — whether `priceMap` has a quote for the ticker yet.
+ *   3. `dominantEligibleForRefresh` — the ticker's DOMINANT (largest-
+ *      market-value) lot's `assetClass` isn't `fixed_income`, AND the ticker
+ *      isn't a curated bond ETF (`isKnownBondEtf`) — the same fixed-income
+ *      exclusion `route.ts` applies to BOTH its local-tag candidate set and
+ *      its cache-confirmed refresh set (a ticker with an existing successful
+ *      cached profile, refresh-eligible regardless of the local `assetType`
+ *      tag). Tracked independently of `isCandidate` because for a ticker
+ *      whose local tag never reads "etf", `isCandidate` stays 0 no matter
+ *      what — a dominant-lot transition needs its own field to ever reach
+ *      the signature for that ticker.
+ *   4. `hasCleanRow` — at least one held row for the ticker ISN'T flagged
+ *      `inconsistent_history` (FIX-876). Mirrors a second guard on the
+ *      route's cache-confirmed refresh path: a ticker held only in flagged
+ *      rows can still clear field 3's fixed-income check, so this field
+ *      independently gates that case, for the same reason field 3 can't be
+ *      folded into `isCandidate`.
+ *   5. A trailing `|short:0|1` PORTFOLIO-WIDE suffix, not a per-ticker
+ *      field — mirrors `route.ts`'s portfolio-wide short-position check:
+ *      whenever ANY priced non-cash position (ticker-merged across
+ *      accounts) has a negative or non-finite market value, the route skips
+ *      ALL ETF-profile fetches, since `computeLookThroughExposure` refuses
+ *      the whole look-through axis regardless of what's fetched. Reuses
+ *      `hasShortPosition` (`etf-look-through.ts`) directly — the SAME
+ *      exported predicate `route.ts` calls — over a market-value map built
+ *      the identical way (`holdingMarketValue` summed per ticker, excluding
+ *      `inconsistent_history` rows, `dominantClassification` for the cash
+ *      exclusion). Appended only when there's at least one ticker — an
+ *      empty, holding-less book still returns `""`.
  */
 export function computeEtfEligibilitySignature(
   accounts: ReadonlyArray<Pick<AccountState, "holdings">>,
@@ -176,8 +140,7 @@ export function computeEtfEligibilitySignature(
   }
   if (rows.length === 0) return "";
 
-  // Mirrors route.ts's round-43 hasShortPosition check exactly — see the
-  // sixth-trigger docblock above.
+  // Mirrors route.ts's hasShortPosition check exactly — see field 5 above.
   const mergedMarketValueByTicker = new Map<string, number>();
   for (const h of holdings) {
     if (h.dataQuality === "inconsistent_history") continue;
