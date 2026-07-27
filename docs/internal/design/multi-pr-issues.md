@@ -3,6 +3,11 @@
 **Date:** 2026-07-23
 **Status:** implemented — `create-spec` emits the PR plan; `issue-lifecycle` advances the DAG.
 
+> **Historical naming note:** skill names below reflect what they were called when this
+> was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
+> `issue-implement`. Don't invoke the old names — this doc is a point-in-time design
+> record, not current reference.
+
 Raised together: (1) persistent agent memory, (2) agent teams, (3) splitting one
 issue into multiple PRs. (1) and (2) are positioning decisions; (3) is the new
 architecture. They interrelate — teams' natural home turns out to be (3).
@@ -63,7 +68,7 @@ to "advance the PR plan":
   re-enters the lifecycle and unblocks them.
 - **Gates unchanged:** one spec-approval up front covers the whole plan; stop before
   merge on each sub-PR (the human merges; merging a dep unblocks dependents).
-- Each sub-PR runs the existing per-PR machinery (implement → `fsd:review` →
+- Each sub-PR runs the existing per-PR machinery (implement → `review` →
   PR-feedback). The lifecycle coordinates the DAG and holds only the plan + per-sub-PR
   status (handles), never content — same token discipline as the fleet.
 
@@ -84,7 +89,7 @@ down (sub-PRs of an issue instead of issues).
 ### Composition — minimal new surface (tenet 2)
 
 Reused: worktree-worker isolation (the `issue-worker` pattern), `implement-issue` per
-sub-PR, `fsd:review` per sub-PR, the event-driven lifecycle. **New** surface is only:
+sub-PR, `review` per sub-PR, the event-driven lifecycle. **New** surface is only:
 (a) the PR-plan DAG in the spec, and (b) the DAG-advancing logic in the lifecycle.
 
 ### Build-time questions — resolved

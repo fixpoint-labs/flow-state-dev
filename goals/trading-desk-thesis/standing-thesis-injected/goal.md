@@ -33,6 +33,8 @@ actually found and froze a thesis. A run with no seeded thesis projects
 `hasStandingThesis === false` (and a stopped/errored run leaves it null), so the
 check fails unless the seed → seed-freeze → preset → commit chain all fired.
 
+**Model.** real — the desk's own intent ladder via the Vercel AI Gateway (`AI_GATEWAY_API_KEY`); the analyze run's generators are live.
+
 **Run.** Requires `AI_GATEWAY_API_KEY` (slow + costs tokens — ~30 real
 generators). Out of CI, by hand:
 

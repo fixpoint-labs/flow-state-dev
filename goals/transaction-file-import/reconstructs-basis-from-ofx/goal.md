@@ -12,3 +12,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-26 | f41bbee | none (file path) | PASS | 2 fixtures (QFX 1.x SGML + OFX 2.x XML): AAPL FIFO 11 open after a 4-share sell off the oldest lot; a CUSIP-only buy surfaced unresolved + a SPLIT skipped; MSFT DRIP reinvest → 8.5 open; TSLA transfer-in flagged basis-unknown. All positions, unresolved CUSIPs, and skipped counts reconciled. |
+| 2026-07-25 | 5eb5e7e | none | PASS | 2 OFX-family fixtures parsed; every event canonical-valid; FIFO positions, basis-unknown flags, unresolved CUSIPs and skipped actions all reconciled. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

@@ -449,6 +449,239 @@ describe("taskBoard - worker registry routing", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Default worker (the delegation floor, FIX-940) — the three invariants:
+//   I1 — a genuine miss (unknown OR absent assignee) routes to the floor.
+//   I2 — no defaultWorker → a miss still fails per onError (regression guard).
+//   I3 — a declared assignee never touches the floor.
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - default worker (the floor)", () => {
+  it("I1: routes an unknown assignee to the floor; output is recorded", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "floor-unknown",
+      collection: { collectionId: "floor-unknown" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [
+        { id: "u", goal: "unclaimed", assignee: "nobody", input: { topic: "u" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    // Before FIX-940 this task would error out of the registry router.
+    expect(final.get("u")).toBe("completed");
+    expect(trace).toEqual(["floor:u"]);
+  });
+
+  it("I1: routes an absent assignee to the floor; output is recorded", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "floor-absent",
+      collection: { collectionId: "floor-absent" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [{ id: "a", goal: "no assignee", input: { topic: "a" } }],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("completed");
+    expect(trace).toEqual(["floor:a"]);
+  });
+
+  it("I3: a declared assignee runs its own worker, never the floor", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "floor-declared",
+      collection: { collectionId: "floor-declared" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [{ id: "d", goal: "declared", assignee: "only", input: { topic: "d" } }],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("d")).toBe("completed");
+    // The declared worker ran; the floor was never invoked.
+    expect(trace).toEqual(["only:d"]);
+  });
+
+  it("rosterless: an empty registry drains every task onto the floor", async () => {
+    // The headline "no roster at all" path: the board's ONLY worker is the
+    // floor. An empty `{}` registry + defaultWorker must still drain unassigned
+    // and unknown-assignee tasks to completion.
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "rosterless",
+      collection: { collectionId: "rosterless" },
+      concurrency: 2,
+      dispatcher: "fifo",
+      workers: {},
+      defaultWorker: makeEchoWorker("floor", trace),
+      initialTasks: [
+        { id: "a", goal: "no assignee", input: { topic: "a" } },
+        { id: "b", goal: "unknown assignee", assignee: "nobody", input: { topic: "b" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("completed");
+    expect(final.get("b")).toBe("completed");
+    expect(trace.sort()).toEqual(["floor:a", "floor:b"]);
+  });
+
+  // The worker registry is a plain object, so an assignee naming an inherited
+  // Object.prototype member used to resolve off the prototype chain and be
+  // dispatched as if it were a registered worker — the task errored on the
+  // route-candidate check instead of reaching the floor. Assignees are
+  // model-authored (addTask), so these names are reachable input.
+  it.each(["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"])(
+    "I1: routes the Object.prototype name %s to the floor, not off the prototype chain",
+    async (protoAssignee) => {
+      const trace: string[] = [];
+      const board = taskBoard({
+        name: `floor-proto-${protoAssignee.replace(/_/g, "")}`,
+        collection: { collectionId: `floor-proto-${protoAssignee.replace(/_/g, "")}` },
+        concurrency: 1,
+        dispatcher: "fifo",
+        workers: { only: makeEchoWorker("only", trace) },
+        defaultWorker: makeEchoWorker("floor", trace),
+        initialTasks: [
+          { id: "p", goal: "prototype-named assignee", assignee: protoAssignee, input: { topic: "p" } },
+        ],
+        onError: "skip",
+      });
+
+      const result = await testBlock(board.drain, { input: undefined });
+      expect(result.error).toBeNull();
+      const final = lastTaskState(result.items);
+      expect(final.get("p")).toBe("completed");
+      expect(trace).toEqual(["floor:p"]);
+    },
+  );
+
+  it.each(["toString", "constructor", "__proto__"])(
+    "I2: with no defaultWorker, the Object.prototype name %s still fails the task",
+    async (protoAssignee) => {
+      const trace: string[] = [];
+      const board = taskBoard({
+        name: `no-floor-proto-${protoAssignee.replace(/_/g, "")}`,
+        collection: { collectionId: `no-floor-proto-${protoAssignee.replace(/_/g, "")}` },
+        concurrency: 1,
+        dispatcher: "fifo",
+        workers: { only: makeEchoWorker("only", trace) },
+        // No defaultWorker — a prototype-named miss must fail like any other.
+        initialTasks: [
+          { id: "p", goal: "prototype-named assignee", assignee: protoAssignee },
+          { id: "y", goal: "ok", assignee: "only", input: { topic: "y" } },
+        ],
+        onError: "skip",
+      });
+
+      const result = await testBlock(board.drain, { input: undefined });
+      expect(result.error).toBeNull();
+      const final = lastTaskState(result.items);
+      expect(final.get("p")).toBe("errored");
+      expect(final.get("y")).toBe("completed");
+      expect(trace).toEqual(["only:y"]);
+    },
+  );
+
+  // "Route unknown assignees to my generalist, who is also on the roster" — the
+  // same block instance as both a registry worker and the defaultWorker. Each
+  // worker identity must be connected ONCE and the connected definition reused,
+  // or the two `connectInput` calls produce distinct definitions carrying the
+  // same block name and router construction throws `duplicate route name`.
+  it("accepts the same block as both a registry worker and the defaultWorker", async () => {
+    const trace: string[] = [];
+    const generalist = makeEchoWorker("generalist", trace);
+    const board = taskBoard({
+      name: "floor-aliased",
+      collection: { collectionId: "floor-aliased" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { generalist },
+      defaultWorker: generalist,
+      initialTasks: [
+        { id: "d", goal: "declared", assignee: "generalist", input: { topic: "d" } },
+        { id: "u", goal: "unclaimed", assignee: "nobody", input: { topic: "u" } },
+        { id: "a", goal: "no assignee", input: { topic: "a" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("d")).toBe("completed");
+    expect(final.get("u")).toBe("completed");
+    expect(final.get("a")).toBe("completed");
+    expect(trace.sort()).toEqual(["generalist:a", "generalist:d", "generalist:u"]);
+  });
+
+  // Two registry keys aliasing one block instance hit the same seam: without
+  // connect-once each key gets its own wrapper — same name, distinct identity.
+  it("accepts two registry keys aliasing the same block", async () => {
+    const trace: string[] = [];
+    const shared = makeEchoWorker("shared", trace);
+    const board = taskBoard({
+      name: "aliased-keys",
+      collection: { collectionId: "aliased-keys" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { alice: shared, bob: shared },
+      initialTasks: [
+        { id: "x", goal: "a", assignee: "alice", input: { topic: "x" } },
+        { id: "y", goal: "b", assignee: "bob", input: { topic: "y" } },
+      ],
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("x")).toBe("completed");
+    expect(final.get("y")).toBe("completed");
+    expect(trace.sort()).toEqual(["shared:x", "shared:y"]);
+  });
+
+  it("I2: with no defaultWorker, an absent assignee still fails the task", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "no-floor-absent",
+      collection: { collectionId: "no-floor-absent" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: { only: makeEchoWorker("only", trace) },
+      // No defaultWorker — the miss must still error, exactly as before.
+      initialTasks: [
+        { id: "a", goal: "no assignee" },
+        { id: "y", goal: "ok", assignee: "only", input: { topic: "y" } },
+      ],
+      onError: "skip",
+    });
+
+    const result = await testBlock(board.drain, { input: undefined });
+    expect(result.error).toBeNull();
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("errored");
+    expect(final.get("y")).toBe("completed");
+    expect(trace).toEqual(["only:y"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CAS contention safety
 // ---------------------------------------------------------------------------
 

@@ -7,7 +7,6 @@ import type {
   ActionCore,
   BlockDefinition,
   FlowInstance,
-  Middleware,
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
@@ -17,7 +16,6 @@ import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
 import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
-import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
@@ -1193,13 +1191,6 @@ export async function runActionInternal<
       throw parseError;
     }
 
-    // Compose middleware: global (from caller) → flow-level.
-    // Block-level middleware is added inside executeBlock from block.config.
-    const actionMiddleware = mergeMiddlewareStacks(
-      options.runtimeConfig.middleware,
-      options.flow.middleware
-    );
-
     let result;
     try {
       result = await executeBlock({
@@ -1207,7 +1198,6 @@ export async function runActionInternal<
         input: parsedInput,
         ctx,
         retry: options.retry,
-        middleware: actionMiddleware.length > 0 ? actionMiddleware : undefined,
         internalSeams,
         metadata: {
           scope: "request"

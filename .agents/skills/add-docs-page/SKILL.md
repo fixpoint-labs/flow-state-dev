@@ -1,5 +1,5 @@
 ---
-name: fsd:add-docs-page
+name: add-docs-page
 description: Add a new page to the flow-state-dev documentation site (Docusaurus). Handles frontmatter, sidebar placement, content structure, and cross-linking.
 argument-hint: "<topic and section, e.g. 'guide for creating custom store adapters in the persistence section'>"
 ---

@@ -22,6 +22,8 @@ the detected asset type is printed.
 classifies as `equity` and is caught one step later by the resolution guard
 instead. The asset-type stop fires only for a symbol whose shape is non-equity.
 
+**Model.** none — the asset-type gate runs before ticker resolution and before any generator, so the run stops without spending a model token.
+
 **Run.** Out of CI, by hand (no model cost — it stops at the gate):
 
 ```
@@ -33,3 +35,5 @@ pnpm tsx goals/trading-desk-portfolio/gate-non-equity/run.mts
 - 2026-06-29 — **PASS**. `912828YK0` (a US Treasury CUSIP) in fixture/fast mode:
   `status: stopped`, `stopReason: unsupported-asset-type`, message "912828YK0
   classifies as a bond — the analyst bench researches equities only."
+
+- 2026-07-25 — **BLOCKED** (none). `fsdev run analysis` does not complete in this container (hangs with no CPU). Pre-existing and environmental: the pre-migration runner hangs identically on the same call. Re-run where the desk app is runnable. Run during the goals/lib migration (runner scaffolding only; no product code changed).

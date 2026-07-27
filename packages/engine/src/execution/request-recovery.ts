@@ -87,7 +87,7 @@ export type RetryRequestOptions = {
   /**
    * Instance-level runtime options, forwarded verbatim to the retried
    * `runAction` so a retry honors the same resolvers (including the effective
-   * `voiceProvider`), settings, middleware, and observability config as the
+   * `voiceProvider`), settings, and observability config as the
    * original dispatch. See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;

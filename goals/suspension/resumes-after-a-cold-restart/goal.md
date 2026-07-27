@@ -14,3 +14,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-23 | f589e3eb | n/a (no LLM) | PASS | Process A suspended (filesystem store); fresh process B reloaded the suspension as `pending` (survived restart), approved, resumed → status `completed`; resumed output `{request, approvalId, approved:true, note}` carried both held-out values. Cold-restart durability intact on this branch. |
+| 2026-07-25 | 5eb5e7e | n/a | PASS | Process B reloaded process A's suspension as pending, approved, and resumed to `completed` with request + note intact. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

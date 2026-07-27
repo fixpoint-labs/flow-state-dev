@@ -30,8 +30,13 @@ import {
   shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
+import {
+  TaskCapExceededError,
+  validateTaskCaps,
+  type TaskCapOptions,
+} from "./task-caps";
 
-export interface SequencerBackedOptions {
+export interface SequencerBackedOptions extends TaskCapOptions {
   collectionId: string;
   /** Sequencer state ref — typically `ctx.sequencer`. The sequencer's stateSchema
    *  must include a record at `[stateKey]`, e.g. `tasks: z.record(taskSchema)`. */
@@ -63,6 +68,12 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
+  validateTaskCaps(`[tasks] collection "${options.collectionId}"`, options);
+  // `null` (explicitly unbounded) and omission collapse to the same runtime
+  // state here — the distinction only matters at the construction points that
+  // decide whether to apply a default.
+  const maxTotalTasks = options.maxTotalTasks ?? undefined;
+  const maxEnqueuedTasks = options.maxEnqueuedTasks ?? undefined;
   const wrap = createTaskHandleWrapper<TInput, TOutput>(
     options.collectionId,
     options.getItems,
@@ -118,6 +129,45 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       if (next === undefined) return {} as Partial<Record<string, unknown>>;
       return { [stateKey]: next } as Partial<Record<string, unknown>>;
     });
+  }
+
+  /**
+   * Enforce the creation caps against the map an insertion WOULD produce
+   * (FIX-931). Called from inside `casWrite`'s mutator, so it re-evaluates
+   * against the winner's committed map on every CAS retry: concurrent same-step
+   * adds serialize, and a burst at a boundary lands exactly the cap's worth.
+   * Throwing here aborts the mutate, so nothing is written — which is also what
+   * makes a batch `addTasks` all-or-nothing.
+   *
+   * Only creation is capped. Transitions that move a task back into `pending`
+   * (retry, unblock, resume, reclaim) never reach this, by design.
+   */
+  function assertWithinCaps(next: Record<string, Task<TInput, TOutput>>): void {
+    if (maxTotalTasks !== undefined) {
+      const total = Object.keys(next).length;
+      if (total > maxTotalTasks) {
+        throw new TaskCapExceededError({
+          cap: "total",
+          limit: maxTotalTasks,
+          attempted: total,
+          collectionId: options.collectionId,
+        });
+      }
+    }
+    if (maxEnqueuedTasks !== undefined) {
+      let pending = 0;
+      for (const task of Object.values(next)) {
+        if (task.status === "pending") pending++;
+      }
+      if (pending > maxEnqueuedTasks) {
+        throw new TaskCapExceededError({
+          cap: "enqueued",
+          limit: maxEnqueuedTasks,
+          attempted: pending,
+          collectionId: options.collectionId,
+        });
+      }
+    }
   }
 
   async function transitionTo(
@@ -189,7 +239,9 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         if (tasks[task.id] !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
         }
-        return { ...tasks, [task.id]: task };
+        const next = { ...tasks, [task.id]: task };
+        assertWithinCaps(next);
+        return next;
       });
       emit("added", task);
       return task;
@@ -206,6 +258,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           }
           next[task.id] = task;
         }
+        assertWithinCaps(next);
         return next;
       });
       for (const task of built) {

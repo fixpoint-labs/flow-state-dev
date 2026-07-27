@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "composite": false,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    // Several goals import trading-desk modules by relative path; those modules
+    // import their own siblings via the app's `@/*` alias, so it has to resolve
+    // here too. `@flow-state-dev/*` needs no mapping — the workspace symlinks in
+    // goals/node_modules resolve it exactly as `tsx` does at runtime.
+    "paths": {
+      "@/*": ["labs/trading-desk/*"]
+    }
+  },
+  "include": ["lib/**/*.mts", "**/run.mts", "_template/*.mts"],
+  "exclude": ["node_modules", "**/harness.mts"]
+}

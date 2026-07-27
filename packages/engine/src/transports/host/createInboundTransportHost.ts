@@ -49,7 +49,7 @@ export type CreateInboundTransportHostOptions = {
    * Instance-level options forwarded verbatim through the execution chain.
    * The host reads `maxResponseBufferSize` / `defaultSseHeartbeatMs` /
    * `onBackgroundWork` for live-stream wiring, exposes the resolvers /
-   * middleware / logger on the returned host, and passes the bundle to
+   * logger on the returned host, and passes the bundle to
    * `runAction`. See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
@@ -485,7 +485,6 @@ export function createInboundTransportHost(
       // here. This bag exists for adapter introspection.
       voice: runtimeConfig.voiceProvider
     },
-    middleware: runtimeConfig.middleware,
     logger: runtimeConfig.logger,
     dispatch,
     continueRequest,

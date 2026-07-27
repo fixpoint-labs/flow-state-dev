@@ -76,7 +76,9 @@ import {
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
   onTaskChangeFor,
+  resolveTaskCapDefaults,
   type DefinedTaskCollection,
+  type TaskCapOptions,
   type TaskCollectionRef,
   type TaskDispatcher,
   type TaskInit,
@@ -286,10 +288,56 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   workers: TaskWorker<TInput, TOutput> | TaskWorkerRegistry;
 
   /**
+   * Optional default worker — the **delegation floor** (FIX-940).
+   * Registry path only: wired as the worker router's `fallback`, it runs
+   * any task whose `assignee` is unknown or absent. Omit it and a
+   * registry miss still fails the task per `onError` exactly as before;
+   * declared workers are never routed through it (reached only on a
+   * genuine miss). Non-delegation consumers (blackboard, patterns) leave
+   * it unset.
+   */
+  defaultWorker?: TaskWorker;
+
+  /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
    * this many worker sequencers via `.forEach({ maxConcurrency })`.
    */
   concurrency?: number;
+
+  /**
+   * Maximum tasks that may be *added* while others are still `pending`
+   * (FIX-931). Default 100. Checked at creation against the resulting
+   * `pending` count, so it refreshes as tasks drain — this bounds a single
+   * up-front fan-out burst, not concurrent `pending` (a retry, unblock,
+   * resume, or reclaim re-pends without passing the cap). `null` is
+   * explicitly unbounded; omitting it reapplies the default.
+   *
+   * Applies ONLY when the board constructs its own collection — the
+   * declarative request/sequencer forms. Passing it alongside a supplied
+   * `collection` (a `DefinedTaskCollection` or a factory) is a construction
+   * error: that collection carries whatever caps it was built with, and a
+   * board cannot retrofit limits onto a collection it did not construct.
+   *
+   * IMPORTANT — the bound holds for writers that go through this board's
+   * `collectionFactory` or `capability`. It is closed over by the resolved
+   * `TaskCollectionRef`, and `getOrCreateTaskCollection` never caches, so a
+   * writer that resolves the SAME ledger into its own ref enforces nothing and
+   * can insert past the bound. Such a writer must be handed `board.caps`.
+   */
+  maxEnqueuedTasks?: number | null;
+
+  /**
+   * Maximum tasks the board may ever hold, terminal ones included (FIX-931).
+   * Default 500. Never refunded by draining, so it is the backstop against a
+   * drain-then-re-enqueue runaway. `null` is explicitly unbounded; same
+   * supplied-collection rule as `maxEnqueuedTasks`.
+   *
+   * For how far the count persists (it is derived from the ledger, so it lasts
+   * exactly as long as the ledger — which differs by backing, and does NOT
+   * simply reset on resume), see the lifetime section in
+   * `tasks/collection/task-caps.ts`.
+   */
+  maxTotalTasks?: number | null;
 
   /**
    * Dispatcher for ready-task selection. Either a `TaskDispatcher`
@@ -446,6 +494,20 @@ export interface TaskBoardHandle<
    * initial tasks or all carry ids.
    */
   hasIdlessInitialTasks: boolean;
+  /**
+   * The board's resolved creation caps (FIX-931) — defaults applied, validated.
+   * Empty (`{}`) when the caller supplied the collection, since the board then
+   * applies none.
+   *
+   * Surfaced because the caps live in a ref's closure and
+   * `getOrCreateTaskCollection` never caches, so a SECOND ref over the same
+   * ledger enforces nothing. Any writer that resolves this board's collection
+   * itself — rather than through `collectionFactory` or `capability` — must pass
+   * these, or it silently writes past the bounds the board advertises. That is
+   * what `patterns`' planner-seed and event-record paths do; see the note on
+   * `TaskBoardConfig.maxEnqueuedTasks`.
+   */
+  caps: TaskCapOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -471,6 +533,7 @@ export function taskBoard<
     name,
     collection: collectionConfig,
     workers,
+    defaultWorker,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -482,6 +545,8 @@ export function taskBoard<
     toolCache,
     flowPolicy: flowPolicyConfig,
   } = config;
+
+  const caps = resolveBoardCaps(name, config);
 
   if (concurrency < 1) {
     throw new Error(
@@ -502,7 +567,8 @@ export function taskBoard<
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
-    collectionConfig
+    collectionConfig,
+    caps
   );
   const { collectionFactory, collectionId, capability, backing, drainUses } =
     binding;
@@ -558,6 +624,7 @@ export function taskBoard<
   const workerStep = buildWorkerStep({
     name,
     workers,
+    ...(defaultWorker !== undefined ? { defaultWorker } : {}),
     collection: collectionFactory,
     resolveFlowPolicy: createFlowPolicyResolver(runState),
   });
@@ -736,12 +803,57 @@ export function taskBoard<
   // once-chosen backing onto every downstream wiring, so no call site restates
   // it. `board.capability` is always defined; `uses: [board.capability]` gets a
   // typed `ctx.cap.<name>` accessor regardless of backing.
-  return { drain, collectionId, capability, backing, hasIdlessInitialTasks };
+  return { drain, collectionId, capability, backing, hasIdlessInitialTasks, caps };
 }
 
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve the board's creation caps (FIX-931).
+ *
+ * Caps belong to the COLLECTION, so `taskBoard`'s options apply only when the
+ * board is the one constructing it — the declarative request/sequencer forms,
+ * where the 500/100 defaults land. When the caller SUPPLIES a collection (a
+ * `DefinedTaskCollection` or a factory), the board applies nothing and inspects
+ * nothing: that collection carries whatever caps it was built with and remains
+ * the sole authority. Passing cap options anyway is a config error, refused here
+ * at construction with a message pointing at where the caps do belong — a board
+ * cannot retrofit limits onto a collection it did not construct.
+ */
+function resolveBoardCaps(
+  name: string,
+  config: TaskBoardConfig<any, any>
+): TaskCapOptions {
+  const supplied =
+    typeof config.collection === "function" ||
+    isDefinedTaskCollection(config.collection);
+  const capsRequested =
+    config.maxTotalTasks !== undefined || config.maxEnqueuedTasks !== undefined;
+
+  if (supplied) {
+    if (capsRequested) {
+      throw new Error(
+        `[task-board] "${name}" cannot take maxTotalTasks/maxEnqueuedTasks together with a ` +
+          `supplied collection — caps belong to the collection, so configure them where it is ` +
+          `created (e.g. getOrCreateTaskCollection({ backing: "sequencer", maxTotalTasks })). ` +
+          `A board only applies caps to a collection it constructs itself.`
+      );
+    }
+    return {};
+  }
+
+  // Declarative: the board constructs the collection, so the defaults apply.
+  // `resolveTaskCapDefaults` owns both the default values and the validation, so
+  // this site never restates 500/100. It throws at `taskBoard()` construction
+  // rather than on first resolve, mirroring the concurrency/maxIterations checks
+  // above.
+  return resolveTaskCapDefaults(`[task-board] "${name}"`, {
+    maxTotalTasks: config.maxTotalTasks,
+    maxEnqueuedTasks: config.maxEnqueuedTasks,
+  });
+}
 
 /**
  * Everything the board factory needs that depends on the once-chosen backing:
@@ -778,10 +890,16 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
  *   against `ctx.getTarget(boardName)` (falling back to `ctx.sequencer` for the
  *   top-level seed handler).
  * - factory — caller-supplied `(ctx) => collection`, passed through unchanged.
+ *
+ * `caps` (FIX-931) is populated only for the two branches that CONSTRUCT the
+ * collection, and is empty for the supplied forms — see `resolveBoardCaps`. It
+ * is threaded into both the runtime factory and the capability, so every writer
+ * that reaches this board resolves a capped collection, not just the drain.
  */
 function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
   boardName: TName,
-  collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"]
+  collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"],
+  caps: TaskCapOptions
 ): CollectionBinding<TInput, TOutput, TName> {
   // 1. Caller-supplied factory. Sync-or-async, normalized via `Promise.resolve`.
   if (typeof collectionConfig === "function") {
@@ -857,6 +975,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         collectionId,
         sequencer: stateRef,
         stateKey,
+        ...caps,
       });
     };
     return {
@@ -868,6 +987,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         boardName,
         collectionId,
         stateKey,
+        ...caps,
       }),
     };
   }
@@ -882,6 +1002,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
       backing: "request",
       collectionId,
       stateKey,
+      ...caps,
     });
   return {
     collectionFactory,
@@ -892,6 +1013,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
       boardName,
       collectionId,
       stateKey,
+      ...caps,
     }),
   };
 }

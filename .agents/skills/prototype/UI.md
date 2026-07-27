@@ -121,7 +121,7 @@ Once a variant has won, write down which one and why:
 
 - Commit message — minimum.
 - `docs/architecture/<area>.md` if the choice encodes a contract decision (e.g. how `block_output` items get visually grouped).
-- `docs/internal/out-of-scope/<name>.md` for the *rejected* variants if any of them represent a recurring temptation that should be documented as deliberately not-chosen (apply the three-way filter from `fsd:improve-codebase-architecture`).
+- `docs/internal/out-of-scope/<name>.md` for the *rejected* variants if any of them represent a recurring temptation that should be documented as deliberately not-chosen (apply the three-way filter from `improve-codebase-architecture`).
 - `NOTES.md` next to the prototype if running AFK and the user hasn't responded yet.
 
 Then clean up:
@@ -137,4 +137,4 @@ Don't leave variant components or the switcher lying around. They rot fast and c
 - **Sharing too much code between variants.** A shared `<Header>` is fine; a shared `<Layout>` defeats the point. Each variant must be free to throw out the layout.
 - **Wiring variants to real mutations.** Read-only prototypes are fine. If a variant needs to dispatch an action, point it at a stub or seed state via `--seed-session` rather than letting it write to a real session. The question is "what should this look like," not "does the backend work."
 - **Prototyping renderers against fake items.** If you hand-construct items inside the variant to demo it, the variant doesn't survive contact with real flow output (real provenance, real `block_output` cardinality, real interleaved item types). Always render against items produced by an actual `fsdev run` or a kitchen-sink flow execution.
-- **Promoting the prototype directly to production.** The variant code was written under prototype constraints (no tests, minimal accessibility, fake error states). Rewrite it properly when you fold it in, run it through `fsd:tdd` for any added logic, and follow BP-007 for doc comments.
+- **Promoting the prototype directly to production.** The variant code was written under prototype constraints (no tests, minimal accessibility, fake error states). Rewrite it properly when you fold it in, run it through `tdd` for any added logic, and follow BP-007 for doc comments.

@@ -32,7 +32,7 @@
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
@@ -97,6 +97,25 @@ export interface SkillsLibraryOptions {
    */
   workerModelId?: string;
   /**
+   * Lifetime task ceiling for the delegation board (FIX-931). Counts every task
+   * ever created on the board, terminal ones included, and is never refunded by
+   * draining. Default 500; `null` is explicitly unbounded.
+   *
+   * The delegation board is sequencer-backed (the executive's own state), so on
+   * a checkpoint resume the ledger — and therefore this count — is restored with
+   * it rather than starting over. See the lifetime section in
+   * `tasks/collection/task-caps.ts`.
+   */
+  maxTotalTasks?: number | null;
+  /**
+   * Enqueue-burst ceiling for the delegation board (FIX-931): how many tasks a
+   * coordinator (or a fanning-out worker) may add while others are still
+   * `pending`. Default 100; `null` is explicitly unbounded. Checked at creation,
+   * so it refreshes as tasks drain and does not bound tasks that re-enter
+   * `pending` via a retry, unblock, resume, or reclaimed lease.
+   */
+  maxEnqueuedTasks?: number | null;
+  /**
    * Agent registry for delegation agents declared with `agent-ref:`. Agents
    * materialize at runtime (the tool surface resolves async), so registry
    * lookups can await. A statically-`active` skill with an `agent-ref` agent
@@ -132,8 +151,23 @@ export interface SkillsBindingConfig {
     field: string;
   };
   /**
-   * Force-off delegation even when a bound skill declares `agents:`. Delegation
-   * is otherwise derived automatically from the presence of `agents:` (FIX-918).
+   * Explicit override of the default delegation-install rule (install iff a
+   * bound skill declares `agents:`, FIX-918):
+   *
+   * - `false` — force-OFF, even when a bound skill declares `agents:`.
+   * - `true` — force-ON, even when NO skill declares `agents:` (FIX-940). The
+   *   full surface installs (board + taskTools + runBoard) with an empty roster;
+   *   its only worker is the on-demand default floor, so a skill can delegate
+   *   without hand-writing a roster. When agents ARE declared, `true` is
+   *   redundant with the default (they behave identically).
+   * - omitted — derived from the presence of `agents:`.
+   *
+   * Whenever the surface installs — rosterless or roster-carrying — the default
+   * worker is wired as the board's fallback, so a task whose `assignee` is unset
+   * runs on it instead of erroring. With agents declared, an assignee naming
+   * none of them is rejected by `addTask` up front (FIX-924), so the floor is
+   * reached deliberately rather than by a typo; a rosterless board has nothing
+   * to validate against and accepts any assignee.
    */
   delegation?: boolean;
   /**
@@ -405,6 +439,12 @@ export function createSkillsLibrary(
     // skills are first-class. Static wiring errors still fail loud at build
     // time via the validation pass below.
     const delegationOn = cfg.delegation !== false;
+    // `delegation: true` is the explicit rosterless opt-in (FIX-940): the floor
+    // keeps the surface installed with an empty roster, and it stays installed
+    // even if the roster later empties mid-turn. Merely deriving delegation from
+    // a declared roster does NOT set this — an emptied derived roster tears the
+    // surface down as before.
+    const allowEmptyRoster = cfg.delegation === true;
     const staticAgentSkills = delegationOn
       ? active
           .map((name) => ({ name, entry: index.get(name)! }))
@@ -435,7 +475,7 @@ export function createSkillsLibrary(
           // Two active skills may share an agent (e.g. a common synthesizer).
           // An IDENTICAL spec dedupes into one board worker; a different spec
           // under the same key is a real collision.
-          if (deepEqual(prior, spec)) continue;
+          if (!specsCollide(prior, spec)) continue;
           throw new Error(
             `skills: delegation agent "${agentKey}" (skill "${skillName}") declares a ` +
               `different spec than another active skill's agent under the same key. Rename the agent key.`,
@@ -478,9 +518,14 @@ export function createSkillsLibrary(
                 Object.keys(entry.agents).length > 0,
             );
           })
-        : true);
+        : // Whole-catalog mode: intentionally broader than strictly needed. We
+          // can't tell yet whether any activation WILL bring agents, and own-state
+          // fields can't be added mid-run, so the board field is pre-declared
+          // defensively for any binding that MIGHT resolve one (harmless if unused —
+          // it defaults to an empty record) (FIX-928, D4).
+          true);
     const delegationPossible =
-      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible);
+      delegationOn && (staticAgentSkills.length > 0 || dynamicAgentEligible || allowEmptyRoster);
     if (delegationPossible) {
       ownStateFields[DELEGATION_BOARD_FIELD] = delegationBoardSchema;
     }
@@ -502,6 +547,15 @@ export function createSkillsLibrary(
         ...(options.workerModelId !== undefined
           ? { defaultModelId: options.workerModelId }
           : {}),
+        // Same forwarding shape as workerModelId: omit when unset so the
+        // delegation surface applies its own defaults, and pass `null` through
+        // verbatim (it is the explicit unbounded opt-out, not an omission).
+        ...(options.maxTotalTasks !== undefined
+          ? { maxTotalTasks: options.maxTotalTasks }
+          : {}),
+        ...(options.maxEnqueuedTasks !== undefined
+          ? { maxEnqueuedTasks: options.maxEnqueuedTasks }
+          : {}),
         collectionKey,
         location,
         staticSources: staticAgentSkills.map(
@@ -514,6 +568,7 @@ export function createSkillsLibrary(
         bundledAgentIndex: buildBundledAgentIndex(index),
         ...(cfg.allowed ? { allowedNames: cfg.allowed } : {}),
         dynamicEligible: dynamicAgentEligible,
+        allowEmptyRoster,
       };
       // Static tools (catalog superset + load tool) are known now; the
       // taskTools and runBoard resolve per execution.

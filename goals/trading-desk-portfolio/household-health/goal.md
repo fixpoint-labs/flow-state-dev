@@ -41,6 +41,8 @@ never persisted), so "resolved" can't be faked by poisoning the ticker with a
 null sector. The build-context spec pins `health.drift === null` so the deferred
 slice can't be silently claimed.
 
+**Model.** none — the household math is deterministic TS over real PGlite; no LLM is in this path.
+
 **Run.** Out of CI, by hand (no model cost):
 
 ```
@@ -58,3 +60,5 @@ pnpm tsx goals/trading-desk-portfolio/household-health/run.mts
   from the read-only cache without fetching Yahoo. `health.drift === null` (the
   FIX-761-gated slice is honestly absent). Full trading-desk suite green
   (1192 tests).
+
+- 2026-07-25 — **PASS** (none). All six real-path specs green over real PGlite. Run during the goals/lib migration (runner scaffolding only; no product code changed).

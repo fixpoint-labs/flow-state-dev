@@ -33,64 +33,35 @@
  *
  * Run: pnpm tsx goals/continue-interrupted-run/continues-not-restarts/run.mts
  */
-import { readFileSync } from "node:fs";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import {
-  continueRequest,
-  createCheckpointDurabilityProvider,
-  createFlowRegistry,
-  createInMemoryStores,
-  runAction,
-} from "@flow-state-dev/engine";
+import { continueRequest, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ContinuationItem } from "@flow-state-dev/core/items";
+import {
+  approvalContext,
+  approvePending,
+  durableStores,
+  loadFixture,
+  registryFor,
+  runGoal,
+  stripIntentOverrides,
+} from "../../lib/index.mts";
 
-const fixture = JSON.parse(
-  readFileSync(new URL("./fixtures/note.json", import.meta.url), "utf8"),
-) as { note: string };
+const fixture = loadFixture<{ note: string }>(import.meta.url, "note.json");
 
 // This flow declares no generator/model intents (see goal.md's Model field),
-// so strip any pinned FSDEV_INTENT_* / FSDEV_DEFAULT_MODEL overrides from this
-// process's env before building the execution context — otherwise
-// createModelResolver throws trying to match a pinned intent against the
-// (empty) declared set. Mirrors the env-cleaning the suspension goal checks
-// do for their spawned driver processes; this one runs in-process, so it
-// cleans its own env instead.
-for (const key of Object.keys(process.env)) {
-  if (key.startsWith("FSDEV_INTENT_") || key === "FSDEV_DEFAULT_MODEL") delete process.env[key];
-}
-
-// Silence the engine's default console runtime logger — this check only cares
-// about its own assertions, not the execution trace.
-const silentLogger = { debug() {}, info() {}, warn() {}, error() {} };
-
-function fail(msg: string): never {
-  console.error("FAIL —\n  - " + msg);
-  process.exit(1);
-}
-
-function createDurableStores() {
-  const stores = createInMemoryStores();
-  const provider = createCheckpointDurabilityProvider({
-    checkpoints: stores.checkpoints,
-    suspensions: stores.suspensions,
-    leases: stores.leases,
-  });
-  return { stores, provider };
-}
-
-function registryFor(flow: FlowInstance) {
-  const registry = createFlowRegistry();
-  registry.register(flow as never);
-  return registry;
-}
+// so clear any pinned intent-ladder overrides before the engine builds its
+// execution context — otherwise createModelResolver throws trying to match a
+// pinned intent against the (empty) declared set.
+stripIntentOverrides();
 
 function continuationItems(items: readonly { type: string }[] | undefined): ContinuationItem[] {
   return ((items ?? []) as ContinuationItem[]).filter((i) => i.type === "continuation");
 }
 
-async function main(): Promise<void> {
+await runGoal(async () => {
+  const failures: string[] = [];
   let earlyRuns = 0;
   let bgRuns = 0;
 
@@ -142,27 +113,33 @@ async function main(): Promise<void> {
         inputSchema: z.any(),
       },
     },
-  })({ id: "goal-continue-interrupted" });
+  })({ id: "goal-continue-interrupted" }) as FlowInstance;
 
-  const { stores, provider } = createDurableStores();
-  const runtimeConfig = { durabilityProvider: provider, logger: silentLogger };
+  const { stores, provider, runtimeConfig } = durableStores();
+  const registry = registryFor(flow);
 
   // 1. Run to the first suspension.
   const initial = await runAction({
-    flow,
+    flow: flow as never,
     actionName: "run",
     input: {},
     userId: "goal-user",
     stores,
-    runtimeConfig,
+    runtimeConfig: runtimeConfig as never,
   });
   const requestId = initial.requestId!;
-  if (earlyRuns !== 1) fail(`expected earlyStep to run once before suspension, ran ${earlyRuns} times`);
-  if (bgRuns !== 1) fail(`expected bgWork to run once before suspension, ran ${bgRuns} times`);
+  if (earlyRuns !== 1) failures.push(`expected earlyStep to run once before suspension, ran ${earlyRuns} times`);
+  if (bgRuns !== 1) failures.push(`expected bgWork to run once before suspension, ran ${bgRuns} times`);
+
   const beforeCrash = await stores.request.get(requestId);
-  if (beforeCrash?.status !== "suspended") fail(`expected initial run to suspend, got status "${beforeCrash?.status}"`);
+  if (beforeCrash?.status !== "suspended") {
+    return {
+      failures: [...failures, `expected initial run to suspend, got status "${beforeCrash?.status}"`],
+      evidence: "",
+    };
+  }
   const priorItemCount = (beforeCrash.items ?? []).length;
-  if (priorItemCount <= 0) fail("expected the pre-crash item log to be non-empty");
+  if (priorItemCount <= 0) failures.push("expected the pre-crash item log to be non-empty");
 
   // 2. Simulate a crash: flip the record to "interrupted" (mirrors the
   //    engine's own crash-recovery test harness — see goal.md).
@@ -176,74 +153,73 @@ async function main(): Promise<void> {
   const { finished: recovered } = await continueRequest({
     requestId,
     stores,
-    flowRegistry: registryFor(flow),
-    runtimeConfig,
+    flowRegistry: registry,
+    runtimeConfig: runtimeConfig as never,
   });
   await recovered;
 
   const afterRecovery = await stores.request.get(requestId);
   const contItems = continuationItems(afterRecovery?.items);
   if (contItems.length !== 1) {
-    fail(`expected exactly one continuation item after crash-recovery continue, found ${contItems.length}`);
+    return {
+      failures: [
+        ...failures,
+        `expected exactly one continuation item after crash-recovery continue, found ${contItems.length}`,
+      ],
+      evidence: "",
+    };
   }
   if (contItems[0].trigger !== "recovery") {
-    fail(`expected the continuation item's trigger to be "recovery", got "${contItems[0].trigger}"`);
+    failures.push(`expected the continuation item's trigger to be "recovery", got "${contItems[0].trigger}"`);
   }
   if (!(contItems[0].priorItemCount > 0)) {
-    fail(`expected the continuation item's priorItemCount to be > 0, got ${contItems[0].priorItemCount}`);
+    failures.push(`expected the continuation item's priorItemCount to be > 0, got ${contItems[0].priorItemCount}`);
   }
   if (earlyRuns !== 1) {
-    fail(`earlyStep re-ran after crash-recovery continue (ran ${earlyRuns} times) — it was re-executed, not replayed`);
+    failures.push(`earlyStep re-ran after crash-recovery continue (ran ${earlyRuns} times) — it was re-executed, not replayed`);
   }
   if (bgRuns !== 1) {
-    fail(`bgWork re-ran after crash-recovery continue (ran ${bgRuns} times) — the completed background block was re-executed, not replayed`);
+    failures.push(`bgWork re-ran after crash-recovery continue (ran ${bgRuns} times) — the completed background block was re-executed, not replayed`);
   }
 
   // 4. Resolve the re-suspended gate (ordinary post-crash operator approval)
   //    to drive the SAME request id to completion.
-  const pending = await provider.listSuspended({ status: "pending" });
-  const suspension = pending.find((s) => s.requestId === requestId);
-  if (!suspension) fail("expected a pending suspension after the crash-recovery re-entry re-suspended the gate");
-
-  await provider.suspend({
-    ...suspension,
-    status: "approved",
-    resolvedAt: Date.now(),
-    resumeData: { note: fixture.note },
-  });
+  const suspension = await approvePending(provider, requestId, { note: fixture.note });
 
   const { finished: resolved } = await continueRequest({
     requestId,
     stores,
-    flowRegistry: registryFor(flow),
-    resumeContext: { suspensionId: suspension.suspensionId, action: "approve", data: { note: fixture.note } },
-    runtimeConfig,
+    flowRegistry: registry,
+    resumeContext: approvalContext(suspension, { note: fixture.note }) as never,
+    runtimeConfig: runtimeConfig as never,
   });
   const result = await resolved;
 
   if (result.requestId !== requestId) {
-    fail(`resolving continue produced a DIFFERENT request id (${result.requestId}) — a restart, not a continuation`);
+    failures.push(
+      `resolving continue produced a DIFFERENT request id (${result.requestId}) — a restart, not a continuation`,
+    );
   }
   const finalRecord = await stores.request.get(requestId);
   if (finalRecord?.status !== "completed") {
-    fail(`expected terminal status "completed", got "${finalRecord?.status}"`);
+    failures.push(`expected terminal status "completed", got "${finalRecord?.status}"`);
   }
-  if (earlyRuns !== 1) fail(`earlyStep re-ran during the resolving continue (ran ${earlyRuns} times)`);
-  if (bgRuns !== 1) fail(`bgWork re-ran during the resolving continue (ran ${bgRuns} times)`);
+  if (earlyRuns !== 1) failures.push(`earlyStep re-ran during the resolving continue (ran ${earlyRuns} times)`);
+  if (bgRuns !== 1) failures.push(`bgWork re-ran during the resolving continue (ran ${bgRuns} times)`);
 
   const output = result.output as { note?: string | null } | undefined;
   if (output?.note !== fixture.note) {
-    fail(`resumed output note "${output?.note}" does not match the held-out fixture note "${fixture.note}"`);
+    failures.push(
+      `resumed output note "${output?.note}" does not match the held-out fixture note "${fixture.note}"`,
+    );
   }
 
-  console.log(
-    `PASS — interrupted request ${requestId} continued (not restarted): exactly one "recovery" ` +
+  return {
+    failures,
+    evidence:
+      `interrupted request ${requestId} continued (not restarted): exactly one "recovery" ` +
       `continuation item (priorItemCount ${contItems[0].priorItemCount}); earlyStep and bgWork each ` +
       `ran exactly once across both continue calls; the SAME request id reached "completed" carrying ` +
       `the held-out note "${fixture.note}".`,
-  );
-}
-
-main().catch((err) => {
-  fail(err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err));
+  };
 });

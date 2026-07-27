@@ -386,7 +386,7 @@ await runAction({
 });
 ```
 
-Use `summarizeForLog(value)` for the same bounded payload summaries in custom middleware.
+Use `summarizeForLog(value)` for the same bounded payload summaries in custom log formatters.
 
 ## Public API
 

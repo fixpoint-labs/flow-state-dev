@@ -46,9 +46,12 @@ import { splitAttributesSchema } from "@/domain/portfolio/schema/ledger-schema";
 import { deriveLots } from "@/domain/portfolio/math/lots";
 import type { RealizedDisposal } from "@/domain/portfolio/math/realized-gains";
 import type { TaxProfileInput } from "@/domain/portfolio/schema/tax-schema";
+import type { NormalizedEtfProfile } from "@/lib/providers/etf-profile";
+import type { EtfProfileRefusalClass } from "@/lib/etf-profile-backoff";
 import type { Db } from "./client";
 import {
   accounts,
+  etfProfiles,
   holdings,
   instrumentClassifications,
   ledgerEvents,
@@ -302,6 +305,28 @@ export interface PortfolioRepository {
    * reference data — no `userId` guard.
    */
   upsertInstrumentClassifications(rows: InstrumentClassificationInput[]): Promise<void>;
+  /**
+   * Stored ETF holdings profiles for a set of fund tickers (FIX-801), for the
+   * Portfolio pane's fill route and the analysis seed (read-only there — see
+   * `upsertEtfProfiles`). Tickers are upper-cased before the lookup (the
+   * canonical PK); an empty input returns `[]` without a query. A ticker with
+   * no row is simply a miss — the caller (the fill route) decides whether to
+   * fetch it. GLOBAL reference data — no `userId` guard (the `getQuotes` /
+   * `getInstrumentClassifications` precedent: a fund's holdings composition is
+   * a public fact, not a household-scoped one).
+   */
+  getEtfProfiles(tickers: string[]): Promise<EtfProfileRow[]>;
+  /**
+   * Persist a batch of ETF profile fill outcomes (FIX-801), transactionally —
+   * upsert on the `ticker` PK. Two shapes: a SUCCESS row (`payload` set,
+   * `refusalReason: null`, even when the profile is thin/below the coverage
+   * floor — Decision 4: a thin profile is stored, not refused) or a REFUSAL
+   * row (`payload: null`, `refusalReason` + `retryAt` set — a genuine fetch
+   * failure or permanent ineligibility, per the `lib/etf-profile-backoff.ts`
+   * policy). Tickers are upper-cased and in-memory deduped by ticker (last
+   * write wins — the `upsertQuotes` precedent). Empty input is a no-op.
+   */
+  upsertEtfProfiles(rows: EtfProfileUpsertInput[]): Promise<void>;
 }
 
 /** One `(account, ticker)` income aggregate — see
@@ -396,6 +421,59 @@ export type InstrumentClassificationInput = {
   sector: string;
   source: string;
 };
+
+/** One persisted ETF profile fill outcome (FIX-801) — the read shape of
+ *  `app.etf_profiles`, timestamps normalized to ISO-8601. Exactly one of
+ *  `payload` / `refusalReason` is non-null (never both, never neither) — see
+ *  {@link EtfProfileUpsertInput}. */
+export type EtfProfileRow = {
+  ticker: string;
+  payload: NormalizedEtfProfile | null;
+  refusalReason: EtfProfileRefusalClass | null;
+  refusalDetail: string | null;
+  retryAt: string | null;
+  transientAttempts: number;
+  fetchedAt: string;
+};
+
+/** Fields a caller supplies to persist one ETF profile fill outcome (FIX-801).
+ *  A discriminated union so a caller can't accidentally set both `payload` and
+ *  `refusalReason` (or neither) — the fill route always has exactly one
+ *  outcome per ticker per attempt.
+ *
+ *  The success variant's `retryAt`/`transientAttempts`/`fetchedAt` are ALL
+ *  OPTIONAL and exist for one narrow case: a REFRESH attempt on an already-
+ *  good `payload` that itself failed (threw, or came back refused) — the
+ *  route keeps the known-good payload (never clobbers it) but still needs to
+ *  record WHEN the next refresh attempt is allowed, via the same per-
+ *  failure-class backoff the refusal variant uses (reviewer follow-up on
+ *  FIX-801 sub-PR a: without this, a stale row whose refresh keeps failing
+ *  is retried on every single read, burning the shared daily budget).
+ *  `fetchedAt` must be explicitly PRESERVED (the ticker's prior successful
+ *  fetch time) on that same write — bumping it to "now" would make the row
+ *  look freshly fetched, so the staleness check that gates a retry attempt
+ *  (`isDueForFetch`, checked BEFORE `retryAt`) would short-circuit and the
+ *  backoff would never actually be consulted (a second reviewer follow-up:
+ *  the fix above only works if the row still LOOKS stale). Omitted (a normal
+ *  fresh success) clears any prior backoff and stamps the current time,
+ *  matching the pre-existing behavior. */
+export type EtfProfileUpsertInput =
+  | {
+      ticker: string;
+      payload: NormalizedEtfProfile;
+      refusalReason: null;
+      retryAt?: string | null;
+      transientAttempts?: number;
+      fetchedAt?: string;
+    }
+  | {
+      ticker: string;
+      payload: null;
+      refusalReason: EtfProfileRefusalClass;
+      refusalDetail: string | null;
+      retryAt: string;
+      transientAttempts: number;
+    };
 
 /** Coerce a Drizzle `numeric` (string) to a JS number; pass `null` through.
  *  Note: this narrows arbitrary-precision `numeric` to a JS double — fine for
@@ -580,6 +658,22 @@ function mapInstrumentClassification(
     ticker: row.ticker,
     sector: row.sector,
     source: row.source,
+    fetchedAt: new Date(row.fetchedAt).toISOString(),
+  };
+}
+
+/** Map an `app.etf_profiles` row to its read shape (FIX-801). `payload` is a
+ *  jsonb column typed `unknown` by Drizzle — cast to {@link NormalizedEtfProfile}
+ *  at this one read boundary rather than at every call site (the row was only
+ *  ever written by `upsertEtfProfiles`, which accepts the same type). */
+function mapEtfProfile(row: typeof etfProfiles.$inferSelect): EtfProfileRow {
+  return {
+    ticker: row.ticker,
+    payload: (row.payload as NormalizedEtfProfile | null) ?? null,
+    refusalReason: (row.refusalReason as EtfProfileRefusalClass | null) ?? null,
+    refusalDetail: row.refusalDetail,
+    retryAt: row.retryAt === null ? null : new Date(row.retryAt).toISOString(),
+    transientAttempts: row.transientAttempts,
     fetchedAt: new Date(row.fetchedAt).toISOString(),
   };
 }
@@ -1767,6 +1861,89 @@ export function createPortfolioRepository(db: Db): PortfolioRepository {
               source: sql`excluded.source`,
               fetchedAt: sql`now()`,
             },
+          });
+      });
+    },
+
+    async getEtfProfiles(tickers) {
+      const wanted = [...new Set(tickers.map((t) => t.toUpperCase()))];
+      if (wanted.length === 0) return [];
+      const rows = await db.select().from(etfProfiles).where(inArray(etfProfiles.ticker, wanted));
+      return rows.map(mapEtfProfile);
+    },
+
+    async upsertEtfProfiles(rows) {
+      if (rows.length === 0) return;
+      // In-memory dedupe by ticker first (the `upsertQuotes` precedent): two
+      // rows for the same ticker in one batch would trip an intra-statement
+      // ON CONFLICT.
+      const byTicker = new Map<string, EtfProfileUpsertInput>();
+      for (const r of rows) byTicker.set(r.ticker.toUpperCase(), r);
+      const nowIso = new Date().toISOString();
+      const values = [...byTicker.entries()].map(([ticker, r]) => ({
+        ticker,
+        payload: r.payload,
+        refusalReason: r.refusalReason,
+        refusalDetail: r.refusalReason === null ? null : r.refusalDetail,
+        // The success variant's retryAt/transientAttempts are optional — set
+        // only for a "refresh failed, kept the good payload, deferred the
+        // next attempt" write; omitted (undefined) clears any prior backoff.
+        retryAt: r.refusalReason === null ? (r.retryAt ?? null) : r.retryAt,
+        transientAttempts: r.refusalReason === null ? (r.transientAttempts ?? 0) : r.transientAttempts,
+        // fetchedAt is EXPLICIT here (not `now()` in the SQL), so a caller
+        // can PRESERVE the prior successful fetch time on a kept-payload
+        // backoff-only write — bumping it would make the row look freshly
+        // fetched and defeat the retryAt backoff, which the staleness check
+        // gates ahead of (reviewer follow-up, FIX-801 sub-PR a). A refusal
+        // row (a genuinely new miss, never has a prior fetchedAt to keep)
+        // and an omitted `fetchedAt` on the success variant both stamp "now".
+        fetchedAt: r.refusalReason === null ? (r.fetchedAt ?? nowIso) : nowIso,
+      }));
+      await db.transaction(async (tx) => {
+        await tx
+          .insert(etfProfiles)
+          .values(values)
+          .onConflictDoUpdate({
+            target: etfProfiles.ticker,
+            set: {
+              payload: sql`excluded.payload`,
+              refusalReason: sql`excluded.refusal_reason`,
+              refusalDetail: sql`excluded.refusal_detail`,
+              retryAt: sql`excluded.retry_at`,
+              transientAttempts: sql`excluded.transient_attempts`,
+              fetchedAt: sql`excluded.fetched_at`,
+            },
+            // Cross-PROCESS guard (Codex review, FIX-801 sub-PR a): the
+            // route's `withLease`/re-read-under-lease protects the write
+            // within ONE Node process, but this route can run as several
+            // concurrent instances against the same Postgres backing, each
+            // with its own lease map — two instances can each read the same
+            // stale/missing row and both fetch, and whichever writes SECOND
+            // must not silently clobber a fresh success with a refusal. This
+            // WHERE mirrors the same guard already enforced in JS
+            // (`hasStoredSuccess`), pushed into SQL so Postgres enforces it
+            // atomically: a REFUSAL-shaped write (`excluded.refusal_reason`
+            // set) is simply dropped — not applied, per ON CONFLICT ... DO
+            // UPDATE ... WHERE semantics — when the row it would land on
+            // already carries a real payload.
+            //
+            // A success-shaped write is additionally required to be NO OLDER
+            // than the row it would replace (`excluded.fetched_at >=
+            // etfProfiles.fetchedAt`) — the residual gap this guard's first
+            // version left, independently confirmed by a second Codex review:
+            // instance A persists a fresh success, then instance B's OWN
+            // failed refresh (against the pre-A snapshot it read) produces a
+            // success-shaped PRESERVED-payload write (B's old payload +
+            // backoff stamp, `fetchedAt` = B's old payload's fetch time —
+            // `toStoredRow`/`upsertEtfProfiles` both carry that through
+            // unchanged for exactly this comparison) that the ORIGINAL
+            // refusal-vs-success-only WHERE admitted, clobbering A's fresh
+            // row with B's stale one for up to 90 days. A genuinely fresh
+            // fetch (no explicit `fetchedAt` passed) always stamps "now", so
+            // it is never blocked by this comparison in the normal case —
+            // only a stale preserved-payload write can lose to an
+            // already-newer stored row.
+            where: sql`${etfProfiles.payload} is null or (excluded.refusal_reason is null and excluded.fetched_at >= ${etfProfiles.fetchedAt})`,
           });
       });
     },

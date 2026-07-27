@@ -38,6 +38,8 @@ it. The manifest uses two different tickers so a single hardcoded record can't p
 twice, and the two bundles must differ. Identical judge reasoning ACROSS repeats is
 a valid low-variance outcome and must not fail the check — only empty reasoning does.
 
+**Model.** real — the desk's intent ladder end to end, including the judge models (k=3 per dimension, two runs).
+
 **Run.** Requires `AI_GATEWAY_API_KEY` (slow + costs tokens — ~60 real generators
 across two runs, plus 4 dimensions × 3 repeats × 2 runs judge calls). Out of CI, by
 hand:

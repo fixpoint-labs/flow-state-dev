@@ -48,6 +48,11 @@ export class FixtureMissingError extends Error {
  *   - `"massive"`     — live mode, Massive.com (rebranded Polygon.io) answered.
  *                       The desk's only futures + options-chain source; paid
  *                       per-product tiers. See `lib/providers/massive.ts`.
+ *   - `"alphavantage"` — live mode, Alpha Vantage answered. Terminal fallback +
+ *                       stub-completer: backs earnings-call transcripts, enriches
+ *                       analyst estimates, and is the last insider-transactions
+ *                       source. Free tier is daily-budget-limited. See
+ *                       `lib/providers/alpha-vantage.ts` (FIX-798).
  *   - `"unavailable"` — live mode, no provider could answer; payload is an
  *                       empty/zeroed schema-valid skeleton. Never silently
  *                       substitutes fixture data — false data is worse than
@@ -64,6 +69,7 @@ const sourceTag = z.enum([
   "xai",
   "fmp",
   "massive",
+  "alphavantage",
   "unavailable",
 ]);
 export type SourceTag = z.infer<typeof sourceTag>;

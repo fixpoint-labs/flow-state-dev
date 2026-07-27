@@ -7,6 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { get_insider_transactions } from "../flows/analysis/tools/data/get_insider_transactions";
 import { _resetCache } from "../lib/cache";
+import { _resetBudget, _resetMinutePacing } from "../lib/providers/alpha-vantage";
 
 const FIXTURE_ROOT = path.resolve(__dirname, "..", "fixtures");
 
@@ -17,11 +18,20 @@ const originalCwd = process.cwd();
 beforeEach(() => {
   process.chdir(path.resolve(__dirname, ".."));
   _resetCache();
+  // FIX-801 minute pacing defaults to 5/min and is module-scoped; disabled
+  // here (this suite predates pacing and doesn't exercise it) so cumulative
+  // AV calls across tests never wait on a real 60s window.
+  _resetMinutePacing();
+  process.env.ALPHAVANTAGE_MINUTE_LIMIT = "0";
 });
 afterEach(() => {
   process.chdir(originalCwd);
   vi.restoreAllMocks();
   delete process.env.FINNHUB_API_KEY;
+  delete process.env.ALPHAVANTAGE_API_KEY;
+  delete process.env.ALPHAVANTAGE_MINUTE_LIMIT;
+  _resetBudget();
+  _resetMinutePacing();
 });
 
 // Minimal stand-in for BlockContext — the handler only reads
@@ -78,7 +88,44 @@ describe("get_insider_transactions", () => {
     expect(out.transactions).toHaveLength(1);
   });
 
-  it("returns unavailable when Finnhub fails in live mode", async () => {
+  it("falls back to Alpha Vantage when Finnhub fails but an AV key is set", async () => {
+    process.env.FINNHUB_API_KEY = "test-key";
+    process.env.ALPHAVANTAGE_API_KEY = "av-key";
+    _resetBudget();
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+      const url = new URL((input as URL).toString());
+      // Finnhub host → fail; Alpha Vantage host → answer.
+      if (url.hostname.includes("finnhub")) {
+        return Promise.resolve(new Response("rate limited", { status: 429 }));
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                transaction_date: "2026-04-20",
+                ticker: "NVDA",
+                executive: "AV Insider",
+                executive_title: "CFO",
+                security_type: "Common Stock",
+                acquisition_or_disposal: "D",
+                shares: "3000",
+                share_price: "120",
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+    });
+    const out = await execute({ ticker: "NVDA", date: "2026-05-06" }, ctx("live"));
+    expect(out.source).toBe("alphavantage");
+    expect(out.transactions).toHaveLength(1);
+    expect(out.transactions[0]!.shares).toBe(-3000); // D → negative
+    expect(out.transactions[0]!.transactionCode).toBe(""); // never fabricated
+  });
+
+  it("returns unavailable when Finnhub fails and no AV key is set", async () => {
     process.env.FINNHUB_API_KEY = "test-key";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("rate limited", { status: 429 }),

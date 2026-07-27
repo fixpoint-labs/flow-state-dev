@@ -18,7 +18,6 @@ describe("createRuntimeConfig", () => {
       speechResolver: undefined,
       transcriptionResolver: undefined,
       settings: undefined,
-      middleware: undefined,
       logger: undefined,
       tracingLevel: undefined,
       maxResponseBufferSize: undefined,
@@ -44,6 +43,6 @@ describe("createRuntimeConfig", () => {
     expect(config.defaultSseHeartbeatMs).toBe(5_000);
     // Unset fields remain undefined.
     expect(config.speechResolver).toBeUndefined();
-    expect(config.middleware).toBeUndefined();
+    expect(config.logger).toBeUndefined();
   });
 });

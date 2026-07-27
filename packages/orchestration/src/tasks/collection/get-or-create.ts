@@ -23,6 +23,7 @@ import type { TaskCollectionRef } from "./types";
 import type { TaskChangeEvent } from "./change-event";
 import { createSequencerBackedTaskCollection } from "./sequencer-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
+import type { TaskCapOptions } from "./task-caps";
 
 /** Component-item type emitted on every task lifecycle transition. */
 export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
@@ -43,8 +44,17 @@ interface CommonOptions {
   changeVisibility?: ItemVisibility;
 }
 
-/** Sequencer-state backing options. */
-export interface SequencerBackingSpec extends CommonOptions {
+/**
+ * Sequencer-state backing options.
+ *
+ * The creation caps (FIX-931) live here and on {@link RequestBackingSpec} rather
+ * than on the shared common options, because these are exactly the two backings
+ * that route through `createSequencerBackedTaskCollection` — where enforcement
+ * lives. `ResourceBackingSpec` builds a different constructor and enforces
+ * nothing, so asking for a cap there is a type error rather than a silently
+ * ignored ceiling.
+ */
+export interface SequencerBackingSpec extends CommonOptions, TaskCapOptions {
   backing: "sequencer";
   /**
    * Sequencer state ref. Typically `ctx.sequencer`. The sequencer's
@@ -78,7 +88,7 @@ export interface ResourceBackingSpec extends CommonOptions {
  * use `backing: "resource"` with a session/user/org-scoped resource
  * collection.
  */
-export interface RequestBackingSpec extends CommonOptions {
+export interface RequestBackingSpec extends CommonOptions, TaskCapOptions {
   backing: "request";
   /**
    * Top-level field on `ctx.request.state` that holds the
@@ -155,6 +165,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       onChange,
       getItems,
       now: options.now,
+      maxTotalTasks: options.maxTotalTasks,
+      maxEnqueuedTasks: options.maxEnqueuedTasks,
     });
   }
 
@@ -168,6 +180,8 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       onChange,
       getItems,
       now: options.now,
+      maxTotalTasks: options.maxTotalTasks,
+      maxEnqueuedTasks: options.maxEnqueuedTasks,
     });
   }
 

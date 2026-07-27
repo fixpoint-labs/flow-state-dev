@@ -5,6 +5,13 @@
 **Status:** IN PROGRESS — one PR (docs-only). WS-1 (philosophy) drafted; grilling
 through the remaining workstreams with the user.
 
+> **Historical naming note:** skill names below reflect what they were called when this
+> was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
+> `issue-implement`, `quick-fix` → `adhoc-quick-fix`, `create-issue-and-commit` →
+> `adhoc-commit-as-new-issue`, and `dispatch-remote` / `plan-dispatch` (in the "Planning /
+> Linear family" list) have been **removed**. Don't invoke the old names — this doc is a
+> point-in-time design record, not current reference.
+
 > This is the blueprint. It proposes the target system and the sequence to get
 > there. Nothing below is built yet — the point is to agree the *shape* before
 > churning the harness. Read §1 (the diagnosis) and §3 (the one-page target),
@@ -340,13 +347,13 @@ skill forks.
 The review lenses were defined twice (implement-issue's inline panel + the standalone
 audit skills). Now there is **one** definition:
 
-- **`fsd:review`** (new) is the single composition point. It runs the lenses as
+- **`review`** (new) is the single composition point. It runs the lenses as
   parallel sub-agents over a change (PR / branch / diff) or a codebase slice, dedupes,
-  and synthesizes one ranked report. Lenses: **Coherence** (`fsd:audit-coherence`),
-  **Restraint** (`fsd:second-look`), **Correctness** (code-reviewer + BP-035),
+  and synthesizes one ranked report. Lenses: **Coherence** (`audit-coherence`),
+  **Restraint** (`second-look`), **Correctness** (code-reviewer + BP-035),
   **Completeness** (spec match + red + goal, when a spec is in scope), and optional
-  **Depth** (`fsd:improve-codebase-architecture`, non-blocking).
-- **`implement-issue` Step 6** now *invokes `fsd:review`* instead of an inline
+  **Depth** (`improve-codebase-architecture`, non-blocking).
+- **`implement-issue` Step 6** now *invokes `review`* instead of an inline
   four-agent panel. Retired: `philosophy-skeptic-prompt.md` (→ coherence lens) and
   `simplification-reviewer-prompt.md` (→ restraint lens).
 - **`second-look`** refined to cede redundancy / pattern-conflict / drift to

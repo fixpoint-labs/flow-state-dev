@@ -13,7 +13,7 @@ import { inputSchema, userStateSchema, modeSchema } from "../../shared/schemas";
 import { featuresCapability } from "../../shared/capabilities/features";
 import { mem, analystPerspective } from "../cognition";
 import { resolveModePrompt } from "./mode-prompt";
-import { DEFAULT_KITCHEN_SINK_MODEL } from "../../../../lib/models";
+import { coalesceKitchenSinkModel } from "../../../../lib/models";
 
 export const assistantGenerator = generator({
   name: "assistant-generator",
@@ -51,11 +51,11 @@ export const assistantGenerator = generator({
   prompt: resolveModePrompt,
 
   itemVisibility: { client: true, history: true },
-  // `ctx.user` may be absent in test harnesses without a configured user
-  // scope, so fall back to the catalog default rather than relying on the
-  // Zod default alone.
+  // Coalesce at read time so a stale/removed catalog id (or an absent
+  // `ctx.user` in test harnesses without a configured user scope) falls
+  // back to the catalog default rather than reaching the model resolver.
   model: (_input: any, ctx: any) =>
-    ctx.user?.state.selectedModel ?? DEFAULT_KITCHEN_SINK_MODEL,
+    coalesceKitchenSinkModel(ctx.user?.state.selectedModel),
   // Anthropic-only — OpenAI and Google ignore this namespace, so the toggle
   // is a no-op for non-Anthropic models until per-provider reasoning
   // mappings land (FIX-517).

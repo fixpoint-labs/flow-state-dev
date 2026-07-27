@@ -26,6 +26,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   taskSchema,
+  TaskCapExceededError,
   type TaskCollectionRef,
 } from "../tasks";
 
@@ -58,6 +59,13 @@ export type TaskCollectionResolver = (
  * Read the host generator's delegation board from `ctx.parent`. Returns
  * `undefined` (→ `no_delegation_board`) when the parent declares no own state
  * or no board field, so a stray `taskTools`-only consumer degrades gracefully.
+ *
+ * NOT capped (FIX-931). This builds a bare collection with no creation caps, so
+ * a board reached only through this fallback is unbounded. That is deliberate —
+ * it has no construction site to take cap options from — but it means the caps
+ * are a property of the surface that BUILT the board, not of `taskTools`. The
+ * delegation surface passes its own capped resolver instead of relying on this;
+ * see `defaultOwnStateResolver`'s note on the `taskTools` singleton below.
  */
 export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
   const parent = (
@@ -89,6 +97,68 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
 const noBoardError = { ok: false as const, error: "no_delegation_board" };
 const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_not_found", taskId: id });
 
+// ---------------------------------------------------------------------------
+// Assignee validation (FIX-924)
+// ---------------------------------------------------------------------------
+/**
+ * The declared agents a delegation board can be assigned to, plus a
+ * human-readable rendering for error messages. Supplied by the delegation
+ * surface so assignment is checked against the board's real participant
+ * registry — the same list the executive's guidance advertises as "Your
+ * agents:", so context and validation cannot disagree.
+ */
+export interface WorkerRoster {
+  /** True when `assignee` names a declared agent on this board. */
+  has(assignee: string): boolean;
+  /** Roster rendered for an error message, e.g. `researcher (…), writer (…)`. */
+  describe(): string;
+}
+
+const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
+  ok: false as const,
+  error:
+    `unknown_assignee: "${assignee}" is not an agent on this board. ` +
+    `Available: ${roster.describe()}. Name one of these exactly, or leave ` +
+    `assignee unset to run the task on the default worker.`,
+});
+
+/**
+ * The single gate deciding whether an assignee may be written to a task.
+ * Returns an error result when the assignee is invalid, `undefined` when it is
+ * fine to proceed.
+ *
+ * Two shapes pass unchecked, both deliberate:
+ *
+ * - **No assignee.** An unassigned task is a valid plan — it runs on the board's
+ *   default worker (the delegation floor, FIX-940). Reaching the floor by
+ *   *intent* stays open; only reaching it by *accident* (a typo) is closed.
+ * - **No roster.** The standalone `taskTools` singleton, and a delegation board
+ *   with no declared agents at all, supply none — there is nothing to validate
+ *   against, so validation is inert and every assignee is accepted as before
+ *   (BP-030: tolerate the old, roster-less shape).
+ *
+ * This is the one place the definition of "a valid assignee" lives. FIX-923 /
+ * FIX-641 widen it here (to admit an explicit ad-hoc agent spec) rather than
+ * scattering the rule across the three tools that call it.
+ */
+export function checkAssignee(
+  assignee: string | undefined,
+  roster: WorkerRoster | undefined,
+): { ok: false; error: string } | undefined {
+  if (roster === undefined || assignee === undefined) return undefined;
+  if (roster.has(assignee)) return undefined;
+  return unknownAssigneeError(assignee, roster);
+}
+
+/** Map a creation-cap breach (FIX-931) onto its distinct soft-error code. */
+const capError = (err: TaskCapExceededError) => ({
+  ok: false as const,
+  error:
+    err.cap === "enqueued"
+      ? ("enqueued_task_cap_exceeded" as const)
+      : ("total_task_cap_exceeded" as const),
+});
+
 /** Shared output shape for the six tasked-by-id mutators. */
 const okOrError = z.union([
   z.object({ ok: z.literal(true) }),
@@ -102,15 +172,24 @@ const parentStateSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSc
 // specific board (own-state default or an injected shared board).
 // ---------------------------------------------------------------------------
 
-function buildTaskTools(resolve: TaskCollectionResolver) {
+function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) {
+  /**
+   * `assignee`, when given, is the assignee this mutation would write; it is
+   * validated after the board and the task resolve, so the three tools all
+   * report the same failure order: no board, then unknown task, then unknown
+   * assignee. The task is left untouched on any of them.
+   */
   async function withTask(
     ctx: BlockContext,
     taskId: string,
     mutator: (collection: TaskCollectionRef) => Promise<void>,
+    assignee?: string,
   ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
     const collection = await resolve(ctx);
     if (!collection) return noBoardError;
     if (!collection.get(taskId)) return taskNotFoundError(taskId);
+    const bad = checkAssignee(assignee, roster);
+    if (bad) return bad;
     await mutator(collection);
     return { ok: true as const };
   }
@@ -119,9 +198,12 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     name: "addTask",
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
-      "Set assignee to an agent, deps to task ids that must finish first, and input " +
-      "to a structured payload for the agent. Execute the plan by calling runBoard once " +
-      "all tasks are assigned.",
+      "assignee optionally names one of your agents; leave it unset to run the task " +
+      "on a capable default worker. Set deps to task ids that must finish first, and input " +
+      "to a structured payload for the worker. Execute the plan by calling runBoard once " +
+      "all tasks are added. The board bounds how many tasks may wait at once and how many it " +
+      "may hold in total: enqueued_task_cap_exceeded means drain with runBoard first, and " +
+      "total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
     inputSchema: z.object({
       goal: z.string(),
       assignee: z.string().optional(),
@@ -141,15 +223,36 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     execute: async (input, ctx) => {
       const collection = await resolve(ctx);
       if (!collection) return noBoardError;
-      const task = await collection.addTask({
-        goal: input.goal,
-        ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
-        ...(input.deps !== undefined ? { deps: input.deps } : {}),
-        ...(input.priority !== undefined ? { priority: input.priority } : {}),
-        ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-      });
-      return { ok: true as const, taskId: task.id };
+      // Failure order is deliberate and uniform across the tools that touch an
+      // assignee: no board (above) -> unknown assignee -> creation cap.
+      //
+      // The cap comes LAST because "that worker doesn't exist" is the more
+      // useful thing to tell a model, and because a task refused for a phantom
+      // assignee must not consume budget or reach the ledger at all — otherwise
+      // a typo'd add could be what trips the cap for a later valid one. It also
+      // avoids a two-round-trip dead end at the boundary: cap-first would answer
+      // "board full" to a caller whose real problem is the assignee, which it
+      // would then still hit after fixing it. `checkAssignee` is a pure
+      // pre-flight, so running it first costs nothing.
+      const bad = checkAssignee(input.assignee, roster);
+      if (bad) return bad;
+      try {
+        const task = await collection.addTask({
+          goal: input.goal,
+          ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+          ...(input.deps !== undefined ? { deps: input.deps } : {}),
+          ...(input.priority !== undefined ? { priority: input.priority } : {}),
+          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+        });
+        return { ok: true as const, taskId: task.id };
+      } catch (err) {
+        // A creation cap (FIX-931) is a soft error the model can act on — drain
+        // to free enqueue slots, or stop planning at the lifetime ceiling. Every
+        // other throw still propagates.
+        if (err instanceof TaskCapExceededError) return capError(err);
+        throw err;
+      }
     },
   });
 
@@ -160,7 +263,12 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.setAssignee(input.taskId, input.assignee)),
+      withTask(
+        ctx,
+        input.taskId,
+        (c) => c.setAssignee(input.taskId, input.assignee),
+        input.assignee,
+      ),
   });
 
   const completeTask = handler({
@@ -220,14 +328,21 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, async (c) => {
-        const { patch } = input;
-        if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
-        if (patch.assignee !== undefined) await c.setAssignee(input.taskId, patch.assignee);
-        if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
-        if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
-        if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
-      }),
+      withTask(
+        ctx,
+        input.taskId,
+        async (c) => {
+          const { patch } = input;
+          if (patch.priority !== undefined) await c.setPriority(input.taskId, patch.priority);
+          if (patch.assignee !== undefined) await c.setAssignee(input.taskId, patch.assignee);
+          if (patch.metadata !== undefined) await c.patchMetadata(input.taskId, patch.metadata);
+          if (patch.addLabel !== undefined) await c.addLabel(input.taskId, patch.addLabel);
+          if (patch.removeLabel !== undefined) await c.removeLabel(input.taskId, patch.removeLabel);
+        },
+        // A patch that doesn't touch `assignee` leaves this undefined, so the
+        // gate stays inert for a priority/label-only update.
+        input.patch.assignee,
+      ),
   });
 
   const listTasks = handler({
@@ -284,11 +399,16 @@ function buildTaskTools(resolve: TaskCollectionResolver) {
  * Build the eight `taskTools` handler tools directly (for pushing into a
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
+ *
+ * @param roster Optional declared-agent roster. Supply it and `addTask`/
+ *   `assignTask`/`updateTask` reject an assignee that names no declared agent.
+ *   Omit it and assignment is unvalidated, as before.
  */
 export function buildTaskToolsList(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
+  roster?: WorkerRoster,
 ) {
-  return buildTaskTools(resolveCollection);
+  return buildTaskTools(resolveCollection, roster);
 }
 
 // ---------------------------------------------------------------------------
@@ -303,20 +423,36 @@ export function buildTaskToolsList(
  *   generator's own-state board via `ctx.parent`. Pass a resolver targeting a
  *   shared board for the shared-board delegation case (or a drain board for a
  *   Shape 2 fan-out worker).
+ * @param roster Optional declared-agent roster for assignee validation. Supply
+ *   it so a fan-out worker enqueuing follow-up tasks mid-drain is held to the
+ *   same roster the executive is.
  */
 export function createTaskToolsCapability(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
+  roster?: WorkerRoster,
 ): DefinedCapability {
   return defineCapability({
     name: "taskTools",
     presets: {
       tools: {
-        tools: buildTaskTools(resolveCollection),
+        tools: buildTaskTools(resolveCollection, roster),
       },
       default: ["tools"],
     },
   });
 }
 
-/** Default instance for direct `uses: [taskTools]` wiring (own-state board). */
+/**
+ * Default instance for direct `uses: [taskTools]` wiring (own-state board).
+ *
+ * **This instance is UNCAPPED** (FIX-931). It closes over
+ * `defaultOwnStateResolver`, which builds a bare collection with no creation
+ * caps, so a board reached this way has no `maxEnqueuedTasks` /
+ * `maxTotalTasks` ceiling. Boards installed by the skills library's delegation
+ * surface ARE capped (500/100 by default) — the caps come from the site that
+ * constructs the collection, and wiring this capability by hand has no such
+ * site. If you want a bounded board here, build the collection yourself with
+ * `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and pass a
+ * resolver for it to `createTaskToolsCapability`.
+ */
 export const taskTools = createTaskToolsCapability();

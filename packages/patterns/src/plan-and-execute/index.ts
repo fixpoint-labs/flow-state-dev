@@ -165,6 +165,15 @@ export interface PlanAndExecuteConfig<
    * fan out independent dep-free steps within a single drain.
    */
   maxConcurrency?: number;
+  /**
+   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * unchanged behavior when unset. A planner that legitimately produces more
+   * than the enqueue bound would otherwise fail its whole seed with no way to
+   * raise the ceiling, so both are reachable here: a number, or `null` for
+   * explicitly unbounded on that axis.
+   */
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
 
   // -------------------------------------------------------------------------
   // FIX-827 additions
@@ -665,12 +674,10 @@ export function planAndExecute<
 
   // ------- Pattern-specific blocks ------------------------------------------
 
-  const captureAndPlan = createCaptureAndPlan({
-    name,
-    planner,
-    maxAttemptsPerTask,
-    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
-  });
+  // NOTE: `captureAndPlan` is built AFTER the board (below), because its
+  // planner-seed step resolves the board's ledger into its own
+  // `TaskCollectionRef` and must be handed `board.caps` (FIX-931). Reading the
+  // caps off the board rather than restating them keeps one definition.
 
   // FIX-827: optional goal synthesis. Composed at the pipeline top (before
   // `stampOuterGoal`) so the synthesized goal reaches BOTH the outer state
@@ -694,6 +701,14 @@ export function planAndExecute<
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId: name },
+    // Reachable creation bounds (FIX-931): the board enforces them, so a caller
+    // who legitimately needs a bigger board must be able to say so. Unset falls
+    // through to the 500/100 defaults, and `board.caps` is what the seed writer
+    // is handed, so the two can never disagree.
+    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
+    ...(config.maxEnqueuedTasks !== undefined
+      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
+      : {}),
     workers: adaptedWorker,
     concurrency: maxConcurrency,
     dispatcher: "topological",
@@ -705,6 +720,16 @@ export function planAndExecute<
     // staying bounded — callers can override on the underlying
     // taskBoard if they want a stricter policy.
     flowPolicy: flowPolicy.recentTrajectory({ n: 8 }),
+  });
+
+  const captureAndPlan = createCaptureAndPlan({
+    name,
+    planner,
+    maxAttemptsPerTask,
+    ...(config.taskContext !== undefined ? { taskContext: config.taskContext } : {}),
+    // The board's bounds, so the planner's seed writes through a capped ref
+    // rather than a second uncapped one over the same ledger (FIX-931).
+    caps: board.caps,
   });
 
   const cascadeSkipDependents = createCascadeSkipDependents({ name });

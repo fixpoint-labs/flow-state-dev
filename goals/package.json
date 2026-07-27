@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Goal-check library — real-model, out-of-CI runners that prove framework outcomes. Not a published package and not a vitest root; see README.md.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "goal:all": "tsx scripts/run-all.mts"
+  },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
     "@flow-state-dev/core": "workspace:*",
@@ -13,5 +17,10 @@
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.4",
+    "typescript": "^5.7.3"
   }
 }

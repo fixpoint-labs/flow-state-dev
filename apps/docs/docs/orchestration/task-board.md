@@ -192,7 +192,22 @@ const board = taskBoard({
 });
 ```
 
-A task whose `assignee` doesn't match any worker fails per `onError`.
+Assignee resolution follows one rule: a matched assignee runs on its own worker; an unmatched or omitted assignee falls to `defaultWorker` if one is configured; only with no `defaultWorker` does it fail per `onError`.
+
+```ts
+const board = taskBoard({
+  name: "research",
+  collection: { collectionId: "r" },
+  workers: { "market-analyst": marketAnalyst },
+  // Optional fallback: any task whose assignee is unset or unmatched runs here
+  // instead of failing. Reached only on a miss — declared workers are untouched.
+  defaultWorker: genericWorker,
+});
+```
+
+Defaults: no `defaultWorker` unless configured. This is what the skills delegation surface uses to give every board an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in explicitly.
+
+The rule above is the board's, and it stays as stated: an unmatched assignee falls to `defaultWorker`. The skills delegation surface adds a check further up, refusing an unknown assignee when the task is created, so on those boards an unmatched assignee normally never reaches dispatch. A `taskBoard` you build yourself has no such roster and keeps the plain fallback behavior.
 
 ## Concurrency and error handling
 
@@ -200,6 +215,83 @@ A task whose `assignee` doesn't match any worker fails per `onError`.
 - `onError: "skip" | "fail"` — `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
 - `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
 - `maxIterations` — board-level safety cap on total dispatch loops before the board stops. Default `10000`.
+
+## Bounding how much work a board takes on
+
+`concurrency` paces how many tasks run at once. It says nothing about how many can be created, so a coordinator that plans badly can queue far more work than anyone intended. Two more bounds cover that, and the three sit at different scopes:
+
+- `maxEnqueuedTasks` (default `100`) — how many tasks may be **added while others are still waiting**. Checked when a task is created, against the resulting `pending` count, so it refreshes as the board drains: finish some work and the slots come back.
+- `maxTotalTasks` (default `500`) — how many tasks the board may **ever hold**, completed and cancelled ones included. Never refunded by draining, so it also catches a board that keeps draining and re-queueing.
+- `concurrency` (default `4`) — how many run at the same time.
+
+Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead, so a coordinator can drain and continue.
+
+Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`.
+
+### How long the counts last
+
+Neither bound is a stored counter. Both are read off the board's task ledger at the moment a task is created: the total is the ledger's size, the enqueue count is how many of its tasks are `pending`. So the counts last exactly as long as the ledger, which depends on the backing:
+
+- **Request-backed** (the default) — the ledger lives on the request, so a new request starts empty and both counts start from zero.
+- **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. The counts come back with it. A wave of new tasks after a resume is checked against the tasks that were already there, not against an empty board.
+- **Durable (resource-backed)** — the bounds are not enforced on this backing yet.
+
+Do not plan a post-resume wave on the assumption that the ceiling resets. It does not reset on the sequencer backing, and a delegation board is sequencer-backed.
+
+### One writer, or hand every writer the bounds
+
+The bounds are carried by the collection reference the board resolves. Resolving the same ledger a second time gives you a *different* reference, and it enforces only what it was built with. So a block that calls `getOrCreateTaskCollection` itself, against a board's `collectionId`, writes past the board's bounds unless it is given them:
+
+```ts
+const board = taskBoard({ name: "research", workers });
+
+// This second reference is unbounded, even though the board has bounds.
+const loose = await getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "research" });
+
+// Hand it the board's own resolved bounds and it enforces them.
+const bounded = await getOrCreateTaskCollection({
+  ctx,
+  backing: "request",
+  collectionId: "research",
+  ...board.caps,
+});
+```
+
+`board.caps` is on the handle for exactly this. Most code never needs it: reaching the board through `board.capability` (or letting the board's own seed and drain do the writing) is already bounded. It matters when you resolve the collection yourself.
+
+One shipped building block is deliberately in that position. `createApplyReplan` accepts a board `capability`, and when you pass one it writes through the board's own reference and is bounded. Wired the older way — with just a name, no capability — it rebuilds the collection from that name alone, so it has no bounds and can add tasks past the board's. It cannot infer them: nothing in its options identifies which board it is writing to. Pass the `capability` when you want replanned tasks to respect the board's bounds. The bundled patterns already do.
+
+### Where the bounds apply
+
+They belong to the collection, so the board applies them only when it builds the collection itself — and, per the previous section, only to writers that go through the board's own reference. That means the request default and the sequencer opt-in below. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing: that collection carries whatever bounds it was built with and stays the sole authority. Passing the options together with a supplied `collection` is a configuration error, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead — here, from a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
+
+```ts
+const tasks = await getOrCreateTaskCollection({
+  ctx,
+  backing: "sequencer",
+  collectionId: "my-board",
+  sequencer: ctx.sequencer!,
+  maxTotalTasks: 2000,
+});
+```
+
+Which state ref to pass depends on where your code runs, and getting it wrong fails quietly rather than loudly — you get a working collection over the wrong slot. From a block *inside* the sequencer, it is `ctx.sequencer`. From a tool running as a child of a generator that owns the board, it is `ctx.parent` (see [wiring a bounded board by hand](../skills/delegation#board-and-overrides)).
+
+The bounds live on the sequencer and request backing specs only. `backing: "resource"` does not accept them yet and does not enforce them, so asking there is a type error rather than a ceiling that quietly does nothing.
+
+### If the defaults are too low for your board
+
+This is a behavior change: a board that legitimately creates more than 500 tasks in a run, or holds more than 100 pending at once, starts being refused work with no change at its call site. Raise the bound, or turn it off in place with `null`:
+
+```ts
+// Raise it.
+const board = taskBoard({ name: "big", workers, maxTotalTasks: 5_000 });
+
+// Or opt out of one axis entirely.
+const unbounded = taskBoard({ name: "streaming", workers, maxEnqueuedTasks: null });
+```
+
+Omitting an option is not an off switch — it reapplies the default. `null` is. Each option otherwise takes a positive integer; `0`, a negative, a fraction, `NaN`, `Infinity`, or an enqueue bound above the lifetime ceiling are all rejected when the board is constructed.
 
 ## Stream items emitted
 

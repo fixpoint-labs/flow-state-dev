@@ -14,3 +14,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-07-21 | (pre-PR) | none (build-time + assembled-surface) | PASS | Static bindings isolated (A↔B markers never crossed); dynamic block-state activation rendered on the next step, stayed off a sibling generator, and did not carry into a fresh turn. |
+| 2026-07-25 | 5eb5e7e | none | PASS | Static and dynamic bindings stayed generator-scoped; no cross-bleed; activation did not carry to a new turn. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

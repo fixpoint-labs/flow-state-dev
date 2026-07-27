@@ -14,7 +14,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Rule:
   - Every implementation change maps to a spec linked to its Linear issue (full `docs/specs/*` spec per BP-037 for non-trivial work).
   - Each spec carries explicit deliverables and verification steps.
-  - Spec-lite is allowed for small, local work: a one-screen agent brief on the issue, or — for a clear-repro bug — its reproduction + regression seam, instead of a full spec doc (see `fsd:implement-issue`, `fsd:quick-fix`).
+  - Spec-lite is allowed for small, local work: a one-screen agent brief on the issue, or — for a clear-repro bug — its reproduction + regression seam, instead of a full spec doc (see `issue-implement`, `adhoc-quick-fix`).
 - Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement.
 
 ### BP-004: Public boundary first
@@ -69,19 +69,19 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 
 - Status: Active
 - Date: 2026-06-29
-- Scope: Process — spec authoring (`fsd:create-spec`).
+- Scope: Process — spec authoring (`issue-spec`).
 - Rule:
   - Write each spec to `docs/specs/<ISSUE-ID>.md` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written.
   - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
   - On spec-PR review: apply clear, obvious fixes directly (to both copies); for debatable or judgment-call feedback, surface it to the user rather than silently accepting.
-  - The spec PR is never merged: `fsd:implement-issue` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
+  - The spec PR is never merged: `issue-implement` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
 - Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
 
 ### BP-039: Specs lead with a plain-language summary
 
 - Status: Active
 - Date: 2026-06-29
-- Scope: Process — spec authoring (`fsd:create-spec`).
+- Scope: Process — spec authoring (`issue-spec`).
 - Rule:
   - Begin every spec with a 2–4 sentence plain-language summary of the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon).
   - It leads the TLDR, above the deliverables list and size estimate; the dense detail follows. "Explain it to a teammate in the hallway," not "scan the change list."

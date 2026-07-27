@@ -316,7 +316,7 @@ Block-level resource declarations live in a single flat `resources` map (FIX-435
 
 ## Tenant Identity
 
-Every scope identity (`request`, `session`, `user`, `org`) carries an optional `tenantId`. The HTTP transport reads it from a configurable header — `x-tenant-id` by default, overridable via `createFlowApiRouter({ tenantIdHeader })` — and threads it onto the context, so handlers and middleware can read `ctx.request.identity.tenantId` (or `ctx.session.identity.tenantId`) and branch on it.
+Every scope identity (`request`, `session`, `user`, `org`) carries an optional `tenantId`. The HTTP transport reads it from a configurable header — `x-tenant-id` by default, overridable via `createFlowApiRouter({ tenantIdHeader })` — and threads it onto the context, so handlers and lifecycle hooks can read `ctx.request.identity.tenantId` (or `ctx.session.identity.tenantId`) and branch on it.
 
 ```ts
 const router = createFlowApiRouter({

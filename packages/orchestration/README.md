@@ -75,10 +75,20 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 `{ drain, collectionId, capability, backing, hasIdlessInitialTasks }`.
 Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
+`defaultWorker` (optional fallback for a task whose assignee is unmatched or
+omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
-`onError`, and `maxIterations` (loop-cap, default 10000). Per-task retries are set
-via `maxAttempts` on each task (`TaskInit`), not on the board. See the
+`onError`, `maxIterations` (loop-cap, default 10000), and the two creation caps
+`maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
+refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
+terminal, never refunded). Both take a positive integer or `null` (explicitly
+unbounded); omission reapplies the default. They apply only when the board
+constructs its own collection — a supplied `collection` is left alone and passing
+both is a construction error, so configure caps on `getOrCreateTaskCollection`'s
+sequencer/request backing instead. Existing declarative boards inherit the
+defaults. Per-task retries are set via `maxAttempts` on each task (`TaskInit`),
+not on the board. See the
 [Task Board guide](https://flow-state.dev/docs/orchestration/task-board).
 
 ### goalSeekLoop
@@ -117,9 +127,18 @@ generator({
 });
 ```
 
-A skill that declares an `agents:` field turns on **delegation**. An agent is a
-prompt-driven teammate — defined inline (`prompt` / `prompt-ref`) inside the skill,
-or referenced from the registry (`agent-ref`). Binding the skill installs a private
+A skill that declares an `agents:` field turns on **delegation** (or force it on
+with `delegation: true` even with no `agents:`). An agent is a prompt-driven
+teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
+from the registry (`agent-ref`). Every delegation board also gets an on-demand
+**default worker**: it materializes on demand and runs any task whose assignee is
+unset, so a task with no named agent still runs — and an empty roster still
+delegates. Assignment is checked against the declared roster as the task is
+created: `addTask` (and `assignTask`/`updateTask`) reject an assignee that names
+no declared agent, returning the available agents so the caller can correct it,
+instead of letting a mistyped name fall through to the default worker at drain
+time. A board with no declared agents has no roster to check and accepts any
+assignee. Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 `listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
@@ -130,12 +149,43 @@ directly; draining the board is the sole execution path. Agents materialize at
 runtime, so `agent-ref` agents resolve through the library's
 `agentRegistry`/`materializeAgent` options and runtime-activated skills contribute
 their tools too. With no delegation board resolvable, a stray `taskTools` call
-returns `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+returns `{ ok: false, error: "no_delegation_board" }` rather than throwing. The
+board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
+(`{ ok: false, error: "enqueued_task_cap_exceeded" }` — drain with `runBoard` to
+free slots) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
+refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
+`maxTotalTasks` (`null` = unbounded).
+
+> **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
+> collection, so they cover boards the skills library installs and boards
+> `taskBoard` builds itself — not the capability surface on its own. Wiring the
+> exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
+> generator's own-state board through a bare, **uncapped** collection: `addTask`
+> there is unbounded. That is deliberate — a hand-wired capability has no
+> construction site to take cap options from — but do not read "delegation is
+> capped" as "`taskTools` is capped". For a bounded board on that path, build the
+> collection yourself with
+> `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
+> resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
+> target the host generator's own state via `ctx.parent` (each tool runs as a
+> child block, so `ctx.sequencer` is the wrong container) and name the board's
+> `stateKey` — see
+> [Delegation](https://flow-state.dev/docs/skills/delegation#board-and-overrides)
+> for the full recipe.
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.
 generator({ uses: [skills.with({ active: ["research-lead"] })] });
 ```
+
+An inline agent may set `context-supply: conversation` to inherit the parent
+conversation up to the point it is dispatched (fork-like), bounded to the last
+several turns by default (a turn count, not a token budget), while its own steps
+stay out of the host's history (output keeps `history: false`). Omitting the
+field is the default: the agent is isolated and sees only its task input — there
+is no `isolated` value to set. It applies to `prompt` / `prompt-ref` agents;
+setting it on an `agent-ref` agent fails loud. See
+[Context supply](https://flow-state.dev/docs/orchestration/context-supply).
 
 For a graph fixed in code (seeded `initialTasks`, custom collection, tuned
 dispatcher), put a `taskBoard(...).drain` or a `goalSeekLoop` in the generator's

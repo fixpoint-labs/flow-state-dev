@@ -1,0 +1,21 @@
+# delegation-caps › it bounds a runaway coordinator without stalling the work
+
+**Issue:** FIX-931
+**Outcome:** A coordinator that plans more work than anyone sanctioned is stopped at the board's bounds instead of quietly spending the tokens. It is told which bound it hit, and the run still finishes: past the enqueue bound it drains and continues; at the lifetime ceiling it reports what it has.
+**Input:** `fixtures/input.json` — a list of item codes to process, the two caps to impose, and a held-out `workerSalt` the processor agent must echo. Held-out: swap in different codes, different cap values, or a different salt and a correct implementation still passes; the check reads all four from the fixture and never a literal. The only setup requirement (asserted at load) is that the item count exceeds the caps, so a bound can actually bind.
+**Signal:** Three runs over the IDENTICAL skill, coordinator prompt, and user turn, differing only in the library's `maxEnqueuedTasks` / `maxTotalTasks`:
+- **uncapped control** (`null` on both) — creates MORE tasks than either cap under test.
+- **enqueue-capped** (`maxEnqueuedTasks: 3`) — at least one `addTask` returns `{ ok: false, error: "enqueued_task_cap_exceeded" }`; no unbroken run of successful `addTask` calls exceeds the cap; MORE than the cap's worth of tasks exist by the end and the board was drained at least twice (it recovered); the terminal answer is non-empty.
+- **total-capped** (`maxTotalTasks: 4`) — at least one `total_task_cap_exceeded`, the board NEVER holds more than 4 tasks across every drain, and the terminal answer is non-empty.
+- On both capped boards, every `completed` task's recorded output carries the held-out salt.
+**Anti-game:** Three hollow passes are closed. (1) **A quiet coordinator.** "The board stayed under 4" is trivially true if the model only ever made two tasks, so the uncapped control must exceed the caps first — if it doesn't, the run FAILS as anti-game-void rather than passing. (2) **A guard that just stops the work.** Observing the refusal is not the outcome; the enqueue-capped run must also create more tasks than the cap allowed at once and drain more than once, so a bound that refused and never refreshed fails. (3) **A fabricated board.** The counts come from the `task-change` stream, and every completed row must carry a salt that lives only on the SECOND line of the processor agent's prompt — inside frontmatter, which `stripFrontmatter` removes from the coordinator's skill body, and off the first line that `agentPurpose` copies into the pre-task roster. A coordinator narrating a board it never ran cannot produce it. The check asserts on recorded output content, never on `completed` status alone.
+**Model:** real — openai/gpt-5.4-mini
+**Run:** `pnpm tsx goals/delegation-caps/bounds-a-runaway-coordinator/run.mts`
+
+> Note: this isolates the model-facing half of FIX-931 — a real coordinator receiving the soft error and reacting to it. The mechanism (atomic enforcement inside the collection's CAS, all-or-nothing batches, every writer resolving the capped collection, construction-time validation, the supplied-collection rule) is covered deterministically by `packages/orchestration/test/collection/task-caps.test.ts`, `test/task-board/task-board-caps.test.ts`, and `test/skills/delegation-caps.test.ts`.
+
+## Verdict log
+| Date | Commit | Model | Verdict | Notes |
+|------|--------|-------|---------|-------|
+| 2026-07-25 | fix/FIX-931 | openai/gpt-5.4-mini | PASS | uncapped control 8 tasks / 0 refusals / 1 drain. enqueue-capped (3): 15 addTask calls, 7 refused, 3 drains, 8 tasks processed in waves — refused then recovered. total-capped (4): 8 addTask calls, 4 refused, board held exactly 4 and reported what it had. 8/8, 3/3 and 4/4 completions carried the held-out salt. Reproduced identically on a second run. |
+| 2026-07-25 | fix/FIX-931 | openai/gpt-5.4-mini | FAIL→fixed | First cut FAILed on recovery only: both caps fired and bounded the boards correctly (5 and 4 refusals, boards at 3 and 4), but the coordinator treated `enqueued_task_cap_exceeded` as terminal and stopped after one drain. The skill's recovery instruction was rewritten as an explicit wave loop; the mechanism was never at fault. Kept here because the FAIL is the evidence that the recovery assertion is not vacuous. |

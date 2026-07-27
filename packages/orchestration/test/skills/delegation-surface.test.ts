@@ -19,7 +19,10 @@ import { runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { collectAgentSources } from "../../src/skills/delegation-surface";
-import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
+import {
+  DELEGATION_BOARD_FIELD,
+  taskTools as taskToolsSingleton,
+} from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
 import { createMockSkillsCollection } from "./mocks";
 
@@ -322,6 +325,69 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
     expect(run.error).toBeNull();
     const output = run.output as { status: string; tasks: Array<{ status: string }> };
     expect(output.status).toBe("blocked");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX-927 — agent-ref workers carry the board-scoped taskTools for mid-drain
+// fan-out. The inline path already forwards `boardTaskTools`; the agent-ref
+// branch must too, or an agent-ref fan-out worker resolves the empty singleton
+// board and fails at drain with `no_delegation_board`.
+// ---------------------------------------------------------------------------
+
+describe("delegation surface — agent-ref workers carry board-scoped taskTools (FIX-927)", () => {
+  it("forwards the board-bound taskTools capability to an agent-ref worker's materializeAgent", async () => {
+    // Capture the options every agent-ref worker is materialized with. The full
+    // production path runs here: resolving the executive's tool surface makes
+    // the delegation surface build `boardTaskTools` and call materializeWorker
+    // for each agent-ref, whose branch must forward it to materializeAgent.
+    const captured: Array<Record<string, unknown>> = [];
+    const agentRegistry = {
+      get: vi.fn(async (name: string) => ({ name })),
+      list: vi.fn(async () => [
+        { name: "analyst-agent" },
+        { name: "synthesizer-agent" },
+      ]),
+    };
+    const materializeAgent = vi.fn(
+      (_agent: unknown, opts: Record<string, unknown>) => {
+        captured.push(opts);
+        return (opts.workerKey === "synthesizer"
+          ? synthesizerBlock
+          : analystBlock) as never;
+      },
+    );
+    const skills = createSkillsLibrary({
+      catalog: {},
+      initialSkills: [teamSkill],
+      agentRegistry,
+      materializeAgent,
+    });
+    const gen = generator({
+      name: "executive",
+      model: "openai/gpt-5.4-mini",
+      prompt: "delegate",
+      inputSchema: z.object({}),
+      uses: [skills.with({ active: ["research-team"] } as never)],
+    });
+    const { ctx } = buildExecCtx();
+    await resolveTools(gen, ctx);
+
+    // Both agent-ref workers (analyst, synthesizer) were materialized.
+    expect(captured.length).toBe(2);
+    for (const opts of captured) {
+      const board = opts.boardTaskTools as
+        | { name?: string; config?: { name?: string } }
+        | undefined;
+      // Broken before the worker-materializer forward: `boardTaskTools` would be
+      // undefined here (dropped on the floor by the agent-ref branch).
+      expect(board).toBeDefined();
+      // It is the taskTools capability...
+      expect(board?.name ?? board?.config?.name).toBe("taskTools");
+      // ...and specifically the board-bound instance, not the process-wide
+      // singleton (which watches no board) — mirroring the inline path.
+      expect(board).not.toBe(taskToolsSingleton);
+    }
   });
 });
 

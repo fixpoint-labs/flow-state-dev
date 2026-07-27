@@ -1,5 +1,5 @@
 ---
-name: fsd:zoom-out
+name: zoom-out
 description: Tell the agent to zoom out and give a higher-level map of an unfamiliar area of the @flow-state-dev codebase, named in FSD vocabulary. Use when you've just landed in an area and want the lay of the land before touching anything.
 disable-model-invocation: true
 ---

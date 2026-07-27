@@ -14,3 +14,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-23 | e00112fc | n/a (no LLM) | PASS | `pnpm tsx goals/suspension/resumes-and-completes-after-approval/run.mts` → exit 0. Resumed output `{request, approvalId, approved:true, note}` carried both held-out values; request status `completed`. |
+| 2026-07-25 | 5eb5e7e | n/a | PASS | Resumed output carried both the held-out request and the approver note; status `completed`. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

@@ -13,6 +13,7 @@ import type {
   PriceHistoryProviderInput,
   TickerDatedProviderInput,
 } from "./types";
+import { INSIDER_ROW_CAP, INSIDER_WINDOW_DAYS, isoDateDaysBefore } from "./dates";
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
@@ -356,15 +357,6 @@ export async function fetchFinnhubPeers(
   return data.filter((t) => t !== ticker);
 }
 
-const INSIDER_WINDOW_DAYS = 90;
-
-/** Subtracts `days` calendar days from a `YYYY-MM-DD` date string. */
-function isoDateDaysBefore(date: string, days: number): string {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
  * Recent insider Form 4 filings for a ticker, normalized to the canonical
  * `get_insider_transactions` shape. Window is fixed at 90 calendar days
@@ -394,7 +386,7 @@ export async function fetchFinnhubInsiderTransactions(
     from,
     to,
   });
-  const transactions = (data.data ?? []).slice(0, 50).map((r) => ({
+  const transactions = (data.data ?? []).slice(0, INSIDER_ROW_CAP).map((r) => ({
     filingDate: r.filingDate ?? "",
     transactionDate: r.transactionDate ?? r.filingDate ?? "",
     insiderName: r.name ?? "",

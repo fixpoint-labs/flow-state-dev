@@ -257,7 +257,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     expect(deleteCount).toBe(0);
 
     // Snapshots still emit when trace observability is on, but are flagged
-    // non-durable so the durability middleware skips them.
+    // non-durable so the durability provider skips them.
     const snapshots = getStateSnapshots(response.getItems());
     expect(snapshots.length).toBeGreaterThan(0);
     expect(snapshots.every((s) => s.durable === false)).toBe(true);

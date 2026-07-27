@@ -7,6 +7,18 @@
  * throw with the registered key list; pass `fallback` to route
  * unknowns to a default block instead.
  *
+ * "Registered" means an **own** property of `blocks`. Every caller feeds
+ * `select` a runtime-derived string — a model's chosen specialist or
+ * speaker name, a task's `assignee` — so a key naming an inherited
+ * `Object.prototype` member (`toString`, `constructor`, `valueOf`,
+ * `__proto__`, …) is a reachable miss, not a theoretical one. Resolving
+ * it off the prototype chain would hand the router a non-block, which
+ * then fails the route-candidate check with a confusing "selected
+ * invalid route" instead of taking the fallback (or raising the
+ * registered-key error). See `tasks/collection/safe-key.ts` in
+ * `@flow-state-dev/orchestration` for the same class guarded at the
+ * key-owning layer.
+ *
  * Input adaptation is intentionally NOT part of this primitive per
  * BP-013: pre-connect adapters on the routed blocks themselves
  * (`block.connectInput(...)`), or wrap the whole router. Keep this
@@ -22,7 +34,10 @@ export interface KeyedRouterConfig<
   TInput = z.infer<TInputSchema>,
 > {
   name: string;
-  /** String-keyed routing table. Keys are the values `select` returns. */
+  /**
+   * String-keyed routing table. Keys are the values `select` returns.
+   * Only **own** properties count as registered routes.
+   */
   blocks: Record<string, BlockDefinition<any, any>>;
   select: (input: TInput, ctx: BlockContext) => string;
   /**
@@ -61,7 +76,11 @@ export function keyedRouter<
     routes,
     execute: (input: TInput, ctx: BlockContext) => {
       const key = select(input, ctx);
-      const selected = blocks[key];
+      // Own-property lookup only — an inherited `Object.prototype` member is
+      // not a registered route (see the file header).
+      const selected = Object.prototype.hasOwnProperty.call(blocks, key)
+        ? blocks[key]
+        : undefined;
       if (selected !== undefined) return selected;
       if (fallback !== undefined) return fallback;
       throw new Error(

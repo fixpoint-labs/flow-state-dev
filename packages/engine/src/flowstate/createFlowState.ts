@@ -272,7 +272,6 @@ class InternalFlowState<TSettings extends object>
       modelResolver,
       voiceProvider,
       settings: this.#options.settings as FlowStateSettings | undefined,
-      middleware: this.#options.middleware,
       onBackgroundWork: this.#options.onBackgroundWork,
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       durabilityProvider,

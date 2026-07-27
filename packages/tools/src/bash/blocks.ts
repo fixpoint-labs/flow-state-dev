@@ -2,8 +2,8 @@
  * Handler block factory for bash tool blocks.
  *
  * Creates `bashCommand`, `bashReadFile`, and `bashWriteFile` handler blocks
- * that participate in the framework's block system (lifecycle hooks, middleware,
- * items log) rather than running as opaque AI SDK tools inside a generator.
+ * that participate in the framework's block system (lifecycle hooks, items
+ * log) rather than running as opaque AI SDK tools inside a generator.
  *
  * The blocks manage a per-session sandbox. On first access the sandbox is
  * auto-populated from the block's resource context: every

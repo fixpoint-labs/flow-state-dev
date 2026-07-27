@@ -12,3 +12,4 @@
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-06-22 | 7274700a | vercel/anthropic/claude-sonnet-4.6 | PASS | Real `fsdev run chat-agent run` from `apps/kitchen-sink`; assistant message content and `result.output` both "Paris". Gateway inference key confirmed (POST `/v1/chat/completions` → 200) before the run. `FSDEV_DEFAULT_MODEL=vercel/openai/gpt-5-nano` steered internal/intent generators; the user-facing assistant generator ran on its own default (claude-sonnet-4.6) — recorded as what actually answered. |
+| 2026-07-25 | 5eb5e7e | claude-sonnet-5 | PASS | Answer contained the held-out `Paris` in both the assistant message and result.output. Run during the goals/lib migration (runner scaffolding only; no product code changed). |

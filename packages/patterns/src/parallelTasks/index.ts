@@ -33,6 +33,15 @@ export interface ParallelTasksConfig<
 
   /** Maximum number of sub-tasks to run concurrently. Defaults to 3. */
   maxConcurrency?: number;
+  /**
+   * Creation bounds for the internal board (FIX-931). Defaults 500/100 —
+   * unchanged behavior when unset. A planner that legitimately produces more
+   * than the enqueue bound would otherwise fail its whole seed with no way to
+   * raise the ceiling, so both are reachable here: a number, or `null` for
+   * explicitly unbounded on that axis.
+   */
+  maxTotalTasks?: number | null;
+  maxEnqueuedTasks?: number | null;
 
   /** Override the planning step. Defaults to `utility.decomposer()`. */
   planner?: BlockDefinition<any, any>;
@@ -93,6 +102,14 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const board = taskBoard({
     name: `${name}-board`,
     collection: { collectionId: name },
+    // Reachable creation bounds (FIX-931): the board enforces them, so a caller
+    // who legitimately needs a bigger board must be able to say so. Unset falls
+    // through to the 500/100 defaults, and `board.caps` is what the seed writer
+    // is handed, so the two can never disagree.
+    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
+    ...(config.maxEnqueuedTasks !== undefined
+      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
+      : {}),
     workers: worker,
     concurrency: maxConcurrency,
     dispatcher: "fifo",
@@ -104,6 +121,9 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     collectionId: name,
     inputDefault: "goal",
+    // The board's bounds, so the planner's seed writes through a capped ref
+    // rather than a second uncapped one over the same ledger (FIX-931).
+    caps: board.caps,
   });
 
   // Collects completed task outputs after the board drains.

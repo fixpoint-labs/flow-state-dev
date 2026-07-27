@@ -16,39 +16,24 @@
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import {
-  continueRequest,
-  createCheckpointDurabilityProvider,
-  createFlowRegistry,
-  createInMemoryStores,
-  runAction,
-} from "@flow-state-dev/engine";
+import { continueRequest, runAction } from "@flow-state-dev/engine";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ContinuationItem } from "@flow-state-dev/core/items";
+import {
+  approvalContext,
+  approvePending,
+  durableStores,
+  registryFor,
+  runGoal,
+  stripIntentOverrides,
+  type DurabilityProvider,
+  type FlowRegistry,
+  type Stores,
+} from "../../lib/index.mts";
 
 // No generator/model intents declared by these flows (see goal.md's Model
-// field); strip pinned overrides so createModelResolver doesn't throw. See
-// the sibling goal's run.mts for the same fix.
-for (const key of Object.keys(process.env)) {
-  if (key.startsWith("FSDEV_INTENT_") || key === "FSDEV_DEFAULT_MODEL") delete process.env[key];
-}
-
-const silentLogger = { debug() {}, info() {}, warn() {}, error() {} };
-
-function fail(msg: string): never {
-  console.error("FAIL —\n  - " + msg);
-  process.exit(1);
-}
-
-function createDurableStores() {
-  const stores = createInMemoryStores();
-  const provider = createCheckpointDurabilityProvider({
-    checkpoints: stores.checkpoints,
-    suspensions: stores.suspensions,
-    leases: stores.leases,
-  });
-  return { stores, provider };
-}
+// field); clear pinned overrides so createModelResolver doesn't throw.
+stripIntentOverrides();
 
 function continuationItems(items: readonly { type: string }[] | undefined): ContinuationItem[] {
   return ((items ?? []) as ContinuationItem[]).filter((i) => i.type === "continuation");
@@ -88,11 +73,11 @@ function buildFlow(kind: string, counter: { runs: number }): FlowInstance {
  *  sibling goal / the engine's own crash-recovery tests). */
 async function runToInterrupted(
   flow: FlowInstance,
-  stores: ReturnType<typeof createInMemoryStores>,
-  runtimeConfig: { durabilityProvider: unknown; logger: unknown },
-): Promise<string> {
+  stores: Stores,
+  runtimeConfig: unknown,
+): Promise<{ requestId: string; failures: string[] }> {
   const initial = await runAction({
-    flow,
+    flow: flow as never,
     actionName: "run",
     input: {},
     userId: "goal-user",
@@ -101,19 +86,24 @@ async function runToInterrupted(
   });
   const requestId = initial.requestId!;
   const record = await stores.request.get(requestId);
-  if (record?.status !== "suspended") fail(`expected ${flow.id} to suspend, got status "${record?.status}"`);
-  await stores.request.set(requestId, { ...record, status: "interrupted", interruptedAt: Date.now() }, "any");
-  return requestId;
+  if (record?.status !== "suspended") {
+    return { requestId, failures: [`expected ${flow.id} to suspend, got status "${record?.status}"`] };
+  }
+  await stores.request.set(
+    requestId,
+    { ...record, status: "interrupted", interruptedAt: Date.now() },
+    "any",
+  );
+  return { requestId, failures: [] };
 }
 
 async function continueAndApprove(
   requestId: string,
-  flow: FlowInstance,
-  registry: ReturnType<typeof createFlowRegistry>,
-  stores: ReturnType<typeof createInMemoryStores>,
-  provider: ReturnType<typeof createCheckpointDurabilityProvider>,
-  runtimeConfig: { durabilityProvider: unknown; logger: unknown },
-): Promise<{ continuation: ContinuationItem; finalStatus: string }> {
+  registry: FlowRegistry,
+  stores: Stores,
+  provider: DurabilityProvider,
+  runtimeConfig: unknown,
+): Promise<{ continuation?: ContinuationItem; finalStatus: string; failures: string[] }> {
   // Crash-recovery re-entry: no resumeContext.
   const { finished: recovered } = await continueRequest({
     requestId,
@@ -126,79 +116,85 @@ async function continueAndApprove(
   const afterRecovery = await stores.request.get(requestId);
   const contItems = continuationItems(afterRecovery?.items);
   if (contItems.length !== 1) {
-    fail(`expected exactly one continuation item for ${requestId}, found ${contItems.length}`);
+    return {
+      finalStatus: "unknown",
+      failures: [`expected exactly one continuation item for ${requestId}, found ${contItems.length}`],
+    };
   }
 
   // Resolve the re-suspended gate to drive this SAME id to completion.
-  const pending = await provider.listSuspended({ status: "pending" });
-  const suspension = pending.find((s) => s.requestId === requestId);
-  if (!suspension) fail(`expected a pending suspension for ${requestId} after crash-recovery re-entry`);
-  await provider.suspend({ ...suspension, status: "approved", resolvedAt: Date.now(), resumeData: {} });
+  const suspension = await approvePending(provider, requestId);
 
   const { finished: resolved } = await continueRequest({
     requestId,
     stores,
     flowRegistry: registry,
-    resumeContext: { suspensionId: suspension.suspensionId, action: "approve", data: {} },
+    resumeContext: approvalContext(suspension) as never,
     runtimeConfig: runtimeConfig as never,
   });
   const result = await resolved;
-  if (result.requestId !== requestId) {
-    fail(`resolving continue for ${requestId} produced a different id (${result.requestId})`);
-  }
 
+  const failures: string[] = [];
+  if (result.requestId !== requestId) {
+    failures.push(`resolving continue for ${requestId} produced a different id (${result.requestId})`);
+  }
   const finalRecord = await stores.request.get(requestId);
-  return { continuation: contItems[0], finalStatus: finalRecord?.status ?? "unknown" };
+  return { continuation: contItems[0], finalStatus: finalRecord?.status ?? "unknown", failures };
 }
 
-async function main(): Promise<void> {
+await runGoal(async () => {
+  const failures: string[] = [];
   const counterA = { runs: 0 };
   const counterB = { runs: 0 };
   const flowA = buildFlow("goal-continue-two-a", counterA);
   const flowB = buildFlow("goal-continue-two-b", counterB);
 
-  const { stores, provider } = createDurableStores();
-  const runtimeConfig = { durabilityProvider: provider, logger: silentLogger };
+  const { stores, provider, runtimeConfig } = durableStores();
+  const registry = registryFor(flowA, flowB);
 
-  const registry = createFlowRegistry();
-  registry.register(flowA as never);
-  registry.register(flowB as never);
+  const a = await runToInterrupted(flowA, stores, runtimeConfig);
+  const b = await runToInterrupted(flowB, stores, runtimeConfig);
+  failures.push(...a.failures, ...b.failures);
+  if (failures.length > 0) return { failures, evidence: "" };
 
-  const requestIdA = await runToInterrupted(flowA, stores, runtimeConfig);
-  const requestIdB = await runToInterrupted(flowB, stores, runtimeConfig);
-  if (requestIdA === requestIdB) fail("test setup produced the same request id for both flows");
+  if (a.requestId === b.requestId) failures.push("test setup produced the same request id for both flows");
   if (counterA.runs !== 1 || counterB.runs !== 1) {
-    fail(`expected each flow's step to run exactly once before suspension, got A=${counterA.runs} B=${counterB.runs}`);
+    failures.push(
+      `expected each flow's step to run exactly once before suspension, got A=${counterA.runs} B=${counterB.runs}`,
+    );
   }
 
-  const resultA = await continueAndApprove(requestIdA, flowA, registry, stores, provider, runtimeConfig);
-  const resultB = await continueAndApprove(requestIdB, flowB, registry, stores, provider, runtimeConfig);
+  const resultA = await continueAndApprove(a.requestId, registry, stores, provider, runtimeConfig);
+  const resultB = await continueAndApprove(b.requestId, registry, stores, provider, runtimeConfig);
+  failures.push(...resultA.failures, ...resultB.failures);
 
   // (a) No cross-wiring: each continuation item is attributed to its own request.
-  if (resultA.continuation.requestId !== requestIdA) {
-    fail(`flowA's continuation item is attributed to "${resultA.continuation.requestId}", expected "${requestIdA}"`);
+  if (resultA.continuation !== undefined && resultA.continuation.requestId !== a.requestId) {
+    failures.push(
+      `flowA's continuation item is attributed to "${resultA.continuation.requestId}", expected "${a.requestId}"`,
+    );
   }
-  if (resultB.continuation.requestId !== requestIdB) {
-    fail(`flowB's continuation item is attributed to "${resultB.continuation.requestId}", expected "${requestIdB}"`);
+  if (resultB.continuation !== undefined && resultB.continuation.requestId !== b.requestId) {
+    failures.push(
+      `flowB's continuation item is attributed to "${resultB.continuation.requestId}", expected "${b.requestId}"`,
+    );
   }
 
   // (b) No cross-contaminated side effects: each counter only ever saw its
   // own flow's step run once, across the whole sequence (suspend + two
   // continues each, for both flows).
-  if (counterA.runs !== 1) fail(`flowA's step counter is ${counterA.runs}, expected 1 — cross-contaminated or re-executed`);
-  if (counterB.runs !== 1) fail(`flowB's step counter is ${counterB.runs}, expected 1 — cross-contaminated or re-executed`);
+  if (counterA.runs !== 1) failures.push(`flowA's step counter is ${counterA.runs}, expected 1 — cross-contaminated or re-executed`);
+  if (counterB.runs !== 1) failures.push(`flowB's step counter is ${counterB.runs}, expected 1 — cross-contaminated or re-executed`);
 
   // (c) Both requests reach "completed" under their own distinct ids.
-  if (resultA.finalStatus !== "completed") fail(`flowA's request ${requestIdA} ended as "${resultA.finalStatus}", expected "completed"`);
-  if (resultB.finalStatus !== "completed") fail(`flowB's request ${requestIdB} ended as "${resultB.finalStatus}", expected "completed"`);
+  if (resultA.finalStatus !== "completed") failures.push(`flowA's request ${a.requestId} ended as "${resultA.finalStatus}", expected "completed"`);
+  if (resultB.finalStatus !== "completed") failures.push(`flowB's request ${b.requestId} ended as "${resultB.finalStatus}", expected "completed"`);
 
-  console.log(
-    `PASS — two interrupted requests (${requestIdA}, ${requestIdB}) each continued independently: ` +
+  return {
+    failures,
+    evidence:
+      `two interrupted requests (${a.requestId}, ${b.requestId}) each continued independently: ` +
       `each got exactly one continuation item attributed to its own id, each flow's step counter stayed ` +
       `at 1 (no cross-contamination), and both reached "completed" under their own distinct request ids.`,
-  );
-}
-
-main().catch((err) => {
-  fail(err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err));
+  };
 });

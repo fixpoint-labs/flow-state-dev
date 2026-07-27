@@ -23,12 +23,13 @@
  *   - `value-holding`          — a quote-sourced price carries the quote's `asOf`
  *      (per-holding staleness); par / statement / unavailable are `asOf: null`.
  *
+ * These specs are mock-free by construction (real PGlite, no model), which is
+ * what makes delegating to them legitimate here — see `goals/lib/specs.mts`.
+ *
  * Run: pnpm tsx goals/trading-desk-portfolio/persist-last-known-price/run.mts
  */
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { TRADING_DESK, runGoal, runSpecs } from "../../lib/index.mts";
 
-const APP = fileURLToPath(new URL("../../../labs/trading-desk", import.meta.url));
 const SPECS = [
   "portfolio-repository",
   "portfolio-actions",
@@ -37,15 +38,12 @@ const SPECS = [
   "value-holding",
 ];
 
-try {
-  execFileSync("pnpm", ["exec", "vitest", "run", ...SPECS], { stdio: "inherit", cwd: APP });
-} catch {
-  console.error("FAIL: a real-path persist-last-known-price spec did not pass.");
-  process.exit(1);
-}
-console.log(
-  "PASS: a refreshed price persists in app.quotes; the read route + analysis seed " +
-    "value the portfolio from that persisted state without a second fetch, and per-" +
-    "holding as-of staleness is threaded — all over real PGlite.",
-);
-process.exit(0);
+await runGoal(() => ({
+  failures: runSpecs(TRADING_DESK, SPECS)
+    ? []
+    : ["a real-path persist-last-known-price spec did not pass (see the vitest output above)"],
+  evidence:
+    "a refreshed price persists in app.quotes; the read route + analysis seed value the " +
+    "portfolio from that persisted state without a second fetch, and per-holding as-of " +
+    `staleness is threaded — all over real PGlite. Specs: ${SPECS.join(", ")}.`,
+}));

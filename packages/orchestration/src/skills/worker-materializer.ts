@@ -16,6 +16,7 @@
 
 import {
   generator,
+  warnOnceDev,
   type GeneratorTool,
 } from "@flow-state-dev/core";
 import type {
@@ -31,6 +32,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskWorkerInput } from "../tasks";
+import { taskWorkerInputSchema } from "../task-board";
 import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
@@ -72,18 +74,33 @@ export interface WorkerMaterializationDeps {
   boardTaskTools?: DefinedCapability;
 }
 
-/** Board-worker input — matches the substrate's TaskWorkerInput. */
-export const workerInputSchema = z.object({
-  taskId: z.string(),
-  goal: z.string(),
-  input: z.unknown().optional(),
-  attempts: z.number(),
-  feedback: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  deps: z.record(z.string(), z.unknown()).optional(),
-});
+/**
+ * Board-worker input schema. The worker-input shape is owned by the task-board
+ * substrate (`taskWorkerInputSchema`) — the board dispatch feeds it — so this is
+ * a re-export rather than a second definition that could drift (FIX-928, D2).
+ * The substrate schema is a compatible superset (adds optional `title`/`context`,
+ * stricter `attempts: int().nonnegative()`); the extra optionals are accepted,
+ * not required, so both importers of this alias keep working.
+ */
+export const workerInputSchema = taskWorkerInputSchema;
 
 type WorkerInput = TaskWorkerInput;
+
+/**
+ * Turn window a `contextSupply: "conversation"` agent inherits (FIX-920).
+ *
+ * `conversation` ships **bounded by default** per the delegation-substrate epic
+ * (FIX-930): rather than inheriting the full history window (~50 turns), the
+ * worker's `history` slot is bounded to the last N whole turns using the real
+ * `ItemQuery.limit` shape (`{ limit: { turns: N } }`, not `{ turns: N }`). This
+ * caps the token / latency cost of feeding prior conversation into a delegated
+ * agent; a per-agent override is a documented future extension.
+ *
+ * Note the bound is a **turn** count, not a token budget: N whole turns of very
+ * long messages can still be a lot of tokens. It caps how many turns flow in,
+ * not their size.
+ */
+export const CONVERSATION_HISTORY_TURNS = 8;
 
 /**
  * Build the executable board worker for one agent entry.
@@ -96,6 +113,30 @@ export async function materializeWorker(
   spec: AgentSpec,
   deps: WorkerMaterializationDeps,
 ): Promise<BlockDefinition> {
+  // FIX-920: validate `contextSupply` here, not only in the frontmatter parser.
+  // `AgentSpec`/`materializeWorker` are exported and persisted `PatternBinding`s
+  // are only shallowly revalidated, so a programmatic or persisted spec bypasses
+  // `parseAgentSpec`. This is the authoritative guard — it covers (a) an
+  // out-of-enum value (which would otherwise fall through the `=== "conversation"`
+  // check below and silently run isolated) and (b) `contextSupply` on an
+  // `agentRef` agent (whose context is owned by the workforce materializer, not
+  // reachable from this history slot). `"conversation"` is the only value;
+  // isolation is the default, expressed by omitting the field (no sentinel).
+  if (spec.contextSupply !== undefined) {
+    if (spec.contextSupply !== "conversation") {
+      throw new Error(
+        `Agent '${agentKey}': invalid context-supply '${String(spec.contextSupply)}' ` +
+          `— the only value is "conversation"; omit the field for the default (isolated).`,
+      );
+    }
+    if (spec.agentRef !== undefined) {
+      throw new Error(
+        `Agent '${agentKey}': context-supply applies to prompt/prompt-ref agents; ` +
+          `agent-ref agents own their own context (resolved through the agent registry).`,
+      );
+    }
+  }
+
   // 1. agent-ref — resolve a registered Agent via the injected registry.
   if (spec.agentRef !== undefined) {
     if (!deps.agentRegistry) {
@@ -130,6 +171,10 @@ export async function materializeWorker(
       shape: "worker",
       workerKey: agentKey,
       skillName: deps.skillName,
+      // Mirror the inline branch: hand the agent-ref worker the same board-bound
+      // taskTools so mid-drain fan-out lands on the active drain board rather
+      // than the empty singleton (which fails with `no_delegation_board`).
+      boardTaskTools: deps.boardTaskTools,
     });
   }
 
@@ -151,9 +196,30 @@ export async function materializeWorker(
   // neutral `"intent/chat"` fallback so a delegation skill works out of the box.
   const modelId = spec.model ?? deps.defaultModelId ?? "intent/chat";
 
+  // FIX-920: a `conversation` agent inherits the parent conversation via the
+  // generator `history` slot, bounded to the last N whole turns. Output
+  // isolation (below) is independent — the agent reads prior history but its
+  // own steps still stay out of host history. If the author also made output
+  // history-visible, that isolation is defeated: warn, don't silently proceed.
+  const inheritsConversation = spec.contextSupply === "conversation";
+  if (inheritsConversation && spec.itemVisibility?.history === true) {
+    // `buildDelegationTools` re-materializes every worker on each generator
+    // execution, so a raw console.warn here fires once per step. Collapse it to
+    // one emission per (skill, agent) config via the shared warn-once helper.
+    warnOnceDev(
+      `skills:context-supply-history-visible:${deps.skillName}:${agentKey}`,
+      `[skills] agent "${agentKey}": context-supply "conversation" with ` +
+        `history-visible output — the sub-work re-enters host history, so it is ` +
+        `no longer isolated.`,
+    );
+  }
+
   return generator({
     name: `skillWorker_${deps.skillName}_${agentKey}`,
     itemVisibility: spec.itemVisibility ?? { client: true, history: false },
+    ...(inheritsConversation
+      ? { history: { limit: { turns: CONVERSATION_HISTORY_TURNS } } }
+      : {}),
     agentName: `skill-${deps.skillName}-${agentKey}`,
     inputSchema: workerInputSchema,
     outputSchema: z.string(),

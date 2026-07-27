@@ -89,7 +89,7 @@ Each `fsdev run` invocation produces NDJSON. The user reads:
 - **`state_change` events** — every state op, with `scope`, `resourcePath`, `changeType`. This is the answer to "did the state mutation happen in the right order, at the right step?"
 - **`flow_complete` / `error`** — terminal outcome.
 
-Pair stdout (NDJSON) with stderr (`[flow-state]` runtime logs) for the full picture. See `fsd:debug-flow` for the full event-type reference if needed; the prototype only needs whichever subset answers its question.
+Pair stdout (NDJSON) with stderr (`[flow-state]` runtime logs) for the full picture. See `debug-flow` for the full event-type reference if needed; the prototype only needs whichever subset answers its question.
 
 ### 6. Iterate on the candidate
 
@@ -101,13 +101,13 @@ If the user is AFK, draft 3–5 representative invocations in the README and run
 
 When the prototype has done its job, the answer to the question is the only thing worth keeping. Three outcomes:
 
-- **Adopt** — fold the candidate into the relevant package via `fsd:tdd` (the prototype gave you the behavioural target; TDD gives you the test discipline). Delete the prototype directory in the same commit. Reference the prototype in the commit message and / or BP entry.
+- **Adopt** — fold the candidate into the relevant package via `tdd` (the prototype gave you the behavioural target; TDD gives you the test discipline). Delete the prototype directory in the same commit. Reference the prototype in the commit message and / or BP entry.
 - **Reject** — if the rejection meets the three-way filter (hard to reverse, surprising without context, real trade-off), record it in `docs/internal/out-of-scope/<concept>.md`. Delete the prototype.
 - **Inconclusive** — drop a `NOTES.md` next to the prototype with what was tried and what wasn't, then either delete or hand back to the user with the question reframed.
 
 ## Anti-patterns
 
-- **Don't add vitest specs.** A prototype that needs specs is no longer a prototype. If the question is shaped enough that you can write a spec for it, the answer is already known — move to `fsd:tdd`.
+- **Don't add vitest specs.** A prototype that needs specs is no longer a prototype. If the question is shaped enough that you can write a spec for it, the answer is already known — move to `tdd`.
 - **Don't wire it to the real Vercel AI SDK** for the first invocations. Use `mockGenerator` so the loop is deterministic; if the question is specifically about provider behaviour, switch to a real provider for the last few invocations only.
 - **Don't generalise.** No "what if we wanted to support X later" in the candidate. The prototype answers one question.
 - **Don't blur the candidate and the kitchen-sink shell together.** If `candidate.ts` imports anything from the prototype's flow definition, it's no longer portable. The flow shell imports the candidate; nothing flows the other direction.

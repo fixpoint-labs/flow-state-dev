@@ -67,8 +67,10 @@ Phase 1 — analyst fan-out:
   proxy metrics (EV/EBIT, ROIC, PEG) are labeled as approximations. No new
   provider calls.
 - **Insider transactions signal** — the news analyst reads 90 days of Form 4
-  filings (`get_insider_transactions`, Finnhub-only; returns `unavailable`
-  on failure, like other single-provider tools).
+  filings (`get_insider_transactions`, Finnhub primary → Alpha Vantage
+  fallback; returns `unavailable` when both are absent). The Alpha Vantage
+  fallback is coarser — its rows carry a blank transaction code (direction
+  only), so it is used only when Finnhub's full SEC-code fidelity is missing.
 - **Disclosure signal** — the disclosure analyst reads the latest SEC filing
   (10-K / 10-Q / 8-K) text, sell-side ratings and earnings beat/miss history,
   and (optionally) the latest earnings-call transcript. It also surfaces recent
@@ -76,10 +78,12 @@ Phase 1 — analyst fan-out:
   agreements, earnings, restructurings) as a dated, source-linked catalyst
   signal within a trailing 90-day window. `get_sec_filings` is keyless (EDGAR,
   no new API call for material events), `get_analyst_estimates` uses Finnhub
-  (existing key), `get_earnings_transcript` requires `FMP_API_KEY` (free tier,
-  optional). When a source is unavailable the analyst applies the standard
-  missing-signal treatment — the filing + ratings read ships without the
-  transcript, and "none observed" when there are no recent material events.
+  (existing key) plus Alpha Vantage consensus + price-target enrichment when
+  `ALPHAVANTAGE_API_KEY` is set, and `get_earnings_transcript` uses Alpha
+  Vantage (free tier, optional). When a source is unavailable the analyst
+  applies the standard missing-signal treatment — the filing + ratings read
+  ships without the transcript, and "none observed" when there are no recent
+  material events.
 - **Social sentiment signal** — the sentiment analyst reads 7-day X/Twitter
   sentiment via Grok's `xSearch` hosted tool (`get_social_sentiment`,
   xAI-only via `XAI_API_KEY`; returns `unavailable` on absence, like other
@@ -537,9 +541,20 @@ tools return `unavailable` and the relevant analyst treats the result as
 missing signal. `XAI_API_KEY` enables live social sentiment via Grok's
 `xSearch` over X/Twitter; without it, `get_social_sentiment` returns
 `unavailable` and the sentiment analyst applies the same missing-signal
-treatment. `FMP_API_KEY` (optional, free tier) enables earnings-call
-transcripts via `get_earnings_transcript`; without it the disclosure
-analyst still runs on EDGAR filings and Finnhub ratings alone.
+treatment. `ALPHAVANTAGE_API_KEY` (optional, free tier — 25 requests/day,
+5/minute) enables live earnings-call transcripts and analyst consensus /
+price-targets, and an insider-transactions fallback; without it the disclosure
+analyst still runs on EDGAR filings and Finnhub ratings alone. `ALPHAVANTAGE_DAILY_LIMIT`
+tunes the in-process daily-budget guard (default `25`; set it to `0` for a paid
+plan with no cap). `ALPHAVANTAGE_MINUTE_LIMIT` tunes the in-process per-minute
+pacing guard the same way (default `5`; set it to `0` for a paid plan with no
+per-minute cap) — a paid-plan operator who disables the daily cap but leaves
+this at its default still hits a ~1-minute stall on the 6th call in a burst.
+Two caveats on the guard: once the day's budget is spent, the Alpha
+Vantage-backed tools degrade to `unavailable`; and it is a best-effort,
+in-process guard — a process restart or serverless cold-start resets the
+counter, and the 5-requests/minute limit (not the daily cap) is what binds when
+runs fire close together.
 `MASSIVE_API_KEY` (optional, **paid** — Massive bills per asset-class product:
 options is the Starter tier, futures a separate subscription) enables
 `get_options_chain` (quant analyst) and `get_futures_curve` (macro analyst);

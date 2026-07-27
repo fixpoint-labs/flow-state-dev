@@ -14,7 +14,7 @@ import type { RuntimeConfig } from "../runtime-config";
 type RecoveryRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
-  /** Instance-level runtime options (resolvers, voice provider, middleware, logger, …). */
+  /** Instance-level runtime options (resolvers, voice provider, logger, …). */
   runtimeConfig: RuntimeConfig;
   /** Caller's tenant (FIX-682), extracted the same way as every other session-touching route. */
   tenantId?: string;

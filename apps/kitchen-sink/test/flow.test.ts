@@ -11,7 +11,7 @@ import {
 } from "@flow-state-dev/testing";
 import { thinkingStyleRouter } from "../flows/chat-agent/run/thinking-styles";
 import { artifactsCollection } from "../flows/chat-agent/shared/artifacts";
-import { DEFAULT_KITCHEN_SINK_MODEL } from "../lib/models";
+import { userStateSchema } from "../flows/chat-agent/shared/schemas";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -68,11 +68,7 @@ const testFlow = defineFlow({
     },
   },
   user: {
-    stateSchema: z.object({
-      displayName: z.string().default("Developer"),
-      selectedModel: z.string().default(DEFAULT_KITCHEN_SINK_MODEL),
-      thinkingEnabled: z.boolean().default(false),
-    }),
+    stateSchema: userStateSchema,
   },
 })({ id: "test" });
 

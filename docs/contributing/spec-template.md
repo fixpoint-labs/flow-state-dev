@@ -7,17 +7,19 @@ A spec has two readers with opposite needs, so it has two parts and a hard divid
   scannable in a few minutes: the problem, whether it's worth solving, the solution
   in plain terms, the tradeoffs, what using it looks like, and the decisions to sign
   off on. It is also the spec-PR description and the Linear lead.
-- **Part II — The Build Plan** is for the **implementing agent.** It maps ~80% of the
-  work. The last 20% is the implementer's once they're in the code. It is allowed to
-  be dense where density buys precision.
+- **Part II — The Build Plan** is for the **implementing agent.** It is *directional*,
+  not a blueprint: it fixes which modules and layers are involved, how they fit, and
+  the order to build them — enough that the implementer knows how to proceed and a
+  reviewer can judge the direction. It stops short of the finished design. The exact
+  signatures, code, and line-level choices are the implementer's, settled in the code
+  with `tdd` / `diagnose` and the challenger.
 
-**Authored in two stages, gated by the spec PR's draft state.** Part I is written and
-published first, as a **draft** spec PR (and the Linear lead). The human reviews the
-Case there. Marking the PR **ready for review** is the signal that the Case holds — and
-only then is Part II written and appended, so the Build Plan details the *approved* Case
-rather than a speculative one. Reviewers then get a second pass on Part II. This also
-means no Build-Plan tokens are spent on a Case that doesn't survive its first read (tenet
-3). See `fsd:create-spec` Steps 6 and 6.6.
+**Authored in one pass.** Part I and Part II are written together and published as a
+single spec PR opened **ready for review** (and the Linear lead). There is one
+approval gate — an approving human comment or GitHub Review on the spec PR — and it
+signs off the whole spec at once. Because Part II is directional rather than an
+exhaustive blueprint, it's cheap enough to write alongside the Case; there's no
+separate stage to defer it to. See `issue-spec` Step 6.
 
 > **Anti-addenda rule.** When spec-PR review forces a major pivot, **re-draft the
 > affected sections.** Do not bolt on an "AUTHORITATIVE reconciliation" section that
@@ -77,7 +79,7 @@ type change, bug fix restoring documented behavior).
 
 *(Review feedback that's too in-the-weeds to belong in the spec's prose is recorded
 under a "Review notes for the implementer" heading rather than rewritten into the
-design — see `fsd:create-spec` Step 6.5.)*
+design — see `issue-spec` Step 6.5.)*
 
 ### 6. Decisions & rules — the sign-off surface
 
@@ -105,27 +107,45 @@ independent PRs vs. which are sequential.
 
 ## Part II — The Build Plan *(for the implementing agent)*
 
+Part II is **directional**: it carries the shape and sequence — which modules and
+layers are involved, how they fit, the order to build them — not the finished design.
+More detail than Part I, much less than a full implementation. The implementer owns
+the exact signatures, code, and line-level choices, settled in the code.
+
+> **Keep it light by default; depth is pulled, not pushed.** Write each section at the
+> altitude a reviewer needs to judge the direction, and no deeper. Deepen a specific
+> section only when review of the spec asks for more to sign it off — not preemptively.
+>
+> **Prefer a diagram to code.** Carry architecture, data flow, and state machines in a
+> **mermaid diagram** (flow / sequence / component / state), not in signatures and file
+> trees. Avoid file paths and full function signatures. A small snippet is allowed only
+> when it pins a decision prose can't, or sketches a seam — label it **illustrative (a
+> sketch, not the contract)**, and keep it a few lines.
+>
 > Follow the Decisions in Part I. Where the code contradicts the spec's reasoning,
 > that contradiction is evidence the spec missed something — **surface it** (fold
 > into the spec or escalate to the human). Do not force-follow a plan the code is
 > telling you is wrong, and do not silently deviate.
 >
-> **For reviewers:** challenge the Decisions (Part I), not Part II's phrasing. The
-> last 20% — exact names, local structure, which helper — is the implementer's to
-> settle in the code. A nit about Part II wording that doesn't touch a decision is
-> out of scope.
+> **For reviewers:** challenge the Decisions (Part I) and Part II's *direction*, not
+> its phrasing. The exact names, local structure, and which helper are the
+> implementer's to settle in the code. A nit about Part II wording that doesn't touch a
+> decision or the direction is out of scope.
 
 ### 7. Technical design
 
-Architecture (packages/modules/files involved), data flow, and the API surface —
-exact signatures, types, request/response shapes. This is the contract; be precise.
+Architecture (which packages / modules / layers are involved), how they fit, and the
+data flow — carried by a **mermaid diagram** wherever one fits. Name the API surface at
+the level of *what* it exposes and *how the pieces talk*, not exact signatures and
+request/response shapes — those are the implementer's to settle. An illustrative snippet
+is fine to pin a seam; label it a sketch.
 
 ### 8. Implementation sequence
 
-Ordered, independently testable steps. For each: files to create / modify / **remove**
-(subtraction is part of the change — tenet 3), what changes, what to test, and
-dependencies on earlier steps. Map ~80%; leave the in-the-weeds 20% to the
-implementer.
+Ordered, independently testable steps. For each: which modules/layers to create /
+modify / **remove** (subtraction is part of the change — tenet 3), what changes, what to
+test, and dependencies on earlier steps. Give the sequence and shape; leave the
+line-level detail to the implementer.
 
 **PR plan (Large / multi-PR issues only).** When the change is large enough to split
 across PRs, declare a **PR plan**: a small table of sub-PRs and their dependencies.
@@ -156,7 +176,7 @@ Fallback behaviors. Walk the second-path checklist (BP-035) for the changed surf
   about), OR an explicit "no goal check applies" with a one-line justification
   (docs-only, pure type/schema/internal refactor, config plumbing).
 - **CI specs** (mocked, deterministic) — the behaviours to test in observable terms.
-- **Discipline:** `fsd:tdd` (features) or `fsd:diagnose` (bugs) — name the seam.
+- **Discipline:** `tdd` (features) or `diagnose` (bugs) — name the seam.
 
 ### 11. Documentation plan
 
@@ -172,7 +192,7 @@ that need a decision before implementation, each with options and trade-offs.
 **Follow-ups (flagged, not built):**
 - **Deepening opportunities** the area surfaced — shallow handlers, capability-shaped
   wiring, patterns that strain a tenet — as follow-ups for
-  `fsd:improve-codebase-architecture`. Flagging keeps them visible without expanding
+  `improve-codebase-architecture`. Flagging keeps them visible without expanding
   scope. (Opportunistic in-scope alignment still happens per the philosophy's
   "align as you go"; this is for what's genuinely out of scope.)
 - **Already-rejected directions** — before listing a deliberate "won't do," check
@@ -190,23 +210,21 @@ changelog (commit history already carries those, in full). One line per meaningf
 reviewer coming to the spec late see the shape of the debate that produced it — which is
 exactly what the anti-addenda rule strips out of the body.
 
-- The first entry is the **Case** being drafted.
-- The second is the **Build Plan** being added (on promotion to ready-for-review).
+- The first entry is the **spec drafted** — the Case and the Build Plan authored in one pass.
 - Each later entry is a **review-driven pivot** — the same rewrite the anti-addenda rule
   demands in the body, recorded here as a one-line "what/why" so the evolution stays
   legible without leaving reconciliation scars in the design.
 
 Format — **newest last**, each entry one line:
 
-`- **<stage / trigger>** — <what changed>, because <why>.`
+`- **<trigger>** — <what changed>, because <why>.`
 
 Example:
 
-- **Case drafted** — framed the problem as resume-after-disconnect; chose sequence-based replay over full re-send.
-- **Build Plan added** — mapped the `sse.ts` seam; split into 2 PRs (engine, then client).
-- **After Case review** — dropped multi-region scope; a reviewer flagged it as a separate concern.
-- **After Build-Plan review** — swapped the in-memory cursor for the store's sequence, per reviewer.
+- **Spec drafted** — framed the problem as resume-after-disconnect; chose sequence-based replay over full re-send; mapped the streaming seam and split into 2 PRs (engine, then client).
+- **After spec review** — dropped multi-region scope; a reviewer flagged it as a separate concern.
+- **After spec review** — swapped the in-memory cursor for the store's sequence, per reviewer.
 
 Keep it to meaningful turns. Typo fixes and wording nits don't earn a line. If the spec
-was authored in one pass with no pivots, two entries (Case, Build Plan) is the whole
+was authored with no review pivots, the single **spec drafted** entry is the whole
 timeline — that's fine.

@@ -1,8 +1,8 @@
 ---
-name: fsd:review
+name: review
 context: fork
 agent: general-purpose
-description: The single definition of how we review. Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by fsd:implement-issue at the end of its work so there is one review, not a per-skill panel.
+description: The single definition of how we review. Composes the review lenses as parallel sub-agents — coherence, restraint (bloat), correctness, and (for a change with a spec) completeness, plus optional depth — over a change (PR / branch / working diff) or a codebase slice, then dedupes and synthesizes ONE ranked report. Run standalone on any PR/branch/area, and invoked by issue-implement at the end of its work so there is one review, not a per-skill panel.
 argument-hint: "<PR# | branch | area | (empty = working diff vs main)>"
 ---
 
@@ -10,10 +10,10 @@ argument-hint: "<PR# | branch | area | (empty = working diff vs main)>"
 
 One definition of *how we review*, composed of independent **lenses** run as parallel
 sub-agents. The same lenses apply whether you're reviewing an in-flight change or
-auditing a codebase slice — only *which* run, and their scope, differ. `fsd:implement-issue`
+auditing a codebase slice — only *which* run, and their scope, differ. `issue-implement`
 calls this skill at the end of its work; run it standalone on any PR, branch, or area too.
 
-**Why one skill.** The lenses used to be defined twice — once as the implement-issue
+**Why one skill.** The lenses used to be defined twice — once as the issue-implement
 review panel, once as the standalone audit skills. Now there is one composition point
 (tenet 2, composition). Each lens is also a standalone skill; `review` runs the right
 set together and merges the results.
@@ -22,11 +22,11 @@ set together and merges the results.
 
 | Lens | Question | Implemented by | Applies to |
 |---|---|---|---|
-| **Coherence** | Does it cohere with the philosophy and the patterns around it? | `fsd:audit-coherence` | change + codebase |
-| **Restraint** | Should this exist? overbuilt / YAGNI / 80-20? | `fsd:second-look` | change + codebase |
+| **Coherence** | Does it cohere with the philosophy and the patterns around it? | `audit-coherence` | change + codebase |
+| **Restraint** | Should this exist? overbuilt / YAGNI / 80-20? | `second-look` | change + codebase |
 | **Correctness** | Bugs, logic errors, and the second-path checklist (BP-035)? | code-reviewer sub-agent (below) | change |
 | **Completeness** | All of the spec built, nothing extra, red shown, goal proven? | spec-compliance sub-agent (below) | change **with a spec** |
-| **Depth** *(optional)* | Shallow modules introduced or nearby? | `fsd:improve-codebase-architecture` | change + codebase; **non-blocking follow-ups** |
+| **Depth** *(optional)* | Shallow modules introduced or nearby? | `improve-codebase-architecture` | change + codebase; **non-blocking follow-ups** |
 
 Coherence, Restraint, and Depth are standalone skills — **dispatch them; don't
 re-derive their criteria here.** Correctness and Completeness have no standalone skill,
@@ -45,16 +45,16 @@ spec.
 ## Run
 
 1. **Dispatch the selected lenses as parallel sub-agents** (they're independent).
-   - **Coherence** → run `fsd:audit-coherence` scoped to the target. On a change with a
+   - **Coherence** → run `audit-coherence` scoped to the target. On a change with a
      spec, it reads the spec's Part I ("The Case") and the *shape* of the diff, judging
      whether the solution coheres with the tenets it claims — the "directionally-right
      spec but the design feels off" failure the other lenses can't see. Its verdict is
      the most consequential: a coherence break usually means reshaping the approach, not
      patching lines.
-   - **Restraint** → run `fsd:second-look` on the target.
+   - **Restraint** → run `second-look` on the target.
    - **Correctness** → the prompt below.
    - **Completeness** (change with a spec) → the prompt below.
-   - **Depth** (if selected) → run `fsd:improve-codebase-architecture` on the touched
+   - **Depth** (if selected) → run `improve-codebase-architecture` on the touched
      area; its output is *candidate follow-ups*, non-blocking.
    - **Model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness** on
      **Sonnet** — they check *decided* work against the spec/checklist, not open design.
@@ -99,14 +99,14 @@ Agent tool (general-purpose, model: sonnet):
       (a green CI suite is not evidence); if it wasn't, that's a must-fix — run it before
       presenting. Honor a documented "no goal check applies" only if no user-observable
       outcome was introduced. For bugs, verify diagnose's real-path confirmation instead.
-  Full template: ../implement-issue/spec-reviewer-prompt.md.
+  Full template: ../issue-implement/spec-reviewer-prompt.md.
 ```
 
 ## Report
 
 Verdict + a single ranked table (`finding · lens · severity · where · recommendation`),
 must-fix first. One "considered & clean" line per lens that found nothing. When run by
-`fsd:implement-issue`, must-fix and should-fix are resolved before it presents; notes flow
+`issue-implement`, must-fix and should-fix are resolved before it presents; notes flow
 to its summary.
 
 ## Guardrails

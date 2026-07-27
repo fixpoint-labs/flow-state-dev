@@ -1,6 +1,6 @@
 # When to Mock
 
-**Scope: this page is about CI specs (`*.spec.ts`).** Goal checks (`goals/<describe>/<it>/run.mts`) use a real model and real stores and mock nothing but true third-party services — see `fsd:tdd` → "Two kinds of test". The guidance below is for the deterministic specs that run in CI over and over, where mocking the LLM is correct.
+**Scope: this page is about CI specs (`*.spec.ts`).** Goal checks (`goals/<describe>/<it>/run.mts`) use a real model and real stores and mock nothing but true third-party services — see `tdd` → "Two kinds of test". The guidance below is for the deterministic specs that run in CI over and over, where mocking the LLM is correct.
 
 Mock at **system boundaries** only. In FSD, that means a small list — and a deliberately small list, because the framework already provides substitutes for most of them.
 

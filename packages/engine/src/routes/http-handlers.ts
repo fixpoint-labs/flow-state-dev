@@ -128,7 +128,7 @@ export type CreateFlowRouteHandlersOptions = {
   stores?: Partial<StoreRegistry>;
   /**
    * Instance-level options forwarded verbatim through the execution chain
-   * (resolvers, voice provider, settings, middleware, logger, tracing, SSE
+   * (resolvers, voice provider, settings, logger, tracing, SSE
    * buffering). See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
