@@ -165,9 +165,7 @@ Two things land on the generator when an agent-declaring skill is active: the to
 
 **`taskTools` — the planning ledger.** Eight tools let the generator plan and steer multi-step work on its private board.
 
-How they report a problem depends on the tool. `addTask`, `assignTask`, `updateTask`, `listTasks`, and `cancelTask` are soft: they return `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct, not something that ends the turn. `cancelTask` is soft even against a task that already finished, which it treats as a no-op.
-
-The exceptions are `completeTask`, `failTask`, and `blockTask`. They are soft for a missing board (`no_delegation_board`) and an unknown id (`task_not_found`), but a status change the task's current status doesn't permit **throws**. Completing a task that was never claimed is that case, as is blocking one already running. Sequence these against what the board actually holds rather than issuing them speculatively.
+How they report a problem is uniform across the eight. Each returns `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct. That covers a missing board (`no_delegation_board`), an unknown id (`task_not_found`), an assignee who isn't on the roster, a creation bound, and a status change the task's current status doesn't permit. The last of those is covered in full below. `cancelTask` against a task that already finished isn't a failure at all: it's a no-op that answers `{ ok: true }`.
 
 | Tool | Input | What it does |
 |------|-------|--------------|
@@ -182,7 +180,7 @@ The exceptions are `completeTask`, `failTask`, and `blockTask`. They are soft fo
 
 Most skills only need `addTask` and `runBoard`. The rest matter when the coordinator has to steer a board mid-flight — cancelling a plan that turned out to be wrong, or reading back what settled.
 
-**`blockTask` does not pause a task you can later resume.** The tool surface has no unblock: `updateTask` cannot change a status, and `failTask` on a blocked task throws rather than releasing it, because tasks created through `addTask` carry no retry budget and `blocked → errored` is not a permitted transition. `cancelTask` is the only exit. Treat blocking as retiring a task with a reason recorded on it, not as parking one you intend to pick back up — if work needs to wait for something and then continue, keep it off the board until its precondition holds. (The underlying collection does have an unblock operation; it just isn't exposed to a coordinator.)
+**`blockTask` does not pause a task you can later resume.** The tool surface has no unblock: `updateTask` cannot change a status, and `failTask` on a blocked task comes back refused rather than releasing it, because tasks created through `addTask` carry no retry budget and `blocked → errored` is not a permitted transition. `cancelTask` is the only exit. Treat blocking as retiring a task with a reason recorded on it, not as parking one you intend to pick back up — if work needs to wait for something and then continue, keep it off the board until its precondition holds. (The underlying collection does have an unblock operation; it just isn't exposed to a coordinator.)
 
 Assignment is checked as the task is created. `addTask`, `assignTask`, and `updateTask` reject an `assignee` that isn't one of the declared agents, and say which agents exist:
 
@@ -195,9 +193,26 @@ addTask({ goal: "Find sources", assignee: "reseacher" })
             on the default worker.' }
 ```
 
-No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree. This is a recoverable tool result, not a thrown error — it doesn't end the turn.
+No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree.
+
+Worth being precise about what a result buys you here, because it is easy to overstate. A tool that *throws* does not end the turn: the generator catches it and feeds the text back to the model, which can still recover. The difference is the shape and the quality of what arrives. A result is the contract every other tool on this surface already uses, and it carries what the model needs to act — which roster exists, which status the task is in, which calls are open. A throw arrives as a raw internal string that names what was rejected and nothing about what to do next.
 
 When an `addTask` could fail more than one way, the checks run in a fixed order: no board, then an unknown assignee, then the creation bounds. The assignee is checked before the bounds deliberately. Naming a worker that doesn't exist is the more useful thing to hear, and a task rejected for a bad assignee never reaches the board — so a typo can't consume budget that a later, valid task needed.
+
+Status changes come back the same way. A task only moves along the lifecycle the substrate allows, so a task still sitting `pending` can't jump straight to `completed` — nothing has started it. When a tool asks for a move the lifecycle refuses, the coordinator gets a result naming the status the task is actually in and the calls that would work from there:
+
+```
+completeTask({ taskId: "t_3", output: "…" })
+→ { ok: false,
+    taskId: "t_3",
+    error: 'illegal_status_transition: task "t_3" is pending, so transitioning
+            to completed is not available — a pending task has not been started
+            yet. From here you can call blockTask or cancelTask.' }
+```
+
+Those are the calls this surface can make from that status, not every transition the substrate permits. The distinction matters: a `pending` task can legally reach `in_progress`, but no task tool moves it there, so listing it would point the model at an operation it doesn't have. A task already in a terminal status (`completed`, `errored`, `cancelled`) gets told that instead, with a suggestion to add a new task, because nothing will move it again.
+
+Only a refused transition softens this way. Storage failures, concurrent-write conflicts, and ordinary bugs still throw. That line is deliberate — a real fault that came back as a polite `{ ok: false }` would read to the model as its own mistake, and it would narrate past a broken board. Driving a `TaskCollection` directly from your own code gets the throw in every case, including this one; see [the status state machine](../orchestration/task-substrate.md#the-status-state-machine).
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 

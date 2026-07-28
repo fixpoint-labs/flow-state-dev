@@ -53,14 +53,48 @@ export function isTransitionAllowed(from: TaskStatus, to: TaskStatus): boolean {
 }
 
 /**
+ * A lifecycle method refused a status change the state machine does not permit.
+ * Thrown by {@link assertTransitionAllowed} from inside the collection's CAS
+ * write, so nothing is committed.
+ *
+ * Carries the three facts a caller needs to react without re-parsing the
+ * message. The delegation `taskTools` boundary catches this by type and returns
+ * a recoverable `{ ok: false, error }` result naming what the model can do
+ * instead; **every other caller still gets the throw** — driving a collection
+ * directly (a drain's rescue path, user code) is expected to handle or
+ * propagate it, which is why this class is exported rather than module-private.
+ *
+ * The message text is deliberately unchanged from the plain `Error` this
+ * replaced: only the type is new.
+ */
+export class IllegalTaskTransitionError extends Error {
+  /** The task whose transition was refused. */
+  readonly taskId: string;
+  /** The status the task was in when the guard ran. */
+  readonly from: TaskStatus;
+  /** The status the caller tried to move it to. */
+  readonly to: TaskStatus;
+
+  constructor(options: { taskId: string; from: TaskStatus; to: TaskStatus }) {
+    super(
+      `[tasks] illegal status transition for task "${options.taskId}": ${options.from} → ${options.to}`
+    );
+    this.name = "IllegalTaskTransitionError";
+    this.taskId = options.taskId;
+    this.from = options.from;
+    this.to = options.to;
+  }
+}
+
+/**
  * Throws if the transition is not allowed. Used by lifecycle methods to
  * surface contract violations early instead of silently writing illegal
  * states.
+ *
+ * @throws {IllegalTaskTransitionError} when `from → to` is not permitted.
  */
 export function assertTransitionAllowed(from: TaskStatus, to: TaskStatus, taskId: string): void {
   if (!isTransitionAllowed(from, to)) {
-    throw new Error(
-      `[tasks] illegal status transition for task "${taskId}": ${from} → ${to}`
-    );
+    throw new IllegalTaskTransitionError({ taskId, from, to });
   }
 }

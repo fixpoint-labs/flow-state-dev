@@ -6,6 +6,7 @@ import {
   isTransitionAllowed,
   allowedTransitionsFrom,
   assertTransitionAllowed,
+  IllegalTaskTransitionError,
   matchesFilter,
   type Task,
 } from "../../src/tasks";
@@ -113,6 +114,30 @@ describe("state machine validators", () => {
   it("assertTransitionAllowed throws on illegal transition", () => {
     expect(() => assertTransitionAllowed("completed", "in_progress", "t1")).toThrow(
       /illegal status transition/
+    );
+  });
+
+  it("assertTransitionAllowed throws a typed error carrying the refused move", () => {
+    // The type is what lets the delegation tool boundary translate exactly this
+    // failure into a recoverable result while every other throw propagates
+    // (FIX-950). Direct collection callers still get the throw, so the class is
+    // part of the package's public surface, not an internal detail.
+    let caught: unknown;
+    try {
+      assertTransitionAllowed("completed", "in_progress", "t1");
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(IllegalTaskTransitionError);
+    expect(caught).toMatchObject({
+      name: "IllegalTaskTransitionError",
+      taskId: "t1",
+      from: "completed",
+      to: "in_progress",
+    });
+    // Message text is deliberately unchanged from the plain Error it replaced.
+    expect((caught as Error).message).toBe(
+      '[tasks] illegal status transition for task "t1": completed → in_progress'
     );
   });
 

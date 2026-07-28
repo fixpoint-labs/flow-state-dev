@@ -23,6 +23,7 @@ export {
   isTransitionAllowed,
   allowedTransitionsFrom,
   assertTransitionAllowed,
+  IllegalTaskTransitionError,
 } from "./schema/task-status";
 export {
   matchesFilter,
