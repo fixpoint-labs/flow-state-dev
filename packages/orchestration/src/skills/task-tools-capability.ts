@@ -316,7 +316,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
       // fresh as possible; the status itself comes from the error, which the
       // guard captured inside the CAS write.
       if (err instanceof IllegalTaskTransitionError) {
-        return illegalTransitionToolError(err, collection.get(taskId));
+        // Keyed off `err.taskId`, not the closure's `taskId`: everything else in
+        // the composer reads the error, and the two are only incidentally equal
+        // (no mutator transitions a task other than the one it was handed).
+        return illegalTransitionToolError(err, collection.get(err.taskId));
       }
       throw err;
     }

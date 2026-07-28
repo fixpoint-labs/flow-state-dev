@@ -172,11 +172,13 @@ addTask({ goal: "Find sources", assignee: "reseacher" })
             on the default worker.' }
 ```
 
-No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree. This is a recoverable tool result, not a thrown error — it doesn't end the turn.
+No task is created, so a typo can't sit on the board and surface much later as a failed task when you drain. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from, so the three can't disagree.
+
+Worth being precise about what a result buys you here, because it is easy to overstate. A tool that *throws* does not end the turn either: the generator catches it and feeds the text back to the model, which can still recover. The difference is the shape and the quality of what arrives. A result is the contract every other tool on this surface already uses, and it carries what the model needs to act — which roster exists, which status the task is in, which calls are open. A throw arrives as a raw internal string that names what was rejected and nothing about what to do next.
 
 When an `addTask` could fail more than one way, the checks run in a fixed order: no board, then an unknown assignee, then the creation bounds. The assignee is checked before the bounds deliberately. Naming a worker that doesn't exist is the more useful thing to hear, and a task rejected for a bad assignee never reaches the board — so a typo can't consume budget that a later, valid task needed.
 
-Status changes come back the same way. A task only moves along the lifecycle the substrate allows, so a task still sitting `pending` can't jump straight to `completed` — nothing has started it. When a tool asks for a move the lifecycle refuses, the coordinator gets a result rather than a thrown error, naming the status the task is actually in and the calls that would work from there:
+Status changes come back the same way. A task only moves along the lifecycle the substrate allows, so a task still sitting `pending` can't jump straight to `completed` — nothing has started it. When a tool asks for a move the lifecycle refuses, the coordinator gets a result naming the status the task is actually in and the calls that would work from there:
 
 ```
 completeTask({ taskId: "t_3", output: "…" })

@@ -37,6 +37,7 @@ import {
   delegationBoardSchema,
   DELEGATION_BOARD_FIELD,
 } from "../../src/skills/task-tools-capability";
+import { buildDelegationCtx } from "./delegation-ctx";
 
 /** The real `completeTask` task tool, built from the real tool list. */
 function completeTaskTool(): GeneratorTool {
@@ -49,12 +50,15 @@ function completeTaskTool(): GeneratorTool {
  * A generator execution context whose `ctx.parent` carries an own-state
  * delegation board holding one `pending` task — the state
  * `defaultOwnStateResolver` reads, and the status from which `complete()` is
- * refused. Mirrors the parent shape used across the other skills tests: a live
- * `state` getter plus a CAS-shaped `atomicState` that merges the returned patch.
+ * refused. The parent shape comes from the shared delegation fixture; this adds
+ * only the model resolver, which the tool executor needs to compile and run the
+ * generator's `tools:`.
  */
 function buildExecCtx(generate: (options: any) => Promise<unknown>): BlockContext {
-  const parentState: Record<string, unknown> = {
-    [DELEGATION_BOARD_FIELD]: {
+  const resolveModel = (() => ({ modelId: "test-model", generate })) as any;
+  resolveModel.resolveId = (modelId: string) => modelId;
+  return buildDelegationCtx({
+    preTasks: {
       a: {
         id: "a",
         goal: "write the brief",
@@ -64,49 +68,8 @@ function buildExecCtx(generate: (options: any) => Promise<unknown>): BlockContex
         updatedAt: Date.now(),
       },
     },
-  };
-  const parent = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return parentState;
-    },
-    atomicState: async (
-      fn: (
-        state: Record<string, unknown>,
-      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      Object.assign(parentState, await fn(parentState));
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(parentState, updates);
-    },
-  };
-  const resolveModel = (() => ({ modelId: "test-model", generate })) as any;
-  resolveModel.resolveId = (modelId: string) => modelId;
-
-  return {
-    parent,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {},
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: { get: () => undefined, list: () => [] },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
     resolveModel,
-    _peekStatus: () => "",
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  } as never;
+  }) as BlockContext;
 }
 
 describe("taskTools — tool lifecycle hooks on a refused status transition", () => {

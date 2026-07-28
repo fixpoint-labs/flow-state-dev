@@ -11,60 +11,9 @@ import {
   DELEGATION_BOARD_FIELD,
   type WorkerRoster,
 } from "../../src/skills/task-tools-capability";
+import { buildDelegationCtx } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
 
-/**
- * Build a minimal BlockContext whose `ctx.parent` carries an own-state
- * delegation board (FIX-918). The default `taskTools` resolver reads the host
- * generator's own-state board via `ctx.parent`, so the mock parent exposes a
- * live `state` getter with a `delegationBoard` record plus a CAS-shaped
- * `atomicState` — the two surfaces `createSequencerBackedTaskCollection` uses.
- */
-function buildDelegationCtx(opts: { preTasks?: Record<string, unknown> } = {}) {
-  const parentState: Record<string, unknown> = {
-    [DELEGATION_BOARD_FIELD]: opts.preTasks ?? {},
-  };
-  const parent = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return parentState;
-    },
-    // Mirrors the real StateRef contract: the mutator returns a partial patch
-    // that is merged into the state (not an in-place mutation).
-    atomicState: async (
-      fn: (
-        state: Record<string, unknown>,
-      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      const patch = await fn(parentState);
-      Object.assign(parentState, patch);
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(parentState, updates);
-    },
-  };
-  return {
-    parent,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {},
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: { get: () => undefined, list: () => [] },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  } as never;
-}
 
 /** Build a context whose parent exposes no delegation board (→ no_delegation_board). */
 function buildNoBoardCtx() {
@@ -566,6 +515,29 @@ describe("taskTools — the recovery list names tool-reachable calls", () => {
     // Terminal messages quote no target status; that is what keeps `failTask`'s
     // retry-branch target from ever being rendered as the model's intent.
     expect(error).not.toContain("transitioning to");
+  });
+
+  it("renders a non-empty action list from every non-terminal status", async () => {
+    // The composer has no empty-list branch, on the strength of a table
+    // invariant: every non-terminal row of ALLOWED_TRANSITIONS contains
+    // `cancelled`, and `cancelTask` targets it. That invariant lives in
+    // task-status.ts, not here, so a future edit to the table (adding a status,
+    // or narrowing a row) could break this file's output with nothing in it
+    // changing. Asserted here rather than guarded at runtime — an unreachable
+    // `if` would hide the regression, and this names it instead.
+    const probes: Array<[status: string, tool: string]> = [
+      ["pending", "completeTask"],
+      ["in_progress", "blockTask"],
+      ["blocked", "completeTask"],
+      ["awaiting_review", "blockTask"],
+    ];
+    for (const [status, tool] of probes) {
+      const error = await errorFrom(tool, { taskId: "a", reason: "r" }, ctxWithTask(status));
+      const clause = /From here you can call (.+)\.$/.exec(error.trim());
+      expect(clause, `${tool} from ${status} advertised no calls`).not.toBeNull();
+      expect(clause![1]!.trim()).not.toBe("");
+      expect(clause![1]).not.toContain("undefined");
+    }
   });
 
   it("never names runBoard, which is not one of these tools", async () => {

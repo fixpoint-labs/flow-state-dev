@@ -199,31 +199,16 @@ const runtimeConfig = { modelResolver: createModelResolver() } as never;
 // ---------------------------------------------------------------------------
 // The step boundary
 //
-// `tool_output.toolCall.stepNumber` is the field that answers "which model step
-// chose this call", and it is the field this check wants. It is populated ONLY
-// by the framework-owned per-step loop, which the generator takes when the
-// resolved model exposes `streamStep`/`generateStep`. A model served through a
-// LAZILY LOADED gateway package — which is what a bare `createModelResolver()`
-// plus `AI_GATEWAY_API_KEY` produces — is wrapped by `createLazyGeneratorModel`,
-// and that wrapper exposes only `generate`/`stream`. So the generator takes the
-// legacy SDK-owned multi-step path, and no step index is ever recorded.
-// Confirmed empirically on this path: every `toolCall` carried `callId`, `name`,
-// `alias`, `arguments`, `generatorBlock` — and no `stepNumber`.
+// `tool_output.toolCall.stepNumber` is not populated on this path, so the step
+// is reconstructed from dispatch time: `emitToolOutputAround` stamps `ts`
+// BEFORE the tool runs, a step's calls are dispatched in one synchronous burst,
+// and the next step's cannot start until a provider round trip completes.
+// Measured same-burst spread 0–1ms vs between-step gaps 970–2174ms; SAME_STEP_MS
+// sits between them and the real gap is printed every run. If `stepNumber` is
+// ever present it wins automatically.
 //
-// Rather than assume one tool call per step, the step is RECONSTRUCTED from
-// when each `tool_output` item was CREATED. `emitToolOutputAround` stamps
-// `ts: Date.now()` when it builds the item, BEFORE the tool runs — so the
-// timestamp records when the call was DISPATCHED, not how long it took. A
-// step's calls are dispatched together in one synchronous burst; the next
-// step's calls cannot be dispatched until a provider round trip has completed.
-// The two are separated by orders of magnitude, which is what makes the split
-// safe rather than merely plausible: observed same-burst spreads are 0–1ms and
-// observed between-step gaps are 1.3–1.7s. `SAME_STEP_MS` sits between them
-// with three orders of magnitude of headroom on each side, and the real
-// measured gap is printed in the verdict log so the margin stays visible.
-//
-// When `stepNumber` IS present (a step-capable model), it wins — the check
-// tightens automatically rather than staying on the reconstruction.
+// Why it is absent, and why enabling it is not in this check's reach, is traced
+// in goal.md → "The step boundary". That is the contract; this is the summary.
 // ---------------------------------------------------------------------------
 
 /** Dispatch-time spread within which two tool calls belong to the same step. */

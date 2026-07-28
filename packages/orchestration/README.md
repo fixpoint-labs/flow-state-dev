@@ -183,6 +183,13 @@ the eight tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
 `illegal_status_transition` — a coordinator rule like "when a tool returns
 `ok: false`, re-plan" covers all of them.
 
+Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
+`enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
+string, but `unknown_assignee` and `illegal_status_transition` are followed by
+`: ` and a sentence of guidance for the model, so `error === "illegal_status_transition"`
+never matches. Use `error.startsWith("illegal_status_transition")`. There is no
+separate structured `code` field today.
+
 Only the *tool* boundary translates. Driving a collection directly still throws,
 and the error is an exported class you can catch:
 
