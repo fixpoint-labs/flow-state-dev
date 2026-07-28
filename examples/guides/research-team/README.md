@@ -52,10 +52,14 @@ Both drain to a `task-board-meta` item with `terminationReason: "all-completed"`
 
 The `chat` action binds the delegation skills to a coordinator agent, which
 plans tasks on its board and runs them. Each skill defines its own team of
-prompt agents, and those agents are LLMs — so this path needs a model:
+prompt agents, and those agents are LLMs, so this path needs two keys: a model
+key, and one search-provider key — the analysts call `search`, and it throws
+when no provider is configured. See the
+[search tool docs](https://flow-state.dev/docs/tools/search) for the providers
+it accepts.
 
 ```bash
-OPENAI_API_KEY=... pnpm fsdev run research-team chat \
+OPENAI_API_KEY=... TAVILY_API_KEY=... pnpm fsdev run research-team chat \
   -i '{"message":"research ACME Corp"}'
 ```
 

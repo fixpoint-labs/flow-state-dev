@@ -20,9 +20,12 @@
 //
 // `agentRegistry` + `materializeAgent` resolve the two `agent-ref` agents that
 // competitor-analysis borrows; the `catalog` carries the leaf tools the inline
-// agents reference via `tools:` (search, fetch). Because the agents are LLMs,
-// the skill path (the flow's `chat` action) needs an API key — the deterministic
-// no-key paths are the code-first board and router (see board.ts / flow.ts).
+// agents reference via `tools:` (search, fetch). Because the agents are LLMs
+// that call `search`, the skill path (the flow's `chat` action) needs two keys:
+// a model key, and one search-provider key — `search` throws when no provider is
+// configured, while `fetch` falls through to a builtin and needs none. The
+// deterministic no-key paths are the code-first board and router (see board.ts /
+// flow.ts).
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSkillsLibrary, readSkillsDirectory } from "@flow-state-dev/orchestration";

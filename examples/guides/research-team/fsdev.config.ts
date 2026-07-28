@@ -5,11 +5,13 @@
  * Run each action from the CLI:
  *   pnpm fsdev run research-team research -i '{}'
  *   pnpm fsdev run research-team researchCompetitors -i '{"subject":"Linear","competitors":["Jira","Asana","Trello"]}'
- *   OPENAI_API_KEY=... pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'
+ *   OPENAI_API_KEY=... TAVILY_API_KEY=... pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'
  *
  * `research` and `researchCompetitors` use deterministic handler workers, so
  * they run with no API key. `chat` runs the delegation skills through a
- * coordinator model, so it needs OPENAI_API_KEY.
+ * coordinator model, so it needs two keys: a model key, and one search-provider
+ * key — its analysts call `search`, which throws when no provider is configured.
+ * See https://flow-state.dev/docs/tools/search for the providers it accepts.
  *
  * The `chat` action's generator resolves through the `chat` intent below,
  * which falls back to openai/gpt-5.4-mini and auto-detects the provider from
