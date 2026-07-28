@@ -69,7 +69,7 @@ function buildExecCtx(generate: (options: any) => Promise<unknown>): BlockContex
       },
     },
     resolveModel,
-  }) as BlockContext;
+  }).ctx as BlockContext;
 }
 
 describe("taskTools — tool lifecycle hooks on a refused status transition", () => {

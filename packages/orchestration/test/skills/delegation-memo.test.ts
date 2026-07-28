@@ -27,60 +27,14 @@ import {
 import { specsCollide } from "../../src/skills/internal/agent-key-reconcile";
 import { snapshotSources } from "../../src/skills/internal/delegation-memo";
 import { workerInputSchema } from "../../src/skills/worker-materializer";
-import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
 import { createMockSkillsCollection } from "./mocks";
+import { buildDelegationCtx } from "./delegation-ctx";
 
 // ---------------------------------------------------------------------------
-// Harness — a mock generator execution ctx (board on own state) plus a
-// deterministic agent-ref materializer so the materialization spy covers the
-// registry/materializeAgent I/O path, not just inline allocation.
+// Harness — a deterministic agent-ref materializer so the materialization spy
+// covers the registry/materializeAgent I/O path, not just inline allocation.
 // ---------------------------------------------------------------------------
-
-function buildExecCtx(collection = createMockSkillsCollection()) {
-  const selfState: Record<string, unknown> = { [DELEGATION_BOARD_FIELD]: {} };
-  const stateRef = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return selfState;
-    },
-    atomicState: async (
-      fn: (s: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      Object.assign(selfState, await fn(selfState));
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(selfState, updates);
-    },
-  };
-  const ctx = {
-    self: stateRef,
-    parent: stateRef,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {} as Record<string, unknown>,
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: {
-      skills: collection,
-      get: (k: string) => (k === "skills" ? collection : undefined),
-      list: () => [collection],
-    },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  };
-  return { ctx: ctx as never, selfState, collection };
-}
 
 function deterministicAgents() {
   const agentBlock = handler({
@@ -148,7 +102,7 @@ function buildScoutGenerator() {
 describe("delegation memo — materialize once per execution", () => {
   it("materializes the board worker once across two steps with an unchanged roster", async () => {
     const { gen, materializeAgent } = buildScoutGenerator();
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
 
     await resolveTools(gen, ctx); // step 0
     await resolveTools(gen, ctx); // step 1 — same ctx, unchanged roster
@@ -159,8 +113,8 @@ describe("delegation memo — materialize once per execution", () => {
 
   it("two separate executions each build (memo keyed per execution, no cross-leak)", async () => {
     const { gen, materializeAgent } = buildScoutGenerator();
-    const a = buildExecCtx();
-    const b = buildExecCtx();
+    const a = buildDelegationCtx();
+    const b = buildDelegationCtx();
 
     await resolveTools(gen, a.ctx);
     await resolveTools(gen, b.ctx);
@@ -188,7 +142,7 @@ describe("delegation memo — guidance shares the tools build (D1)", () => {
       dynamicEligible: false,
     } as never;
 
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const guidanceFn = buildDelegationGuidance(deps);
 
     // Warm the shared entry via the guidance resolver.
@@ -220,7 +174,7 @@ describe("collectAgentSources — bundled runtime disable gap (§7.1)", () => {
       state: { description: "brief", disableModelInvocation: true },
       content: null,
     });
-    const { ctx } = buildExecCtx(collection);
+    const { ctx } = buildDelegationCtx({ collection });
     (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
       { name: "brief", mode: "inline", activatedAt: 1 },
     ];
@@ -245,7 +199,7 @@ describe("collectAgentSources — bundled runtime disable gap (§7.1)", () => {
       state: { description: "brief", disableModelInvocation: true },
       content: null,
     });
-    const { ctx } = buildExecCtx(collection);
+    const { ctx } = buildDelegationCtx({ collection });
     (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
       { name: "brief", mode: "inline", activatedAt: 1 },
     ];
@@ -272,7 +226,7 @@ describe("collectAgentSources — bundled runtime disable gap (§7.1)", () => {
       state: { description: "brief" },
       content: null,
     });
-    const { ctx } = buildExecCtx(collection);
+    const { ctx } = buildDelegationCtx({ collection });
     (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
       { name: "brief", mode: "inline", activatedAt: 1 },
     ];
@@ -305,7 +259,7 @@ describe("delegation memo — mid-turn disable busts the cache", () => {
       content: null,
     });
     const { gen, materializeAgent } = buildScoutGenerator();
-    const { ctx } = buildExecCtx(collection);
+    const { ctx } = buildDelegationCtx({ collection });
     const guidanceFn = buildDelegationGuidance(
       // Rebuild the surface deps by resolving through the generator; simplest is
       // to assert via the generator's own guidance context. Instead we assert on
@@ -374,7 +328,7 @@ describe("delegation memo — mid-turn disable busts the cache", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["scout-team"], dynamicActivation: true } as never)],
     });
-    const { ctx, selfState } = buildExecCtx();
+    const { ctx, selfState } = buildDelegationCtx();
 
     const step0 = (await resolveTools(gen, ctx)).map(toolName);
     expect(step0).toContain("runBoard");

@@ -25,6 +25,7 @@ import {
 } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
 import { createMockSkillsCollection } from "./mocks";
+import { buildDelegationCtx } from "./delegation-ctx";
 
 // ---------------------------------------------------------------------------
 // Fixtures — deterministic handler board-workers, staffed via agent-ref +
@@ -93,59 +94,6 @@ const promptSkill: InitialSkill = {
   ].join("\n"),
 };
 
-/**
- * A mock generator execution context. `self` is the generator's own-state ref
- * (the board lives there); `parent` mirrors it the way a tool child sees the
- * host generator. atomicState follows the real contract: the mutator returns
- * a partial patch that is merged.
- */
-function buildExecCtx(collection = createMockSkillsCollection()) {
-  const selfState: Record<string, unknown> = { [DELEGATION_BOARD_FIELD]: {} };
-  const stateRef = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return selfState;
-    },
-    atomicState: async (
-      fn: (
-        state: Record<string, unknown>,
-      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      Object.assign(selfState, await fn(selfState));
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(selfState, updates);
-    },
-  };
-  const ctx = {
-    self: stateRef,
-    parent: stateRef,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {},
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: {
-      skills: collection,
-      get: (k: string) => (k === "skills" ? collection : undefined),
-      list: () => [collection],
-    },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  };
-  return { ctx: ctx as never, selfState };
-}
-
 /** Resolve the generator's merged tool surface with the mock execution ctx. */
 async function resolveTools(
   gen: ReturnType<typeof generator>,
@@ -188,7 +136,7 @@ function buildTeamGenerator() {
 describe("delegation surface — installed tools", () => {
   it("installs taskTools + runBoard, and NO per-agent tool, for an active agent skill", async () => {
     const gen = buildTeamGenerator();
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).toEqual(expect.arrayContaining(["addTask", "listTasks", "runBoard"]));
     // The board commands agents; the host never calls an agent as a tool.
@@ -210,7 +158,7 @@ describe("delegation surface — installed tools", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["plain"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).not.toContain("runBoard");
     expect(names).not.toContain("addTask");
@@ -224,7 +172,7 @@ describe("delegation surface — installed tools", () => {
 describe("delegation surface — runBoard drains the own-state ledger", () => {
   it("executes an addTask-planned dependency graph and returns settled results", async () => {
     const gen = buildTeamGenerator();
-    const { ctx, selfState } = buildExecCtx();
+    const { ctx, selfState } = buildDelegationCtx();
     const tools = await resolveTools(gen, ctx);
     const addTask = toolNamed(tools, "addTask");
     const runBoard = toolNamed(tools, "runBoard");
@@ -270,7 +218,7 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
     // Run identity comes from task status (generated ids, pending-only claims),
     // not from a per-call collection id — no UUID run bookkeeping.
     const gen = buildTeamGenerator();
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const tools = await resolveTools(gen, ctx);
     const addTask = toolNamed(tools, "addTask");
     const runBoard = toolNamed(tools, "runBoard");
@@ -308,7 +256,7 @@ describe("delegation surface — runBoard drains the own-state ledger", () => {
     // A blocked task means the board did not fully drain — settle must report
     // `blocked`, not `drained`, or the coordinator treats stuck work as done.
     const gen = buildTeamGenerator();
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const tools = await resolveTools(gen, ctx);
     const addTask = toolNamed(tools, "addTask");
     const blockTask = toolNamed(tools, "blockTask");
@@ -370,7 +318,7 @@ describe("delegation surface — agent-ref workers carry board-scoped taskTools 
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["research-team"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     await resolveTools(gen, ctx);
 
     // Both agent-ref workers (analyst, synthesizer) were materialized.
@@ -396,7 +344,7 @@ describe("delegation surface — active ∪ runtime activation input", () => {
     // A skill preloaded via `active` AND loaded at runtime with an input arg:
     // the body reader lets the dynamic activation win, so the skill's agents
     // must see the same $ARGUMENTS substitution instead of an empty one.
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
       { name: "brief", mode: "inline", input: "topic-42", activatedAt: 1 },
     ];
@@ -426,7 +374,7 @@ describe("delegation surface — active ∪ runtime activation input", () => {
       state: { description: "brief", disableModelInvocation: true },
       content: null,
     });
-    const { ctx } = buildExecCtx(collection);
+    const { ctx } = buildDelegationCtx({ collection });
     const sources = await collectAgentSources(ctx, {
       catalog: {},
       collectionKey: "skills",
@@ -488,7 +436,7 @@ describe("delegation surface — two active skills sharing an agent", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["team-a", "team-b"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).toEqual(expect.arrayContaining(["addTask", "runBoard"]));
     expect(names).not.toContain("synthesizer");
@@ -569,7 +517,7 @@ describe("delegation surface — agent-ref agents", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["agent-team"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     // The agent is a board participant, resolved through the registry — but it
     // is NOT a host tool.
@@ -617,7 +565,7 @@ describe("delegation surface — runtime activations", () => {
         } as never),
       ],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     (ctx as { session: { state: Record<string, unknown> } }).session.state.activeSkills = [
       { name: "brief", mode: "inline", activatedAt: 1 },
     ];
@@ -644,7 +592,7 @@ describe("delegation surface — runtime activations", () => {
         } as never),
       ],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).not.toContain("runBoard");
   });
@@ -657,7 +605,7 @@ describe("delegation surface — runtime activations", () => {
 describe("delegation surface — guidance", () => {
   it("renders the playbook plus the live agent roster", async () => {
     const gen = buildTeamGenerator();
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const fns: Array<(i: unknown, c: unknown) => unknown> = [];
     const collect = (value: unknown): void => {
       if (typeof value === "function") fns.push(value as never);

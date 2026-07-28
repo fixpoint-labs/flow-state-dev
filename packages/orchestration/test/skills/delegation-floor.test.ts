@@ -22,6 +22,7 @@ import { generator } from "@flow-state-dev/core";
 import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createMockSkillsCollection } from "./mocks";
+import { buildDelegationCtx } from "./delegation-ctx";
 
 // Wrap the real implementations so we can count construction. The wrappers call
 // through, so behavior is identical — only observability is added.
@@ -43,59 +44,9 @@ import {
 } from "../../src/skills/delegation-surface";
 import { taskBoard } from "../../src/task-board";
 import { materializeWorker } from "../../src/skills/worker-materializer";
-import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
 
 const taskBoardSpy = vi.mocked(taskBoard);
 const materializeWorkerSpy = vi.mocked(materializeWorker);
-
-// ---------------------------------------------------------------------------
-// Harness — a mock generator execution ctx (board on own state).
-// ---------------------------------------------------------------------------
-
-function buildExecCtx(collection = createMockSkillsCollection()) {
-  const selfState: Record<string, unknown> = { [DELEGATION_BOARD_FIELD]: {} };
-  const stateRef = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return selfState;
-    },
-    atomicState: async (
-      fn: (s: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      Object.assign(selfState, await fn(selfState));
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(selfState, updates);
-    },
-  };
-  const ctx = {
-    self: stateRef,
-    parent: stateRef,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {} as Record<string, unknown>,
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: {
-      skills: collection,
-      get: (k: string) => (k === "skills" ? collection : undefined),
-      list: () => [collection],
-    },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  };
-  return { ctx: ctx as never, selfState };
-}
 
 async function resolveTools(
   gen: ReturnType<typeof generator>,
@@ -151,7 +102,7 @@ describe("delegation floor — rosterless install", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"], delegation: true } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).toEqual(expect.arrayContaining(["addTask", "listTasks", "runBoard"]));
     // The floor is the board's fallback, not a host tool.
@@ -167,7 +118,7 @@ describe("delegation floor — rosterless install", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).not.toContain("runBoard");
     expect(names).not.toContain("addTask");
@@ -182,7 +133,7 @@ describe("delegation floor — rosterless install", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["brief"], delegation: false } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).not.toContain("runBoard");
   });
@@ -204,7 +155,7 @@ describe("delegation floor — wiring", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"], delegation: true } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     await resolveTools(gen, ctx);
 
     // The materialized roster is exactly the floor — no phantom workers.
@@ -227,7 +178,7 @@ describe("delegation floor — wiring", () => {
       // agents present → delegation derived on; no `delegation: true` needed.
       uses: [skills.with({ active: ["brief"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const names = (await resolveTools(gen, ctx)).map(toolName);
     expect(names).toEqual(expect.arrayContaining(["addTask", "runBoard"]));
 
@@ -267,7 +218,7 @@ describe("delegation floor — reserved agent keys", () => {
 
   async function toolsForAgents(agents: Record<string, unknown>) {
     const collection = createMockSkillsCollection();
-    const { ctx } = buildExecCtx(collection);
+    const { ctx } = buildDelegationCtx({ collection });
     return buildDelegationTools(ctx, plantedDeps(agents));
   }
 
@@ -321,7 +272,7 @@ describe("delegation floor — reserved agent keys", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const collection = createMockSkillsCollection();
-      const { ctx } = buildExecCtx(collection);
+      const { ctx } = buildDelegationCtx({ collection });
       const deps = plantedDeps({
         briefer: { prompt: "You write briefs." },
         __no_assignee__: { prompt: "planted" },
@@ -346,7 +297,7 @@ describe("delegation floor — reserved agent keys", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const collection = createMockSkillsCollection();
-      const { ctx } = buildExecCtx(collection);
+      const { ctx } = buildDelegationCtx({ collection });
       const deps = plantedDeps({ __no_assignee__: { prompt: "planted" } }, false);
       const tools = await buildDelegationTools(ctx, deps as never);
       const guidance = await buildDelegationGuidance(deps as never)(undefined, ctx);
@@ -374,7 +325,7 @@ describe("delegation floor — reserved agent keys", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const collection = createMockSkillsCollection();
-      const { ctx } = buildExecCtx(collection);
+      const { ctx } = buildDelegationCtx({ collection });
 
       // Step 1: a clean roster. Builds, caches, warns about nothing.
       await buildDelegationTools(ctx, plantedDeps({ briefer: { prompt: "briefs" } }) as never);
@@ -408,7 +359,7 @@ describe("delegation floor — reserved agent keys", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const collection = createMockSkillsCollection();
-      const { ctx } = buildExecCtx(collection);
+      const { ctx } = buildDelegationCtx({ collection });
 
       // Computed keys throughout: a literal `__proto__:` in an object literal
       // hits the prototype setter instead of creating an own property, so the
@@ -457,7 +408,7 @@ describe("delegation floor — board built exactly once per turn", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"], delegation: true } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
 
     const step0 = await resolveTools(gen, ctx); // build under empty snapshot []
     const step1 = await resolveTools(gen, ctx); // same ctx + empty roster → memo HIT
@@ -508,7 +459,7 @@ describe("delegation floor — guidance", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"], delegation: true } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const rendered = await renderGuidance(gen, ctx);
     expect(rendered).toContain("default worker");
     expect(rendered).not.toContain("Your agents:");
@@ -523,7 +474,7 @@ describe("delegation floor — guidance", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["brief"] } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const rendered = await renderGuidance(gen, ctx);
     expect(rendered).toContain("Your agents:");
     expect(rendered).toContain("- briefer:");
