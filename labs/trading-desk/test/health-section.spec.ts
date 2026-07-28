@@ -55,13 +55,27 @@ describe("formatSourcesLabel", () => {
     expect(formatSourcesLabel(sources)).toBe("Direct + 4");
   });
 
-  it("lists every fund by ticker when there is no direct holding", () => {
+  it("names up to two fund sources by ticker when there is no direct holding", () => {
+    const sources: EffectiveNamePosition["sources"] = [
+      { from: "VTI", marketValue: 1 },
+      { from: "SPY", marketValue: 1 },
+    ];
+    expect(formatSourcesLabel(sources)).toBe("VTI, SPY");
+  });
+
+  // The cap has to apply to the fund-only branch too, not just the
+  // direct-holding one. A name held through many wrappers and NOT held
+  // directly is the common shape in the 44-ETF book this redesign is for, so
+  // the uncapped branch was the one that would actually blow the column out
+  // (Codex review, PR #959). Expanding the row still lists every source.
+  it("collapses to a count once a fund-only holding has more than two sources", () => {
     const sources: EffectiveNamePosition["sources"] = [
       { from: "VTI", marketValue: 1 },
       { from: "SPY", marketValue: 1 },
       { from: "QQQ", marketValue: 1 },
+      { from: "SOXX", marketValue: 1 },
     ];
-    expect(formatSourcesLabel(sources)).toBe("VTI, SPY, QQQ");
+    expect(formatSourcesLabel(sources)).toBe("4 funds");
   });
 });
 

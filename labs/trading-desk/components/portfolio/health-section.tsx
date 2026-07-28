@@ -100,7 +100,16 @@ function pct(value: number | null): string {
 export function formatSourcesLabel(sources: EffectiveNamePosition["sources"]): string {
   const hasDirect = sources.some((s) => s.from === "direct");
   const funds = sources.filter((s) => s.from !== "direct").map((s) => s.from);
-  if (!hasDirect) return funds.join(", ");
+  // The SAME two-source cap applies whether or not there's a direct slice.
+  // The fund-only branch used to join every wrapper, which is the shape that
+  // actually blows the column out: a name held through six ETFs and owned
+  // directly through none is ordinary in a fund-heavy book, and that was
+  // precisely the branch with no cap (Codex review, PR #959). Expanding the
+  // row still lists every source, so nothing is hidden — only summarized.
+  if (!hasDirect) {
+    if (funds.length <= 2) return funds.join(", ");
+    return `${funds.length} funds`;
+  }
   if (funds.length === 0) return "Direct";
   if (funds.length <= 2) return `Direct + ${funds.join(", ")}`;
   return `Direct + ${funds.length}`;
