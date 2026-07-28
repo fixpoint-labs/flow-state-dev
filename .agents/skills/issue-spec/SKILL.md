@@ -414,6 +414,14 @@ three outcomes. Read it. Four things are this step's:
 2. **Write the claim slice** (`claim` · `load` · `falsify` · `threads` — the shape in
    `orchestration.md`). If you can't fill `falsify`, this isn't empirical: route it as a
    direction fork instead.
+
+   **Then record the claim in §12 marked `(POC in flight)`, in this same pass, and push it.**
+   This is not bookkeeping — it is the **only** durable carrier of the settlement. You exit at
+   the end of this step and the status line you return dies with the dispatch that read it, so
+   the spec doc is what tells everything downstream a settlement is live: `issue-implement`
+   reads it to leave the spec PR open (and to not treat the claim as a blocking open question),
+   and the next reviewer reads it to see an answer is coming. Skip it and the deferral silently
+   doesn't happen — the PR closes, and a `REFUTED` verdict lands on a deleted branch.
 3. **Dispatch or request, depending on whether you'll outlive the answer.** Standalone, you
    own your session: dispatch the **`poc-agent`** yourself and keep triaging while it runs —
    collect the verdict *if it returns before you close the round*, and otherwise disclose it

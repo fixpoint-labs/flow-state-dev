@@ -31,10 +31,14 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   asserted *once* is ordinary triage — answer it and move on. When it does fire, don't argue
   it, don't guess a side, and **don't dispatch the POC yourself** (you exit before its verdict
   could land): return the claim slice as `settle_requested` and let the coordinator dispatch
-  the `poc-agent`. It costs **zero** rounds.
+  the `poc-agent`. It costs **zero** rounds. **Record the claim in the spec's §12 marked
+  `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
+  so the spec doc is the only thing that carries the settlement downstream.
 - **spec approved** (the approval is already present when you're dispatched, or you detect it
-  this run) → **this is a release, not a stop.** Close the spec PR, then implement on the
-  issue's branch and open the impl PR — **all in this one dispatch.** Do not return at
+  this run) → **this is a release, not a stop.** Close the spec PR — **unless the spec's §12
+  carries a claim marked `(POC in flight)`, or the coordinator passed you a live `settling`, in
+  which case leave it open** for the verdict to be folded into; the coordinator closes it later.
+  Then implement on the issue's branch and open the impl PR — **all in this one dispatch.** Do not return at
   NEEDS_IMPLEMENTATION and wait: nothing external separates approved from implementing, so
   stopping there would strand the issue until a heartbeat or a user nudge.
 - impl PR has unhandled review/CI events → run one PR-feedback round, push, stop.

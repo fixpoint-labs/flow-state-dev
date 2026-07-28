@@ -165,9 +165,16 @@ Four things are the orchestrator's:
   implementation has already started**, treat it exactly as a challenger-surfaced spec blind
   spot: fold it, tell the in-flight implementation, and re-gate only if the direction actually
   changed. Then **clear `settling` to the verdict, and close any spec PR you were holding open
-  for it** (unmerged, delete the branch, as at the approval gate) — unless the fold re-gates
-  the spec, in which case it stays open for that round. A settled claim is **closed**, so a
-  later event re-litigating it is not a pending action.
+  for it** (unmerged, delete the branch, as at the approval gate). A settled claim is
+  **closed**, so a later event re-litigating it is not a pending action.
+
+  **Two verdicts don't close it.** A `REFUTED` fold that **re-gates** the spec keeps the PR
+  open for that round. And an **`INCONCLUSIVE` verdict settles nothing** — the load-bearing
+  question is still open and now belongs to the human (`issue-spec` 6.5.3), so keep `settling`
+  as `inconclusive: awaiting decision` and keep the PR open until they answer. Closing on
+  `INCONCLUSIVE` would be the worst of both: implementation continuing on an unresolved premise
+  with no live artifact to correct it, and the one outcome that most needs a human left with
+  nowhere to land.
 
 ## Linear status is a mirror you own
 
