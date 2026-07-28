@@ -92,9 +92,3 @@ export function hasClaimableTask(collection: TaskCollectionRef): boolean {
   }
   return false;
 }
-
-/** Sleep for `ms` milliseconds. Used for idle-poll backoff in the worker loop. */
-export function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

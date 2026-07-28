@@ -49,6 +49,11 @@
     },
     "labs/knowledge-hub": {
       "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "scripts/**/*.mts"]
+    },
+    "goals": {
+      "entry": ["scripts/*.mts", "*/*/run.mts"],
+      "project": ["**/*.mts"],
+      "ignore": ["**/harness*.mts"]
     }
   }
 }

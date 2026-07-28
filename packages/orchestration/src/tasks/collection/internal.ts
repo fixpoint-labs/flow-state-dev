@@ -153,7 +153,7 @@ export function shouldDeclineTransition(
  * collection.get(id)` for the dispatcher case so dep status reflects
  * the latest committed state, not a scan-time snapshot.
  */
-export function depsSatisfied(
+function depsSatisfied(
   task: Task,
   lookup: (id: string) => Task | undefined
 ): boolean {

@@ -42,9 +42,6 @@ export type ActivationLocation =
   | { kind: "block" }
   | { kind: "explicit"; scope: ExplicitActivationScope; field: string };
 
-/** The default location: the generator's own block state. */
-export const BLOCK_LOCATION: ActivationLocation = { kind: "block" };
-
 function readFieldEntries(state: unknown, field: string): ActiveSkillEntry[] {
   if (state === null || typeof state !== "object") return [];
   const value = (state as Record<string, unknown>)[field];

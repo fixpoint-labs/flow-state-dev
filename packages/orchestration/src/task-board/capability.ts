@@ -69,7 +69,7 @@ import { resolveResourceTaskCollection } from "./resolve-resource";
  * `targetStateSchemas: { [boardName]: taskBoardStateSchema }` so consumers
  * contribute the state schema transitively.
  */
-export interface TaskBoardSequencerCapabilityOptions extends TaskCapOptions {
+interface TaskBoardSequencerCapabilityOptions extends TaskCapOptions {
   backing: "sequencer";
   /** Board name — also the `ctx.getTarget(boardName)` key for the board's state ref. */
   boardName: string;
@@ -86,7 +86,7 @@ export interface TaskBoardSequencerCapabilityOptions extends TaskCapOptions {
  * task from a sibling or outer step before the board drains, and re-entry from
  * outer loops that wrap `board.drain`.
  */
-export interface TaskBoardRequestCapabilityOptions extends TaskCapOptions {
+interface TaskBoardRequestCapabilityOptions extends TaskCapOptions {
   backing: "request";
   boardName: string;
   collectionId: string;
@@ -100,7 +100,7 @@ export interface TaskBoardRequestCapabilityOptions extends TaskCapOptions {
  * list `board.capability` install the resource too) and the board sequencer's
  * `uses` (so the drain does). Resolved from `ctx.resources[resourceKey]`.
  */
-export interface TaskBoardResourceCapabilityOptions {
+interface TaskBoardResourceCapabilityOptions {
   backing: "resource";
   boardName: string;
   collectionId: string;
@@ -115,7 +115,7 @@ export interface TaskBoardResourceCapabilityOptions {
  * externally-managed or custom stores. No state schema is declared (the storage
  * is opaque; the factory owns any declaration).
  */
-export interface TaskBoardFactoryCapabilityOptions<TInput = unknown, TOutput = unknown> {
+interface TaskBoardFactoryCapabilityOptions<TInput = unknown, TOutput = unknown> {
   backing: "factory";
   boardName: string;
   collectionId: string;

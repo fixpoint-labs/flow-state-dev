@@ -31,8 +31,7 @@ export const DEFAULT_MAX_SKILLS = 20;
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 
-/** Public so consumers can mock against this shape if they ever need to. */
-export const skillClassifierOutputSchema = z.object({
+const skillClassifierOutputSchema = z.object({
   /** Anchoring mitigation: ask the model to think before labeling. */
   reasoning: z.string(),
   activeSkills: z.array(
@@ -43,8 +42,6 @@ export const skillClassifierOutputSchema = z.object({
     }),
   ),
 });
-
-export type SkillClassifierOutput = z.infer<typeof skillClassifierOutputSchema>;
 
 export interface SkillClassifierOptions {
   collectionKey: string;

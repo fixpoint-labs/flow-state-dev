@@ -106,7 +106,7 @@ export interface BoardRunFlowState {
 const workerTaskIdStore = new AsyncLocalStorage<string>();
 
 /** Resolve a user-supplied `flowPolicy` value to a concrete `TaskFlowPolicy`. */
-export function resolveFlowPolicyValue(
+function resolveFlowPolicyValue(
   value: unknown,
   fallback: TaskFlowPolicy,
 ): TaskFlowPolicy {
@@ -124,7 +124,7 @@ export function resolveFlowPolicyValue(
   return fallback;
 }
 
-export function defaultBoardFlowPolicy(): TaskFlowPolicy {
+function defaultBoardFlowPolicy(): TaskFlowPolicy {
   return builtinFlowPolicy.declaredDepsOnly();
 }
 
@@ -132,7 +132,7 @@ export function defaultBoardFlowPolicy(): TaskFlowPolicy {
  * Decide whether to enable the cache. Auto-enabled when any worker
  * tool declares `cacheable`; explicit `toolCache: false` always wins.
  */
-export function shouldEnableCache(config: TaskBoardToolCacheConfig | boolean | undefined): boolean {
+function shouldEnableCache(config: TaskBoardToolCacheConfig | boolean | undefined): boolean {
   if (config === false) return false;
   if (config === true) return true;
   if (config === undefined) return true; // auto — actual install gated on per-tool opt-in
