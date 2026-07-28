@@ -83,23 +83,19 @@ code rather than on something you just wrote.
 
 ## Step 3: Build the POC — quick, dirty, and throwaway
 
-Follow [`prototype`](../prototype/SKILL.md) for the mechanics of throwaway code; the rules
-that matter most here:
+Follow [`prototype`](../prototype/SKILL.md) → "Rules that apply to both" for the scaffolding
+(location, no polish, in-memory store, one command to run), under
+`_prototypes/settle-<ISSUE-ID>-<slug>/`. Three things it doesn't cover:
 
-- **Location** — `apps/kitchen-sink/flows/_prototypes/settle-<ISSUE-ID>-<slug>/` for a
-  logic/flow claim (the normal case). Never inside `packages/*`.
-- **Skip the polish.** No vitest specs, no error handling beyond what makes it run, no
-  abstractions, no niceties. You are not building software; you are running an experiment.
-- **In-memory store by default.** Reach for `store-sqlite` only when the claim is *about*
-  persistence.
-- **Drive the real path.** `fsdev run` against the prototype flow (see `AGENTS.md` →
-  "Verifying flow changes during development"), or a `run.mts`-shaped script using
-  `goals/lib` when the claim isn't flow-shaped. Mocking the thing under dispute settles
-  nothing — that's the whole point of tenet 7.
-- **Model** — if the claim needs a model in the loop, use `openai/gpt-5.4-mini` unless the
-  claim is specifically about a stronger model's behavior. If it doesn't, don't call one; a
-  model-free check is cheaper, faster, and less noisy, and most behavioral claims about
-  composition, state, routing, and streaming are model-free.
+- **Drive the real path and never mock the thing under dispute** — `fsdev run` against the
+  prototype flow (`AGENTS.md` → "Verifying flow changes"), or a `run.mts`-shaped script on
+  `goals/lib`. Mocking the disputed behavior settles nothing; that's the whole of tenet 7.
+- **Assert on the observable surface**, per `goals/README.md` → "Script techniques" — emitted
+  items, state values, the action's output, a real side effect. Not the internals of the
+  mechanism you're testing.
+- **Prefer model-free.** Most claims about composition, state, routing, and streaming need no
+  model, and a model-free check is cheaper, faster, and less noisy. When the claim does need
+  one, `openai/gpt-5.4-mini` unless it's specifically about a stronger model.
 
 Keep it small. If the POC is growing past a couple of files, the claim was too broad — narrow
 it to the part that's actually disputed and say in the verdict what you narrowed to.

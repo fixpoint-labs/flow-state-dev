@@ -400,65 +400,37 @@ When review changes the *direction* (a different approach, a dropped/added deliv
 
 #### 6.5.3 Settle an empirical dispute with a POC (non-blocking)
 
-When triage lands on **Settle**, the debate stops and a throwaway POC decides it. The full
-rules — when it fires, when it doesn't, what it costs, the three outcomes — are canonical in
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
-(POC settlement)". Here is your part of it.
+When triage lands on **Settle**, the debate stops and a throwaway POC decides it.
+**[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
+(POC settlement)" is canonical** — when it fires, the claim-slice shape, what it costs, the
+three outcomes. Read it. Four things are this step's:
 
-**First, confirm the loop is real.** A settlement is authorized by *repetition*, not by
-confidence: the claim must have been asserted and counter-asserted at least twice (it returned
-after being answered, the spec flipped on it, or two rounds concluded opposite things). If
-this is its first pass, don't dispatch anything — reply, dispose of it normally, and settle it
-only if it comes back.
+1. **Try the two cheap outs first.** *The answer is in the repo* — the code, its tests,
+   `docs/architecture/*`, an existing `goals/*/*/goal.md` — so reply with the citation (a
+   **Drop** with a pointer) and dispatch nothing. Or *the claim is already settled on this
+   spec* — §12 carries it with evidence — so reply once pointing there and **charge zero
+   rounds**. A settled claim is closed; re-litigating it, by a bot or a human or from a novel
+   angle, does not reopen it.
+2. **Write the claim slice** (`claim` · `load` · `falsify` · `threads` — the shape in
+   `orchestration.md`). If you can't fill `falsify`, this isn't empirical: route it as a
+   direction fork instead.
+3. **Dispatch or request, depending on whether you'll outlive the answer.** Standalone, you
+   own your session: dispatch the **`poc-agent`** yourself and keep triaging while it runs —
+   collect the verdict *if it returns before you close the round*, and otherwise disclose it
+   as in-flight and close the round anyway. As a **bounded worker** under a lifecycle you exit
+   at the end of this step, so the verdict would have nowhere to land: return the slice as
+   `settle_requested` and let the coordinator dispatch it. **Either way you never hold the
+   round open waiting** — the POC gates nothing.
+4. **Route the verdict into the spec** (the part `orchestration.md` leaves to the artifact):
 
-**Then, check whether it's already settled.** Two cheap outs before anything is dispatched:
-
-- **The answer is in the repo.** Read the code, its tests, `docs/architecture/*`, or an
-  existing `goals/*/*/goal.md`. If it's there, this was never an empirical dispute — reply
-  with the citation (a **Drop** with a pointer) and move on. A POC that a two-minute read
-  would have replaced is waste.
-- **The claim was already settled on this spec.** Check §12 for a resolved claim with
-  evidence. If it's there, reply once pointing at the evidence and **charge zero rounds**.
-  A settled claim is closed; re-litigating it — by a bot, by a human, from a novel angle — does
-  not reopen it. Without this rule the settlement just becomes round five's opening argument.
-
-**Then write the claim slice** — the POC agent needs exactly this and nothing more:
-
-```
-claim:  <the disputed assertion, as "X does / does not Y">
-load:   <what in the spec's approach depends on it>
-falsify: <the observation that would prove it false>
-threads: <the PR thread link(s) where it's being argued>
-```
-
-**Then dispatch — or request.** Which one depends on whether you'll still be alive to receive
-the answer:
-
-- **You own your session** (standalone `issue-spec`): dispatch the **`poc-agent`** yourself,
-  in parallel, and keep triaging the rest of the batch while it runs. Collect the verdict
-  before you close out the round.
-- **You are a bounded worker** (dispatched by `issue-lifecycle` / `epic-lifecycle`): do **not**
-  dispatch it — you exit at the end of this step and the verdict would have nowhere to land.
-  Return the slice as `settle_requested` in your status line; the coordinator dispatches the
-  worker and routes the verdict. Same split as a `fable-candidate`, minus the human-approval
-  gate — a POC is cheap and throwaway, so nobody has to approve spending it.
-
-**Never wait on it.** Finish the round, land the remaining feedback as §13 notes, and let the
-spec converge on schedule. The POC runs concurrently and gates nothing.
-
-**Disclose it at the gate.** When you present the spec for approval with a settlement in
-flight, say so in one line: *"converged and up for approval; the claim that X composes with Y
-is being checked empirically — verdict will land on the PR."* The human may approve anyway,
-and usually should. What they must not do is sign off on a premise nobody told them was
-contested.
-
-**When the verdict lands, route it:**
-
-| Verdict | What you do |
-|---|---|
-| **CONFIRMED** | Reply on the thread with the verdict + evidence. Record the claim in **§12** as resolved-with-evidence so the next reviewer can't reopen it blind. **No spec rewrite** (nothing changed) and **no Spec evolution entry** — same rule as a §13 note. |
-| **REFUTED** | Fold it: re-draft the affected Part I / Part II sections per 6.5.2, keep repo doc ↔ Linear in sync, reply on the thread, record it in §12, and add **one** *Spec evolution* line — `- **After POC settlement** — <what changed>, because the run showed <what>.` This costs **one round, outside the two-round budget**: evidence is not another opinion. Say that in one line so the extra round is a visible decision. |
-| **INCONCLUSIVE** | The claim isn't decidable by running code (or the run didn't discriminate). Don't retry it and don't pick a side — surface it to the user as a direction fork with the trade-off (`AskUserQuestion`), exactly like any other genuinely debatable spec-level call. |
+   - **CONFIRMED** → reply on the thread; record it in **§12** as resolved-with-evidence. No
+     spec rewrite, and **no** *Spec evolution* entry — nothing changed, same rule as a §13 note.
+   - **REFUTED** → re-draft the affected sections per 6.5.2 (repo doc ↔ Linear in sync), reply,
+     record in §12, and add one *Spec evolution* line: `- **After POC settlement** — <what
+     changed>, because the run showed <what>.` Costs **one round outside the budget**; say so
+     in one line.
+   - **INCONCLUSIVE** → don't retry and don't pick a side. Surface it to the user as a
+     direction fork with the trade-off (`AskUserQuestion`).
 
 #### 6.5.4 Converge — two rounds, then hand to the human
 

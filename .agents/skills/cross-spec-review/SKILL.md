@@ -110,11 +110,13 @@ where spec B asserts it isn't; one of them is simply wrong about the code, and n
 cross-reading tells you which. Don't adjudicate those from the spec texts, and don't hand the
 user a decision that a five-minute run answers.
 
-- **Read the code before you flag one.** Two specs disagreeing is already two assertions, but
-  the cheap resolution is usually a file: check the implementation, its tests, and
-  `docs/architecture/*` first. If the code settles it, say which spec is wrong and cite the
-  code — that's an ordinary recommendation, not a POC. Flag `poc-candidate` only when the
-  disagreement **survives** that read.
+- **Read the code before you flag one — this is the bar, not a courtesy.** The spec-review path
+  earns a POC by *repetition* (a claim asserted and counter-asserted across two rounds). Two
+  specs disagreeing on a page is a weaker signal than that, and it's the easiest way to
+  accidentally build a POC farm. So the code read is what substitutes for the loop: check the
+  implementation, its tests, and `docs/architecture/*`, and if any of them settles it, say
+  which spec is wrong and cite the source — an ordinary recommendation, no POC. Flag
+  `poc-candidate` **only** when the disagreement survives that read, which should be rare.
 - Mark the conflict **`poc-candidate: YES`** with the **claim slice** — `claim` (as "X does /
   does not Y"), `load` (what in each spec depends on it), `falsify` (the observation that would
   disprove it). The coordinator dispatches a `poc-agent`; the verdict resolves the conflict

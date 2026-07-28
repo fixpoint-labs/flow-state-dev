@@ -231,33 +231,28 @@ a minority of issues rather than routinely. The rules are canonical in
 (POC settlement)"; the per-issue mechanics are in `issue-lifecycle` → "POC settlement". The
 coordinator's job is only this:
 
-- **Dispatch on request, no approval needed.** A worker that hits a contested factual claim
-  returns `settle_requested: <claim slice>` — it can't dispatch its own settlement, because it
-  exits before the verdict lands. You dispatch the **`poc-agent`**
-  (`.claude/agents/poc-agent.md` — worktree, Sonnet, never prompts) with that slice, alongside
-  your issue workers. Unlike a `fable-candidate`, this needs **no user yes**: a throwaway POC
-  is cheap, so there's no cost gate — which is also why it can fire routinely rather than as a
-  ceremony.
-- **It's one more parallel worker, so it counts against the VM.** A POC is a full worktree.
-  Count it in your concurrency budget (a settling POC is roughly an issue's worth of load) and
-  queue it if you're at the cap — a settlement that starts a wake later is still far cheaper
-  than two more review rounds.
+- **Dispatch on request, no approval needed.** A worker returns `settle_requested: <claim
+  slice>` (it exits before a verdict could land); you dispatch the **`poc-agent`**
+  (`.claude/agents/poc-agent.md` — worktree, Sonnet, never prompts) alongside your issue
+  workers. Unlike a `fable-candidate` this needs **no user yes** — cheap enough to dispatch
+  without approval, not a ceremony like Fable. That's about *friction*, not frequency: the
+  loop trigger still governs how often it fires.
+- **It counts against the VM cap.** A POC is a full worktree — roughly an issue's worth of
+  load on a box sized for ~3–4. **Dedupe first, then queue**: one claim argued on two issues is
+  **one** settlement fanned to both, and at the cap a POC waits behind the issue workers rather
+  than starving them. A settlement that starts a wake later still beats two more review rounds.
+  Dispatching several at once means the trigger has slipped — that's the POC farm to avoid.
 - **Carry it in the table, never wait on it.** Add `settling` to the issue's row
-  (`<claim> · in-flight | <verdict>`). The issue keeps converging, its gate stays reachable,
-  and **sibling issues are untouched**. A POC never makes an issue "pending" — it makes a
-  claim pending.
-- **Disclose in-flight settlements at step 5.** When you surface a spec for approval with a
-  POC running on a load-bearing claim, say so in one line. The user may approve anyway, and
-  usually should — but not unknowingly.
-- **Route the verdict on the wake it returns.** Dispatch that issue's worker to apply it per
-  `issue-spec` 6.5.3: CONFIRMED → reply + §12 record; REFUTED → one fold round **outside** the
-  budget (say in one line that it was evidence-driven); INCONCLUSIVE → surface as a direction
-  fork for the user. Then clear `settling` to the verdict. **A settled claim is closed** — a
-  later event re-litigating it is not a pending action for step 3.
-- **A cross-cutting claim is settled once for the epic.** When two issues' specs argue the
-  same claim (a shared assumption about behavior), dispatch **one** POC and fan the verdict
-  down to both — that's what the coordinator is for. Have `epic-agent` record it in the
-  epic-spec's cross-cutting decisions so a third issue doesn't reopen it.
+  (`<claim> · in-flight | <verdict>`). A POC never makes an *issue* pending — it makes a claim
+  pending, and **sibling issues are untouched**.
+- **Disclose in-flight settlements at step 5**, in one line, when you surface that spec for
+  approval.
+- **Route the verdict on the wake it returns** — dispatch that issue's worker to apply it per
+  `issue-spec` 6.5.3, then clear `settling` to the verdict. Note the two timing rules in
+  `issue-lifecycle` → "POC settlement": the spec PR stays **open** while a load-bearing
+  settlement is live, and a late `REFUTED` is folded like a challenger-surfaced blind spot.
+- **A cross-cutting claim is settled once for the epic.** Have `epic-agent` record the verdict
+  in the epic-spec's cross-cutting decisions so a third issue doesn't reopen it.
 
 The epic PR gets the same treatment: a disputed factual claim on the epic-spec's themes is a
 `poc-agent` dispatch, not a fourth epic-review round.
@@ -410,12 +405,18 @@ Once both hold:
 1. **Dispatch `cross-spec-review`** over the spec set (it forks into its own sub-agent,
    reads every spec in *its* context, and returns a compact ranked **conflict report** —
    the coordinator holds the report, never the spec texts). Read-only.
-2. **Settle the empirical conflicts before you ask about any of them.** For each conflict the
-   report marks **`poc-candidate`** — an assumption conflict where one spec is simply *wrong*
-   about how the code behaves — dispatch a `poc-agent` on the claim slice immediately. **No
-   user prompt**: it's cheap, it's throwaway, and asking the user to decide a question a run
-   answers is the waste this exists to remove. Then align both specs to the verdict. Don't put
-   a factual question in the walkthrough below.
+2. **Settle the empirical conflicts before you ask about any of them.** A conflict the report
+   marks **`poc-candidate`** — an assumption conflict where one spec is simply *wrong* about
+   how the code behaves — goes to a `poc-agent`, not into the walkthrough. **No user prompt**:
+   asking someone to decide a question a run answers is the waste this exists to remove. Then
+   align every affected spec to the verdict.
+
+   **Dedupe and cap before dispatching.** Several conflicts often reduce to *one* claim — settle
+   it once and fan the verdict out. Expect zero or one settlement per review; if the report
+   hands you three, batch them behind the issue workers rather than dispatching a fleet into a
+   VM sized for ~3–4 (each POC is a full worktree). Cross-spec is the weakest firing bar in the
+   system — two specs disagreeing is cheaper to trigger than a two-round review loop — so the
+   coordinator is where that gets bounded.
 3. **Walk you through the remaining decisions.** For each conflict the report marks *decision-needed*,
    surface it with the trade-off (`AskUserQuestion`) — the coordinator owns all user interaction;
    the review sub-agent never prompts. Conflicts the docs already settle are applied without

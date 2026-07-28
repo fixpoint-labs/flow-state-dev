@@ -453,11 +453,40 @@ Don't wait for round four to notice, and don't fire on round one to look thoroug
 
 **Workers request; the coordinator dispatches.** A bounded worker (an `issue-worker` running
 a triage round, `cross-spec-review`) exits at the end of its step, so a sub-agent it spawned
-has nowhere to report back to. It therefore returns a **settlement request** — the claim, why
-it's load-bearing, and what would falsify it — and the coordinator dispatches the `poc-agent`
-in its own worktree, in parallel with everything else it's running. Same shape as a
-`fable-candidate`, with two deliberate differences: a POC needs **no human approval** (it's
-cheap and throwaway, where Fable is a paid escalation), and it **never gates anything**.
+has nowhere to report back to. It therefore returns a **settlement request** — the claim slice
+below — and the coordinator dispatches the `poc-agent` in its own worktree, in parallel with
+everything else it's running. Same shape as a `fable-candidate`, with two deliberate
+differences: a POC needs **no human approval** (it's cheap and throwaway, where Fable is a paid
+escalation), and it **never gates anything**.
+
+**The claim slice — what the dispatcher owes, and where it grows.** One canonical shape, so a
+request written in one place is executable in another:
+
+```
+claim:   <the disputed assertion, as "X does / does not Y">
+load:    <what in the spec's approach depends on it>
+falsify: <the observation that would prove it false>
+threads: <where it's being argued — PR thread link(s), or the conflicting specs>
+```
+
+Those four are **the dispatcher's** — a requester that can't fill `falsify` hasn't got an
+empirical claim and should route it as a decision instead. The **executor expands** them into
+the runnable check (`check` · `confirms` · `refutes` · **`anti-game`**) as `settle-claim`
+Step 1; the dispatcher never pre-writes those, because designing the check is the executor's
+job and a pre-written one biases it toward the requester's expected answer.
+
+**Vocabulary — one mechanism, four surfaces.** `Settle` is the triage disposition (`issue-spec`
+6.5.1), `settle_requested` is the field a worker returns it in, `settling` is the coordinator's
+status column while it's in flight, and `poc-candidate` is `cross-spec-review`'s report flag
+(named for symmetry with `fable-candidate`, which sits beside it in the same table). Different
+surfaces, one mechanism — the names differ because the *roles* do, not because they drifted.
+
+**Bound the fan-out.** A POC is a full worktree, so it costs roughly what an issue worker costs
+and competes with them for the same VM. Dedupe before dispatching (one claim argued in two
+places is **one** settlement, fanned to both), and queue rather than exceed the concurrency
+cap — a settlement that starts a wake later still beats two more rounds of argument. If you
+find yourself dispatching more than one or two at once, the trigger has slipped from "a loop
+formed" to "someone asserted something"; that's the POC farm this section exists to prevent.
 
 Non-blocking is load-bearing. While the POC runs: the triage round finishes, remaining
 feedback lands as notes, the spec converges on schedule, and the approval gate stays
@@ -468,9 +497,33 @@ not about ceremony.
 
 **Non-blocking, but disclosed.** When a settlement is in flight on a load-bearing claim, say
 so where the gate is surfaced: *"spec is converged and up for approval; the claim that X
-composes with Y is being checked empirically, verdict will land on the PR."* The human can
-approve anyway — that's their call to make knowingly, and it usually is the right one. What
-they must not do is approve on a premise nobody mentioned was contested.
+composes with Y is being checked empirically, verdict will land on the PR — if it comes back
+REFUTED after implementation starts, we fold it back the same way a challenger-surfaced blind
+spot is folded."* The human can approve anyway — that's their call to make knowingly, and it
+usually is the right one. What they must not do is approve on a premise nobody mentioned was
+contested.
+
+**Run it against fresh `origin/main`, or the verdict is worthless.** A worktree worker inherits
+the *coordinator's* checkout, which drifts behind `main` as sibling PRs merge (see "Worktree
+branching" above). A POC run on stale code can confirm a claim that the current code refutes —
+a **false settlement**, which is the one output worse than no settlement, because it closes the
+question wrongly and carries evidence to prove it. So the `poc-agent` re-bases before it reads
+anything: `git fetch origin main && git checkout -B poc/<ISSUE-ID>-<slug> origin/main`. Same
+rule as every other issue branch, and load-bearing for a different reason.
+
+**A verdict can outlive the gate — that's allowed, but it must land somewhere.** Because
+approval isn't blocked, a settlement can still be running when the spec is approved and
+implementation starts. Two rules keep that from stranding a `REFUTED` verdict:
+
+- **Keep the spec PR open while a settlement on a load-bearing claim is in flight.** Approval
+  still releases implementation immediately — nothing blocks — but the coordinator *defers the
+  spec PR's close-and-delete* until the verdict lands, so the fold has a live artifact and a
+  live thread. Closing it is cleanup, not a precondition for implementing. (If it was already
+  closed, the Linear document is canonical from then on and the fold goes there.)
+- **A late `REFUTED` is a spec blind spot, handled by the path that already exists.** Fold it
+  into the spec, tell the in-flight implementation, and re-gate if the direction actually
+  changed — exactly what `issue-implement`'s challenger does when it finds the design wrong
+  against real code. Discovering this from a POC is the *cheap* version of that discovery.
 
 ### What it costs (the round-budget interaction)
 
