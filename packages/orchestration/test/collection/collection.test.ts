@@ -455,6 +455,40 @@ describe.each([
     });
   });
 
+  describe("prototype-named task ids (FIX-965)", () => {
+    // `taskId` reaches the collection straight off a model tool call
+    // (`completeTask`/`failTask`/… take `taskId: z.string()`), and the
+    // sequencer backing keeps tasks in a plain object. An inherited
+    // `Object.prototype` member is truthy, so a falsity-only guard resolves
+    // `"constructor"` to a function and the not-found path never fires.
+    it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+      "get(%j) is a miss, not an Object.prototype member",
+      async (protoKey) => {
+        await collection.addTask({ id: "real", goal: "real" });
+        expect(collection.get(protoKey)).toBeUndefined();
+      },
+    );
+
+    it.each(["constructor", "toString"])(
+      "complete(%j) takes the not-found path",
+      async (protoKey) => {
+        await collection.addTask({ id: "real", goal: "real" });
+        await expect(collection.complete(protoKey, "done")).rejects.toThrow(
+          /not found/,
+        );
+      },
+    );
+
+    it("addTask does not report a prototype-named id as already existing", async () => {
+      // The duplicate check is `tasks[id] !== undefined`; a prototype hit makes
+      // a brand-new task look like a collision.
+      await expect(
+        collection.addTask({ id: "constructor", goal: "legit" }),
+      ).resolves.toBeDefined();
+      expect(collection.get("constructor")?.goal).toBe("legit");
+    });
+  });
+
   describe("change events", () => {
     it("every event carries collectionId, taskId, kind, task", async () => {
       await collection.addTask({ id: "t", goal: "t" });

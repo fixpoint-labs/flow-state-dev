@@ -62,6 +62,22 @@ export interface SequencerBackedOptions extends TaskCapOptions {
   now?: () => number;
 }
 
+/**
+ * Own-property task lookup (FIX-965).
+ *
+ * Tasks live in a plain object keyed by task id, and `taskId` reaches this
+ * collection straight off a model tool call (`completeTask`, `failTask`, … all
+ * declare `taskId: z.string()`), so BP-031 applies: indexing directly would let
+ * an inherited `Object.prototype` member ("constructor", "toString", …) answer
+ * as a task. That turned a miss into a truthy non-task — crashing on
+ * `task.status` instead of raising "not found", and making a brand-new
+ * `"constructor"` task look like a duplicate. Same guard as `keyedRouter` and
+ * `dispatch-and-execute.ts` (FIX-943).
+ */
+function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
+  return Object.hasOwn(tasks, id) ? tasks[id] : undefined;
+}
+
 /** Create a `TaskCollectionRef` backed by a sequencer's state record. */
 export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = unknown>(
   options: SequencerBackedOptions
@@ -191,7 +207,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       | undefined;
 
     await casWrite((tasks) => {
-      const task = tasks[id];
+      const task = ownTask(tasks, id);
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
@@ -218,7 +234,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     let captured: Task<TInput, TOutput> | undefined;
 
     await casWrite((tasks) => {
-      const task = tasks[id];
+      const task = ownTask(tasks, id);
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
@@ -245,7 +261,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       // so the emitted item matches what's in state on a successful write.
       const task = buildInitialTask<TInput, TOutput>(init, now());
       await casWrite((tasks) => {
-        if (tasks[task.id] !== undefined) {
+        if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
         }
         const next = { ...tasks, [task.id]: task };
@@ -262,7 +278,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       await casWrite((tasks) => {
         const next = { ...tasks };
         for (const task of built) {
-          if (next[task.id] !== undefined) {
+          if (ownTask(next, task.id) !== undefined) {
             throw new Error(`[tasks] task with id "${task.id}" already exists`);
           }
           next[task.id] = task;
@@ -283,7 +299,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
       await casWrite((tasks) => {
         const lookup = (id: string): Task | undefined =>
-          (tasks[id] as unknown as Task | undefined);
+          (ownTask(tasks, id) as unknown as Task | undefined);
         const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
         const order = claimOptions?.order ?? defaultOrder;
 
@@ -336,7 +352,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       // branch and attempts a transition out of a terminal status. Threading
       // the guards into only the hard-fail branch leaves the escape live for
       // exactly that shape, and passes any test that never sets `maxAttempts`.
-      const current = readTasks()[id];
+      const current = ownTask(readTasks(), id);
       if (current !== undefined && shouldRetryOnFail(current)) {
         await transitionTo(
           id,
@@ -482,7 +498,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     get(id) {
-      const task = readTasks()[id];
+      const task = ownTask(readTasks(), id);
       return task === undefined ? undefined : wrap(task);
     },
 
