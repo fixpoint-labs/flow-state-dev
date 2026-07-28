@@ -104,7 +104,7 @@ const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>(["in_progress", "awaiting_rev
  * incidentally an ownership token while the task sits in a status an
  * attempt holds.
  */
-export function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
+function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
   return task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status);
 }
 
