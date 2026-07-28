@@ -63,6 +63,14 @@ Take the single action the dispatch calls for:
   not the epic's — report it back for routing rather than absorbing it into the epic-spec, and
   never rewrite the epic's prose around a line-level nit.
 
+  **The epic PR carries its own two-round budget**, and the coordinator holds the counter
+  (`epic_review_rounds`) because you can't persist state across dispatches. So report your
+  round accounting the same way `issue-worker` does: `epic_review: <rounds spent>` — **0** for
+  a batch that was only factual corrections or broken references — and
+  `above_bar_found: <yes/no/n-a>`, which is what authorizes a conditional third round. Report
+  the below-the-bar items you did *not* fold so the coordinator can route them to the relevant
+  issues' implementer notes; don't silently drop them.
+
 Work on the epic branch inside your worktree so your commits never collide with sibling
 issue workers. Commit and push; **never merge, never delete the branch**.
 
@@ -82,5 +90,7 @@ epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (doc attached to epic issue: yes/added)
 objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs)>
+epic_review: <rounds spent this dispatch; 0 for factual-only> · above_bar_found: <yes/no/n-a>
+not_folded: <none | below-the-bar items + which issue each belongs to, for the coordinator to route>
 open_questions: <none | one-line each needing a human>
 ```

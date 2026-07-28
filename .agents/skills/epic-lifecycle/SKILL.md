@@ -34,9 +34,9 @@ ends the turn:
 | Phase | What happens | Ends when |
 |---|---|---|
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
-| **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold at NEEDS_SPEC | An approving human comment or review lands on the epic PR |
+| **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold at NEEDS_SPEC. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | Both wrap PRs are surfaced |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Each** wrap pass is either surfaced as a draft PR **or explicitly skipped** — both passes have documented skip conditions (no rework worth measuring · no docs touched), so "skipped, and why" is a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -77,7 +77,10 @@ even if more are queued. State the chosen N and the cap to the user.
    per-issue handle-cache pointers), **and the epic handle alongside it** (epic issue ID ·
    name · `epic/<name>` branch · epic PR#), so it survives across wakes — the next refresh
    needs it to re-check the epic PR for its approving comment or review, keep the epic PR
-   subscribed, and pass the branch/SHA to workers.
+   subscribed, and pass the branch/SHA to workers. Two more coordinator-owned fields live
+   here because nothing else can hold them across wakes: **`epic_review_rounds`** (the epic
+   PR's own review budget) and, at wrap, each pass's **disposition**
+   (`lessons: <PR#|skipped: why>` · `docs_polish: <PR#|skipped: why>`).
 2. **Refresh the table.** Fetch each issue's Linear state + PR status to derive its phase
    (reuse each issue's `.orchestration/<ISSUE>.md` handle cache) — **including each open spec
    PR's comments and reviews**: an **approving human comment or GitHub Review** on the spec PR (a
@@ -105,9 +108,12 @@ even if more are queued. State the chosen N and the cap to the user.
    comment or review** (as re-derived by step 2's scan this wake — the gate is the fresh
    evidence, not the `epic approved` label, which is only the mirror you write), hold every
    sub-issue at NEEDS_SPEC — do **not** dispatch a worker to advance one. **Spec-review
-   budget:** an issue that has already spent its two spec-review rounds is *not* a pending
-   action — log the event and leave it awaiting the human gate (see
-   [Spec review](#spec-review-converge-dont-grind)). When you do dispatch, pass the resolved
+   budget:** an issue that has spent its two spec-review rounds **and whose last worker
+   reported `spec_level_found: no`** is *not* a pending action — log the event and leave it
+   awaiting the human gate. If the last worker reported `spec_level_found: yes`, the
+   **authorized third round** is still pending: dispatch it (once), and say in one line why
+   the extra round was spent. See [Spec review](#spec-review-converge-dont-grind). When you
+   do dispatch, pass the resolved
    **epic handle** (branch + SHA) from step 2 so `issue-spec` can align without re-fetching:
 
    ```
@@ -188,11 +194,15 @@ and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` →
 spec-review round budget". The coordinator's job is only this:
 
 - **Carry the round count in the table** (`spec-review rounds`, per issue) so the budget
-  survives across wakes. A worker returns the count it spent and whether it found anything
-  spec-level.
-- **Stop dispatching rounds at the budget.** A spec-PR review event on an issue that has
-  already converged is **not** a pending action for step 3 — log it and leave the issue
-  awaiting its human gate. Only a *human* event on that PR (an approval, or the user asking
+  survives across wakes. **Add only the rounds the worker reports it actually spent**
+  (`spec_review: <rounds spent>`), not one per event dispatched — a batch that was nothing but
+  factual corrections or broken references costs no round by rule, so charging it one would
+  burn the budget on typos and get later substantive feedback ignored.
+- **Stop dispatching rounds at the budget — unless a third is authorized.** A spec-PR review
+  event on an issue at budget whose last worker reported `spec_level_found: no` is **not** a
+  pending action for step 3 — log it and leave the issue awaiting its human gate. If the last
+  worker reported `spec_level_found: yes`, the conditional third round *is* authorized: run it
+  once and say why. Otherwise only a *human* event on that PR (an approval, or the user asking
   for a change) reactivates it.
 - **Surface convergence as convergence.** When an issue converges, say so at step 5: the
   spec is directionally settled, remaining threads are carried as implementer notes, and the
@@ -201,6 +211,27 @@ spec-review round budget". The coordinator's job is only this:
   approval does) and doesn't extend the budget. Never re-request review from a bot.
 
 Convergence is per issue and independent — issue B doesn't wait on issue A's spec.
+
+### The epic PR gets the same budget
+
+The epic-spec is a direction artifact too, so it is reviewed at the same altitude and
+**carries its own two-round budget** — without one, the epic PR is the single place this
+change's unbounded-review loop would survive, right at the top-level gate. The coordinator
+owns the epic PR (workers can't), so the counter is the coordinator's:
+
+- Track `epic_review_rounds` in `.orchestration/epic.md`, alongside the epic handle, so it
+  survives wakes. `epic-agent` reports the rounds it spent and whether anything it folded was
+  above the bar (objective- or cross-cutting-decision-level).
+- **Re-dispatch `epic-agent` to fold epic-PR feedback only while the budget allows**, on the
+  same terms as an issue spec: add only rounds actually spent, a third round only when round
+  two found something above the bar, and never a round spent to satisfy a bot.
+- At budget, the epic-spec has **converged**: surface the objective for sign-off and stop
+  folding. Remaining epic-PR threads are carried the same way an issue spec carries its
+  §13 notes — routed to the relevant issues' implementer notes, not held against the gate.
+- **The objective gate is unaffected either way.** Only a human's approving comment or
+  review trips it; a bot review on the epic PR neither holds it nor buys another round. And
+  the epic's *direction* still flows continuously — the budget bounds the *folding*, not the
+  epic's ability to receive and route feedback.
 
 ## Epic setup (the coordination layer every run has)
 
@@ -259,7 +290,9 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   ledger is where that becomes visible. This is also where the Fable-escalation trial is
   *measured* — the ledger's `design-off` trend is the evidence it's earning its cost. Skip for
   an epic with no rework worth measuring — this is the loop-measurement payoff, not
-  ceremony for every run.
+  ceremony for every run. **A skip is a recorded outcome, not a silent one:** write
+  `lessons: skipped: <why>` to the epic record and report it, so EPIC_WRAP can complete
+  instead of waiting forever on a PR that will never open.
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch
@@ -269,7 +302,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   rearrangement is exactly what a human should eyeball before merge. The coordinator holds only the PR
   handle and surfaces it; it never reads or applies the edits itself. Separate from the "lessons"
   PR (grounding) and the epic PR (which closes unmerged). Skip only for an epic that touched no
-  docs.
+  docs — and record it as `docs_polish: skipped: <why>` in the epic record, same as above, so
+  the wrap terminates.
 
 ## Intake — filing & queueing discovered issues
 

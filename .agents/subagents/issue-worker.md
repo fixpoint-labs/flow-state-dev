@@ -18,9 +18,12 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
   changes the approach, record the rest verbatim as §13 implementer notes, escalate genuine
-  direction forks. **Report the round you spent and whether anything was spec-level** — the
+  direction forks. **Report the rounds you spent and whether anything was spec-level** — the
   coordinator budgets rounds off that (two by default; see `issue-lifecycle` → "The
-  spec-review round budget"). Do not chase threads to zero; the spec PR is never merged.
+  spec-review round budget"), so report it accurately: a batch that was **only** factual
+  corrections or broken references is **`spec_review: 0`** (those get fixed inline by rule and
+  cost no round); a batch you triaged into §13 notes is one round. Do not chase threads to
+  zero; the spec PR is never merged.
 - **spec approved** (the approval is already present when you're dispatched, or you detect it
   this run) → **this is a release, not a stop.** Close the spec PR, then implement on the
   issue's branch and open the impl PR — **all in this one dispatch.** Do not return at

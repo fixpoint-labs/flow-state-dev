@@ -309,6 +309,25 @@ open thread as implementer notes. Spend a third round only when round two surfac
 genuine **spec-level** finding — a new approach question, not more notes. Say so when you
 do, in one line, so the extra round is a visible decision rather than drift.
 
+Two mechanics the budget depends on, or it misfires:
+
+- **Count rounds spent, not events dispatched.** A batch that was *only* factual corrections
+  or broken references costs **zero** — those get fixed inline precisely because they don't
+  move the design. The reviewing sub-agent reports the rounds it actually spent, and the
+  coordinator adds that; incrementing per event would let two typo batches exhaust the budget
+  and then suppress the substantive feedback the budget exists to make room for.
+- **The conditional third round has to survive the coordinator.** The sub-agent reports
+  whether it found anything spec-level; a coordinator that stops unconditionally at two would
+  swallow the very round this rule authorizes. Gate the stop on that flag, not on the count
+  alone.
+
+**The budget applies to the epic PR too**, on the same terms — the epic-spec is a direction
+artifact reviewed at the same altitude, and it's the one surface where an unbounded review
+loop would otherwise survive, sitting directly on the top-level gate. The coordinator holds
+that counter itself (`epic_review_rounds`), because `epic-agent` persists nothing between
+dispatches. Bounding the *folding* doesn't bound the epic's *direction*: feedback still flows
+in and gets routed continuously, and the objective gate still turns only on a human approval.
+
 Three facts make that budget safe rather than reckless:
 
 - **An unresolved thread on a spec PR blocks nothing.** The spec PR is *never merged* —
@@ -352,8 +371,9 @@ So the discipline is ours, not theirs:
   for the implementer* (§13) as the home for below-the-bar feedback.
 - **`issue-spec`** Step 6 (reviewer contract in the PR description) and Step 6.5 (the
   triage loop that applies the bar and the budget).
-- **`issue-lifecycle`** / **`epic-lifecycle`** — the round counter lives in the handle
-  cache; the coordinator declares convergence and surfaces the gate.
+- **`issue-lifecycle`** / **`epic-lifecycle`** — the round counters live in the handle cache
+  (`spec_review_rounds` per issue; `epic_review_rounds` for the epic PR); the coordinator
+  declares convergence and surfaces the gate.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
 
