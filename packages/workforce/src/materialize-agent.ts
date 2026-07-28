@@ -29,14 +29,18 @@ function resolveCatalogTools(
   if (!toolKeys || toolKeys.length === 0) return [];
   const out: GeneratorTool[] = [];
   for (const key of toolKeys) {
-    const tool = catalog[key];
-    if (!tool) {
+    // BP-031: tool keys arrive from an agent's `allowedTools` / overrides as
+    // unvalidated strings, so an `[]` lookup against the plain-object catalog
+    // could resolve inherited `Object.prototype` members (e.g. "constructor",
+    // "toString") instead of a real tool. Require an own property before
+    // indexing (FIX-965; same guard as `dispatch-and-execute.ts`, FIX-943).
+    if (!Object.hasOwn(catalog, key)) {
       console.warn(
         `[workforce] agent "${agentName}": unknown tool "${key}" — skipped`,
       );
       continue;
     }
-    out.push(tool);
+    out.push(catalog[key]!);
   }
   return out;
 }
@@ -57,14 +61,14 @@ function resolveCapabilities(
       // capabilityCatalog (the change stays purely additive). The warn below
       // fires only when a catalog IS present but the key is unknown.
       if (!catalog) continue;
-      const cap = catalog[entry];
-      if (!cap) {
+      // Same own-property requirement as the tool catalog above (FIX-965).
+      if (!Object.hasOwn(catalog, entry)) {
         console.warn(
           `[workforce] agent "${agentName}": unknown capability "${entry}" — skipped`,
         );
         continue;
       }
-      out.push(cap);
+      out.push(catalog[entry]!);
     } else {
       out.push(entry);
     }

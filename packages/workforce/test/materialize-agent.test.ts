@@ -184,6 +184,44 @@ describe("materializeAgent", () => {
       spy.mockRestore();
     });
 
+    // FIX-965: both catalogs are plain objects, so an inherited
+    // `Object.prototype` member ("constructor", "toString", …) is truthy and
+    // sails past a falsity-only guard — landing a non-tool / non-capability in
+    // the generator's `tools` / `uses` slot. Assert the resolved slots, not
+    // just the warning: a warning-only assertion passes even if the entry is
+    // also pushed.
+    it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+      "treats prototype-named tool key %j as unknown (FIX-965)",
+      (protoKey) => {
+        const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const block = materializeAgent(
+          makeAgent({ allowedTools: [protoKey] }),
+          makeOpts(),
+        ) as any;
+        expect(inspectGenerator(block).tools).toBeUndefined();
+        expect(spy).toHaveBeenCalledWith(
+          expect.stringContaining(`unknown tool "${protoKey}"`),
+        );
+        spy.mockRestore();
+      },
+    );
+
+    it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+      "treats prototype-named capability key %j as unknown (FIX-965)",
+      (protoKey) => {
+        const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const block = materializeAgent(
+          makeAgent({ usesCapabilities: [protoKey] }),
+          makeOpts({ capabilityCatalog: {} }),
+        ) as any;
+        expect(inspectGenerator(block).uses).toBeUndefined();
+        expect(spy).toHaveBeenCalledWith(
+          expect.stringContaining(`unknown capability "${protoKey}"`),
+        );
+        spy.mockRestore();
+      },
+    );
+
     it("warns when usesSkills is non-empty", () => {
       const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       materializeAgent(
