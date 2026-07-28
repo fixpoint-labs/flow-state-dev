@@ -24,9 +24,21 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   corrections or broken references is **`spec_review: 0`** (those get fixed inline by rule and
   cost no round); a batch you triaged into §13 notes is one round. Do not chase threads to
   zero; the spec PR is never merged.
+  **A factual claim that is now being argued in circles is a fourth disposition — Settle**
+  (`issue-spec` 6.5.3). The trigger is **repetition, not confidence**: only once the same
+  behavioral claim has been asserted and counter-asserted at least twice (it came back after
+  being answered, or the spec already flipped on it) and the approach depends on it. A claim
+  asserted *once* is ordinary triage — answer it and move on. When it does fire, don't argue
+  it, don't guess a side, and **don't dispatch the POC yourself** (you exit before its verdict
+  could land): return the claim slice as `settle_requested` and let the coordinator dispatch
+  the `poc-agent`. It costs **zero** rounds. **Record the claim in the spec's §12 marked
+  `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
+  so the spec doc is the only thing that carries the settlement downstream.
 - **spec approved** (the approval is already present when you're dispatched, or you detect it
-  this run) → **this is a release, not a stop.** Close the spec PR, then implement on the
-  issue's branch and open the impl PR — **all in this one dispatch.** Do not return at
+  this run) → **this is a release, not a stop.** Close the spec PR — **unless the spec's §12
+  carries a claim marked `(POC in flight)`, or the coordinator passed you a live `settling`, in
+  which case leave it open** for the verdict to be folded into; the coordinator closes it later.
+  Then implement on the issue's branch and open the impl PR — **all in this one dispatch.** Do not return at
   NEEDS_IMPLEMENTATION and wait: nothing external separates approved from implementing, so
   stopping there would strand the issue until a heartbeat or a user nudge.
 - impl PR has unhandled review/CI events → run one PR-feedback round, push, stop.
@@ -60,5 +72,6 @@ phase: <NEEDS_SPEC | AWAITING_SPEC_APPROVAL | NEEDS_IMPLEMENTATION | PR_FEEDBACK
 spec_pr: <#/none>   impl_pr: <#/none>   branch: <name>
 gate_or_blocker: <none | awaiting-spec-approval | ready-to-merge | blocked: ...>
 spec_review: <rounds spent this dispatch> · spec_level_found: <yes/no/n-a>
+settle_requested: none | claim: <X does/does not Y> · load: <what depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 did: <one line>
 ```

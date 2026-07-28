@@ -228,6 +228,26 @@ the README."
 Blocking issues / PRs that must land first; external dependencies. Open questions
 that need a decision before implementation, each with options and trade-offs.
 
+**Settled claims (empirical questions this spec no longer has open):**
+
+A claim about how the system behaves that a review contested and a **POC settled** is
+recorded here as a *resolved* question, with its evidence — see
+[`orchestration.md`](orchestration.md) → "Settling a disputed claim (POC settlement)". This is
+what stops the next reviewer (usually a bot, with no memory of the thread) from reopening it
+blind, and it is why a settled claim costs zero further review rounds.
+
+Format — one line each:
+
+`- **Settled:** <the claim> — **<CONFIRMED|REFUTED>**: <the observation>. (<evidence link — the thread, the capture, or the graduated goal>)`
+
+Omit the block when no claim needed settling.
+
+A claim still **in flight** is listed here too, marked `(POC in flight)`, so a reader knows an
+answer is coming. Record it **here rather than in the open-questions list above** — an open
+question blocks implementation until it's answered (`issue-implement` Step 2), and an in-flight
+settlement is non-blocking by design. Putting it in the blocking list would reinstate exactly
+the wait the mechanism exists to avoid.
+
 **Follow-ups (flagged, not built):**
 - **Deepening opportunities** the area surfaced — shallow handlers, capability-shaped
   wiring, patterns that strain a tenet — as follow-ups for
