@@ -72,9 +72,19 @@ export type TaskBoardWorkerState = z.infer<typeof taskBoardWorkerStateSchema>;
  * (success path) and `recordError` (rescue path). Per-instance — each
  * iteration of the worker loop creates a fresh body invocation, so
  * stale values from a previous iteration cannot leak in.
+ *
+ * `currentAttempt`: the claimed task's `attempts` at claim time, stamped
+ * by the same `.tap()` (FIX-951). Both recorders pass it as
+ * `expectAttempt` so their write-back declines if the attempt was
+ * displaced while the worker ran — a lease reclaim followed by another
+ * worker claiming the task makes the stale write-back a *legal*
+ * transition onto someone else's live attempt. Optional so a body state
+ * checkpointed before this field existed still runs: the guard is simply
+ * not applied, leaving the pre-FIX-951 behaviour for that one iteration.
  */
 export const taskBoardWorkerBodyStateSchema = z.object({
   currentTaskId: transientSlot(z.string().optional()),
+  currentAttempt: transientSlot(z.number().optional()),
 });
 
 export type TaskBoardWorkerBodyState = z.infer<

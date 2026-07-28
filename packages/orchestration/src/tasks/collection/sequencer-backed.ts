@@ -16,8 +16,8 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
-import type { TaskCollectionRef } from "./types";
+import { assertTransitionAllowed } from "../schema/task-status";
+import type { TaskCollectionRef, TaskTransitionOptions } from "./types";
 import {
   applyClaimToTask,
   applyTransition,
@@ -27,6 +27,7 @@ import {
   defaultEligibility,
   defaultOrder,
   listTasks,
+  shouldDeclineTransition,
   shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -170,12 +171,20 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     }
   }
 
+  /**
+   * Run one lifecycle transition inside the CAS.
+   *
+   * `guards` makes the write advisory (FIX-951): evaluated against the
+   * freshest committed task from inside the mutator, so the decision is
+   * race-free rather than a caller-side pre-check. A declined write returns
+   * `undefined` from the mutator, which patches nothing and emits nothing.
+   */
   async function transitionTo(
     id: string,
     targetStatus: TaskStatus,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    flags?: { allowTerminalNoop?: boolean }
+    guards?: TaskTransitionOptions
   ): Promise<void> {
     let captured:
       | { task: Task<TInput, TOutput>; prevStatus: TaskStatus }
@@ -186,7 +195,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
-      if (flags?.allowTerminalNoop === true && isTerminalStatus(task.status)) {
+      if (shouldDeclineTransition(task as Task, targetStatus, guards)) {
         captured = undefined;
         return undefined;
       }
@@ -299,35 +308,60 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       return captured.task;
     },
 
-    async complete(id, output) {
-      await transitionTo(id, "completed", "completed", () => ({
-        output,
-        completedAt: now(),
-        leaseUntil: undefined,
-        error: undefined,
-      }));
+    async complete(id, output, options) {
+      await transitionTo(
+        id,
+        "completed",
+        "completed",
+        () => ({
+          output,
+          completedAt: now(),
+          leaseUntil: undefined,
+          error: undefined,
+        }),
+        options
+      );
     },
 
-    async fail(id, error) {
+    async fail(id, error, options) {
       // Retry path: if the task carries a `maxAttempts` budget that
       // hasn't been exhausted, soft-fail back to `pending` and capture
       // the error as `feedback` for the next attempt. The next claim
       // will increment `attempts` again. Hard-fail (no budget left, or
       // no budget set) goes terminal.
+      //
+      // `options` must reach BOTH branches. `shouldRetryOnFail` is
+      // status-blind — it reads only `attempts` vs `maxAttempts` — so a task
+      // settled mid-flight that still carries retry budget takes the retry
+      // branch and attempts a transition out of a terminal status. Threading
+      // the guards into only the hard-fail branch leaves the escape live for
+      // exactly that shape, and passes any test that never sets `maxAttempts`.
       const current = readTasks()[id];
       if (current !== undefined && shouldRetryOnFail(current)) {
-        await transitionTo(id, "pending", "retried", () => ({
-          feedback: error,
-          leaseUntil: undefined,
-          error: undefined,
-        }));
+        await transitionTo(
+          id,
+          "pending",
+          "retried",
+          () => ({
+            feedback: error,
+            leaseUntil: undefined,
+            error: undefined,
+          }),
+          options
+        );
         return;
       }
-      await transitionTo(id, "errored", "errored", () => ({
-        error,
-        completedAt: now(),
-        leaseUntil: undefined,
-      }));
+      await transitionTo(
+        id,
+        "errored",
+        "errored",
+        () => ({
+          error,
+          completedAt: now(),
+          leaseUntil: undefined,
+        }),
+        options
+      );
     },
 
     async block(id, reason) {
@@ -364,7 +398,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           reason !== undefined
             ? { error: reason, completedAt: now(), leaseUntil: undefined }
             : { completedAt: now(), leaseUntil: undefined },
-        { allowTerminalNoop: true }
+        // Unchanged behaviour: cancelling an already-settled task is a no-op.
+        // The widened condition adds a disallowed arm, which for a `cancelled`
+        // target can only fire where the terminal arm already did.
+        { ifAllowed: true }
       );
     },
 

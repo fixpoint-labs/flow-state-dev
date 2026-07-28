@@ -378,6 +378,7 @@ export function routedSpecialists<
       const nextIteration = state.iteration + 1;
 
       let currentTaskId: string | undefined;
+      let currentAttempt: number | undefined;
       if (!input.done && input.specialist) {
         const collection = await getCollection(ctx, collectionId);
         const task = await collection.addTask({
@@ -390,10 +391,15 @@ export function routedSpecialists<
         });
         // Claim immediately so recordCompletion can transition to completed —
         // the substrate enforces pending → in_progress → completed.
-        await collection.claim(`routedSpecialists:${name}`, {
+        const claimed = await collection.claim(`routedSpecialists:${name}`, {
           eligibility: (t) => t.id === task.id,
         });
         currentTaskId = task.id;
+        // Read `attempts` off the CLAIM, not off `task` — `addTask` returns
+        // the pre-claim task, whose `attempts` is still 0 (FIX-951). Left
+        // undefined if the claim somehow lost, which skips the attempt guard
+        // rather than declining every write with a mismatched number.
+        currentAttempt = claimed?.attempts;
       }
 
       // Always overwrite `currentTaskId` (including clearing it when no task
@@ -404,6 +410,7 @@ export function routedSpecialists<
         currentSpecialist: input.specialist ?? undefined,
         done: input.done,
         currentTaskId,
+        currentAttempt,
       });
 
       if (input.done) {
@@ -433,7 +440,10 @@ export function routedSpecialists<
       );
       if (state.currentTaskId) {
         const collection = await getCollection(ctx, collectionId);
-        await collection.fail(state.currentTaskId, message);
+        await collection.fail(state.currentTaskId, message, {
+          ifAllowed: true,
+          expectAttempt: state.currentAttempt,
+        });
       }
       // Recovery is signalled out-of-band via `ctx.wasRescued(dispatch)`, so
       // the value threaded downstream carries no rescue marker.
@@ -459,7 +469,10 @@ export function routedSpecialists<
       const state = ctx.sequencer!.state;
       if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
         const collection = await getCollection(ctx, collectionId);
-        await collection.complete(state.currentTaskId, input);
+        await collection.complete(state.currentTaskId, input, {
+          ifAllowed: true,
+          expectAttempt: state.currentAttempt,
+        });
       }
     },
   });

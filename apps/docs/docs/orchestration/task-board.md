@@ -216,6 +216,12 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 - `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
+A worker's result is not always the last word on its task. Cancelling a task does not stop the worker already running it, and neither does the worker marking the task done itself partway through, or the claim expiring and another worker picking the task up. In each of those cases the worker eventually comes back with a result for a task that has already moved on.
+
+The board drops those results rather than recording them. Whoever changed the task had better information than a worker that has been away doing the work, so the cancel stands, the output the worker recorded for itself stands, and the second worker's claim is left alone. What matters for `onError` is that dropping the result is contained: one task is affected, the rest of the board keeps draining, and under `"fail"` the error that surfaces is the worker's real one.
+
+One shape is worth knowing about, because it trades a loud failure for an expensive quiet one. If something keeps returning a task to `pending` — a retry budget from `maxAttempts`, or a lease that keeps expiring and reclaiming — under a worker that keeps failing, the task gets re-dispatched each time instead of settling. `maxIterations` is what stops that, which is the other reason to read it as a per-worker number when you size a board.
+
 ## Bounding how much work a board takes on
 
 `concurrency` paces how many tasks run at once. It says nothing about how many can be created, so a coordinator that plans badly can queue far more work than anyone intended. Two more bounds cover that, and the three sit at different scopes:
@@ -226,7 +232,7 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 
 Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead. The two recover differently — draining frees the enqueue bound, but only for tasks that can actually run, and gives nothing back against the lifetime one — and what a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
 
-That split is the general rule, not a special case for caps: the substrate throws, and the delegation tool boundary translates the errors a model can act on into results. A refused status transition works the same way — see [the status state machine](task-substrate.md#the-status-state-machine).
+That split is the general rule, not a special case for caps: the substrate throws, and the delegation tool boundary translates the errors a model can act on into results. A refused status transition works the same way — see [the status state machine](task-substrate.md#the-status-state-machine). The board's own result write-backs are the one deliberate exception, and they are why a settled task doesn't take the board down: they ask for the refusal to be silent, as described under concurrency above.
 
 Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`.
 
@@ -350,6 +356,8 @@ const board = taskBoard({
 ```
 
 For a custom or externally-managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`.
+
+If you write that ref by hand, `complete` and `fail` have to accept and honour the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't — a two-argument `complete(id, output)` satisfies the interface structurally, and the extra argument is dropped without a word. The board passes those options on every write-back so a result landing on a task someone else already settled is declined rather than thrown. A ref that ignores them throws instead, and that throw escapes the per-worker rescue and abandons the rest of the board's tasks. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
 
 ## Durable boards that survive across turns
 

@@ -157,6 +157,58 @@ describe("routedSpecialists", () => {
     expect(out.history[1].output).toMatchObject({ contributed: "analyst" });
   });
 
+  it("completes every iteration's task under the attempt guard (FIX-951)", async () => {
+    // The advisory write-backs scope themselves to the attempt they claimed
+    // under, and the attempt number has to come from `claim`'s return value.
+    // `addTask` returns the PRE-claim task, whose `attempts` is still 0,
+    // while the claim increments it to 1 — so stamping the wrong one makes
+    // every completion decline against a mismatched attempt and leaves each
+    // task stuck `in_progress`.
+    //
+    // `history` is built from *completed* tasks only, so it is the visible
+    // consequence: a wrong stamp empties it while every other assertion in
+    // this file still passes. Three dispatched iterations, three entries.
+    const pattern = routedSpecialists({
+      name: "rs-attempt",
+      workspace,
+      specialists: {
+        researcher: makeSpecialist("researcher", "research", "found-it"),
+        analyst: makeSpecialist("analyst", "analysis", "analyzed"),
+        critic: makeSpecialist("critic", "critique", "critiqued"),
+      },
+      controller: makeScriptedController("rs-attempt", [
+        { specialist: "researcher", done: false, reasoning: "gather" },
+        { specialist: "analyst", done: false, reasoning: "analyze" },
+        { specialist: "critic", done: false, reasoning: "critique" },
+        { specialist: null, done: true, reasoning: "complete" },
+      ]),
+      synthesizer: false,
+      initialState: { goal: "attempt-scoping", status: "active" },
+    });
+
+    const result = await testBlock(pattern, {
+      input: { message: "go" },
+      session: { resources: { workspace: emptyWorkspaceState } },
+    });
+
+    expect(result.error).toBeNull();
+    const out = result.output as {
+      history: Array<{ specialist: string; output: unknown }>;
+    };
+    expect(out.history.map((h) => h.specialist)).toEqual([
+      "researcher",
+      "analyst",
+      "critic",
+    ]);
+    // Assert the recorded OUTPUT, not just presence — that is what
+    // `complete()` writes, so it is what a declined write would drop.
+    expect(out.history.map((h) => h.output)).toEqual([
+      { contributed: "researcher" },
+      { contributed: "analyst" },
+      { contributed: "critic" },
+    ]);
+  });
+
   it("rescues failing specialists without aborting the loop", async () => {
     const pattern = routedSpecialists({
       name: "rs-rescue",

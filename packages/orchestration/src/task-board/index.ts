@@ -665,7 +665,14 @@ export function taskBoard<
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
     .tap(async (task: Task, ctx) => {
-      await ctx.sequencer!.patchState({ currentTaskId: task.id });
+      // `attempts` is stamped alongside the id so both recorders can scope
+      // their write-back to the attempt that produced it (FIX-951). The
+      // claim already incremented it, so this is this worker's attempt
+      // number, not the pre-claim one.
+      await ctx.sequencer!.patchState({
+        currentTaskId: task.id,
+        currentAttempt: task.attempts,
+      });
       // FIX-658: mark this worker-body scope so every item the worker emits
       // (messages, tool calls, sources, reasoning) is stamped with the task
       // id at emit time. This makes per-task attribution correct under

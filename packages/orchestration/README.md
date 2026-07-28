@@ -50,6 +50,14 @@ is the common case), or resource-collection (outlives the request: a user's queu
 org work pool — declare one with `defineTaskCollection`). Every mutation emits a
 `task-change` component item.
 
+`complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
+a write-back advisory — `ifAllowed` skips the write when the state machine rejects
+it or the task is already settled, `expectAttempt` skips it when the caller no
+longer holds the claim. Both are evaluated inside the atomic write, and a declined
+write is a silent no-op. Omit the argument — as every caller in this repo outside
+the substrate's own containment write-backs does — and both methods throw on an
+illegal transition exactly as before.
+
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 
@@ -191,8 +199,8 @@ string, but `unknown_assignee` and `illegal_status_transition` are followed by
 never matches. Use `error.startsWith("illegal_status_transition")`. There is no
 separate structured `code` field today.
 
-Only the *tool* boundary translates. Driving a collection directly still throws,
-and the error is an exported class you can catch:
+Only the *tool* boundary translates a refusal into a result. Driving a collection
+directly throws, and the error is an exported class you can catch:
 
 ```ts
 import { IllegalTaskTransitionError } from "@flow-state-dev/orchestration";
@@ -210,6 +218,12 @@ try {
 Catch it by type, not with a blanket `catch`: a CAS conflict, a scope-mutation
 timeout, or a storage failure is not a task-state problem and should keep
 propagating.
+
+The one exception is a call that asked for it. `complete` and `fail` accept the
+advisory options described under [TaskCollection](#taskcollection) above, and a
+refused transition on such a call is a silent no-op rather than a throw — so it
+never reaches this `catch` and never becomes a tool result either. It stays
+opt-in per call precisely so the default above keeps holding.
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.

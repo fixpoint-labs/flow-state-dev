@@ -1,0 +1,6 @@
+{
+  "salt": "held-out-4c71e9",
+  "settledTask": "audit-ledger",
+  "siblingTasks": ["reconcile-invoices", "archive-receipts", "notify-owner"],
+  "settleReason": "owner withdrew the request"
+}

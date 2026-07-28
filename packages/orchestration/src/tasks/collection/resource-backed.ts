@@ -46,8 +46,8 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
-import type { TaskCollectionRef } from "./types";
+import { assertTransitionAllowed } from "../schema/task-status";
+import type { TaskCollectionRef, TaskTransitionOptions } from "./types";
 import {
   applyClaimToTask,
   applyTransition,
@@ -57,9 +57,35 @@ import {
   defaultEligibility,
   defaultOrder,
   listTasks,
+  shouldDeclineTransition,
   shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
+
+/**
+ * Module-private signal that an advisory write declined (FIX-951).
+ *
+ * Thrown from inside `updateState`'s updater and caught around the call.
+ * Never crosses this module's boundary, and never reaches a user: the only
+ * `updateState` it is thrown from is the one that catches it.
+ *
+ * Why a throw rather than returning `current`. Returning the state unchanged
+ * is not a no-op on this backing — `updateState` calls
+ * `persistNamespaceInstanceState` and then `notifyInstanceChange`
+ * unconditionally, and neither compares `prev` to `post`, so a declined write
+ * would announce a `resource_change` for a write that did not happen and
+ * could wake a `reactTo.stateUpdated` block. The updater runs *inside*
+ * `serializeResourceWrite`, and throwing out of it skips both the persist and
+ * the notify while the write chain's tail swallows the rejection, so the next
+ * writer to this key is unaffected. That makes the abort atomic — no pre-read,
+ * no window — and leaves both backings silent on a declined write.
+ */
+class TransitionDeclined extends Error {
+  constructor() {
+    super("[tasks] advisory transition declined");
+    this.name = "TransitionDeclined";
+  }
+}
 
 export interface ResourceBackedOptions {
   collectionId: string;
@@ -138,12 +164,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     );
   }
 
+  /**
+   * Run one lifecycle transition inside the resource's serialized write.
+   *
+   * `guards` makes the write advisory (FIX-951): evaluated against the
+   * freshest state from inside the updater, so the decision is race-free
+   * rather than a caller-side pre-check. A declined write aborts the whole
+   * write via `TransitionDeclined` — see that type for why returning
+   * `current` would not be silent here.
+   */
   async function transitionRef(
     id: string,
     targetStatus: TaskStatus,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    flags?: { allowTerminalNoop?: boolean }
+    guards?: TaskTransitionOptions
   ): Promise<void> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -153,17 +188,24 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     let prevStatus: TaskStatus | undefined;
     let nextTask: Task<TInput, TOutput> | undefined;
 
-    await ref.updateState((current) => {
-      const task = current as unknown as Task<TInput, TOutput>;
-      if (flags?.allowTerminalNoop === true && isTerminalStatus(task.status)) {
-        return current;
-      }
-      assertTransitionAllowed(task.status, targetStatus, id);
-      prevStatus = task.status;
-      const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
-      nextTask = next;
-      return next as unknown as JsonObject;
-    });
+    try {
+      await ref.updateState((current) => {
+        const task = current as unknown as Task<TInput, TOutput>;
+        if (shouldDeclineTransition(task as Task, targetStatus, guards)) {
+          throw new TransitionDeclined();
+        }
+        assertTransitionAllowed(task.status, targetStatus, id);
+        prevStatus = task.status;
+        const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
+        nextTask = next;
+        return next as unknown as JsonObject;
+      });
+    } catch (err) {
+      // Only the decline is absorbed. A store failure, CAS exhaustion, or an
+      // illegal transition the caller did not opt out of still propagates.
+      if (!(err instanceof TransitionDeclined)) throw err;
+      return;
+    }
 
     if (nextTask !== undefined) {
       emit(kind, nextTask, prevStatus);
@@ -265,38 +307,60 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return null;
     },
 
-    async complete(id, output) {
-      await transitionRef(id, "completed", "completed", () => ({
-        output,
-        completedAt: now(),
-        leaseUntil: undefined,
-        error: undefined,
-      }));
+    async complete(id, output, options) {
+      await transitionRef(
+        id,
+        "completed",
+        "completed",
+        () => ({
+          output,
+          completedAt: now(),
+          leaseUntil: undefined,
+          error: undefined,
+        }),
+        options
+      );
     },
 
-    async fail(id, error) {
+    async fail(id, error, options) {
       // Retry path: if the task carries a `maxAttempts` budget that
       // hasn't been exhausted, soft-fail back to `pending` and capture
       // the error as `feedback` for the next attempt. The next claim
       // will increment `attempts` again. Hard-fail (no budget left, or
       // no budget set) goes terminal.
+      //
+      // `options` must reach BOTH branches — see the sequencer backing's
+      // `fail` for why the status-blind retry predicate makes this the most
+      // likely place to ship a partial fix.
       const candidateRef = mirror.get(id);
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
         if (shouldRetryOnFail(current as Task)) {
-          await transitionRef(id, "pending", "retried", () => ({
-            feedback: error,
-            leaseUntil: undefined,
-            error: undefined,
-          }));
+          await transitionRef(
+            id,
+            "pending",
+            "retried",
+            () => ({
+              feedback: error,
+              leaseUntil: undefined,
+              error: undefined,
+            }),
+            options
+          );
           return;
         }
       }
-      await transitionRef(id, "errored", "errored", () => ({
-        error,
-        completedAt: now(),
-        leaseUntil: undefined,
-      }));
+      await transitionRef(
+        id,
+        "errored",
+        "errored",
+        () => ({
+          error,
+          completedAt: now(),
+          leaseUntil: undefined,
+        }),
+        options
+      );
     },
 
     async block(id, reason) {
@@ -333,7 +397,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           reason !== undefined
             ? { error: reason, completedAt: now(), leaseUntil: undefined }
             : { completedAt: now(), leaseUntil: undefined },
-        { allowTerminalNoop: true }
+        // Unchanged behaviour: cancelling an already-settled task is a no-op.
+        // It no longer emits a `resource_change` for the write it skipped.
+        { ifAllowed: true }
       );
     },
 
