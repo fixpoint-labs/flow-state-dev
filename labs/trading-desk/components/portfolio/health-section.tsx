@@ -625,8 +625,15 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
       <LookThroughPositions positions={exposure.positions} residual={exposure.residual} />
       {shouldRenderLookThroughSectors(exposure) && (
         <div className="pt-2">
+          {/* Names both halves: the block renders whenever there are attributed
+           *  sectors OR residual mass, and the residual-only case (every fund
+           *  thin on the sector axis but attributed on the name axis) is exactly
+           *  what step 3's relaxed guard exists to show. A caption reading only
+           *  "Attributed sectors" would then sit above a block with none
+           *  (Codex review, PR #959). */}
           <div className="px-1 pb-1 text-[10px] text-[color:var(--c-fg-faint)]">
-            Attributed sectors (real sectors, no "Funds" bucket on this axis)
+            Sectors seen inside funds, plus what couldn&apos;t be attributed — closes to 100% of
+            invested NAV. Real sectors on this axis, no &quot;Funds&quot; bucket.
           </div>
           <LookThroughSectors buckets={exposure.sectorExposure} residual={exposure.sectorResidual} />
         </div>
@@ -749,23 +756,9 @@ function LookThroughSectors({
 }): ReactElement {
   return (
     <div className="space-y-1.5">
-      {buckets.map((s) => {
-        const width = s.pct === null ? 0 : Math.min(100, Math.max(0, Math.abs(s.pct)));
-        return (
-          <div key={s.bucket} className="flex items-center gap-2 text-[11px]">
-            <div className="w-28 shrink-0 truncate text-[color:var(--c-fg-muted)]" title={s.bucket}>
-              {s.bucket}
-            </div>
-            <div className="relative h-3 flex-1 overflow-hidden rounded-sm bg-[color:var(--c-surface-2)]">
-              <div
-                className="absolute inset-y-0 left-0 rounded-sm"
-                style={{ width: `${width}%`, background: "var(--c-accent)" }}
-              />
-            </div>
-            <div className="w-14 shrink-0 text-right font-mono text-[color:var(--c-fg)]">{pct(s.pct)}</div>
-          </div>
-        );
-      })}
+      {buckets.map((s) => (
+        <Bar key={s.bucket} label={s.bucket} pctValue={s.pct} valueText={pct(s.pct)} />
+      ))}
       {residual.marketValue > 0 && (
         <Bar
           pctValue={residual.sharePct}
