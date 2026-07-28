@@ -176,6 +176,21 @@ No task is created, so a typo can't sit on the board and surface much later as a
 
 When an `addTask` could fail more than one way, the checks run in a fixed order: no board, then an unknown assignee, then the creation bounds. The assignee is checked before the bounds deliberately. Naming a worker that doesn't exist is the more useful thing to hear, and a task rejected for a bad assignee never reaches the board — so a typo can't consume budget that a later, valid task needed.
 
+Status changes come back the same way. A task only moves along the lifecycle the substrate allows, so a task still sitting `pending` can't jump straight to `completed` — nothing has started it. When a tool asks for a move the lifecycle refuses, the coordinator gets a result rather than a thrown error, naming the status the task is actually in and the calls that would work from there:
+
+```
+completeTask({ taskId: "t_3", output: "…" })
+→ { ok: false,
+    taskId: "t_3",
+    error: 'illegal_status_transition: task "t_3" is pending, so transitioning
+            to completed is not available — a pending task has not been started
+            yet. From here you can call blockTask or cancelTask.' }
+```
+
+Those are the calls this surface can make from that status, not every transition the substrate permits. The distinction matters: a `pending` task can legally reach `in_progress`, but no task tool moves it there, so listing it would point the model at an operation it doesn't have. A task already in a terminal status (`completed`, `errored`, `cancelled`) gets told that instead, with a suggestion to add a new task, because nothing will move it again.
+
+Only a refused transition softens this way. Storage failures, concurrent-write conflicts, and ordinary bugs still throw. That line is deliberate — a real fault that came back as a polite `{ ok: false }` would read to the model as its own mistake, and it would narrate past a broken board. Driving a `TaskCollection` directly from your own code gets the throw in every case, including this one; see [the status state machine](../orchestration/task-substrate.md#the-status-state-machine).
+
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 
 The division of labor to keep straight: `addTask` writes a task — it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph. Draining the board is running it; there is no other path to executing a delegated agent. Nothing drains the board behind the model's back — the skill decides when to run it.
