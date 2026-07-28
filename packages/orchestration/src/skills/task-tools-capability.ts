@@ -39,6 +39,19 @@ import {
 export const DELEGATION_BOARD_FIELD = "delegationBoard";
 
 /**
+ * Change-stream visibility for the delegation board. The `task-change` items
+ * drive the client's live plan UI but never re-enter the executive's LLM
+ * history — the task tools' return values and `runBoard`'s settled summary
+ * already carry that signal.
+ *
+ * Lives here, next to the board field, because BOTH paths to this board must
+ * agree on it: the own-state resolver below and the delegation surface's capped
+ * resolver. Two ledgers over the same state with different visibility would
+ * emit the same change twice under different rules.
+ */
+export const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as const;
+
+/**
  * Schema for the delegation board field (a `Record<taskId, Task>`). Defaults to
  * `{}` so the engine's empty-parse own-state seeding (`stateSchema.safeParse({})`)
  * creates the board — without the default the host state initializes to `{}`,
@@ -83,10 +96,7 @@ export const defaultOwnStateResolver: TaskCollectionResolver = async (ctx) => {
     stateKey: DELEGATION_BOARD_FIELD,
     collectionId: DELEGATION_BOARD_FIELD,
     ctx,
-    // Ledger changes drive the client's plan UI but stay out of the LLM
-    // history — the tools' return values already carry the signal. Matches
-    // the runBoard drain's visibility so both paths to this board agree.
-    changeVisibility: { client: true, history: false },
+    changeVisibility: DELEGATION_BOARD_VISIBILITY,
   });
 };
 

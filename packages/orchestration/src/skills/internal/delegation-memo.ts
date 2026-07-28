@@ -90,21 +90,14 @@ const delegationMemo = new WeakMap<object, DelegationMemoEntry>();
  * without invoking `build`. Otherwise `build` runs exactly once and its result
  * is cached under the new snapshot.
  *
- * `build` runs for EVERY changed snapshot, including an empty one. This module
- * deliberately has no opinion about what an empty roster means — that is the
- * surface's call, and `buildTools`/`buildGuidance` already return `[]`/`null`
- * for a roster with nothing in it. An earlier version short-circuited an empty
- * source list here; the branch bought nothing (`buildTools` returns before
- * materializing a board or a floor, so the "saved" work is a couple of object
- * allocations) while making `build` conditional in a way its callers could not
- * see.
+ * `build` runs for EVERY changed snapshot, including an empty one — this module
+ * has no opinion about what an empty roster means, which is the surface's call.
  *
- * That is the standing caution for this module: `build` is invoked when the
- * snapshot changes, and on no other schedule. Anything that must happen on a
- * DIFFERENT schedule does not belong inside the closure — the surface's
- * rejected-agent-key warning is keyed on its own identity in
- * `delegation-surface.ts` for exactly that reason, since a roster can gain an
- * illegal key while filtering to a byte-identical snapshot here.
+ * The standing caution: `build` is invoked when the snapshot changes and on no
+ * other schedule, so anything needing a DIFFERENT schedule does not belong
+ * inside the closure. The surface's rejected-agent-key warning is keyed on its
+ * own identity for exactly that reason — a roster can gain an illegal key while
+ * filtering to a byte-identical snapshot here.
  */
 export async function resolveDelegationBuild(
   ctx: object,

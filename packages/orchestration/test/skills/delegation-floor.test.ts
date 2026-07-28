@@ -398,6 +398,47 @@ describe("delegation floor — reserved agent keys", () => {
       warn.mockRestore();
     }
   });
+
+  // A SECOND illegal key appearing later in the same execution must be reported
+  // on its own merit, without re-reporting the one already announced. The
+  // reporter tracks reported `skill/key` pairs rather than fingerprinting the
+  // whole rejected set, so a growing set reports only what is new — otherwise
+  // every subsequent step re-announces keys the operator has already seen.
+  it("reports only the newly rejected key when a second one appears", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const collection = createMockSkillsCollection();
+      const { ctx } = buildExecCtx(collection);
+
+      // Computed keys throughout: a literal `__proto__:` in an object literal
+      // hits the prototype setter instead of creating an own property, so the
+      // planted key would never reach the filter at all.
+      await buildDelegationTools(
+        ctx,
+        plantedDeps({
+          briefer: { prompt: "briefs" },
+          ["__proto__"]: { prompt: "a" },
+        }) as never,
+      );
+      await buildDelegationTools(
+        ctx,
+        plantedDeps({
+          briefer: { prompt: "briefs" },
+          ["__proto__"]: { prompt: "a" },
+          ["__no_assignee__"]: { prompt: "b" },
+        }) as never,
+      );
+
+      const countFor = (needle: string) =>
+        warn.mock.calls.filter((c) => String(c[0]).includes(needle)).length;
+      // The first key was announced once and not repeated on the second pass.
+      expect(countFor("__proto__")).toBe(1);
+      // The new one was announced despite the build snapshot being unchanged.
+      expect(countFor("__no_assignee__")).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

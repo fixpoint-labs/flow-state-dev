@@ -50,6 +50,7 @@ import type { TaskCollectionRef } from "../tasks";
 import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
 import { skillManifestKey } from "./collection";
+import { findBundledFile } from "./internal/bundled-files";
 import { getCollection } from "./internal/get-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { isValidAgentKey } from "./skill-md";
@@ -60,19 +61,12 @@ import {
   buildTaskToolsList,
   createTaskToolsCapability,
   DELEGATION_BOARD_FIELD,
+  DELEGATION_BOARD_VISIBILITY,
   type WorkerRoster,
 } from "./task-tools-capability";
 
 /** Model-facing name of the board-drain tool. */
 export const RUN_BOARD_TOOL_NAME = "runBoard";
-
-/**
- * Change-stream visibility for the delegation board: the `task-change` items
- * drive the client's live plan UI but never re-enter the executive's LLM
- * history — the task tools' return values and `runBoard`'s settled summary
- * already carry that signal.
- */
-export const DELEGATION_BOARD_VISIBILITY = { client: true, history: false } as const;
 
 /** Board drain defaults — deliberate, not configurable until a consumer needs it. */
 const BOARD_CONCURRENCY = 4;
@@ -285,11 +279,8 @@ export async function collectAgentSources(
  * unchanged (materializeWorker reads the live collection) when not bundled.
  */
 function withBundledPrompt(spec: AgentSpec, files: SkillFile[] | undefined): AgentSpec {
-  if (spec.promptRef === undefined || !files) return spec;
-  const wanted = spec.promptRef.replace(/^\.\//, "").replace(/^\//, "");
-  const file = files.find(
-    (f) => f.path === wanted || f.path.replace(/^\.\//, "") === wanted,
-  );
+  if (spec.promptRef === undefined) return spec;
+  const file = findBundledFile(files, spec.promptRef);
   if (!file) return spec;
   const { promptRef: _promptRef, ...rest } = spec;
   return { ...rest, prompt: stripFrontmatter(file.content) };
@@ -442,47 +433,32 @@ function validateAgentKeys(sources: DelegationAgentSource[]): {
 }
 
 /**
- * Per-execution memo for the rejected-key diagnostic, deliberately SEPARATE
- * from the build memo in `internal/delegation-memo.ts`.
+ * Rejected `skill/key` pairs already reported for a given execution.
  *
- * "What to build" and "what to warn about" have different identities, and
- * modelling them as one is what made the diagnostic fragile twice over. Rejected
- * keys are filtered out *before* the board, tools and guidance are computed, so
- * they cannot change the built output — which cuts both ways:
- *
- *   - Folding them into the build snapshot would invalidate the board cache for
- *     a purely diagnostic change, trading FIX-928's build-once property for a
- *     log line.
- *   - But keying the diagnostic on the BUILD snapshot loses reports, because a
- *     roster that gains only an illegal key filters to an identical snapshot.
- *
- * So the diagnostic gets its own identity: the rejected set itself. Keyed on the
- * execution ctx exactly like the build memo, so it GCs with the execution and a
+ * Deliberately separate from the build memo in `internal/delegation-memo.ts`:
+ * rejected keys are filtered out *before* tools and guidance are computed, so a
+ * roster that gains only an illegal key filters to an identical build snapshot.
+ * Keying the diagnostic on that snapshot would swallow the report; folding it
+ * into the snapshot would rebuild the board for a log line. Keyed on the
+ * execution ctx like the build memo, so it GCs with the execution and a
  * still-corrupt manifest re-reports on the next turn.
  */
-const reportedRejections = new WeakMap<object, string>();
+const reportedRejections = new WeakMap<object, Set<string>>();
 
-/**
- * Warn once per distinct rejected-key set per execution.
- *
- * The delimiters are U+0000 and U+0001, chosen because neither can occur in a
- * skill name or an agent key, so the fingerprint is injective. Write them as
- * unicode ESCAPES, never as literal control bytes: a literal NUL makes this
- * whole module classify as binary, at which point ripgrep reports only
- * "binary file matches" and every symbol in the file becomes ungreppable.
- */
+/** Warn once per execution for each distinct rejected `skill/key` pair. */
 function reportRejectedAgentKeys(
   ctx: object,
   rejected: ReadonlyArray<{ skillName: string; key: string }>,
 ): void {
-  if (rejected.length === 0) return;
-  const fingerprint = rejected
-    .map(({ skillName, key }) => `${skillName}\u0000${key}`)
-    .sort()
-    .join("\u0001");
-  if (reportedRejections.get(ctx) === fingerprint) return;
-  reportedRejections.set(ctx, fingerprint);
+  let seen = reportedRejections.get(ctx);
+  if (seen === undefined) {
+    seen = new Set<string>();
+    reportedRejections.set(ctx, seen);
+  }
   for (const { skillName, key } of rejected) {
+    const id = `${skillName}/${key}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
     console.warn(
       `[skills] delegation agent key "${key}" (skill "${skillName}") is not a legal agent ` +
         `key (must match /^[a-z0-9][a-z0-9_-]*$/) — skipped. Underscore-led names are ` +
@@ -510,9 +486,17 @@ async function resolveBuild(
     // refused for naming, so the invariant is literal here rather than
     // true-by-inspection in two places.
     const rosterPurposes = buildRosterPurposes(sources);
+    // ...and ONE install decision, for the same reason. An empty roster means
+    // nothing to delegate to, so the surface contributes nothing — unless the
+    // binding opted the floor in (`delegation: true`), where the default worker
+    // IS the board. Tools and guidance must agree on this: a playbook with no
+    // tools tells the model to call `runBoard` it doesn't have, and tools with
+    // no playbook leave it unexplained.
+    const installs = rosterPurposes.size > 0 || deps.allowEmptyRoster;
+    if (!installs) return { tools: [], guidance: null };
     return {
       tools: await buildTools(ctx, deps, sources, rosterPurposes),
-      guidance: buildGuidance(rosterPurposes, deps.allowEmptyRoster),
+      guidance: buildGuidance(rosterPurposes),
     };
   });
 }
@@ -557,9 +541,9 @@ export async function buildDelegationTools(
  * delegation skill must fail loud, not silently lose its team. A *runtime*
  * activation whose agent key collides with a divergent spill from another active
  * skill is skipped with a warning instead (a model-driven activation must not
- * crash the turn). Called when `sources.length > 0`, or when
- * `deps.allowEmptyRoster` (a rosterless `delegation: true` binding) — in which
- * case the roster is empty and the default floor is the board's only worker.
+ * crash the turn). Called only when the surface installs (`resolveBuild` owns
+ * that decision); on a rosterless `delegation: true` binding the default floor
+ * is the board's only worker.
  */
 async function buildTools(
   ctx: BlockContext,
@@ -678,11 +662,6 @@ async function buildTools(
     }
   }
 
-  // Empty roster: normally nothing to delegate to, so contribute no tools —
-  // UNLESS the floor is on (`delegation: true`), where the default worker IS
-  // the board and the surface must still install (FIX-940).
-  if (Object.keys(boardWorkers).length === 0 && !deps.allowEmptyRoster) return [];
-
   // The floor is wired as the board's fallback whenever the surface builds —
   // roster+floor and rosterless alike (decision 3: unconditional when
   // delegation installs). Declared workers still win their keys.
@@ -764,20 +743,16 @@ const FLOOR_ADVISORY_ROSTERLESS =
 /**
  * Render the guidance from the roster `resolveBuild` already derived — the same
  * map the assignment gate validates against, so the agents the coordinator is
- * told about are exactly the ones it may assign to. Returns `null`
- * (contributes nothing) when no bound skill declares agents AND the floor is
- * off. With the floor on but an empty roster (rosterless `delegation: true`),
- * the guidance leads with the floor rather than an empty "Your agents:" list;
- * a floor advisory is appended in both roster states (FIX-940, decision 5) — but a
- * different one each way, since only a roster-carrying board validates assignment (FIX-924).
+ * told about are exactly the ones it may assign to. Called only when the surface
+ * installs; `resolveBuild` owns that decision.
+ *
+ * A rosterless board leads with the floor rather than an empty "Your agents:"
+ * list, and takes a different floor advisory: only a roster-carrying board
+ * validates assignment (FIX-924), so promising rejection on a board that accepts
+ * anything would be a lie.
  */
-function buildGuidance(
-  rosterPurposes: Map<string, string>,
-  allowEmptyRoster: boolean,
-): string | null {
-  if (rosterPurposes.size === 0 && !allowEmptyRoster) return null;
+function buildGuidance(rosterPurposes: Map<string, string>): string {
   if (rosterPurposes.size === 0) {
-    // Rosterless: no "Your agents:" list — the floor is the whole team.
     return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY_ROSTERLESS}`;
   }
   const lines = [...rosterPurposes].map(([key, purpose]) => `- ${key}: ${purpose}`);

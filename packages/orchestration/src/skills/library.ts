@@ -32,6 +32,7 @@
 
 import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
+import { findBundledFile } from "./internal/bundled-files";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
   DeclaredResourceEntry,
@@ -492,7 +493,10 @@ export function createSkillsLibrary(
               `\`agentRegistry\`/\`materializeAgent\` to resolve it with.`,
           );
         }
-        if (spec.promptRef !== undefined && !hasBundledFile(entry.files, spec.promptRef)) {
+        if (
+          spec.promptRef !== undefined &&
+          findBundledFile(entry.files, spec.promptRef) === undefined
+        ) {
           throw new Error(
             `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
               `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
@@ -612,14 +616,6 @@ export function createSkillsLibrary(
 // ---------------------------------------------------------------------------
 // Delegation helpers (FIX-918)
 // ---------------------------------------------------------------------------
-
-/** Whether a skill's bundled files contain the given `prompt-ref` path. */
-function hasBundledFile(files: SkillFile[] | undefined, ref: string): boolean {
-  const wanted = ref.replace(/^\.\//, "").replace(/^\//, "");
-  return (files ?? []).some(
-    (f) => f.path === wanted || f.path.replace(/^\.\//, "") === wanted,
-  );
-}
 
 /**
  * Project the bundled index down to agent-declaring skills, so a runtime
