@@ -101,10 +101,13 @@ export interface SkillsLibraryOptions {
    * ever created on the board, terminal ones included, and is never refunded by
    * draining. Default 500; `null` is explicitly unbounded.
    *
-   * The delegation board is sequencer-backed (the executive's own state), so on
-   * a checkpoint resume the ledger — and therefore this count — is restored with
-   * it rather than starting over. See the lifetime section in
-   * `tasks/collection/task-caps.ts`.
+   * The delegation board's ledger lives on the executive GENERATOR's own block
+   * state (`ctx.self`), which is rebuilt from `stateSchema` on every scope entry
+   * with no persist callback — so a suspend/resume starts this count over rather
+   * than restoring it. `backing: "sequencer"` names the StateRef's shape, not the
+   * block it hangs off; only a sequencer block checkpoints. See the lifetime
+   * section in `tasks/collection/task-caps.ts`. Durable non-sequencer block state
+   * is FIX-917's deferred follow-up.
    */
   maxTotalTasks?: number | null;
   /**

@@ -38,9 +38,25 @@
  *   `packages/core/src/blocks/sequencer.ts`), and the task map is part of it. The
  *   counts come back with the ledger; a post-resume wave is checked against the
  *   pre-suspension tasks, NOT against an empty board.
- * - **Resource-backed** — not enforced at all (deferred, see FIX-939/FIX-917).
  *
- * "The caps reset on resume" is false for the sequencer backing and was wrong in
+ *   The trap, because this bullet gets cited: `backing: "sequencer"` names the
+ *   STATE REF's shape, not the block it hangs off. `SequencerBackingSpec.sequencer`
+ *   accepts any `StateRef` (`get-or-create.ts`), and the delegation surface passes
+ *   `ctx.self` — the executive GENERATOR's own state (`delegation-surface.ts`).
+ *   Only a sequencer block checkpoints: the lone `state_snapshot` emitter bails
+ *   when `ctx.sequencer` is undefined, and that resolves only through a parent
+ *   whose `kind === "sequencer"`. A generator's own-state container is rebuilt
+ *   from `stateSchema` per scope entry with no persist callback, so a DELEGATION
+ *   board's ledger — and its counts — start over. Durable non-sequencer block
+ *   state is FIX-917's deferred follow-up.
+ * - **Resource-backed** — `maxTotalTasks` has a durable analogue rather than no
+ *   enforcement: `defineTaskCollection({ maxInstances })` is the board's total
+ *   ceiling, enforced in the resource registry, which throws once the namespace
+ *   is full (`eviction` defaults to `"none"`). `maxEnqueuedTasks` is what stays
+ *   deferred — the registry counts instances and has no notion of a task's
+ *   status, so it cannot bound the `pending` subset (see FIX-939).
+ *
+ * "The caps reset on resume" is false for a true sequencer host and was wrong in
  * the docs before FIX-931 landed. What the spec actually scoped out was a
  * cross-resume cumulative *guarantee* — we do not promise the counts survive,
  * because that depends on the backing and on whether a checkpoint was restored.

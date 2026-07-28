@@ -214,7 +214,7 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 - `concurrency` — max parallel workers. Default `4`.
 - `onError: "skip" | "fail"` — `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
 - `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
-- `maxIterations` — board-level safety cap on total dispatch loops before the board stops. Default `10000`.
+- `maxIterations` — safety cap on how many times a single worker loops back to claim again. It applies per worker, not across the board. Default `10000`.
 
 ## Bounding how much work a board takes on
 
@@ -234,9 +234,11 @@ Neither bound is a stored counter. Both are read off the board's task ledger at 
 
 - **Request-backed** (the default) — the ledger lives on the request, so a new request starts empty and both counts start from zero.
 - **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. The counts come back with it. A wave of new tasks after a resume is checked against the tasks that were already there, not against an empty board.
-- **Durable (resource-backed)** — the bounds are not enforced on this backing yet.
+- **Durable (resource-backed)** — `maxTotalTasks` has a durable equivalent: `maxInstances` on the task collection is the board's total ceiling, and creating a task past it throws. The enqueue bound is what isn't enforced here — the resource layer counts instances, not task statuses, so it can't tell how many are `pending`.
 
-Do not plan a post-resume wave on the assumption that the ceiling resets. It does not reset on the sequencer backing, and a delegation board is sequencer-backed.
+One qualifier on the sequencer bullet, because it is easy to read too broadly. `backing: "sequencer"` describes the shape of the state reference the ledger is stored in, not the kind of block it hangs off. Any block that holds its own state can supply one. Only a real sequencer block checkpoints its state, so only a board whose ledger sits on a sequencer gets the restore described above.
+
+A delegation board is the case where the two come apart: it uses the sequencer backing, but the ledger lives on the coordinator generator's own state, which is rebuilt from its schema each time the block is entered. Its tasks and counts start from zero after a resume.
 
 ### One writer, or hand every writer the bounds
 
