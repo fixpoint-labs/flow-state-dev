@@ -232,6 +232,8 @@ One shape is worth knowing about, because it trades a loud failure for an expens
 
 Creating a task past either bound throws a `TaskCapExceededError` naming the bound it crossed, and nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool turns that into a soft `enqueued_task_cap_exceeded` or `total_task_cap_exceeded` result instead. The two recover differently — draining frees the enqueue bound, but only for tasks that can actually run, and gives nothing back against the lifetime one — and what a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
 
+That split is the general rule, not a special case for caps: the substrate throws, and the delegation tool boundary translates the errors a model can act on into results. A refused status transition works the same way — see [the status state machine](task-substrate.md#the-status-state-machine). The board's own result write-backs are the one deliberate exception, and they are why a settled task doesn't take the board down: they ask for the refusal to be silent, as described under concurrency above.
+
 Be precise about what the enqueue bound covers. It applies **when a task is created**. Tasks also return to `pending` through the lifecycle — a retry under `maxAttempts`, an unblock, a resume from review, a reclaimed lease — and those paths are not bounded, so `pending` can sit above `maxEnqueuedTasks` for a while. The hard ceiling is `maxTotalTasks`.
 
 ### How long the counts last

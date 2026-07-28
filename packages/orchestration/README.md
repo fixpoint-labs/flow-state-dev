@@ -53,9 +53,10 @@ org work pool — declare one with `defineTaskCollection`). Every mutation emits
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no
-longer holds the claim. Both are evaluated inside the atomic write. Omit it and
-both methods throw on an illegal transition exactly as before; only the substrate's
-own write-backs opt in.
+longer holds the claim. Both are evaluated inside the atomic write, and a declined
+write is a silent no-op. Omit the argument — as every caller in this repo outside
+the substrate's own containment write-backs does — and both methods throw on an
+illegal transition exactly as before.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
@@ -180,6 +181,49 @@ refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 > `stateKey` — see
 > [Delegation](https://flow-state.dev/docs/skills/delegation#board-and-overrides)
 > for the full recipe.
+
+**Every `taskTools` call reports a problem the same way.** A status change the
+task's current status does not permit is a recoverable tool result too, not a
+throw: `completeTask` on a task that was never started answers
+`{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
+status and the calls actually available from it. So the recoverable set across
+the eight tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
+`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`, and
+`illegal_status_transition` — a coordinator rule like "when a tool returns
+`ok: false`, re-plan" covers all of them.
+
+Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
+`enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
+string, but `unknown_assignee` and `illegal_status_transition` are followed by
+`: ` and a sentence of guidance for the model, so `error === "illegal_status_transition"`
+never matches. Use `error.startsWith("illegal_status_transition")`. There is no
+separate structured `code` field today.
+
+Only the *tool* boundary translates a refusal into a result. Driving a collection
+directly throws, and the error is an exported class you can catch:
+
+```ts
+import { IllegalTaskTransitionError } from "@flow-state-dev/orchestration";
+
+try {
+  await collection.complete(taskId, output);
+} catch (err) {
+  if (err instanceof IllegalTaskTransitionError) {
+    // err.taskId, err.from, err.to — the refused move.
+  }
+  throw err;
+}
+```
+
+Catch it by type, not with a blanket `catch`: a CAS conflict, a scope-mutation
+timeout, or a storage failure is not a task-state problem and should keep
+propagating.
+
+The one exception is a call that asked for it. `complete` and `fail` accept the
+advisory options described under [TaskCollection](#taskcollection) above, and a
+refused transition on such a call is a silent no-op rather than a throw — so it
+never reaches this `catch` and never becomes a tool result either. It stays
+opt-in per call precisely so the default above keeps holding.
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.

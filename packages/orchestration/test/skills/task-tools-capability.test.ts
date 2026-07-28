@@ -11,60 +11,9 @@ import {
   DELEGATION_BOARD_FIELD,
   type WorkerRoster,
 } from "../../src/skills/task-tools-capability";
+import { buildDelegationCtx } from "./delegation-ctx";
 import type { GeneratorTool } from "@flow-state-dev/core";
 
-/**
- * Build a minimal BlockContext whose `ctx.parent` carries an own-state
- * delegation board (FIX-918). The default `taskTools` resolver reads the host
- * generator's own-state board via `ctx.parent`, so the mock parent exposes a
- * live `state` getter with a `delegationBoard` record plus a CAS-shaped
- * `atomicState` — the two surfaces `createSequencerBackedTaskCollection` uses.
- */
-function buildDelegationCtx(opts: { preTasks?: Record<string, unknown> } = {}) {
-  const parentState: Record<string, unknown> = {
-    [DELEGATION_BOARD_FIELD]: opts.preTasks ?? {},
-  };
-  const parent = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return parentState;
-    },
-    // Mirrors the real StateRef contract: the mutator returns a partial patch
-    // that is merged into the state (not an in-place mutation).
-    atomicState: async (
-      fn: (
-        state: Record<string, unknown>,
-      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      const patch = await fn(parentState);
-      Object.assign(parentState, patch);
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(parentState, updates);
-    },
-  };
-  return {
-    parent,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {},
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: { get: () => undefined, list: () => [] },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  } as never;
-}
 
 /** Build a context whose parent exposes no delegation board (→ no_delegation_board). */
 function buildNoBoardCtx() {
@@ -180,7 +129,9 @@ describe("taskTools — happy paths (own-state board)", () => {
     expect((result as { tasks: Array<{ id: string }> }).tasks.map((t) => t.id)).toEqual(["a"]);
   });
 
-  it("completeTask transitions a pending task to completed", async () => {
+  // Named for what it seeds. It has always seeded `in_progress`; the old name
+  // said `pending`, which is the one status completeTask is REFUSED from.
+  it("completeTask transitions an in_progress task to completed", async () => {
     const ctx = buildDelegationCtx({
       preTasks: {
         a: {
@@ -404,5 +355,272 @@ describe("taskTools — no roster supplied (back-compat)", () => {
       ctx,
     );
     expect((result as { ok: boolean }).ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Illegal status transitions (FIX-950)
+// ---------------------------------------------------------------------------
+
+/** Seed a board holding exactly one task in `status`, plus any extra fields. */
+function ctxWithTask(status: string, extra: Record<string, unknown> = {}) {
+  return buildDelegationCtx({
+    preTasks: {
+      a: {
+        id: "a",
+        goal: "x",
+        status,
+        attempts: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        ...extra,
+      },
+    },
+  });
+}
+
+/** The seeded task's status as it stands on the board now. */
+function statusOfA(ctx: unknown): string {
+  const board = (ctx as { parent: { state: Record<string, unknown> } }).parent.state[
+    DELEGATION_BOARD_FIELD
+  ] as Record<string, { status: string }>;
+  return board.a!.status;
+}
+
+/** Drive a tool and return the `error` string it reported. */
+async function errorFrom(tool: string, input: Record<string, unknown>, ctx: unknown) {
+  const result = await runForTest(findTool(tool), input, ctx as never);
+  expect((result as { ok: boolean }).ok).toBe(false);
+  return (result as { error: string }).error;
+}
+
+/**
+ * Each of the three tools that could refuse a transition answers with the
+ * shared recoverable shape, and leaves the task exactly as it found it.
+ */
+describe("taskTools — illegal status transitions return a recoverable result", () => {
+  it("completeTask on a pending task reports not-ok instead of throwing", async () => {
+    const ctx = ctxWithTask("pending");
+    const result = await runForTest(findTool("completeTask"), { taskId: "a", output: "done" }, ctx);
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("illegal_status_transition");
+    expect(statusOfA(ctx)).toBe("pending");
+  });
+
+  it("blockTask on an in_progress task reports not-ok instead of throwing", async () => {
+    const ctx = ctxWithTask("in_progress");
+    const result = await runForTest(findTool("blockTask"), { taskId: "a", reason: "legal" }, ctx);
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("illegal_status_transition");
+    expect(statusOfA(ctx)).toBe("in_progress");
+  });
+
+  it("failTask on a pending task reports not-ok instead of throwing", async () => {
+    const ctx = ctxWithTask("pending");
+    const result = await runForTest(findTool("failTask"), { taskId: "a", error: "nope" }, ctx);
+    expect(result).toMatchObject({ ok: false, taskId: "a" });
+    expect((result as { error: string }).error).toContain("illegal_status_transition");
+    expect(statusOfA(ctx)).toBe("pending");
+  });
+});
+
+/**
+ * The recovery half. These are the cases where a list derived from
+ * `allowedTransitionsFrom` (a fact about the COLLECTION) and one derived from
+ * tool-reachable actions (a fact about the TOOL surface, where the model
+ * stands) give different answers.
+ */
+describe("taskTools — the recovery list names tool-reachable calls", () => {
+  it("names the calls available from pending, and does not name a status no tool reaches", async () => {
+    const error = await errorFrom(
+      "completeTask",
+      { taskId: "a", output: "done" },
+      ctxWithTask("pending"),
+    );
+    expect(error).toContain('task "a" is pending');
+    expect(error).toContain("transitioning to completed is not available");
+    // `allowedTransitionsFrom("pending")` includes `in_progress`, which no task
+    // tool can reach — a worker claim during a drain is the only route there.
+    expect(error).not.toContain("in_progress");
+    expect(error).toContain("From here you can call blockTask or cancelTask.");
+    // The rejected tool excludes itself: its target is by definition not allowed.
+    expect(error).not.toContain("completeTask");
+    // Said without asserting HOW a task gets started — this surface does not
+    // know whether its consumer has a drain tool.
+    expect(error).toContain("has not been started yet");
+  });
+
+  it("does not imply an unblock exists for a blocked task", async () => {
+    const error = await errorFrom(
+      "completeTask",
+      { taskId: "a", output: "done" },
+      ctxWithTask("blocked"),
+    );
+    expect(error).toContain('task "a" is blocked');
+    // No tool unblocks a task. `allowedTransitionsFrom("blocked")` claims
+    // `pending`, reachable ONLY via failTask with a retry budget — which this
+    // budget-less task does not have. The message must not suggest otherwise.
+    expect(error).not.toMatch(/unblock/i);
+    expect(error).not.toContain("pending");
+    expect(error).toContain("cancelTask");
+    expect(error).not.toContain("failTask");
+  });
+
+  it("still offers blockTask on a blocked task, because that call does real work", async () => {
+    // Pins the RULE ("would this call succeed") against the alternative reading
+    // that a blocked task should advertise only `cancelTask`. `block()` on an
+    // already-blocked task is a legal same-status transition that rewrites the
+    // reason and emits a `blocked` change, so the rule keeps it. Suppressing it
+    // would require a same-status filter, which is the thing that would also
+    // silently drop a budgeted `failTask` from a `pending` task's list.
+    //
+    // This assertion is the difference between the two readings: without it the
+    // blocked case passes under either, and a filter could be reintroduced
+    // unnoticed.
+    const error = await errorFrom(
+      "completeTask",
+      { taskId: "a", output: "done" },
+      ctxWithTask("blocked"),
+    );
+    expect(error).toContain("From here you can call blockTask or cancelTask.");
+  });
+
+  it("names the calls available from awaiting_review without claiming pending", async () => {
+    const error = await errorFrom(
+      "blockTask",
+      { taskId: "a", reason: "legal" },
+      ctxWithTask("awaiting_review"),
+    );
+    expect(error).toContain('task "a" is awaiting_review');
+    // `allowedTransitionsFrom("awaiting_review")` includes `pending`; no tool
+    // reaches it from here, so the recovery list must not mention it.
+    expect(error).not.toContain("pending");
+    expect(error).toContain("cancelTask");
+    expect(error).toContain("completeTask");
+    expect(error).toContain("failTask");
+  });
+
+  it("states a terminal task as terminal, without rendering an empty action list", async () => {
+    const error = await errorFrom(
+      "blockTask",
+      { taskId: "a", reason: "legal" },
+      ctxWithTask("completed"),
+    );
+    expect(error).toContain('task "a" is completed, which is terminal');
+    expect(error).toContain("Add a new task instead");
+    // No dangling "From here you can call ." and no claim that nothing at all
+    // can be called — `cancelTask` on a terminal task is still a silent ok.
+    expect(error).not.toContain("From here you can call");
+    expect(error).not.toMatch(/nothing/i);
+    // Terminal messages quote no target status; that is what keeps `failTask`'s
+    // retry-branch target from ever being rendered as the model's intent.
+    expect(error).not.toContain("transitioning to");
+  });
+
+  it("renders a non-empty action list from every non-terminal status", async () => {
+    // The composer has no empty-list branch, on the strength of a table
+    // invariant: every non-terminal row of ALLOWED_TRANSITIONS contains
+    // `cancelled`, and `cancelTask` targets it. That invariant lives in
+    // task-status.ts, not here, so a future edit to the table (adding a status,
+    // or narrowing a row) could break this file's output with nothing in it
+    // changing. Asserted here rather than guarded at runtime — an unreachable
+    // `if` would hide the regression, and this names it instead.
+    const probes: Array<[status: string, tool: string]> = [
+      ["pending", "completeTask"],
+      ["in_progress", "blockTask"],
+      ["blocked", "completeTask"],
+      ["awaiting_review", "blockTask"],
+    ];
+    for (const [status, tool] of probes) {
+      const error = await errorFrom(tool, { taskId: "a", reason: "r" }, ctxWithTask(status));
+      const clause = /From here you can call (.+)\.$/.exec(error.trim());
+      expect(clause, `${tool} from ${status} advertised no calls`).not.toBeNull();
+      expect(clause![1]!.trim()).not.toBe("");
+      expect(clause![1]).not.toContain("undefined");
+    }
+  });
+
+  it("never names runBoard, which is not one of these tools", async () => {
+    // Paired so each source status gets a tool that actually refuses from it.
+    // `completeTask` is NOT usable to provoke one from `completed`: same-status
+    // is a legal no-op that succeeds, which is why `blockTask` probes there.
+    const probes: Array<[status: string, tool: string]> = [
+      ["pending", "completeTask"],
+      ["in_progress", "blockTask"],
+      ["blocked", "completeTask"],
+      ["awaiting_review", "blockTask"],
+      ["completed", "blockTask"],
+    ];
+    for (const [status, tool] of probes) {
+      const input =
+        tool === "blockTask" ? { taskId: "a", reason: "legal" } : { taskId: "a", output: "done" };
+      const error = await errorFrom(tool, input, ctxWithTask(status));
+      // `taskTools` ships standalone; `runBoard` is installed by the delegation
+      // surface. Naming it would point a directly-wired consumer at a tool it
+      // does not have.
+      expect(error).not.toContain("runBoard");
+    }
+  });
+});
+
+/**
+ * `failTask`'s target is conditional on the task's retry budget, so the composer
+ * asks `shouldRetryOnFail` about the task in hand rather than assuming.
+ *
+ * Note the layer: these tasks are seeded with `maxAttempts` directly onto the
+ * board. The delegation `addTask` TOOL exposes no `maxAttempts`, so tasks
+ * created through it never carry a budget — but `taskTools` /
+ * `buildTaskToolsList` are exported standalone and can be wired onto a
+ * collection whose tasks do (the task-board primitive stamps one via
+ * `applyReplan`'s `maxAttemptsPerTask`). The composer is surface-agnostic by
+ * construction; these cases cover the wiring where the branch is live.
+ */
+describe("taskTools — failTask's retry budget", () => {
+  it("succeeds on a pending task that still has retry budget", async () => {
+    const ctx = ctxWithTask("pending", { maxAttempts: 3, attempts: 1 });
+    const result = await runForTest(findTool("failTask"), { taskId: "a", error: "flaky" }, ctx);
+    expect((result as { ok: boolean }).ok).toBe(true);
+    // Same-status, but not inert: it soft-fails back to pending and records the
+    // error as feedback for the next attempt.
+    expect(statusOfA(ctx)).toBe("pending");
+  });
+
+  it("advertises failTask from pending when the task has retry budget", async () => {
+    // Asserted SEPARATELY from the success case above on purpose. A same-status
+    // filter in the composer would leave the call succeeding while silently
+    // dropping it from the recovery list, and only this assertion catches that.
+    const error = await errorFrom(
+      "completeTask",
+      { taskId: "a", output: "done" },
+      ctxWithTask("pending", { maxAttempts: 3, attempts: 1 }),
+    );
+    expect(error).toContain("failTask");
+  });
+
+  it("omits failTask from pending when the task has no retry budget", async () => {
+    const error = await errorFrom(
+      "completeTask",
+      { taskId: "a", output: "done" },
+      ctxWithTask("pending"),
+    );
+    expect(error).not.toContain("failTask");
+  });
+});
+
+/**
+ * The line between this change and the blanket `catch (err)` it rejected. The
+ * soft set is exactly one error class; a scope-mutation failure is not on it and
+ * must still reach the caller as a throw rather than becoming a polite result
+ * the model narrates past.
+ */
+describe("taskTools — non-transition failures still propagate", () => {
+  it("lets a scope-mutation failure escape instead of returning it as a result", async () => {
+    const ctx = ctxWithTask("in_progress");
+    (ctx as unknown as { parent: { atomicState: unknown } }).parent.atomicState = async () => {
+      throw new Error("scope mutation timed out");
+    };
+    await expect(
+      runForTest(findTool("completeTask"), { taskId: "a", output: "done" }, ctx),
+    ).rejects.toThrow("scope mutation timed out");
   });
 });

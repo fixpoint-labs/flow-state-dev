@@ -199,8 +199,8 @@ both analyst reports without either of them being in its conversation.
 task tools come with them, for steering a board mid-flight rather than planning
 one: `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`,
 `updateTask`, `listTasks`. They're documented in
-[Delegation](/docs/skills/delegation#what-the-coordinator-gets), including which
-of them can throw rather than returning a soft error.
+[Delegation](/docs/skills/delegation#what-the-coordinator-gets), including what
+each one takes and how a refused call comes back.
 
 ## 5. An agent that plans more work
 
@@ -270,7 +270,8 @@ are a separate topic and come last.
 **A wrong assignee, on a board with a declared roster.** `addTask` refuses. No
 task is created, and the error names the agents that do exist so the coordinator
 can correct itself and retry. `assignTask` and `updateTask` check the same way.
-It comes back as a tool result, not a thrown error, so the turn continues:
+It comes back as a tool result, the same `{ ok: false, error }` shape every other
+call on this surface uses, carrying the roster the coordinator needs to fix it:
 
 ```
 addTask({ goal: "Find sources", assignee: "reseacher" })

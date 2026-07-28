@@ -43,7 +43,11 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 
 ### The status state machine
 
-A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state, unless the caller opted that particular write into being advisory — see the note on `complete` and `fail` below, where a rejected transition does nothing instead.
+A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state, and the error is an `IllegalTaskTransitionError` carrying the task id and the refused move.
+
+That is what you get driving a collection from your own code. A model driving a board through the delegation task tools sees something different: those tools catch this one error and return `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current status and the calls available from it, so a refused change reads like every other bad tool call. See [Delegation](../skills/delegation.md) for the coordinator's view.
+
+There is a third possibility, and you have to ask for it. `complete` and `fail` take an option that makes one particular write *advisory*, so a refused transition does nothing instead of throwing — for a caller recording a result that may simply no longer apply. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
