@@ -1,0 +1,16 @@
+{
+  "workerSalt": "ZEPHYR-3306",
+  "openRequests": [
+    "Draft the maintenance window notice for Friday night."
+  ],
+  "settledRequests": [
+    {
+      "request": "Confirm whether the office is closed on the 14th.",
+      "answer": "Closed on the 14th, confirmed in writing by facilities."
+    },
+    {
+      "request": "Confirm the parking permit renewal deadline.",
+      "answer": "Renewals close on the 30th, per the permit office notice."
+    }
+  ]
+}
