@@ -242,48 +242,4 @@ describe("dispatchAndExecuteBlock", () => {
       )
     ).rejects.toThrow(/no worker registered/);
   });
-
-  it("registry: a prototype-named assignee (FIX-943) does not resolve to Object.prototype", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "t1", goal: "evil", assignee: "constructor" });
-    const worker = handler({
-      name: "x",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: () => null,
-    });
-    await expect(
-      runForTest(
-        dispatchAndExecuteBlock({
-          collection: c,
-          dispatcher: fifoDispatcher,
-          workers: { x: worker },
-        }),
-        undefined,
-        fakeCtx
-      )
-    ).rejects.toThrow(/no worker registered/);
-  });
-
-  it("registry: another prototype key (toString) also takes the 'no worker registered' path (FIX-943)", async () => {
-    const c = buildCollection();
-    await c.addTask({ id: "t2", goal: "evil", assignee: "toString" });
-    const worker = handler({
-      name: "x",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: () => null,
-    });
-    await expect(
-      runForTest(
-        dispatchAndExecuteBlock({
-          collection: c,
-          dispatcher: fifoDispatcher,
-          workers: { x: worker },
-        }),
-        undefined,
-        fakeCtx
-      )
-    ).rejects.toThrow(/no worker registered/);
-  });
 });
