@@ -240,8 +240,13 @@ Format — one line each:
 
 `- **Settled:** <the claim> — **<CONFIRMED|REFUTED>**: <the observation>. (<evidence link — the thread, the capture, or the graduated goal>)`
 
-Omit the block when no claim needed settling. A claim still **in flight** stays an ordinary
-open question above, marked `(POC in flight)`, so a reader knows an answer is coming.
+Omit the block when no claim needed settling.
+
+A claim still **in flight** is listed here too, marked `(POC in flight)`, so a reader knows an
+answer is coming. Record it **here rather than in the open-questions list above** — an open
+question blocks implementation until it's answered (`issue-implement` Step 2), and an in-flight
+settlement is non-blocking by design. Putting it in the blocking list would reinstate exactly
+the wait the mechanism exists to avoid.
 
 **Follow-ups (flagged, not built):**
 - **Deepening opportunities** the area surfaced — shallow handlers, capability-shaped

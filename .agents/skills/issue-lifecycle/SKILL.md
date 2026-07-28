@@ -154,14 +154,20 @@ Four things are the orchestrator's:
 - **Keep the spec PR open while a load-bearing settlement is live.** Approval still chains
   straight into implementation — nothing blocks — but **defer the spec PR's close-and-delete
   until the verdict lands**, so a `REFUTED` verdict still has a live artifact and thread to
-  fold into. Closing it is cleanup, not a precondition for implementing. (Already closed? The
-  Linear document is canonical from then on; fold there.)
+  fold into. Closing it is cleanup, not a precondition for implementing, and the deferral has
+  to be passed *down*: `issue-implement` Step 3 otherwise closes every open spec PR itself, so
+  the `(POC in flight)` marker in §12 is what tells it to leave this one alone. (Already
+  closed? The Linear document is canonical from then on; fold there.) **Then close it once the
+  verdict is recorded** — a deferred PR left open forever is an obsolete artifact you keep
+  subscribing to and refreshing on every wake.
 - **Route the verdict when the POC returns** (its completion is an event like any other) by
   dispatching a worker to apply it per `issue-spec` 6.5.3. If the verdict is **REFUTED and
   implementation has already started**, treat it exactly as a challenger-surfaced spec blind
   spot: fold it, tell the in-flight implementation, and re-gate only if the direction actually
-  changed. Then clear `settling` to the verdict — a settled claim is **closed**, so a later
-  event re-litigating it is not a pending action.
+  changed. Then **clear `settling` to the verdict, and close any spec PR you were holding open
+  for it** (unmerged, delete the branch, as at the approval gate) — unless the fold re-gates
+  the spec, in which case it stays open for that round. A settled claim is **closed**, so a
+  later event re-litigating it is not a pending action.
 
 ## Linear status is a mirror you own
 

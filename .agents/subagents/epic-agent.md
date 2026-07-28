@@ -71,6 +71,17 @@ Take the single action the dispatch calls for:
   the below-the-bar items you did *not* fold so the coordinator can route them to the relevant
   issues' implementer notes; don't silently drop them.
 
+  **A looping factual claim is a settlement request, not a fold.** If a thread on the epic PR
+  turns on a **factual claim about how the system behaves** that has now been asserted and
+  counter-asserted at least twice, and a cross-cutting decision depends on it, don't fold
+  either side and don't argue a third round — return it as `settle_requested` (the claim slice:
+  `claim` · `load` · `falsify` · `threads`) and let the coordinator dispatch a `poc-agent`. It
+  costs **zero** rounds, and you can't dispatch it yourself: you exit before a verdict could
+  land. When the coordinator later hands you a verdict, fold it like any above-the-bar finding
+  and record it in the epic-spec's cross-cutting decisions, so a sibling issue doesn't reopen
+  the same claim. See [`orchestration.md`](../../docs/contributing/orchestration.md) →
+  "Settling a disputed claim (POC settlement)"; the trigger is the loop, never one assertion.
+
 Work on the epic branch inside your worktree so your commits never collide with sibling
 issue workers. Commit and push; **never merge, never delete the branch**.
 
@@ -91,6 +102,7 @@ sub_issues: <n parented>   (doc attached to epic issue: yes/added)
 objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs)>
 epic_review: <rounds spent this dispatch; 0 for factual-only> · above_bar_found: <yes/no/n-a>
+settle_requested: none | claim: <X does/does not Y> · load: <which cross-cutting decision depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 not_folded: <none | below-the-bar items + which issue each belongs to, for the coordinator to route>
 open_questions: <none | one-line each needing a human>
 ```

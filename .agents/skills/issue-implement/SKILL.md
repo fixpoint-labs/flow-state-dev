@@ -68,6 +68,8 @@ Before starting work, check:
 
 4. **Open questions?** If the spec has an "Open Questions" section with unresolved items, or Step 1's triage classified a spec-PR comment as **spec-level** (it would change the approach) → present those to the user and wait for answers before proceeding. Once answered, fold the decisions into the spec text and update the Linear document before moving on — after Step 3 closes the spec PR, Linear is the only live copy, and sub-agent prompts are built from it.
 
+   **A claim marked `(POC in flight)` is not an open question either.** It's a question already being answered, by a settlement that is non-blocking by design — waiting on it here would reintroduce the block the whole mechanism avoids. Implement on the spec's stated premise; if the verdict comes back `REFUTED`, the orchestrator routes it to you as a spec blind spot (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim"), which is the same path the challenger already uses. A claim recorded as **settled** with evidence is likewise closed — don't reopen it.
+
    **Below-the-bar spec comments are not open questions.** A naming preference, a local-structure suggestion, or a line-level nit left unresolved on the spec PR does **not** block implementation and does not go to the user — it's yours to settle in the code, same as a §13 note. Blocking on those is the failure this rule exists to prevent: the spec converged with threads deliberately open
 
 If all clear, move to Step 3.
@@ -95,6 +97,8 @@ If all clear, move to Step 3.
    ```
 
    Skip if there's no spec PR (bug without a spec, agent-brief issue) or it's already closed. From this point on, the Linear document is the only live copy — any mid-implementation spec edit happens there.
+
+   **One exception — a POC settlement still in flight.** If the spec carries a claim marked `(POC in flight)` in §12, **leave the spec PR open** and say so in your report; the orchestrator closes it once the verdict lands (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim"). A `REFUTED` verdict has to be folded into a live artifact with a live thread, and closing here would destroy it. This delays *cleanup* only — you still implement now, exactly as if the PR were closed.
 3. Update the Linear issue state to "In Development" using `save_issue`
 
 ### Step 4: Determine Category and Complexity

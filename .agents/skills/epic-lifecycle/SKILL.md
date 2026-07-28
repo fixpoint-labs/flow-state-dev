@@ -254,8 +254,11 @@ coordinator's job is only this:
 - **A cross-cutting claim is settled once for the epic.** Have `epic-agent` record the verdict
   in the epic-spec's cross-cutting decisions so a third issue doesn't reopen it.
 
-The epic PR gets the same treatment: a disputed factual claim on the epic-spec's themes is a
-`poc-agent` dispatch, not a fourth epic-review round.
+**The epic PR gets the same treatment**, through the same request path: `epic-agent` returns
+`settle_requested` for a looping factual claim a cross-cutting decision rests on, and you
+dispatch the `poc-agent` — a fourth epic-review round is what that replaces. Hand the verdict
+back to `epic-agent` to fold and record in the epic-spec's cross-cutting decisions, so a
+sibling issue can't reopen the same claim.
 
 ### The epic PR gets the same budget
 
