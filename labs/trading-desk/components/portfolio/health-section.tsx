@@ -625,15 +625,24 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
       <LookThroughPositions positions={exposure.positions} residual={exposure.residual} />
       {shouldRenderLookThroughSectors(exposure) && (
         <div className="pt-2">
-          {/* Names both halves: the block renders whenever there are attributed
-           *  sectors OR residual mass, and the residual-only case (every fund
-           *  thin on the sector axis but attributed on the name axis) is exactly
-           *  what step 3's relaxed guard exists to show. A caption reading only
-           *  "Attributed sectors" would then sit above a block with none
-           *  (Codex review, PR #959). */}
+          {/* The caption has to name all THREE contributors, and two review
+           *  rounds each caught it naming too few:
+           *   - Direct holdings land in `sectorMass` at their own sector
+           *     (`etf-look-through.ts:715`, every non-fund position) — so these
+           *     bars are NOT fund internals alone. Saying otherwise invites a
+           *     reader to attribute their direct equity weight to a wrapper.
+           *   - Fund-held mass is attributed through the fund's own reported
+           *     allocation.
+           *   - The residual is whatever neither could place, drawn explicitly
+           *     so the axis closes to 100% rather than stopping short.
+           *  The block renders on attributed-sectors OR residual, so the
+           *  residual-only case (funds thin on the sector axis but attributed on
+           *  the name axis — what step 3's relaxed guard exists to surface) must
+           *  not sit under a heading that promises attributed sectors. */}
           <div className="px-1 pb-1 text-[10px] text-[color:var(--c-fg-faint)]">
-            Sectors seen inside funds, plus what couldn&apos;t be attributed — closes to 100% of
-            invested NAV. Real sectors on this axis, no &quot;Funds&quot; bucket.
+            Effective sector exposure — direct holdings plus what we can see inside funds, and an
+            explicit bar for what we can&apos;t. Closes to 100% of invested NAV; real sectors only,
+            no &quot;Funds&quot; bucket on this axis.
           </div>
           <LookThroughSectors buckets={exposure.sectorExposure} residual={exposure.sectorResidual} />
         </div>
