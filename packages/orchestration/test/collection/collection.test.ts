@@ -455,7 +455,12 @@ describe.each([
     });
   });
 
-  describe("prototype-named task ids (FIX-965)", () => {
+  // FIX-965: task ids are model-supplied and land in a plain-object-backed
+  // collection, so both directions of prototype-key handling matter — an
+  // inherited `Object.prototype` member must read as a miss, and a
+  // prototype-poisoning key like `__proto__` must still be stored and
+  // retrievable rather than silently discarded.
+  describe("prototype-named task ids", () => {
     // `taskId` reaches the collection straight off a model tool call
     // (`completeTask`/`failTask`/… take `taskId: z.string()`), and the
     // sequencer backing keeps tasks in a plain object. An inherited
@@ -486,6 +491,18 @@ describe.each([
         collection.addTask({ id: "constructor", goal: "legit" }),
       ).resolves.toBeDefined();
       expect(collection.get("constructor")?.goal).toBe("legit");
+    });
+
+    it("addTasks stores a __proto__ id as a real entry, not a phantom write", async () => {
+      // Assigning `next[task.id] = task` for id `"__proto__"` on a plain
+      // object sets the object's prototype instead of creating an own
+      // property — the write reports success but the task is then absent
+      // from get/list/count. Batch insert is the one insertion path that
+      // used bracket assignment on a possibly-fresh object.
+      await collection.addTasks([{ id: "__proto__", goal: "proto" }]);
+      expect(collection.get("__proto__")?.goal).toBe("proto");
+      expect(collection.list().map((t) => t.id)).toContain("__proto__");
+      expect(collection.count()).toBe(1);
     });
   });
 

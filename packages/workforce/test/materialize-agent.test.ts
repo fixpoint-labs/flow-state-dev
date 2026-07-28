@@ -191,7 +191,7 @@ describe("materializeAgent", () => {
     // just the warning: a warning-only assertion passes even if the entry is
     // also pushed.
     it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
-      "treats prototype-named tool key %j as unknown (FIX-965)",
+      "treats prototype-named tool key %j as unknown",
       (protoKey) => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const block = materializeAgent(
@@ -207,7 +207,7 @@ describe("materializeAgent", () => {
     );
 
     it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
-      "treats prototype-named capability key %j as unknown (FIX-965)",
+      "treats prototype-named capability key %j as unknown",
       (protoKey) => {
         const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
         const block = materializeAgent(

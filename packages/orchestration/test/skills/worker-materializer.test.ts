@@ -75,8 +75,11 @@ describe("materializeWorker — prompt-driven branches", () => {
     warn.mockRestore();
   });
 
+  // FIX-965: the tool catalog is a plain object, so an inherited
+  // `Object.prototype` member is truthy and can sail past a falsity-only
+  // guard as if it were a real catalog hit.
   it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
-    "treats prototype-named tool key %j as unknown, not as a catalog hit (FIX-965)",
+    "treats prototype-named tool key %j as unknown, not as a catalog hit",
     async (protoKey) => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       const spec: AgentSpec = { prompt: "hi", tools: [protoKey] };

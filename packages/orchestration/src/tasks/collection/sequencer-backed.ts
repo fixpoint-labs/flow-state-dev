@@ -275,7 +275,18 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           if (ownTask(next, task.id) !== undefined) {
             throw new Error(`[tasks] task with id "${task.id}" already exists`);
           }
-          next[task.id] = task;
+          // Own-property insertion (FIX-965): `next[task.id] = task` is a
+          // phantom write when task.id is `"__proto__"` — it sets the
+          // object's prototype instead of creating an own property, so the
+          // task reports as added but is then absent from get/list/count.
+          // `defineProperty` always creates/updates an own data property,
+          // matching plain-object semantics for every other key.
+          Object.defineProperty(next, task.id, {
+            value: task,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
         }
         assertWithinCaps(next);
         return next;
