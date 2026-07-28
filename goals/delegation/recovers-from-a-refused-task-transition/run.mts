@@ -25,6 +25,9 @@
  *     does not record one.
  *   - The available calls are PARSED OUT OF THE REJECTION, never hardcoded, so
  *     the check stays true if the composer's list changes.
+ *   - The recovery is BOUND TO THE REFUSED TASK by id, not inferred from the
+ *     task leaving `pending` — a `runBoard` drain moves it out of `pending` on
+ *     its own. See criterion (C) and the probe suite that falsifies it.
  *   - The pre-fix shape is detected explicitly: a `completeTask` that FAILED
  *     with a raw `illegal status transition` throw is reported as its own
  *     failure, not silently rolled into "the case never came up".
@@ -394,38 +397,22 @@ function callsAfterStep(observed: Observed, step: number): Call[] {
 const describe = (c: Call) => `${c.name}@step${c.step}${c.threw !== undefined ? "(THREW)" : ""}`;
 
 // ---------------------------------------------------------------------------
-// The goal
+// Grading
 // ---------------------------------------------------------------------------
 
-async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
-  // Setup honesty, asserted before any model call.
-  if (fx.settledRequests.length === 0) {
-    return {
-      failures: [
-        "setup invalid: the fixture supplies no already-answered request, so nothing would ever " +
-          "ask the board to complete a task that was never started",
-      ],
-      log: "",
-    };
-  }
-  if (fx.openRequests.length === 0) {
-    return {
-      failures: [
-        "setup invalid: the fixture supplies no request that needs doing, so the board has no " +
-          "real work and 'the run still completed' would be vacuous",
-      ],
-      log: "",
-    };
-  }
-  const desk = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
-  if (desk.includes(fx.workerSalt.toLowerCase())) {
-    return {
-      failures: ["setup invalid: the worker salt leaked into the coordinator's own context"],
-      log: "",
-    };
-  }
-
-  const observed = await run("refused-transition");
+/**
+ * Grade one observed run against criteria A–E.
+ *
+ * Pure — it reads nothing but the observation it is handed, which is what lets
+ * the probe suite below drive it with synthetic runs and prove each criterion
+ * FAILS when its property is violated. Returns the refusal and the advertised
+ * list alongside the failures so the caller can build the verdict log.
+ */
+function grade(observed: Observed): {
+  failures: string[];
+  refusal: Call | undefined;
+  advertised: string[];
+} {
   const failures: string[] = [];
   const trail = observed.calls.map(describe).join(", ");
 
@@ -449,7 +436,7 @@ async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
           `Calls: ${trail}`,
       );
     }
-    return { failures, log: summarize(observed, undefined, []) };
+    return { failures, refusal: undefined, advertised: [] };
   }
 
   const message = refusal.output!.error!;
@@ -463,7 +450,7 @@ async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
         `settled, so the probe never reached the pending case it exists to provoke and there is ` +
         `no advertised call to recover with. Calls: ${trail}`,
     );
-    return { failures, log: summarize(observed, refusal, advertised) };
+    return { failures, refusal, advertised };
   }
   const unknown = advertised.filter((name) => !TASK_TOOL_NAMES.has(name));
   if (unknown.length > 0) {
@@ -499,14 +486,57 @@ async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
     );
   }
 
-  // --- C) The rejected task was actually dealt with. Recovering on some OTHER
-  //        task would satisfy (B) while leaving the refused one untouched. ---
+  // --- C) The rejected task was actually dealt with, BY the recovery.
+  //        Recovering on some OTHER task would satisfy (B) while leaving the
+  //        refused one untouched. That hazard is one question, but it takes TWO
+  //        assertions, because either one alone is satisfiable without it:
+  //
+  //        C1 — was an advertised recovery AIMED at the refused task? Read from
+  //        the call's own `taskId` argument. This has to be asserted directly:
+  //        the obvious stand-in, "the task is no longer pending at the end", is
+  //        a PROXY THE SUBSTRATE CAN SATISFY ON ITS OWN — `runBoard` claims and
+  //        completes whatever is still pending, so a drain moves the refused
+  //        task out of `pending` with no recovery call ever naming it. Every
+  //        advertisable tool (blockTask/cancelTask/completeTask/failTask) takes
+  //        `taskId`, so the binding is readable for any list the composer emits.
+  //
+  //        C2 — did it TAKE? An advertised call aimed at the right task can
+  //        still not land (a second refusal, a CAS conflict). C1 reads intent
+  //        from the arguments and cannot see that; the final state can.
+  //
+  //        Neither subsumes the other — C2 passes on a drain that C1 catches,
+  //        and C1 passes on an aimed call that C2 catches. Both stay. The probe
+  //        suite below holds that in place from both directions.
+  //
+  //        C1 scans ALL later task-tool calls, not just `recovery`
+  //        (`laterTaskTools[0]`): a coordinator that cancels some other task
+  //        first and then the refused one has still bound its recovery to it.
   if (rejectedTaskId === undefined) {
     failures.push(
       `the rejection carries no taskId, so the refused task cannot be identified. ` +
         `Message: ${JSON.stringify(message)}`,
     );
   } else {
+    const bound = laterTaskTools.filter(
+      (c) => advertised.includes(c.name) && c.args.taskId === rejectedTaskId,
+    );
+    if (bound.length === 0) {
+      failures.push(
+        `no advertised recovery call targeted the refused task ${rejectedTaskId} — the ` +
+          `coordinator made advertised call(s) ` +
+          `${JSON.stringify(laterTaskTools.filter((c) => advertised.includes(c.name)).map(describe))} ` +
+          `after the rejection but aimed them at ` +
+          `${JSON.stringify([
+            ...new Set(
+              laterTaskTools
+                .filter((c) => advertised.includes(c.name))
+                .map((c) => String(c.args.taskId ?? "(no taskId)")),
+            ),
+          ])}, not at the task it was refused on. The refusal guidance was never applied to the ` +
+          `task that received it. Calls: ${trail}`,
+      );
+    }
+
     const finalState = observed.tasks.get(rejectedTaskId);
     if (finalState === undefined) {
       failures.push(
@@ -558,7 +588,7 @@ async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
     );
   }
 
-  return { failures, log: summarize(observed, refusal, advertised) };
+  return { failures, refusal, advertised };
 }
 
 /**
@@ -593,6 +623,240 @@ function summarize(observed: Observed, refusal: Call | undefined, advertised: st
     `board: ${JSON.stringify([...observed.tasks].map(([id, t]) => `${id}=${t.status}`))}`,
     `answer: ${JSON.stringify(observed.answer.slice(0, 200))}`,
   ].join("\n  ");
+}
+
+// ---------------------------------------------------------------------------
+// DETERMINISTIC PROBE SUITE
+//
+// `grade` exercised against synthetic runs BEFORE any model call, to prove each
+// criterion FAILS when its property is violated. A criterion that has never
+// been seen to fail is not evidence — it may be asserting something the
+// substrate satisfies on its own.
+//
+// This suite exists because that is exactly what happened to (C). The hazard
+// was identified correctly and the comment named it precisely ("Recovering on
+// some OTHER task would satisfy (B) while leaving the refused one untouched"),
+// then it was guarded with `finalState.status !== "pending"` — a condition a
+// `runBoard` drain satisfies by claiming and completing the refused task, with
+// no recovery call targeting it at all. The guard was verified against ONE path
+// (the coordinator cancels the refused task, so it ends `cancelled`) and
+// asserted OF THE PROPERTY (the refused task was dealt with by the recovery).
+// `codexScenario` below is the run that passed the old guard, and it is now the
+// probe that fails without the binding check.
+//
+// Runs inline and unconditionally: it costs milliseconds, needs no credential,
+// and is therefore impossible to skip.
+// ---------------------------------------------------------------------------
+
+const REFUSED_ID = "task_probe_refused";
+const OTHER_ID = "task_probe_other";
+const REAL_ID = "task_probe_real";
+
+/** The result a `completeTask` on a still-pending task really returns. */
+const REFUSAL_MESSAGE =
+  `illegal_status_transition: task "${REFUSED_ID}" is pending, so transitioning to completed is ` +
+  `not available — a pending task has not been started yet. ` +
+  `From here you can call blockTask or cancelTask.`;
+
+function probeCall(over: Partial<Call> & { name: string; step: number }): Call {
+  return { ts: 0, args: {}, output: undefined, threw: undefined, ...over };
+}
+
+/** The rejecting call itself — shared by every probe, since (A) must hold in all. */
+const refusedCompleteTask = probeCall({
+  name: "completeTask",
+  step: 1,
+  args: { taskId: REFUSED_ID },
+  output: { ok: false, error: REFUSAL_MESSAGE, taskId: REFUSED_ID },
+});
+
+/**
+ * A synthetic run. Defaults describe a fully-correct one: refused on
+ * `REFUSED_ID` at step 1, that same task cancelled at step 2, the board's real
+ * work completed carrying the held-out salt, intake answered. Probes perturb it.
+ */
+function observedRun(over: {
+  calls?: Call[];
+  tasks?: [string, { status: string; output?: unknown }][];
+} = {}): Observed {
+  return {
+    answer: "Handled the intake.",
+    calls: over.calls ?? [
+      probeCall({ name: "addTask", step: 0, output: { ok: true, taskId: REFUSED_ID } }),
+      refusedCompleteTask,
+      probeCall({ name: "cancelTask", step: 2, args: { taskId: REFUSED_ID }, output: { ok: true } }),
+      probeCall({ name: RUN_BOARD_TOOL_NAME, step: 3 }),
+    ],
+    stepSource: "dispatch burst",
+    tasks: new Map(
+      over.tasks ?? [
+        [REFUSED_ID, { status: "cancelled" }],
+        [REAL_ID, { status: "completed", output: `Drafted the notice. ${fx.workerSalt}` }],
+      ],
+    ),
+    runError: undefined,
+  };
+}
+
+/**
+ * The false positive codex found: the coordinator is refused on `REFUSED_ID`,
+ * makes an ADVERTISED recovery call in a strictly later step — but aims it at a
+ * different pending task — and then drains. The drain claims and completes the
+ * refused task, so it ends non-`pending` without the guidance ever reaching it.
+ * Satisfies A, B, D and E, and satisfied the old C.
+ */
+const codexScenario = observedRun({
+  calls: [
+    probeCall({ name: "addTask", step: 0, output: { ok: true, taskId: REFUSED_ID } }),
+    refusedCompleteTask,
+    probeCall({ name: "cancelTask", step: 2, args: { taskId: OTHER_ID }, output: { ok: true } }),
+    probeCall({ name: RUN_BOARD_TOOL_NAME, step: 3 }),
+  ],
+  tasks: [
+    [REFUSED_ID, { status: "completed", output: `Ran it anyway. ${fx.workerSalt}` }],
+    [OTHER_ID, { status: "cancelled" }],
+  ],
+});
+
+/** True when some failure mentions the recovery not being bound to the refused task. */
+const saysUnbound = (failures: string[]) =>
+  failures.some((f) => f.includes("no advertised recovery call targeted the refused task"));
+
+/** True when some failure mentions the refused task still being pending. */
+const saysStillPending = (failures: string[]) =>
+  failures.some((f) => f.includes(`is still "pending" at the end of the run`));
+
+const PROBES: readonly (readonly [string, () => boolean])[] = [
+  // Positive control. Without this, a C1 that rejects everything would look
+  // like a working guard — the adversarial probes below would all still pass.
+  ["a correct run grades clean", () => grade(observedRun()).failures.length === 0],
+
+  // The finding, as a run. This is the falsification: it PASSED before C1.
+  [
+    "C1: recovery aimed at another task + refused task drained to completed FAILS",
+    () => saysUnbound(grade(codexScenario).failures),
+  ],
+
+  // C2 is not made redundant by C1: an advertised call aimed at the RIGHT task
+  // that did not land leaves the task pending, which only the final state sees.
+  [
+    "C2: recovery aimed at the refused task but refused again still FAILS",
+    () =>
+      saysStillPending(
+        grade(
+          observedRun({
+            calls: [
+              probeCall({ name: "addTask", step: 0, output: { ok: true, taskId: REFUSED_ID } }),
+              refusedCompleteTask,
+              probeCall({
+                name: "cancelTask",
+                step: 2,
+                args: { taskId: REFUSED_ID },
+                output: { ok: false, error: "task_not_found", taskId: REFUSED_ID },
+              }),
+            ],
+            tasks: [
+              [REFUSED_ID, { status: "pending" }],
+              [REAL_ID, { status: "completed", output: `Drafted it. ${fx.workerSalt}` }],
+            ],
+          }),
+        ).failures,
+      ),
+  ],
+
+  // C1 scans every later task-tool call, not just the first: recovering on
+  // another task and THEN on the refused one is a real recovery, not a miss.
+  [
+    "C1: a later advertised call on the refused task counts even if not the first",
+    () =>
+      !saysUnbound(
+        grade(
+          observedRun({
+            calls: [
+              probeCall({ name: "addTask", step: 0, output: { ok: true, taskId: REFUSED_ID } }),
+              refusedCompleteTask,
+              probeCall({
+                name: "cancelTask",
+                step: 2,
+                args: { taskId: OTHER_ID },
+                output: { ok: true },
+              }),
+              probeCall({
+                name: "cancelTask",
+                step: 3,
+                args: { taskId: REFUSED_ID },
+                output: { ok: true },
+              }),
+            ],
+          }),
+        ).failures,
+      ),
+  ],
+];
+
+function runProbes(): string[] {
+  const failed: string[] = [];
+  for (const [name, predicate] of PROBES) {
+    let ok: boolean;
+    try {
+      ok = predicate();
+    } catch (e) {
+      failed.push(`${name} (threw: ${(e as Error).message})`);
+      continue;
+    }
+    if (!ok) failed.push(name);
+  }
+  return failed;
+}
+
+// ---------------------------------------------------------------------------
+// The goal
+// ---------------------------------------------------------------------------
+
+async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
+  // Probes first — always, before any model call. A grader bug must not be
+  // reported as a substrate verdict.
+  const probeFailures = runProbes();
+  console.log(`  probes: ${PROBES.length - probeFailures.length}/${PROBES.length}`);
+  if (probeFailures.length > 0) {
+    return {
+      failures: probeFailures.map(
+        (name) => `PROBE FAILED (grader bug, not a substrate verdict): ${name}`,
+      ),
+      log: "",
+    };
+  }
+
+  // Setup honesty, asserted before any model call.
+  if (fx.settledRequests.length === 0) {
+    return {
+      failures: [
+        "setup invalid: the fixture supplies no already-answered request, so nothing would ever " +
+          "ask the board to complete a task that was never started",
+      ],
+      log: "",
+    };
+  }
+  if (fx.openRequests.length === 0) {
+    return {
+      failures: [
+        "setup invalid: the fixture supplies no request that needs doing, so the board has no " +
+          "real work and 'the run still completed' would be vacuous",
+      ],
+      log: "",
+    };
+  }
+  const desk = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
+  if (desk.includes(fx.workerSalt.toLowerCase())) {
+    return {
+      failures: ["setup invalid: the worker salt leaked into the coordinator's own context"],
+      log: "",
+    };
+  }
+
+  const observed = await run("refused-transition");
+  const { failures, refusal, advertised } = grade(observed);
+  return { failures, log: summarize(observed, refusal, advertised) };
 }
 
 await runGoal(async () => {
