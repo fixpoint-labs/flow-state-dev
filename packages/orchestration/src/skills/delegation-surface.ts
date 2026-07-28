@@ -377,17 +377,6 @@ function buildRunBoardTool(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the delegation build for this execution step. Re-walks eligibility
- * (`collectAgentSources`, including its live-manifest disable read) on every
- * call — that walk is never memoized — then hands the per-execution memo
- * (`internal/delegation-memo.ts`) the resolved sources plus a closure over
- * the actual build (`buildTools`/`buildGuidance`); the memo invokes the
- * closure only when the resolved source list has changed since the last
- * call for this execution. Both `buildDelegationTools` and
- * `buildDelegationGuidance` call this, so the roster is walked and built
- * once per snapshot and shared between them (D1).
- */
-/**
  * Drop agent keys that could never have come through the SKILL.md parser, so
  * the roster the coordinator is TOLD about and the roster that becomes board
  * workers are the same list — one roster, not two.
@@ -401,12 +390,12 @@ function buildRunBoardTool(
  * with the floor's own worker key, and `__proto__` hit the prototype setter
  * instead of creating an own key — silently emptying the registry.
  *
- * A source whose every key is rejected is dropped entirely, not left behind as
- * an empty husk: `sources.length === 0` is what makes `buildTools` contribute
- * no tools and `buildGuidance` contribute no roster, and those two must agree.
- * Filtering rather than throwing is deliberate — the key is unreachable through
- * every supported authoring path, so this is defense against a corrupt
- * manifest, and dropping the entry is what preserves the invariant.
+ * A source whose every key is rejected is dropped entirely rather than left
+ * behind as an empty husk, so it contributes nothing to the roster `resolveBuild`
+ * derives — and a roster that ends up empty is what makes the surface decline to
+ * install (see the `installs` gate there). Filtering rather than throwing is
+ * deliberate: the key is unreachable through every supported authoring path, so
+ * this is defense against a corrupt manifest, not authoring validation.
  */
 function validateAgentKeys(sources: DelegationAgentSource[]): {
   sources: DelegationAgentSource[];
@@ -445,11 +434,18 @@ function validateAgentKeys(sources: DelegationAgentSource[]): {
  */
 const reportedRejections = new WeakMap<object, Set<string>>();
 
-/** Warn once per execution for each distinct rejected `skill/key` pair. */
+/**
+ * Warn once per execution for each distinct rejected `skill/key` pair.
+ *
+ * The empty check comes first because it is the overwhelmingly common case —
+ * this runs on every tool-loop step, and a healthy roster should never allocate
+ * the bookkeeping `Set` at all.
+ */
 function reportRejectedAgentKeys(
   ctx: object,
   rejected: ReadonlyArray<{ skillName: string; key: string }>,
 ): void {
+  if (rejected.length === 0) return;
   let seen = reportedRejections.get(ctx);
   if (seen === undefined) {
     seen = new Set<string>();
@@ -467,6 +463,17 @@ function reportRejectedAgentKeys(
   }
 }
 
+/**
+ * Resolve the delegation build for this execution step. Re-walks eligibility
+ * (`collectAgentSources`, including its live-manifest disable read) on every
+ * call — that walk is never memoized — then hands the per-execution memo
+ * (`internal/delegation-memo.ts`) the resolved sources plus a closure over
+ * the actual build (`buildTools`/`buildGuidance`); the memo invokes the
+ * closure only when the resolved source list has changed since the last
+ * call for this execution. Both `buildDelegationTools` and
+ * `buildDelegationGuidance` call this, so the roster is walked, the install
+ * decision made, and the build shared between them once per snapshot (D1).
+ */
 async function resolveBuild(
   ctx: BlockContext,
   deps: DelegationSurfaceDeps,

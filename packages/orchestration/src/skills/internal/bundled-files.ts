@@ -11,7 +11,16 @@
 
 import type { SkillFile } from "@flow-state-dev/core";
 
-/** Strip a leading `./` or `/` so refs and stored paths compare on equal terms. */
+/**
+ * Strip a leading `./` or `/` so refs and stored paths compare on equal terms.
+ *
+ * Deliberately narrower than `normalizeSkillFilePath` in `../collection.ts`,
+ * which additionally collapses interior `.` segments and rejects `..` on the
+ * way to a storage key. This preserves the rule the two inline copies used, so
+ * the extraction stays behavior-identical. The two are worth unifying, but that
+ * changes what a programmatic `InitialSkill.files` entry resolves to and wants
+ * its own change with `collection.test.ts` coverage.
+ */
 function normalize(path: string): string {
   return path.replace(/^\.\//, "").replace(/^\//, "");
 }
