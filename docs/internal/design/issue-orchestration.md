@@ -5,9 +5,12 @@
 
 > **Historical naming note:** skill names below reflect what they were called when this
 > was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
-> `issue-implement`, and `dispatch-remote` (mentioned in "Relationship to existing
+> `issue-implement`, **`issue-fleet` → `epic-lifecycle`** (and with it, "the fleet" → "the
+> coordinator"; a multi-issue run now always happens under an **epic**, which was optional
+> when this was written), and `dispatch-remote` (mentioned in "Relationship to existing
 > skills" below) has been **removed** along with `plan-dispatch`. Don't invoke the old
-> names — this doc is a point-in-time design record, not current reference.
+> names — this doc is a point-in-time design record, not current reference. Current
+> reference is [`docs/contributing/orchestration.md`](../../contributing/orchestration.md).
 
 ## Why
 

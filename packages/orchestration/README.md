@@ -87,7 +87,7 @@ Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
-`onError`, `maxIterations` (loop-cap, default 10000), and the two creation caps
+`onError`, `maxIterations` (per-worker claim-loop cap, default 10000), and the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
 terminal, never refunded). Both take a positive integer or `null` (explicitly

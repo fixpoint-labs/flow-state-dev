@@ -101,18 +101,18 @@ export interface SkillsLibraryOptions {
    * ever created on the board, terminal ones included, and is never refunded by
    * draining. Default 500; `null` is explicitly unbounded.
    *
-   * The delegation board is sequencer-backed (the executive's own state), so on
-   * a checkpoint resume the ledger — and therefore this count — is restored with
-   * it rather than starting over. See the lifetime section in
+   * A delegation board's ledger does not survive a suspend/resume — tasks and
+   * counts start from zero after a resume. See the lifetime section in
    * `tasks/collection/task-caps.ts`.
    */
   maxTotalTasks?: number | null;
   /**
    * Enqueue-burst ceiling for the delegation board (FIX-931): how many tasks a
    * coordinator (or a fanning-out worker) may add while others are still
-   * `pending`. Default 100; `null` is explicitly unbounded. Checked at creation,
-   * so it refreshes as tasks drain and does not bound tasks that re-enter
-   * `pending` via a retry, unblock, resume, or reclaimed lease.
+   * `pending`. Default 100; `null` is explicitly unbounded.
+   *
+   * Checked at creation, so it refreshes as tasks drain and `pending` can sit
+   * above it. See the lifetime section in `tasks/collection/task-caps.ts`.
    */
   maxEnqueuedTasks?: number | null;
   /**

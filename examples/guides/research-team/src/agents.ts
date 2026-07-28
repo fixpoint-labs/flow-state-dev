@@ -20,8 +20,9 @@ import {
 /**
  * A shared competitor analyst, defined once in app code and referenced by the
  * skill via `agent-ref: competitor-analyst`. Being a real agent (persona +
- * model + tools), it materializes into an LLM worker — so the skill path needs
- * an API key, unlike the deterministic code-first board.
+ * model + tools), it materializes into an LLM worker holding `search` — so the
+ * skill path needs a model key and one search-provider key, unlike the
+ * deterministic code-first board.
  */
 export const competitorAnalyst = defineAgent({
   name: "competitor-analyst",

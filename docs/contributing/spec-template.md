@@ -21,6 +21,14 @@ signs off the whole spec at once. Because Part II is directional rather than an
 exhaustive blueprint, it's cheap enough to write alongside the Case; there's no
 separate stage to defer it to. See `issue-spec` Step 6.
 
+**Approval means directionally correct.** Sign-off certifies that the problem is real,
+the approach will work, and the decisions in Part I are the ones we want. It does not
+certify a finished design, and a spec is *not* held open until nothing is left to
+nitpick — that target doesn't exist. Feedback below the direction line is recorded in
+§13 for the implementer rather than rewritten into the design. The bar, the three
+dispositions, and the two-round convergence budget are canonical in
+[`orchestration.md`](orchestration.md) → "Spec review: the bar and the convergence rule".
+
 > **Anti-addenda rule.** When spec-PR review forces a major pivot, **re-draft the
 > affected sections.** Do not bolt on an "AUTHORITATIVE reconciliation" section that
 > contradicts the body — an incoherent spec produces an incoherent implementation
@@ -28,6 +36,39 @@ separate stage to defer it to. See `issue-spec` Step 6.
 
 Not every issue needs this. If the work fits on one screen and needs no research,
 use `agent-brief-template.md` instead — that brief *is* the contract.
+
+---
+
+## For reviewers — what this document is
+
+*(This block is also what leads the spec PR description, so an automated reviewer sees
+it before the content — see `issue-spec` Step 6.)*
+
+This is a **direction document**, not an implementation. Reviewing it well means
+answering one question: **is this the right approach?**
+
+**In scope to challenge:**
+
+- The problem framing — are we solving the right thing?
+- The approach — will it work, does it fit the architecture and `docs/philosophy.md`?
+- Any numbered **Decision** in §6 — that's the sign-off surface.
+- Missing constraints, edge cases, or dependencies that would **invalidate** the design.
+- Scope — a deliverable that shouldn't ship, or one that's missing.
+
+**Out of scope — deliberately unsettled here, and owned by the implementing agent:**
+
+- Names, signatures, file paths, and module layout.
+- Local structure: which helper, how a function is decomposed, error-message wording.
+- Micro-optimizations and style preferences.
+- Test names and internal test structure (the *behaviours* to test are in §10; the tests
+  themselves are not).
+- Anything Part II left open on purpose — it is directional by design, and a gap at
+  that altitude is intended, not an omission.
+
+Feedback in the second list is welcome and gets **recorded verbatim in §13** for the
+implementer to weigh against real code. It will not be argued with, and it will not be
+folded into the design prose — that would pretend the spec can settle something it
+can't. Please don't re-raise it: one mention is enough for it to land in §13.
 
 ---
 
@@ -77,9 +118,8 @@ wade through it. Skip examples entirely (and say so in one line) only when the c
 doesn't alter how anyone writes code against the framework (internal refactor, pure
 type change, bug fix restoring documented behavior).
 
-*(Review feedback that's too in-the-weeds to belong in the spec's prose is recorded
-under a "Review notes for the implementer" heading rather than rewritten into the
-design — see `issue-spec` Step 6.5.)*
+*(Review feedback below the direction line is recorded verbatim in §13 rather than
+rewritten into the design — see `issue-spec` Step 6.5.)*
 
 ### 6. Decisions & rules — the sign-off surface
 
@@ -128,9 +168,8 @@ the exact signatures, code, and line-level choices, settled in the code.
 > telling you is wrong, and do not silently deviate.
 >
 > **For reviewers:** challenge the Decisions (Part I) and Part II's *direction*, not
-> its phrasing. The exact names, local structure, and which helper are the
-> implementer's to settle in the code. A nit about Part II wording that doesn't touch a
-> decision or the direction is out of scope.
+> its phrasing — see "For reviewers" at the top. A gap at the line level is intended
+> here; it is not an omission to report.
 
 ### 7. Technical design
 
@@ -198,6 +237,27 @@ that need a decision before implementation, each with options and trade-offs.
 - **Already-rejected directions** — before listing a deliberate "won't do," check
   `docs/internal/out-of-scope/` and reference an existing rejection rather than
   restating it.
+
+### 13. Review notes for the implementer
+
+Below-the-bar spec-PR feedback, **recorded verbatim, not folded into the design.** This
+is where a reviewer's line-level observation lands so it reaches the implementer without
+distorting the spec — see [`orchestration.md`](orchestration.md) → "Spec review: the bar
+and the convergence rule".
+
+**For the implementer:** these are *inputs, not instructions.* Each is one reviewer's
+guess at the code, made without having read it. Weigh each against what you actually
+find; adopt it, adapt it, or discard it — and you owe no justification for discarding one
+(the spec's Decisions are binding, these are not). A note that turns out to reveal a
+genuine design problem is different: that's a spec blind spot — surface it and fold it
+back, per the challenger discipline in `issue-implement`.
+
+Format — one line each, quoted, with a pointer back to the thread:
+
+`- "<the feedback, verbatim>" — <reviewer> ([thread](<url>))`
+
+Omit the section entirely when a spec drew no below-the-bar feedback. An empty heading is
+noise.
 
 ---
 

@@ -2,13 +2,13 @@
 name: cross-spec-review
 context: fork
 agent: general-purpose
-description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to a batch of specs a fleet produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency or PR-plan collisions. Read-only — returns a ranked conflict report to the caller (the fleet), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
+description: Review a SET of specs against each other for mutual coherence — the coherence lens (audit-coherence) raised from one change to the set of specs an epic produced in parallel. Catches inter-spec conflicts before any of them is implemented: overlapping or duplicated scope, contradictory decisions, colliding API/naming surface, one spec assuming what another removes, and cross-issue dependency or PR-plan collisions. Read-only — returns a ranked conflict report to the caller (normally epic-lifecycle), which walks the user through the decisions and routes the alignment. Runs ONLY on specs the user has already approved as individually good, so it never aligns a good spec to an unvalidated one.
 argument-hint: "<the spec set — issue IDs or spec PR#s, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
 # Cross-Spec Review
 
-A fleet running several issues in parallel produces several specs at once. Each spec is
+An epic running several issues in parallel produces several specs at once. Each spec is
 authored in isolation and reviewed on its own merits — so each can be locally excellent
 while the *set* is incoherent: two specs claim the same surface, one decides a shape a
 sibling contradicts, one assumes behavior another spec is removing. That mutual
@@ -17,7 +17,7 @@ guards against (`docs/philosophy.md`, "the two failures"; tenet 1). This skill i
 coherence lens (`audit-coherence`) pointed at a *batch of specs* instead of the code.
 
 **Output is a report only.** No edits, no PR comments, no Linear changes. The caller —
-normally `issue-fleet` — owns the user walkthrough and the alignment; this skill just
+normally `epic-lifecycle` — owns the user walkthrough and the alignment; this skill just
 finds the conflicts and hands them back.
 
 > **When an epic-spec already coordinates the set** (see
@@ -32,7 +32,9 @@ finds the conflicts and hands them back.
 > 2. Check each issue spec **adheres** to the epic's objective, themes, and decisions.
 > 3. Flag **residual inter-spec conflicts** the epic didn't settle.
 >
-> Reach for the full batch sweep (below) only when there is **no** epic.
+> This is the **normal path** — a parallel spec set comes from an `epic-lifecycle` run, and
+> that always has an epic. Reach for the full batch sweep (below) only in the standalone case
+> where a set of specs genuinely has no epic above it.
 
 ## The gate — run only on validated specs
 
@@ -44,7 +46,7 @@ that's still wrong propagates the flaw into its siblings. So the precondition is
   and signed off — see `issue-spec`), **and**
 - The user has explicitly approved running the cross-spec pass.
 
-The fleet enforces this gate (it invokes this skill; see `issue-fleet` → "Cross-spec
+The coordinator enforces this gate (it invokes this skill; see `epic-lifecycle` → "Cross-spec
 coherence"). If invoked standalone, confirm both conditions before reading anything.
 
 ## What you're given
@@ -90,17 +92,17 @@ directly. A few are *genuinely hard*: high blast radius (the resolution reshapes
 across several specs), both resolutions defensible on the tenets, costly to reverse. For
 **at most the one or two hardest**, you may **flag a Fable-adjudication candidate** — you
 do **not** invoke Fable yourself. You're read-only and can't prompt, and Fable is a paid
-escalation that requires the user's approval, which only the fleet can obtain (see
+escalation that requires the user's approval, which only the coordinator can obtain (see
 `AGENTS.md` → model tiering, upward escalation).
 
 - Mark the conflict `fable-candidate: YES` and include the **self-contained slice**: the
-  conflicting spec excerpts, the exact decision, and the tenets in tension — so the fleet
+  conflicting spec excerpts, the exact decision, and the tenets in tension — so the coordinator
   can hand it to Fable (on approval) without re-deriving it.
 - If you can't reduce it to a slice, it isn't a candidate — leave it as an ordinary
   `decision-needed` conflict. That inability is the structural guard; the human-approval
-  gate at the fleet is the cost guard.
+  gate at the coordinator is the cost guard.
 
-## Report (compact — the fleet holds this, not the spec texts)
+## Report (compact — the coordinator holds this, not the spec texts)
 
 Return a ranked table, worst mutual-incoherence first. For each conflict:
 
@@ -121,11 +123,11 @@ in spec detail that belongs in the specs, not here — tighten to the conflicts.
 ## Boundaries
 
 - **Read-only.** You do not edit specs, comment on PRs, or touch Linear. You surface
-  conflicts and recommend resolutions; the fleet applies them (dispatching a spec worker to
+  conflicts and recommend resolutions; the coordinator applies them (dispatching a spec worker to
   update a spec directly, or leaving a PR comment on the spec PR to be picked up in its
   review rounds) after the user decides.
 - **Mutual coherence only.** Whether any single spec is *good* is that spec's own review
   (`issue-spec` review, `review`). You assume each is already validated — you check
   only whether they agree with each other.
 - **Not a merge gate.** Your report feeds decisions; the stop-before-implement gate on each
-  issue still belongs to the fleet.
+  issue still belongs to the coordinator.

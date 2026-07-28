@@ -1,6 +1,6 @@
 ---
 name: issue-lifecycle
-description: Drive ONE Linear issue through its full lifecycle in a single session — spec (issue-spec) → human spec-approval gate → implementation (issue-implement) → PR review-feedback rounds → stop before merge. A THIN, event-driven orchestrator: every heavy phase runs in a fresh bounded sub-agent that returns a compact summary and exits, so the orchestrator's own token cost stays small across the whole lifecycle. Advances the issue to its next external wait per invocation (a satisfied gate is a release, not a stop — a just-approved spec chains straight into implementation); re-enters on events (PR activity, your approval, a scheduled check-in). Composed per-issue by issue-fleet for parallel multi-issue runs.
+description: Drive ONE Linear issue through its full lifecycle in a single session — spec (issue-spec) → human spec-approval gate → implementation (issue-implement) → PR review-feedback rounds → stop before merge. A THIN, event-driven orchestrator: every heavy phase runs in a fresh bounded sub-agent that returns a compact summary and exits, so the orchestrator's own token cost stays small across the whole lifecycle. Advances the issue to its next external wait per invocation (a satisfied gate is a release, not a stop — a just-approved spec chains straight into implementation); re-enters on events (PR activity, your approval, a scheduled check-in). Composed per-issue by epic-lifecycle for parallel multi-issue runs under an epic.
 argument-hint: "<Linear issue ID, e.g. FIX-123>"
 ---
 
@@ -29,9 +29,9 @@ spec review, implementation, and several rounds of PR feedback.
    re-entry it re-derives the phase from durable external state (Linear + the PRs),
    not from in-context history. Idle cost ≈ 0.
 
-> Standalone, *this session's* event loop re-invokes the skill. Under `issue-fleet`,
-> the fleet is the event loop and dispatches a worktree-isolated worker to run the
-> next step. Same step logic either way — so keep every step a self-contained,
+> Standalone, *this session's* event loop re-invokes the skill. Under `epic-lifecycle`,
+> the epic coordinator is the event loop and dispatches a worktree-isolated worker to
+> run the next step. Same step logic either way — so keep every step a self-contained,
 > re-enterable unit.
 
 ## State — derive it, don't store a transcript
@@ -67,8 +67,9 @@ On each invocation, reconstruct the phase from a **small** read:
     the spec PR (unmerged).
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
-  ID, spec PR#, impl PR#, branch, worktree path, current phase, and the last action
-  taken. A few lines. Update it at the end of every step. It is a cache of handles,
+  ID, spec PR#, impl PR#, branch, worktree path, current phase, the last action
+  taken, and the **spec-review round count** (see the convergence budget below). A few
+  lines. Update it at the end of every step. It is a cache of handles,
   not a log of content.
 
 Never rebuild state by re-reading prior sub-agent output. If you need detail, the
@@ -90,10 +91,47 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 | Phase (derived) | Next bounded action | Then |
 |---|---|---|
 | **NEEDS_SPEC** — no spec / not yet in spec review | Dispatch a sub-agent: *run `issue-spec <issue>`*. It researches, drafts **Part I ("The Case") and Part II ("The Build Plan")**, opens the spec PR **ready for review**, and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the spec PR to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. |
-| **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**: dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (apply clear fixes, escalate debatable), returns what changed, exits. When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review whose latest state is `APPROVED` on the current head, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical, and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — apply the `spec approved` label as the mirror and proceed the same way. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
+| **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest as §13 notes, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review whose latest state is `APPROVED` on the current head, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical, and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — apply the `spec approved` label as the mirror and proceed the same way. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
 | **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
+
+## The spec-review round budget (why AWAITING_SPEC_APPROVAL terminates)
+
+A spec PR draws review from bots we don't control, which produce line-level feedback
+without limit. Dispatching a Step 6.5 round for every event that arrives is an unbounded
+loop — and it's the loop that used to grind a directionally-correct spec through ten
+rounds. So this phase is **budgeted, not open-ended.**
+
+**Default: two rounds.** Track the count in the handle cache (`spec_review_rounds`).
+
+**Count rounds spent, not events dispatched.** The Step 6.5 sub-agent reports the rounds it
+actually spent, and **a batch that was only factual corrections or broken references costs
+zero** — those get fixed inline by rule precisely because they don't move the design. So add
+what the worker reports; never increment blindly per event. Charging typo batches to the
+budget would exhaust it on noise and then suppress the substantive feedback the budget exists
+to make room for — the opposite of the point. Then:
+
+- **Rounds 1–2** — dispatch Step 6.5 on the event batch as normal.
+- **Round 2 returns** — the spec has **converged**. Surface it to the user for the approval
+  gate, stating that it's converged and that remaining open threads are carried as §13
+  implementer notes. Then **stop dispatching review rounds**; further spec-PR review events
+  are logged in the cache and ignored until the gate resolves. The only event that still
+  acts is a **human** one — an approving comment/review (the gate), or the user asking for
+  a specific change.
+- **A third round is allowed only when round two surfaced a genuine spec-level finding** —
+  a new approach question, not more notes. The Step 6.5 sub-agent reports whether anything
+  was spec-level; that flag is what authorizes the extra round. Say so in one line when you
+  spend it, so the extra round is a visible decision rather than drift.
+
+Three things make stopping safe, all canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review": the spec
+PR is never merged so open threads gate nothing; below-the-bar feedback is preserved in §13
+and reaches the implementer; and implementation re-reviews the design against real code.
+**A bot `CHANGES_REQUESTED` neither holds the gate nor extends the budget.**
+
+The counter resets only if the *user* asks for a spec-level change after convergence — that
+starts a fresh direction question, not another polishing pass.
 
 ## Linear status is a mirror you own
 
@@ -143,7 +181,7 @@ Each invocation advances the plan by **one bounded step**:
    **parallel**, each in its own worktree on branch `fix/<ISSUE>-<id>`: dispatch a
    worktree-isolated worker (Agent tool `isolation: worktree`) that runs
    `issue-implement` scoped to that sub-PR's deliverables — it implements the slice,
-   runs `review`, and opens the sub-PR. Same isolation the fleet uses across issues,
+   runs `review`, and opens the sub-PR. Same isolation `epic-lifecycle` uses across issues,
    one level down. Cap parallelism to the VM (a few at a time).
 3. **Dependent ready** sub-PRs → branch off the dependency's branch so review can start
    before the dep merges; rebase onto the dep when it merges. A dependency's **merge
@@ -226,15 +264,15 @@ cloud vs. local" for how to detect the environment and the full fallback design.
 
 ## Boundaries
 
-- **Discovered gaps/blockers** during the work get **filed via the `issue-manager` agent** (related to this issue, same project) — never dropped or scope-crept into it. It returns a ready/blocked verdict; under the fleet, an unblocked related one can join the active set.
-- One issue. For several in parallel, use `issue-fleet` (it composes this skill,
-  one worktree per issue).
+- **Discovered gaps/blockers** during the work get **filed via the `issue-manager` agent** (related to this issue, same project) — never dropped or scope-crept into it. It returns a ready/blocked verdict; under `epic-lifecycle`, an unblocked related one can join the epic's active set.
+- One issue. For several related issues in parallel, use `epic-lifecycle` (it composes
+  this skill, one worktree per issue, under a shared epic).
 - This is the *coordinated, single-session, event-driven* lifecycle — one session
   shepherds the whole issue, start to merge-ready PR.
 - **Goal verification is part of done, not a gate.** `issue-implement` proves the goal on the
   real path at completion (a real model when the goal declares one; model-free goals are valid);
   a worker that skipped a model-backed goal to save credits hasn't finished. Same enforcement
-  rule — and the same narrow "no goal check applies" exception — as `issue-fleet` → Boundaries;
-  don't accept a cost-based skip.
+  rule — and the same narrow "no goal check applies" exception — as `epic-lifecycle` →
+  Boundaries; don't accept a cost-based skip.
 - Gates are fixed: **spec approval in, merge out.** Everything between runs without
   hand-holding, surfacing blockers when a sub-agent reports one.

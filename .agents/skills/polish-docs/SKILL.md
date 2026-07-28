@@ -1,6 +1,6 @@
 ---
 name: polish-docs
-description: The docs editor. A corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges documentation so it reads elegantly and navigates well — unafraid to rewrite and move content to make cohesive sense. Runs standalone on a section or the whole site, and is auto-dispatched at fleet/epic wrap to clean up the docs a batch of issues each edited in isolation. Edits and opens a draft PR; never auto-merges.
+description: The docs editor. A corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges documentation so it reads elegantly and navigates well — unafraid to rewrite and move content to make cohesive sense. Runs standalone on a section or the whole site, and is auto-dispatched at epic wrap to clean up the docs a batch of issues each edited in isolation. Edits and opens a draft PR; never auto-merges.
 argument-hint: "<scope, e.g. 'guides', 'the orchestration section', a PR/branch/epic, or empty = whole site>"
 ---
 
@@ -45,7 +45,7 @@ the standards you edit *toward*; don't restate them here, apply them.
 
 Resolve what to polish, from the argument:
 
-- **A change / branch / epic** (the fleet-wrap case): the union of docs the batch touched, plus
+- **A change / branch / epic** (the epic-wrap case): the union of docs the batch touched, plus
   the pages that *should* have changed with them but didn't (a new capability documented in its
   own page but never linked from the overview it belongs under).
 - **A section** (`guides`, `orchestration`, `fundamentals`, …): that slice end to end.
@@ -96,7 +96,7 @@ Restructuring breaks links and moves anchors — prove it didn't:
 - **Standalone:** present the working changes for review — a short summary of *what moved, what
   merged, what got cut*, so a human can sanity-check the restructuring at a glance (not a line diff).
   Then let the user review before it lands.
-- **Dispatched by the fleet at epic wrap:** open a **draft** docs-cleanup PR against the default
+- **Dispatched by `epic-lifecycle` at epic wrap:** open a **draft** docs-cleanup PR against the default
   branch, carrying the same summary. Keep it **draft** — bold rearrangement is exactly the kind of
   change a human should eyeball before merge. Never auto-merge.
 

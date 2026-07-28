@@ -89,7 +89,7 @@ That drain-then-continue loop assumes the pending work can run. It cannot always
 
 One thing to be precise about. The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own — a retry, an unblock, a resumed review, a reclaimed lease — and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`.
 
-The counts are read off the board's task ledger rather than kept as a separate tally, so they last as long as that ledger does. A delegation board lives on the coordinator generator's own state, which is restored from its checkpoint when a suspended run resumes — so the tasks are still there afterwards, and so are the counts. Planning a fresh wave of 100 after a resume will not work if the board already holds them. See [how long the counts last](../orchestration/task-board#how-long-the-counts-last) for the full picture across backings.
+The counts are read off the board's task ledger rather than kept as a separate tally, so they last as long as that ledger does. A delegation board lives on the coordinator generator's own state, and a generator's own state is rebuilt from its schema every time the block is entered — checkpointing is a sequencer thing. So a suspended run that resumes comes back to an empty board: the tasks are gone, and the counts start from zero. Don't treat a resumed coordinator as one that remembers what it already planned. See [how long the counts last](../orchestration/task-board#how-long-the-counts-last) for the full picture across backings.
 
 Both are tunable on the library, beside `workerModelId`:
 
