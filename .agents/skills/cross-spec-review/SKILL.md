@@ -102,6 +102,33 @@ escalation that requires the user's approval, which only the coordinator can obt
   `decision-needed` conflict. That inability is the structural guard; the human-approval
   gate at the coordinator is the cost guard.
 
+## Flagging a POC settlement (also a proposal — but a cheap one)
+
+Some conflicts aren't a judgment call at all: they're a **disagreement about how the system
+behaves**. The classic is the assumption conflict — spec A relies on ordering being preserved
+where spec B asserts it isn't; one of them is simply wrong about the code, and no amount of
+cross-reading tells you which. Don't adjudicate those from the spec texts, and don't hand the
+user a decision that a five-minute run answers.
+
+- **Read the code before you flag one.** Two specs disagreeing is already two assertions, but
+  the cheap resolution is usually a file: check the implementation, its tests, and
+  `docs/architecture/*` first. If the code settles it, say which spec is wrong and cite the
+  code — that's an ordinary recommendation, not a POC. Flag `poc-candidate` only when the
+  disagreement **survives** that read.
+- Mark the conflict **`poc-candidate: YES`** with the **claim slice** — `claim` (as "X does /
+  does not Y"), `load` (what in each spec depends on it), `falsify` (the observation that would
+  disprove it). The coordinator dispatches a `poc-agent`; the verdict resolves the conflict
+  factually and both specs align to it.
+- **Unlike `fable-candidate`, this needs no user approval** — a throwaway POC is cheap and
+  blocks nothing, where Fable is a paid escalation. That makes it cheap to fire, not free:
+  expect **zero or one** per review, and only where reading the code left the question open.
+- **A conflict is `fable-candidate` OR `poc-candidate`, never both.** Fable adjudicates when
+  both resolutions are *defensible on the tenets* — a values question. A POC settles when one
+  side is *factually wrong* — a reality question. If you can't tell which you're looking at,
+  ask whether a run could change anyone's mind: if yes it's a POC, if no it's a decision.
+- The same rule as always: if you can't reduce it to a slice, it isn't a candidate — leave it
+  as an ordinary `decision-needed` conflict.
+
 ## Report (compact — the coordinator holds this, not the spec texts)
 
 Return a ranked table, worst mutual-incoherence first. For each conflict:
@@ -113,11 +140,12 @@ kind:     scope-overlap | decision-conflict | surface-collision | assumption-con
 where:    <the section/decision/API in each spec that collides>
 recommend: <the resolution, and which spec(s) should change to land it>
 decision-needed?: NO (docs settle it — <which doc>) | YES (<the call the user must make, with options>)
+poc-candidate: NO | YES (claim: <X does/does not Y> · load: <what depends on it in each spec> · falsify: <what would disprove it>)
 fable-candidate: NO | YES (<the self-contained slice — excerpts, the decision, tenets in tension>)
 ```
 
 End with a one-line verdict: **COHERENT** (no changes needed) or **N conflicts — M need a
-user decision**. Keep the whole report to a screen; if it would run longer, you're pulling
+user decision, K are empirical (POC)**. Keep the whole report to a screen; if it would run longer, you're pulling
 in spec detail that belongs in the specs, not here — tighten to the conflicts.
 
 ## Boundaries

@@ -45,7 +45,7 @@ ends the turn:
   Parallel commits/pushes never collide — the whole reason worktrees exist here.
 - **Thin coordinator, isolated workers.** The coordinator holds only a compact **status
   table** — one row per issue: `issue · phase · spec PR# · impl PR# · spec-review rounds ·
-  gate-pending? · worktree`. It never holds a worker's context. Each worker advances its
+  settling · gate-pending? · worktree`. It never holds a worker's context. Each worker advances its
   issue by **one bounded step** (via `issue-lifecycle`) in its own context and returns
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
@@ -127,6 +127,11 @@ even if more are queued. State the chosen N and the cap to the user.
    Dispatch independent issues' workers **in parallel** (one message, multiple calls),
    up to the cap. (Where the harness lacks custom agents, fall back to the Agent tool
    with `isolation: worktree` and the same prompt.)
+
+   **Also dispatch any `settle_requested` from the last round** — a `poc-agent` on the claim
+   slice, in parallel with everything else, counted against the same cap. See
+   [When a thread turns on a fact](#when-a-thread-turns-on-a-fact-dispatch-a-poc--dont-buy-another-round).
+   And **route any verdict that came back** by dispatching that issue's worker to apply it.
 4. **Collect compact status** and update the table. Never fold a worker's full output
    in — one status line per issue. Then **write the Linear-status mirror** for any phase
    transition this refresh surfaced (Linear auto-status is off; the mapping + state IDs
@@ -144,7 +149,9 @@ even if more are queued. State the chosen N and the cap to the user.
    human other than the PR's author — the label is applied by the coordinator, not the human).
    **Say what they're signing off: the direction** — the problem framing, the approach, and the
    numbered Decisions — and, for a converged spec, that remaining open threads are carried as
-   implementer notes rather than blockers. The coordinator holds the *link*, not the spec text.
+   implementer notes rather than blockers. **If a POC settlement is in flight on that issue,
+   say so in one line** (the claim, and that the verdict will land on the PR) — approval isn't
+   blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The coordinator holds the *link*, not the spec text.
    The *other* issues keep moving. For any issue **ready to merge**, surface it and stop there
    (merge is the user's).
 6. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
@@ -211,6 +218,49 @@ spec-review round budget". The coordinator's job is only this:
   approval does) and doesn't extend the budget. Never re-request review from a bot.
 
 Convergence is per issue and independent — issue B doesn't wait on issue A's spec.
+
+### When a thread turns on a fact, dispatch a POC — don't buy another round
+
+A budget bounds *how many* rounds an issue spends; it doesn't help when the rounds keep
+flipping because the thread turns on a **factual claim about how the system behaves**. Running
+N specs in parallel makes this worse, not better: N threads each capable of an unbounded
+flip-flop. Once such a claim has been asserted and counter-asserted **twice**, it gets **run**
+instead of argued — the trigger is that loop, not a single assertion, so expect this to fire on
+a minority of issues rather than routinely. The rules are canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
+(POC settlement)"; the per-issue mechanics are in `issue-lifecycle` → "POC settlement". The
+coordinator's job is only this:
+
+- **Dispatch on request, no approval needed.** A worker that hits a contested factual claim
+  returns `settle_requested: <claim slice>` — it can't dispatch its own settlement, because it
+  exits before the verdict lands. You dispatch the **`poc-agent`**
+  (`.claude/agents/poc-agent.md` — worktree, Sonnet, never prompts) with that slice, alongside
+  your issue workers. Unlike a `fable-candidate`, this needs **no user yes**: a throwaway POC
+  is cheap, so there's no cost gate — which is also why it can fire routinely rather than as a
+  ceremony.
+- **It's one more parallel worker, so it counts against the VM.** A POC is a full worktree.
+  Count it in your concurrency budget (a settling POC is roughly an issue's worth of load) and
+  queue it if you're at the cap — a settlement that starts a wake later is still far cheaper
+  than two more review rounds.
+- **Carry it in the table, never wait on it.** Add `settling` to the issue's row
+  (`<claim> · in-flight | <verdict>`). The issue keeps converging, its gate stays reachable,
+  and **sibling issues are untouched**. A POC never makes an issue "pending" — it makes a
+  claim pending.
+- **Disclose in-flight settlements at step 5.** When you surface a spec for approval with a
+  POC running on a load-bearing claim, say so in one line. The user may approve anyway, and
+  usually should — but not unknowingly.
+- **Route the verdict on the wake it returns.** Dispatch that issue's worker to apply it per
+  `issue-spec` 6.5.3: CONFIRMED → reply + §12 record; REFUTED → one fold round **outside** the
+  budget (say in one line that it was evidence-driven); INCONCLUSIVE → surface as a direction
+  fork for the user. Then clear `settling` to the verdict. **A settled claim is closed** — a
+  later event re-litigating it is not a pending action for step 3.
+- **A cross-cutting claim is settled once for the epic.** When two issues' specs argue the
+  same claim (a shared assumption about behavior), dispatch **one** POC and fan the verdict
+  down to both — that's what the coordinator is for. Have `epic-agent` record it in the
+  epic-spec's cross-cutting decisions so a third issue doesn't reopen it.
+
+The epic PR gets the same treatment: a disputed factual claim on the epic-spec's themes is a
+`poc-agent` dispatch, not a fourth epic-review round.
 
 ### The epic PR gets the same budget
 
@@ -360,7 +410,13 @@ Once both hold:
 1. **Dispatch `cross-spec-review`** over the spec set (it forks into its own sub-agent,
    reads every spec in *its* context, and returns a compact ranked **conflict report** —
    the coordinator holds the report, never the spec texts). Read-only.
-2. **Walk you through the decisions.** For each conflict the report marks *decision-needed*,
+2. **Settle the empirical conflicts before you ask about any of them.** For each conflict the
+   report marks **`poc-candidate`** — an assumption conflict where one spec is simply *wrong*
+   about how the code behaves — dispatch a `poc-agent` on the claim slice immediately. **No
+   user prompt**: it's cheap, it's throwaway, and asking the user to decide a question a run
+   answers is the waste this exists to remove. Then align both specs to the verdict. Don't put
+   a factual question in the walkthrough below.
+3. **Walk you through the remaining decisions.** For each conflict the report marks *decision-needed*,
    surface it with the trade-off (`AskUserQuestion`) — the coordinator owns all user interaction;
    the review sub-agent never prompts. Conflicts the docs already settle are applied without
    a prompt (noted, not asked). For a conflict the report marks **`fable-candidate`**, the
@@ -370,13 +426,13 @@ Once both hold:
    its recommendation comes back as that conflict's resolution (marked `adjudicated: Fable`),
    still decision-needed — Fable advises, you decide. On no, you decide it directly. Fable is
    never spawned without that yes (see `AGENTS.md` → model tiering, upward escalation).
-3. **Route the alignment.** For each spec that must change to land a decision, pick the
-   cheaper channel:
+4. **Route the alignment.** For each spec that must change to land a decision (or a POC
+   verdict), pick the cheaper channel:
    - **Direct** — dispatch that issue's `issue-worker` to update its spec (repo doc +
      Linear in sync, per `issue-spec`) with the agreed change.
    - **PR comment** — when a direct update isn't warranted yet, leave a comment on that
      spec PR describing the required alignment, to be picked up in its review rounds.
-4. **Re-review the aligned specs** and keep the **stop-before-implement** gate on every
+5. **Re-review the aligned specs** and keep the **stop-before-implement** gate on every
    issue. An alignment edit is a *spec-level* change by construction — a cross-spec conflict
    is never below the bar — so it earns a fresh round outside the two-round budget, and the
    issue returns to spec review before it implements.

@@ -68,7 +68,9 @@ On each invocation, reconstruct the phase from a **small** read:
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
   ID, spec PR#, impl PR#, branch, worktree path, current phase, the last action
-  taken, and the **spec-review round count** (see the convergence budget below). A few
+  taken, the **spec-review round count** (see the convergence budget below), and any
+  **in-flight or settled claim** (`settling: <claim> · poc: in-flight | <verdict>` — see POC
+  settlement below; a settled claim's evidence lives in the spec's §12, not here). A few
   lines. Update it at the end of every step. It is a cache of handles,
   not a log of content.
 
@@ -132,6 +134,40 @@ and reaches the implementer; and implementation re-reviews the design against re
 
 The counter resets only if the *user* asks for a spec-level change after convergence — that
 starts a fresh direction question, not another polishing pass.
+
+## POC settlement (dispatch it, don't wait on it)
+
+The budget bounds how many rounds we spend; it doesn't help when a thread keeps flipping
+because it turns on a **factual claim about how the system behaves**. Once that claim has been
+asserted and counter-asserted **twice**, it gets **run** instead of argued — the trigger is the
+loop, never a single confident assertion, so this fires rarely and only where another round is
+predictably wasted. The rules are canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
+(POC settlement)". Your part:
+
+- **Dispatch on request.** A Step 6.5 worker that hits a contested factual claim returns
+  `settle_requested: <claim slice>` (claim · load · falsify · threads) instead of dispatching
+  itself — it exits, so the verdict would have nowhere to land. You dispatch the
+  **`poc-agent`** (`.claude/agents/poc-agent.md` — worktree-isolated, Sonnet, never prompts)
+  with that slice. **No approval needed** — unlike a Fable escalation, a POC is cheap and
+  throwaway, so there's no cost gate to clear.
+- **It runs in parallel and gates nothing.** Record `settling: <claim> · poc: in-flight` in
+  the handle cache and carry on: the spec keeps converging, the round budget is untouched
+  (requesting a settlement costs **zero** rounds), and the approval gate stays reachable.
+  Never hold a phase waiting on a verdict.
+- **Disclose it at the gate.** When you surface the spec for approval with a settlement in
+  flight, add the one line — *"the claim that X composes with Y is being checked empirically;
+  verdict will land on the PR."* Non-blocking is not the same as unmentioned: the user decides
+  whether to approve now, and they can only do that knowingly.
+- **Route the verdict when the POC returns** (its completion is an event like any other): the
+  `poc-agent` doesn't touch the spec or the thread, so dispatch a worker to apply it per
+  `issue-spec` 6.5.3 — CONFIRMED → reply + record in §12 as resolved-with-evidence; REFUTED →
+  one fold round, **outside** the two-round budget (evidence is not another opinion; say so in
+  one line); INCONCLUSIVE → surface to the user as a direction fork, don't retry it.
+- **A settled claim is closed.** Once §12 carries the evidence, a later spec-PR event
+  re-litigating that claim is **not** a pending action — it gets one reply pointing at the
+  evidence and costs zero rounds. Without this the settlement just becomes the next round's
+  opening argument, which is the loop we're breaking.
 
 ## Linear status is a mirror you own
 

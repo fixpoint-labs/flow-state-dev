@@ -3,9 +3,9 @@
 This is the **canonical reference** for how we drive Linear issues to merged PRs with
 agents — the roles, the artifacts, and the gates. The orchestration skills
 (`epic-lifecycle`, `issue-lifecycle`, `issue-spec`, `issue-implement`,
-`cross-spec-review`) and the worker sub-agents (`issue-worker`, `epic-agent`,
-`scout`, `spec-implementer`, `issue-manager`) **reference this doc** instead of each
-restating the shared concepts. When a concept here changes, it changes here.
+`cross-spec-review`, `settle-claim`) and the worker sub-agents (`issue-worker`, `epic-agent`,
+`poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc** instead of
+each restating the shared concepts. When a concept here changes, it changes here.
 
 ## The pieces at a glance
 
@@ -31,6 +31,7 @@ parallelism is a property of an epic, not a mode of its own.
   work happens in *their* context and only a compact summary returns:
   - `issue-worker` (worktree) — advances one issue by one lifecycle step.
   - `epic-agent` (worktree) — authors/maintains one epic-spec.
+  - `poc-agent` (worktree, Sonnet) — settles one disputed factual claim with a throwaway POC.
   - `scout` (Haiku) — read-only status/handle fetches.
   - `spec-implementer` (Sonnet) — implements one decided task.
   - `issue-manager` (Sonnet) — files discovered work into Linear.
@@ -41,6 +42,7 @@ flowchart TD
   Coord[Epic lifecycle coordinator<br/>thin · event-driven · status table]
   Coord -->|per issue, worktree| IW[issue-worker]
   Coord -->|per epic, worktree| EA[epic-agent]
+  Coord -->|disputed claim, worktree| PA[poc-agent]
   Coord -->|status fetches| SC[scout]
   Coord -->|discovered work| IM[issue-manager]
   IW -->|runs| IL[issue-lifecycle step]
@@ -376,6 +378,139 @@ So the discipline is ours, not theirs:
   declares convergence and surfaces the gate.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
+
+## Settling a disputed claim (POC settlement)
+
+Some review threads don't converge because they aren't about direction at all — they turn
+on a **factual claim about how the system behaves**. *"A router can't do that."* *"The store
+won't preserve ordering there."* *"That capability doesn't compose with a sequencer's state."*
+Prose can't settle a claim like that, so the thread flips: round one the spec looks right,
+round two the reviewer does, round three someone finds an angle that flips it back. Nothing
+in the loop above stops that, because the convergence budget bounds *how many rounds* we
+spend and not *what instrument* we use — and argument is the wrong instrument for a question
+about reality.
+
+So we stop arguing and run the code. This is tenet 7 (*prove the goal, not the mock*) applied
+one altitude up: the same reason a mocked test doesn't prove a feature is the reason a
+confident paragraph doesn't prove a design. A **POC settlement** is a throwaway,
+goal-shaped check whose only job is to make the disputed claim **falsifiable** and then
+falsify it or confirm it. The skill is [`settle-claim`](../../.agents/skills/settle-claim/SKILL.md);
+the dispatch shape is the `poc-agent` worker.
+
+```mermaid
+flowchart LR
+  T[spec-review triage<br/>or cross-spec review] -->|contested factual claim| REQ[requests settlement<br/>costs 0 rounds]
+  REQ --> C[coordinator dispatches<br/>poc-agent · worktree · parallel]
+  C -.->|spec keeps converging<br/>gate stays reachable| G([approval gate])
+  C --> V{verdict}
+  V -->|CONFIRMED| N[reply + record as resolved]
+  V -->|REFUTED| F[fold: 1 round<br/>outside the budget]
+  V -->|INCONCLUSIVE| H[hand back as a<br/>human decision]
+```
+
+### When it fires
+
+**The trigger is a *loop*, not an assertion.** Reviewers assert things constantly and most
+assertions are handled fine by the three dispositions — a POC is not the answer to someone
+being confidently wrong once. What a POC is for is the pattern where the *same* claim keeps
+getting re-argued, each pass reversing the last. So the necessary condition is:
+
+0. **The claim has been asserted and counter-asserted at least twice** — it came back after
+   being answered, or the spec has already flipped on it, or two rounds each reached a
+   different conclusion about it. **One confident assertion is not a loop**; triage it
+   normally (fold it, note it, or drop it with a pointer) and only reach for a settlement if
+   it returns.
+
+Then all three of these have to hold as well:
+
+1. **The disagreement is about behavior, not taste or direction.** Someone asserts the
+   system does (or doesn't) do a thing.
+2. **The claim is load-bearing.** If it's false, the spec's approach changes. A contested
+   claim the design doesn't rest on is a note, not a settlement.
+3. **Running code can decide it.** There is a check whose PASS and FAIL both mean something
+   about the claim.
+
+When all four hold, **settle it rather than spending a third round on it** — the repetition is
+the signal that prose has failed, and every further round is the loop this exists to break.
+Don't wait for round four to notice, and don't fire on round one to look thorough.
+
+### When it doesn't
+
+- **A claim asserted once.** However confidently, however wrong it sounds. Answer it in the
+  thread and move on; if it comes back, *then* you have a loop. Settling every assertion would
+  turn a two-round review into a POC farm and cost far more than the debate it replaced.
+- **Taste, naming, layout, structure.** Below the bar → an implementer note. No experiment
+  arbitrates preference.
+- **Direction and scope** ("should we build this at all"). No run settles a value judgment.
+  That's the human's call, or a `fable-candidate` if the fork is genuinely hard.
+- **The answer is already in the repo.** Read the code, the test, or the doc first — a POC is
+  the *second* resort, and a settlement that a two-minute read would have produced is waste.
+  Cite the code in a reply instead; that's a Drop with a pointer.
+- **It can't be reduced to a runnable falsification.** Then it isn't empirical, whatever it
+  sounds like. Hand it up as a decision the human makes.
+
+### Who dispatches, and why it doesn't block
+
+**Workers request; the coordinator dispatches.** A bounded worker (an `issue-worker` running
+a triage round, `cross-spec-review`) exits at the end of its step, so a sub-agent it spawned
+has nowhere to report back to. It therefore returns a **settlement request** — the claim, why
+it's load-bearing, and what would falsify it — and the coordinator dispatches the `poc-agent`
+in its own worktree, in parallel with everything else it's running. Same shape as a
+`fable-candidate`, with two deliberate differences: a POC needs **no human approval** (it's
+cheap and throwaway, where Fable is a paid escalation), and it **never gates anything**.
+
+Non-blocking is load-bearing. While the POC runs: the triage round finishes, remaining
+feedback lands as notes, the spec converges on schedule, and the approval gate stays
+reachable. Sibling issues under an epic are untouched. An agent that owns its own session
+(standalone `issue-spec`) can dispatch the POC itself and collect the verdict inside the same
+round — the request/dispatch split is about who survives long enough to receive the answer,
+not about ceremony.
+
+**Non-blocking, but disclosed.** When a settlement is in flight on a load-bearing claim, say
+so where the gate is surfaced: *"spec is converged and up for approval; the claim that X
+composes with Y is being checked empirically, verdict will land on the PR."* The human can
+approve anyway — that's their call to make knowingly, and it usually is the right one. What
+they must not do is approve on a premise nobody mentioned was contested.
+
+### What it costs (the round-budget interaction)
+
+The settlement has to *replace* debate rounds, not add to them:
+
+- **Requesting one costs zero rounds.** Same rule as a factual correction — it doesn't move
+  the design, it moves the question out of prose.
+- **Folding a verdict that changes the approach costs one round, outside the two-round
+  budget.** New evidence is not another opinion, and a spec-level finding backed by a run is
+  the most valuable thing a review produces. Say in one line that the extra round was
+  evidence-driven.
+- **A settled claim is closed.** Any later comment re-litigating it — from a bot, from a
+  human, from a fresh angle — gets **one** reply pointing at the evidence, and costs **zero**
+  rounds. This is the rule that actually kills the flip-flop: without it, the settlement
+  becomes round five's opening argument.
+
+### The three outcomes
+
+| Outcome | What it means | What ships |
+|---|---|---|
+| **CONFIRMED** | The spec's premise held | A verdict reply on the thread + the claim recorded as resolved-with-evidence (§12). **Nothing committed** — the POC is deleted. |
+| **REFUTED** | The premise is false; the approach has to change | The same reply, plus the fold (one round, outside the budget) and a *Spec evolution* line: *"After POC settlement — <what changed>, because the run showed <what>."* |
+| **INCONCLUSIVE** | The claim couldn't be reduced to a check, or the run didn't discriminate | Say so plainly, say why, and hand the claim back as a decision the human makes. **Never** a fabricated verdict — false evidence is worse than an unsettled debate, because it ends the debate wrongly. |
+
+A POC opens a **draft PR only when it produced something worth a human's attention**: it
+uncovered a framework bug or genuinely surprising behavior (also file it via
+`issue-manager`), the check is worth keeping as a durable regression **goal** in `goals/`, or
+its code is the seed of the implementation and reviewers should see the shape. The default
+is no PR — a verdict and a link are the deliverable, and throwaway code that gets reviewed
+stopped being throwaway.
+
+### Where the record lives
+
+Three places, each for a different reader, none optional:
+
+- **The thread** — the verdict reply, so the reviewer who raised it sees the answer.
+- **The spec's §12** — the claim as a *resolved* question with the evidence, so the next
+  reviewer (usually a bot with no memory of the thread) can't reopen it blind.
+- **The *Spec evolution* timeline** — one line, but **only if the verdict moved the design**.
+  A CONFIRMED claim changed nothing, so it earns no entry (same rule as a §13 note).
 
 ## How feedback flows (epic ↔ issues)
 

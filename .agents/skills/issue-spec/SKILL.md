@@ -16,6 +16,8 @@ You are a specification research and authoring agent. Given a Linear issue, your
 
 **The target is directionally correct, not unimpeachable.** A spec is done when the problem is framed right, the approach will work, and the Decisions in Part I are the ones we want. It is *not* held open until nothing is left to nitpick — that target doesn't exist, and chasing it is how a design that was right on the first draft takes ten review rounds to get approved. If a piece of feedback doesn't change the approach, it belongs to the implementer, not to the spec. The bar, the three dispositions, and the **two-round convergence budget** are canonical in [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar and the convergence rule" — read it before Step 6.5, and don't re-derive it here.
 
+**Where a review turns on a fact, run the code — don't argue it.** Some threads don't converge because they aren't about direction: they turn on a claim about how the system actually behaves, and prose can't settle those, so they flip back and forth until someone gives up. The second time a claim like that is argued, it gets a throwaway POC that returns a verdict with evidence — see [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim (POC settlement)" and Step 6.5.3. It costs no review rounds, it blocks nothing, and it is the same conviction as tenet 7 (*prove the goal, not the mock*) applied to a design debate instead of a test.
+
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
 
 **The spec lives in two synced places.** It is authored as a versioned doc at `docs/specs/<ISSUE-ID>.md` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. The two copies are the same content and must be kept in sync — see Step 6. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. The spec PR is never merged — `issue-implement` closes it (unmerged, branch deleted) when implementation starts, and the Linear document carries the spec from then on.
@@ -37,6 +39,7 @@ Other skills the spec author should reach for when relevant:
 
 - **`zoom-out`** — when sub-agents land in an unfamiliar area of the codebase during Step 2. Asks for a terse map in FSD vocabulary (flow / actions / blocks / capabilities / scopes / items / boundaries / callers). Faster than re-reading the docs cold.
 - **`prototype`** — when a design question can't be answered from existing code alone. If you find yourself unable to decide between two block shapes / capability surfaces / state models in Step 4 (Synthesize), pause and run a LOGIC prototype against the candidate. For UI questions about devtool / kitchen-sink / renderer changes, run a UI prototype. The prototype's NOTES.md becomes input to the spec; don't ship a spec that hand-waves through a question a one-day prototype would have answered.
+- **`settle-claim`** — the review-time sibling of `prototype`, and the two are not interchangeable. `prototype` is **exploratory and yours**: you're undecided, and you build to *learn* (Step 4). `settle-claim` is **adversarial and contested**: a review thread turns on a factual claim about how the system behaves, prose has already failed on it, and a throwaway POC returns a CONFIRMED / REFUTED verdict with evidence (Step 6.5's fourth disposition). Reach for it the *second* time a claim is argued — that's the circuit breaker on the flip-flopping loop, not a last resort.
 - **`improve-codebase-architecture`** — when Step 2 codebase analysis surfaces shallow-module / capability-shaped / pattern-shaped friction in the area being touched. The spec stays scoped to the issue, but the friction goes in the template's §12 (Follow-ups) as a flag — *"NOTE: <area> has a deepening opportunity (see candidate X); not in scope for this spec, follow up via `improve-codebase-architecture`."*
 
 ## Interactivity — one skill, two modes
@@ -378,6 +381,9 @@ For each piece of feedback ask the only question that matters at this altitude: 
 - **Fold in (spec-level).** The approach is wrong or won't work · it solves the wrong problem · a Part I Decision is wrong or missing · a constraint the design didn't account for invalidates it · scope is wrong (a deliverable that shouldn't ship, or a missing one) · the spec contradicts itself. Re-draft the affected sections per 6.5.2, keep repo doc ↔ Linear in sync, reply on the thread.
 - **Note for the implementer (the default).** Everything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", or a detail Part II left open on purpose. Record it **verbatim** in the spec's **§13 Review notes for the implementer**, and reply once saying it's recorded for implementation rather than baked into the design. **Do not rewrite the design prose around it** — that pretends the spec can settle something it can't, and it's what turns a sound spec into a churning one.
 - **Drop.** Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase. Reply once with the pointer or the correction. No spec edit, no §13 note.
+- **Settle (empirical dispute — only once a loop has formed).** A **factual claim about how the system behaves** — "a router can't do that", "the store won't preserve ordering there", "that capability doesn't compose with a sequencer's state" — that has now been **asserted and counter-asserted at least twice**, where the spec's approach *depends* on it and running code can decide it. You can't fold it (you'd be guessing which side is right) and you can't note it (the approach rests on it), so **settle it with a POC** — see 6.5.3. **Requesting a settlement costs zero review rounds**, and the spec keeps converging while it runs.
+
+**Settle on the loop, not on the assertion.** A claim asserted *once* — however confidently, however wrong it sounds — is ordinary triage: answer it, fold it, or drop it with a pointer to the code. The trigger is the **second** pass: the claim came back after being answered, or the spec has already flipped on it, or two rounds reached opposite conclusions. That repetition is the signal prose has failed on it, and it's the one case where another round of argument is predictably wasted. Fire then, and not before — POC-ing every assertion would replace a two-round review with a queue of experiments, which costs more than the debate did.
 
 **The default is Note, and the burden of proof is on folding.** If you can't name which Part I Decision or which part of the approach changes, it isn't spec-level. The one cheap exception: genuine factual corrections and broken references get fixed inline without ceremony — they don't move the design, so they don't cost a round.
 
@@ -392,7 +398,69 @@ Two instincts to override, because both run the wrong way:
 
 When review changes the *direction* (a different approach, a dropped/added deliverable, a reversed decision), rewrite the affected Part I and Part II sections so the spec reads as one coherent document. Do **not** bolt a "reconciliation / AUTHORITATIVE" section onto the top that contradicts the body — an incoherent spec produces an incoherent implementation (tenet 1). Small clarifications can be inline; a changed direction gets rewritten. Keep the repo doc and Linear document in sync through the rewrite. **Then record the pivot as one line in the spec's Spec evolution timeline** (`- **After spec review** — <what changed>, because <why>.`) — the body stays coherent, the timeline carries the why so the debate isn't lost. A §13 note never earns a timeline entry; it changed nothing.
 
-#### 6.5.3 Converge — two rounds, then hand to the human
+#### 6.5.3 Settle an empirical dispute with a POC (non-blocking)
+
+When triage lands on **Settle**, the debate stops and a throwaway POC decides it. The full
+rules — when it fires, when it doesn't, what it costs, the three outcomes — are canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
+(POC settlement)". Here is your part of it.
+
+**First, confirm the loop is real.** A settlement is authorized by *repetition*, not by
+confidence: the claim must have been asserted and counter-asserted at least twice (it returned
+after being answered, the spec flipped on it, or two rounds concluded opposite things). If
+this is its first pass, don't dispatch anything — reply, dispose of it normally, and settle it
+only if it comes back.
+
+**Then, check whether it's already settled.** Two cheap outs before anything is dispatched:
+
+- **The answer is in the repo.** Read the code, its tests, `docs/architecture/*`, or an
+  existing `goals/*/*/goal.md`. If it's there, this was never an empirical dispute — reply
+  with the citation (a **Drop** with a pointer) and move on. A POC that a two-minute read
+  would have replaced is waste.
+- **The claim was already settled on this spec.** Check §12 for a resolved claim with
+  evidence. If it's there, reply once pointing at the evidence and **charge zero rounds**.
+  A settled claim is closed; re-litigating it — by a bot, by a human, from a novel angle — does
+  not reopen it. Without this rule the settlement just becomes round five's opening argument.
+
+**Then write the claim slice** — the POC agent needs exactly this and nothing more:
+
+```
+claim:  <the disputed assertion, as "X does / does not Y">
+load:   <what in the spec's approach depends on it>
+falsify: <the observation that would prove it false>
+threads: <the PR thread link(s) where it's being argued>
+```
+
+**Then dispatch — or request.** Which one depends on whether you'll still be alive to receive
+the answer:
+
+- **You own your session** (standalone `issue-spec`): dispatch the **`poc-agent`** yourself,
+  in parallel, and keep triaging the rest of the batch while it runs. Collect the verdict
+  before you close out the round.
+- **You are a bounded worker** (dispatched by `issue-lifecycle` / `epic-lifecycle`): do **not**
+  dispatch it — you exit at the end of this step and the verdict would have nowhere to land.
+  Return the slice as `settle_requested` in your status line; the coordinator dispatches the
+  worker and routes the verdict. Same split as a `fable-candidate`, minus the human-approval
+  gate — a POC is cheap and throwaway, so nobody has to approve spending it.
+
+**Never wait on it.** Finish the round, land the remaining feedback as §13 notes, and let the
+spec converge on schedule. The POC runs concurrently and gates nothing.
+
+**Disclose it at the gate.** When you present the spec for approval with a settlement in
+flight, say so in one line: *"converged and up for approval; the claim that X composes with Y
+is being checked empirically — verdict will land on the PR."* The human may approve anyway,
+and usually should. What they must not do is sign off on a premise nobody told them was
+contested.
+
+**When the verdict lands, route it:**
+
+| Verdict | What you do |
+|---|---|
+| **CONFIRMED** | Reply on the thread with the verdict + evidence. Record the claim in **§12** as resolved-with-evidence so the next reviewer can't reopen it blind. **No spec rewrite** (nothing changed) and **no Spec evolution entry** — same rule as a §13 note. |
+| **REFUTED** | Fold it: re-draft the affected Part I / Part II sections per 6.5.2, keep repo doc ↔ Linear in sync, reply on the thread, record it in §12, and add **one** *Spec evolution* line — `- **After POC settlement** — <what changed>, because the run showed <what>.` This costs **one round, outside the two-round budget**: evidence is not another opinion. Say that in one line so the extra round is a visible decision. |
+| **INCONCLUSIVE** | The claim isn't decidable by running code (or the run didn't discriminate). Don't retry it and don't pick a side — surface it to the user as a direction fork with the trade-off (`AskUserQuestion`), exactly like any other genuinely debatable spec-level call. |
+
+#### 6.5.4 Converge — two rounds, then hand to the human
 
 **Default budget: two rounds** (a *round* = one pass over the feedback outstanding since the last push). After round two the spec has converged: say so, and present it for the approval gate with any remaining open threads carried as §13 notes. Spend a third round **only** when round two surfaced a genuine spec-level finding — a new approach question, not more notes — and state that in one line so the extra round is a visible decision rather than drift.
 
@@ -401,10 +469,11 @@ What makes stopping safe:
 - **An unresolved thread on a spec PR blocks nothing.** This PR is never merged, so it has no merge gate and open threads have no gating power. **Do not drive threads to zero** — that habit is correct on code PRs and does not transfer here.
 - **Nothing is lost.** Below-the-bar feedback is in §13 and reaches the implementer; above-the-bar feedback was folded in. There's no third category needing rescue.
 - **Implementation reviews the design again, better.** The challenger re-tests it against real code, the diff gets the full `review` panel, and a spec blind spot found there is folded back and flagged loudly. The spec isn't the last line of defence.
+- **The one thing a note can't rescue is handled separately.** A contested *factual* claim the approach rests on isn't fixed by carrying it forward — it needs an answer, not a reader. That's what **Settle** (6.5.3) is for, and it's why converging is still safe with one in flight: the POC runs concurrently, the verdict lands on the PR, and a REFUTED verdict buys its own round outside the budget.
 
 A bot leaving `CHANGES_REQUESTED` on a spec PR does **not** hold the gate (only a human's approval trips it — see Gates) and does **not** extend the budget. Never re-review to satisfy a bot, and never re-request review from one.
 
-#### 6.5.4 Sign-off
+#### 6.5.5 Sign-off
 
 The spec PR is done when it's converged and the user has signed off on the **direction**. **The sign-off signal the orchestrators gate on is an approving comment or GitHub Review from the user on the spec PR** — either a comment saying "approved" or a Review with `state: APPROVED`, authored by a human (not a bot, not a bot-authored comment/review, and for a review, not the PR's own author); see `docs/contributing/orchestration.md` → Gates. A comment or a review is the gate because either *wakes* the orchestrator, where an applied label doesn't. **On sign-off, apply the `spec approved` label as the durable mirror** if it isn't already present — the label records the gate (and keeps spec PRs filterable); it no longer triggers it. The approval is what authorizes closing the spec PR and starting implementation: from the agreed spec, implementation proceeds and the spec PR is closed unmerged — under `issue-lifecycle` the lifecycle closes it at the approval gate, standalone `issue-implement` closes it during branch setup. Don't merge or close the spec PR yourself.
 

@@ -71,6 +71,22 @@ produce, don't add ceremony.
   grounding changes aimed at noise. Implementation PRs keep the ordinary scoring, and
   `rounds-to-approval` for a spec PR ends at its approval, not a merge (spec PRs are never
   merged).
+- **Record `claims-settled` — the flip-flop class and whether settling it worked.** A spec
+  round spent re-arguing the *same factual claim* is the most expensive review pattern we have,
+  and it now has a designated cure: a POC settlement ([`orchestration.md`](../../../docs/contributing/orchestration.md)
+  → "Settling a disputed claim"). So the ledger carries, per spec PR: `claims-looped` (distinct
+  behavioral claims argued in **two or more** rounds), `claims-settled` (how many went to a POC),
+  and each verdict (`CONFIRMED` / `REFUTED` / `INCONCLUSIVE`). Two things to read off it, and
+  they cut in opposite directions:
+  - **Is it working?** `claims-looped` should trend **down** and settlements should be landing
+    at round two rather than round four. A `REFUTED` verdict is a *win* — the loop was hiding a
+    real design error that argument wasn't finding.
+  - **Is it over-firing?** A rising `claims-settled` with mostly `CONFIRMED` verdicts means POCs
+    are being spent to re-confirm premises that were never actually in doubt — the trigger has
+    slipped from "a loop formed" to "someone asserted something." That's the failure mode to
+    flag upstream, and it's why both numbers are recorded and not just the second.
+  Repeated `INCONCLUSIVE` is a third signal: the claims being handed to POCs aren't empirical,
+  which is a triage problem in `issue-spec` 6.5.1, not a POC problem.
 
 ### The unit of improvement — the recurring class, not the incident
 
