@@ -218,6 +218,78 @@ export type OpaqueFund = {
   reason: string;
 };
 
+/**
+ * `OpaqueFund.reason` mixes two genuinely different kinds of "we can't
+ * attribute this fund": a TEMPORARY availability gap (never fetched yet, or
+ * a fetch attempt that's currently quota/rate-limited and will be retried)
+ * versus a judgment about a profile the route DID successfully evaluate.
+ * This is a CLOSED set — every `opaqueByTicker.set(...)` call site in this
+ * file (INCLUDING a caller-written withdrawal entry like `guards.ts`'s
+ * {@link CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON}) is enumerated here; a
+ * reason string not in this set is treated as data-quality by default (moved
+ * from `build-portfolio-context.ts`, FIX-954 §0.5, so the sector panel and
+ * the analysis prompt classify a fund's refusal reason identically — see
+ * {@link classifyOpaqueReason}). */
+const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
+  "no stored profile", // never fetched
+  "quota", // Alpha Vantage daily budget exhausted — retried next reset
+  "transient", // network/parse failure — retried within ~15 min
+  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+]);
+
+/**
+ * Classify one `OpaqueFund.reason` into the three buckets the FIX-954 sector
+ * panel and its coverage ceiling need (spec §0.5, §2.1):
+ *
+ * - `"awaiting"` — a TEMPORARY availability gap a future refresh can close:
+ *   never fetched, quota/rate-limited, a transient read failure, or a
+ *   fund-of-funds constituent read withdrawn mid-broadening. Gated on
+ *   `axis === "both"` — every awaiting reason is written as a single
+ *   combined `{ axis: "both" }` entry BEFORE this file's main loop ever
+ *   reaches the per-axis (names/sectors) logic that can split one ticker
+ *   into two entries, so a `names`- or `sectors`-only entry can never
+ *   legitimately be "awaiting data" — this gate is structural, not
+ *   incidental (mirrors `classifyOpaqueFunds`'s own `unavailable` rule).
+ * - `"policy"` — a PERMANENT, structural exclusion no refresh can change:
+ *   mutual-fund or fixed-income attribution suppression, a leveraged/
+ *   inverse fund, an ineligible fund, or a fund-of-funds. This is the only
+ *   group a terminal coverage ceiling (`100 − policy`) may ever subtract —
+ *   everything else may still resolve on a later refresh.
+ * - `"data"` — the DEFAULT branch: a data-quality judgment about a profile
+ *   that WAS evaluated (thin/malformed holdings or sector data, a
+ *   confirmed non-ETF, or a fund whose resolvable rows carry no
+ *   attributable name) — AND, because this is the fallback, any reason
+ *   string this function has never seen. The default MUST be `"data"`,
+ *   never `"awaiting"`: a reason class the code doesn't recognize is far
+ *   likelier to be a fresh structural finding than a fresh flavor of
+ *   "temporarily missing," and telling a user "still fetching" about it
+ *   would overstate recoverability — the costlier of the two possible
+ *   mistakes (spec §0.5's documented default).
+ */
+export function classifyOpaqueReason(
+  reason: string,
+  axis: OpaqueFund["axis"],
+): "policy" | "data" | "awaiting" {
+  if (axis === "both" && UNAVAILABLE_REASONS.has(reason)) return "awaiting";
+  if (
+    reason === MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON ||
+    reason === FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON ||
+    reason === "leveraged/inverse fund" ||
+    reason === "ineligible" ||
+    // Parameterized (interpolates the resolved-to-other-funds share, e.g.
+    // "fund-of-funds: 62.0% of holdings resolve to other funds") — this
+    // family has no separate constant or structural field to match on
+    // (OpaqueFund carries only ticker/axis/reason), so a prefix match on
+    // the fixed lead-in text is the only way to positively identify it
+    // rather than let it fall to the "data" default (see this function's
+    // call site in FIX-954's spec §0.5 for why the default must stay safe).
+    reason.startsWith("fund-of-funds:")
+  ) {
+    return "policy";
+  }
+  return "data";
+}
+
 export type LookThroughSectorBucket = {
   bucket: string;
   marketValue: number;

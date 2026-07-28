@@ -24,6 +24,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  classifyOpaqueReason,
   computeLookThroughExposure,
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
@@ -1504,5 +1505,82 @@ describe("isFundConfirmingProfileEntry — the shared fund-evidence predicate re
   it("reads false for quota/transient — neutral transport failures, not a judgment either way", () => {
     expect(isFundConfirmingProfileEntry(refusal("quota"))).toBe(false);
     expect(isFundConfirmingProfileEntry(refusal("transient"))).toBe(false);
+  });
+});
+
+describe("classifyOpaqueReason — the shared opaque-reason classifier (FIX-954 §0.5, moved from build-portfolio-context.ts)", () => {
+  it("classifies each of the four awaiting-data reasons as 'awaiting' only at axis 'both' — the short-circuit is structural, not incidental", () => {
+    const awaitingReasons = [
+      "no stored profile",
+      "quota",
+      "transient",
+      CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+    ];
+    for (const reason of awaitingReasons) {
+      expect(classifyOpaqueReason(reason, "both")).toBe("awaiting");
+      // A names-/sectors-only entry can never legitimately be "awaiting data"
+      // — every awaiting reason is written as a combined `{axis: "both"}`
+      // entry before the per-axis logic ever runs (etf-look-through.ts's
+      // main loop), so this reads as a data-quality default instead.
+      expect(classifyOpaqueReason(reason, "names")).toBe("data");
+      expect(classifyOpaqueReason(reason, "sectors")).toBe("data");
+    }
+  });
+
+  it("classifies each PERMANENT policy-exclusion reason as 'policy' — no future refresh can change these, so they're the only mass a terminal ceiling may subtract (§2.1)", () => {
+    expect(classifyOpaqueReason(MUTUAL_FUND_ATTRIBUTION_SUPPRESSED_REASON, "both")).toBe("policy");
+    expect(classifyOpaqueReason(FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON, "both")).toBe("policy");
+    expect(classifyOpaqueReason("leveraged/inverse fund", "both")).toBe("policy");
+    expect(classifyOpaqueReason("ineligible", "both")).toBe("policy");
+    // Parameterized: the fund-of-funds reason interpolates the actual
+    // resolved-to-other-funds share, so a different book produces a
+    // different percentage — the family must still classify as policy.
+    expect(
+      classifyOpaqueReason("fund-of-funds: 62.0% of holdings resolve to other funds", "both"),
+    ).toBe("policy");
+    expect(
+      classifyOpaqueReason("fund-of-funds: 50.0% of holdings resolve to other funds", "both"),
+    ).toBe("policy");
+  });
+
+  it("classifies each DATA-QUALITY family — and a never-before-seen reason string — as 'data', the safe default (§0.5): a fund the route DID evaluate, or a reason this function has never seen", () => {
+    // Bare fetch-time refusal reasons (etf-profile.ts's EtfRefusalReason) —
+    // a confirmed non-ETF, and a genuine (non-parameterized) malformed
+    // refusal that survives to a directly-held ETF's `both`-axis entry.
+    expect(classifyOpaqueReason("not_an_etf", "both")).toBe("data");
+    expect(classifyOpaqueReason("malformed", "both")).toBe("data");
+    // Parameterized per-axis diagnostics from this file's own main loop.
+    expect(
+      classifyOpaqueReason("holdings data incomplete (50.0% coverage, floor 85%)", "names"),
+    ).toBe("data");
+    expect(
+      classifyOpaqueReason(
+        "holdings data malformed (declared 90.0% coverage doesn't match 180.0% summed constituent weight)",
+        "names",
+      ),
+    ).toBe("data");
+    expect(
+      classifyOpaqueReason("sector data incomplete (50.0% coverage, floor 85%)", "sectors"),
+    ).toBe("data");
+    expect(
+      classifyOpaqueReason(
+        "sector data malformed (declared 90.0% coverage doesn't match 180.0% summed sector weight)",
+        "sectors",
+      ),
+    ).toBe("data");
+    // Fixed (non-parameterized) structural reason — a name-axis fund
+    // covered only by non-attributable rows (foreign lines, futures, cash).
+    expect(
+      classifyOpaqueReason(
+        "no resolvable name-axis constituent (fully covered by non-attributable rows only — e.g. foreign lines, futures, cash, or constituents that are themselves funds)",
+        "names",
+      ),
+    ).toBe("data");
+    // The open-ended case: a reason string this function has never seen
+    // before must default to "data", never "awaiting" — overstating
+    // recoverability leaves a user waiting forever (spec §0.5).
+    expect(classifyOpaqueReason("a brand new refusal reason nobody has written yet", "both")).toBe(
+      "data",
+    );
   });
 });

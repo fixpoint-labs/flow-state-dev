@@ -13,6 +13,7 @@ import {
 } from "../flows/analysis/build-portfolio-context";
 import type { AccountState } from "../domain/portfolio/schema/portfolio-schema";
 import {
+  classifyOpaqueReason,
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
   FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON,
   type FundProfileInput,
@@ -603,6 +604,100 @@ describe("buildPortfolioContext — FIX-801 ETF look-through wiring", () => {
     expect(lookThrough?.opaqueFundDetails).toEqual([
       { ticker: "BND", axis: "both", reason: FIXED_INCOME_ATTRIBUTION_SUPPRESSED_REASON, unavailable: false },
     ]);
+  });
+
+  it("PARITY (FIX-954 §0 step 0): classifyOpaqueFunds's `unavailable` field tracks the shared classifyOpaqueReason exactly — one awaiting fund, one permanent policy exclusion, one data-quality finding, one never-fetched-but-unknown-reason fund", () => {
+    // Four funds, one from each family the classifier must tell apart:
+    // QQQ — never fetched (awaiting); TQQQ — leveraged (policy, permanent);
+    // VTI — sub-floor coverage on both axes via two INDEPENDENT reasons
+    // (data-quality); SCHD — a stored refusal with a reason string the
+    // classifier has never seen (must default to "data", NOT "awaiting",
+    // even though its axis is "both" — this is the case that would break
+    // if the refactor accidentally widened the awaiting set).
+    const book = [
+      account({
+        cashBalance: 0,
+        holdings: [
+          { ticker: "AAPL", quantity: 100, costBasis: 90, acquiredDate: null, assetClass: "equity", assetType: "equity", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SPY", quantity: 150, costBasis: 300, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "QQQ", quantity: 50, costBasis: 200, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "TQQQ", quantity: 20, costBasis: 40, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "VTI", quantity: 50, costBasis: 150, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+          { ticker: "SCHD", quantity: 30, costBasis: 60, acquiredDate: null, assetClass: "equity", assetType: "etf", attributes: { kind: "none" }, dataQuality: null },
+        ],
+      }),
+    ];
+    const quotes = [
+      { ticker: "AAPL", price: 100, asOf: "2026-05-06" },
+      { ticker: "SPY", price: 400, asOf: "2026-05-06" },
+      { ticker: "QQQ", price: 200, asOf: "2026-05-06" },
+      { ticker: "TQQQ", price: 50, asOf: "2026-05-06" },
+      { ticker: "VTI", price: 200, asOf: "2026-05-06" },
+      { ticker: "SCHD", price: 80, asOf: "2026-05-06" },
+    ];
+    const profiles: Map<string, FundProfileInput> = new Map([
+      [
+        "SPY",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [
+              { ticker: "AAPL", weight: 0.925 },
+              { ticker: "MSFT", weight: 0.07 },
+            ],
+            nameCoverage: 0.995,
+            sectors: [
+              { sector: "Technology", weight: 0.3 },
+              { sector: "Financial Services", weight: 0.66 },
+            ],
+            sectorCoverage: 0.96,
+          },
+          refusalReason: null,
+        },
+      ],
+      // QQQ has no entry at all — never fetched.
+      ["TQQQ", { payload: null, refusalReason: "ineligible" }],
+      [
+        "VTI",
+        {
+          payload: {
+            leveraged: false,
+            constituents: [{ ticker: "MSFT", weight: 0.5 }],
+            nameCoverage: 0.5,
+            sectors: [{ sector: "Technology", weight: 0.5 }],
+            sectorCoverage: 0.5,
+          },
+          refusalReason: null,
+        },
+      ],
+      ["SCHD", { payload: null, refusalReason: "a brand new refusal reason nobody has written yet" }],
+    ]);
+
+    const out = buildPortfolioContext(book, quotes, "2026-05-06", new Map(), profiles);
+    const details = out?.health?.lookThrough?.opaqueFundDetails ?? [];
+    expect(details.length).toBeGreaterThan(0);
+    // The parity guarantee: for EVERY entry the projection emits, `unavailable`
+    // is exactly `classifyOpaqueReason(reason, axis) === "awaiting"` — nothing
+    // else feeds it. This is what makes the refactor a pure move: the pane and
+    // the analysis prompt can never disagree about which funds are still
+    // awaited, because both read the same classifier.
+    for (const d of details) {
+      expect(d.unavailable).toBe(classifyOpaqueReason(d.reason, d.axis) === "awaiting");
+    }
+    // Pinned per-fund expectations so a regression can't slip through by
+    // accidentally making every entry agree with itself.
+    expect(details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ticker: "QQQ", axis: "both", reason: "no stored profile", unavailable: true }),
+        expect.objectContaining({ ticker: "TQQQ", axis: "both", reason: "ineligible", unavailable: false }),
+        expect.objectContaining({
+          ticker: "SCHD",
+          axis: "both",
+          reason: "a brand new refusal reason nobody has written yet",
+          unavailable: false, // unknown reason → "data" default, NEVER "awaiting"
+        }),
+      ]),
+    );
   });
 });
 
