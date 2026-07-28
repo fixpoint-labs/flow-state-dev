@@ -43,7 +43,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 
 ### The status state machine
 
-A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state.
+A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state, unless the caller opted that particular write into being advisory — see the note on `complete` and `fail` below, where a rejected transition does nothing instead.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -87,6 +87,23 @@ The mutation surface:
 - **Lifecycle** — `claim`, `complete`, `fail`, `block` / `unblock`, `awaitReview` / `resumeFromReview`, `cancel`, `reclaim` (reset stale leases back to `pending`).
 - **Mutate** — `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
+
+#### Recording a result that may no longer apply
+
+`complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be rejected by the state machine or, worse, quietly overwrite work that belongs to someone else.
+
+Passing the option makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
+
+```ts
+await tasks.complete(task.id, output, {
+  ifAllowed: true,              // skip if the state machine won't take it
+  expectAttempt: task.attempts, // skip if this is no longer my claim
+});
+```
+
+`ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a final status, so an incidental repeat write cannot clobber a settlement someone recorded deliberately. `expectAttempt` asks a different question: do I still hold this task? That one matters because a stale result is often a perfectly *legal* transition, and so invisible to the first check.
+
+Two things to know. The checks happen inside the same atomic write that performs the transition, so there is no gap between checking and writing, and you never have to re-derive the state machine yourself. And only those two outcomes go quiet: a missing task, a store failure, or an ordinary bug still throws. Leave the argument off and both methods behave exactly as they always have.
 
 Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim, its messages, tool calls, sources, reasoning, so an aggregator (a synthesizer or reviewer) can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
 

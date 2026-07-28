@@ -30,6 +30,54 @@ export interface ClaimOptions {
 }
 
 /**
+ * Opt-in guards for the `complete` / `fail` write-backs (FIX-951).
+ *
+ * Both guards are evaluated **inside** the same atomic write that performs
+ * the transition, so there is no window between checking and writing. Both
+ * are advisory: when a guard rejects the write, the call is a silent no-op
+ * and returns normally. Nothing reports which guard fired.
+ *
+ * The enumerated failure set is exactly that — a rejected transition and a
+ * lost claim. **Everything else still throws**: a missing task, a store
+ * failure, CAS exhaustion, an ordinary bug. This is a containment guard for
+ * task-state conflicts, not a blanket error suppressor.
+ *
+ * Omit the options entirely (the default for every direct caller) and both
+ * methods behave exactly as before, throwing on an illegal transition.
+ *
+ * Intended for the substrate's own write-backs — a task board's result
+ * recorders, a dispatcher's claim/execute cycle — where the task may have
+ * been settled by someone with better information (a coordinator cancelled
+ * it, the worker settled it through its own task tools, a lease reclaim
+ * re-queued it for another attempt) while the worker was still running.
+ */
+export interface TaskTransitionOptions {
+  /**
+   * Record the outcome only if the task's state machine will accept it.
+   *
+   * Declines when the task is already terminal, **or** when the transition
+   * is rejected. Both arms are load-bearing: the state machine treats
+   * same-status as allowed, so `cancelled → cancelled` is legal *and*
+   * terminal, and without the terminal arm an incidental repeat write would
+   * clobber the reason and timestamp an explicit settlement recorded.
+   */
+  ifAllowed?: boolean;
+  /**
+   * Record the outcome only if the caller still **owns** the task.
+   *
+   * Declines unless `task.attempts` equals the attempt the caller claimed
+   * under *and* the task is still `in_progress` or `awaiting_review`.
+   *
+   * The status half is not belt-and-braces. `reclaim()` returns a task to
+   * `pending` without advancing `attempts`, so between a reclaim and the
+   * next claim a displaced worker matches the counter by construction — and
+   * since `blocked` is reachable only from `pending`, a counter-only guard
+   * would let a stale worker silently unblock work a coordinator parked.
+   */
+  expectAttempt?: number;
+}
+
+/**
  * `Task` plus a runtime accessor for the items the worker emitted while it
  * held the claim window (FIX-480 §3.1). Returned from `list` / `get` so
  * pattern aggregators (synthesizers, reviewers, replanners) can pick from
@@ -85,9 +133,20 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
 
   // lifecycle
   claim(workerId: string, options?: ClaimOptions): Promise<Task<TInput, TOutput> | null>;
-  complete(id: string, output: TOutput): Promise<void>;
+  /**
+   * Mark the task completed with `output`.
+   *
+   * Throws on an illegal transition. Pass `options` to make the write
+   * advisory instead — see `TaskTransitionOptions`.
+   */
+  complete(id: string, output: TOutput, options?: TaskTransitionOptions): Promise<void>;
   /**
    * Mark the task failed.
+   *
+   * Throws on an illegal transition. Pass `options` to make the write
+   * advisory instead — see `TaskTransitionOptions`. Both branches below
+   * honour the guards, so a settled task with retry budget left declines
+   * rather than throwing on its way to `pending`.
    *
    * - When the task carries a `maxAttempts` budget that has not yet
    *   been exhausted, this is a *soft* fail: status flips back to
@@ -97,7 +156,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * - Otherwise this is a *hard* fail: status transitions to terminal
    *   `errored` with the error captured on `task.error`.
    */
-  fail(id: string, error: string): Promise<void>;
+  fail(id: string, error: string, options?: TaskTransitionOptions): Promise<void>;
   block(id: string, reason?: string): Promise<void>;
   unblock(id: string): Promise<void>;
   awaitReview(id: string, feedback?: string): Promise<void>;

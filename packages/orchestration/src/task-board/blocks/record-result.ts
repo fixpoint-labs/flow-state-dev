@@ -15,6 +15,13 @@
  *   `onError`: `"skip"` swallows the error after writing the failure;
  *   `"fail"` rethrows so the parent forEach rejects.
  *
+ * Both write-backs are **advisory** (FIX-951): they pass `ifAllowed` and
+ * `expectAttempt`, so a result that arrives after the task was settled by
+ * someone else — a coordinator cancelled it, the worker settled it through
+ * its own task tools, a lease reclaim handed it to another worker — is
+ * dropped instead of throwing. The throw is what used to escape the rescue
+ * and abandon every sibling task on the board.
+ *
  * The split lets the worker run as a plain `.step(workerStep)` step in
  * the sequencer — no handler wrapper around the worker, no manual
  * try/catch. The framework's rescue mechanism owns failure flow
@@ -49,8 +56,14 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
     execute: async (output: unknown, ctx) => {
       const taskId = ctx.sequencer!.state.currentTaskId;
       if (taskId === undefined) return;
-      await (await collectionFactory(ctx)).complete(taskId, output);
-      await ctx.sequencer!.patchState({ currentTaskId: undefined });
+      await (await collectionFactory(ctx)).complete(taskId, output, {
+        ifAllowed: true,
+        expectAttempt: ctx.sequencer!.state.currentAttempt,
+      });
+      await ctx.sequencer!.patchState({
+        currentTaskId: undefined,
+        currentAttempt: undefined,
+      });
     },
   });
 }
@@ -89,8 +102,14 @@ export function createRecordError(options: RecordErrorOptions) {
       const taskId = ctx.sequencer!.state.currentTaskId;
       const message = error instanceof Error ? error.message : String(error);
       if (taskId !== undefined) {
-        await (await collectionFactory(ctx)).fail(taskId, message);
-        await ctx.sequencer!.patchState({ currentTaskId: undefined });
+        await (await collectionFactory(ctx)).fail(taskId, message, {
+          ifAllowed: true,
+          expectAttempt: ctx.sequencer!.state.currentAttempt,
+        });
+        await ctx.sequencer!.patchState({
+          currentTaskId: undefined,
+          currentAttempt: undefined,
+        });
       }
       if (onError === "fail") {
         throw error instanceof Error ? error : new Error(message);

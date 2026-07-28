@@ -9,8 +9,9 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
+import { isTerminalStatus, isTransitionAllowed } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
-import type { ClaimOptions, TaskHandle } from "./types";
+import type { ClaimOptions, TaskHandle, TaskTransitionOptions } from "./types";
 
 let idCounter = 0;
 function generateTaskId(): string {
@@ -82,6 +83,65 @@ export function buildInitialTask<TInput, TOutput>(
 export function shouldRetryOnFail(task: Task): boolean {
   if (task.maxAttempts === undefined) return false;
   return task.attempts < task.maxAttempts;
+}
+
+/**
+ * The two statuses an in-flight attempt can be said to *hold*.
+ *
+ * Everything else means the attempt was displaced (reclaimed, re-queued,
+ * parked) or the task was settled by someone else.
+ */
+const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>(["in_progress", "awaiting_review"]);
+
+/**
+ * True when `expectAttempt` still owns `task` (FIX-951).
+ *
+ * Ownership is the counter **and** the status, not the counter alone.
+ * `reclaim()` returns a task to `pending` without touching `attempts` — it
+ * advances only on the next claim (`applyClaimToTask`) — so in the window
+ * between a reclaim and the next claim a displaced worker matches the
+ * counter by construction. `attempts` is a claim counter, and only
+ * incidentally an ownership token while the task sits in a status an
+ * attempt holds.
+ */
+export function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
+  return task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status);
+}
+
+/**
+ * Decide whether an advisory write-back should decline (FIX-951).
+ *
+ * Called from inside each backing's transition wrapper — i.e. inside the
+ * atomic write — so the status it reads is authoritative and no caller has
+ * to re-derive the state machine from outside the lock. Single-sourced here
+ * because the two backings carry separately maintained copies of the
+ * wrapper itself, and the *rules* must not drift between them.
+ *
+ * Returns `true` to no-op the write. A `false` return says nothing about
+ * legality: the wrapper still runs `assertTransitionAllowed`, so a caller
+ * that passed no guards (or only `expectAttempt`) keeps today's throwing
+ * contract.
+ */
+export function shouldDeclineTransition(
+  task: Task,
+  targetStatus: TaskStatus,
+  options: TaskTransitionOptions | undefined
+): boolean {
+  if (options === undefined) return false;
+  // Two arms, both load-bearing. `isTransitionAllowed` treats same-status as
+  // allowed, so the disallowed arm does not subsume the terminal one:
+  // `cancelled → cancelled` is legal *and* terminal, and letting it through
+  // would clobber the reason and timestamp of the settlement already recorded.
+  if (
+    options.ifAllowed === true &&
+    (isTerminalStatus(task.status) || !isTransitionAllowed(task.status, targetStatus))
+  ) {
+    return true;
+  }
+  if (options.expectAttempt !== undefined && !attemptOwnsTask(task, options.expectAttempt)) {
+    return true;
+  }
+  return false;
 }
 
 /**

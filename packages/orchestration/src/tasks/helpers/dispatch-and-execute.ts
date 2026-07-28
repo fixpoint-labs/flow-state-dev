@@ -175,11 +175,20 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
         // sequencer composition. `asRuntime(worker).run` is the sanctioned
         // substrate cast for first-party dispatch.
         const output = (await asRuntime(worker).run(workerInput, ctx)) as TOut;
-        await options.collection.complete(claimed.id, output);
+        // Advisory write-back (FIX-951): the task may have been settled or
+        // handed to another worker while this one ran. `claimed.attempts` is
+        // post-claim, so it is this cycle's attempt number.
+        await options.collection.complete(claimed.id, output, {
+          ifAllowed: true,
+          expectAttempt: claimed.attempts,
+        });
         return { claimed: true, taskId: claimed.id, output };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await options.collection.fail(claimed.id, message);
+        await options.collection.fail(claimed.id, message, {
+          ifAllowed: true,
+          expectAttempt: claimed.attempts,
+        });
         if (onError === "fail") throw err;
         return { claimed: true, taskId: claimed.id, error: message };
       }

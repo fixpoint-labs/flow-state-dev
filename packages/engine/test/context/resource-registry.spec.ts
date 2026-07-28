@@ -608,6 +608,47 @@ describe("createScopeResourceRegistry — collections", () => {
     expect(onUpdated.mock.calls[0][0]).toBe("items/doc1");
   });
 
+  it("instance updateState aborts cleanly when the updater throws (FIX-951)", async () => {
+    // Pins the contract the task substrate's advisory write-backs rely on to
+    // decline a write atomically. The updater runs inside the per-key write
+    // serialization, so throwing out of it must (a) leave the stored state
+    // untouched, (b) skip the change notification entirely — a declined write
+    // announcing a `resource_change` would wake a `reactTo.stateUpdated` block
+    // for a write that never happened — and (c) surface the rejection to the
+    // caller rather than swallowing it.
+    const onChange = vi.fn();
+    const onUpdated = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      stateSchema: z.object({ v: z.number() }).passthrough(),
+      onInstanceUpdated: onUpdated
+    });
+    const registry = makeRegistry({
+      configs: { items: nsConfig },
+      initialState: { "items/doc1": { v: 1 } },
+      onResourceChanged: onChange
+    });
+    const ref = await (registry as any).items.get("doc1");
+    onChange.mockClear();
+
+    const boom = new Error("declined");
+    await expect(
+      ref.updateState(() => {
+        throw boom;
+      })
+    ).rejects.toBe(boom);
+
+    expect(ref.state).toEqual({ v: 1 });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onUpdated).not.toHaveBeenCalled();
+
+    // And the failed write must not wedge the key's write chain — the next
+    // writer still lands. Without this the abort would be a denial of service
+    // on the resource rather than a no-op.
+    await ref.updateState((s: any) => ({ ...s, v: s.v + 1 }));
+    expect(ref.state).toEqual({ v: 2 });
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   it("instance writeContent persists content and emits change (FIX-756 parity)", async () => {
     const onChange = vi.fn();
     const nsConfig = makeCollectionConfig("items/*");

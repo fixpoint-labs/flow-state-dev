@@ -41,7 +41,12 @@ export {
 } from "./items";
 
 // Collections
-export type { TaskCollectionRef, ClaimOptions, TaskHandle } from "./collection/types";
+export type {
+  TaskCollectionRef,
+  ClaimOptions,
+  TaskHandle,
+  TaskTransitionOptions,
+} from "./collection/types";
 export { createSequencerBackedTaskCollection } from "./collection/sequencer-backed";
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";

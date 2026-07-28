@@ -214,7 +214,13 @@ The rule above is the board's, and it stays as stated: an unmatched assignee fal
 - `concurrency` — max parallel workers. Default `4`.
 - `onError: "skip" | "fail"` — `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
 - `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
-- `maxIterations` — board-level safety cap on total dispatch loops before the board stops. Default `10000`.
+- `maxIterations` — safety cap on how many times a worker loops before it stops. Default `10000`. The cap is **per worker**, not per board, so the board-wide ceiling is `concurrency` times this number.
+
+A worker's result is not always the last word on its task. Cancelling a task does not stop the worker already running it, and neither does the worker marking the task done itself partway through, or the claim expiring and another worker picking the task up. In each of those cases the worker eventually comes back with a result for a task that has already moved on.
+
+The board drops those results rather than recording them. Whoever changed the task had better information than a worker that has been away doing the work, so the cancel stands, the output the worker recorded for itself stands, and the second worker's claim is left alone. What matters for `onError` is that dropping the result is contained: one task is affected, the rest of the board keeps draining, and under `"fail"` the error that surfaces is the worker's real one.
+
+One shape is worth knowing about, because it trades a loud failure for an expensive quiet one. If something keeps returning a task to `pending` — a retry budget from `maxAttempts`, or a lease that keeps expiring and reclaiming — under a worker that keeps failing, the task gets re-dispatched each time instead of settling. `maxIterations` is what stops that, which is the other reason to read it as a per-worker number when you size a board.
 
 ## Bounding how much work a board takes on
 

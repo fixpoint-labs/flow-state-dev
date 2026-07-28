@@ -50,6 +50,13 @@ is the common case), or resource-collection (outlives the request: a user's queu
 org work pool — declare one with `defineTaskCollection`). Every mutation emits a
 `task-change` component item.
 
+`complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
+a write-back advisory — `ifAllowed` skips the write when the state machine rejects
+it or the task is already settled, `expectAttempt` skips it when the caller no
+longer holds the claim. Both are evaluated inside the atomic write. Omit it and
+both methods throw on an illegal transition exactly as before; only the substrate's
+own write-backs opt in.
+
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 

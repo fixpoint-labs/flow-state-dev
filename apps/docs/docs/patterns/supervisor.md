@@ -38,7 +38,7 @@ TaskWorkerInput
   → applyVerdict         (approve → flow workerOutput through; reject → throw)
 ```
 
-When `applyVerdict` throws, the substrate's `recordError` catches it. If `attempts < maxAttempts`, the task re-pends with the verdict feedback as `task.feedback` so the next attempt can address it. When the budget exhausts, the task transitions to terminal `errored` and `labelFailedReviews` adds the `failed-review` label.
+When `applyVerdict` throws, the substrate's `recordError` catches it. If `attempts < maxAttempts`, the task re-pends with the verdict feedback as `task.feedback` so the next attempt can address it. When the budget exhausts, the task transitions to terminal `errored` and `labelFailedReviews` adds the `failed-review` label. There is a third outcome: if the task was already settled while the worker ran — supervisor cancels tasks programmatically, so this is a live case here rather than a hypothetical — the failure is not recorded at all, and the settled status stands.
 
 The reviewer composition is BP-011 conformant — the reviewer runs as a `.step(reviewer)` step in the worker's sequencer, not as a `block.run` call inside a handler.
 

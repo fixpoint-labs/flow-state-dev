@@ -178,7 +178,7 @@ const feedbackMonitor = actor({
 
 ## Failure isolation
 
-Each actor task drains through `taskBoard` with `onError: "skip"` (the default). A failing actor records a failed `Task` and the rest of the chain continues. The substrate's CAS-safe claim ensures sibling actors are unaffected.
+Each actor task drains through `taskBoard` with `onError: "skip"` (the default). A failing actor records a failed `Task`, unless its task was already settled by then — cancelled, or completed by the actor itself — in which case the settled status stands and no failure is recorded. Either way the rest of the chain continues. The substrate's CAS-safe claim ensures sibling actors are unaffected.
 
 ## Substrate notes
 
