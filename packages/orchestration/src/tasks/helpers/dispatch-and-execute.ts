@@ -91,13 +91,16 @@ function resolveWorker(
       `[tasks] dispatchAndExecute: task "${task.id}" has no assignee, but a worker registry was supplied`
     );
   }
-  const worker = workers[assignee];
-  if (worker === undefined) {
+  // BP-031: `assignee` is model-controllable (from the `addTask` tool), so an
+  // `in`/`[]` lookup against the plain-object registry could resolve inherited
+  // `Object.prototype` members (e.g. "constructor", "toString") instead of a
+  // real worker. Require an own property before indexing (FIX-943).
+  if (!Object.hasOwn(workers, assignee)) {
     throw new Error(
       `[tasks] dispatchAndExecute: no worker registered under assignee "${assignee}" for task "${task.id}"`
     );
   }
-  return worker;
+  return workers[assignee];
 }
 
 /**
