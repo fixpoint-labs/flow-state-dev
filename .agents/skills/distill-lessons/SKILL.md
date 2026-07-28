@@ -60,6 +60,17 @@ produce, don't add ceremony.
 - **The metric that matters:** rounds-to-approval and `design-off` frequency trending
   **down** across cycles. That downward trend *is* the proof the harness is improving.
   Flat or rising means the upstream fixes aren't landing where the rework actually is.
+- **Score spec PRs against the review bar, not against comment volume.** A spec PR is a
+  direction check on a budget of two rounds, and most of its feedback is *expected* to be
+  below the bar — recorded as implementer notes, not folded in (see
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review"). So for
+  a spec PR: count a round only where a round was actually *spent*, class a below-the-bar
+  comment as `nit` and **exclude `nit` from the rework signal**, and treat a **third round**
+  — which by rule requires a genuine spec-level finding — as the real flag. Ten notes on a
+  two-round spec is a healthy review, not rework; reading it as rework would produce
+  grounding changes aimed at noise. Implementation PRs keep the ordinary scoring, and
+  `rounds-to-approval` for a spec PR ends at its approval, not a merge (spec PRs are never
+  merged).
 
 ### The unit of improvement — the recurring class, not the incident
 

@@ -1,6 +1,6 @@
 ---
 name: issue-manager
-description: Files and organizes Linear issues correctly when work reveals a gap, a missing piece, or a blocker. Knows the project's issue conventions — duplicate-checks first, writes a PM-shaped issue, sets category + priority, associates the RIGHT project (by default the one the current work is in), and wires relations (blocked-by / blocks / relates-to / parent). Returns the new issue's link plus a ready/blocked verdict so the caller (or the fleet) knows whether it can be picked up. Runs on Sonnet; escalates genuinely ambiguous calls rather than guessing.
+description: Files and organizes Linear issues correctly when work reveals a gap, a missing piece, or a blocker. Knows the project's issue conventions — duplicate-checks first, writes a PM-shaped issue, sets category + priority, associates the RIGHT project (by default the one the current work is in), and wires relations (blocked-by / blocks / relates-to / parent). Returns the new issue's link plus a ready/blocked verdict so the caller (or the coordinator) knows whether it can be picked up. Runs on Sonnet; escalates genuinely ambiguous calls rather than guessing.
 model: sonnet
 disallowed-tools: [Edit, Write, NotebookEdit]
 ---
