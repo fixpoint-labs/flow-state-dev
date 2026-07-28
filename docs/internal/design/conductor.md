@@ -71,7 +71,7 @@ The claim is narrower and it holds:
 | Phase transitions | prompt-interpreted, probabilistic | code, deterministic and unit-tested |
 | Coordinator state | a transcript that compacts | derived from the world + an append-only ledger |
 | Visibility | scroll the output | a queryable board, rendered |
-| Concurrency | one context holding N issues | N isolated workers, one operator view |
+| Concurrency | one context holding N issues | one session per issue, one operator view |
 | Vendor | one | a dispatcher seam; Claude, Codex, or FSD-native |
 | Process customization | edit a prompt and hope | edit files against a typed contract |
 
@@ -245,7 +245,7 @@ Two things that look like new layers and are not:
   data-access layer, no mapping layer, no repository pattern. If a sub-issue starts
   building one, that's the signal to stop.
 
-## 7. Three decisions to make before the first spec
+## 7. The three framing decisions (two called, one open)
 
 ### D1 — Who owns state? **(DECIDED: split by fact owner)**
 
