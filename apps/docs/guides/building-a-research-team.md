@@ -32,6 +32,8 @@ example for the complete, tested source.
 
 Everything here lives in `@flow-state-dev/orchestration`. If you haven't met the pieces underneath, [Task board](/docs/orchestration/task-board) and [Task substrate](/docs/orchestration/task-substrate) are the reference.
 
+This is the tutorial: it builds the team several ways, starting from code you write yourself. If you already know you want the model to plan the work and you just need to author one skill that does it, [Authoring a delegating skill](/guides/agents-command-the-board) takes that path start to finish instead.
+
 ---
 
 ## 1. The problem
@@ -208,6 +210,12 @@ Both boards above are TypeScript — your code decides the tasks. A skill flips
 that: the SKILL.md declares the *team* in an `agents:` map, and its instructions
 tell the coordinating model how to plan the tasks itself. An agent is a
 prompt-driven teammate — a persona that ships right inside the skill folder.
+
+The next three sections are this tutorial's tour of that path, kept here so the
+arc stays whole. [Authoring a delegating skill](/guides/agents-command-the-board)
+is where it's taught in full, including staffing, the rosterless shortcut, and
+the failure modes.
+
 Binding an agent-declaring skill gives the generator a private task board, the
 task tools (`addTask`, `listTasks`, …), and `runBoard` — a real board drain over
 that board. The coordinator plans with `addTask` (assignee, deps, structured
@@ -259,8 +267,10 @@ skill — plus a `competitor-analysis` variant where the coordinator picks the
 competitors and fans out one analyzer per pick — under
 [`src/skills/`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team/src/skills).
 From the example directory,
-`pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'` runs it
-(the coordinator and the analyst agents are all models, so it needs an API key).
+`pnpm fsdev run research-team chat -i '{"message":"research ACME Corp"}'` runs it.
+That one needs two keys: a model key, since the coordinator and the analyst
+agents are all models, and a [search](/docs/tools/search) key, since the
+analysts call `search` and it throws when no provider is configured.
 
 Compared to the frozen graphs in sections 2 and 3, the agent now sets the
 goals, the fan-out, and the dependencies per request. The board still does the
@@ -387,5 +397,6 @@ Whether a task blocks the request comes down to the same dependency graph: the s
 - [`examples/guides/research-team`](https://github.com/fixpoint-labs/flow-state-dev/tree/main/examples/guides/research-team) — the complete, tested source for this guide.
 - [Task board](/docs/orchestration/task-board) — every config option, dispatcher, and termination mode.
 - [Task substrate](/docs/orchestration/task-substrate) — the `Task` and `TaskCollection` contracts underneath.
+- [Authoring a delegating skill](/guides/agents-command-the-board) — the same ground from the authoring angle: one skill, start to finish, with staffing, the rosterless shortcut, and the failure modes.
 - [Delegation](/docs/skills/delegation) — the `agents:` field, the private board, and the `taskTools` + `runBoard` reference.
 - [Supervisor](/docs/patterns/supervisor) — add a review step before each result is written back.

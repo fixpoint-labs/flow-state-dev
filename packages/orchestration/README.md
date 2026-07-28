@@ -152,7 +152,8 @@ their tools too. With no delegation board resolvable, a stray `taskTools` call
 returns `{ ok: false, error: "no_delegation_board" }` rather than throwing. The
 board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
 (`{ ok: false, error: "enqueued_task_cap_exceeded" }` — drain with `runBoard` to
-free slots) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
+free slots, though tasks stranded behind a failed dep stay `pending` and hold
+theirs) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
 refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 `maxTotalTasks` (`null` = unbounded).
 
@@ -235,6 +236,7 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 
 ## Documentation
 
+- [Authoring a delegating skill](https://flow-state.dev/guides/agents-command-the-board)
 - [Orchestration overview](https://flow-state.dev/docs/orchestration/overview)
 - [Task substrate](https://flow-state.dev/docs/orchestration/task-substrate)
 - [Task board](https://flow-state.dev/docs/orchestration/task-board)

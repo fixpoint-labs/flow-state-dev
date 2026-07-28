@@ -13,8 +13,8 @@ const sidebars: SidebarsConfig = {
       items: [
         "building-a-research-team",
         "board-lifecycle",
-        "create-your-own-pattern",
         "agents-command-the-board",
+        "create-your-own-pattern",
       ],
     },
     "human-in-the-loop",
