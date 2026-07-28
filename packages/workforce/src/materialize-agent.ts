@@ -29,11 +29,7 @@ function resolveCatalogTools(
   if (!toolKeys || toolKeys.length === 0) return [];
   const out: GeneratorTool[] = [];
   for (const key of toolKeys) {
-    // BP-031: tool keys arrive from an agent's `allowedTools` / overrides as
-    // unvalidated strings, so an `[]` lookup against the plain-object catalog
-    // could resolve inherited `Object.prototype` members (e.g. "constructor",
-    // "toString") instead of a real tool. Require an own property before
-    // indexing (FIX-965; same guard as `dispatch-and-execute.ts`, FIX-943).
+    // BP-031: `key` is model-supplied — own-property guard (FIX-965, same as FIX-943).
     if (!Object.hasOwn(catalog, key)) {
       console.warn(
         `[workforce] agent "${agentName}": unknown tool "${key}" — skipped`,

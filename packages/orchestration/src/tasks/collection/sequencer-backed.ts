@@ -63,16 +63,10 @@ export interface SequencerBackedOptions extends TaskCapOptions {
 }
 
 /**
- * Own-property task lookup (FIX-965).
- *
- * Tasks live in a plain object keyed by task id, and `taskId` reaches this
- * collection straight off a model tool call (`completeTask`, `failTask`, … all
- * declare `taskId: z.string()`), so BP-031 applies: indexing directly would let
- * an inherited `Object.prototype` member ("constructor", "toString", …) answer
- * as a task. That turned a miss into a truthy non-task — crashing on
- * `task.status` instead of raising "not found", and making a brand-new
- * `"constructor"` task look like a duplicate. Same guard as `keyedRouter` and
- * `dispatch-and-execute.ts` (FIX-943).
+ * Own-property task lookup (FIX-965). `id` is model-supplied (task tool
+ * calls declare `taskId: z.string()`), so BP-031 applies — indexing directly
+ * could resolve an inherited `Object.prototype` member instead of missing.
+ * Same guard as `keyedRouter` and `dispatch-and-execute.ts` (FIX-943).
  */
 function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
   return Object.hasOwn(tasks, id) ? tasks[id] : undefined;

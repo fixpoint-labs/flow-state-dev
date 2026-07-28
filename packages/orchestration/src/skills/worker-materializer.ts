@@ -272,12 +272,7 @@ function resolveTools(
   if (!toolKeys || toolKeys.length === 0) return [];
   const out: GeneratorTool[] = [];
   for (const key of toolKeys) {
-    // BP-031: `key` comes from the agent's declared `tools:` list, which
-    // `skill-md.ts` parses as a bare string list with no per-entry validation,
-    // so an `[]` lookup against the plain-object catalog could resolve
-    // inherited `Object.prototype` members (e.g. "constructor", "toString")
-    // instead of a real tool. Require an own property before indexing
-    // (FIX-965; same guard as `dispatch-and-execute.ts`, FIX-943).
+    // BP-031: `key` is model-supplied — own-property guard (FIX-965, same as FIX-943).
     if (!Object.hasOwn(catalog, key)) {
       console.warn(
         `[skills] agent "${agentKey}": unknown tool "${key}" — skipped`,
