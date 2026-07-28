@@ -5,7 +5,9 @@
  * `buildHoldingRowModel` / `buildLensCardModel` precedent — the load-bearing
  * derivation logic is extracted into pure, exported helpers and tested
  * directly, importing them straight from the component file. JSX wiring
- * itself is verified via a browser check (see FIX-954 report), not here.
+ * itself (the actual rendered markup, hooks, conditional gates) is NOT
+ * covered here and has not been verified via a browser check — this file
+ * covers only the pure helpers above the component boundary.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -14,6 +16,7 @@ import {
   formatSourcesLabel,
   groupOpaqueFunds,
   shouldRenderLookThroughSectors,
+  uniqueFundCount,
 } from "../components/portfolio/health-section";
 import type { HealthPosition } from "../domain/portfolio/math/portfolio-health";
 import type { EffectiveNamePosition, LookThroughResidual, OpaqueFund } from "../domain/portfolio/math/etf-look-through";
@@ -85,6 +88,31 @@ describe("buildLookThroughHoldingsRowModel", () => {
     expect(model.total.weightPct).toBeCloseTo(inputTotalWeightPct);
     expect(model.total.marketValue).toBeCloseTo(inputTotalMarketValue);
   });
+
+  it("produces no tail row when every position fits within showCount", () => {
+    const positions: EffectiveNamePosition[] = Array.from({ length: 6 }, (_, i) =>
+      namePosition(`T${i}`, 5_000, 5),
+    );
+    const residual: LookThroughResidual = { marketValue: 10_000, sharePct: 10, cause: "uncovered" };
+
+    const model = buildLookThroughHoldingsRowModel(positions, residual);
+
+    expect(model.shown).toHaveLength(6);
+    expect(model.tail.count).toBe(0);
+  });
+
+  it("closes to 100% with a zero residual (full attribution, nothing left over)", () => {
+    const positions: EffectiveNamePosition[] = Array.from({ length: 4 }, (_, i) =>
+      namePosition(`T${i}`, 25_000, 25),
+    );
+    const residual: LookThroughResidual = { marketValue: 0, sharePct: 0, cause: "uncovered" };
+
+    const model = buildLookThroughHoldingsRowModel(positions, residual);
+
+    expect(model.residual.marketValue).toBe(0);
+    expect(model.total.weightPct).toBeCloseTo(100);
+    expect(model.total.marketValue).toBeCloseTo(100_000);
+  });
 });
 
 function healthPosition(
@@ -123,6 +151,20 @@ describe("buildTopPositionsRowModel", () => {
     // accounted for in the total, not just the shown top 10.
     expect(model.total.weightPct).toBeCloseTo(12 * 8);
     expect(model.total.marketValue).toBeCloseTo(12 * 10_000);
+  });
+
+  it("excludes cash rows from the tail and total (FIX-954 review — a cash row has a non-null `marketValue` but a null `exposureWeightPct` — portfolio-health.ts:334 — so the old `marketValue !== null` filter kept it, mixing an invested-NAV-denominated weight total with a total-NAV market-value total and counting cash as a 'smaller position')", () => {
+    const positions: HealthPosition[] = [
+      ...Array.from({ length: 11 }, (_, i) => healthPosition(`T${i}`, 10_000, 8)), // 11 priced equities
+      healthPosition("CASH", 5_000, null), // priced (has a market value), but no exposure weight
+    ];
+
+    const model = buildTopPositionsRowModel(positions);
+
+    expect(model.shown.map((p) => p.ticker)).not.toContain("CASH");
+    expect(model.tail.count).toBe(1); // only the 11th equity, not CASH
+    expect(model.total.marketValue).toBeCloseTo(11 * 10_000); // cash excluded
+    expect(model.total.weightPct).toBeCloseTo(11 * 8);
   });
 });
 
@@ -169,5 +211,23 @@ describe("groupOpaqueFunds", () => {
     expect(groups.awaitingData.map((f) => f.ticker).sort()).toEqual(["IEFA", "IEMG"]);
     // Every input fund lands in exactly one group — none silently dropped.
     expect(groups.notAttributable.length + groups.awaitingData.length).toBe(funds.length);
+  });
+
+  it("counts a fund thin on BOTH the name and sector axes ONCE, matching the analysis prompt's deduped opaqueFundCount (FIX-954 review — the leaf emits two entries for a two-axis fund, `etf-look-through.ts:1020-1024`, but the prompt's `classifyOpaqueFunds` dedupes by ticker; the pane's badge must not disagree)", () => {
+    const funds: OpaqueFund[] = [
+      opaqueFund("ACWX", "names", "no resolvable name-axis constituent (foreign ADR basket)"), // data
+      opaqueFund("ACWX", "sectors", "sector data incomplete/malformed (thin coverage)"), // data
+    ];
+
+    const groups = groupOpaqueFunds(funds);
+
+    // Both per-axis entries land in the same group (never split — `axis`
+    // here is never `"both"`, so `classifyOpaqueReason` can only ever return
+    // `"policy"`/`"data"`, both of which render as "not attributable").
+    expect(groups.notAttributable).toHaveLength(2);
+    expect(groups.awaitingData).toHaveLength(0);
+    // The rendered badge must count the UNIQUE ticker, not the per-axis entry
+    // count — one fund, not two.
+    expect(uniqueFundCount(groups.notAttributable)).toBe(1);
   });
 });

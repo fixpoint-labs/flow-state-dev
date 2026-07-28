@@ -233,7 +233,9 @@ export type OpaqueFund = {
 const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
   "no stored profile", // never fetched
   "quota", // Alpha Vantage daily budget exhausted — retried next reset
-  "transient", // network/parse failure — retried within ~15 min
+  "transient", // network/parse failure — retried ~15 min later, escalating to the
+  // ~90-day permanent backoff after 3 consecutive misses (`computeRefusalBackoff`,
+  // `lib/etf-profile-backoff.ts`)
   CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
 ]);
 
