@@ -2,11 +2,9 @@
  * Shared execution-context fixture for the delegation tests.
  *
  * Every delegation test drives the same object graph: an executive generator
- * that owns a delegation board on its own state. `self` is that own-state ref;
- * `parent` is the SAME ref, because the task tools run as child blocks and read
- * their board off `ctx.parent`. Both surfaces are needed, and a copy that drifts
- * from the real `StateRef` contract would pass while testing the wrong thing —
- * so the shape lives here rather than per-file.
+ * that owns a delegation board on its own state, with `self` and `parent`
+ * aliased to that same ref by default (pass `self: false` to opt out). For why
+ * the alias matters, see delegation-caps.test.ts.
  */
 import { createMockSkillsCollection } from "./mocks";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
@@ -22,12 +20,18 @@ import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
  * @param opts.resolveModel A model resolver to expose on the context. Only the
  *   tests that compile a real `generator` and drive it through the tool executor
  *   need this; the rest invoke tools directly and leave it off.
+ * @param opts.self Pass `false` to omit `ctx.self`, leaving only `ctx.parent`
+ *   set. Tests that call a task tool directly (no generator/tool-executor in
+ *   between) need this: with the default alias, a resolver that read
+ *   `ctx.self` instead of `ctx.parent` would still find the right board and
+ *   the test would never notice.
  */
 export function buildDelegationCtx(
   opts: {
     preTasks?: Record<string, unknown>;
     collection?: ReturnType<typeof createMockSkillsCollection>;
     resolveModel?: unknown;
+    self?: false;
   } = {},
 ) {
   const collection = opts.collection ?? createMockSkillsCollection();
@@ -54,7 +58,7 @@ export function buildDelegationCtx(
     },
   };
   const ctx = {
-    self: stateRef,
+    ...(opts.self === false ? {} : { self: stateRef }),
     parent: stateRef,
     request: { identity: { id: "r1", userId: "u1" }, state: {} },
     session: {

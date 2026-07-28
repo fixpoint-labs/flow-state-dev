@@ -54,7 +54,7 @@ function completeTaskTool(): GeneratorTool {
  * only the model resolver, which the tool executor needs to compile and run the
  * generator's `tools:`.
  */
-function buildExecCtx(generate: (options: any) => Promise<unknown>): BlockContext {
+function buildHookMigrationCtx(generate: (options: any) => Promise<unknown>): BlockContext {
   const resolveModel = (() => ({ modelId: "test-model", generate })) as any;
   resolveModel.resolveId = (modelId: string) => modelId;
   return buildDelegationCtx({
@@ -90,7 +90,7 @@ describe("taskTools — tool lifecycle hooks on a refused status transition", ()
       stateSchema: { [DELEGATION_BOARD_FIELD]: delegationBoardSchema },
     });
 
-    const ctx = buildExecCtx(async (options: any) => {
+    const ctx = buildHookMigrationCtx(async (options: any) => {
       const tool = (options.tools as any[])?.find((t: any) => t.name === "completeTask");
       // The tool now RESOLVES on a refused transition, so the result comes back
       // as a value rather than a throw. Capture it — it is the evidence that the

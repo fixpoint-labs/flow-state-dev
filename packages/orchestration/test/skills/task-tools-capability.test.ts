@@ -39,6 +39,17 @@ function buildNoBoardCtx() {
   } as never;
 }
 
+/**
+ * This file drives task tools directly, with no generator/tool-executor in
+ * between, so it needs `ctx.self` to differ from `ctx.parent` — with the
+ * fixture's default alias, a resolver that read `ctx.self` instead of
+ * `ctx.parent` would still find the right board and these tests would never
+ * notice (see delegation-ctx.ts).
+ */
+function buildCtx(opts?: Parameters<typeof buildDelegationCtx>[0]) {
+  return buildDelegationCtx({ ...opts, self: false });
+}
+
 /** Look up a tool by name from the capability's preset surface. */
 function findTool(name: string): GeneratorTool {
   const presetDefs = (taskTools as unknown as {
@@ -88,14 +99,14 @@ describe("delegation board state slot", () => {
 
 describe("taskTools — happy paths (own-state board)", () => {
   it("addTask creates a task on the delegation board", async () => {
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(findTool("addTask"), { goal: "write report" }, ctx);
     expect((result as { ok: boolean }).ok).toBe(true);
     expect((result as { taskId: string }).taskId).toMatch(/^task_/);
   });
 
   it("addTask stores a structured input payload on the task", async () => {
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(
       findTool("addTask"),
       { goal: "analyze", assignee: "analyst", input: { subject: "ACME" } },
@@ -112,7 +123,7 @@ describe("taskTools — happy paths (own-state board)", () => {
   });
 
   it("listTasks returns the seeded board entries", async () => {
-    const { ctx } = buildDelegationCtx({
+    const { ctx } = buildCtx({
       preTasks: {
         a: {
           id: "a",
@@ -132,7 +143,7 @@ describe("taskTools — happy paths (own-state board)", () => {
   // Named for what it seeds. It has always seeded `in_progress`; the old name
   // said `pending`, which is the one status completeTask is REFUSED from.
   it("completeTask transitions an in_progress task to completed", async () => {
-    const { ctx } = buildDelegationCtx({
+    const { ctx } = buildCtx({
       preTasks: {
         a: {
           id: "a",
@@ -169,7 +180,7 @@ describe("taskTools — no delegation board", () => {
 
 describe("taskTools — unknown task ids", () => {
   it("completeTask returns task_not_found for an unknown id", async () => {
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(
       findTool("completeTask"),
       { taskId: "ghost", output: null },
@@ -257,7 +268,7 @@ describe("checkAssignee — the single assignment gate", () => {
 
 describe("taskTools — assignee validation with a roster", () => {
   it("addTask rejects a typo'd assignee and creates no task", async () => {
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(
       rosterTool("addTask"),
       { goal: "Find sources", assignee: "reseacher" },
@@ -271,7 +282,7 @@ describe("taskTools — assignee validation with a roster", () => {
   });
 
   it("addTask accepts a declared agent", async () => {
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(
       rosterTool("addTask"),
       { goal: "Find sources", assignee: "researcher" },
@@ -282,13 +293,13 @@ describe("taskTools — assignee validation with a roster", () => {
   });
 
   it("addTask accepts an unassigned task even with a roster (it runs on the floor)", async () => {
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(rosterTool("addTask"), { goal: "anything" }, ctx);
     expect((result as { ok: boolean }).ok).toBe(true);
   });
 
   it("assignTask rejects an unknown assignee and leaves the task's assignee unchanged", async () => {
-    const { ctx } = buildDelegationCtx({ preTasks: seededTask("researcher") });
+    const { ctx } = buildCtx({ preTasks: seededTask("researcher") });
     const result = await runForTest(
       rosterTool("assignTask"),
       { taskId: "a", assignee: "ghostwriter" },
@@ -301,7 +312,7 @@ describe("taskTools — assignee validation with a roster", () => {
   it("assignTask reports an unknown TASK before an unknown assignee", async () => {
     // Both are wrong; the missing task is the more fundamental error and the
     // one the model must fix first.
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(
       rosterTool("assignTask"),
       { taskId: "ghost", assignee: "nobody" },
@@ -311,7 +322,7 @@ describe("taskTools — assignee validation with a roster", () => {
   });
 
   it("updateTask rejects an unknown assignee in the patch", async () => {
-    const { ctx } = buildDelegationCtx({ preTasks: seededTask("researcher") });
+    const { ctx } = buildCtx({ preTasks: seededTask("researcher") });
     const result = await runForTest(
       rosterTool("updateTask"),
       { taskId: "a", patch: { assignee: "nobody" } },
@@ -323,7 +334,7 @@ describe("taskTools — assignee validation with a roster", () => {
   });
 
   it("updateTask leaves the gate inert for a patch that doesn't touch assignee", async () => {
-    const { ctx } = buildDelegationCtx({ preTasks: seededTask("researcher") });
+    const { ctx } = buildCtx({ preTasks: seededTask("researcher") });
     const result = await runForTest(
       rosterTool("updateTask"),
       { taskId: "a", patch: { priority: 5 } },
@@ -337,7 +348,7 @@ describe("taskTools — no roster supplied (back-compat)", () => {
   it("addTask accepts any assignee, exactly as before roster validation", async () => {
     // The standalone `taskTools` singleton knows no workers, so it has nothing
     // to validate against and must not start rejecting (BP-030).
-    const { ctx } = buildDelegationCtx();
+    const { ctx } = buildCtx();
     const result = await runForTest(
       findTool("addTask"),
       { goal: "x", assignee: "whoever" },
@@ -348,7 +359,7 @@ describe("taskTools — no roster supplied (back-compat)", () => {
   });
 
   it("assignTask accepts any assignee", async () => {
-    const { ctx } = buildDelegationCtx({ preTasks: seededTask() });
+    const { ctx } = buildCtx({ preTasks: seededTask() });
     const result = await runForTest(
       findTool("assignTask"),
       { taskId: "a", assignee: "whoever" },
@@ -364,7 +375,7 @@ describe("taskTools — no roster supplied (back-compat)", () => {
 
 /** Seed a board holding exactly one task in `status`, plus any extra fields. */
 function ctxWithTask(status: string, extra: Record<string, unknown> = {}) {
-  return buildDelegationCtx({
+  return buildCtx({
     preTasks: {
       a: {
         id: "a",

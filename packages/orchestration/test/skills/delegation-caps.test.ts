@@ -228,10 +228,11 @@ describe("delegation board addTask — failure ORDER across both gates", () => {
     // observable, without pretending the combination is a production path.
     const roster = { has: () => false, describe: () => "analyst (…)" };
     const [addTaskOnly] = buildTaskToolsList(async () => undefined, roster);
+    const { ctx } = buildDelegationCtx();
     const result = (await runForTest(
       addTaskOnly as never,
       { goal: "x", assignee: "ghost-agent" },
-      buildDelegationCtx().ctx,
+      ctx,
     )) as AddTaskResult;
     // A phantom assignee is present, but the board gate answers first.
     expect(result.error).toBe("no_delegation_board");
