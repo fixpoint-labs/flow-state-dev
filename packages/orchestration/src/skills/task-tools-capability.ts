@@ -338,14 +338,29 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
 
   const addTask = handler({
     name: "addTask",
+    /**
+     * Names no drain tool, for the same reason `statusChangingTools` omits one:
+     * `runBoard` belongs to the delegation surface, and `taskTools` also ships
+     * standalone, so naming it here points a directly-wired consumer at a tool
+     * it does not have. What this tool DOES — record a row, return its id — is
+     * stated instead, and the delegation surface's own guidance
+     * (`DELEGATION_PLAYBOOK`) carries the "then call `runBoard`" instruction on
+     * the surface where that tool exists.
+     *
+     * The caps are hedged ("may bound") because they are not this surface's to
+     * promise: the exported `taskTools` singleton is uncapped (FIX-931), while
+     * a library-installed or explicitly-constructed board is capped. Both cap
+     * errors stay documented — `addTask` really does return them when the board
+     * it resolves has ceilings.
+     */
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
       "assignee optionally names one of your agents; leave it unset to run the task " +
       "on a capable default worker. Set deps to task ids that must finish first, and input " +
-      "to a structured payload for the worker. Execute the plan by calling runBoard once " +
-      "all tasks are added. The board bounds how many tasks may wait at once and how many it " +
-      "may hold in total: enqueued_task_cap_exceeded means drain with runBoard first, and " +
-      "total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
+      "to a structured payload for the worker. This records the task on the board; it does " +
+      "not run it. The board may bound how many tasks wait at once and how many it may hold " +
+      "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
+      "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
     inputSchema: z.object({
       goal: z.string(),
       assignee: z.string().optional(),

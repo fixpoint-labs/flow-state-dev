@@ -71,6 +71,38 @@ describe("taskTools capability", () => {
     const cap = createTaskToolsCapability();
     expect(cap.name).toBe("taskTools");
   });
+
+  it("no tool description names runBoard, which this surface does not install", () => {
+    // The companion to the error-message assertion further down (FIX-950): the
+    // SAME rule has to hold for the descriptions, which the model reads before
+    // it ever provokes an error. `runBoard` is the delegation surface's drain
+    // tool; `taskTools` ships standalone via `createTaskToolsCapability` /
+    // `buildTaskToolsList`, so a description naming it sends a directly-wired
+    // consumer's model at a tool that is not on its surface (FIX-955).
+    //
+    // Asserted over ALL eight descriptions rather than `addTask`'s alone: the
+    // rule is a property of the surface, so a future description that reaches
+    // for the drain tool fails here no matter which tool grows it.
+    const presetDefs = (taskTools as unknown as {
+      __presetDefs?: { tools?: { tools?: GeneratorTool[] } };
+    }).__presetDefs;
+    const tools = presetDefs?.tools?.tools ?? [];
+    expect(tools).toHaveLength(8);
+    for (const tool of tools) {
+      expect(tool.config?.description, `${tool.config?.name} names runBoard`).not.toContain(
+        "runBoard",
+      );
+    }
+  });
+
+  it("addTask still documents both creation caps it can return", () => {
+    // Dropping the drain-tool reference must not drop the cap vocabulary with
+    // it — `addTask` genuinely returns these two errors when the board it
+    // resolves has ceilings, and the model needs to recognize them to react.
+    const description = findTool("addTask").config?.description ?? "";
+    expect(description).toContain("enqueued_task_cap_exceeded");
+    expect(description).toContain("total_task_cap_exceeded");
+  });
 });
 
 describe("delegation board state slot", () => {
