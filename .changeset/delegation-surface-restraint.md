@@ -1,0 +1,10 @@
+---
+---
+
+Internal (orchestration/skills): pay down accreted complexity in the delegation surface. No public API change — `DELEGATION_BOARD_VISIBILITY` moved modules but was never re-exported from any index.
+
+**One reporter, not a second memo.** The rejected-agent-key diagnostic kept its own `WeakMap` alongside the build memo, keyed on a fingerprint of the whole rejected set built from U+0000/U+0001 delimiters (with a docblock explaining the escapes had to stay escapes or the module would classify as binary to ripgrep). It now tracks reported `skill/key` pairs directly. Same guarantee — one warning per key per execution, still re-reported next turn while a manifest stays corrupt — and a better one: a roster that gains a *second* illegal key now reports only the new one instead of re-announcing the whole set.
+
+**One install decision, not two.** Whether the delegation surface installs was re-derived independently in `buildTools` (`boardWorkers` empty && !`allowEmptyRoster`) and `buildGuidance` (`rosterPurposes` empty && !`allowEmptyRoster`). The two must agree — tools without a playbook leave the model unexplained, a playbook without tools tells it to call a `runBoard` it doesn't have — so the predicate now lives once in `resolveBuild`, next to the roster derivation it already shares. `buildGuidance` no longer takes `allowEmptyRoster` and no longer returns `null`; it just renders whichever roster state it is handed. The empty-roster path also stops resolving caps and building a board-bound `taskTools` capability it was about to discard.
+
+**Shared helpers instead of hand-kept copies.** `prompt-ref` bundled-file lookup was implemented twice with identical normalization (`library.ts` validating at build time, `delegation-surface.ts` inlining at materialization time) — a divergence there means a skill passes validation and then fails to materialize. Both now call `internal/bundled-files.ts`. `DELEGATION_BOARD_VISIBILITY` was a named constant in one module and the same object literal re-inlined in the other under a comment asserting the two agreed; it now lives once in `task-tools-capability.ts` beside the board field both paths resolve.
