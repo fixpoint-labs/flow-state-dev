@@ -182,14 +182,43 @@ that path being missing. So:
 Approval detection reuses the rules already written in `orchestration.md` → Gates:
 latest review per human reviewer, fresh against the current head, bots excluded.
 
+### One session per issue — conductor orchestrates sessions, not threads
+
+Workers cannot be background work threads inside one run. Each issue needs its own
+session: its own state, resources, item stream, and independently resumable requests.
+So the shape is:
+
+- **`sessionId` = the issue** (e.g. `conductor:issue:FIX-967`). Everything about that
+  issue — phase ledger, artifacts, dispatch history, its stream — lives in its session.
+- **Conductor does not run workers inline.** A tick computes actions and **dispatches one
+  action invocation per target session**: `enqueueAction({ flowKind, actionName, input,
+  userId, sessionId })`. Each becomes its **own request** with its own stream, separately
+  observable, resumable, and cancellable.
+- **Dedup at the dispatch boundary.** `EnqueueOptions.jobId` keys the job to
+  (issue, phase, signal), so M0's idempotence property is enforced where dispatches
+  actually enter the system, not only inside the driver.
+- **`@flow-state-dev/bullmq`** provides durable and separated (web + worker) execution;
+  local dev uses the in-process dispatcher. Same conductor code either way.
+
+**Consequence — `taskBoard` is not the cross-issue fan-out.** A board's `drain` runs
+inside a single request, which gives concurrency *within* a run. Cross-issue concurrency
+is N sessions × queue concurrency instead. `taskBoard` stays the right tool **inside** one
+issue's session — a multi-PR issue's sub-tasks, where dependency gating and leases are
+exactly what's wanted.
+
+This also settles the "talking about A while it works on B" pain structurally rather than
+by convention: one session per issue means one conversation per issue, and over the Chat
+SDK, one **thread** per issue.
+
 ## 6. What we already have (the reason this isn't a multi-month project)
 
 | Conductor needs | Already shipped |
 |---|---|
-| Fan out N issues, dependency-gated, leased, retried | `taskBoard` (`@flow-state-dev/orchestration`) |
-| Per-issue worker isolation | board `workers` registry + assignee routing |
+| One session per issue, dispatched off-request | `enqueueAction({…, sessionId })` + `jobId` dedup; `@flow-state-dev/bullmq` for durable / separated workers |
+| Sub-tasks *within* one issue, dependency-gated, leased, retried | `taskBoard` (`@flow-state-dev/orchestration`) |
 | Short-lived human input gate | `ctx.suspend()` + suspension records (FIX-811) |
-| GitHub/Linear events waking the right run | webhook transport, `flow.webhooks` + `sessionId(event)` (FIX-439) |
+| GitHub events waking the right session | webhook transport, `flow.webhooks` + `sessionId(event)` (FIX-439) |
+| Chat as an inbound trigger and operator surface | `@flow-state-dev/chat-sdk` (Slack / Teams / Discord, same `InboundTransportAdapter` contract) |
 | Reconcile backstop + new-work discovery | `@flow-state-dev/scheduled` |
 | The hands | `@flow-state-dev/claude-code` (`/cli` and `/sdk`) |
 | Entity store, project-scoped, local → cloud unchanged | resource collections + `store-sqlite` / `store-postgres` |
@@ -199,10 +228,22 @@ latest review per human reviewer, fresh against the current head, bots excluded.
 | Proving the real path | the `goals/` harness |
 | Vendor #2 | Codex integration, specced (FIX-797) |
 
-**Genuinely new:** the entity/phase model and driver (§4–5), the connector layer
-(GitHub, Linear), the board view, and the process-file template. Everything else is
-composition — which is the point (tenet 2), and is why a first payoff is weeks not
-months.
+**Genuinely new:** the entity/phase model and driver (§4–5), the board view, and the
+process-file template. Everything else is composition — which is the point (tenet 2), and
+is why a first payoff is weeks not months.
+
+Two things that look like new layers and are not:
+
+- **There is no "connector layer" to build.** Inbound is the existing
+  `InboundTransportAdapter` contract, already implemented twice (webhook transport, Chat
+  SDK). Outbound is handler blocks that call GitHub's and Linear's APIs. Neither half
+  needs a new abstraction on top, and inventing one would be exactly the bloat tenet 3
+  guards against. "Connector" in this doc names a *set of blocks plus a transport*, not a
+  layer.
+- **The entity model is blocks and resources, not an ORM.** Entities are resources
+  (collections keyed by id); phases are blocks; the ledger is resource state. No
+  data-access layer, no mapping layer, no repository pattern. If a sub-issue starts
+  building one, that's the signal to stop.
 
 ## 7. Three decisions to make before the first spec
 
@@ -216,9 +257,10 @@ design call.
 FIX-840's bug was never "conductor has state." It was **two authorities for one fact.**
 So split by who owns the fact:
 
-- **Derived, never stored** — anything the world owns: PR open/merged, CI conclusion,
-  review approval state, head SHA, mergeability, Linear status. Re-read every tick.
-  Mirroring any of these into a field we later trust *is* the FIX-832 bug.
+- **Derived, never stored** — anything the world owns. **GitHub owns every PR fact**: open
+  / closed / merged, the feedback on it, review states, CI conclusion, head SHA,
+  mergeability. Linear owns its own issue status. Re-read every tick; mirroring any of
+  these into a field we later trust *is* the FIX-832 bug.
 - **Stored, because nothing else owns it** — the orchestration ledger: review-round
   counts, gate records with provenance, dispatch history and cost, lessons, objective
   links. Linear has nowhere to put `spec_review_rounds: 2`.
@@ -230,10 +272,14 @@ all**.
 
 **Decided, with three consequences that are part of the decision:**
 
-1. **No connector is ever the source of truth, and none is a prerequisite.** Conductor
-   runs standalone on its own store. Linear is a *projection* — the same relationship
-   `orchestration.md` already draws between the coordinator's status table and the
-   epic-spec's running index.
+1. **Each fact has exactly one owner, and for PRs that owner is GitHub.** Whether a PR is
+   open, closed, or merged, what feedback it carries, what its reviews say, what CI
+   concluded, whether it conflicts — **GitHub controls all of it**, and conductor reads it
+   every tick rather than keeping a copy. Conductor is not the source of truth for PRs and
+   neither is Linear. Conductor owns only the ledger nothing else owns, and **Linear is a
+   projection of that ledger** — the same relationship `orchestration.md` already draws
+   between the coordinator's status table and the epic-spec's running index. No connector
+   is a prerequisite: conductor runs standalone on its own store.
 2. **Connector sync is outbound by default, inbound by configuration.** A human moving a
    Linear status can be accepted as an inbound **signal** (§4) that the driver plans
    against — useful, and explicitly opt-in per connector. It is a signal, never a write
@@ -276,9 +322,17 @@ out-of-order signal, backwards phase move).
 ### M1 — one issue, end to end, driven by code (the payoff)
 
 The tracer bullet: hand conductor one issue; it drives spec → approval gate →
-implementation → PR feedback → ready-to-merge. Driver from M0, `claude-code` as the
-hands, a read/PR-ops GitHub connector, phases and dispatches emitted as stream items,
-a minimal CLI board view.
+implementation → PR feedback → ready-to-merge, in its own session. Driver from M0,
+`claude-code` as the hands, GitHub read + PR-ops blocks, phases and dispatches emitted as
+stream items, a minimal CLI board view.
+
+**Both artifact kinds carry multi-round feedback.** A spec PR and an implementation PR
+each accumulate reviewer feedback that may need incorporating over several rounds, and
+today **all of it is hosted on GitHub** — comments, review threads, review states. So the
+parameterized review cycle (§4) must handle rounds on *both* from the start, reading
+GitHub each round and applying the two-round convergence budget from
+`orchestration.md`. This is not deferrable to M2: it is most of what M1's PR-feedback
+phase does.
 **Verify:** a real FIX issue reaches a real merge-ready PR with **zero coordinator
 model calls**, and the run survives a process restart mid-gate.
 This is FIX-832's goal on the substrate that doesn't drift. Pains 1, 2, 4 and the
@@ -286,21 +340,29 @@ vendor pain are gone at this point.
 
 ### M2 — many issues, under an epic
 
-Fan out via `taskBoard`: one task per issue, per-issue worker isolation, dependency
-gating, plus the epic-spec and cross-spec-review phases.
-**Verify:** three issues in parallel from one operator conversation, each isolated;
-asking about issue A never disturbs issue B. Pain 3 is gone.
+Fan out across **sessions**, not threads (§5): one session per issue, conductor dispatching
+one action invocation per session per tick, concurrency bounded by the queue. Plus the
+epic-spec and cross-spec-review phases, and `taskBoard` *inside* an issue's session for a
+multi-PR issue's sub-tasks.
+**Verify:** three issues in parallel from one operator conversation, each in its own
+session with its own stream; asking about issue A never disturbs issue B. Pain 3 is gone.
 
 ### M3 — event-driven, and a surface worth looking at
 
 Webhook transport replaces polling; `scheduled` provides the reconcile backstop and
-new-work discovery; the board becomes a devtool module.
-**Verify:** a GitHub review event advances the right issue with no session running, and
-a cold reconcile re-derives the whole board from the world.
+new-work discovery; the board becomes a devtool module. **Plus the Chat SDK
+integration** (`@flow-state-dev/chat-sdk`) — chat as both an inbound trigger and an
+operator surface, on the same `InboundTransportAdapter` contract the webhook transport
+uses. One thread per issue-session is the natural mapping, and it's what makes conductor
+supervisable from Slack rather than only from a terminal.
+**Verify:** a GitHub review event advances the right issue with no session running, a cold
+reconcile re-derives the whole board from the world, and an issue can be driven and
+questioned from a chat thread.
 
-### M4 — connectors, objectives, and the loop that improves itself
+### M4 — Linear sync, objectives, and the loop that improves itself
 
-Linear sync as a projection, objectives grounding priority, retrospective phase emitting
+Linear sync as a projection (outbound blocks, plus optional inbound status signals —
+no new layer, per §6), objectives grounding priority, retrospective phase emitting
 lessons, and the `distill-lessons` pass proposing the smallest upstream fix to the
 process files.
 **Verify:** a completed epic produces a lesson that lands as a concrete process-file
