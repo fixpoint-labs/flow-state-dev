@@ -1,6 +1,6 @@
 ---
 name: watch-pr
-description: Stream new PR activity — comments, reviews (incl. approvals), and CI conclusions — into the session while working LOCALLY, where subscribe_pr_activity (cloud-only) can't reach. Arms a persistent Monitor poll loop so the model wakes only on real events, not on a timer. Use when the user says "watch the PR", "notify me on comments", or a local fleet/lifecycle needs a webhook substitute.
+description: Stream new PR activity — comments, reviews (incl. approvals), and CI conclusions — into the session while working LOCALLY, where subscribe_pr_activity (cloud-only) can't reach. Arms a persistent Monitor poll loop so the model wakes only on real events, not on a timer. Use when the user says "watch the PR", "notify me on comments", or a local epic/issue lifecycle needs a webhook substitute.
 argument-hint: "<PR number, or empty = the current branch's PR>"
 ---
 
@@ -57,7 +57,7 @@ tick and costs a full turn whether or not anything changed. For watching a PR, `
      history.
    - **Key checks by check-run `.id`, not just `name: conclusion`.** On a new head SHA the
      re-run mints new check-run ids; keying only on `name: conclusion` means a green-again run
-     that matches the old commit's strings diffs to nothing and never wakes the fleet to notice
+     that matches the old commit's strings diffs to nothing and never wakes the coordinator to notice
      CI passed on its new push. (Reviews already key on `.id`; checks now do too.)
    - **`--paginate` the list endpoints.** `gh api` returns only the first 30 without it. A spec
      PR reviewed on every push accumulates many reviews, so a fresh `APPROVED` can sit past

@@ -5,8 +5,10 @@
 
 > **Historical naming note:** skill names below reflect what they were called when this
 > was written. Since then: `create-spec` → `issue-spec`, `implement-issue` →
-> `issue-implement`. Don't invoke the old names — this doc is a point-in-time design
-> record, not current reference.
+> `issue-implement`, and **`issue-fleet` → `epic-lifecycle`** (with "the fleet" → "the
+> coordinator"; a multi-issue run now always happens under an **epic**). Don't invoke the
+> old names — this doc is a point-in-time design record, not current reference. Current
+> reference is [`docs/contributing/orchestration.md`](../../contributing/orchestration.md).
 
 Raised together: (1) persistent agent memory, (2) agent teams, (3) splitting one
 issue into multiple PRs. (1) and (2) are positioning decisions; (3) is the new

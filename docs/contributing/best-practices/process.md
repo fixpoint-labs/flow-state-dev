@@ -68,14 +68,27 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 ### BP-037: Author specs as versioned docs, reviewed as a PR, synced with Linear
 
 - Status: Active
-- Date: 2026-06-29
+- Date: 2026-06-29 (updated 2026-07-28: review bar + convergence budget)
 - Scope: Process — spec authoring (`issue-spec`).
 - Rule:
   - Write each spec to `docs/specs/<ISSUE-ID>.md` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written.
   - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
-  - On spec-PR review: apply clear, obvious fixes directly (to both copies); for debatable or judgment-call feedback, surface it to the user rather than silently accepting.
   - The spec PR is never merged: `issue-implement` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
 - Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
+
+### BP-040: Spec review is a direction check — converge, don't grind
+
+- Status: Active
+- Date: 2026-07-28
+- Scope: Process — spec-PR review (`issue-spec` Step 6.5, `issue-lifecycle`, `epic-lifecycle`).
+- Rule:
+  - **Sign-off certifies directional correctness only** — the problem is real, the approach works, Part I's Decisions are the ones we want. Not a finished design, and not "nothing left to nitpick" (an unreachable target).
+  - **One test per comment: does acting on it change the approach?** Yes → **fold in** (re-draft, anti-addenda rule). No → **note for the implementer** (record verbatim in the spec's §13; reply once; do *not* rewrite the design prose around it). Already answered / out of scope / preference → **drop** with one reply. **Default is note; the burden of proof is on folding.**
+  - **Budget two review rounds**, then declare convergence and go to the approval gate, carrying remaining threads as §13 notes. A third round requires a genuine spec-level finding from round two, stated in one line. Count rounds **actually spent** — a factual-correction-only batch costs zero — and keep the conditional third round reachable rather than stopping on the count alone. The same budget applies to an **epic** PR.
+  - **Don't drive spec-PR threads to zero.** The spec PR is never merged, so open threads gate nothing. A bot `CHANGES_REQUESTED` neither trips the gate nor extends the budget.
+  - **Below-the-bar spec comments never block implementation** — they're implementer input, not prerequisites.
+  - The spec PR description leads with the reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) — the one lever available on reviewers we can't instruct.
+- Why: Spec-PR review comes mostly from automated reviewers tuned for code, pointed at a document that is deliberately not a finished design. Treating every line-level observation as a spec defect turned directionally-sound specs into ten-round grinds, at the altitude where none of that detail can actually be settled. Full rule, with the rationale for why converging is safe: [`../orchestration.md`](../orchestration.md) → "Spec review: the bar and the convergence rule".
 
 ### BP-039: Specs lead with a plain-language summary
 
