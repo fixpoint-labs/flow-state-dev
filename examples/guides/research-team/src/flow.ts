@@ -4,13 +4,14 @@
 //
 //   research             → the static code-first board (deterministic, no model)
 //   researchCompetitors  → runtime fan-out via a router (deterministic, no model)
-//   chat                 → the delegation skills through a coordinator agent (needs a model)
+//   chat                 → the delegation skills through a coordinator agent (needs a model + a search provider)
 //
 // The first two run with no API key — their workers are plain handlers — so
 // they're the ones the tests exercise end-to-end. `chat` binds the skills
 // library; each skill defines its own team of prompt agents, so the
 // coordinator gets a task board, the task tools, and runBoard. Because the
-// agents are LLMs, it needs OPENAI_API_KEY.
+// agents are LLMs that call `search`, it needs two keys: a model key, and one
+// search-provider key (see https://flow-state.dev/docs/tools/search).
 import { defineFlow, generator } from "@flow-state-dev/core";
 import type { SkillsBindingConfig } from "@flow-state-dev/orchestration";
 import { z } from "zod";
@@ -64,8 +65,8 @@ export const researchTeamFlow = defineFlow({
     researchCompetitors: { block: researchRouter },
 
     // Skill path: a coordinator agent whose SKILL.md teams (each skill defines
-    // its own prompt agents) plan and run their own boards. Needs a model
-    // (OPENAI_API_KEY).
+    // its own prompt agents) plan and run their own boards. Needs a model key
+    // and one search-provider key.
     chat: { block: researchChat, userMessage: (input) => input.message },
   },
   session: { stateSchema: z.object({}) },
