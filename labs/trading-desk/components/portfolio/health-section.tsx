@@ -802,7 +802,7 @@ function OpaqueFunds({ funds }: { funds: OpaqueFund[] }): ReactElement {
       <OpaqueFundGroup
         label="Not attributable"
         funds={notAttributable}
-        caption="Either excluded by policy (never decomposed by design) or the fund's data is too thin to trust."
+        caption="Excluded by policy (never decomposed by design), or the fund's own holdings data wasn't usable. Some of these can improve on a later refresh; policy exclusions won't."
         isOpen={open === "notAttributable"}
         onToggle={() => setOpen(open === "notAttributable" ? null : "notAttributable")}
       />
