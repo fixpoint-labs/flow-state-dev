@@ -561,23 +561,15 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
               : `${exposure.maxPosition.ticker} ${pct(exposure.maxPosition.weightPct)}`
           }
         />
-        {/* An INTERVAL, not a point estimate (Decision 4, docs/etf-look-through.md)
-         *  — the unattributed residual could sit anywhere from a long tail
-         *  (`high`) to piling entirely onto the largest name already seen
-         *  (`low`). Was computed by the leaf but never surfaced here until now
-         *  (Codex review, FIX-801 sub-PR c). Distinct from the wrapper-basis
-         *  point estimate (FIX-954 §0.3 removed that one from the stat row
-         *  above — same label collided with this one, different bases,
-         *  wildly different values); this interval stays, since it's the
-         *  honest reading and the one the analysis prompt also uses. */}
-        <Stat
-          label="Effective positions"
-          value={
-            exposure.effectivePositions === null
-              ? DASH
-              : `${exposure.effectivePositions.low.toFixed(1)}–${exposure.effectivePositions.high.toFixed(1)}`
-          }
-        />
+        {/* `Effective positions` is deliberately ABSENT from both stat rows
+         *  (FIX-954 §0.3 / §6). The wrapper-basis point estimate and this
+         *  look-through interval rendered the SAME label two blocks apart over
+         *  different bases, and the interval in particular (a `1.5–338.1`-style
+         *  range) is what a reader took literally as "how much of each name do I
+         *  own" — a question inverse-HHI does not answer. The holdings table
+         *  below answers it directly, so both readings are cut from the UI. The
+         *  leaf still computes `effectivePositions` and the analysis prompt still
+         *  consumes it, where a model can use the interval's width. */}
       </div>
       {exposure.flags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pb-2">
