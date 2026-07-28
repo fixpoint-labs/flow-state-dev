@@ -71,7 +71,7 @@ The claim is narrower and it holds:
 | Phase transitions | prompt-interpreted, probabilistic | code, deterministic and unit-tested |
 | Coordinator state | a transcript that compacts | derived from the world + an append-only ledger |
 | Visibility | scroll the output | a queryable board, rendered |
-| Concurrency | one context holding N issues | one session per issue, one operator view |
+| Concurrency | one context holding N issues | one durable task per issue, one operator view |
 | Vendor | one | a dispatcher seam; Claude, Codex, or FSD-native |
 | Process customization | edit a prompt and hope | edit files against a typed contract |
 
@@ -182,40 +182,64 @@ that path being missing. So:
 Approval detection reuses the rules already written in `orchestration.md` → Gates:
 latest review per human reviewer, fresh against the current head, bots excluded.
 
-### One session per issue — conductor orchestrates sessions, not threads
+### The task board is the substrate — detach the task, not the coordinator
 
 Workers cannot be background work threads inside one run. Each issue needs its own
-session: its own state, resources, item stream, and independently resumable requests.
-So the shape is:
+durable work record and its own execution cycle. The **task board is exactly that
+primitive** — it is not a sibling of the queue conductor needs, it *is* the queue:
 
-- **`sessionId` = the issue** (e.g. `conductor:issue:FIX-967`). Everything about that
-  issue — phase ledger, artifacts, dispatch history, its stream — lives in its session.
-- **Conductor does not run workers inline.** A tick computes actions and **dispatches one
-  action invocation per target session**: `enqueueAction({ flowKind, actionName, input,
-  userId, sessionId })`. Each becomes its **own request** with its own stream, separately
-  observable, resumable, and cancellable.
-- **Dedup at the dispatch boundary.** `EnqueueOptions.jobId` keys the job to
-  (issue, phase, signal), so M0's idempotence property is enforced where dispatches
-  actually enter the system, not only inside the driver.
-- **`@flow-state-dev/bullmq`** provides durable and separated (web + worker) execution;
-  local dev uses the in-process dispatcher. Same conductor code either way.
+- **Each issue is a durable task** on a **resource-backed** `TaskCollection`. Resource-backed
+  boards **survive across turns today**; that capability ships and works when the board is
+  built by hand in code, which is what conductor does. (The *delegation* board is
+  sequencer-backed and does **not** survive a checkpoint resume — FIX-958 corrected the docs
+  that claimed otherwise, and FIX-957 is what lets the delegation path ask for the durable
+  flavor. Conductor asks for it directly.)
+- **Gates are `awaiting_review`** — already in the task status enum, and cross-turn human
+  review works precisely *because* the board is resource-backed. Same for `blockTask` on an
+  external condition.
+- **Dependency gating, leases, CAS claim, attempts, per-task worker routing** all come with
+  the board. Conductor does not reimplement any of it.
+- **Observability** is `TaskHandle.items()` (a running task's emissions) plus `task-change`
+  events — that is the board view's data source, not something new.
 
-**Consequence — `taskBoard` is not the cross-issue fan-out.** A board's `drain` runs
-inside a single request, which gives concurrency *within* a run. Cross-issue concurrency
-is N sessions × queue concurrency instead. `taskBoard` stays the right tool **inside** one
-issue's session — a multi-PR issue's sub-tasks, where dependency gating and leases are
-exactly what's wanted.
+The governing principle comes from FIX-939 and it is the right one: **detach the TASK (the
+work), not the coordinator.** The board is the durable rendezvous. Conductor's `plan` stays
+request-bound, reads the board plus the world, and mutates tasks; each issue's phase work
+executes in its own cycle. That is also what gives per-issue isolation — one task, one
+execution, one stream — so "talking about A while it works on B" is settled structurally
+rather than by convention, and over the Chat SDK it maps to one thread per issue.
 
-This also settles the "talking about A while it works on B" pain structurally rather than
-by convention: one session per issue means one conversation per issue, and over the Chat
-SDK, one **thread** per issue.
+### What the framework must gain (FIX-939)
+
+Conductor does not need a new primitive; it needs the board's execution model extended.
+This is the honest dependency list, and FIX-939 already names all of it:
+
+| Framework gap | Why conductor needs it | Gates |
+|---|---|---|
+| **Out-of-request executor** — a claimer that runs a leased task outside the originating request. The drain runs in-request today (via `.forEach`). | A phase — authoring a spec, implementing a PR — runs for many minutes to an hour. It cannot be bound to the tick's request. | M2, and unattended M1 |
+| **Progress decoupled from `ctx.emit`** — session-scoped resource + task-level observability | A detached task can't stream through the originating request's emitter. FIX-939 calls this its hardest change and a breaking one for existing sidechain callers. | a live board view |
+| **Lease heartbeat + automated reclaim sweeper** — `reclaim()` exists but no drain or dispatcher ever calls it | A crashed worker's issue has to return to the queue without a human intervening. | M2's crash-recovery criterion |
+| **Blocking / background flag on tasks** — no such distinction today | Conductor needs both "await this" and "let it run." | M2 |
+| **Task events as dispatch triggers**, not just a UI notification channel (FIX-825, and FIX-751 / FIX-843 for reactive blocks) | The board should *drive* work, not only display it. | M3 |
+
+**Sequencing — this does not block the fast path.** M0 and M1 ship **before** FIX-939: one
+issue, a per-tick drain, phase work in-request. That is what the POC did and it worked
+locally; M1's restart survival comes from gates being derived and the ledger living in
+conductor's own resources, re-seeding the board each tick. What FIX-939 genuinely gates is
+**M2 onward** — many issues, long-running detached phases, unattended operation.
+
+FIX-939 is currently **Todo / Low priority** and says explicitly "NOT to be specced or built
+yet." Conductor is the forcing function that changes that: it should be specced against
+these five gaps, in this order, and its priority raised to match.
 
 ## 6. What we already have (the reason this isn't a multi-month project)
 
 | Conductor needs | Already shipped |
 |---|---|
-| One session per issue, dispatched off-request | `enqueueAction({…, sessionId })` + `jobId` dedup; `@flow-state-dev/bullmq` for durable / separated workers |
-| Sub-tasks *within* one issue, dependency-gated, leased, retried | `taskBoard` (`@flow-state-dev/orchestration`) |
+| The durable work record per issue, dependency-gated, leased, CAS-claimed, retried | `taskBoard` + resource-backed `TaskCollection` (`@flow-state-dev/orchestration`) — durable across turns today |
+| A cross-turn human gate on a work unit | task status `awaiting_review` + `blockTask` on a resource-backed board |
+| Per-task observability | `TaskHandle.items()` + `task-change` events |
+| Off-request execution machinery to build the FIX-939 executor on | `enqueueAction({…, sessionId })` + `jobId` dedup; `@flow-state-dev/bullmq` for durable / separated workers |
 | Short-lived human input gate | `ctx.suspend()` + suspension records (FIX-811) |
 | GitHub events waking the right session | webhook transport, `flow.webhooks` + `sessionId(event)` (FIX-439) |
 | Chat as an inbound trigger and operator surface | `@flow-state-dev/chat-sdk` (Slack / Teams / Discord, same `InboundTransportAdapter` contract) |
@@ -322,7 +346,7 @@ out-of-order signal, backwards phase move).
 ### M1 — one issue, end to end, driven by code (the payoff)
 
 The tracer bullet: hand conductor one issue; it drives spec → approval gate →
-implementation → PR feedback → ready-to-merge, in its own session. Driver from M0,
+implementation → PR feedback → ready-to-merge as one durable task. Driver from M0,
 `claude-code` as the hands, GitHub read + PR-ops blocks, phases and dispatches emitted as
 stream items, a minimal CLI board view.
 
@@ -333,6 +357,9 @@ parameterized review cycle (§4) must handle rounds on *both* from the start, re
 GitHub each round and applying the two-round convergence budget from
 `orchestration.md`. This is not deferrable to M2: it is most of what M1's PR-feedback
 phase does.
+**Ships before FIX-939.** One issue, a per-tick drain, phase work in-request — that is
+what the POC did and it worked locally. Restart survival comes from gates being derived
+(§5) and the ledger living in conductor's own resources, re-seeding the board each tick.
 **Verify:** a real FIX issue reaches a real merge-ready PR with **zero coordinator
 model calls**, and the run survives a process restart mid-gate.
 This is FIX-832's goal on the substrate that doesn't drift. Pains 1, 2, 4 and the
@@ -340,12 +367,15 @@ vendor pain are gone at this point.
 
 ### M2 — many issues, under an epic
 
-Fan out across **sessions**, not threads (§5): one session per issue, conductor dispatching
-one action invocation per session per tick, concurrency bounded by the queue. Plus the
-epic-spec and cross-spec-review phases, and `taskBoard` *inside* an issue's session for a
-multi-PR issue's sub-tasks.
-**Verify:** three issues in parallel from one operator conversation, each in its own
-session with its own stream; asking about issue A never disturbs issue B. Pain 3 is gone.
+One durable task per issue on a resource-backed board (§5), each phase executing in its
+own cycle via **FIX-939's out-of-request executor** — dependency gating, leases, and
+reclaim come from the board. Plus the epic-spec and cross-spec-review phases, and nested
+tasks for a multi-PR issue's sub-PRs.
+**Blocked on FIX-939** (the executor, the lease sweeper, the `ctx.emit` decoupling, and the
+blocking/background flag). This is the milestone that forces that epic to be specced.
+**Verify:** three issues in parallel from one operator conversation, each with its own
+execution and stream; asking about issue A never disturbs issue B; killing a worker returns
+its issue to the queue unattended. Pain 3 is gone.
 
 ### M3 — event-driven, and a surface worth looking at
 
@@ -372,6 +402,14 @@ change.
 but re-decidable once we've lived on M1.
 
 ## 9. Out of scope (and open questions)
+
+**The one hard framework dependency: FIX-939** (*Durable jobs & detached-task substrate*).
+M0 and M1 clear it; M2 onward does not. §5 lists the five gaps it has to close, in the
+order conductor needs them. Related and worth reading alongside it: FIX-930 (delegation
+substrate, designing a detach-ready task contract), FIX-957 (letting a delegation board ask
+for the durable flavor), FIX-958 (what board durability actually is today), FIX-825 /
+FIX-751 / FIX-843 (task events as dispatch triggers), and FIX-922 (what task-board +
+delegation + goalSeekLoop already subsume — worth answering before conductor adds anything).
 
 **Explicitly not in v1:** cloud hosting (local first; the store swap is the only
 difference), codebase-awareness / structural index (FIX-820's other half), auto-merge in
