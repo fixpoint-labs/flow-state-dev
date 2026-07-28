@@ -122,6 +122,23 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * collection. Because resource refs are live getters, reads through the
  * mirror still reflect the latest committed state for every task the
  * mirror knows about.
+ *
+ * ## Implementing this interface yourself
+ *
+ * `taskBoard({ collection: (ctx) => ... })` accepts a caller-supplied ref, so
+ * this is a real extension point for an external or custom store — not just
+ * the shape the two built-in backings happen to return.
+ *
+ * If you write one, `complete` and `fail` **must** accept and honour the
+ * optional `TaskTransitionOptions` third argument. The type system cannot
+ * hold you to this: an implementation taking only `(id, output)` structurally
+ * satisfies the interface, and JavaScript discards the extra argument in
+ * silence. A ref that ignores the options throws on a task someone else
+ * already settled, and that throw escapes the task board's per-worker rescue
+ * and abandons every sibling task on the board — the exact failure the
+ * options exist to contain. See `TaskTransitionOptions` for the two guards,
+ * and evaluate both inside your atomic write so the check cannot race the
+ * write it guards.
  */
 export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */

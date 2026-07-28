@@ -357,6 +357,8 @@ const board = taskBoard({
 
 For a custom or externally-managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`.
 
+If you write that ref by hand, `complete` and `fail` have to accept and honour the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't — a two-argument `complete(id, output)` satisfies the interface structurally, and the extra argument is dropped without a word. The board passes those options on every write-back so a result landing on a task someone else already settled is declined rather than thrown. A ref that ignores them throws instead, and that throw escapes the per-worker rescue and abandons the rest of the board's tasks. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
+
 ## Durable boards that survive across turns
 
 When a board's tasks must persist past the request — a user's standing to-do list, an org-wide work queue — declare a durable collection with `defineTaskCollection` and hand it to the board. The tasks live as resource instances at the scope you name (`session`, `user`, or `org`).
