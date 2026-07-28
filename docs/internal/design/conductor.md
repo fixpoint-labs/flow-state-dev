@@ -1,15 +1,16 @@
 # Design — Conductor: the development orchestration system
 
 **Date:** 2026-07-28
-**Status:** DEFINITION — project framing and initial approach. Not yet approved; three
-decisions in §7 need a call before the first spec is written.
+**Status:** DEFINITION — project framing and initial approach. **D1 (state ownership) and
+D3 (workforce) are decided** (§7); D2 (the public name) stays open until launch.
 **Type:** New package (`@flow-state-dev/conductor`) + surfaces (CLI, devtool module).
 Composes `core`, `orchestration`, `claude-code`, `engine`, `scheduled`; deliberately
 *not* a framework primitive change.
 **Supersedes / absorbs:** FIX-832 (single-issue POC, burned), FIX-840 (choreography
 reshape — its `state → action` insight is kept and generalized), and is the concrete
 first surface under FIX-820 (DevTool as orchestration surface).
-**Home:** Linear project *Development Workflow Orchestration*.
+**Home:** Linear project *Development Workflow Orchestration*; epic **FIX-966**, milestones
+**FIX-967** (M0) → **FIX-971** (M4).
 
 ---
 
@@ -25,6 +26,13 @@ It is built *on* FSD, and it ships *with* FSD. Any project that uses the framewo
 adopt it, configure it, and rewrite its process files. For us it becomes the system we
 use to build FSD itself — which makes it the most credible demonstration of the
 framework we have.
+
+**This is the dev-orchestrator growing up.** The earlier attempt (§3) was a POC that
+served its purpose. The bar here is different and it should be stated plainly: a product
+other people would want to use. That bar is what settles most of the design arguments
+below — notably that no connector may be a prerequisite (§7/D1) and that the process
+files are a configurable, documented surface rather than our prompts with our names in
+them.
 
 The process it encodes is not new. It is the process already written down in
 [`docs/contributing/orchestration.md`](../../contributing/orchestration.md) and the
@@ -198,7 +206,7 @@ months.
 
 ## 7. Three decisions to make before the first spec
 
-### D1 — Who owns state?
+### D1 — Who owns state? **(DECIDED: split by fact owner)**
 
 The sketch says conductor's own resource system is the truth, with hooks to sync
 outward. FIX-840 says the board is the only state machine and conductor stores nothing.
@@ -217,13 +225,24 @@ So split by who owns the fact:
 
 Phase is then derived wherever the world has it and stored only where it doesn't, so
 there is exactly one state machine with a mostly-derived state, plus an append-only
-ledger. **Recommendation: adopt this.** It resolves the conflict, and it is what makes
-conductor work with **no Linear at all** — mandatory if this ships as a product rather
-than our internal tool. Linear becomes a projection, the same relationship
-`orchestration.md` already draws between the coordinator's status table and the
-epic-spec's running index.
+ledger. It resolves the conflict, and it is what makes conductor work with **no Linear at
+all**.
 
-### D2 — The name
+**Decided, with three consequences that are part of the decision:**
+
+1. **No connector is ever the source of truth, and none is a prerequisite.** Conductor
+   runs standalone on its own store. Linear is a *projection* — the same relationship
+   `orchestration.md` already draws between the coordinator's status table and the
+   epic-spec's running index.
+2. **Connector sync is outbound by default, inbound by configuration.** A human moving a
+   Linear status can be accepted as an inbound **signal** (§4) that the driver plans
+   against — useful, and explicitly opt-in per connector. It is a signal, never a write
+   to the ledger, so accepting it cannot re-create the two-authority bug.
+3. **The connector layer is an interface, not two integrations.** GitHub and Linear are
+   its first two implementations. Adding a third is a v2 question — define the seam now,
+   don't build past it (tenet 3).
+
+### D2 — The name **(OPEN — internal name is `conductor`; public name deferred)**
 
 `conductor` fits the metaphor and the pitch ("the harness that conducts your work").
 Two cautions: **Netflix Conductor** is a well-known workflow-orchestration engine, which
@@ -232,15 +251,15 @@ is a direct collision in this exact category; and `dev-engine` collides with our
 **Recommendation: use `conductor` internally now and treat the public name as an open
 question for launch.** The internal name is cheap to change; the package name is less so.
 
-### D3 — Relationship to `workforce`
+### D3 — Relationship to `workforce` **(DECIDED: bypass, keep the `Dispatcher` seam)**
 
 Conductor's workers are mostly *external* coding agents, not FSD generators with
 personas. The right seam is a vendor-neutral `Dispatcher` (given a phase brief plus a
 skill, run it, return a typed result), with `claude-code` as the first implementation
 and `codex` as the second. `workforce` becomes relevant when we add **FSD-native review
-agents** that don't need a full coding harness. **Recommendation: bypass `workforce` for
-v1, keep the `Dispatcher` seam clean so it drops in later.** Workforce Layer 2 is still
-in flight; taking a dependency on it now couples two moving things.
+agents** that don't need a full coding harness. **Decided: bypass `workforce` for v1 and
+keep the `Dispatcher` seam clean so it drops in later.** Workforce Layer 2 is still in
+flight; taking a dependency on it now couples two moving things.
 
 ## 8. Initial approach — four milestones, payoff at M1
 
@@ -311,6 +330,7 @@ orchestration for non-development work.
 
 ## 10. Immediate next step
 
-Get D1–D3 called, then write one spec: **M0 + M1 as a single spec** (the model and the
-first vertical slice, so the model is validated by a real run rather than by tests
-alone). Everything after that is a normal issue under the epic.
+**D1 and D3 are called.** The epic and the milestone issues are filed under the
+*Development Workflow Orchestration* project. First spec to write: **M0 + M1 as a single
+spec**, so the model is validated by a real run rather than by tests alone. Everything
+after that is a normal issue under the epic.
