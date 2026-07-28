@@ -338,21 +338,6 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
 
   const addTask = handler({
     name: "addTask",
-    /**
-     * Names no drain tool, for the same reason `statusChangingTools` omits one:
-     * `runBoard` belongs to the delegation surface, and `taskTools` also ships
-     * standalone, so naming it here points a directly-wired consumer at a tool
-     * it does not have. What this tool DOES — record a row, return its id — is
-     * stated instead, and the delegation surface's own guidance
-     * (`DELEGATION_PLAYBOOK`) carries the "then call `runBoard`" instruction on
-     * the surface where that tool exists.
-     *
-     * The caps are hedged ("may bound") because they are not this surface's to
-     * promise: the exported `taskTools` singleton is uncapped (FIX-931), while
-     * a library-installed or explicitly-constructed board is capped. Both cap
-     * errors stay documented — `addTask` really does return them when the board
-     * it resolves has ceilings.
-     */
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
       "assignee optionally names one of your agents; leave it unset to run the task " +

@@ -73,20 +73,8 @@ describe("taskTools capability", () => {
   });
 
   it("no tool description names runBoard, which this surface does not install", () => {
-    // The companion to the error-message assertion further down (FIX-950): the
-    // SAME rule has to hold for the descriptions, which the model reads before
-    // it ever provokes an error. `runBoard` is the delegation surface's drain
-    // tool; `taskTools` ships standalone via `createTaskToolsCapability` /
-    // `buildTaskToolsList`, so a description naming it sends a directly-wired
-    // consumer's model at a tool that is not on its surface (FIX-955).
-    //
-    // Asserted over ALL eight descriptions rather than `addTask`'s alone: the
-    // rule is a property of the surface, so a future description that reaches
-    // for the drain tool fails here no matter which tool grows it.
-    const presetDefs = (taskTools as unknown as {
-      __presetDefs?: { tools?: { tools?: GeneratorTool[] } };
-    }).__presetDefs;
-    const tools = presetDefs?.tools?.tools ?? [];
+    // Companion to the FIX-950 error-message assertion further down — same rule, at the description level.
+    const tools = buildTaskToolsList();
     expect(tools).toHaveLength(8);
     for (const tool of tools) {
       expect(tool.config?.description, `${tool.config?.name} names runBoard`).not.toContain(
