@@ -60,45 +60,13 @@ import {
   type QuoteMap,
 } from "@/domain/portfolio/math/portfolio-health";
 import {
-  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
+  classifyOpaqueReason,
   type FundProfileInput,
   type OpaqueFund,
 } from "@/domain/portfolio/math/etf-look-through";
 
 /** A live quote keyed by upper-case ticker. `price` null when unavailable. */
 export type QuoteLike = { ticker: string; price: number | null; asOf: string | null };
-
-/**
- * `OpaqueFund.reason` (`etf-look-through.ts`) mixes two genuinely different
- * kinds of "we can't attribute this fund": a TEMPORARY availability gap (never
- * fetched yet, or a fetch attempt that's currently quota/rate-limited and will
- * be retried) versus a DATA-QUALITY / structural judgment about a profile the
- * route DID successfully evaluate (too thin, malformed, leveraged, a
- * fund-of-funds, or a provider-confirmed non-ETF). Collapsing both into one
- * "(thin/ineligible data)" phrase in the analysis prompt misrepresents a fund
- * nobody has looked at yet as a data-quality finding (Codex review, FIX-801
- * sub-PR c). This is a closed set — every `opaqueByTicker.set(...)` call site
- * in `etf-look-through.ts` (INCLUDING a caller-written withdrawal entry like
- * `guards.ts`'s `CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON`, round 14) is
- * enumerated here; a reason string not in `UNAVAILABLE_REASONS` is treated as
- * data-quality by default (the safer default: a NEW reason class this set
- * doesn't yet know about is far more likely to be a fresh structural-exclusion
- * case than a fresh flavor of "temporarily missing").
- */
-const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([
-  "no stored profile", // never fetched
-  "quota", // Alpha Vantage daily budget exhausted — retried next reset
-  "transient", // network/parse failure — retried within ~15 min
-  // A wrapper's own profile was fine; a DB read failure while broadening its
-  // fund-of-funds constituents made its verdict unverifiable, so `guards.ts`
-  // withdrew it (Codex review, FIX-801 sub-PR c round 14). A transient read
-  // failure, not a structural judgment about the fund's data — belongs here,
-  // not in the default data-quality bucket (Codex review, FIX-801 sub-PR c
-  // round 15: this set predates round 14's new reason and didn't include it,
-  // so a withdrawn wrapper misreported to the trader/PM as "thin/ineligible
-  // data" instead of "not yet available").
-  CONSTITUENT_EVIDENCE_UNAVAILABLE_REASON,
-]);
 
 /** Truncate a sector-exposure list to the top 6 buckets by declared order +
  *  a rolled-up `"Other"` for the remainder — the one place this projection
@@ -210,11 +178,14 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
  * Reduce a fund's-worth of `OpaqueFund` entries to what the prompt needs: the
  * two summary counts (true per-fund opaque count, deduped by ticker — see the
  * call site's comment — and the subset of those merely temporarily
- * unavailable per `UNAVAILABLE_REASONS` rather than a genuine data-quality
- * finding), AND `opaqueFundDetails` — the per-entry identity (ticker, axis,
- * reason) the counts collapse away, so the prompt can name WHICH wrapper is
- * incomplete and WHY instead of a bare count the trader/PM can't trace to a
- * holding (Codex review, FIX-801 sub-PR c round 25). Unlike the counts,
+ * unavailable per the shared `classifyOpaqueReason` (`etf-look-through.ts`,
+ * FIX-954 §0.5 — moved here from a private `UNAVAILABLE_REASONS` set so the
+ * pane and this prompt can never classify a fund's refusal reason
+ * differently) rather than a genuine data-quality finding), AND
+ * `opaqueFundDetails` — the per-entry identity (ticker, axis, reason) the
+ * counts collapse away, so the prompt can name WHICH wrapper is incomplete
+ * and WHY instead of a bare count the trader/PM can't trace to a holding
+ * (Codex review, FIX-801 sub-PR c round 25). Unlike the counts,
  * `opaqueFundDetails` is NOT deduped by ticker — a fund thin on names but
  * fine on sectors (or the reverse) has two genuinely distinct reasons, and
  * collapsing them would silently drop one. A ticker's reason is
@@ -222,7 +193,8 @@ function projectHealth(health: PortfolioHealth): PortfolioContextInput["health"]
  * availability reasons all short-circuit via a single combined
  * `{ axis: "both" }` entry in `etf-look-through.ts` before the code ever
  * reaches the per-axis (names/sectors) logic that can split one ticker into
- * two entries, so `unavailable` only ever fires on a `"both"` entry.
+ * two entries, so `unavailable` only ever fires on a `"both"` entry
+ * (`classifyOpaqueReason`'s own axis gate).
  */
 function classifyOpaqueFunds(opaqueFunds: ReadonlyArray<OpaqueFund>): {
   opaqueFundCount: number;
@@ -232,7 +204,7 @@ function classifyOpaqueFunds(opaqueFunds: ReadonlyArray<OpaqueFund>): {
   const uniqueByTicker = new Map(opaqueFunds.map((f) => [f.ticker, f]));
   let opaqueUnavailableFundCount = 0;
   for (const f of uniqueByTicker.values()) {
-    if (f.axis === "both" && UNAVAILABLE_REASONS.has(f.reason)) {
+    if (classifyOpaqueReason(f.reason, f.axis) === "awaiting") {
       opaqueUnavailableFundCount++;
     }
   }
@@ -240,7 +212,7 @@ function classifyOpaqueFunds(opaqueFunds: ReadonlyArray<OpaqueFund>): {
     ticker: f.ticker,
     axis: f.axis,
     reason: f.reason,
-    unavailable: f.axis === "both" && UNAVAILABLE_REASONS.has(f.reason),
+    unavailable: classifyOpaqueReason(f.reason, f.axis) === "awaiting",
   }));
   return { opaqueFundCount: uniqueByTicker.size, opaqueUnavailableFundCount, opaqueFundDetails };
 }

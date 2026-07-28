@@ -17,6 +17,30 @@
  * (they read the durable mandate); the allocation view shows actual-only bars
  * until that lands. Charts are inline CSS bars — no chart library (the Summary
  * view precedent). Missing figures render `DASH`, never fabricated (BP-020).
+ *
+ * FIX-954 (Phase 1) redesigns the look-through UX with no leaf/contract
+ * change: the holdings table and `TopPositions` both close their truncated
+ * footer to 100% instead of silently dropping rows past the top 10, the
+ * look-through sector block now draws `sectorResidual` (a field the leaf
+ * already computed), opaque funds are regrouped into two collapsible
+ * "not attributable" / "awaiting data" buckets via the shared
+ * `classifyOpaqueReason` classifier, and `Effective positions` is gone from
+ * BOTH stat rows — the wrapper-basis point estimate and the look-through
+ * interval rendered the same label two blocks apart over different bases,
+ * and the interval in particular was read literally as "how much of each
+ * name do I own", which inverse-HHI does not answer. The leaf still computes
+ * it and the analysis prompt still consumes it; only the two tiles are cut.
+ *
+ * The load-bearing derivation logic (row-model footers, the sector-block
+ * render gate, the opaque-fund grouping) is extracted into pure, exported
+ * helpers — this package has no JSX-rendering test harness, so they're
+ * unit-tested directly from `test/health-section.spec.ts` (the
+ * `buildHoldingRowModel` precedent, `holdings-table.tsx`). That split means
+ * the arithmetic is covered and the JSX is not: three of the defects a
+ * review caught after the first pass were on the JSX side of it (a
+ * mislabelled residual bar, a badge counting entries instead of funds, a
+ * footer that vanished when "show all" was clicked). Change the rendering
+ * here and look at the actual screen — the helpers cannot catch it.
  */
 "use client";
 
@@ -30,7 +54,14 @@ import {
   type PortfolioHealth,
   type QuoteMap,
 } from "@/domain/portfolio/math/portfolio-health";
-import type { EffectiveNamePosition, LookThroughSectorBucket, OpaqueFund } from "@/domain/portfolio/math/etf-look-through";
+import {
+  classifyOpaqueReason,
+  type EffectiveNamePosition,
+  type LookThroughExposure,
+  type LookThroughResidual,
+  type LookThroughSectorBucket,
+  type OpaqueFund,
+} from "@/domain/portfolio/math/etf-look-through";
 import { excludeFixedIncomeFromProfileMap, toFundProfileMap } from "@/domain/portfolio/math/etf-profile-map";
 import { useClassifications } from "./use-classifications";
 import { etfProfilesResponseToRows, useEtfProfiles } from "./use-etf-profiles";
@@ -59,6 +90,156 @@ type HealthSectionProps = {
 /** Percent as "12.4%" (leaf pcts are 0..100, unlike `formatPercent`'s 0..1). */
 function pct(value: number | null): string {
   return value === null ? DASH : `${value.toFixed(1)}%`;
+}
+
+/** The `Where` column's compact source list (FIX-954 §3 step 4): names every
+ *  source instead of a bare count so a single-fund slice reads "VTI" and a
+ *  wide one reads "Direct + N" — never just a number with no meaning. Up to
+ *  two fund sources are named in full alongside a direct holding; beyond
+ *  that it collapses to a count so the column stays scannable. */
+export function formatSourcesLabel(sources: EffectiveNamePosition["sources"]): string {
+  const hasDirect = sources.some((s) => s.from === "direct");
+  const funds = sources.filter((s) => s.from !== "direct").map((s) => s.from);
+  // The SAME two-source cap applies whether or not there's a direct slice.
+  // The fund-only branch used to join every wrapper, which is the shape that
+  // actually blows the column out: a name held through six ETFs and owned
+  // directly through none is ordinary in a fund-heavy book, and that was
+  // precisely the branch with no cap (Codex review, PR #959). Expanding the
+  // row still lists every source, so nothing is hidden — only summarized.
+  if (!hasDirect) {
+    if (funds.length <= 2) return funds.join(", ");
+    return `${funds.length} funds`;
+  }
+  if (funds.length === 0) return "Direct";
+  if (funds.length <= 2) return `Direct + ${funds.join(", ")}`;
+  return `Direct + ${funds.length}`;
+}
+
+/** The look-through holdings table's row model (FIX-954 §3 step 1): the
+ *  shown top-N positions, a rolled-up tail for the rest, and the axis's own
+ *  residual — so the rendered footer closes to the SAME total the leaf
+ *  already computed, instead of the table silently truncating at `showCount`
+ *  and leaving the column short (§0.1 — the reported "percentages don't add
+ *  up" defect). Never renormalizes: `tail` and `residual` are additive rows,
+ *  not a redistribution of the shown rows' weight. */
+export type LookThroughHoldingsRowModel = {
+  shown: EffectiveNamePosition[];
+  tail: { count: number; weightPct: number; marketValue: number };
+  residual: { weightPct: number; marketValue: number };
+  total: { weightPct: number; marketValue: number };
+};
+
+export function buildLookThroughHoldingsRowModel(
+  positions: EffectiveNamePosition[],
+  residual: LookThroughResidual,
+  showCount = 10,
+): LookThroughHoldingsRowModel {
+  const shown = positions.slice(0, showCount);
+  const rest = positions.slice(showCount);
+  const tailWeightPct = rest.reduce((s, p) => s + p.weightPct, 0);
+  const tailMarketValue = rest.reduce((s, p) => s + p.marketValue, 0);
+  const shownWeightPct = shown.reduce((s, p) => s + p.weightPct, 0);
+  const shownMarketValue = shown.reduce((s, p) => s + p.marketValue, 0);
+  return {
+    shown,
+    tail: { count: rest.length, weightPct: tailWeightPct, marketValue: tailMarketValue },
+    residual: { weightPct: residual.sharePct, marketValue: residual.marketValue },
+    total: {
+      weightPct: shownWeightPct + tailWeightPct + residual.sharePct,
+      marketValue: shownMarketValue + tailMarketValue + residual.marketValue,
+    },
+  };
+}
+
+/** `TopPositions`'s row model (FIX-954 §3 step 2) — the identical
+ *  `.slice(0, 10)` truncation defect as the look-through table, on the
+ *  WRAPPER basis: the priced, exposure-weighted positions are already
+ *  exhaustive — no separate residual bucket — so closing the footer is just
+ *  recovering the tail the truncation used to drop silently. Both an
+ *  unpriced row AND a cash row are excluded before the split: cash has a
+ *  non-null `marketValue` but a null `exposureWeightPct` (it isn't part of
+ *  the invested book — `portfolio-health.ts:334`), so filtering on
+ *  `marketValue` alone let a cash row read as a "smaller position" and mixed
+ *  an invested-NAV-denominated weight total with a total-NAV market-value
+ *  total (FIX-954 review). `all` is the full filtered, unsliced list — the
+ *  same set `shown` is drawn from — so `TopPositions`'s "show all" doesn't
+ *  need its own second filter over the raw positions (FIX-954 review,
+ *  BP-010). */
+export type TopPositionsRowModel = {
+  all: HealthPosition[];
+  shown: HealthPosition[];
+  tail: { count: number; weightPct: number; marketValue: number };
+  total: { weightPct: number; marketValue: number };
+};
+
+export function buildTopPositionsRowModel(
+  positions: HealthPosition[],
+  showCount = 10,
+): TopPositionsRowModel {
+  const priced = positions.filter((p) => p.marketValue !== null && p.exposureWeightPct !== null);
+  const shown = priced.slice(0, showCount);
+  const rest = priced.slice(showCount);
+  const sum = (rows: HealthPosition[]) => ({
+    weightPct: rows.reduce((s, p) => s + (p.exposureWeightPct ?? 0), 0),
+    marketValue: rows.reduce((s, p) => s + (p.marketValue ?? 0), 0),
+  });
+  const tail = sum(rest);
+  const shownTotals = sum(shown);
+  return {
+    all: priced,
+    shown,
+    tail: { count: rest.length, ...tail },
+    total: {
+      weightPct: shownTotals.weightPct + tail.weightPct,
+      marketValue: shownTotals.marketValue + tail.marketValue,
+    },
+  };
+}
+
+/** Whether the look-through sector block has anything to draw (FIX-954 §7
+ *  step 3). The coverage gate is PER AXIS, so a book where every fund passes
+ *  the name axis and fails sectors renders an empty `sectorExposure` with
+ *  100% of the mass sitting in `sectorResidual` — the old guard
+ *  (`sectorExposure.length > 0`) hid the block in exactly that case, the one
+ *  the residual matters most in. */
+export function shouldRenderLookThroughSectors(
+  exposure: Pick<LookThroughExposure, "sectorExposure" | "sectorResidual">,
+): boolean {
+  return exposure.sectorExposure.length > 0 || exposure.sectorResidual.marketValue > 0;
+}
+
+/** Groups opaque funds into the two buckets the FIX-954 pane renders (§0.5,
+ *  §2.1), via `classifyOpaqueReason` — the single classifier the pane and
+ *  the analysis prompt share, so they can never disagree about which funds
+ *  are still awaited. `classifyOpaqueReason` returns THREE values (`policy`
+ *  / `data` / `awaiting`) because a later coverage ceiling needs to subtract
+ *  `policy` alone (§2.1); the UI renders only two groups —
+ *  `"not attributable"` (policy + data) and `"awaiting data"` (awaiting). */
+export function groupOpaqueFunds(
+  funds: OpaqueFund[],
+): { notAttributable: OpaqueFund[]; awaitingData: OpaqueFund[] } {
+  const notAttributable: OpaqueFund[] = [];
+  const awaitingData: OpaqueFund[] = [];
+  for (const f of funds) {
+    if (classifyOpaqueReason(f.reason, f.axis) === "awaiting") awaitingData.push(f);
+    else notAttributable.push(f);
+  }
+  return { notAttributable, awaitingData };
+}
+
+/** Unique-ticker count within an `OpaqueFund[]` group — the badge the pane
+ *  renders next to each `OpaqueFundGroup`. `groupOpaqueFunds`'s arrays are
+ *  intentionally NOT deduped by ticker (a fund thin on both the name and
+ *  sector axes emits two entries with two distinct reason strings —
+ *  `etf-look-through.ts:1019-1025` — and collapsing them would silently drop
+ *  one from the expanded per-fund list). But a bare `funds.length` then
+ *  double-counts that fund, disagreeing with the analysis prompt's own
+ *  `opaqueFundCount` (`build-portfolio-context.ts`'s `classifyOpaqueFunds`),
+ *  which dedupes by ticker for exactly this reason. This is the one place
+ *  that needs to match: it sizes the SAME count the prompt reports, on the
+ *  SAME funds. */
+export function uniqueFundCount(funds: OpaqueFund[]): number {
+  return new Set(funds.map((f) => f.ticker)).size;
 }
 
 /** A labelled inline bar (0..100). Purely presentational. */
@@ -256,14 +437,6 @@ export function HealthSection({
               />
               <Stat label="Top 5" value={pct(health.concentration.top5Pct)} />
               <Stat label="Top 10" value={pct(health.concentration.top10Pct)} />
-              <Stat
-                label="Effective positions"
-                value={
-                  health.concentration.effectivePositions === null
-                    ? DASH
-                    : health.concentration.effectivePositions.toFixed(1)
-                }
-              />
             </div>
             {health.concentration.flags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pb-2">
@@ -410,6 +583,21 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
   return (
     <div>
       <SectionTitle>Look-through — % of invested NAV (seeing inside funds)</SectionTitle>
+      {/* FIX-954 §2 — the lower-bound sentence sits ABOVE every number it
+       *  qualifies; the scope note (this read doesn't move sizing) stays at
+       *  the bottom, near the funds it's about. Splitting the old single
+       *  trailing paragraph by function is the whole fix.
+       *
+       *  The copy carries NO positional word ("above"/"below"). It used to say
+       *  "a flag firing above", which was true only while this paragraph sat at
+       *  the bottom — moving it silently inverted the reference (Codex review,
+       *  PR #959). Asymmetric-confidence copy like this gets relocated; phrase
+       *  it so position never matters. */}
+      <p className="px-1 pb-2 text-[10px] text-[color:var(--c-fg-faint)]">
+        Effective exposure is a LOWER BOUND — uncovered fund weight is a residual, never
+        renormalized. So a concentration flag that fires is trustworthy, but one that doesn&apos;t
+        fire is not a clean bill of health.
+      </p>
       <div className="flex flex-wrap gap-6 pb-2">
         <Stat label="Name coverage" value={pct(exposure.coveragePct)} />
         <Stat label="Sector coverage" value={pct(exposure.sectorCoveragePct)} />
@@ -421,19 +609,15 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
               : `${exposure.maxPosition.ticker} ${pct(exposure.maxPosition.weightPct)}`
           }
         />
-        {/* An INTERVAL, not a point estimate (Decision 4, docs/etf-look-through.md)
-         *  — the unattributed residual could sit anywhere from a long tail
-         *  (`high`) to piling entirely onto the largest name already seen
-         *  (`low`). Was computed by the leaf but never surfaced here until now
-         *  (Codex review, FIX-801 sub-PR c). */}
-        <Stat
-          label="Effective positions"
-          value={
-            exposure.effectivePositions === null
-              ? DASH
-              : `${exposure.effectivePositions.low.toFixed(1)}–${exposure.effectivePositions.high.toFixed(1)}`
-          }
-        />
+        {/* `Effective positions` is deliberately ABSENT from both stat rows
+         *  (FIX-954 §0.3 / §6). The wrapper-basis point estimate and this
+         *  look-through interval rendered the SAME label two blocks apart over
+         *  different bases, and the interval in particular (a `1.5–338.1`-style
+         *  range) is what a reader took literally as "how much of each name do I
+         *  own" — a question inverse-HHI does not answer. The holdings table
+         *  below answers it directly, so both readings are cut from the UI. The
+         *  leaf still computes `effectivePositions` and the analysis prompt still
+         *  consumes it, where a model can use the interval's width. */}
       </div>
       {exposure.flags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pb-2">
@@ -453,37 +637,59 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
           ))}
         </div>
       )}
-      <LookThroughPositions positions={exposure.positions} />
-      {exposure.sectorExposure.length > 0 && (
+      <LookThroughPositions positions={exposure.positions} residual={exposure.residual} />
+      {shouldRenderLookThroughSectors(exposure) && (
         <div className="pt-2">
+          {/* The caption has to name all THREE contributors, and two review
+           *  rounds each caught it naming too few:
+           *   - Direct holdings land in `sectorMass` at their own sector
+           *     (`etf-look-through.ts:715`, every non-fund position) — so these
+           *     bars are NOT fund internals alone. Saying otherwise invites a
+           *     reader to attribute their direct equity weight to a wrapper.
+           *   - Fund-held mass is attributed through the fund's own reported
+           *     allocation.
+           *   - The residual is whatever neither could place, drawn explicitly
+           *     so the axis closes to 100% rather than stopping short.
+           *  The block renders on attributed-sectors OR residual, so the
+           *  residual-only case (funds thin on the sector axis but attributed on
+           *  the name axis — what step 3's relaxed guard exists to surface) must
+           *  not sit under a heading that promises attributed sectors. */}
           <div className="px-1 pb-1 text-[10px] text-[color:var(--c-fg-faint)]">
-            Attributed sectors (real sectors, no "Funds" bucket on this axis)
+            Effective sector exposure — direct holdings plus what we can see inside funds, and an
+            explicit bar for what we can&apos;t. Closes to 100% of invested NAV; real sectors only,
+            no &quot;Funds&quot; bucket on this axis.
           </div>
-          <LookThroughSectors buckets={exposure.sectorExposure} />
+          <LookThroughSectors buckets={exposure.sectorExposure} residual={exposure.sectorResidual} />
         </div>
       )}
       {exposure.opaqueFunds.length > 0 && <OpaqueFunds funds={exposure.opaqueFunds} />}
       <p className="px-1 pt-2 text-[10px] text-[color:var(--c-fg-faint)]">
-        Effective exposure is a LOWER BOUND — uncovered fund weight is a residual, never
-        renormalized, so a flag firing above is trustworthy but one not firing is not a clean bill
-        of health. This read does not change position sizing in analysis runs.
+        This read does not change position sizing in analysis runs.
       </p>
     </div>
   );
 }
 
-/** Effective names on the look-through basis, expandable to show which
- *  wrapper each slice came from (including the direct holding itself as one
- *  of the sources) — the same two-level disclosure idiom `TopPositions` and
- *  `SectorExposure` already use. A SINGLE-source name (through exactly one
- *  fund, or direct-only) needs no expand affordance, but the Sources column
- *  still names that one source inline instead of a bare "1" — dropping the
- *  per-wrapper breakdown in the single-fund case understates the methodology
- *  (Codex review, FIX-801 sub-PR c). */
-function LookThroughPositions({ positions }: { positions: EffectiveNamePosition[] }): ReactElement {
+/** Effective names on the look-through basis (FIX-954 §3 step 1) — every
+ *  row is expandable to show which wrapper each slice came from (including
+ *  the direct holding itself as one of the sources), and the footer closes
+ *  the column to 100% via `buildLookThroughHoldingsRowModel`: a rolled-up
+ *  tail for names past the top 10, the axis's own residual, and a total row
+ *  — so the table stops silently truncating (§0.1). `Where` names sources
+ *  via `formatSourcesLabel` instead of a bare count. */
+function LookThroughPositions({
+  positions,
+  residual,
+}: {
+  positions: EffectiveNamePosition[];
+  residual: LookThroughResidual;
+}): ReactElement {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const top = positions.slice(0, 10);
-  if (top.length === 0) {
+  const model = useMemo(
+    () => buildLookThroughHoldingsRowModel(positions, residual),
+    [positions, residual],
+  );
+  if (positions.length === 0 && residual.marketValue <= 0) {
     return <p className="px-1 text-[10.5px] text-[color:var(--c-fg-faint)]">No fund attributed a resolvable name.</p>;
   }
   return (
@@ -493,45 +699,36 @@ function LookThroughPositions({ positions }: { positions: EffectiveNamePosition[
           <tr className="text-[color:var(--c-fg-faint)]">
             <th className="px-2 py-1 text-left font-normal">Ticker</th>
             <th className="px-2 py-1 text-right font-normal">Effective weight</th>
-            <th className="px-2 py-1 text-right font-normal">Sources</th>
+            <th className="px-2 py-1 text-right font-normal">Value</th>
+            <th className="px-2 py-1 text-right font-normal">Where</th>
           </tr>
         </thead>
         <tbody>
-          {top.map((p) => {
+          {model.shown.map((p) => {
             const isOpen = expanded === p.ticker;
-            const multi = p.sources.length > 1;
             return (
               <Fragment key={p.ticker}>
                 <tr
-                  className={cn(
-                    "border-t border-[color:var(--c-border)]",
-                    multi && "cursor-pointer hover:bg-[color:var(--c-surface-2)]/50",
-                  )}
-                  onClick={multi ? () => setExpanded(isOpen ? null : p.ticker) : undefined}
+                  className="cursor-pointer border-t border-[color:var(--c-border)] hover:bg-[color:var(--c-surface-2)]/50"
+                  onClick={() => setExpanded(isOpen ? null : p.ticker)}
                 >
                   <td className="px-2 py-1 font-mono text-[color:var(--c-fg)]">
-                    {multi ? (isOpen ? "▾ " : "▸ ") : ""}
+                    {isOpen ? "▾ " : "▸ "}
                     {p.ticker}
                   </td>
                   <td className="px-2 py-1 text-right font-mono text-[color:var(--c-fg)]">{pct(p.weightPct)}</td>
                   <td className="px-2 py-1 text-right font-mono text-[color:var(--c-fg-muted)]">
-                    {multi
-                      ? p.sources.length
-                      : // A single source needs no expand affordance, but
-                        // still owes the same per-wrapper breakdown the
-                        // multi-source expanded view gives — a bare "1"
-                        // dropped which single fund (or the direct holding)
-                        // this name came through (Codex review, FIX-801
-                        // sub-PR c).
-                        p.sources[0].from === "direct"
-                        ? "Direct"
-                        : p.sources[0].from}
+                    {formatMoney(p.marketValue, "USD")}
+                  </td>
+                  <td className="px-2 py-1 text-right font-mono text-[color:var(--c-fg-muted)]">
+                    {formatSourcesLabel(p.sources)}
                   </td>
                 </tr>
                 {isOpen &&
                   p.sources.map((s, i) => (
                     <tr key={`${p.ticker}-${s.from}-${i}`} className="bg-[color:var(--c-surface)]/40 text-[color:var(--c-fg-muted)]">
                       <td className="px-2 py-0.5 pl-6 text-[10.5px]">{s.from === "direct" ? "Direct" : s.from}</td>
+                      <td className="px-2 py-0.5" />
                       <td className="px-2 py-0.5 text-right font-mono text-[10.5px]">{formatMoney(s.marketValue, "USD")}</td>
                       <td className="px-2 py-0.5" />
                     </tr>
@@ -540,60 +737,159 @@ function LookThroughPositions({ positions }: { positions: EffectiveNamePosition[
             );
           })}
         </tbody>
+        <tfoot className="text-[color:var(--c-fg-faint)]">
+          {model.tail.count > 0 && (
+            <tr className="border-t border-[color:var(--c-border)]">
+              <td className="px-2 py-1">+ {model.tail.count} smaller names</td>
+              <td className="px-2 py-1 text-right font-mono">{pct(model.tail.weightPct)}</td>
+              <td className="px-2 py-1 text-right font-mono">{formatMoney(model.tail.marketValue, "USD")}</td>
+              <td className="px-2 py-1" />
+            </tr>
+          )}
+          {model.residual.marketValue > 0 && (
+            <tr className="border-t border-[color:var(--c-border)]">
+              <td className="px-2 py-1">Not attributed to a name</td>
+              <td className="px-2 py-1 text-right font-mono">{pct(model.residual.weightPct)}</td>
+              <td className="px-2 py-1 text-right font-mono">{formatMoney(model.residual.marketValue, "USD")}</td>
+              <td className="px-2 py-1" />
+            </tr>
+          )}
+          <tr className="border-t border-[color:var(--c-border)] font-semibold text-[color:var(--c-fg)]">
+            <td className="px-2 py-1">Total</td>
+            <td className="px-2 py-1 text-right font-mono">{pct(model.total.weightPct)}</td>
+            <td className="px-2 py-1 text-right font-mono">{formatMoney(model.total.marketValue, "USD")}</td>
+            <td className="px-2 py-1" />
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
 }
 
-/** Look-through sector bars — plain (no per-bucket expansion; unlike the
- *  wrapper basis's `SectorExposure`, a look-through bucket carries no
- *  constituent list to drill into). */
-function LookThroughSectors({ buckets }: { buckets: LookThroughSectorBucket[] }): ReactElement {
+/** Look-through sector bars (FIX-954 §7 step 3 adds the trailing `residual`
+ *  bar — the leaf already computes `sectorResidual`, but the UI never drew
+ *  it, so the column silently stopped short of 100%). Otherwise plain — no
+ *  per-bucket expansion; unlike the wrapper basis's `SectorExposure`, a
+ *  look-through bucket carries no constituent list to drill into. */
+function LookThroughSectors({
+  buckets,
+  residual,
+}: {
+  buckets: LookThroughSectorBucket[];
+  residual: LookThroughResidual;
+}): ReactElement {
   return (
     <div className="space-y-1.5">
-      {buckets.map((s) => {
-        const width = s.pct === null ? 0 : Math.min(100, Math.max(0, Math.abs(s.pct)));
-        return (
-          <div key={s.bucket} className="flex items-center gap-2 text-[11px]">
-            <div className="w-28 shrink-0 truncate text-[color:var(--c-fg-muted)]" title={s.bucket}>
-              {s.bucket}
-            </div>
-            <div className="relative h-3 flex-1 overflow-hidden rounded-sm bg-[color:var(--c-surface-2)]">
-              <div
-                className="absolute inset-y-0 left-0 rounded-sm"
-                style={{ width: `${width}%`, background: "var(--c-accent)" }}
-              />
-            </div>
-            <div className="w-14 shrink-0 text-right font-mono text-[color:var(--c-fg)]">{pct(s.pct)}</div>
-          </div>
-        );
-      })}
+      {buckets.map((s) => (
+        <Bar key={s.bucket} label={s.bucket} pctValue={s.pct} valueText={pct(s.pct)} />
+      ))}
+      {residual.marketValue > 0 && (
+        <Bar
+          pctValue={residual.sharePct}
+          label="Not attributed to a sector"
+          valueText={pct(residual.sharePct)}
+          tone="muted"
+        />
+      )}
     </div>
   );
 }
 
-/** Funds left unattributed on one or both axes, with why — the "named as
- *  incomplete, not half-attributed" honesty gate (Decision 4). */
+/** Funds left unattributed on one or both axes (FIX-954 §7 step 4) —
+ *  regrouped via `groupOpaqueFunds` (step 0's shared `classifyOpaqueReason`)
+ *  into the two groups the pane and the analysis prompt agree on: funds that
+ *  will never resolve (policy exclusions, or data too thin to trust) versus
+ *  funds that may still resolve on a future fetch/refresh. Each group is its
+ *  own single-open disclosure (the file's existing idiom) instead of one
+ *  run-on paragraph. No dollar/percent figures here — those need
+ *  `OpaqueFund.marketValue`, a Phase 2 leaf addition (FIX-954 spec §7). */
 function OpaqueFunds({ funds }: { funds: OpaqueFund[] }): ReactElement {
+  const [open, setOpen] = useState<"notAttributable" | "awaitingData" | null>(null);
+  const { notAttributable, awaitingData } = useMemo(() => groupOpaqueFunds(funds), [funds]);
   return (
-    <div className="px-1 pt-1 text-[10px] text-[color:var(--c-fg-faint)]">
-      <span className="text-[color:var(--c-fg-muted)]">Incomplete fund data: </span>
-      {funds.map((f, i) => (
-        <span key={`${f.ticker}-${f.axis}`}>
-          {i > 0 ? "; " : ""}
-          {f.ticker} ({f.axis}) — {f.reason}
-        </span>
-      ))}
+    <div className="space-y-1.5 pt-1">
+      <OpaqueFundGroup
+        label="Not attributable"
+        funds={notAttributable}
+        caption="Excluded by policy (never decomposed by design), or the fund's own holdings data wasn't usable. Some of these can improve on a later refresh; policy exclusions won't."
+        isOpen={open === "notAttributable"}
+        onToggle={() => setOpen(open === "notAttributable" ? null : "notAttributable")}
+      />
+      <OpaqueFundGroup
+        label="Awaiting data"
+        funds={awaitingData}
+        caption="May resolve on a future fetch or profile refresh — no fixed timeline."
+        isOpen={open === "awaitingData"}
+        onToggle={() => setOpen(open === "awaitingData" ? null : "awaitingData")}
+      />
+    </div>
+  );
+}
+
+/** One collapsible opaque-fund group (`OpaqueFunds`'s two rows). Renders
+ *  nothing when empty, so a book with only one kind of gap doesn't show an
+ *  empty disclosure. */
+function OpaqueFundGroup({
+  label,
+  funds,
+  caption,
+  isOpen,
+  onToggle,
+}: {
+  label: string;
+  funds: OpaqueFund[];
+  caption: string;
+  isOpen: boolean;
+  onToggle: () => void;
+}): ReactElement | null {
+  if (funds.length === 0) return null;
+  return (
+    <div className="text-[10px]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-1 text-left text-[color:var(--c-fg-muted)]"
+      >
+        <span className="w-2 shrink-0 text-[color:var(--c-fg-faint)]">{isOpen ? "▾" : "▸"}</span>
+        <span>{label}</span>
+        <span className="text-[color:var(--c-fg-faint)]">({uniqueFundCount(funds)})</span>
+      </button>
+      {isOpen && (
+        <div className="ml-4 mt-1 space-y-1 border-l border-[color:var(--c-border)] pb-1 pl-3 text-[color:var(--c-fg-faint)]">
+          <p>{caption}</p>
+          <p>
+            {funds.map((f, i) => (
+              <span key={`${f.ticker}-${f.axis}`}>
+                {i > 0 ? "; " : ""}
+                {f.ticker} ({f.axis}) — {f.reason}
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 /** The ticker-merged top-positions table: exposure weight + account count, with a
- *  per-account split on expand (the drill-down the household merge enables). */
+ *  per-account split on expand (the drill-down the household merge enables).
+ *  FIX-954 §3 step 2 — the identical `.slice(0, 10)` truncation defect
+ *  `LookThroughPositions` had (§0.1): `buildTopPositionsRowModel` rolls the
+ *  rest into a tail row + total footer, and "Show all" lifts the cap
+ *  entirely, preserving the statement-basis read (every priced position
+ *  accounted for, not just the top 10). The Total row renders
+ *  UNCONDITIONALLY (FIX-954 review — it used to be gated inside the same
+ *  `!showAll && tail.count > 0` check as the tail row, so a book with ≤10
+ *  priced positions never got a total, and clicking "show all" made the
+ *  total DISAPPEAR — the opposite of this change's headline claim); only the
+ *  tail row itself stays gated on `!showAll`. "Show all" is two-way — the
+ *  Total row's own label becomes the "show top 10 only" toggle back once
+ *  expanded, so there's a way back from the full list. */
 function TopPositions({ positions }: { positions: HealthPosition[] }): ReactElement {
   const [expanded, setExpanded] = useState<string | null>(null);
-  // Priced positions only (unpriced ride at the bottom with no weight to rank on).
-  const priced = positions.filter((p) => p.marketValue !== null).slice(0, 10);
+  const [showAll, setShowAll] = useState(false);
+  const model = useMemo(() => buildTopPositionsRowModel(positions), [positions]);
+  const shown = showAll ? model.all : model.shown;
   return (
     <div className="overflow-hidden rounded-md border border-[color:var(--c-border)]">
       <table className="w-full text-[11px]">
@@ -606,7 +902,7 @@ function TopPositions({ positions }: { positions: HealthPosition[] }): ReactElem
           </tr>
         </thead>
         <tbody>
-          {priced.map((p) => {
+          {shown.map((p) => {
             const isOpen = expanded === p.ticker;
             const multi = p.accounts.length > 1;
             return (
@@ -620,6 +916,32 @@ function TopPositions({ positions }: { positions: HealthPosition[] }): ReactElem
             );
           })}
         </tbody>
+        <tfoot className="text-[color:var(--c-fg-faint)]">
+          {!showAll && model.tail.count > 0 && (
+            <tr className="border-t border-[color:var(--c-border)]">
+              <td className="px-2 py-1" colSpan={2}>
+                <button type="button" onClick={() => setShowAll(true)} className="hover:underline">
+                  + {model.tail.count} smaller positions — show all
+                </button>
+              </td>
+              <td className="px-2 py-1 text-right font-mono">{pct(model.tail.weightPct)}</td>
+              <td className="px-2 py-1" />
+            </tr>
+          )}
+          <tr className="border-t border-[color:var(--c-border)] font-semibold text-[color:var(--c-fg)]">
+            <td className="px-2 py-1" colSpan={2}>
+              {showAll && model.tail.count > 0 ? (
+                <button type="button" onClick={() => setShowAll(false)} className="hover:underline">
+                  Total — show top 10 only
+                </button>
+              ) : (
+                "Total"
+              )}
+            </td>
+            <td className="px-2 py-1 text-right font-mono">{pct(model.total.weightPct)}</td>
+            <td className="px-2 py-1" />
+          </tr>
+        </tfoot>
       </table>
     </div>
   );
