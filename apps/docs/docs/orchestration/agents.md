@@ -20,7 +20,7 @@ Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are 
 | Field | Meaning |
 |-------|---------|
 | `name` | Stable identifier. This is the key `agent-ref` resolves against. |
-| `description` | Routing-facing summary shown in trace UI and the DevTool. Not the system prompt. |
+| `description` | Routing-facing summary shown in trace UI and the DevTool. Not the system prompt, and not the blurb a delegation roster shows — an `agent-ref` agent is listed to the coordinator by its reference name. |
 | `persona` | The system-prompt source. A string, an inline template, or a resource path. |
 | `model` | Model id. Falls back to the deps' default, then `intent/chat`. |
 | `allowedTools` | Tool-catalog keys the agent may reference. |

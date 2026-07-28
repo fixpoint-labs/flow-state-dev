@@ -239,5 +239,5 @@ drain, not a shared board with a separate drainer.
 
 - [Building a research team](./building-a-research-team) — a board from scratch, three ways.
 - [Create your own pattern](./create-your-own-pattern) — wrap `taskBoard` in a reusable factory.
-- [Agents that command the board](./agents-command-the-board) — let a model add and assign tasks mid-drain.
+- [Authoring a delegating skill](./agents-command-the-board) — let a model add and assign tasks mid-drain.
 - [Task board](/docs/orchestration/task-board) and [Task substrate](/docs/orchestration/task-substrate) — the reference docs.
