@@ -577,11 +577,17 @@ function LookThroughSection({ exposure }: { exposure: NonNullable<PortfolioHealt
       {/* FIX-954 §2 — the lower-bound sentence sits ABOVE every number it
        *  qualifies; the scope note (this read doesn't move sizing) stays at
        *  the bottom, near the funds it's about. Splitting the old single
-       *  trailing paragraph by function is the whole fix. */}
+       *  trailing paragraph by function is the whole fix.
+       *
+       *  The copy carries NO positional word ("above"/"below"). It used to say
+       *  "a flag firing above", which was true only while this paragraph sat at
+       *  the bottom — moving it silently inverted the reference (Codex review,
+       *  PR #959). Asymmetric-confidence copy like this gets relocated; phrase
+       *  it so position never matters. */}
       <p className="px-1 pb-2 text-[10px] text-[color:var(--c-fg-faint)]">
         Effective exposure is a LOWER BOUND — uncovered fund weight is a residual, never
-        renormalized, so a flag firing above is trustworthy but one not firing is not a clean bill
-        of health.
+        renormalized. So a concentration flag that fires is trustworthy, but one that doesn&apos;t
+        fire is not a clean bill of health.
       </p>
       <div className="flex flex-wrap gap-6 pb-2">
         <Stat label="Name coverage" value={pct(exposure.coveragePct)} />
