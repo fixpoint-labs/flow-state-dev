@@ -37,13 +37,12 @@ my-project/
       security-review.ts
 ```
 
-**There is no "process" directory, because the process *is* the phases.** An earlier version of
-this sketch split built-in phases (`process/*/SKILL.md`) from yours (`phases/*.ts`), which made
-"customize" and "extend" two different mechanisms in two different directories — a cliff where
-there should be a gradient. One directory, one shape: a phase is a folder with `instructions.md`
-and optionally a `definition.ts`. Changing what a built-in phase *says* means editing its
-instructions; changing what it *does* means ejecting its definition; adding a phase means adding
-a folder. Built-in and custom phases differ only in who wrote them first.
+**There is no separate "process" directory, because the process *is* the phases.** One
+directory, one shape: a phase is a folder with `instructions.md` and optionally a
+`definition.ts`. Changing what a phase *says* means editing its instructions; changing what it
+*does* means ejecting its definition; adding a phase means adding a folder. Built-in and custom
+phases differ only in who wrote them first — customizing and extending are points on one axis,
+not two mechanisms in two places.
 
 `.conductor/` is versioned with the repo — the process is part of the codebase, not hidden in
 a service, and every change to it shows up in code review.
@@ -58,7 +57,7 @@ would make every project a fork on day one.
 
 **Why files rather than an FSD store:** conductor delegates the work inside a phase to a vendor
 harness (Claude Code, Codex), and that harness reads *the repo* — not conductor's resources. So
-anything both layers need is a file. See `conductor.md` §6, "Conductor over the vendor harness." Two
+anything both layers need is a file. See `conductor.md` §6, "Three layers." Two
 consequences visible in the tree above: front-matter carries the metadata both layers read
 (`kind`, `label`), and conductor's own bookkeeping lives in a separate FSD-only resource keyed by
 file path, so the vendor harness can rewrite a document without clobbering our accounting.
@@ -253,32 +252,26 @@ dispatcher: {
 Worktrees stay in conductor's dispatcher layer and do **not** become an FSD concern — they're
 development-orchestration knowledge, not infrastructure every FSD app needs (tenet 4).
 
-### These are not FSD skills, and calling them that was wrong
+### Which runtime runs this file
 
-An earlier version of this sketch used `SKILL.md` and claimed it was "the same shape the
-framework already runs — the skills runtime, `agents:` delegation, `allowed-tools." That claim
-doesn't survive contact with either runtime, and it mattered enough to fix rather than paper
-over.
+`instructions.md` is a **vendor-neutral instruction payload**, and which runtime consumes it
+depends on the layer the phase dispatches to (`conductor.md` §6):
 
-FSD's skills system stores skills **as resources** and activates them when **an FSD generator**
-calls the `runSkill` tool, materializing them into pattern boards. Conductor's control path has
-no generator in it at all — that is the entire point of §5 — and the work inside a phase runs in
-a **vendor harness that has its own skill system** (§6). So a conductor phase is never activated
-by FSD's skills runtime. Two further mismatches followed from the same confusion: skills live in
-a resource store while §6 requires process files to be real files the vendor can read, and
-`agents:` / `allowed-tools` configure *FSD's* sub-agent materialization and tool gating, which
-mean nothing to Claude Code.
+| Dispatched to | Consumed by | `agents:` / `allowed-tools` front-matter |
+|---|---|---|
+| **Layer 3** — `claudeCodeDispatcher`, `codexDispatcher` | the vendor harness, as its brief. It brings its own skills from `agents/skills/` | ignored — the vendor materializes its own sub-agents |
+| **Layer 2** — a steward worker | FSD's skills runtime, or an `Agent` from `workforce` | honored |
 
-So the file is `instructions.md`, and it is what it actually is: a **vendor-neutral instruction
-payload** carried by the phase brief. Each dispatcher decides how to present it —
-`claudeCodeDispatcher` hands it to Claude Code, which may then use its own `.claude/skills` and
-sub-agents; a future FSD-native dispatcher (D3) would activate it through the skills runtime,
-where `agents:` front-matter *would* be meaningful. That difference belongs to the dispatcher,
-not to the file.
+The dispatcher declares which it is, so a phase can't silently carry front-matter nothing will
+read.
 
-What survives intact is the property the old claim was reaching for: **the process is
-customizable without a plugin API**, because a phase is a markdown file plus an optional
-ordinary FSD block. That was never dependent on it being a skill.
+FSD skills are stored as resources and activated when an FSD generator calls `runSkill` — layer
+2 only. A phase dispatched to Claude Code never touches that runtime, which is why the file
+isn't called `SKILL.md`. **Two skill systems at two layers is the correct shape**; what matters
+is saying which one a given phase means.
+
+Either way the process stays **customizable without a plugin API**, because a phase is a
+markdown file plus an optional ordinary FSD block.
 
 Guidance is the same idea, one directory over:
 
@@ -357,10 +350,9 @@ export const securityReview = sequencer({ name: "security-review" }).step(audit)
 A phase declares where it sits, what advances it, and what it dispatches. The `decide` reducer
 stays closed — you add transitions declaratively rather than patching a switch.
 
-This is the **same file a built-in phase has**, which is the payoff of collapsing `process/` and
-`phases/` into one directory: `conductor eject spec` writes exactly this shape for the built-in
-spec phase, so forking a default and writing a new phase are the same edit. The `instructions.md`
-beside it is the prompt payload; `definition.ts` is the structure.
+This is the **same file a built-in phase has**: `conductor eject spec` writes exactly this shape,
+so forking a default and writing a new phase are the same edit. The `instructions.md` beside it
+is the prompt payload; `definition.ts` is the structure.
 
 ```ts
 // .conductor/phases/security/definition.ts

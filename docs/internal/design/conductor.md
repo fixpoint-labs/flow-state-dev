@@ -119,13 +119,9 @@ Splitting them is what lets the driver be a pure function:
 
 - **Phase** — where the work is (`SPEC`, `IMPLEMENTATION`, …).
 - **Gate** — what it is waiting on (`awaiting_spec_approval`, `awaiting_merge`).
-- **Signal** — what the world reported (`review_submitted`, `ci_concluded`,
-  `merge_conflict`, `base_recovered`, `merged`, `approved`), **or what reconciliation
-  inferred was missed.** A signal is not necessarily live: comparing conductor's observed
-  copy against fresh world state yields **synthesized** signals for events that never
-  arrived — a `pr_opened` conductor never saw, backdated so the driver processes it
-  before the comment that revealed the gap (§10/D1). Signals are not only external:
-  `guidance_changed` fires when an objective, tenet, or lesson is added or edited.
+- **Signal** — what the world reported, **or what reconciliation inferred was missed**: a
+  `pr_opened` conductor never saw, backdated so the driver processes it before the comment
+  that revealed the gap (§10/D1). The full set is tabled in §5.
 
 **One review cycle, parameterized.** `drafted → in_review → revised → in_review →
 approved` is the *same* cycle for a spec, an implementation, an epic-spec, and a
@@ -154,29 +150,24 @@ Guidance (collection)  ·  label + body, kind: objective | tenet | lesson
 
 ### Guidance is documents, not entities
 
-Objectives, tenets, and lessons are all the same shape (a label and a body) and serve the
-same *function*: they get injected into a decision as context. That is exactly how the
-current Claude Code system already uses `philosophy.md` — a reference document consulted
-when making a design call, not a record something joins to. An `Objective` entity would
-buy graph traversal that nothing in v1 needs, so it doesn't earn its place (tenet 3).
+Objectives, tenets, and lessons are the same shape (a label and a body) serving the same
+*function*: they get injected into a decision as context — exactly how the current system uses
+`philosophy.md`. That is reference material, not a graph node. An `Objective` entity would buy
+traversal nothing in v1 needs (tenet 3).
 
-So: **one collection** whose instances carry `{ kind, label, body }`, with `kind` a
-discriminator (`objective | tenet | lesson`) in the same way issue `type` is a routing
-key. It is **filesystem-backed** — real markdown files under `.conductor/guidance/`,
-because the vendor harness has to read them too (§6). Objectives ground priority by being
-*read* during prioritization, not by being joined to issues.
+So: **one collection** of `{ kind, label, body }`, `kind` a discriminator (`objective | tenet |
+lesson`) the way issue `type` is a routing key. **Filesystem-backed** under
+`.conductor/guidance/`, because layer 3 has to read it too (§6). Objectives ground priority by
+being *read* during prioritization, not by being joined to issues.
 
-**The promotion trigger, named so the call stays revisitable:** if we need real graph
-queries — every issue serving objective X, or which objectives have no work against them —
-that is when a first-class entity and a link earn their place. Not before, and not
-speculatively.
+**The promotion trigger, named so the call stays revisitable:** if we need real graph queries —
+every issue serving objective X, or which objectives have no work against them — that is when
+an entity and a link earn their place.
 
-**Guidance changes are signals.** Because guidance lives in a collection, `reactTo` fires
-on a change to it (FIX-751 for state, **FIX-843 for content writes** — both **Done**, so
-this is buildable today, not a framework gap). That makes the interesting behavior
+**Guidance changes are signals**, via `reactTo` on the collection (FIX-751 for state, FIX-843
+for content writes, both **Done** — buildable today). That makes the interesting behavior
 configurable rather than bespoke: *a new objective lands → re-examine every open PR and ask
-whether it changes the approach.* A guidance change is just another signal class the driver
-reduces over, which is the payoff for separating signal from phase and gate.
+whether it changes the approach.*
 
 ### Two routing details
 
@@ -191,69 +182,132 @@ see §12.
 
 ## 5. The deterministic spine
 
-One function, no model in the loop:
+One function:
 
 ```ts
 decide(entity, signal, world) → Action[]
 ```
 
-**It is a reducer, not a planner.** Given an entity, the one thing that just happened, and
-the world, it returns the actions that follow — the `(state, event) → effects` shape, not
-"work out an approach" and not "choose which tasks to do next." It is deliberately **not**
-called `plan`: in FSD, *plan* already means agentic planning (plan-and-execute, True Plan
-Mode, plan mode), and this function never involves a model.
-
-The signal is an explicit parameter rather than something dug out of `world`, because
-conductor is an event loop: **one signal in, actions out.** That also makes the reconciler
-(§10/D1) compose cleanly — it produces signals, and each is fed through `decide` in order:
+A **reducer**: one signal in, the actions that follow out. Pure, synchronous, exhaustively
+testable over the phase × gate × signal matrix. It is FIX-840's `state → action` map
+generalized past a single issue, and it composes with the reconciler (§10/D1), which
+produces signals rather than consuming them:
 
 ```
 observed + fresh ──reconcile()──▶ Signal[] ──decide() per signal──▶ Action[] ──▶ execute
 ```
 
-Pure, synchronous, exhaustively unit-testable over the phase × gate × signal matrix. This
-is FIX-840's `state → action` map generalized past a single issue. Actions (`draftSpec`,
-`reviseSpec`, `recordApproval`, `implement`, `addressFeedback`, `resolveConflict`,
-`runGoalCheck`, `retrospect`) are discrete and idempotent — a duplicate or out-of-order
-signal is harmless. **Only actions dispatch agents.** The decision of *what to do next*
-never involves a generator.
+### The signals
 
-That single property is what kills four of the five pains in §2.
+Everything conductor responds to. The **How** column is the load-bearing one — it shows at a
+glance where a model is involved and where one isn't.
+
+| Signal | Comes from | How | Phases that respond |
+|---|---|---|---|
+| `pr_opened` | `pull_request.opened` | structural | SPEC · IMPLEMENTATION |
+| `review_submitted` | `pull_request_review`, state `COMMENTED` | structural | SPEC · IMPLEMENTATION |
+| `changes_requested` | `pull_request_review`, state `CHANGES_REQUESTED` | structural | SPEC · IMPLEMENTATION |
+| `approved` | `pull_request_review`, state `APPROVED`, human, fresh vs. head | structural | SPEC · IMPLEMENTATION |
+| `ci_concluded` | `check_run` / `check_suite` conclusion | structural | IMPLEMENTATION |
+| `merge_conflict` | `mergeable_state: dirty` | structural | IMPLEMENTATION |
+| `base_recovered` | base branch green after being red | structural | IMPLEMENTATION |
+| `merged` | `pull_request.merged` | structural | IMPLEMENTATION |
+| `pr_closed` | closed without merging | structural | SPEC · IMPLEMENTATION |
+| `feedback_received` | a human comment | **model** | SPEC · IMPLEMENTATION |
+| `question_asked` | a human comment | **model** | any |
+| `approval_expressed` | a human comment ("lgtm, ship it") | **model** | SPEC — advisory only |
+| `phase_entered` | conductor's own transition | structural | all |
+| `dispatch_completed` | a phase execution settled | structural | all |
+| `dispatch_failed` | attempts exhausted | structural | all |
+| `goal_check_passed` / `_failed` | the `goals/` harness | structural | IMPLEMENTATION → RETROSPECTIVE |
+| `guidance_changed` | a guidance file's hash differs from last observed | structural | any |
+| `external_status_changed` | Linear webhook, opt-in | structural | any |
+| `objective_approved` | approval on the epic-spec artifact | structural | EPIC · FRAMING |
+| `issue_settled` | a child issue reached RETROSPECTIVE | structural | EPIC · WRAP |
+
+Three things to read off it. Comments from bots and from conductor itself **never become
+signals at all** — they are dropped on author, structurally. Reconciliation adds no new signal
+*kinds*; it re-emits these with a backdated timestamp (§10/D1). And **`approval_expressed` is
+advisory**: it can prompt, but it never satisfies an approval gate, which reads a real GitHub
+review. A model's reading of prose must not be able to advance a gate.
+
+### What `decide` returns
+
+| Phase | Gate | Signal | → Action |
+|---|---|---|---|
+| SPEC | — | `phase_entered` | `draftSpec` |
+| SPEC | `awaiting_spec_review` | `feedback_received` | `reviseSpec`, or `escalate` if the 2-round budget is spent |
+| SPEC | `awaiting_spec_review` | `question_asked` | `answerQuestion` |
+| SPEC | `awaiting_spec_approval` | `approved` | `recordApproval` · `implement` |
+| IMPLEMENTATION | `awaiting_ci` | `ci_concluded(failure)` | `addressFeedback` |
+| IMPLEMENTATION | `awaiting_review` | `changes_requested` | `addressFeedback` |
+| IMPLEMENTATION | `awaiting_merge` | `merge_conflict` | `resolveConflict` |
+| IMPLEMENTATION | `awaiting_merge` | `base_recovered` | `rebaseOnBase` |
+| IMPLEMENTATION | `awaiting_merge` | `merged` | `runGoalCheck` |
+| RETROSPECTIVE | — | `goal_check_passed` | `retrospect` |
+| *any* | *any* | `guidance_changed` | the configured reaction (e.g. `reExamineOpenPrs`) |
+
+Actions are discrete and idempotent, so a duplicate or out-of-order signal is harmless. Read
+the right-hand column: every entry is a dispatch or a ledger write, and **none requires
+judgment at that moment** — the judgment already happened, either in the classifier above or
+inside the dispatched phase.
+
+### Where the model is, and where it isn't
+
+> **A model may decide *what happened*. It never decides *what to do about it*.**
+
+Most of what arrives is structurally decidable and paying a model to read it would be waste: a
+review and a comment are different webhook events, CI is a bot author, and conductor's own
+comments are already in its ledger. One class isn't. Four human comments with identical
+metadata — *"this breaks multi-tenant"*, *"why the board over a queue?"*, *"lgtm, ship it"*,
+*"thinking out loud, ignore me"* — need different responses, and nothing structural separates
+them. So classification runs a generator, at the **inbound edge**:
+
+```
+raw world ──[structural parse]──▶ events
+          ──[semantic classify · model, human prose only]──▶ Signal[]
+Signal[]  ──[decide · pure]──▶ Action[]
+```
+
+Same move as `reads` for gates (below): push ambiguity to the edge, keep the reducer pure. The
+failure modes are why it matters. A misclassified *signal* produces a wrong-but-valid
+transition that is visible in the ledger and replayable. A model inside *`decide`* produces a
+different transition each run from identical state — unauditable, untestable, and exactly the
+§2 pain this exists to remove.
+
+**Prioritization is the other place agency appears**, and it fits the same rule rather than
+bending it: `decide` emits `proposeNextWork` when there is capacity and unstarted issues, a
+steward agent (§6) runs as a dispatched action, and its answer returns as a signal that
+`decide` reduces to `startIssue`. Model at the edge again, not in the reduction.
+
+So the accurate claim is narrower than "no model in the loop": **`decide` is deterministic; the
+tick contains one optional generator call, at the inbound edge, for human prose.**
 
 ### The loop: a tick, not a daemon
 
-"Where does the loop live" has a deliberately boring answer, and the boringness is the
-feature: **there is no resident loop.** There is an idempotent **tick** — a short request
-that reconciles, decides, and mutates tasks, then returns.
+**There is no resident loop** — an idempotent **tick** reads, reconciles, decides, mutates, and
+returns.
 
 ```
 trigger (webhook | cron | CLI | chat)
-  └─▶ tick  = one request:  read world → reconcile → decide per signal → mutate/enqueue tasks → return
-        └─▶ phase work = a separate, detached task execution (its own cycle, minutes to an hour)
+  └─▶ tick  = one request:  read world → classify → reconcile → decide per signal → mutate/enqueue → return
+        └─▶ phase work = a separate, detached task execution (minutes to an hour)
 ```
 
-- **A tick is a request.** Short, no model calls, no long-held anything. It is safe to fire
-  redundantly — three triggers can all fire it and the result is the same, because actions
-  are idempotent and state is re-derived. That is what makes restart free: nothing is
-  resident, so nothing is lost.
-- **Phase work is not in the tick.** Authoring a spec or implementing a PR runs as its own
-  detached task execution (FIX-939). The tick starts it and returns; it does not wait.
-  Conflating the two is what would force a long-lived process back into the design.
-- **Triggers are interchangeable.** Webhook (an event arrived), cron (the backstop and
-  new-work discovery), CLI, or chat all call the same tick. None is privileged, and losing
-  any one costs latency, not correctness — the cron backstop plus reconciliation recovers
-  whatever the webhooks missed.
+- **A tick is a request.** Short, nothing long-held, safe to fire redundantly — actions are
+  idempotent and state is re-derived. That is why restart is free: nothing is resident, so
+  nothing is lost.
+- **Phase work is not in the tick.** The tick starts a detached execution (FIX-939) and
+  returns. Conflating the two is what would force a long-lived process back into the design.
+- **Triggers are interchangeable.** Webhook, cron, CLI, and chat all call the same tick. Losing
+  one costs latency, not correctness — the cron backstop plus reconciliation recovers the rest.
 
-**Altitude: one state machine, many instances.** There is not a loop per entity — there is
-one state machine *definition* and N entity instances that a tick advances. Concurrency
-comes from the board: a resource-backed `TaskCollection` per epic, one task per issue, the
-drain advancing them in parallel. The epic itself is a task too, with its issues as
-**nested** sub-tasks, so dependency gating expresses "issues hold until the epic objective
-gate passes" natively rather than as a special case.
-
-**Not settled — validate in M2:** whether the epic-task-with-nested-issue-subtasks shape
-holds up, or whether epics want a separate board from the project-level one. Both work on
-paper; the nesting is more elegant and less proven.
+**One state machine, many instances.** Not a loop per entity: one definition, N instances a
+tick advances. Concurrency comes from the board — a resource-backed `TaskCollection` per epic,
+one task per issue. The epic is itself a task with its issues as **nested** sub-tasks, so
+"issues hold until the epic objective gate passes" is native dependency gating rather than a
+special case. **Not settled — validate in M2:** whether that nesting holds up, or whether epics
+want a board separate from the project-level one.
 
 ### Gates are predicates over a snapshot, never I/O
 
@@ -288,14 +342,30 @@ I/O surface inside the one function the design claims is pure.
 This is a **precondition for M0**, not a later refinement: M0's acceptance criteria are
 written against a pure `decide`, so `reads` exists from the first commit.
 
-## 6. Conductor over the vendor harness
+## 6. Three layers
 
-Conductor is an orchestration layer **on top of another orchestration layer.** It delegates
-the work inside a phase to a vendor harness (Claude Code, Codex), and that harness has its
-own skills, sub-agents, and tool loop. We do not reinvent any of that — declining to is most
-of why this is weeks rather than months.
+Conductor is an orchestration layer **on top of another orchestration layer**, and most of the
+confusion about where models and skills belong dissolves once the layers are named:
 
-That layering fixes an ownership boundary, and a lot falls out of it:
+| | Decides | Model? | Skills | Owned by |
+|---|---|---|---|---|
+| **1 · the tick** | which phase, which gate, what's next | **no** — `decide` is pure | none | conductor |
+| **2 · the steward** | how to read a human comment; what to work on next | yes | **FSD skills** (`orchestration/skills`), personas from `workforce` | conductor |
+| **3 · the vendor harness** | how the work inside a phase actually gets done | yes | **project skills** (`agents/skills/`) — the ones we already have | Claude Code / Codex |
+
+**Two skill systems is correct, not a smell.** They are different runtimes at different layers:
+FSD skills are resources activated when an FSD generator calls `runSkill`; project skills are
+files Claude Code reads for itself. A phase dispatched to layer 3 carries a *brief* (markdown
+plus guidance references); a layer-2 worker is an FSD `Agent` or an ordinary block. Which one a
+phase uses is the dispatcher's business, and the dispatcher declares it.
+
+**Layer 2 is nearly empty in M0/M1, by design** — "zero coordinator model calls" (M1) is exactly
+the claim that layer 1 has no agency. It fills in at M3/M4, where the judgment-shaped work lives:
+classifying human prose (§5), answering a question in a thread, re-examining open PRs when an
+objective lands, ordering work against objectives.
+
+**We do not reinvent layer 3.** Declining to is most of why this is weeks rather than months. The
+ownership boundary between 1+2 and 3:
 
 | | Conductor owns | The vendor harness owns |
 |---|---|---|
@@ -305,59 +375,40 @@ That layering fixes an ownership boundary, and a lot falls out of it:
 
 ### The filesystem is the interop surface
 
-Anything *both* layers need has to be readable by both, and the vendor harness reads the
-repo — not an FSD store. So **guidance is filesystem-first**: `.conductor/guidance/**/*.md`
-are real files, picked up the same way Claude Code already picks up `philosophy.md` today.
-Storing them only in an FSD resource would make them invisible to the layer that needs them
-most.
+Anything *both* layers need must be readable by both, and layer 3 reads the repo, not an FSD
+store. So **guidance is filesystem-first**: `.conductor/guidance/**/*.md` are real files, picked
+up the way Claude Code already picks up `philosophy.md`. Metadata splits by audience —
+front-matter (`kind`, `label`) is shared and travels with the body; conductor's bookkeeping
+(when we last acted on an objective, which lessons were promoted) lives in a separate FSD-only
+resource keyed by file path, so the vendor can rewrite a document without clobbering our
+accounting.
 
-That splits metadata by audience:
+**External changes are a reconciliation problem, not a new mechanism.** A human or the vendor
+harness can edit a guidance file without conductor mediating the write, so `reactTo` never
+fires. That is the missed-webhook case in different clothes: each tick hashes the files against
+what was last observed and emits a synthesized `guidance_changed`. **Correctness needs no
+framework work** — the reconciler already has to exist.
 
-- **Front-matter** (`kind`, `label`) — shared. Both layers read it, and it travels with the
-  body.
-- **A separate FSD-only resource, keyed by file path** — conductor's bookkeeping (when we
-  last acted on an objective, which lessons have been promoted). Deliberately *not* in the
-  file: the vendor harness shouldn't have to care about our accounting, and shouldn't be
-  able to clobber it by rewriting a document.
-
-**External changes are a reconciliation problem, not a new mechanism.** A guidance file can
-change without conductor doing it — a human edits it, or the vendor harness writes it
-mid-phase. `reactTo` fires on FSD-mediated mutations, so those edits are invisible to it.
-But this is the missed-webhook case from §10/D1 wearing different clothes: the observed copy
-diverges from the world, and reconciliation is what notices. Each tick hashes the guidance
-files against what conductor last observed and emits a synthesized `guidance_changed` for
-anything that moved. **Correctness needs no framework work** — the reconciler already has to
-exist.
-
-What framework work *would* buy is **latency**, and the shape is already half-built:
-`defineExternalResourceCollection` (FIX-858, **Done**) models exactly this — a read-only
-collection resolved from an app-owned store, sharing `reactTo`. Two pieces are missing for
-the filesystem case: `ExternalReactiveBindings` has no `contentUpdated` axis (only
-`created` / `stateUpdated` / `deleted`, while a markdown body is content), and the
-change-signal helper that would let an app *report* a change was never built. Filed as
-**FIX-979**. Conductor is its pressure test, not its dependent: conductor ships on
-reconciliation and gets tick-latency reactions; FIX-979 buys immediate ones.
+Framework work would buy **latency**. `defineExternalResourceCollection` (FIX-858, **Done**)
+models this shape but is missing a `contentUpdated` axis and any way for an app to *report* a
+change — filed as **FIX-979**. Conductor is its pressure test, not its dependent.
 
 ### Getting guidance into the vendor harness
 
-Being a file in the repo is necessary but not sufficient. Claude Code reads `CLAUDE.md` and
-`.claude/skills`; Codex reads `AGENTS.md`. Nothing tells either that
-`.conductor/guidance/objectives/*.md` exists. Two mechanisms, used together:
+Being a file in the repo isn't enough to be *found* — Claude Code reads `CLAUDE.md` and
+`.claude/skills`, Codex reads `AGENTS.md`, and neither knows `.conductor/guidance/` exists.
+Two mechanisms:
 
-- **Push, per dispatch (primary).** The phase brief conductor hands the dispatcher carries
-  the relevant guidance as explicit file references, scoped to the phase. Precise (a
-  retrospective doesn't need every objective), vendor-agnostic (it rides the `Dispatcher`
-  contract, not a Claude-specific file), and the only path that can be *scoped* at all.
-- **Ambient pointer, per repo (safety net).** A **generated, marked block** in the
-  vendor-native entrypoint (`CLAUDE.md`, `AGENTS.md`) saying where guidance lives and when
-  to read it, refreshed on `guidance_changed`. This covers a human driving the harness
-  directly, outside conductor.
+- **Push, per dispatch (primary).** The phase brief carries the relevant guidance as file
+  references, scoped to the phase — precise, vendor-agnostic, and the only path that can be
+  scoped at all.
+- **Ambient pointer, per repo (safety net).** A generated, delimited block in `CLAUDE.md` /
+  `AGENTS.md` saying where guidance lives, refreshed on `guidance_changed`. This covers a human
+  driving the harness directly.
 
-**A pointer, never a copy.** The ambient block references the guidance files; it does not
-inline their text. Copying guidance into `CLAUDE.md` would put one fact in two places with
-no authority rule — §10/D1's mistake at file altitude, with a stale copy as the failure
-mode. The block is delimited so conductor can rewrite it without touching hand-written
-sections.
+**A pointer, never a copy.** Inlining guidance into `CLAUDE.md` would put one fact in two places
+with no authority rule — §10/D1's mistake at file altitude, with a stale copy as the failure
+mode.
 
 ### Who owns the git worktree
 
@@ -401,42 +452,30 @@ types: PR-level (Conversation), review comments (Files Changed), and issue threa
 | **Merge conflict / base recovered** | ❌ | webhook transport |
 | **Opening a PR, merging, labels, submitting a review** | ❌ not adapter features | handler blocks over Octokit |
 
-So the split is **conversation vs. state**:
+The split is **conversation vs. state**. Human conversation on a PR or issue rides the Chat
+SDK's GitHub adapter, so a human commenting on a PR and a human asking in Slack are one
+primitive with one binding — and one thread per issue unifies the operator surface. The webhook
+transport is still required, for a sharper reason than "some events are missing": the adapter
+carries conversation, not state, and **everything the gates turn on** — a review submission, a
+merge, a CI conclusion — is state the adapter doesn't emit. A conductor built on the adapter
+alone would be deaf to its own gates.
 
-- **Human conversation on a PR or issue rides the Chat SDK's GitHub adapter.** A human
-  commenting on a PR and a human asking in Slack are the same primitive, served by one
-  binding — no classification heuristic in `decide`, no second code path. It also unifies the
-  operator surface: a Slack thread per issue and a GitHub PR thread per issue become the same
-  thing.
-- **The webhook transport is required, and for a sharper reason than "some events are
-  missing":** the adapter carries *conversation*, not *state*. Everything the approval gate
-  actually turns on — a `pull_request_review` submission, a merged PR, a CI conclusion — is a
-  state event the adapter does not emit. A conductor built on the adapter alone would be deaf
-  to its own gates.
+The comments the adapter delivers are raw prose; turning them into signals is §5's classifier,
+which sits between the transport and `decide`.
 
-**Outbound splits the same way.** Opening, merging, labelling, and submitting reviews are not
-adapter features, so they are handler blocks over Octokit — not a transport concern at all.
-Replying in a thread the SDK owns is different: the SDK holds the thread context and the
-reply routing, so it should use `thread.post()`. The rule:
+**Outbound splits the same way:** opening, merging, labelling, and submitting reviews aren't
+adapter features, so they're handler blocks over Octokit — not a transport concern at all.
 
 > **Reply in a thread the SDK owns → `thread.post()`. Write to something the SDK doesn't
 > model → a handler block over Octokit.**
 
-**Two things to verify before M3 commits to this** (unproven, not assumed):
+**Two things to verify before M3** (unproven, not assumed): whether a GitHub thread comment
+arrives as `mention` under FSD's uniform `chat.on` vocabulary, and how a PR thread's `sessionId`
+(which defaults to `thread.id`) reconciles with conductor's per-issue session — an issue with
+two PRs has three candidate thread ids.
 
-1. **Vocabulary fit.** FSD's `chat.on` keys are `mention` / `directMessage` / `reaction` /
-   `slashCommand`, deliberately uniform across platforms. Whether a GitHub thread comment
-   arrives as `mention` — and whether "addressed to conductor" is distinguishable from any
-   comment — needs confirming against the adapter, not inferring from the vocabulary.
-2. **Session identity collision.** `sessionId` defaults to the canonical `thread.id`, so a
-   GitHub PR thread would mint its own session — while conductor keys a session per *issue*.
-   An issue with a spec PR and an impl PR has three candidate thread ids. The `sessionId`
-   override exists for exactly this, but the mapping has to be decided deliberately rather
-   than defaulted.
-
-**The Linear analogue:** Linear is not a chat platform, so its native path is the Linear
-Agent connector (FIX-567, *Backlog / Low*), which conductor doesn't need — outbound
-projection plus optional inbound status signals covers what it uses Linear for.
+**The Linear analogue:** Linear is not a chat platform, so its native path is the Linear Agent
+connector (FIX-567, *Backlog / Low*), which conductor doesn't need.
 
 ## 8. How it fits together
 
@@ -453,9 +492,9 @@ flowchart TB
   CL[conductor CLI]:::trig --> TICK
   CH[chat thread]:::trig --> TICK
 
-  subgraph TICK["one tick · a short request · zero model calls"]
+  subgraph TICK["one tick · a short request · no model in decide"]
     direction LR
-    RD[read world<br/>snapshot + declared gate reads] --> RC[reconcile<br/>observed vs fresh] --> DE["decide(entity, signal, world)<br/>pure reducer"] --> MU[mutate / enqueue tasks]
+    RD[read world<br/>snapshot + declared gate reads] --> CL["classify<br/>human prose only · M3+"] --> RC[reconcile<br/>observed vs fresh] --> DE["decide(entity, signal, world)<br/>pure reducer"] --> MU[mutate / enqueue tasks]
   end
 
   MU --> BOARD[("task board<br/>resource-backed TaskCollection<br/>one task per issue")]
@@ -478,10 +517,10 @@ flowchart TB
   classDef trig fill:#eef,stroke:#88a
 ```
 
-Two things to read off it. **The tick is the only decision-maker, and it holds no model** —
-every generator call happens inside a phase execution, downstream of a decision already made.
-And **GitHub is read every tick and written by phases**, never mirrored-then-trusted; the
-ledger holds only what GitHub has no place for.
+Two things to read off it. **`decide` is the only decision-maker and holds no model** — the one
+generator inside a tick classifies inbound prose (§5); every other generator call happens inside
+a phase execution, downstream of a decision already made. And **GitHub is read every tick and
+written by phases**, never mirrored-then-trusted.
 
 ### The default development process, end to end
 
@@ -560,9 +599,10 @@ is §10/D1's mistake at config altitude.
 | GitHub events waking the right session | webhook transport, `flow.webhooks` + `sessionId(event)` (FIX-439) |
 | Chat as an inbound trigger and operator surface | `@flow-state-dev/chat-sdk`, incl. the official GitHub adapter (§7) |
 | Reconcile backstop + new-work discovery | `@flow-state-dev/scheduled` |
-| The hands | `@flow-state-dev/claude-code` (`/cli` and `/sdk`) |
+| The hands (layer 3) | `@flow-state-dev/claude-code` (`/cli` and `/sdk`) |
+| Steward agents (layer 2) — persona, model, tools, capabilities | `defineAgent` + `createAgentRegistry` (`@flow-state-dev/workforce`), consumed not reimplemented (§10/D3) |
 | Entity store, project-scoped, local → cloud unchanged | resource collections + `store-sqlite` / `store-postgres` |
-| User-editable phase instructions | plain markdown under `.conductor/phases/<name>/instructions.md`, carried to the vendor by the phase brief — **not** the FSD skills runtime, which activates resource-stored skills from an FSD generator (§6) |
+| User-editable phase instructions | markdown under `.conductor/phases/<name>/`, carried to layer 3 as a brief; layer-2 workers use the FSD skills runtime and `workforce` agents (§6) |
 | Live view of activity | SSE item stream + `@flow-state-dev/react` renderers + devtool |
 | Operator CLI loop | `fsdev chat` (FIX-875) |
 | Proving the real path | the `goals/` harness |
@@ -584,30 +624,26 @@ is in the task status enum, leases and CAS claim and `reclaim()` exist on both c
 backings, and `TaskHandle.items()` exposes a running task's emissions. Conductor builds its
 board by hand and gets all of it. It adds nothing here.
 
-**The loop is not reused, and that is a deliberate line, not an oversight.** `tick → decide →
-dispatch` looks like `drain → judge → replan`, and they are structurally different in the one
-way that matters:
+**The loop is not reused, deliberately.** `tick → decide → dispatch` resembles `drain → judge →
+replan` only on the surface:
 
 | | `goalSeekLoop` | Conductor's tick |
 |---|---|---|
 | What terminates it | a **mandatory `judge`** returning a `Verdict` — a model call in practice | nothing; there is no loop to terminate |
-| Bounding | a **mandatory `maxIterations`** hard backstop | none needed; a tick is one request |
+| Bounding | a **mandatory `maxIterations`** backstop | none needed; a tick is one request |
 | Lifetime | inside a single request (`board.drain` is `.forEach`-based) | across days, entirely event-driven |
-| Model in the control path | yes, by construction | **never** — that is the whole thesis |
+| Where a model sits | **in the termination decision** | at the inbound edge only, classifying prose (§5) |
 
-`goalSeekLoop` requires a judge and an iteration cap because it is a *goal-seeking* loop:
-it doesn't know when it's done, so it asks. Conductor always knows what phase an issue is in
-and what its gate is waiting on, so asking would be a regression. Delegation skills are the
-same shape one level up — host-as-executive, a model handing out work. **Every existing loop
-primitive puts a model in the termination decision, and removing the model from that decision
-is the entire reason conductor exists.**
+`goalSeekLoop` needs a judge and a cap because it is *goal-seeking*: it doesn't know when it's
+done, so it asks. Conductor always knows the phase and the gate, so asking would be a
+regression. Delegation skills are the same shape one level up — host-as-executive. **Every
+existing loop primitive puts a model in the termination decision; moving it out of there is why
+conductor exists.**
 
-Worth stating because FIX-922 (*what does task-board + delegation + `goalSeekLoop` subsume?*)
-has been cited as a question that might shrink M0. It won't, and that citation misreads it:
-FIX-922 is a **patterns-catalog** pruning investigation — whether `parallelTasks`,
-`planAndExecute`, `routedSpecialists`, and `supervisor` still earn their place in
-`@flow-state-dev/patterns`. Conductor consumes none of them, and every pattern in its scope
-is model-driven where conductor's driver is model-free. Whatever it cuts, M0 is unaffected.
+FIX-922 (*what does task-board + delegation + `goalSeekLoop` subsume?*) has been cited as
+something that might shrink M0. It won't: it is a **patterns-catalog** pruning investigation
+(`parallelTasks`, `planAndExecute`, `routedSpecialists`, `supervisor`), and conductor consumes
+none of them.
 
 Two more things that look like new layers and are not:
 
@@ -674,15 +710,26 @@ is a direct collision in this exact category; and `dev-engine` collides with our
 **Recommendation: use `conductor` internally now and treat the public name as an open
 question for launch.** The internal name is cheap to change; the package name is less so.
 
-### D3 — Relationship to `workforce` **(DECIDED: bypass, keep the `Dispatcher` seam)**
+### D3 — Relationship to `workforce` **(DECIDED: it splits by layer)**
 
-Conductor's workers are mostly *external* coding agents, not FSD generators with
-personas. The right seam is a vendor-neutral `Dispatcher` (given a phase brief plus a
-skill, run it, return a typed result), with `claude-code` as the first implementation
-and `codex` as the second. `workforce` becomes relevant when we add **FSD-native review
-agents** that don't need a full coding harness. **Decided: bypass `workforce` for v1 and
-keep the `Dispatcher` seam clean so it drops in later.** Workforce Layer 2 is still in
-flight; taking a dependency on it now couples two moving things.
+The original call was "bypass `workforce` for v1." That is right for **layer 3** and wrong as a
+blanket rule, because the two layers want opposite things:
+
+- **Layer 3 — the coding dispatch.** The workers are *external* harnesses. `workforce` has
+  nothing to offer them, and the right seam is a vendor-neutral `Dispatcher`: given a phase
+  brief, run it, return a typed result. `claude-code` first, `codex` second. **Bypass
+  `workforce` here, permanently.**
+- **Layer 2 — steward agents.** These *are* FSD generators with personas, and `workforce`
+  already models exactly that. `Agent` carries `persona`, `model`, `allowedTools`,
+  `usesCapabilities`, and a reserved `usesSkills` — which is the shape a steward worker needs,
+  so conductor should **consume `defineAgent` rather than parallel it.** Building a second
+  agent format here is the bloat tenet 3 guards against.
+
+**Still open, deliberately:** whether the first steward workers should be registry-resolved
+`Agent`s or plain generator blocks. Workforce buys reusable personas and a roster; with two or
+three steward agents that is ceremony. Start with blocks, adopt `defineAgent` at the point a
+persona gets reused — and revisit when workforce Layer 2 settles, since coupling to it now
+couples two moving things.
 
 ## 11. Initial approach — four milestones, payoff at M1
 
@@ -711,25 +758,29 @@ implementation → PR feedback → ready-to-merge as one durable task. Driver fr
 `claude-code` as the hands, GitHub read + PR-ops blocks, phases and dispatches emitted as
 stream items, a minimal CLI board view.
 
-**Both artifact kinds carry multi-round feedback.** A spec PR and an implementation PR
-each accumulate reviewer feedback that may need incorporating over several rounds, and
-today **all of it is hosted on GitHub** — comments, review threads, review states. So the
-parameterized review cycle (§4) must handle rounds on *both* from the start, reading
-GitHub each round and applying the two-round convergence budget from `orchestration.md`.
-This is not deferrable to M2: it is most of what M1's PR-feedback phase does.
+**Both artifact kinds carry multi-round feedback.** A spec PR and an implementation PR each
+accumulate reviewer feedback over several rounds, and today all of it is GitHub-hosted. So the
+parameterized review cycle (§4) handles rounds on *both* from the start, applying
+`orchestration.md`'s two-round budget. Not deferrable — it is most of what M1's PR-feedback
+phase does.
+
+**No classifier yet, deliberately.** M1 runs on structural signals only: `changes_requested`,
+`ci_concluded`, `approved`, `merged`. Any human comment is treated as `feedback_received`
+without asking a model what kind it is — crude, but correct for the one case M1 has, and it is
+what keeps "zero coordinator model calls" literally true. The §5 classifier arrives with M3,
+where questions and prose approvals actually need telling apart.
 
 **One mechanical gotcha, learned the hard way on this very PR:** replying to a GitHub review
 thread opens a *pending review*, and a second reply fails with `422 — one pending review per
 pull request`. The PR-feedback phase must submit each review as it goes or batch all replies
 into one submission; getting it wrong looks like silently failing to respond to feedback.
 
-**Ships before FIX-939.** One issue, a per-tick drain, phase work in-request — that is what
-the POC did and it worked locally. Restart survival comes from gates being derived (§5) and
-the ledger living in conductor's own resources, re-seeding the board each tick.
+**Ships before FIX-939** — one issue, a per-tick drain, phase work in-request. Restart survival
+comes from gates being derived (§5) and the ledger re-seeding the board each tick.
 
-**Verify:** a real FIX issue reaches a real merge-ready PR with **zero coordinator
-model calls**, and the run survives a process restart mid-gate. This is FIX-832's goal on
-the substrate that doesn't drift. Pains 1, 2, 4 and the vendor pain are gone at this point.
+**Verify:** a real FIX issue reaches a real merge-ready PR with **zero coordinator model
+calls**, and the run survives a process restart mid-gate. This is FIX-832's goal on a substrate
+that doesn't drift. Pains 1, 2, 4 and the vendor pain are gone at this point.
 
 ### M2 — many issues, under an epic
 
@@ -749,13 +800,17 @@ its issue to the queue unattended. Pain 3 is gone.
 
 Webhook transport replaces polling; `scheduled` provides the reconcile backstop and
 new-work discovery; the board becomes a devtool module. **Plus the Chat SDK integration**
-(§7) — chat as both an inbound trigger and an operator surface, with the GitHub adapter
-carrying PR and issue conversation. One thread per issue-session is the natural mapping, and
-it is what makes conductor supervisable from Slack rather than only from a terminal.
+(§7) — chat as both an inbound trigger and an operator surface, one thread per issue-session,
+which is what makes conductor supervisable from Slack rather than only a terminal.
+
+**This is where layer 2 opens** (§6) and where the §5 classifier lands, because conversation is
+what makes them necessary: once a human can talk to conductor in a thread, "is this feedback, a
+question, or noise" stops being answerable structurally. First steward worker, first generator
+anywhere in the tick.
 
 **Verify:** a GitHub review event advances the right issue with no session running, a cold
-reconcile re-derives the whole board from the world, and an issue can be driven and
-questioned from a chat thread.
+reconcile re-derives the whole board from the world, an issue can be driven and questioned from
+a chat thread, and a classified question gets answered without advancing any gate.
 
 ### M4 — Linear sync, guidance, and the loop that improves itself
 
