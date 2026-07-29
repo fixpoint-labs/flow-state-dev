@@ -64,7 +64,7 @@ Take the single action the dispatch calls for:
   never rewrite the epic's prose around a line-level nit.
 
   **The epic PR carries its own two-round budget**, and the coordinator holds the counter
-  (`epic_review_rounds`) because you can't persist state across dispatches. So report your
+  (`reviewRounds`, historically `epic_review_rounds`) because you can't persist state across dispatches. So report your
   round accounting the same way `issue-worker` does: `epic_review: <rounds spent>` — **0** for
   a batch that was only factual corrections or broken references — and
   `above_bar_found: <yes/no/n-a>`, which is what authorizes a conditional third round. Report
@@ -104,5 +104,5 @@ did: <one line — created | updated (folded feedback / index: <n> PRs)>
 epic_review: <rounds spent this dispatch; 0 for factual-only> · above_bar_found: <yes/no/n-a>
 settle_requested: none | claim: <X does/does not Y> · load: <which cross-cutting decision depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 not_folded: <none | below-the-bar items + which issue each belongs to, for the coordinator to route>
-open_questions: <none | one-line each needing a human>
+openQuestions: <none | one-line each needing a human — the field name the epic-wake schema accepts>
 ```
