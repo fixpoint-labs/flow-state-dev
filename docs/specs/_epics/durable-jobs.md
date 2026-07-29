@@ -299,15 +299,34 @@ Not "durable jobs work." Specifically:
    criterion is relaxed to criterion 1 alone** and the epic claims no cap guarantee at all.
 2. A leased task continues to execute after the request that created it has ended, and the
    thing running it is not the originating request's drain.
-3. **(Conditional — C3.)** A stranded claim returns to the queue with no human intervening — **via
-   FIX-978's mechanism, consumed here, not rebuilt here.** So this criterion is satisfiable only
-   once FIX-978 lands; it is not this epic's to demonstrate alone.
+3. **(Conditional — C3.) Redelivery, not merely reclamation.** A stranded claim returns to the
+   queue with no human intervening — **via FIX-978's mechanism, consumed here, not rebuilt here** —
+   **and a worker actually starts on it again, with no manual dispatch.**
+
+   > **Another instance of round 8's criterion defect, not a fresh discovery.** As written before,
+   > this criterion passed the moment FIX-978 flipped a dead worker's task back to `pending` — **even
+   > if nothing ever picked it up.** Decision 5 in this same document establishes that pending tasks
+   > have **no intrinsic wake source** and that a persistence-to-enqueue failure can strand them
+   > (the dual-write hazard). So **a correct-looking FIX-978 plus a broken M3 satisfied the
+   > definition of done while the task never ran again** — a check that cannot fail when the outcome
+   > it exists to guarantee does.
+   >
+   > **What the check must therefore prove:** the M3 wake mechanism selected under Decision 5
+   > observes **both admission *and* reclamation**, and a reclaimed task is **re-executed**. Asserting
+   > only the status flip tests FIX-978's write and nothing about the substrate's liveness.
 4. **(Conditional on OQ-C — C2.)** A detached task's progress is readable from a **persisted**
    surface, not from a `transient: true` trace item and not from the originating request's emitter
    (Decision 4). **If OQ-C selects liveness-only, this criterion is replaced** by the weaker one it
    actually delivers — an alive/dead signal on a persisted surface — and the epic states that it
    ships no progress surface. **Do not assert the progress form against a liveness-only
    implementation**; it would fail a correct build, the same defect as the old criterion 1.
+4b. **A detached task's own emitted items are retrievable from a *different* execution than the one
+   that emitted them.** **Unconditional, and separate from criterion 4** — this is the existing
+   `TaskHandle.items()` contract, not the new progress surface, so **OQ-C's liveness-only outcome does
+   not relax it.** Stated separately for exactly that reason: folded into criterion 4 it would vanish
+   with the progress surface. Today the accessor closes over the constructing request's emitter and
+   returns `[]` across the boundary — silently, which is why this needs asserting rather than
+   assuming. See the `items()` hazard in §2 for the ownership recommendation.
 5. The in-request `.work` / `.waitForWork` flavour still works, and any break to it is a
    declared, versioned break with a migration note — not a silent behavior change.
 6. **No new persistence backend, and no second *work registry*.** The board remains the single
@@ -354,6 +373,15 @@ FIX-982**, not a deliverable of FIX-939. FIX-982 blocks on it in Linear. Concret
   expiry alone. This is FIX-980's Decision 3 restated as a constraint on *this* set, because
   the temptation is local — an out-of-request executor is exactly where someone reaches for
   "the lease expired, so take it."
+
+**⚠ The consumption boundary carries a sequencing risk, and it cuts across both epics.** Decision 0
+splits reclamation cleanly by *ownership* but says nothing about *order*: **FIX-981 owns the
+conditional-write primitive, FIX-978 owns converting `reclaim` to use it**, and FIX-978 is already
+in spec review while FIX-981 sits behind this epic's ungated objective. **Both can therefore
+complete, each correct within its own scope, with `reclaim` still on the unconditional write.** The
+full statement — including why the obvious `blocked-by` relation is **proposed rather than wired** —
+is in Decision 1 → 1a. It is recorded in two places on purpose: this is where a reader learns
+reclamation is consumed, and that is where they learn what the primitive is.
 
 ### Decision 1 — does this epic change `ResourceStateStore`? **(RECOMMENDATION in two parts — 1a and 1b. Awaiting the objective gate.)**
 
@@ -699,6 +727,27 @@ under FIX-980 (Decision 0). **FIX-981 ships the primitive and converts claim + s
 converts the reclaim write.** Stated because otherwise both sides assume the other did it, and the
 gap is invisible until two workers race across a reclaim.
 
+> ### ⚠ Named sequencing risk — both issues can complete with `reclaim` still unfenced
+>
+> **The ownership split above is correct and the *ordering* is not guaranteed**, which is a hole
+> neither issue's own scope would reveal:
+>
+> | | Owns | State today |
+> |---|---|---|
+> | **FIX-981** | **the primitive** (the conditional write) | behind **this epic's ungated objective** |
+> | **FIX-978** | **the conversion** (making `reclaim` use it) | **already in spec review** under FIX-980 |
+>
+> **The conversion cannot land before the primitive exists.** But FIX-978 is further along than
+> FIX-981, the running index records **no dependency** between them, and FIX-981 is scoped to claim
+> and settlement. So the realistic failure is not that someone does the wrong thing — it is that
+> **both issues complete, both correctly within their own scope, and `reclaim` is still on the
+> unconditional write.** Then two workers race across a reclaim and neither issue's tests cover it.
+>
+> **A `blocked-by` relation is *proposed, pending the repo owner's decision* — deliberately not
+> wired.** Making FIX-981 block FIX-978 would gate **another epic's live spec-review work** on
+> *this* epic's unapproved objective gate. That is the owner's call, not this document's. Recorded
+> here so the risk is visible whichever way it goes, and flagged on FIX-978 by the coordinator.
+
 ##### 1b — cap admission · **constraint only; this epic names no mechanism**
 
 > ### ⛔ FIX-981's spec must **not** include 1b implementation until **OQ-D** is decided.
@@ -811,6 +860,49 @@ M3 merge** and the epic's sequence is restated, because (b) can only be built wh
 *Recorded in §4 as **OQ-A**, because these are recommendations and the human decides. When the
 gate answers, this heading changes to **DECIDED** and the rejected options stay recorded with
 their reasons, so a later reader does not re-open a settled fork.*
+
+### Hazard — `TaskHandle.items()` does not survive the request boundary
+
+**A detached task's own emitted output is invisible to every other execution, and this is separate
+from the progress question.** Verified:
+
+- **`getOrCreateTaskCollection` closes its item accessor over the *constructing* request's emitter**
+  — `getItems()` reads `options.ctx.response.getItems()`
+  (`orchestration/src/tasks/collection/get-or-create.ts:134-139`). So `items()` returns the items of
+  whichever request **built the ref**, not the request that ran the task.
+- **A shipped consumer depends on `items()` for exactly this purpose:**
+  `patterns/src/supervisor/blocks/synthesize.ts:59-63` builds
+  `resultItems = completed.map((t) => ({ ..., items: [...t.items()] }))`.
+
+**Precision worth keeping, because overstating this would be its own defect:** that call site
+constructs its collection with `backing: "request"` (`synthesize.ts:51`), so **it is not broken
+today** — it is in-request by construction. What it proves is that **harvesting a task's natural
+outputs via `items()` is load-bearing in shipped code**, so the *contract* matters. The failure bites
+whenever that shape meets a detached execution.
+
+**Why it must be in a goal check:** a detached executor would otherwise **pass its goal check while
+silently dropping the task's messages, sources, and tool calls** — `items()` returns `[]` rather than
+erroring. Whichever issue owns this, its check must assert that a task's items are retrievable **from
+a different execution than the one that emitted them.**
+
+> **Recommendation — this needs its own issue, not M5. Recommended, not filed.**
+>
+> **Not M5's (FIX-984).** M5 adds a **new** persisted *progress* surface. This is an **existing**
+> `TaskHandle` contract returning wrong data across a boundary — a regression-shaped correctness
+> gap, not a new capability. **The decisive argument is OQ-C:** if the gate narrows M5 to
+> liveness-only, an `items()` fix folded into M5 would be **silently dropped along with the progress
+> surface** while appearing handled. That is precisely the defect class this document keeps finding.
+>
+> **Not M3's (FIX-982) either.** M3 *creates* the boundary but is dispatch topology; item storage and
+> lookup is not its subject.
+>
+> **Suggested scope, one line:** *make `TaskHandle.items()` resolve a task's emitted items across the
+> request boundary — today the accessor closes over the constructing request's response emitter, so a
+> detached worker's items are invisible to any other execution.*
+>
+> **Sequencing:** after M3 (which creates the boundary), and it should **share whatever persisted
+> item storage M5 lands** if M5 lands one — one mechanism, two contracts. If M5 narrows to
+> liveness-only, this issue owns the storage question outright.
 
 ### Hazard — `taskTools` is the path guarantees escape through
 
@@ -1124,7 +1216,7 @@ epic:
 |---|---|---|---|
 | **FIX-957** | sub-issue of FIX-939 | Backlog | Retains the **in-request** half after the 2026-07-29 split; its durable half is Decision 3's seven rows. Durable scope/backing already ship, so there is no enum to coordinate — **the real coordination point is FIX-960** (`sequencer` → `state` backing rename). Blocks nothing here and is blocked by nothing here, but **see OQ-D**: it may still own cap enforcement. |
 | **FIX-825** | sub-issue of FIX-939 | Backlog | Topic notification subscribers that bubble up into the flow — the **reactive-dispatch** concern. Parented per the epic description's explicit instruction ("reparent FIX-825 under this epic"), but it sits in the task-events-as-dispatch-triggers gap that §1 puts **out** of this decomposition (Conductor M3). **Reviewer note, routed not folded:** review argued `relates-to` would model this better than parenting, since a sub-issue outside the decomposition reads as scope the epic owns and isn't delivering. That is a defensible Linear-hygiene point, but the parenting was the owner's stated call and re-parenting is destructive — left as-is, flagged for the gate. Decision 5 is where its eventual capability is depended upon. |
-| **FIX-978** | **not** a sub-issue — owned by epic **FIX-980**, blocks **FIX-982** | In Spec Review | The M2 hole. Reclamation joined to execution liveness stays with FIX-980 per Decision 0; this epic consumes its outcome as FIX-982's dependency. Its spec activity is on FIX-980's epic PR [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983), not here. |
+| **FIX-978** | **not** a sub-issue — owned by epic **FIX-980**, blocks **FIX-982** | In Spec Review | The M2 hole. Reclamation joined to execution liveness stays with FIX-980 per Decision 0; this epic consumes its outcome as FIX-982's dependency. Its spec activity is on FIX-980's epic PR [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983), not here. **⚠ Sequencing risk — see Decision 1 → 1a:** FIX-978 owns *converting* `reclaim` to the conditional write, FIX-981 owns the *primitive* that conversion needs, and **no dependency is recorded between them** while FIX-978 is already ahead. Both can complete with `reclaim` still unfenced. A `blocked-by` relation is **proposed, pending the owner's decision** — not wired here, because it would gate another epic's live work on this epic's unapproved gate. |
 
 ---
 
