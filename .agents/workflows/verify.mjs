@@ -111,6 +111,32 @@ async function run(name, { args, respond }) {
 const labels = (calls, prefix) => calls.filter((c) => (c.label || '').startsWith(prefix)).map((c) => c.label)
 const workerLabels = (calls) => calls.filter((c) => c.agentType === 'issue-worker').map((c) => c.label)
 
+/**
+ * Load a script's PURE RULES region — everything between the two banner comments — and return
+ * the functions it declares, so they can be driven over their whole input space rather than at
+ * hand-picked examples.
+ *
+ * This exists because six rounds of example-based review kept finding the same shape of defect:
+ * a state combination nobody thought to write a case for, which stalls the lifecycle or silently
+ * consumes work. Examples catch what you imagined; enumeration catches what you didn't. The
+ * region boundary is the seam the scripts already label pure, so this needs no test hooks in
+ * them.
+ */
+function loadRules(name, names) {
+  const src = readFileSync(join(HERE, name), 'utf8')
+  const start = src.indexOf('// Rules (pure')
+  const end = src.indexOf('// Agent result schemas')
+  assert.ok(start > 0 && end > start, `${name}: could not locate the pure rules region`)
+  const region = src.slice(start, end)
+  return new Function(`${region}\n; return { ${names.join(', ')} }`)()
+}
+
+/** Every combination of the given field values — the input space, not a sample of it. */
+function product(spec) {
+  const keys = Object.keys(spec)
+  return keys.reduce((acc, k) => acc.flatMap((base) => spec[k].map((v) => ({ ...base, [k]: v }))), [{}])
+}
+
 // ---------------------------------------------------------------------------
 // Shared stubs
 // ---------------------------------------------------------------------------
@@ -1308,6 +1334,147 @@ check('a build wake never reports DONE', async () => {
     respond: multiResponder(),
   })
   assert.equal(result.done, false, 'merges are the human\'s, and the assembled goal comes after them')
+})
+
+// ---------------------------------------------------------------------------
+// Invariants over the WHOLE input space
+//
+// Every round of review so far found the same shape of defect: a state combination nobody wrote
+// an example for, which either stalls the lifecycle or silently consumes work. These checks
+// enumerate the inputs instead of sampling them, so that class fails here rather than in review.
+// ---------------------------------------------------------------------------
+
+check('INVARIANT: no assemble state is a dead end', async () => {
+  const { assembleState } = loadRules('issue-multi-pr.js', ['allMerged', 'assembleState'])
+  const src = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
+
+  // States that DISPATCH something, and states that WAIT. A waiting state is only legitimate if
+  // it waits on a handle a human can actually act on — otherwise it is a stall.
+  const dispatching = ['NEEDS_GOAL', 'NEEDS_GAP', 'NEEDS_FIX']
+  const waitingOn = { AWAITING_FIX: 'fixPr', GAP_BLOCKED: 'fixIssue' }
+  const terminal = ['DONE', null]
+
+  const nodes = [{ id: 'a', dependsOn: [], status: 'merged' }]
+  const space = product({
+    passed: [true, false, undefined],
+    failure: ['boom', undefined],
+    fixIssue: ['FIX-99', null, undefined],
+    fixReady: [true, false, undefined],
+    fixPr: [42, null, undefined],
+    fixMerged: [true, false, undefined],
+  })
+
+  let stalls = 0
+  for (const goal of space) {
+    const state = assembleState(nodes, goal)
+    const known = dispatching.includes(state) || state in waitingOn || terminal.includes(state)
+    assert.ok(known, `unknown state ${state} for ${JSON.stringify(goal)}`)
+
+    // Every dispatching state must have a branch in the script, or nothing acts on it.
+    if (dispatching.includes(state)) {
+      assert.ok(src.includes(`state === '${state}'`), `${state} is returned but never handled`)
+    }
+    // A waiting state with nothing to wait on is a stall.
+    if (state in waitingOn && !goal[waitingOn[state]]) {
+      stalls++
+      assert.fail(`${state} with no ${waitingOn[state]} — waits on nothing: ${JSON.stringify(goal)}`)
+    }
+  }
+  assert.equal(stalls, 0)
+  assert.ok(space.length >= 200, `expected a real space, enumerated ${space.length}`)
+})
+
+check('INVARIANT: a parked row is never dispatched, whatever else is true', async () => {
+  const { pendingAction } = loadRules('epic-wake.js', ['atReviewBudget', 'pendingAction'])
+  const space = product({
+    phase: ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL', 'NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE'],
+    specApproved: [true, false],
+    newSpecReviewEvents: [true, false],
+    newPrEvents: [true, false],
+    ciFailed: [true, false],
+    specReviewRounds: [0, 1, 2, 3],
+    specLevelFound: [true, false],
+    verdicts: [[], [{ claim: 'c', verdict: 'REFUTED' }]],
+  })
+
+  for (const base of space) {
+    // Parked by an open blocked-by relation, or by an escalated decision. Neither may dispatch,
+    // no matter what phase or event the row also carries.
+    assert.equal(pendingAction({ ...base, blockedBy: ['FIX-9'] }), null, `blockedBy dispatched: ${JSON.stringify(base)}`)
+    assert.equal(pendingAction({ ...base, blocker: 'needs a call' }), null, `blocker dispatched: ${JSON.stringify(base)}`)
+
+    // And an unparked row never invents an action outside the known set.
+    const next = pendingAction(base)
+    if (next) {
+      assert.ok(
+        ['spec', 'spec-review', 'implement', 'pr-feedback', 'apply-verdict'].includes(next.action),
+        `unknown action ${next.action}`,
+      )
+      assert.ok(next.why, 'every dispatch must be explainable')
+    }
+  }
+  assert.ok(space.length >= 500, `expected a real space, enumerated ${space.length}`)
+})
+
+check('INVARIANT: the activity cursor never advances past unconsumed activity', async () => {
+  const { nextRow } = loadRules('epic-wake.js', ['atReviewBudget', 'pendingAction', 'CONSUMES_REVIEW_ACTIVITY', 'nextRow'])
+  const actions = [undefined, 'spec', 'spec-review', 'implement', 'pr-feedback', 'apply-verdict']
+
+  for (const action of actions) {
+    for (const workerReturned of [true, false]) {
+      for (const newSpecReviewEvents of [true, false]) {
+        for (const newPrEvents of [true, false]) {
+          const row = {
+            id: 'FIX-2',
+            phase: 'AWAITING_SPEC_APPROVAL',
+            newSpecReviewEvents,
+            newPrEvents,
+            latestActivityAt: 'new',
+            headSha: 'newsha',
+            lastSeenActivityAt: 'old',
+            lastSeenSha: 'oldsha',
+          }
+          const out = nextRow(row, {
+            worker: workerReturned ? { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL' } : undefined,
+            action,
+            landed: [],
+            folded: false,
+          })
+          const advanced = out.lastSeenActivityAt === 'new'
+          const hadActivity = newSpecReviewEvents || newPrEvents
+          const consumed = workerReturned && (action === 'spec-review' || action === 'pr-feedback')
+          // The whole of invariant 2, as one implication over the entire space.
+          assert.equal(
+            advanced,
+            !hadActivity || consumed,
+            `cursor advanced=${advanced} for action=${action} worker=${workerReturned} activity=${hadActivity}`,
+          )
+        }
+      }
+    }
+  }
+})
+
+check('INVARIANT: a dead worker never mutates a row beyond its cursor', async () => {
+  const { nextRow } = loadRules('epic-wake.js', ['atReviewBudget', 'pendingAction', 'CONSUMES_REVIEW_ACTIVITY', 'nextRow'])
+  const row = {
+    id: 'FIX-2',
+    phase: 'AWAITING_SPEC_APPROVAL',
+    specPr: 7,
+    implPr: null,
+    specReviewRounds: 2,
+    specLevelFound: true,
+    blocker: null,
+    verdicts: [{ claim: 'c', verdict: 'REFUTED' }],
+    blockedBy: ['FIX-9'],
+  }
+  for (const action of ['spec-review', 'apply-verdict', 'implement', 'pr-feedback']) {
+    const out = nextRow(row, { worker: undefined, action, landed: [], folded: false })
+    for (const key of ['phase', 'specPr', 'implPr', 'specReviewRounds', 'specLevelFound', 'blockedBy']) {
+      assert.deepEqual(out[key], row[key], `${key} changed on a dead worker (action=${action})`)
+    }
+    assert.deepEqual(out.verdicts, row.verdicts, 'a dead worker consumes no verdict')
+  }
 })
 
 // ---------------------------------------------------------------------------
