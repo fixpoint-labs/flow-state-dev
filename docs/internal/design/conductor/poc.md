@@ -45,6 +45,25 @@ consequences visible in the tree above: front-matter carries the metadata both l
 (`kind`, `label`), and conductor's own bookkeeping lives in a separate FSD-only resource keyed by
 file path, so the vendor harness can rewrite a document without clobbering our accounting.
 
+**Being a file isn't enough to be *found*.** Claude Code reads `CLAUDE.md` and `.claude/skills`;
+Codex reads `AGENTS.md`. Neither knows `.conductor/guidance/` exists. So exposure is two
+mechanisms (`conductor.md` §5, "Getting guidance into the vendor harness"): the **phase brief**
+carries the relevant guidance as file references per dispatch — precise and vendor-agnostic — and
+conductor maintains a **generated, marked block** in `CLAUDE.md` / `AGENTS.md` pointing at the
+directory, for when a human drives the harness directly. A **pointer, never a copy**: inlining
+guidance into `CLAUDE.md` would put one fact in two places with no authority rule, with a stale
+copy as the failure mode.
+
+```md
+<!-- CLAUDE.md — conductor rewrites only between these markers -->
+<!-- conductor:guidance:start -->
+## Project guidance (managed by conductor)
+
+Objectives and tenets live in `.conductor/guidance/`. Read the relevant ones before any
+design decision. Do not edit `lessons/` by hand — the retrospective phase writes them.
+<!-- conductor:guidance:end -->
+```
+
 ---
 
 ## Level 1 — out of the box
@@ -141,9 +160,13 @@ export default defineConductor({
   },
 
   triggers: {
-    webhook: true,               // GitHub events → tick
+    // Three transports, three jobs — see conductor.md §10 open question 4, which is
+    // NOT settled. Current split: webhooks carry world events (deterministic,
+    // replayable); chat carries human conversation; PR *writes* (open, comment, label,
+    // merge) are handler blocks calling the API and are not a transport at all.
+    webhook: true,               // PR opened, CI concluded, review submitted, conflict
     cron: "*/10 * * * *",        // backstop + new-work discovery
-    chat: { platform: "slack", threadPerIssue: true },
+    chat: { platform: "slack", threadPerIssue: true },  // human ↔ conductor
   },
 
   budget: { perIssueUsd: 15, perEpicUsd: 120 },
@@ -190,6 +213,26 @@ marked ready for review.
 Reviewer contract for the PR description: this is a DIRECTION check, not a design review.
 Challenge the approach. Naming, file layout, and local structure are the implementer's.
 ```
+
+**This phase writes to a branch, so something has to own the worktree.** The split
+(`conductor.md` §5, "Who owns the git worktree"): **conductor owns branch policy** — the name,
+and basing on freshly-fetched `origin/main` via `checkout -B`, never `git checkout main`, because
+the shared ref can be checked out in one worktree at a time and parallel phases race on it.
+**The dispatcher owns workspace isolation and declares its model**, because the answer really
+does differ per vendor:
+
+```ts
+dispatcher: {
+  // Local CLI: runs in a cwd, so conductor provisions .conductor/worktrees/<issue>.
+  default: claudeCodeDispatcher({ isolation: "worktree" }),
+  // Cloud dispatch: the vendor supplies isolation. Conductor hands over a branch
+  // name and manages no local tree at all.
+  implement: claudeCodeDispatcher({ mode: "cloud", isolation: "remote" }),
+}
+```
+
+Worktrees stay in conductor's dispatcher layer and do **not** become an FSD concern — they're
+development-orchestration knowledge, not infrastructure every FSD app needs (tenet 4).
 
 This is deliberately the **same `SKILL.md` shape the framework already runs** — the skills
 runtime, `agents:` delegation, `allowed-tools`. Conductor ships a template of these; a project

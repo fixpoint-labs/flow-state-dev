@@ -306,6 +306,51 @@ So: **conductor ships on reconciliation and gets tick-latency reactions; the ext
 path is an optimization to adopt when those two land.** Filed as the FIX-858 follow-up rather than
 left as a footnote here.
 
+### Getting guidance *into* the vendor harness
+
+Being a file in the repo is necessary but not sufficient. Claude Code reads `CLAUDE.md` and
+`.claude/skills`; Codex reads `AGENTS.md`. Nothing tells either of them that
+`.conductor/guidance/objectives/*.md` exists. So exposure needs a mechanism, and there are two,
+used together:
+
+- **Push, per dispatch (primary).** The phase brief conductor hands the dispatcher carries the
+  relevant guidance — as explicit file references for the harness to read, scoped to the phase.
+  This is precise (a retrospective doesn't need every objective), vendor-agnostic (it rides the
+  `Dispatcher` contract, not a Claude-specific file), and it's the only path that can be *scoped*
+  at all.
+- **Ambient pointer, per repo (safety net).** Conductor maintains a **generated, marked block**
+  in the vendor-native entrypoint (`CLAUDE.md`, `AGENTS.md`) that says where guidance lives and
+  when to read it, refreshed on `guidance_changed`. This is what covers a human driving the
+  harness directly, outside conductor.
+
+**A pointer, never a copy.** The ambient block references the guidance files; it does not inline
+their text. Copying guidance into `CLAUDE.md` would put one fact in two places with no authority
+rule — §8/D1's mistake, at file altitude, with a stale copy as the failure mode. The generated
+block is delimited so conductor can rewrite it without touching a human's hand-written sections.
+
+### Who owns the git worktree
+
+A phase that writes a spec or an implementation needs a branch, and parallel phases need
+isolation or they collide. The split:
+
+- **Conductor owns branch policy.** Naming (`spec/<ISSUE>`, `fix/<ISSUE>`) and basing — always
+  `git checkout -B <branch> origin/main` off freshly-fetched `origin/main`, **never**
+  `git checkout main`, because the shared `main` ref can be checked out in one worktree at a time
+  and parallel workers race on it. Re-entry to an existing branch fetches and checks out that
+  branch instead of `-B`-ing it, or it discards commits. These rules are already written down in
+  [`orchestration.md`](../../contributing/orchestration.md) → "Worktree branching" and were
+  learned the hard way; they are **process** rules, so conductor owns them rather than the vendor.
+- **The dispatcher owns workspace isolation, and declares its model.** This has to be per
+  dispatcher because the answer genuinely differs: a local `claude` CLI runs in a `cwd`, so
+  conductor creates `.conductor/worktrees/<issue>` and points it there; a cloud dispatch runs in
+  the vendor's own environment, so conductor supplies a branch name and manages no local tree at
+  all. A dispatcher therefore declares `isolation: "worktree" | "cwd" | "remote"`, and conductor
+  provisions only what that model needs.
+
+**This does not become an FSD concern.** Worktrees are development-orchestration knowledge, not
+infrastructure every FSD app needs (tenet 4). It lives in conductor's dispatcher layer, and if a
+second consumer ever wants it, that is the moment to reconsider — not now.
+
 ### Gates are derived, not parked runs
 
 A spec-approval gate can stay open for days. Parking a durable run on `ctx.suspend()`
@@ -714,8 +759,17 @@ orchestration for non-development work.
 3. **Does guidance need lifecycle?** An objective can be achieved or abandoned; a lesson can
    be promoted into a tenet or retired. If that turns out to need real states, the guidance
    collection grows a status field — but only once a behavior depends on it, not upfront.
-4. **Public name** (D2).
-5. **Where the process files live** — *answered:* on the filesystem under `.conductor/`, because
+4. **Which transport carries what — the chat/webhook split.** Three cases are clear:
+   **outbound writes** (open a PR, comment, label, merge) are handler blocks calling the API and
+   are not a transport question at all; **world events** (PR opened, CI concluded, review
+   submitted, merge conflict) are the webhook transport, which is deterministic and replayable;
+   **human conversation** (asking conductor about an issue, approving in a thread) is the Chat
+   SDK. The genuinely ambiguous case is a **human PR comment addressed to conductor** — a
+   conversation arriving over an event transport. Either treat every GitHub comment as an event
+   and let the driver classify it, or route human-authored comments into the chat surface. Not
+   settled; worth resolving before M3 wires either transport as primary.
+5. **Public name** (D2).
+6. **Where the process files live** — *answered:* on the filesystem under `.conductor/`, because
    the vendor harness must read them too (§5, "Harness on a harness"). What remains open is only
    whether `.conductor/` sits alongside `.agents/skills/` or inside it.
 
