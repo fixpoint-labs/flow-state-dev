@@ -113,7 +113,8 @@ function pendingAction(row) {
     return { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) to fold` }
   }
 
-  switch (row.phase) {
+  const phaseAction = (() => {
+    switch (row.phase) {
     case 'NEEDS_SPEC':
       return { action: 'spec', why: 'no spec yet' }
 
@@ -167,7 +168,24 @@ function pendingAction(row) {
 
     default:
       return null
+    }
+  })()
+  if (phaseAction) return phaseAction
+
+  // FALLBACK, reached only when the phase itself has nothing to do. An answered decision is work for a
+  // SINGLE-PR row too: this check lived only inside `multiPrHasWork`, so a single-PR row — an
+  // INCONCLUSIVE POC verdict becomes a row blocker, which the human then answers — had its blocker
+  // cleared and its answer queued with no action able to apply it, while the spec-approval or merge gate
+  // could reappear for the unchanged artifact.
+  //
+  // A fallback rather than a precedence, so a row with real phase work still does that work — the prompt
+  // hands every dispatched worker the answers verbatim, so nothing is lost by letting the phase win.
+  // Scoped to rows with no sub-PRs: a multi-PR row's answer travels through `issue-multi-pr`, which the
+  // `implement` path above already reaches.
+  if (!(row.subPrs || []).length && (row.blockerResolutions || []).length) {
+    return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
   }
+  return null
 }
 
 /**
@@ -225,6 +243,18 @@ function dedupeClaims(requests) {
 function carriedCount(row, camel, snake) {
   const v = row[camel] === undefined ? row[snake] : row[camel]
   return Number.isFinite(v) ? v : 0
+}
+
+/**
+ * The same dual-read for a carried BOOLEAN (BP-030).
+ *
+ * `spec_review_rounds` was dual-read while `spec_level_found` — the flag that AUTHORIZES the
+ * conditional third round, and which the previous lifecycle instructions documented by that name —
+ * was not. An epic resumed from those instructions therefore read the count as 2 and the
+ * authorization as false, declared convergence, and silently skipped a round the rules allow.
+ */
+function carriedFlag(row, camel, snake) {
+  return !!(row[camel] === undefined ? row[snake] : row[camel])
 }
 
 /**
@@ -539,7 +569,7 @@ function consumesReviewActivity(action, row) {
  * turned out to be insufficient, so re-handing it to the next worker would present a spent decision
  * as fresh.
  */
-function unspentResolutions(row, subPrs, worker) {
+function unspentResolutions(row, subPrs, goal, worker) {
   const list = row.blockerResolutions || []
   if (!list.length) return []
   // A single-PR row's worker IS the delivery, so returning at all spends the answer.
@@ -548,19 +578,32 @@ function unspentResolutions(row, subPrs, worker) {
   if (worker.subPrs === undefined) return list
   const carried = new Map((row.subPrs || []).map((sp) => [sp.id, sp.blocker || null]))
   const byId = new Map((subPrs || []).map((sp) => [sp.id, sp]))
+  const carriedGoal = row.assembledGoal || {}
+  const nextGoal = goal || {}
   return list.filter((r) => {
     // A null `for` was aimed at whatever the row surfaced when it was given — `blockerFor` names it.
     const sp = byId.get(r.for || row.blockerFor)
-    // No such slice: nothing is left to apply this to, and retaining it would restate a decision at
-    // every future worker forever. Same call as a verdict on cancelled work — dropped, not hoarded.
-    if (!sp) return false
-    // A DIFFERENT blocker on the same slice means the answer was applied and proved insufficient, so
-    // the question is new. Re-handing the old answer would present a spent decision as fresh.
-    if (sp.blocker && sp.blocker !== carried.get(sp.id)) return false
-    // Still `pending` means no build ran for it — the outer clears a nested blocker before dispatch, so
-    // a slice the nested cap deferred comes back unblocked and unbuilt, and its answer is what the
-    // build that eventually runs needs. Still blockered means the delivery did not land.
-    return sp.status === 'pending' || !!sp.blocker
+    if (sp) {
+      // A DIFFERENT blocker on the same slice means the answer was applied and proved insufficient, so
+      // the question is new. Re-handing the old answer would present a spent decision as fresh.
+      if (sp.blocker && sp.blocker !== carried.get(sp.id)) return false
+      return sp.status === 'pending' || !!sp.blocker
+    }
+    // No slice target: this may be a REPAIR answer, which by design has no row in `subPrs`. It cannot be
+    // recognised by `fixBlocker` — the resolution pass clears that field before this runs, and that
+    // clearing IS how the answer's arrival is recorded — so the signal is a repair still OWED: a gap
+    // issue filed with no fix PR open. Retained until the repair actually moves, because a repair worker
+    // that returned `{ pr: null }` delivered nothing, exactly like one that died.
+    // Retained while the repair is OWED, spent when a fix PR opens. Comparing the returned question
+    // against the carried one is not available here: the resolution pass wipes `fixBlocker` before this
+    // runs, so a worker echoing the same question is indistinguishable from one raising a new one. The
+    // conservative direction is to keep the answer — the wake that retries the repair is exactly the one
+    // that needs it, and the prompt already tells a worker to say so as a NEW blocker if the answer does
+    // not fit the fork it hit. Bounded by the repair landing, not open-ended.
+    if (nextGoal.fixIssue && !nextGoal.fixPr) return true
+    // Nothing left to apply it to. Retaining it would restate a decision at every future worker
+    // forever — the same call as a verdict on cancelled work: dropped, not hoarded.
+    return false
   })
 }
 
@@ -589,6 +632,10 @@ function nextRow(row, { worker, action, landed, folded }) {
   // return before the merge below — they get the carried table and no invalidation, which is correct.
   const mergedSubPrs = (worker || {}).subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs)
   const sliceAdded = (mergedSubPrs || []).some((s) => !(row.subPrs || []).some((p) => p.id === s.id))
+  const mergedGoal = invalidateGoalIfSliceAdded(
+    (worker || {}).assembledGoal === undefined ? row.assembledGoal : { ...(row.assembledGoal || {}), ...worker.assembledGoal },
+    sliceAdded,
+  )
 
   // A fold consumes CONFIRMED / REFUTED — the evidence resolves those claims. An INCONCLUSIVE
   // resolves nothing: orchestration.md hands the question back to the human. It still has to leave
@@ -678,10 +725,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // worker reporting only what it changed (`{ fixPr: 42 }`, `{ fixMerged: true }`) would otherwise
     // drop the failure, the gap issue, the evidence and the blocker with it — and the next wake would
     // re-run the goal before an unmerged repair, or restart the gap/repair cycle from scratch.
-    assembledGoal: invalidateGoalIfSliceAdded(
-      worker.assembledGoal === undefined ? row.assembledGoal : { ...(row.assembledGoal || {}), ...worker.assembledGoal },
-      sliceAdded,
-    ),
+    assembledGoal: mergedGoal,
     // Per-handle merge readiness was observed BEFORE this worker ran, and a worker pushes commits —
     // which invalidates an approval and re-runs checks. Surfacing the pre-worker observation would
     // tell the human to merge a head nobody has verified, so any worker that ran on this row voids
@@ -732,7 +776,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // answer there left the decision spent with nothing applied, while the refresh had already cleared
     // the nested blocker so the unchanged PR became merge-eligible. A single-PR row is unaffected: its
     // worker IS the delivery, so returning at all is the receipt.
-    blockerResolutions: unspentResolutions(row, mergedSubPrs, worker),
+    blockerResolutions: unspentResolutions(row, mergedSubPrs, mergedGoal, worker),
     blockerResolution: null,
     blockerResolutionFor: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
@@ -1530,7 +1574,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     blockedBy: linearById.has(row.id) ? li.blockedBy || [] : row.blockedBy || [],
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
-    specLevelFound: !!row.specLevelFound,
+    specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
     // Carried human decisions, as a list and aimed. Computed from the CARRIED row so an untargeted
     // answer can still be attributed to the slice the row surfaced — `foldMultiPrScan` below lifts the
     // next sibling over `blockerFor`, and after that the aim is unrecoverable.
@@ -1958,6 +2002,10 @@ const gates = [
         // the same one-sided application this file keeps producing.
         .filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal && !awaitingHumanDecision(r))
         .filter((r) => !(r.newSpecReviewEvents && !cursorUsable(r)))
+        // ...and not while an answered decision is still unapplied: approval chains straight into
+        // implementation, so signing off here locks in an artifact the human's own decision has not
+        // reached yet.
+        .filter((r) => !(r.blockerResolutions || []).length)
         .map((r) => ({
           kind: 'spec-approval',
           issueId: r.id,
@@ -1985,10 +2033,18 @@ const gates = [
     // sub-PR and repair handles, and the next scan with a timestamp releases all of them together.
     .filter((r) => !r.linearTerminal && !awaitingHumanDecision(r) && !(r.blockedBy && r.blockedBy.length))
     .filter((r) => !(r.newPrEvents && !cursorUsable(r)))
+
     .flatMap((r) => {
       const gates = []
       // Single-PR: the row's own impl PR.
-      if (r.readyToMerge && r.implPr) gates.push({ kind: 'merge', issueId: r.id, pr: r.implPr })
+      // `blockerResolutions` empty too: an ANSWERED decision that has not been applied yet withholds this
+      // gate, where `awaitingHumanDecision` above covers only the UNanswered case. Deliberately on the
+      // row-level gate rather than the whole row — the per-slice gates below carry their own precise
+      // version, and a blanket row filter withheld a sibling slice's gate over a decision that had
+      // nothing to do with it.
+      if (r.readyToMerge && r.implPr && !(r.blockerResolutions || []).length) {
+        gates.push({ kind: 'merge', issueId: r.id, pr: r.implPr })
+      }
       // Multi-PR: each sub-PR the scan reported green, named so the human knows which slice.
       // Bound through `subPrScanBinding` — the SAME reader the durable fold uses. This was the second
       // consumer of `subPrStates` and it stayed positional when the fold was converted, so a scan that

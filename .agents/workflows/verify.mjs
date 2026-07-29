@@ -3883,6 +3883,180 @@ check('unconsumable PR activity withholds every merge gate on the row', async ()
   assert.deepEqual(quiet.gates.filter((g) => g.kind === 'merge').map((g) => g.pr), [9])
 })
 
+check('a repair answer survives a repair that opened nothing', async () => {
+  // A repair answer is aimed at `assembledGoal.fixBlocker`, which by design has no row in `subPrs` — so
+  // the "no such slice, drop it" rule discarded it, and the next wake retried the repair at the identical
+  // fork with neither the blocker nor the answer.
+  const args = (over = {}) =>
+    epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerResolutions: [{ for: null, answer: 'key on tenant + scope' }],
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'slices disagree', fixIssue: 'FIX-9', fixBlocker: 'which shape?', owningSubPr: 'a' },
+          multiPrPending: true,
+          ...over,
+        }),
+      ],
+    })
+  const fresh = { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } }
+
+  // The repair worker returned, but opened nothing and raised no new question.
+  const { result } = await run('epic-wake.js', {
+    args: args(),
+    respond: epicResponder({
+      fresh,
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'slices disagree', fixIssue: 'FIX-9', fixBlocker: 'which shape?', owningSubPr: 'a' },
+        },
+      },
+    }),
+  })
+  assert.deepEqual(
+    result.issues[0].blockerResolutions,
+    [{ for: null, answer: 'key on tenant + scope' }],
+    'nothing was delivered, so the answer waits for the attempt that lands',
+  )
+
+  // A repair that OPENED a fix PR spent it.
+  const opened = await run('epic-wake.js', {
+    args: args(),
+    respond: epicResponder({
+      fresh,
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'slices disagree', fixIssue: 'FIX-9', fixPr: 55, owningSubPr: 'a' },
+        },
+      },
+    }),
+  })
+  assert.deepEqual(opened.result.issues[0].blockerResolutions, [], 'the repair landed, so the answer is spent')
+
+  // ...and so did one that came back with a DIFFERENT question.
+  const reAsked = await run('epic-wake.js', {
+    args: args(),
+    respond: epicResponder({
+      fresh,
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'slices disagree', fixIssue: 'FIX-9', fixBlocker: 'tenant key collides — drop which?', owningSubPr: 'a' },
+        },
+      },
+    }),
+  })
+  assert.deepEqual(
+    reAsked.result.issues[0].blockerResolutions,
+    [{ for: null, answer: 'key on tenant + scope' }],
+    'a re-asked question keeps the answer too: the repair is still owed, and the wake that retries it needs it',
+  )
+})
+
+check('a single-PR row applies an answered decision instead of parking', async () => {
+  // The answered-work dispatch lived only inside `multiPrHasWork`. A single-PR row whose INCONCLUSIVE
+  // verdict became a blocker had that blocker cleared and its answer queued with nothing to apply it,
+  // while its gate could reappear for the unchanged artifact.
+  const { calls, result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, blockerResolutions: [{ for: null, answer: 'use the store adapter' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-2'], 'the decision is applied, not parked')
+  const prompt = calls.find((c) => c.label === 'apply-decision:FIX-2').prompt
+  assert.match(prompt, /use the store adapter/, 'and the worker is handed the answer verbatim')
+  assert.deepEqual(result.issues[0].blockerResolutions, [], 'spent by the worker that applied it')
+  assert.deepEqual(
+    result.gates.filter((g) => g.kind === 'spec-approval').map((g) => g.pr),
+    [8],
+    'and the gate follows in the same wake, because the decision reached the artifact',
+  )
+
+  // The guard bites where the decision is queued and NOT applied — a worker that died. Gates are derived
+  // from the post-worker row, so this is the reachable state in which an unapplied answer is still on it.
+  const died = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, blockerResolutions: [{ for: null, answer: 'use the store adapter' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+      nulls: ['apply-decision:FIX-2'],
+    }),
+  })
+  assert.deepEqual(died.result.gates, [], 'nothing is signed off while the decision is still unapplied')
+  assert.deepEqual(
+    died.result.issues[0].blockerResolutions,
+    [{ for: null, answer: 'use the store adapter' }],
+    'and a dead worker spends nothing',
+  )
+
+  // The MERGE gate needs the same guard, and it is the one that cannot be taken back: a single-PR row
+  // whose decision is unapplied must not be offered for merge.
+  const mergeable = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blockerResolutions: [{ for: null, answer: 'use the store adapter' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true } },
+      nulls: ['apply-decision:FIX-2'],
+    }),
+  })
+  assert.deepEqual(mergeable.result.gates.filter((g) => g.kind === 'merge'), [], 'not merged over an unapplied decision')
+
+  // It is a FALLBACK: a row with real phase work does that work, and the prompt still carries the answer.
+  const withWork = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blockerResolutions: [{ for: null, answer: 'use the store adapter' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(withWork.calls), ['pr-feedback:FIX-2'], 'the phase wins')
+  assert.match(withWork.calls.find((c) => c.label === 'pr-feedback:FIX-2').prompt, /use the store adapter/)
+})
+
+check('the legacy third-round authorization flag is dual-read', async () => {
+  // The count was dual-read and the flag that AUTHORIZES the conditional third round was not, so an epic
+  // resumed from the previous lifecycle instructions read 2 rounds with no authorization, declared
+  // convergence, and skipped a round the rules allow.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [{ id: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, spec_review_rounds: 2, spec_level_found: true }],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, newSpecReviewEvents: true, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specReviewRoundsSpent: 1 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['spec-review:FIX-2'], 'the authorized third round is dispatched')
+
+  // Without the legacy authorization it converges, which is what makes the above about the flag.
+  const unauthorized = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [{ id: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, spec_review_rounds: 2, spec_level_found: false }],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, newSpecReviewEvents: true, latestActivityAt: 'new' } },
+    }),
+  })
+  assert.deepEqual(workerLabels(unauthorized.calls), [], 'converged')
+})
+
 check('a nested blocker gets its marker even when the worker mirrors it to the row', async () => {
   // The marker was derived only when the row-level mirror was ABSENT — but the schema invites both
   // channels, and returning both is the natural thing for a worker to do. With no `blockerFor` the

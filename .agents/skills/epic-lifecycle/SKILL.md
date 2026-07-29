@@ -212,11 +212,17 @@ even if more are queued. State the chosen N and the cap to the user.
    unsettled, verdicts, settleRequests, dispatched, deferred, converged }` — persist `epic` and
    `issues` verbatim.
 
-   **`heldForFold` non-empty means run another wake now, not end the turn.** Those rows were deferred
-   for exactly one wake because they author against an objective the fold was revising — and the fold
-   has now completed, so nothing external separates them from being dispatched. Ending the turn there
-   would make the "one wake" depend on unrelated PR activity or the heartbeat, which is the wait the
-   hold was not supposed to create.
+   **`heldForFold` OR `deferred` non-empty means run another wake now, not end the turn.**
+   `heldForFold` rows were deferred for exactly one wake because they author against an objective the
+   fold was revising — and the fold has now completed, so nothing external separates them from being
+   dispatched. Ending the turn there would make the "one wake" depend on unrelated PR activity or the
+   heartbeat, which is the wait the hold was not supposed to create.
+
+   Ordinary `deferred` rows — the ones the concurrency cap pushed to the next wake — need the same
+   treatment, and for a sharper reason: a row deferred at `NEEDS_SPEC` has no PR at all, so it *cannot*
+   generate the activity that would wake this session. With a cap of 2 and three specs to write, the
+   third would sit until the heartbeat, which is precisely the stall "Drain, don't stall" forbids. The
+   cap is a concurrency limit, not a scheduling delay.
 
    The workflow runs in the background: **end the turn** and continue at step 3 when its
    completion notification arrives.
