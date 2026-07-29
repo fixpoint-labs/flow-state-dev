@@ -5002,6 +5002,37 @@ check('an acknowledgement describes one delivery, not the slice', async () => {
   })
   assert.equal(result.subPrs[0].answerApplied, undefined, 'the stale acknowledgement does not carry over')
   assert.equal(result.subPrs[0].blocker, 'which shape now?', 'so the new answer is still owed')
+
+  // The same lie by the other route, and the reason "set it explicitly" had to cover BOTH return paths: a
+  // slice that isn't dispatched at all returns its carried row, stale acknowledgement included. Decision B
+  // arrives, the cap spends its slot elsewhere, and A's acknowledgement tells the caller B was delivered —
+  // so B's one-shot resolution is dropped and the unchanged PR becomes merge-eligible.
+  const deferred = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      cap: 1,
+      subPrs: [
+        { id: 'b', status: 'pending', dependsOn: [] },
+        { id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which shape now?', answerApplied: true },
+      ],
+      blockerResolutions: [{ for: 'a', answer: 'the second decision' }],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(deferred.result.deferred, ['a'], 'the answered slice lost the cap slot')
+  const held = deferred.result.subPrs.find((s) => s.id === 'a')
+  assert.equal(held.answerApplied, undefined, 'so it must not claim the answer landed')
+  assert.equal(held.blocker, 'which shape now?', 'and the decision is still owed')
+
+  // OVER-CORRECTION: a resume that DID land still says so, or the caller re-asks a question already answered
+  // and a second worker re-applies the same decision.
+  const landed = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which shape now?' }],
+      blockerResolutions: [{ for: 'a', answer: 'the second decision' }],
+    }),
+    respond: multiResponder(),
+  })
+  assert.equal(landed.result.subPrs[0].answerApplied, true)
 })
 
 check('GATE: a scout cannot jump a row across the approval gate either', async () => {
@@ -5124,6 +5155,53 @@ check('an untargeted answer reaches only the slice that asked', async () => {
   assert.ok(forA && forB, 'both slices are dispatched')
   assert.match(forA.prompt, /key on tenant \+ scope/, 'the blocked slice gets the answer')
   assert.doesNotMatch(forB.prompt, /key on tenant \+ scope/, 'the unrelated slice does not')
+
+  // AMBIGUOUS is the case naming the sole blocked slice did not cover, and the fallback there delivered to
+  // everybody: two slices blocked, one untargeted answer, and BOTH were resumed to apply one human's choice
+  // to two different forks. Ambiguity now resolves to nobody — one more ask, with its target named, against
+  // an implementation committed to a decision nobody made on a PR that then becomes merge-eligible.
+  const twoBlocked = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which cache key?' },
+        { id: 'b', status: 'open', pr: 42, branch: 'fix/b', dependsOn: [], blocker: 'which transport?' },
+      ],
+      blockerResolution: 'key on tenant + scope',
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(twoBlocked.result.dispatched, [], 'neither fork is resumed on an answer that could be for either')
+  assert.match(twoBlocked.logs.join('\n'), /refusing to guess which one it answers/)
+  assert.deepEqual(
+    twoBlocked.result.awaiting.decision.map((d) => d.id),
+    ['a', 'b'],
+    'and both questions go back to the human',
+  )
+
+  // The repair's fork is a target of the same kind, so an answer that could be for either releases neither.
+  // `rowLevelAnswer` alone used to release the repair, sending a fix worker off with a slice's decision.
+  const sliceAndRepair = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which cache key?' }],
+      assembledGoal: { passed: false, failure: 'boom', evidence: 'ran it', fixIssue: 'FIX-9', fixReady: true, owningSubPr: 'a', fixBlocker: 'which shape?' },
+      blockerResolution: 'key on tenant + scope',
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(
+    sliceAndRepair.calls.filter((c) => (c.label || '').startsWith('assembled-fix')),
+    [],
+    'the repair is not released by an answer that may belong to the slice',
+  )
+
+  // ...and with NOTHING blocked it belongs to nothing here. This is the original contamination, still live
+  // whenever the count was zero rather than one: the note went onto every build in the wake.
+  const noneBlocked = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [{ id: 'a', status: 'pending', dependsOn: [] }], blockerResolution: 'key on tenant + scope' }),
+    respond: multiResponder(),
+  })
+  assert.doesNotMatch(noneBlocked.calls.find((c) => c.label === 'build:a').prompt, /key on tenant \+ scope/)
+  assert.match(noneBlocked.logs.join('\n'), /nothing here for it to answer/)
 })
 
 check('an answered closed handle is named to the worker, not auto-rebuilt', async () => {

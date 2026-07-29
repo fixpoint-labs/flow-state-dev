@@ -350,19 +350,42 @@ const resolutions = [
   ...(args.blockerResolution ? [{ for: args.blockerResolutionFor || null, answer: args.blockerResolution }] : []),
 ]
 /**
- * The single slice an UNTARGETED answer belongs to, if that is unambiguous.
+ * The single fork an UNTARGETED answer belongs to, if that is unambiguous — and NOTHING if it is not.
  *
- * A legacy single-slot `blockerResolution` carries no target. Treating it as "aimed at the issue" handed it
- * to every ready node, so an unrelated pending slice dispatched in the same wake was told to implement
- * another slice's architectural decision as given — contaminating a PR the decision had nothing to do with.
- * Exactly one slice is blocked in that situation, and it is the one that asked.
+ * A legacy single-slot `blockerResolution` carries no target, and so does a `{ answer }` with no `for`.
+ * Treating it as "aimed at the issue" handed it to every ready node, so an unrelated pending slice
+ * dispatched in the same wake was told to implement another slice's architectural decision as given —
+ * contaminating a PR the decision had nothing to do with.
+ *
+ * Naming the sole blocked slice fixed the common case and left the ambiguous one wide open: with two
+ * slices blocked, or with none, the fallback still delivered the answer everywhere, and both blocked
+ * slices were dispatched to apply one human's choice to two different forks. So ambiguity resolves to
+ * nobody. The cost is one more ask, with the slice named; the cost of guessing is an implementation
+ * committed to a decision the human never made, on a PR that then becomes merge-eligible.
+ *
+ * The repair's own fork counts as a target, because it is a fork of the same kind and an untargeted
+ * answer cannot be aimed at both it and a slice.
  */
 const blockedNodeIds = (args.subPrs || []).filter((n) => n.blocker).map((n) => n.id)
-const untargetedOwner = blockedNodeIds.length === 1 ? blockedNodeIds[0] : null
+const repairBlocked = !!(args.assembledGoal || {}).fixBlocker
+const untargetedTargets = blockedNodeIds.length + (repairBlocked ? 1 : 0)
+// `hasUntargeted` is a PRECONDITION, not a detail: without it "the sole blocked fork owns the untargeted
+// answer" reads as "the sole blocked fork is answered", and every solitary blocked slice was released with
+// no answer in existence — the escalation gate bypassed entirely by a wake with an empty resolution list.
+const hasUntargeted = resolutions.some((r) => !r.for)
+const unambiguous = hasUntargeted && untargetedTargets === 1
+const untargetedOwner = unambiguous && blockedNodeIds.length === 1 ? blockedNodeIds[0] : null
+const untargetedRepair = unambiguous && repairBlocked
+if (hasUntargeted && !untargetedOwner && !untargetedRepair) {
+  log(
+    untargetedTargets > 1
+      ? `An untargeted decision arrived while ${untargetedTargets} forks are open (${[...blockedNodeIds, ...(repairBlocked ? ['the repair'] : [])].join(', ')}) — refusing to guess which one it answers. Every blocker stays set, so the question comes back with its target named.`
+      : `An untargeted decision arrived with no blocked slice and no blocked repair — there is nothing here for it to answer, so it is carried into no build.`,
+  )
+}
 
-/** Answers aimed at this node — by name, or as the sole blocked slice an untargeted answer must belong to. */
-const resolutionsFor = (nodeId) =>
-  resolutions.filter((r) => (r.for ? r.for === nodeId : untargetedOwner ? untargetedOwner === nodeId : true))
+/** Answers aimed at this node — by name, or as the sole blocked fork an untargeted answer must belong to. */
+const resolutionsFor = (nodeId) => resolutions.filter((r) => (r.for ? r.for === nodeId : untargetedOwner === nodeId))
 const resolutionNote = (nodeId) => {
   const mine = resolutionsFor(nodeId)
   if (!mine.length) return ''
@@ -381,13 +404,12 @@ const resolutionNote = (nodeId) => {
 // invoked directly from `issue-lifecycle` there was no equivalent step, so a supplied resolution could
 // never reach a worker and the answered slice stayed blocked forever. Deriving the clearing from the
 // answer makes it caller-independent, and it is idempotent when the caller already did it.
-const rowLevelAnswer = resolutions.some((r) => !r.for)
-// An untargeted answer belongs to whichever slice is blocked — the caller lifts one at a time, so there
-// is at most one. Resolved into concrete ids here so `classify` needs to know nothing about aiming.
-const answeredIds = new Set([
-  ...resolutions.map((r) => r.for).filter(Boolean),
-  ...(rowLevelAnswer ? (args.subPrs || []).filter((n) => n.blocker).map((n) => n.id) : []),
-])
+// Resolved into concrete ids here so `classify` needs to know nothing about aiming. `untargetedOwner`,
+// not "every blocked slice": these ids are what gets DISPATCHED, and the prompt only carries an answer it
+// can attribute — so admitting an ambiguously-owned slice dispatched a resume with no decision in its
+// prompt, which spends the answer, acknowledges a delivery that did not happen, and leaves the PR as it
+// was. The two have to agree about ownership or the disagreement is the data loss.
+const answeredIds = new Set([...resolutions.map((r) => r.for).filter(Boolean), ...(untargetedOwner ? [untargetedOwner] : [])])
 
 // Tolerate the status the previous, prose-driven path persisted. `issue-lifecycle` documents the
 // cached statuses as `building / open / merged`, but a wake is synchronous — a node either has a
@@ -414,7 +436,9 @@ const goal = { ...(args.assembledGoal || {}) }
 // The repair blocker is the third copy of the same decision (row, sub-PR, goal), and it gets the same
 // treatment: an answer RELEASES the repair, and the blocker is cleared once the fix worker has actually
 // returned — not before it runs, or a dead worker would leave the decision spent and the fork unanswered.
-const repairAnswered = !!goal.fixBlocker && (rowLevelAnswer || answeredIds.has(goal.owningSubPr))
+// `untargetedRepair`, not any untargeted answer: releasing the repair on an answer that was ambiguous
+// between it and a blocked slice sends a fix worker off with a decision aimed at something else.
+const repairAnswered = !!goal.fixBlocker && (untargetedRepair || answeredIds.has(goal.owningSubPr))
 if (repairAnswered) {
   log(`Repair blocker for ${issueId} was answered by the human — releasing the repair; the blocker clears once a fix worker returns.`)
 }
@@ -674,7 +698,14 @@ const subPrs = nodes.map((node) => {
     if (planned && planned.action === 'resume') {
       log(`${node.id}: the worker that was to apply the human's decision did not return — the blocker stays set, so the decision will be asked for again.`)
     }
-    return node
+    // ...and the acknowledgement of the LAST delivery does not travel with it. `answerApplied` is set
+    // explicitly on the dispatched path below precisely so it describes one delivery — but this path
+    // returned the carried node verbatim, so a slice that applied decision A kept reporting `true` on
+    // every later pass that did not dispatch it. When decision B then arrived and the cap deferred that
+    // slice (or its worker died, or nothing was runnable at all), the caller read the stale flag as proof
+    // B had been delivered, dropped B's one-shot resolution, and offered the unchanged PR for merge.
+    // Two paths return this field; the fix belonged to both.
+    return { ...node, answerApplied: undefined }
   }
   const planned = plannedById.get(node.id)
   // Derive the stack marker from the base THIS SCRIPT chose, never from the worker echoing it
