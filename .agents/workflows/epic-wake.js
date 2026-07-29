@@ -179,6 +179,45 @@ function dedupeClaims(requests) {
 }
 
 /**
+ * Bind a scan's per-handle sub-PR states to the handles that were REQUESTED.
+ *
+ * One function, because two callers have to agree about it: `cursorUsable` decides whether the scan
+ * may consume the row's activity, and `foldMultiPrScan` decides what it persists. Positional binding
+ * behind a set-coverage guard let exactly those two disagree — a scan reporting every requested
+ * handle in a DIFFERENT ORDER passed coverage, then had every entry discarded by the positional bind.
+ * A merge was announced, never persisted, and the feedback worker ate the activity that announced it,
+ * so the dependent slice (or the assembled goal) parked with no further event coming. A scout that
+ * consistently orders that way parks it permanently.
+ *
+ * Two different questions hide behind that, and they need different answers:
+ *
+ * - **Is it ATTRIBUTABLE?** Every entry labelled, no handle reported twice, no id outside the
+ *   requested set. Then the id is the trustworthy key, and using it does not weaken "identity comes
+ *   from the dispatch": the set of handles a response can touch is exactly the set that was
+ *   dispatched, so no reported id introduces a handle or moves a result onto another one. Position was
+ *   only ever a proxy for that, and a worse one — it discarded correct data on a reorder.
+ * - **Is it COMPLETE?** Every requested handle actually answered.
+ *
+ * A partial-but-attributable scan is safely FOLDED (a merge only ever advances, and folding it lets
+ * the DAG move a wake earlier) while still being unfit to CONSUME the row's activity — the unanswered
+ * handle may be the one that merged. Requiring completeness for both would throw away good
+ * observations; requiring it for neither loses merges. So the caller picks which question it is asking.
+ *
+ * @returns `{ byId, complete }`, or null when nothing in the scan can be attributed at all
+ */
+function subPrScanBinding(subPrs, states) {
+  if (!subPrs || !subPrs.length) return null
+  const reported = states || []
+  const wanted = new Set(subPrs.map((sp) => sp.id))
+  const byId = new Map()
+  for (const st of reported) {
+    if (!st || !st.id || byId.has(st.id) || !wanted.has(st.id)) return null
+    byId.set(st.id, st)
+  }
+  return { byId, complete: subPrs.every((sp) => byId.has(sp.id)) }
+}
+
+/**
  * Can this row's cursor move past the activity it is reporting?
  *
  * A scan may report new activity and omit `latestActivityAt` — schema-valid, and useless: there is
@@ -186,24 +225,28 @@ function dedupeClaims(requests) {
  * PR fixes applied) while the cursor stays put, so the next wake rediscovers exactly the same
  * feedback and does it again. Withholding is the recoverable outcome: the flag stays live and the
  * batch is genuinely re-derived once a scan reports a timestamp.
+ *
+ * The same rule covers every OTHER observation the prompt asked this scan for and it left out. An
+ * incomplete scan that consumes the batch destroys the announcement of whatever it failed to look at,
+ * and the row then waits on an event that already happened. Requiring these of every scan would
+ * burden single-PR rows with meaningless fields; each clause fails closed only where it applies.
  */
 function cursorUsable(row) {
   const hasActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
   if (hasActivity && !row.latestActivityAt) return false
-  // A multi-PR row whose scan reported no per-handle state is an INCOMPLETE observation, not a row
-  // with nothing to report: the prompt asks for one entry per handle, so an omission means the scan
-  // didn't look. Letting it consume the batch loses a just-merged slice — the merge is never
-  // persisted while the feedback worker eats the activity that announced it, and the dependent slice
-  // or the assembled goal then parks with no further event coming. Requiring the field of every scan
-  // would burden single-PR rows with a meaningless `[]`; this fails closed only where it matters.
+  // Per-handle sub-PR state. Here the question is COMPLETENESS: an unanswered handle may be the one
+  // that merged, so consuming the activity that announced it destroys the announcement.
   if (row.subPrs && row.subPrs.length) {
-    const states = row.subPrStates || []
-    // One CORRECTLY ATTRIBUTED entry per requested handle. A non-empty check let a scan reporting one
-    // handle out of three through, and if the omitted one is the handle that merged, the merge is
-    // never persisted while the feedback worker consumes the activity that announced it.
-    const covered = new Set(states.filter((st) => st && st.id).map((st) => st.id))
-    if (row.subPrs.some((sp) => !covered.has(sp.id))) return false
+    const binding = subPrScanBinding(row.subPrs, row.subPrStates)
+    if (!binding || !binding.complete) return false
   }
+  // The assembled-goal repair PR's merge. `repairMerged` is the ONLY observation that sets
+  // `fixMerged`, and while that stays false the assemble machine waits in AWAITING_FIX — so a scan
+  // that omits the field after the repair landed loses the merge, and the row waits for a merge event
+  // that will never come again. `repairScanned` records that the scan answered at all, so `false` is
+  // an answer and an omission is not.
+  const goal = row.assembledGoal || {}
+  if (goal.fixPr && !goal.fixMerged && !row.repairScanned) return false
   return true
 }
 
@@ -238,19 +281,28 @@ function approvalGatedPhase(row) {
 }
 
 /**
- * `DONE` requires observed merge evidence, on a single-PR row as much as a multi-PR one.
+ * A single-PR row's completion is DERIVED FROM THE MERGE, in both directions.
  *
- * Both schemas let an agent report `phase: 'DONE'` with `merged` false or absent — and a worker that
- * has just opened an implementation PR will reasonably feel done. `pendingAction` then never revisits
- * the row, so the coordinator mirrors Done in Linear and can wrap the epic before the human merges
- * anything: the merge gate bypassed by a self-report. The multi-PR derivation already refuses this
- * (its evidence is `assembledGoal.passed`); this is the single-PR half, whose evidence is the merge.
+ * Both schemas let an agent report `phase` and `merged` independently, so both mismatches are
+ * schema-valid and each strands the row in the opposite direction:
+ *
+ * - `DONE` with no merge — a worker that has just opened an implementation PR will reasonably feel
+ *   done. `pendingAction` never revisits the row, so the coordinator mirrors Done in Linear and can
+ *   wrap the epic before the human merges anything: the merge gate bypassed by a self-report.
+ * - `PR_FEEDBACK` with `merged: true` — the honest report of a scout looking at a row whose PR landed
+ *   between wakes. Nothing then matches: no events, no CI failure, no DAG, so `pendingAction` returns
+ *   no work, and `readyToMerge` is false on a merged PR so no gate is surfaced either. The row idles
+ *   permanently and the epic can never satisfy its wrap condition — a stall with nothing to explain it.
+ *
+ * Deriving only the first was the same one-sided fix this file has had to correct elsewhere: the rule
+ * is "the merge decides", and a rule applied in one direction is a rule half-applied.
+ * `multiPrPhase` owns multi-PR rows, whose evidence is `assembledGoal.passed` rather than one merge.
  */
-function unmergedDonePhase(row) {
-  if (row.phase !== 'DONE') return null
+function mergeDerivedPhase(row) {
   if (row.subPrs && row.subPrs.length) return null // multiPrPhase owns these
-  if (row.merged) return null
-  return 'PR_FEEDBACK'
+  if (row.phase === 'DONE') return row.merged ? null : 'PR_FEEDBACK'
+  if (row.phase === 'PR_FEEDBACK' && row.merged) return 'DONE'
+  return null
 }
 
 function multiPrPhase(row) {
@@ -424,12 +476,13 @@ function nextRow(row, { worker, action, landed, folded }) {
     // it and the next wake's scan re-establishes it.
     subPrStates: [],
     repairReadyToMerge: false,
-    // Only a worker that ACTUALLY REPORTED this may change it — the same rule as `specLevelFound`,
-    // and for the same reason. Keying on the action instead had two holes: an `implement` worker that
-    // omitted the field cleared a carried `true`, stranding cap-deferred slices that no external
-    // event will ever wake; and a `pr-feedback` worker that did run the DAG and did report pending
-    // work was ignored. What matters is whether the answer was given, not which action asked.
-    multiPrPending: worker.multiPrPending === undefined ? !!row.multiPrPending : !!worker.multiPrPending,
+    // Taken as given, because the schema REQUIRES it — there is no omission to interpret. Both earlier
+    // rules were wrong in opposite directions: keying on the action ignored a `pr-feedback` worker that
+    // did run the DAG, and preserving-on-omission made a `true` permanent (nothing ever reported the
+    // false), so the row was dispatched every wake and starved the rest of the epic under the cap. The
+    // prompt hands each worker the carried value and tells it to echo when it ran no DAG step, so
+    // "always answer" costs no information.
+    multiPrPending: !!worker.multiPrPending,
     // Add only the rounds the worker reports SPENDING — never one per event dispatched.
     //
     // But a REVIEW worker that omits the count cannot be charged zero: the field is optional, so
@@ -457,6 +510,11 @@ function nextRow(row, { worker, action, landed, folded }) {
           : !!worker.specLevelFound,
     readyToMerge: !!worker.readyToMerge,
     blocker: worker.blocker || unsettledBlocker || null,
+    // CONSUMED by this dispatch, which carried it in the prompt. A one-shot handoff, not durable
+    // state: left set, every later worker on this row would be told an already-implemented decision
+    // was fresh. A worker that DIED never reaches `nextRow`, so a failed dispatch leaves the
+    // resolution intact for the retry — the same rule as the cursor.
+    blockerResolution: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
     status: worker.status,
     verdicts,
@@ -501,7 +559,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   // sub-PR will reasonably report DONE — and that is precisely the premature completion the rule
   // exists to prevent, since the merges do not satisfy the assembled goal. Deriving it in only one
   // of the two places it can be set is deriving it nowhere.
-  const derived = multiPrPhase(next) || approvalGatedPhase(next) || unmergedDonePhase(next)
+  const derived = multiPrPhase(next) || approvalGatedPhase(next) || mergeDerivedPhase(next)
   return derived && derived !== next.phase ? { ...next, phase: derived } : next
 }
 
@@ -613,26 +671,27 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
  */
 function foldMultiPrScan(row, fresh) {
   const out = {}
-  const states = (fresh && fresh.subPrStates) || []
-  if (states.length && row.subPrs && row.subPrs.length) {
-    // Bound to the REQUESTED handles, not to the reported ids — the same rule as every other
-    // agent-reported identifier. The prompt lists the sub-PRs in table order and asks for one entry
-    // each, so position is the trustworthy key, and an id that doesn't match its position is
-    // discarded rather than believed: a misattributed `merged: true` marks the wrong node merged,
-    // and a dependent then builds off origin/main before its real prerequisite has landed.
-    out.subPrs = row.subPrs.map((s, i) => {
-      const live = states[i]
-      if (!live) return s
-      if (live.id && live.id !== s.id) return s
+  // Bound by ATTRIBUTABILITY, not completeness — the weaker of `subPrScanBinding`'s two questions.
+  // A partial scan's answered handles are still good data, and `cursorUsable` separately refuses to
+  // let an incomplete scan consume the row's activity, so folding what it did answer cannot lose
+  // anything. What is refused outright is an unattributable scan: a `merged: true` landing on the
+  // wrong handle marks the wrong node merged, and a dependent then builds off origin/main before its
+  // real prerequisite has landed.
+  const binding = subPrScanBinding(row.subPrs, fresh && fresh.subPrStates)
+  if (binding) {
+    out.subPrs = row.subPrs.map((s) => {
+      const live = binding.byId.get(s.id)
       // Only ever ADVANCE a sub-PR to merged. A scan that omits an entry says nothing about it, and
       // demoting an open sub-PR to pending would have the next wake rebuild it from scratch.
-      return live.merged && s.status !== 'merged' ? { ...s, status: 'merged' } : s
+      return live && live.merged && s.status !== 'merged' ? { ...s, status: 'merged' } : s
     })
     // A merge is the external event that unblocks the next slice, and it is not "PR activity" —
     // `pendingAction` needs to know it happened THIS wake or the DAG stalls right there.
     out.subPrMergedThisWake = out.subPrs.some((s, i) => s.status === 'merged' && row.subPrs[i].status !== 'merged')
-    const mismatched = row.subPrs.filter((s, i) => states[i] && states[i].id && states[i].id !== s.id)
-    if (mismatched.length) out.subPrStateMismatch = mismatched.map((s) => s.id)
+  } else if (row.subPrs && row.subPrs.length && fresh && fresh.subPrStates && fresh.subPrStates.length) {
+    // Reported, and not attributable to any handle. Worth naming: the scan looked and its whole answer
+    // was thrown away, which is a scout bug, not a quiet row.
+    out.subPrScanUnattributable = true
   }
   // A sub-PR's own `blocker` is the third copy of the same human decision (row, assembledGoal, and
   // here), and `classify()` refuses to dispatch a slice while it is set. The documented resolution
@@ -854,7 +913,13 @@ const WORKER_SCHEMA = {
   // required here (the worker knows whether it left the PR mergeable) while the scan-only flags
   // — specApproved, newSpecReviewEvents, newPrEvents — belong to PR_STATE_SCHEMA and are
   // deliberately NOT part of a worker's contract.
-  required: ['issueId', 'phase', 'readyToMerge'],
+  // `multiPrPending` is required for the same reason `readyToMerge` is, and it was the harder lesson.
+  // Optional, with a prompt that asked only for the true case, it had no clearing path at all: an
+  // omission preserved the carried `true` (it had to — a worker that omitted it must not strand
+  // cap-deferred slices), so once set it was set forever, and `multiPrHasWork` then made the row
+  // actionable on every wake. With a cap of 2 and a stable row order that starves every other issue
+  // in the epic indefinitely. Required means the answer is always given, so there is nothing to guess.
+  required: ['issueId', 'phase', 'readyToMerge', 'multiPrPending'],
   properties: {
     issueId: { type: 'string' },
     // The SAME enum the scan uses. A free-form string here is schema-valid, gets persisted by
@@ -892,7 +957,7 @@ const WORKER_SCHEMA = {
     multiPrPending: {
       type: 'boolean',
       description:
-        'Multi-PR only: the DAG still has work needing no external event (a ready or cap-deferred sub-PR, or an assemble step), so dispatch again next wake.',
+        'Does this issue\'s DAG still have work needing no external event (a ready or cap-deferred sub-PR, or an assemble step), so it should be dispatched again next wake? Single-PR issues: false. Multi-PR issues where you did NOT run a DAG step: echo the value the prompt gave you — do not guess false, which would strand slices no event will wake.',
     },
     // The other half of a multi-PR issue's durable state. `subPrs` alone is not enough: the
     // assemble phase is a multi-wake state machine (goal → gap → fix → re-verify) that resumes from
@@ -1072,7 +1137,19 @@ if (scanned && !gate.headSha) {
     `Epic gate scan returned no current head — holding work this wake rather than aligning to a stale objective${gate.approved ? ' (it reported approval, which needs a head to be actionable)' : ''}.`,
   )
 }
-const epicApproved = scanned ? gateUsable && !!gate.approved : !!epic.approved
+// Holding the CURRENT wake is not enough: the hold has to survive into the next one. A headless scan
+// left `approved: true` persisted next to the old head, so a dead scout on the following wake took the
+// dead-scout branch, read the durable `true`, and released every child worker against an objective the
+// last real observation could not confirm was current. `headUnconfirmed` is that hold made durable —
+// set by a live scan with no head, cleared by any usable scan, and preserved (like the approval
+// itself) when there was no scan at all.
+const epicApproved = scanned ? gateUsable && !!gate.approved : !!epic.approved && !epic.headUnconfirmed
+const headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
+if (!scanned && epic.headUnconfirmed && epic.approved) {
+  log(
+    `Epic gate scout died and the last live scan could not confirm the objective head — holding child work rather than releasing it against an unconfirmed approval.`,
+  )
+}
 
 // The head workers align to. It has to be THIS wake's observation: the wake that first sees
 // approval is also the wake that releases the specs, and passing the carried SHA would align
@@ -1137,6 +1214,9 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // (The merged flags are folded into the durable `subPrs` / `assembledGoal` by foldMultiPrScan.)
     subPrStates: refreshedLive ? fresh.subPrStates || [] : [],
     repairReadyToMerge: refreshedLive ? !!fresh.repairReadyToMerge : false,
+    // Whether the scan ANSWERED about the repair PR, as distinct from what it answered. `false` and
+    // "didn't look" have opposite meanings here (see cursorUsable), and one boolean can't carry both.
+    repairScanned: refreshedLive && fresh.repairMerged !== undefined,
     // A headless scan must not ERASE the last confirmed head. Spreading `fresh` persisted the null,
     // and then a dead scout on the next wake read "no observed head" as compatible with any
     // `approvedInSession` SHA — implementation dispatched without the approved head ever being
@@ -1160,14 +1240,22 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Derived AFTER the fold, because it reads the freshly-merged sub-PRs and the folded goal. A
   // scout naming this phase either finishes the issue without its assembled goal or stalls it.
   .map((row) => {
-    const derived = multiPrPhase(row) || approvalGatedPhase(row) || unmergedDonePhase(row)
+    const derived = multiPrPhase(row) || approvalGatedPhase(row) || mergeDerivedPhase(row)
     return derived && derived !== row.phase ? { ...row, phase: derived } : row
   })
 
 for (const r of refreshed) {
-  if (r.subPrStateMismatch && r.subPrStateMismatch.length) {
+  if (r.subPrScanUnattributable) {
     log(
-      `${r.id}: refresh reported sub-PR states whose ids don't match the handles they were asked about (${r.subPrStateMismatch.join(', ')}) — those entries were discarded rather than applied to the wrong slice.`,
+      `${r.id}: refresh reported sub-PR states whose ids don't match the handles they were asked about (${(r.subPrs || [])
+        .map((sp) => sp.id)
+        .join(', ')}) — the scan was discarded rather than applied to the wrong slices, and this row consumes no activity this wake.`,
+    )
+  }
+  const rGoal = r.assembledGoal || {}
+  if (rGoal.fixPr && !rGoal.fixMerged && !r.repairScanned && (r.newPrEvents || r.newSpecReviewEvents)) {
+    log(
+      `${r.id}: refresh reported activity but no repairMerged for open repair PR #${rGoal.fixPr} — treating the scan as incomplete, so the activity stays live rather than consuming a merge nobody looked for.`,
     )
   }
 }
@@ -1264,6 +1352,13 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           (item.action === 'apply-verdict'
             ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(item.row.verdicts)}\n`
             : '') +
+          // The decision this row escalated, and the human's answer to it. The escalating worker is
+          // gone and you are a fresh agent in a fresh worktree: without this you reach the identical
+          // fork, and your only options are to escalate the same question again or to invent the
+          // answer the gate existed to supply.
+          (item.row.blockerResolution
+            ? `A decision this issue escalated has been ANSWERED by the human: ${item.row.blockerResolution}\nThat is a decision, not a suggestion — implement it as given rather than re-deriving the choice, and do not escalate the same fork again. If it turns out not to answer the fork you actually hit, say so as a new \`blocker\` naming precisely what is still open.\n`
+            : '') +
           (item.action === 'implement' && settlingClaimFor(item.row.id)
             ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close or delete the spec PR or its branch yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled.\n`
             : '') +
@@ -1287,7 +1382,8 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // it isn't handed does not exist for it. Given only `subPrs`, a resumed issue would
               // re-run the end-to-end goal and file a second repair for a gap already tracked.
               `  assembledGoal: ${JSON.stringify(item.row.assembledGoal || {})}\n` +
-              `Report multiPrPending: true if its DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step), so the next wake dispatches you again rather than waiting for an event that will never come.\n` +
+              `  multiPrPending (carried): ${!!item.row.multiPrPending}\n` +
+              `ALWAYS report multiPrPending — true if the DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step) so the next wake dispatches you again rather than waiting for an event that will never come, false once it has drained. If you did not run a DAG step this pass, echo the carried value above rather than answering false: guessing false strands slices that no external event will wake, and there is no other channel that can set it again.\n` +
               // A malformed plan (duplicate id, dependency cycle, unknown dependency) dispatches
               // nothing and only a human can fix it, so it has to come back as a BLOCKER. Returned
               // as neither work nor blocker nor gate, the row simply sits in PR_FEEDBACK forever.
@@ -1532,6 +1628,10 @@ return {
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
     approved: gateUsable ? !!gate.approved : !!epic.approved,
+    // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
+    // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
+    // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)
+    headUnconfirmed,
     // Requested note routing that DIDN'T return leaves the ordinary feedback unrouted, so the
     // cursor must not move — otherwise it is consumed permanently. (Invariant 2.)
     // Same guard the issue rows get: activity reported with NO timestamp gives the cursor nothing to

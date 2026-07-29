@@ -135,12 +135,14 @@ even if more are queued. State the chosen N and the cap to the user.
    Workflow tool:
      name: epic-wake
      args: {
-       epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound,
-                lastSeenActivityAt, lastSeenSha, verdicts, unsettled, openQuestions },
+       epic:  { issueId, name, branch, headSha, prNumber, approved, headUnconfirmed,
+                reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
+                verdicts, unsettled, openQuestions },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
-                   lastSeenActivityAt, lastSeenSha, blocker, approvedInSession,
-                   subPrs, assembledGoal, unsettled, blockerFor } ],
+                   lastSeenActivityAt, lastSeenSha, blocker, blockerResolution,
+                   approvedInSession, subPrs, assembledGoal, unsettled, blockerFor,
+                   multiPrPending } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
      }
    ```
@@ -239,11 +241,23 @@ even if more are queued. State the chosen N and the cap to the user.
      each `{ summary, fanOut }` identically. The wake advanced the cursor on the assumption you
      did, so skipping this drops the feedback permanently.
 
-   **Clear a resolved `blocker` on the row before the next wake.** A row carrying `blocker` is
-   parked by design — the wake won't dispatch it again, because a worker that escalated a
-   decision is waiting on *you*, not on an event. Once you've answered (in-session or on the PR),
-   remove the field so the issue resumes; leave it and the issue never moves again. `blockers`
-   are surfaced at step 4 — see [Gates & autonomy](#gates--autonomy).
+   **Record the answer, then clear a resolved `blocker` on the row — both, before the next wake.**
+   A row carrying `blocker` is parked by design: the wake won't dispatch it again, because a worker
+   that escalated a decision is waiting on *you*, not on an event. Once you've answered (in-session
+   or on the PR), do two things in the same breath:
+
+   - write the human's decision into **`blockerResolution`** on the row, in enough words that
+     someone who wasn't there could act on it (the option chosen, and why if the why constrains the
+     work);
+   - remove `blocker`, so the issue resumes.
+
+   Both, because the next worker is a **fresh sub-agent in a fresh worktree** — it never saw the
+   escalation and cannot read this session. Clearing `blocker` alone releases it to walk back to the
+   identical architectural fork, where it must either escalate again (the same question, forever) or
+   invent the answer the gate existed to supply. The wake hands `blockerResolution` to that worker's
+   prompt and clears it once a dispatch has carried it, so it is a one-shot handoff, not durable
+   state; leave `blocker` set and the issue never moves at all. `blockers` are surfaced at step 4 —
+   see [Gates & autonomy](#gates--autonomy).
 
    A `blocker` reading **"POC returned INCONCLUSIVE"** is the same contract from a different
    source: the evidence run couldn't settle the claim, so `orchestration.md` hands it back to the

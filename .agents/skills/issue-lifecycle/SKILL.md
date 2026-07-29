@@ -378,3 +378,10 @@ cloud vs. local" for how to detect the environment and the full fallback design.
   Boundaries; don't accept a cost-based skip.
 - Gates are fixed: **spec approval in, merge out.** Everything between runs without
   hand-holding, surfacing blockers when a sub-agent reports one.
+- **When a blocker is answered, carry the answer into the next phase agent's prompt.** Every phase
+  here runs in a fresh bounded sub-agent, so the one that escalated is gone and the one that resumes
+  never saw the question. Surfacing the blocker and then dispatching as if nothing happened sends it
+  back to the same architectural fork, where it can only escalate again or guess. Put the human's
+  decision in the prompt verbatim — the option chosen, and the why if the why constrains the work.
+  (Under `epic-lifecycle` the same handoff is the row's `blockerResolution` field, which `epic-wake`
+  hands to the next dispatch and clears once carried.)
