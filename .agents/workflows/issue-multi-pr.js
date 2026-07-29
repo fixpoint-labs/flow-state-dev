@@ -20,6 +20,14 @@
  *
  * What stays with the orchestrator (a script cannot do it): the merge gate on every sub-PR,
  * PR subscriptions, waiting for a dependency to merge, and the `.orchestration/` cache.
+ *
+ * ## A null agent result means NOTHING HAPPENED
+ *
+ * `agent()` returns `null` when the sub-agent dies or is skipped. That is infrastructure
+ * failure, not an outcome — so every `null` here carries the previous state forward unchanged
+ * and lets the next wake retry. Never synthesize a verdict, a status, or a cleared marker from
+ * one: a fabricated failure files duplicate work, and a fabricated success loses the retry.
+ * Same principle in `epic-wake.js`.
  */
 
 export const meta = {
@@ -57,10 +65,15 @@ function classify(node, byId) {
 
   if (node.status === 'pending') {
     if (allMerged) return { action: 'build', base: 'origin/main' }
-    // Stack on the dep so review can start now. Multiple open deps can't be stacked
-    // coherently — wait for them to converge rather than pick one arbitrarily.
+    // Stack on the dep so review can start now — but ONLY when it is the sole dependency.
+    // A mix of merged and open deps can't be stacked safely: the open dep's branch may have
+    // been cut before the merged one landed, so building on it would omit declared
+    // prerequisite code (C needs merged A + open B, and B's branch predates A). Waiting costs
+    // a wake; building against an incomplete base costs a wrong implementation.
     const openDeps = deps.filter((d) => d.status === 'open')
-    if (allAtLeastOpen && openDeps.length === 1) return { action: 'build', base: openDeps[0].branch }
+    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1) {
+      return { action: 'build', base: openDeps[0].branch }
+    }
     return null
   }
 
@@ -197,11 +210,19 @@ if (assembledGoalNeeded(nodes, goal)) {
     return { issueId, subPrs: nodes, assembledGoal: { ...goal, passed: true, evidence: verdict.evidence }, done: true }
   }
 
+  // No verdict at all is an incomplete attempt, NOT a failure. Filing a gap and opening a
+  // repair PR off a dead agent would invent a defect that was never observed — and then the
+  // repair gate would suppress the retry that should have happened.
+  if (!verdict) {
+    log(`Assembled-goal agent returned nothing for ${issueId} — treating as an incomplete attempt; will retry next wake. No gap filed.`)
+    return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-goal', done: false }
+  }
+
   // The sub-PRs are already merged and their branches may be gone, so the repair is a NEW
   // fix PR owned by the breaking slice — not a reopen. The issue stays out of DONE.
   log(`Assembled goal FAILED for ${issueId} — filing the gap and opening a fix PR. Issue is not DONE.`)
   const fix = await agent(
-    `The assembled end-to-end goal for ${issueId} failed after all sub-PRs merged.\nFailure: ${(verdict && verdict.failure) || 'unknown'}\nLikely owning slice: ${(verdict && verdict.owningSubPr) || 'unknown'}\n` +
+    `The assembled end-to-end goal for ${issueId} failed after all sub-PRs merged.\nFailure: ${verdict.failure || 'unknown'}\nLikely owning slice: ${verdict.owningSubPr || 'unknown'}\n` +
       `File the gap as a Linear issue related to ${issueId} (issue-manager conventions), then open a NEW fix PR against the default branch that makes the assembled goal pass. Do not attempt to reopen the merged sub-PRs.`,
     { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
@@ -214,7 +235,7 @@ if (assembledGoalNeeded(nodes, goal)) {
     assembledGoal: {
       ...goal,
       passed: false,
-      failure: verdict ? verdict.failure : 'goal agent returned nothing',
+      failure: verdict.failure,
       // Record the filed issue as well as the PR: either one is enough to prove a repair is
       // already in flight, and the PR may legitimately be null.
       fixPr: (fix && fix.pr) || null,
@@ -286,17 +307,22 @@ const subPrs = nodes.map((node) => {
   // and `classify` only schedules the required rebase while the marker is set, so the sub-PR
   // would keep its dependency's commits in its own diff forever.
   //
-  // A rebase clears the marker only on SUCCESS. A failed rebase leaves the node `open` and
-  // still stacked, so keeping the marker is what makes the next wake retry it; clearing it
-  // would strand the sub-PR carrying its dependency's commits with nothing scheduled to fix it.
+  // A rebase clears the marker ONLY on explicit success (`status: 'open'`). Any other outcome
+  // — `failed`, or `pending` (also schema-valid) — leaves the sub-PR still stacked, so the
+  // marker has to survive or nothing ever retries the rebase and the slice keeps its
+  // dependency's commits forever.
+  const rebasing = planned && planned.action === 'rebase'
+  const rebased = rebasing && r.status === 'open'
+
   let stackedOn = node.stackedOn || null
-  if (planned) {
-    if (planned.action === 'rebase') stackedOn = r.status === 'failed' ? node.stackedOn || null : null
-    else stackedOn = planned.base === 'origin/main' ? null : planned.base
-  }
+  if (rebasing) stackedOn = rebased ? null : node.stackedOn || null
+  else if (planned) stackedOn = planned.base === 'origin/main' ? null : planned.base
+
   return {
     ...node,
-    status: r.status === 'failed' ? node.status : r.status,
+    // A rebase can only ever confirm `open` — it must never demote an already-open sub-PR to
+    // `pending`, which the next wake would misread as "never built" and rebuild from scratch.
+    status: rebasing ? node.status : r.status === 'failed' ? node.status : r.status,
     pr: r.pr === undefined || r.pr === null ? node.pr : r.pr,
     branch: r.branch || node.branch,
     stackedOn,

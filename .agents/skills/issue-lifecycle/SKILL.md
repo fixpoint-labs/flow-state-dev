@@ -257,6 +257,16 @@ table. It refuses to build those rather than treating them as dependency-free â€
 id means the PR plan or the handle cache is wrong, and guessing would build a dependent before
 its prerequisite exists. Fix the table; it won't self-heal.
 
+**It fails closed on the ambiguous cases, which can look like it's stalling:**
+
+- A node with a **mix of merged and open dependencies** waits instead of stacking. The open
+  dep's branch may have been cut before the merged one landed, so building on it would omit
+  declared prerequisite code. Only a *sole* open dependency is a safe stack base.
+- A **dead agent is not an outcome.** `incomplete: 'assembled-goal'` means the goal agent
+  returned nothing, so no gap was filed and no repair opened â€” the next wake retries. A rebase
+  that returns anything other than success keeps both its `open` status and its stack marker
+  for the same reason.
+
 What the script decides, so you don't:
 
 1. **Base selection.** A sub-PR whose deps are all **merged** builds on fresh `origin/main`;

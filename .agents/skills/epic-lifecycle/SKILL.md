@@ -150,12 +150,15 @@ even if more are queued. State the chosen N and the cap to the user.
    - **The counters** (`specReviewRounds`, `specLevelFound`, `epic.reviewRounds`,
      `epic.aboveBarFound`) — drop them and every review budget silently restarts at zero.
    - **The activity cursors** (`issues[].lastSeenActivityAt` / `lastSeenSha`, and
-     `epic.lastSeenSha`) — these are how a scout tells new feedback from feedback already
-     handled. Carry a stale one and the *same* review comment reads as new every wake: it
-     burns a round per wake and dispatches duplicate PR-feedback workers. The wake returns
-     them advanced; persist them verbatim.
-   - **`issues[].verdict`** — how a POC verdict from a previous wake reaches the worker that
-     folds it.
+     `epic.lastSeenActivityAt` / `lastSeenSha`) — these are how a scout tells new feedback from
+     feedback already handled. Carry a stale one and the *same* review comment reads as new
+     every wake: it burns a round per wake and dispatches duplicate PR-feedback workers. The
+     **timestamp is the real cursor** — a comment never moves a head SHA. The wake returns them
+     advanced *only for rows it actually handled*, so persist them verbatim rather than
+     recomputing.
+   - **`issues[].verdict` and `epic.verdict`** — the full POC settlement (claim, verdict,
+     evidence, threads), not just the enum, because the folding worker has to reply with the
+     evidence. `epic.verdict` exists because a cross-cutting claim has no issue row to land on.
 
    It returns
    `{ epicApproved, epic, epicFold, issues, gates, blockers, blocked, held, verdicts,
@@ -164,12 +167,15 @@ even if more are queued. State the chosen N and the cap to the user.
    The workflow runs in the background: **end the turn** and continue at step 3 when its
    completion notification arrives.
 
-   Two things it does that are easy to misread as bugs. **`epicApproved: false` does not mean
+   Three things it does that are easy to misread as bugs. **`epicApproved: false` does not mean
    it did nothing** — it held every sub-issue (`held`) but still folded epic-PR review if the
    budget allowed, because folding is how the objective becomes approvable; blocking it would
-   deadlock the gate it's waiting on. And an issue in **`blocked`** was skipped on purpose: it
-   has an open blocked-by relation, so it's tracked until its blocker merges rather than run
+   deadlock the gate it's waiting on. An issue in **`blocked`** was skipped on purpose: it has an
+   open blocked-by relation, so it's tracked until its blocker merges rather than run
    concurrently with its prerequisite ([Intake](#intake--filing--queueing-discovered-issues)).
+   And a row whose worker **died** looks untouched by design: the script treats a null agent
+   result as *nothing happened*, so the cursor doesn't advance, no verdict is consumed, and no
+   claim is marked settled — the next wake retries instead of inventing an outcome.
 3. **Write the mirrors.** Persist the returned `issues` table and `epic` to
    `.orchestration/`, then **write the Linear-status mirror** for every phase transition the
    wake surfaced (Linear auto-status is off; the mapping + state IDs live in `issue-lifecycle`

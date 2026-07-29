@@ -18,6 +18,19 @@
  * a workflow script cannot do them at all: prompt the human (every gate), hold a PR
  * subscription or receive a webhook, schedule anything, or read/write `.orchestration/`.
  * State arrives via `args` and leaves via the return value.
+ *
+ * ## Two invariants, because the coordinator is this script's only memory
+ *
+ * **1. A null agent result means NOTHING HAPPENED.** `agent()` returns `null` when a sub-agent
+ * dies or is skipped — infrastructure failure, not an outcome. Every `null` carries the prior
+ * state forward and lets the next wake retry. Never synthesize a verdict from one: a fabricated
+ * `INCONCLUSIVE` is exactly the "false evidence" orchestration.md forbids, and it consumes the
+ * request that would have retried.
+ *
+ * **2. Never advance a cursor past work that didn't happen.** An activity cursor moves only
+ * when the wake actually consumed that activity (a worker ran AND returned). Advancing it for a
+ * row the cap deferred would erase the very feedback we just logged as "deferred to the next
+ * wake" — silently dropping it instead.
  */
 
 export const meta = {
@@ -177,7 +190,8 @@ const GATE_SCHEMA = {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
-    newReviewEvents: { type: 'boolean', description: 'Unhandled review activity since the last wake' },
+    newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
+    latestActivityAt: { type: ['string', 'null'], description: 'ISO timestamp of the newest comment/review seen — the real cursor, since comments never move the head SHA' },
   },
 }
 
@@ -285,7 +299,8 @@ phase('Refresh')
 const [gate, linear, ...prStates] = await parallel([
   () =>
     agent(
-      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED. Also report whether there is unhandled review activity since head SHA ${epic.lastSeenSha || 'unknown'}.`,
+      `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+        `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
   () =>
@@ -324,7 +339,10 @@ const refreshed = rows.map((row) => {
     ...fresh,
     id: row.id,
     linearState: li.state || row.linearState,
-    blockedBy: li.blockedBy || [],
+    // Keep a carried blocked-by relation unless a SUCCESSFUL refresh clears it. A dead or
+    // incomplete Linear scout leaves `li` empty, and defaulting to `[]` there would un-block
+    // the issue and dispatch it alongside the very prerequisite it's waiting on.
+    blockedBy: li.blockedBy || row.blockedBy || [],
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: row.specReviewRounds || 0,
     specLevelFound: !!row.specLevelFound,
@@ -340,8 +358,11 @@ if (claims.length < requests.length) {
 // where an unbounded review loop would otherwise sit directly on the top-level gate.
 const newEpicReviewEvents = !!(gate && gate.newReviewEvents)
 const epicAtBudget = atReviewBudget(epic.reviewRounds, epic.aboveBarFound)
-const foldEpicWanted = newEpicReviewEvents && !epicAtBudget
-if (newEpicReviewEvents && epicAtBudget) {
+// A POC verdict on a cross-cutting claim is folded regardless of the budget — new evidence is
+// not another opinion (orchestration.md § "What it costs").
+const epicVerdictToFold = epic.verdict || null
+const foldEpicWanted = !!epicVerdictToFold || (newEpicReviewEvents && !epicAtBudget)
+if (newEpicReviewEvents && epicAtBudget && !epicVerdictToFold) {
   log(`Epic-spec converged (${epic.reviewRounds || 0} rounds spent) — epic-PR feedback logged and routed as implementer notes, not folded.`)
 }
 
@@ -400,7 +421,12 @@ const [advanced, epicFold] = await Promise.all([
   ),
   plan.foldEpic
     ? agent(
-        `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
+        (epicVerdictToFold
+          ? `A POC settled a cross-cutting claim for this epic. Fold the verdict FIRST and record it in the epic-spec's cross-cutting decisions so a sibling issue can't reopen it:\n` +
+            `  claim:    ${epicVerdictToFold.claim}\n  verdict:  ${epicVerdictToFold.verdict}\n  evidence: ${epicVerdictToFold.evidence || 'see the PR thread'}\n  threads:  ${epicVerdictToFold.threads || 'n/a'}\n` +
+            `Post the evidence-backed reply on the thread. This fold is outside the review budget — new evidence is not another opinion.\n\n`
+          : '') +
+          `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
           `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return those issue IDs as fanOut.\n` +
           `Refresh the epic-spec's running index from the PR handles already recorded. Never re-review to satisfy a bot.\n` +
           `Report the rounds you ACTUALLY spent — a batch of only factual corrections or broken references costs zero — and whether anything folded was above the bar.\n` +
@@ -419,17 +445,29 @@ const settled = await parallel(
         `claim:   ${claim.claim}\nload:    ${claim.load}\nfalsify: ${claim.falsify}\nthreads: ${claim.threads}\n` +
         `Design the runnable check yourself; run it on the real path. Return CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Open a PR only if you found something worth a human's eyes.`,
       { label: `poc:${(claim.claim || '').slice(0, 40)}`, phase: 'Settle', schema: POC_SCHEMA, agentType: 'poc-agent', isolation: 'worktree' },
-    ).then((poc) => ({ claim: claim.claim, issues: claim.issues, ...(poc || { verdict: 'INCONCLUSIVE' }) })),
+    ).then((poc) => (poc ? { ...claim, ...poc, issues: claim.issues } : null)),
   ),
 )
+
+// A dead POC agent is not an INCONCLUSIVE verdict. Requeue the claim so the next wake retries
+// it, and reserve INCONCLUSIVE for a real poc-agent answer — fabricating one would close a
+// load-bearing question on evidence that never existed.
+const unsettled = plan.settle.filter((_, i) => !settled[i])
+if (unsettled.length) {
+  log(`${unsettled.length} POC(s) returned nothing (agent died or skipped) — requeued, NOT recorded as INCONCLUSIVE.`)
+}
 
 // A verdict has to land ON the issue rows, not just in the return payload: the settled request
 // is consumed this wake, so a verdict the coordinator can't see on a row would be lost — the
 // claim would never get folded. `pendingAction` picks `row.verdict` up as 'apply-verdict' on
-// the next wake, which is the path that fold travels.
+// the next wake, which is the path that fold travels. Carry the WHOLE settlement, not just the
+// enum: the folding worker needs the claim, the evidence and the threads to post the
+// evidence-backed reply and to know what a REFUTED verdict should change.
 const verdictByIssue = new Map()
 for (const s of settled.filter(Boolean)) {
-  for (const id of s.issues || []) verdictByIssue.set(id, s.verdict)
+  for (const id of s.issues || []) {
+    verdictByIssue.set(id, { claim: s.claim, verdict: s.verdict, evidence: s.evidence || null, threads: s.threads || null, prNumber: s.prNumber || null })
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -439,18 +477,28 @@ for (const s of settled.filter(Boolean)) {
 
 const workerById = new Map(advanced.filter(Boolean).map((w) => [w.issueId, w]))
 
-const appliedVerdict = new Set(plan.advance.filter((i) => i.action === 'apply-verdict').map((i) => i.row.id))
+// A verdict is consumed only when its folding worker actually RETURNED. Deriving this from the
+// planned dispatch would clear the row's only copy even when the worker died — losing the POC
+// result permanently, since its settlement request was consumed too.
+const foldedVerdict = new Set(
+  plan.advance.filter((i) => i.action === 'apply-verdict' && workerById.has(i.row.id)).map((i) => i.row.id),
+)
 
 const issues = refreshed.map((row) => {
-  // A verdict this wake just applied is consumed; a verdict that just landed is carried.
-  const verdict = appliedVerdict.has(row.id) ? null : verdictByIssue.get(row.id) || row.verdict || null
-  // Advance the activity cursor to what the scout just observed, so the next wake doesn't
-  // re-report the same feedback as new — which would burn a review round per wake on it and
-  // dispatch duplicate PR-feedback workers. Same rule as the epic PR's cursor.
-  const cursor = {
-    lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
-    lastSeenSha: row.headSha || row.lastSeenSha || null,
-  }
+  const verdict = foldedVerdict.has(row.id) ? null : verdictByIssue.get(row.id) || row.verdict || null
+
+  // Advance the activity cursor ONLY when this wake consumed that activity — a worker ran and
+  // returned, or there was nothing new to begin with. A row the cap deferred keeps its old
+  // cursor, or the feedback just logged as "deferred to the next wake" would read as
+  // already-handled and vanish. (Invariant 2 in the header.)
+  const hadNewActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
+  const cursor =
+    workerById.has(row.id) || !hadNewActivity
+      ? {
+          lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
+          lastSeenSha: row.headSha || row.lastSeenSha || null,
+        }
+      : { lastSeenActivityAt: row.lastSeenActivityAt || null, lastSeenSha: row.lastSeenSha || null }
   const w = workerById.get(row.id)
   if (!w) return { ...row, ...cursor, verdict }
   return {
@@ -485,13 +533,23 @@ return {
   epicApproved,
   epic: {
     ...epic,
-    // Advance the review cursor to the head we just scanned, or the same epic-PR event keeps
-    // re-triggering a fold every wake — a zero-round fold would repeat forever.
-    lastSeenSha: (gate && gate.headSha) || epic.lastSeenSha || null,
+    // Advance the cursor only if the fold actually returned (or there was nothing new) — same
+    // consumed-not-observed rule as the issue rows. The TIMESTAMP is the real cursor; the SHA
+    // is carried alongside it but a comment never moves it.
+    ...(epicFold || !newEpicReviewEvents
+      ? {
+          lastSeenActivityAt: (gate && gate.latestActivityAt) || epic.lastSeenActivityAt || null,
+          lastSeenSha: (gate && gate.headSha) || epic.lastSeenSha || null,
+        }
+      : { lastSeenActivityAt: epic.lastSeenActivityAt || null, lastSeenSha: epic.lastSeenSha || null }),
     // Same rule as an issue's: add only the rounds the folder reports spending.
     reviewRounds: (epic.reviewRounds || 0) + (epicFold ? epicFold.roundsSpent || 0 : 0),
     aboveBarFound: epicFold ? !!epicFold.aboveBar : !!epic.aboveBarFound,
     converged: epicAtBudget,
+    // An epic-level verdict clears only once a fold returned to record it; otherwise it is
+    // carried so the next wake retries. A settlement targeting the epic has no issue row to
+    // land on, so this field is its only destination.
+    verdict: epicFold ? verdictByIssue.get(epic.issueId) || null : epicVerdictToFold || verdictByIssue.get(epic.issueId) || null,
   },
   epicFold: epicFold ? { folded: epicFold.folded, fanOut: epicFold.fanOut || [] } : null,
   issues,
@@ -502,6 +560,8 @@ return {
   verdicts: settled.filter(Boolean),
   settleRequests: [
     ...plan.queuedClaims,
+    // Claims whose POC agent never returned: requeued, not silently dropped.
+    ...unsettled,
     ...advanced.filter(Boolean).filter((w) => w.settleRequested).map((w) => ({ ...w.settleRequested, issueId: w.issueId })),
     ...(epicFold && epicFold.settleRequested ? [{ ...epicFold.settleRequested, issueId: epic.issueId }] : []),
   ],

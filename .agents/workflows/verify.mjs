@@ -116,10 +116,14 @@ const workerLabels = (calls) => calls.filter((c) => c.agentType === 'issue-worke
 // ---------------------------------------------------------------------------
 
 /** Build an epic-wake responder from per-issue fresh PR state and per-issue worker results. */
-function epicResponder({ approved = true, epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {} } = {}) {
+function epicResponder({ approved = true, epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, nulls = [] } = {}) {
   return (prompt, opts) => {
     const label = opts.label || ''
-    if (label === 'gate:epic') return { approved, approver: approved ? 'jake' : null, headSha: 'abc', newReviewEvents: epicReviewEvents }
+    // `nulls` names labels whose agent "died" — the harness returns null for those.
+    if (nulls.includes(label)) return null
+    if (label === 'gate:epic') {
+      return { approved, approver: approved ? 'jake' : null, headSha: 'abc', newReviewEvents: epicReviewEvents, latestActivityAt: '2026-07-05T00:00:00Z' }
+    }
     if (label === 'fold:epic') return { roundsSpent: 1, aboveBar: false, folded: 'tightened the objective', fanOut: [], ...fold }
     if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: 'In Spec Review', blockedBy: [] })) }
     if (label.startsWith('refresh:')) {
@@ -225,6 +229,146 @@ check('per-issue activity cursors are passed to the scout and advanced', async (
   assert.deepEqual(workerLabels(calls), [], 'already-handled feedback is not a pending action')
 })
 
+check('a deferred row keeps its cursor so the deferred feedback survives', async () => {
+  // Advancing a deferred row's cursor would erase the very feedback just logged as "deferred
+  // to the next wake" — it would read as already-handled and never run.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      cap: 1,
+      issues: [
+        row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 8, lastSeenActivityAt: 'old', lastSeenSha: 'old' }),
+        row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9, lastSeenActivityAt: 'old', lastSeenSha: 'old' }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 8, latestActivityAt: 'new', headSha: 'newsha' },
+        'FIX-3': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9, latestActivityAt: 'new', headSha: 'newsha' },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 8 } },
+    }),
+  })
+  assert.deepEqual(result.deferred, ['FIX-3'])
+  const dispatched = result.issues.find((r) => r.id === 'FIX-2')
+  const deferred = result.issues.find((r) => r.id === 'FIX-3')
+  assert.equal(dispatched.lastSeenActivityAt, 'new', 'the handled row advances')
+  assert.equal(deferred.lastSeenActivityAt, 'old', 'the deferred row must NOT advance')
+  assert.match(logs.join('\n'), /deferring FIX-3/)
+})
+
+check('a row whose worker died keeps its cursor for retry', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 8, lastSeenActivityAt: 'old' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 8, latestActivityAt: 'new', headSha: 'newsha' } },
+      nulls: ['pr-feedback:FIX-2'],
+    }),
+  })
+  assert.equal(result.issues[0].lastSeenActivityAt, 'old', 'a dead worker consumed nothing')
+})
+
+check('a carried blockedBy survives a failed Linear refresh', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'] })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } }, nulls: ['linear:epic-children'] }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a dead Linear scout must not un-block an issue')
+  assert.deepEqual(result.blocked, [{ issueId: 'FIX-2', blockedBy: ['FIX-9'] }])
+})
+
+check('a dead POC agent requeues the claim instead of inventing INCONCLUSIVE', async () => {
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [],
+      settleRequests: [{ claim: 'c1', load: 'x', falsify: 'y', threads: 't', issueId: 'FIX-2' }],
+    }),
+    respond: epicResponder({ nulls: ['poc:c1'] }),
+  })
+  assert.deepEqual(result.verdicts, [], 'no fabricated verdict')
+  assert.equal(result.settleRequests.length, 1, 'the claim is requeued for retry')
+  assert.match(logs.join('\n'), /returned nothing \(agent died or skipped\) — requeued, NOT recorded as INCONCLUSIVE/)
+})
+
+check('a verdict carries claim and evidence, not just the enum', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK' })],
+      settleRequests: [{ claim: 'routers compose', load: 'x', falsify: 'y', threads: 'PR#7', issueId: 'FIX-2' }],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: false } },
+      poc: { claim: 'routers compose', verdict: 'REFUTED', evidence: 'fsdev run shows it throws' },
+    }),
+  })
+  const v = result.issues[0].verdict
+  assert.equal(v.verdict, 'REFUTED')
+  assert.equal(v.evidence, 'fsdev run shows it throws', 'the folding worker needs the evidence to reply with it')
+  assert.equal(v.claim, 'routers compose')
+  assert.equal(v.threads, 'PR#7')
+  assert.deepEqual(labels(calls, 'poc:'), ['poc:routers compose'])
+})
+
+check('a verdict whose folding worker died is retained, not consumed', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, verdict: { claim: 'c', verdict: 'REFUTED', evidence: 'e' } })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+      nulls: ['apply-verdict:FIX-2'],
+    }),
+  })
+  assert.equal(result.issues[0].verdict.verdict, 'REFUTED', 'a dead folder must not lose the POC result')
+})
+
+check('an epic-level verdict lands on the epic and folds outside the budget', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 2, aboveBarFound: false },
+      issues: [],
+      settleRequests: [{ claim: 'cross-cutting thing', load: 'x', falsify: 'y', threads: 't', issueId: 'FIX-1' }],
+    }),
+    respond: epicResponder({ poc: { claim: 'cross-cutting thing', verdict: 'CONFIRMED', evidence: 'ran it' } }),
+  })
+  // The verdict lands on the epic this wake (there is no epic row to carry it), and next wake folds it.
+  assert.equal(result.epic.verdict.verdict, 'CONFIRMED')
+
+  const next = await run('epic-wake.js', {
+    args: epicArgs({ epic: { ...result.epic, prNumber: 100, branch: 'epic/t', issueId: 'FIX-1' }, issues: [] }),
+    respond: epicResponder({ epicReviewEvents: false }),
+  })
+  assert.deepEqual(labels(next.calls, 'fold:epic'), ['fold:epic'], 'folded even at budget — evidence is not another opinion')
+  assert.match(next.calls[next.calls.length - 1].prompt, /A POC settled a cross-cutting claim/)
+  assert.match(next.calls[next.calls.length - 1].prompt, /outside the review budget/)
+  assert.equal(next.result.epic.verdict, null, 'cleared once the fold returned')
+})
+
+check('the epic activity cursor is a timestamp, not just the head SHA', async () => {
+  // A comment never moves the head SHA, so a SHA-only cursor can't identify a folded review.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: '2026-07-01T00:00:00Z', lastSeenSha: 'abc' },
+      issues: [],
+    }),
+    respond: epicResponder({ epicReviewEvents: true }),
+  })
+  assert.match(calls[0].prompt, /last seen activity at 2026-07-01T00:00:00Z/)
+  assert.match(calls[0].prompt, /a comment never changes the head SHA/)
+  assert.equal(result.epic.lastSeenActivityAt, '2026-07-05T00:00:00Z', 'the timestamp cursor advances')
+})
+
+check('an epic fold that died keeps its cursor for retry', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' },
+      issues: [],
+    }),
+    respond: epicResponder({ epicReviewEvents: true, nulls: ['fold:epic'] }),
+  })
+  assert.equal(result.epic.lastSeenActivityAt, 'old', 'the same feedback must still be foldable next wake')
+  assert.equal(result.epic.reviewRounds, 0, 'and no round was spent')
+})
+
 check('the epic review cursor advances to the scanned head', async () => {
   // Otherwise the same epic-PR event re-triggers a fold every wake, forever.
   const { result } = await run('epic-wake.js', {
@@ -323,7 +467,7 @@ check('one claim argued on two issues is one POC fanned to both', async () => {
   // The verdict has to land ON the rows — the request is consumed this wake, so a verdict only
   // in the return payload would be lost and the claim would never get folded.
   assert.deepEqual(
-    result.issues.map((r) => r.verdict),
+    result.issues.map((r) => r.verdict && r.verdict.verdict),
     ['CONFIRMED', 'CONFIRMED'],
     'both issues carry the verdict into the next wake',
   )
@@ -498,6 +642,49 @@ check('two open dependencies are waited on rather than stacked arbitrarily', asy
     respond: multiResponder(),
   })
   assert.deepEqual(calls, [], 'stacking on one of two open deps would pick a base arbitrarily')
+})
+
+check('a merged + open dependency mix waits rather than stacking on an incomplete base', async () => {
+  // C needs merged A and open B. B's branch may have been cut before A merged, so stacking on
+  // it would build C without A's code at all.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        node('a', { status: 'merged', branch: 'fix/FIX-9-a' }),
+        node('b', { status: 'open', branch: 'fix/FIX-9-b' }),
+        node('c', { dependsOn: ['a', 'b'] }),
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls, [], 'only a SOLE open dependency is a safe stack base')
+})
+
+check('a rebase returning pending keeps both status and stack marker', async () => {
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        node('a', { status: 'merged', branch: 'fix/FIX-9-a' }),
+        node('b', { dependsOn: ['a'], status: 'open', stackedOn: 'fix/FIX-9-a', branch: 'fix/FIX-9-b', pr: 2 }),
+      ],
+    }),
+    respond: multiResponder({ build: { b: { status: 'pending', pr: 2, branch: 'fix/FIX-9-b' } } }),
+  })
+  const b = result.subPrs.find((n) => n.id === 'b')
+  assert.equal(b.status, 'open', 'a rebase must never demote an open sub-PR to pending')
+  assert.equal(b.stackedOn, 'fix/FIX-9-a', 'and the marker survives so the rebase retries')
+})
+
+check('a dead assembled-goal agent retries instead of filing a phantom gap', async () => {
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })] }),
+    respond: (prompt, opts) => (opts.label === 'assembled-goal:FIX-9' ? null : { issueFiled: 'X', pr: 1 }),
+  })
+  assert.deepEqual(calls.map((c) => c.label), ['assembled-goal:FIX-9'], 'no repair dispatched off a dead agent')
+  assert.equal(result.incomplete, 'assembled-goal')
+  assert.equal(result.assembledGoal.fixPr, undefined, 'no repair gate is set, so the next wake retries the goal')
+  assert.equal(result.done, false)
+  assert.match(logs.join('\n'), /treating as an incomplete attempt; will retry next wake. No gap filed/)
 })
 
 check('a merged dependency triggers a rebase off the stack and clears the marker', async () => {
