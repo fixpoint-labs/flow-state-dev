@@ -125,7 +125,9 @@ function awaitingAssembledFix(nodes, goal) {
   // Gate on the repair EXISTING, not on it having a PR: `FIX_SCHEMA` allows `pr: null` (the
   // worker filed the issue but couldn't open a PR), and gating on the PR alone would let that
   // case straight back into the duplicate-filing loop this guard exists to stop.
-  const repairInFlight = !!(goal.fixPr || goal.fixIssue)
+  // `repairPending` covers a dead repair agent, where not even the issue handle exists — the
+  // failure is still confirmed, so the next wake owes a repair, never another goal run.
+  const repairInFlight = !!(goal.fixPr || goal.fixIssue || goal.repairPending)
   return allMerged(nodes) && !goal.passed && repairInFlight && !goal.fixMerged
 }
 
@@ -171,12 +173,23 @@ const GOAL_SCHEMA = {
   },
 }
 
-const FIX_SCHEMA = {
+/** What `issue-manager` returns for the filed gap. */
+const GAP_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: ['issueFiled'],
   properties: {
-    issueFiled: { type: 'string' },
+    issueFiled: { type: 'string', description: 'The Linear issue ID it filed (or the existing duplicate it found)' },
+    ready: { type: 'boolean' },
+    summary: { type: 'string' },
+  },
+}
+
+const FIX_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['pr'],
+  properties: {
     pr: { type: ['number', 'null'] },
     summary: { type: 'string' },
   },
@@ -188,7 +201,7 @@ const FIX_SCHEMA = {
 
 const issueId = args.issueId
 const nodes = args.subPrs || []
-const cap = args.cap || 3
+const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
 const goal = args.assembledGoal || {}
 
 // ---- All merged: the assembled goal is the only thing between here and DONE. -----------
@@ -221,28 +234,46 @@ if (assembledGoalNeeded(nodes, goal)) {
   // The sub-PRs are already merged and their branches may be gone, so the repair is a NEW
   // fix PR owned by the breaking slice — not a reopen. The issue stays out of DONE.
   log(`Assembled goal FAILED for ${issueId} — filing the gap and opening a fix PR. Issue is not DONE.`)
+
+  // Record the confirmed failure BEFORE dispatching the repair. If the repair agent dies, the
+  // next wake must retry the *repair*, not the expensive goal — re-running the goal would also
+  // risk duplicating whatever Linear/GitHub side effects the dead agent managed first.
+  const failedGoal = { ...goal, passed: false, failure: verdict.failure, owningSubPr: verdict.owningSubPr || null }
+
+  // File through the `issue-manager` AGENT, not by asking a worker to imitate it: the duplicate
+  // check, project placement and relation wiring are that agent's job (AGENTS.md → "File
+  // discovered work"). A near-duplicate gap issue wired to nothing is worse than none.
+  const filed = await agent(
+    `The assembled end-to-end goal for ${issueId} failed after all its sub-PRs merged.\nFailure: ${verdict.failure || 'unknown'}\nLikely owning slice: ${verdict.owningSubPr || 'unknown'}\n` +
+      `File this gap as a Linear issue related to ${issueId}, in the same project. Duplicate-check first. Return the issue ID and whether it is ready to pick up.`,
+    { label: `assembled-gap:${issueId}`, phase: 'Assemble', schema: GAP_SCHEMA, agentType: 'issue-manager' },
+  )
+
+  if (!filed) {
+    log(`issue-manager returned nothing — repair still needed for ${issueId}; the next wake retries the repair, not the goal.`)
+    return { issueId, subPrs: nodes, assembledGoal: { ...failedGoal, repairPending: true }, incomplete: 'assembled-gap', done: false }
+  }
+
   const fix = await agent(
-    `The assembled end-to-end goal for ${issueId} failed after all sub-PRs merged.\nFailure: ${verdict.failure || 'unknown'}\nLikely owning slice: ${verdict.owningSubPr || 'unknown'}\n` +
-      `File the gap as a Linear issue related to ${issueId} (issue-manager conventions), then open a NEW fix PR against the default branch that makes the assembled goal pass. Do not attempt to reopen the merged sub-PRs.`,
+    `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${filed.issueFiled}.\nFailure: ${verdict.failure || 'unknown'}\nLikely owning slice: ${verdict.owningSubPr || 'unknown'}\n` +
+      `Open a NEW fix PR against the default branch that makes the assembled goal pass. The sub-PRs are already merged and their branches may be gone — do not attempt to reopen them.`,
     { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
 
   return {
     issueId,
     subPrs: nodes,
-    // `fixPr` is what stops the next wake re-running the goal and filing a duplicate. The
-    // coordinator sets `fixMerged` when that PR merges, which re-arms the goal.
     assembledGoal: {
-      ...goal,
-      passed: false,
-      failure: verdict.failure,
-      // Record the filed issue as well as the PR: either one is enough to prove a repair is
-      // already in flight, and the PR may legitimately be null.
+      ...failedGoal,
+      // Either handle proves a repair is in flight and gates the goal rerun; the PR may
+      // legitimately be null. `repairPending` covers the case where even the issue is missing.
+      fixIssue: filed.issueFiled,
       fixPr: (fix && fix.pr) || null,
-      fixIssue: (fix && fix.issueFiled) || null,
+      repairPending: !fix,
       fixMerged: false,
     },
     fix: fix || null,
+    incomplete: fix ? undefined : 'assembled-fix',
     done: false,
   }
 }
@@ -313,6 +344,15 @@ const subPrs = nodes.map((node) => {
   // dependency's commits forever.
   const rebasing = planned && planned.action === 'rebase'
   const rebased = rebasing && r.status === 'open'
+
+  // "open" without a PR number or branch is not a usable open sub-PR: the coordinator has
+  // nothing to subscribe to or surface a merge gate for, and a dependent would try to stack on
+  // an undefined base. Treat it as an incomplete build and let the next wake retry.
+  const openWithoutHandles = !rebasing && r.status === 'open' && !(r.pr || node.pr) && !(r.branch || node.branch)
+  if (openWithoutHandles) {
+    log(`${node.id}: reported open but returned no PR number or branch — treating as incomplete, will retry.`)
+    return { ...node, blocker: r.blocker || null, summary: r.summary }
+  }
 
   let stackedOn = node.stackedOn || null
   if (rebasing) stackedOn = rebased ? null : node.stackedOn || null
