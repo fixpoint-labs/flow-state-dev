@@ -386,6 +386,17 @@ function nextRow(row, { worker, action, landed, folded }) {
     verdicts,
   }
 
+  // A freshly reported nested blocker is LIFTED to the row. `subPrs[].blocker` is the nested
+  // workflow's native field, and a worker returning one has no obligation to also set the row-level
+  // mirror — but the refresh rule reads an absent row-level blocker as "the human resolved it" and
+  // clears the nested copy, destroying an escalation nobody has seen. Deriving the row-level field
+  // from the nested ones makes the two consistent by construction: a fresh escalation always arrives
+  // with its mirror, so the resolution rule only ever fires on a decision that was actually surfaced.
+  if (!next.blocker) {
+    const nested = (next.subPrs || []).find((sp) => sp.blocker)
+    if (nested) next.blocker = `${nested.id}: ${nested.blocker}`
+  }
+
   // A transition without its durable handle is refused. The schema requires `phase` but cannot make
   // `specPr`/`implPr` conditionally required, so a spec worker could report AWAITING_SPEC_APPROVAL
   // with no spec PR — an approval gate with nothing to open — and an implement could report
@@ -1021,7 +1032,9 @@ const foldEpicWanted = !!epicVerdictsToFold || (epicCursorMovable && newEpicRevi
 // convergence silently drops it. The gate scout returns only a boolean and a timestamp, so
 // nothing here knows what the comments said or which issues they touch: that needs its own
 // cheap read. Without it this branch logged "routed as implementer notes" while routing nothing.
-const routeConvergedEpicFeedback = newEpicReviewEvents && epicAtBudget
+// The cursor guard applies to the ROUTE as well as the fold — it was only on `foldEpicWanted`, so a
+// converged epic re-read and re-routed the same comments as implementer notes on every wake.
+const routeConvergedEpicFeedback = epicCursorMovable && newEpicReviewEvents && epicAtBudget
 if (routeConvergedEpicFeedback) {
   log(
     `Epic-spec converged (${epic.reviewRounds || 0} rounds spent) — not folding review feedback; reading it to route as implementer notes` +
@@ -1081,7 +1094,11 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // it isn't handed does not exist for it. Given only `subPrs`, a resumed issue would
               // re-run the end-to-end goal and file a second repair for a gap already tracked.
               `  assembledGoal: ${JSON.stringify(item.row.assembledGoal || {})}\n` +
-              `Report multiPrPending: true if its DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step), so the next wake dispatches you again rather than waiting for an event that will never come.\n`
+              `Report multiPrPending: true if its DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step), so the next wake dispatches you again rather than waiting for an event that will never come.\n` +
+              // A malformed plan (duplicate id, dependency cycle, unknown dependency) dispatches
+              // nothing and only a human can fix it, so it has to come back as a BLOCKER. Returned
+              // as neither work nor blocker nor gate, the row simply sits in PR_FEEDBACK forever.
+              `If it reports any sub-PR as invalid (duplicate id, dependency cycle, unknown dependency), return that as your \`blocker\` — it needs a human to fix the PR plan and nothing else can advance it.\n`
             : '') +
           `Do not prompt the user. Return the compact status object and exit.`,
         {

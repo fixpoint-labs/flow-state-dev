@@ -75,8 +75,13 @@ function classify(node, byId) {
     // been cut before the merged one landed, so building on it would omit declared
     // prerequisite code (C needs merged A + open B, and B's branch predates A). Waiting costs
     // a wake; building against an incomplete base costs a wrong implementation.
+    // Both handles, not just the status: an `open` dep with no branch yields `base: undefined`, and
+    // the build prompt then tells its worker to base the slice on nothing — it would start from the
+    // inherited checkout or some other unintended ref instead of its prerequisite. Waiting costs a
+    // wake; building on an unknown base costs a wrong implementation, the same trade the mixed-deps
+    // rule above makes.
     const openDeps = deps.filter((d) => d.status === 'open')
-    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1) {
+    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1 && openDeps[0].branch) {
       return { action: 'build', base: openDeps[0].branch }
     }
     return null

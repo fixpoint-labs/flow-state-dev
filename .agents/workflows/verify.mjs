@@ -1877,6 +1877,62 @@ check('a headless live epic scan holds work even when the epic was already appro
   assert.match(logs.join('\n'), /no current head/)
 })
 
+check('a freshly reported nested blocker is lifted to the row, not erased', async () => {
+  // `subPrs[].blocker` is the nested workflow's native field, so a worker can return one without
+  // also setting the row-level mirror. The resolution rule reads an absent row-level blocker as
+  // "the human answered", so without lifting it the next refresh erases an escalation nobody saw.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      // Nested blocker only — no row-level mirror.
+      worker: {
+        'FIX-2': { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }] },
+      },
+    }),
+  })
+  assert.match(first.result.issues[0].blocker, /a: which shape\?/, 'the escalation is surfaced at row level')
+  assert.ok(first.result.blockers.some((b) => /which shape/.test(b.blocker)), 'and reaches the human')
+
+  // Next wake it survives, and the row is parked rather than re-dispatched.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...first.result.issues[0] }] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  assert.equal(second.result.issues[0].subPrs[0].blocker, 'which shape?', 'the nested copy is not erased')
+  assert.deepEqual(workerLabels(second.calls), [])
+})
+
+check('a malformed PR plan comes back as a blocker rather than silence', async () => {
+  // issue-multi-pr dispatches nothing for a duplicate id, cycle or unknown dependency, and only a
+  // human can fix it — returned as neither work nor blocker nor gate, the row sits forever.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'pending', pr: null, branch: null }],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } }, worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.match(prompt, /reports any sub-PR as invalid/)
+  assert.match(prompt, /return that as your `blocker`/)
+})
+
 check('clearing a row blocker also clears a nested sub-PR blocker', async () => {
   // The third copy of the same human decision (row, assembledGoal, sub-PR). `classify()` refuses to
   // dispatch a slice while its own blocker is set, and the documented resolution path clears only
@@ -2074,6 +2130,25 @@ check('a worker transition without its durable handle is refused', async () => {
   assert.equal(multi.result.issues[0].phase, 'PR_FEEDBACK')
 })
 
+check('converged epic feedback is not re-routed when the cursor cannot move', async () => {
+  // The guard was only on the fold, so a converged epic re-read and re-routed the same comments as
+  // implementer notes on every wake — the routing path advances no cursor of its own.
+  const { calls, result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 2, lastSeenActivityAt: 'old' },
+      issues: [],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [] }
+      return { notes: [] }
+    },
+  })
+  assert.deepEqual(labels(calls, 'route:epic-notes'), [], 'nothing is re-routed off a cursor that cannot advance')
+  assert.equal(result.epic.lastSeenActivityAt, 'old')
+})
+
 check('epic activity reported without a timestamp is not folded and lost', async () => {
   // The cursor could not advance past it, so the batch would be rediscovered and re-charged every
   // wake until the budget converged — spending the whole budget on one batch.
@@ -2258,6 +2333,19 @@ check('a build result echoing another sub-PR id is discarded, not applied to it'
   assert.equal(b.status, 'pending', 'a discarded result leaves the node to retry, not half-applied')
   assert.equal(b.pr, null)
   assert.match(logs.join('\n'), /b: worker reported id a — discarding the result/)
+})
+
+check('an open dependency with no branch is waited on, never used as a base', async () => {
+  // `base: undefined` tells the worker to build on nothing — it would start from the inherited
+  // checkout instead of its prerequisite, which is a wrong implementation, not a delay.
+  const { calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'open', pr: 41, branch: null }), node('b', { dependsOn: ['a'] })],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls.map((c) => c.label), [], 'the dependent waits for a usable base')
+  assert.match(logs.join('\n'), /No sub-PR is ready/)
 })
 
 check('two open dependencies are waited on rather than stacked arbitrarily', async () => {
