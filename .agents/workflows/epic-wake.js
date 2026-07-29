@@ -106,7 +106,17 @@ function pendingAction(row) {
     case 'AWAITING_SPEC_APPROVAL':
       // A satisfied gate is a release, not a stop: approval chains straight through to
       // implementation in this same wake.
-      if (row.specApproved) return { action: 'implement', why: 'spec approved on current head' }
+      //
+      // An approving review can arrive in the SAME batch as fresh spec feedback. Approval still
+      // wins — never hold an approved issue — but the feedback must not evaporate: the row is
+      // about to become PR_FEEDBACK, whose machine never looks at `newSpecReviewEvents` again. So
+      // the dispatch says so, and the worker carries the batch as implementer notes on its way
+      // through (which is what the convergence rule does with remaining open threads anyway).
+      if (row.specApproved) {
+        return row.newSpecReviewEvents
+          ? { action: 'implement', why: 'spec approved on current head, with outstanding spec-PR feedback to carry as implementer notes' }
+          : { action: 'implement', why: 'spec approved on current head' }
+      }
       if (row.newSpecReviewEvents) {
         if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return null // converged
         return { action: 'spec-review', why: `review round ${(row.specReviewRounds || 0) + 1}` }
@@ -161,6 +171,24 @@ function dedupeClaims(requests) {
 const CONSUMES_REVIEW_ACTIVITY = new Set(['spec-review', 'pr-feedback'])
 
 /**
+ * Does a dispatch of `action` for `row` actually READ that row's review batch?
+ *
+ * One place, because two things depend on it agreeing: the cursor (advancing it for a batch nobody
+ * read loses the feedback) and the worker prompt (telling a worker to carry feedback the cursor
+ * won't consume replays it every wake).
+ *
+ * `implement` is the exception worth naming. It reads no review events in general — but when
+ * approval and fresh spec feedback land in the same batch, approval wins and the row becomes
+ * PR_FEEDBACK, whose machine never looks at `newSpecReviewEvents` again. That dispatch is therefore
+ * the ONLY pass that can see the batch, so it is told to carry it as implementer notes and it
+ * consumes it.
+ */
+function consumesReviewActivity(action, row) {
+  if (CONSUMES_REVIEW_ACTIVITY.has(action)) return true
+  return action === 'implement' && !!(row && row.newSpecReviewEvents)
+}
+
+/**
  * Fold one wake's outcome into one row — the single place a row's state advances.
  *
  * This is a named function rather than an inline map because it is where the field-by-field
@@ -201,7 +229,12 @@ function nextRow(row, { worker, action, landed, folded }) {
   // the worker's reported state is still folded below, but the cursor stays put and the flags stay
   // live so the batch is genuinely re-derived rather than silently replayed.
   const cursorMovable = !(hadNewActivity && !row.latestActivityAt)
-  const consumed = cursorMovable && ((worker && CONSUMES_REVIEW_ACTIVITY.has(action)) || !hadNewActivity)
+  // A worker that escalated a `blocker` did NOT finish reading that batch — same rule as the
+  // verdict fold below. Consuming it would advance the cursor and clear the flags, so once the
+  // human answers and the coordinator clears the blocker there is no pending event left to resume
+  // from: the feedback, and the work waiting on that decision, are stranded.
+  const workerFinished = !!worker && !worker.blocker
+  const consumed = cursorMovable && ((workerFinished && consumesReviewActivity(action, row)) || !hadNewActivity)
   const cursor = consumed
     ? {
         lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
@@ -233,6 +266,9 @@ function nextRow(row, { worker, action, landed, folded }) {
     // These are the handles the coordinator subscribes to, so silently clearing them would make
     // every sub-PR's review, CI and merge event invisible for the rest of the epic.
     subPrs: worker.subPrs === undefined ? row.subPrs : worker.subPrs,
+    // Same rule, and for the same reason: the assemble state machine resumes from these handles
+    // across wakes, so clearing them restarts it — re-running the goal and filing a duplicate gap.
+    assembledGoal: worker.assembledGoal === undefined ? row.assembledGoal : worker.assembledGoal,
     // Add only the rounds the worker reports SPENDING — never one per event dispatched.
     //
     // But a REVIEW worker that omits the count cannot be charged zero: the field is optional, so
@@ -485,6 +521,24 @@ const WORKER_SCHEMA = {
         },
       },
     },
+    // The other half of a multi-PR issue's durable state. `subPrs` alone is not enough: the
+    // assemble phase is a multi-wake state machine (goal → gap → fix → re-verify) that resumes from
+    // these handles, so losing them re-runs the goal and files a duplicate gap issue every wake.
+    assembledGoal: {
+      type: 'object',
+      additionalProperties: true,
+      description: 'For a multi-PR issue: the assembledGoal state from issue-multi-pr, verbatim. Omit for single-PR issues.',
+      properties: {
+        passed: { type: 'boolean' },
+        evidence: { type: ['string', 'null'] },
+        failure: { type: ['string', 'null'] },
+        owningSubPr: { type: ['string', 'null'] },
+        fixIssue: { type: ['string', 'null'] },
+        fixPr: { type: ['number', 'null'] },
+        fixMerged: { type: 'boolean' },
+        fixBlocker: { type: ['string', 'null'] },
+      },
+    },
     specReviewRoundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent this dispatch — 0 for a batch that was only factual corrections' },
     specLevelFound: { type: 'boolean', description: 'Did this round surface a genuine spec-level finding? Authorizes the third round.' },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
@@ -587,6 +641,14 @@ const [gate, linear, ...prStates] = await parallel([
     (row) => () =>
       agent(
         `Derive the current lifecycle phase of Linear issue ${row.id} from durable state only. Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
+          // A multi-PR issue has NO single `implPr` — the real handles are the sub-PR table. Told
+          // only "Impl PR: none", the scout has nothing to read, so a subscribed sub-PR event wakes
+          // the coordinator and the row still reports no activity: stuck in PR_FEEDBACK for good.
+          (row.subPrs && row.subPrs.length
+            ? `This issue implements as a DAG of sub-PRs; there is no single impl PR. Treat these as its implementation PRs and report activity, CI and merge state across ALL of them: ${row.subPrs
+                .map((s) => `${s.id}=${s.pr ? `#${s.pr}` : 'not opened'}${s.status ? ` (${s.status})` : ''}`)
+                .join(', ')}.\n`
+            : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment or a current-head APPROVED review by a non-author human — a stale approval invalidated by a later push is NOT approval, and no bot review counts.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
           `Also report whether CI is failing.`,
@@ -751,6 +813,12 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           `A satisfied gate is NOT a wait — chain through it: a just-approved spec goes close-spec-PR → implement → open the impl PR in this one run.\n` +
           (item.action === 'apply-verdict'
             ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(item.row.verdicts)}\n`
+            : '') +
+          (item.action === 'implement' && item.row.newSpecReviewEvents
+            ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes BEFORE you close the spec PR — do not spend a review round on it and do not fold it into the spec. This is the only pass that sees it: nothing looks at spec-PR review activity once this row reaches PR_FEEDBACK.\n`
+            : '') +
+          (item.row.subPrs && item.row.subPrs.length
+            ? `This issue implements as a DAG of sub-PRs. Its plan and handles: ${JSON.stringify(item.row.subPrs)}. Advance it with the issue-multi-pr workflow and return the updated subPrs table AND assembledGoal state.\n`
             : '') +
           `Do not prompt the user. Return the compact status object and exit.`,
         {
@@ -918,15 +986,20 @@ const contestedClaimFor = (issueId) => {
 const gates = [
   // The objective gate comes first: until it's signed off, it's the only one that can move.
   ...(epicApproved ? [] : [{ kind: 'epic-objective', pr: epic.prNumber }]),
+  // Child gates only while the objective stands. Surfacing them alongside a closed epic gate isn't
+  // just noise: a human would be approving specs aligned to an objective the epic is in the middle
+  // of revising, and once the objective is re-approved those stale child approvals release
+  // implementation with no second alignment gate. `allocate()` already holds the issues, so a gate
+  // the coordinator cannot act on is a trap, not information.
   // Same terminal exclusion as the merge gate below: a child the human closed or dropped whose
   // spec PR is still open must not keep asking them to approve a spec for removed work.
   // `pendingAction` already parks the row, but this filter is independent of it.
-  ...issues.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal).map((r) => ({
+  ...(!epicApproved ? [] : issues.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal).map((r) => ({
     kind: 'spec-approval',
     issueId: r.id,
     pr: r.specPr,
     settlingInFlight: contestedClaimFor(r.id),
-  })),
+  }))),
   // A child the human closed or dropped must not keep asking them to merge it.
   ...issues.filter((r) => r.readyToMerge && !r.linearTerminal).map((r) => ({ kind: 'merge', issueId: r.id, pr: r.implPr })),
 ]

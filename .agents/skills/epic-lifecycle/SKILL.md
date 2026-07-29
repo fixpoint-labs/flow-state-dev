@@ -139,7 +139,8 @@ even if more are queued. State the chosen N and the cap to the user.
                 lastSeenActivityAt, lastSeenSha, verdicts, unsettled },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
-                   lastSeenActivityAt, lastSeenSha, blocker, approvedInSession, subPrs } ],
+                   lastSeenActivityAt, lastSeenSha, blocker, approvedInSession,
+                   subPrs, assembledGoal } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
      }
    ```
@@ -168,9 +169,13 @@ even if more are queued. State the chosen N and the cap to the user.
      The wake treats it as approval while that head is still current, and ignores it once a push has
      moved on — the same staleness rule the scan channel gets. Omit it and the in-session
      go-ahead is silently discarded, and the issue waits for an approval that already happened.
-   - **`issues[].subPrs`** — for a **multi-PR** issue, the sub-PR table (`id · status · pr ·
-     branch · stackedOn`) its worker returned from `issue-multi-pr`. These are the handles you
-     subscribe to; drop them and every sub-PR's review, CI and merge event goes unseen.
+   - **`issues[].subPrs` and `issues[].assembledGoal`** — for a **multi-PR** issue, the two halves of
+     the state its worker returned from `issue-multi-pr`. `subPrs` (`id · status · pr · branch ·
+     stackedOn`) are the handles you subscribe to, and they are also what the next wake's refresh
+     scout is given to read — drop them and every sub-PR's review, CI and merge event goes unseen.
+     `assembledGoal` is the assemble phase's position in its own state machine (goal → gap → fix →
+     re-verify); drop it and the machine restarts, re-running the goal and filing a duplicate gap
+     issue every wake. Carry both verbatim.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
      decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
      `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every

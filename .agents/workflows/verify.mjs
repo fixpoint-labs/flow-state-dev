@@ -172,6 +172,23 @@ const workerLabels = (calls) => calls.filter((c) => c.agentType === 'issue-worke
  * region boundary is the seam the scripts already label pure, so this needs no test hooks in
  * them.
  */
+/**
+ * The full `{ ... }` declaration starting at `from`, by brace matching.
+ *
+ * Schema checks used a fixed byte window, which quietly truncates as schemas grow — the failure
+ * mode is a check that reports a defect in the part it can see rather than the part it can't.
+ */
+function balancedFrom(src, from) {
+  const open = src.indexOf('{', from)
+  if (open < 0) return src.slice(from)
+  let depth = 0
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++
+    else if (src[i] === '}' && --depth === 0) return src.slice(from, i + 1)
+  }
+  return src.slice(from)
+}
+
 function loadRules(name, names) {
   const src = readFileSync(join(HERE, name), 'utf8')
   const start = src.indexOf('// Rules (pure')
@@ -1341,6 +1358,113 @@ check('a POC that paraphrases the claim settles the claim that was requested', a
   assert.equal(landed[0].claim, 'does the router re-enter?', 'the requested claim is what gets folded and replied to')
 })
 
+check('a review worker that escalates does not consume the batch it never finished', async () => {
+  // Same rule as the verdict fold: returning is not finishing. If the batch is consumed, the cursor
+  // advances and the flags clear, so once the human answers and the coordinator clears the blocker
+  // there is no pending event left — the feedback and the work waiting on that decision are gone.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, lastSeenActivityAt: 'old' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, specPr: 7, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, blocker: 'which approach do we want?' } },
+    }),
+  })
+  const two = result.issues[0]
+  assert.equal(two.lastSeenActivityAt, 'old', 'the cursor holds for a batch nobody finished reading')
+  assert.equal(two.newSpecReviewEvents, true, 'and the flag stays live so the batch is re-derived')
+  assert.match(two.blocker, /which approach/)
+})
+
+check('approval arriving with fresh feedback implements AND carries the feedback', async () => {
+  // Approval wins — never hold an approved issue. But the row is about to become PR_FEEDBACK, whose
+  // machine never looks at spec-PR activity again, so this dispatch is the only pass that can see
+  // the batch. It is told to carry it as implementer notes, and it consumes it.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, lastSeenActivityAt: 'old' })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, newSpecReviewEvents: true, specPr: 7, latestActivityAt: 'new' },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'approval still releases the issue')
+  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.match(prompt, /ALSO carries outstanding review feedback/)
+  assert.match(prompt, /carry it as implementer notes BEFORE you close the spec PR/)
+  assert.equal(result.issues[0].lastSeenActivityAt, 'new', 'and the batch is consumed by the pass that read it')
+  assert.equal(result.issues[0].newSpecReviewEvents, false)
+})
+
+check('child spec gates are withheld while the objective gate is closed', async () => {
+  // A human approving a child spec aligned to an objective mid-revision leaves a stale approval
+  // that releases implementation once the epic is re-approved, with no second alignment gate.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
+    respond: epicResponder({ approved: false, fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } } }),
+  })
+  assert.deepEqual(result.gates, [{ kind: 'epic-objective', pr: 100 }], 'the objective is the only gate that can move')
+
+  // And they come back the moment it stands again.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
+    respond: epicResponder({ approved: true, fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } } }),
+  })
+  assert.ok(second.result.gates.some((g) => g.kind === 'spec-approval' && g.issueId === 'FIX-2'))
+})
+
+check("a multi-PR issue's assemble state and sub-PR handles both survive", async () => {
+  // `subPrs` alone is not enough: the assemble phase is a multi-wake machine that resumes from
+  // these handles, so losing them re-runs the goal and files a duplicate gap issue every wake.
+  const subPrs = [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a', stackedOn: null }]
+  const assembledGoal = { passed: false, failure: 'stream closed early', evidence: 'ran it', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false }
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs, assembledGoal } },
+    }),
+  })
+  assert.deepEqual(result.issues[0].assembledGoal, assembledGoal)
+
+  // A later worker silent about them must not restart the machine.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...result.issues[0] }] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.deepEqual(second.result.issues[0].assembledGoal, assembledGoal, 'only a worker that reported it replaces it')
+})
+
+check("a multi-PR issue's refresh scout is given every sub-PR to read", async () => {
+  // With no single `implPr`, a scout told "Impl PR: none" has nothing to read: a subscribed sub-PR
+  // event wakes the coordinator and the row still reports no activity, stuck in PR_FEEDBACK.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'pending', pr: null, branch: null },
+          ],
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  const refresh = calls.find((c) => c.label === 'refresh:FIX-2').prompt
+  assert.match(refresh, /a=#41 \(open\)/)
+  assert.match(refresh, /b=not opened \(pending\)/)
+  assert.match(refresh, /report activity, CI and merge state across ALL of them/)
+})
+
 check('a terminal issue stops asking the human to approve its spec', async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
@@ -1915,7 +2039,11 @@ check('INVARIANT: every schema is satisfiable', async () => {
   for (const file of ['epic-wake.js', 'issue-multi-pr.js']) {
     const src = readFileSync(join(HERE, file), 'utf8')
     for (const m of src.matchAll(/const (\w+_SCHEMA) = \{/g)) {
-      const seg = src.slice(m.index, m.index + 2600)
+      // Brace-match the whole declaration. A fixed-size window silently truncated WORKER_SCHEMA
+      // once a nested sub-schema pushed a later property past the cut, and reported the schema as
+      // unsatisfiable when it wasn't — a check that fails for the wrong reason is as bad as one
+      // that passes for the wrong reason.
+      const seg = balancedFrom(src, m.index)
       const req = /required: \[([^\]]*)\]/.exec(seg)
       if (!req) continue
       const fields = req[1].split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean)
@@ -2182,42 +2310,55 @@ check('INVARIANT: an agent-reported id never decides which row a result lands on
 })
 
 check('INVARIANT: the activity cursor never advances past unconsumed activity', async () => {
-  const { nextRow } = loadRules('epic-wake.js', ['atReviewBudget', 'pendingAction', 'CONSUMES_REVIEW_ACTIVITY', 'nextRow'])
+  // `consumesReviewActivity` is loaded, not restated. Which actions read a review batch is exactly
+  // the kind of rule that grows an exception (the approval transition did), and an invariant that
+  // hard-codes its own copy stops testing the code the moment the code changes — it just fails, or
+  // worse, keeps passing against a rule nobody follows any more.
+  const { nextRow, consumesReviewActivity } = loadRules('epic-wake.js', [
+    'atReviewBudget',
+    'pendingAction',
+    'CONSUMES_REVIEW_ACTIVITY',
+    'consumesReviewActivity',
+    'nextRow',
+  ])
   const actions = [undefined, 'spec', 'spec-review', 'implement', 'pr-feedback', 'apply-verdict']
+  let cases = 0
 
   for (const action of actions) {
     for (const workerReturned of [true, false]) {
-      for (const newSpecReviewEvents of [true, false]) {
-        for (const newPrEvents of [true, false]) {
-          const row = {
-            id: 'FIX-2',
-            phase: 'AWAITING_SPEC_APPROVAL',
-            newSpecReviewEvents,
-            newPrEvents,
-            latestActivityAt: 'new',
-            headSha: 'newsha',
-            lastSeenActivityAt: 'old',
-            lastSeenSha: 'oldsha',
+      for (const workerBlocked of [true, false]) {
+        for (const newSpecReviewEvents of [true, false]) {
+          for (const newPrEvents of [true, false]) {
+            const row = {
+              id: 'FIX-2',
+              phase: 'AWAITING_SPEC_APPROVAL',
+              newSpecReviewEvents,
+              newPrEvents,
+              latestActivityAt: 'new',
+              headSha: 'newsha',
+              lastSeenActivityAt: 'old',
+              lastSeenSha: 'oldsha',
+            }
+            const worker = workerReturned
+              ? { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', ...(workerBlocked ? { blocker: 'needs a call' } : {}) }
+              : undefined
+            const out = nextRow(row, { worker, action, landed: [], folded: false })
+            const advanced = out.lastSeenActivityAt === 'new'
+            const hadActivity = newSpecReviewEvents || newPrEvents
+            // A worker that escalated did not finish reading the batch, so it consumes nothing.
+            const consumed = workerReturned && !workerBlocked && consumesReviewActivity(action, row)
+            cases++
+            assert.equal(
+              advanced,
+              !hadActivity || consumed,
+              `cursor advanced=${advanced} for action=${action} worker=${workerReturned} blocked=${workerBlocked} activity=${hadActivity}`,
+            )
           }
-          const out = nextRow(row, {
-            worker: workerReturned ? { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL' } : undefined,
-            action,
-            landed: [],
-            folded: false,
-          })
-          const advanced = out.lastSeenActivityAt === 'new'
-          const hadActivity = newSpecReviewEvents || newPrEvents
-          const consumed = workerReturned && (action === 'spec-review' || action === 'pr-feedback')
-          // The whole of invariant 2, as one implication over the entire space.
-          assert.equal(
-            advanced,
-            !hadActivity || consumed,
-            `cursor advanced=${advanced} for action=${action} worker=${workerReturned} activity=${hadActivity}`,
-          )
         }
       }
     }
   }
+  assert.equal(cases, 96)
 })
 
 check('INVARIANT: a dead worker never mutates a row beyond its cursor', async () => {
