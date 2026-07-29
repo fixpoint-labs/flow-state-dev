@@ -1063,6 +1063,9 @@ function foldMultiPrScan(row, fresh) {
   // would idle just the same, so it parks the row with the question named.
   const closedHandles = [
     ...(fresh.closedUnmerged && row.implPr ? [`impl PR #${row.implPr}`] : []),
+    // The repair handle needed this too: closed unmerged, `assembleState` stays at AWAITING_FIX,
+    // `multiPrHasWork` dispatches nothing, and no merge gate appears — the row idles indefinitely.
+    ...(fresh.repairClosedUnmerged && row.assembledGoal && row.assembledGoal.fixPr ? [`repair PR #${row.assembledGoal.fixPr}`] : []),
     ...(binding
       ? (out.subPrs || []).filter((sp) => (binding.byId.get(sp.id) || {}).closedUnmerged).map((sp) => `sub-PR ${sp.id}${sp.pr ? ` (#${sp.pr})` : ''}`)
       : []),
@@ -1118,17 +1121,27 @@ function mergeSubPrs(carried, reported) {
     // assembled goal while that PR is still open — or demote an open one to `pending`, which the next
     // wake rebuilds from scratch. The one transition a worker genuinely owns is pending → open: it just
     // opened the PR. Everything else comes from `foldMultiPrScan`.
+    // `merged` is unassertable for a NEW slice too. The transition guard below cannot see one — there is
+    // no `prev` to compare against — so a worker revising the PR plan could insert `{ id, status:
+    // 'merged' }` and immediately satisfy `allMerged`: the issue reaches DONE with a slice that never had
+    // a PR and never passed the human merge gate. Only the refresh scan observes a merge.
+    // Scoped to `!prev` because that is the only case this decides: a CARRIED slice's status is already
+    // owned by the transition guard immediately below, which reverts anything but pending → open.
+    if (!prev && merged.status === 'merged') {
+      log(`${r.id}: added as merged, which only the refresh scan can observe — entering it as pending.`)
+      merged.status = 'pending'
+    }
     if (prev && merged.status !== prev.status) {
       const workerOwns = prev.status === 'pending' && merged.status === 'open'
       if (!workerOwns) merged.status = prev.status
     }
-    // A NEW slice cannot be `open` without both handles. The transition guard above only runs when
-    // there IS a carried row, so a worker revising the PR plan could insert `{ id, status: 'open' }` with
-    // no `pr` and no `branch` — schema-valid, and permanently stuck: `classify` has no action for an
-    // ordinary open node, there is no handle for the scout to refresh, and no merge gate can name it.
-    // Demoted to `pending`, the next wake simply builds it, which is what the worker meant.
-    if (!prev && merged.status === 'open' && !(merged.pr && merged.branch)) {
-      log(`${r.id}: worker added it as open with no PR/branch — entering it as pending so it gets built.`)
+    // `open` needs BOTH handles — for a CARRIED slice as much as a new one. This ran only for new slices,
+    // which left the one transition a worker genuinely owns (pending → open) able to land a slice with no
+    // PR and no branch: nothing for the scout to refresh, no merge gate able to name it, and no `classify`
+    // action for an ordinary open node. Held at pending, the next wake simply builds it — which is what
+    // the worker meant either way.
+    if (merged.status === 'open' && !(merged.pr && merged.branch)) {
+      log(`${r.id}: reported open with no PR/branch — holding it at pending so it gets built.`)
       merged.status = 'pending'
     }
     // Structural edges come from the carried row unless the worker actually reported them.
@@ -1294,6 +1307,8 @@ const PR_STATE_SCHEMA = {
     // that re-arms the end-to-end goal.
     repairMerged: { type: 'boolean' },
     repairReadyToMerge: { type: 'boolean' },
+    /** The repair PR was closed WITHOUT merging — otherwise `AWAITING_FIX` idles with nothing to dispatch. */
+    repairClosedUnmerged: { type: 'boolean' },
     // The advanced cursor, so the next wake can tell "already handled" from "new".
     latestActivityAt: {
       type: ['string', 'null'],
@@ -1507,7 +1522,7 @@ const [gate, linear, ...prStates] = await parallel([
           // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
           // forever because nothing else can ever set `fixMerged`.
           (row.assembledGoal && row.assembledGoal.fixPr
-            ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it.\n`
+            ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
             : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment or a current-head APPROVED review by a non-author human — a stale approval invalidated by a later push is NOT approval, and no bot review counts.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +

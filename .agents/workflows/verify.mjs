@@ -4061,6 +4061,96 @@ check('an answered decision on a completed issue is still applied', async () => 
   assert.deepEqual(workerLabels(cancelled.calls), [], 'cancelled work applies nothing')
 })
 
+check('a worker cannot add a slice as merged, or open one without handles', async () => {
+  // Two holes around the same guard. `merged` is unassertable for a NEW slice — no `prev` for the
+  // transition guard to compare against — and a fabricated one immediately satisfies `allMerged`, so the
+  // issue reaches DONE with a slice that never had a PR or passed the human merge gate. And `open` needed
+  // both handles for a CARRIED slice too: the one transition a worker owns (pending → open) could land a
+  // slice with no PR and no branch, which nothing can refresh, gate, or advance.
+  const table = (subPrs) =>
+    run('epic-wake.js', {
+      args: epicArgs({
+        issues: [
+          row('FIX-2', {
+            phase: 'PR_FEEDBACK',
+            subPrs: [
+              { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+              { id: 'b', status: 'pending', dependsOn: [] },
+            ],
+            assembledGoal: { passed: false },
+            multiPrPending: true,
+          }),
+        ],
+      }),
+      respond: epicResponder({
+        fresh: {
+          'FIX-2': {
+            phase: 'PR_FEEDBACK',
+            subPrStates: [
+              { id: 'a', merged: true, readyToMerge: false },
+              { id: 'b', merged: false, readyToMerge: false },
+            ],
+          },
+        },
+        worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs } },
+      }),
+    })
+
+  // A NEW slice claimed as merged.
+  const asMerged = await table([
+    { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+    { id: 'b', status: 'pending' },
+    { id: 'c', status: 'merged' },
+  ])
+  const c = asMerged.result.issues[0].subPrs.find((sp) => sp.id === 'c')
+  assert.equal(c.status, 'pending', 'only the scan observes a merge')
+  // ...while the merge the scan DID observe survives the worker echoing it. Refusing every reported
+  // `merged` would demote `a` and the next wake would rebuild a slice that has already landed.
+  assert.equal(asMerged.result.issues[0].subPrs.find((sp) => sp.id === 'a').status, 'merged')
+  assert.notEqual(asMerged.result.issues[0].phase, 'DONE', 'so a fabricated merge cannot complete the issue')
+
+  // A CARRIED pending slice promoted to open with no handles.
+  const promoted = await table([
+    { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+    { id: 'b', status: 'open' },
+  ])
+  assert.equal(promoted.result.issues[0].subPrs.find((sp) => sp.id === 'b').status, 'pending', 'held for the build')
+
+  // The same promotion WITH handles is the transition a worker owns.
+  const opened = await table([
+    { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+    { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+  ])
+  assert.equal(opened.result.issues[0].subPrs.find((sp) => sp.id === 'b').status, 'open')
+})
+
+check('a repair PR closed without merging parks the row too', async () => {
+  // Closed unmerged, `assembleState` stays at AWAITING_FIX, `multiPrHasWork` dispatches nothing and no
+  // merge gate appears — the row idles indefinitely. The other two handles got this signal a round earlier.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, fixIssue: 'FIX-9', fixPr: 55, owningSubPr: 'a' },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          repairClosedUnmerged: true,
+          subPrStates: [{ id: 'a', merged: true, readyToMerge: false }],
+        },
+      },
+    }),
+  })
+  assert.match(result.issues[0].blocker || '', /Closed without merging: repair PR #55/)
+  assert.ok(result.blockers.some((b) => b.issueId === 'FIX-2'))
+})
+
 check('a worker cannot add a slice that is open with no handles', async () => {
   // The status transition guard only runs when there IS a carried row, so a worker revising the PR plan
   // could insert `{ id, status: 'open' }` with no PR and no branch: no DAG action, no handle to refresh,
