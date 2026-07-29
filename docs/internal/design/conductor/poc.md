@@ -159,13 +159,15 @@ export default defineConductor({
     onExhausted: "converge",     // "converge" | "escalate"
   },
 
+  // Triggers = how a run STARTS. Not how work gets done. PR writes (open, comment,
+  // label, merge) are handler blocks calling the GitHub API — they are not a
+  // transport concern and don't appear here. See conductor.md §5, "What the Chat
+  // SDK is and isn't."
   triggers: {
-    // Three transports, three jobs — see conductor.md §10 open question 4, which is
-    // NOT settled. Current split: webhooks carry world events (deterministic,
-    // replayable); chat carries human conversation; PR *writes* (open, comment, label,
-    // merge) are handler blocks calling the API and are not a transport at all.
-    webhook: true,               // PR opened, CI concluded, review submitted, conflict
+    webhook: true,               // world events: PR opened, CI concluded, review, conflict
     cron: "*/10 * * * *",        // backstop + new-work discovery
+    // Chat SDK is chat-platform only (Slack/Teams/Google Chat/Discord). GitHub is
+    // not a supported platform and isn't a candidate — it isn't a chat platform.
     chat: { platform: "slack", threadPerIssue: true },  // human ↔ conductor
   },
 

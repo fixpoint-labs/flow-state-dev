@@ -351,6 +351,43 @@ isolation or they collide. The split:
 infrastructure every FSD app needs (tenet 4). It lives in conductor's dispatcher layer, and if a
 second consumer ever wants it, that is the moment to reconsider — not now.
 
+### What the Chat SDK is and isn't
+
+Checked against the package rather than assumed, because it's easy to over-read "transport" as
+"integration surface."
+
+**`@flow-state-dev/chat-sdk` is chat-platform specific, and it is an `InboundTransportAdapter`.**
+Concretely:
+
+- **Platforms are chat platforms** — Slack, Microsoft Teams, Google Chat, Discord, plus future
+  adapters. **GitHub is not among them and isn't a candidate**: it isn't a chat platform.
+- **Its event vocabulary is chat-shaped** — `mention`, `directMessage`, `reaction`,
+  `slashCommand`. There is no `pull_request.opened` in it, and adding one would be forcing a
+  non-chat event through a chat-shaped hole.
+- **Its job is inbound + reply.** Inbound events become action invocations; the flow's output
+  streams back to the originating thread. Its outbound surface is deliberately chat-shaped too
+  (`chatPost`, `chatTyping`, `chatReact`, cards, cross-thread sends).
+
+**So "could PR-open go through the chat integration?" is a category question, and the answer is
+no — twice over.** Not only is GitHub not a supported platform; **opening a PR is not something a
+transport does at all.** Two axes get conflated here, and separating them dissolves the question:
+
+| Axis | What it is | Examples |
+|---|---|---|
+| **Transport** | how a run *starts*, and where its output streams | Chat SDK, webhook, HTTP, MCP, scheduled, CLI |
+| **Outbound action** | what a block *does* while running | opening a PR, posting a comment, applying a label, updating Linear |
+
+Any block can call any API regardless of which transport started the run. So conductor opens PRs
+from **handler blocks**, and it would do so identically whether the run was triggered by a
+webhook, a cron tick, a CLI invocation, or a Slack message. There is no version of this where the
+PR write "goes through" a transport.
+
+**The Linear analogue, for completeness:** Linear isn't a chat platform either, so it doesn't
+belong to the Chat SDK. Its native equivalent is the **Linear Agent connector** (FIX-567,
+*Backlog / Low*) — exposing FSD flows as native Linear Agents. That's a separate inbound
+transport, not a chat one, and conductor doesn't need it: the Linear connector's outbound
+projection plus optional inbound status signals (§8/D1) covers what conductor uses Linear for.
+
 ### Gates are derived, not parked runs
 
 A spec-approval gate can stay open for days. Parking a durable run on `ctx.suspend()`
@@ -759,15 +796,12 @@ orchestration for non-development work.
 3. **Does guidance need lifecycle?** An objective can be achieved or abandoned; a lesson can
    be promoted into a tenet or retired. If that turns out to need real states, the guidance
    collection grows a status field — but only once a behavior depends on it, not upfront.
-4. **Which transport carries what — the chat/webhook split.** Three cases are clear:
-   **outbound writes** (open a PR, comment, label, merge) are handler blocks calling the API and
-   are not a transport question at all; **world events** (PR opened, CI concluded, review
-   submitted, merge conflict) are the webhook transport, which is deterministic and replayable;
-   **human conversation** (asking conductor about an issue, approving in a thread) is the Chat
-   SDK. The genuinely ambiguous case is a **human PR comment addressed to conductor** — a
-   conversation arriving over an event transport. Either treat every GitHub comment as an event
-   and let the driver classify it, or route human-authored comments into the chat surface. Not
-   settled; worth resolving before M3 wires either transport as primary.
+4. **A human PR comment addressed to conductor** — a *conversation* arriving over an *event*
+   transport ("go ahead", "why did you do X?"). Either treat every GitHub comment as an event and
+   let `decide` classify it, or route human-authored comments into the chat surface. Worth
+   resolving before M3 wires either transport as primary. **This is all that's left of the
+   chat/webhook question** — see §5, "What the Chat SDK is and isn't," for why the rest was a
+   category error rather than an open choice.
 5. **Public name** (D2).
 6. **Where the process files live** — *answered:* on the filesystem under `.conductor/`, because
    the vendor harness must read them too (§5, "Harness on a harness"). What remains open is only
