@@ -857,9 +857,14 @@ const PROBES: readonly (readonly [string, () => boolean])[] = [
                 output: { ok: false, error: "task_not_found", taskId: REFUSED_ID },
               }),
             ],
+            // Goals set for the same reason `codexScenario` carries them: this
+            // probe isolates C2, so the run must trip C2 and nothing else.
             tasks: [
-              [REFUSED_ID, { status: "pending" }],
-              [REAL_ID, { status: "completed", output: `Drafted it. ${fx.workerSalt}` }],
+              [REFUSED_ID, { status: "pending", goal: SETTLED_GOAL }],
+              [
+                REAL_ID,
+                { status: "completed", output: `Drafted it. ${fx.workerSalt}`, goal: OPEN_GOAL },
+              ],
             ],
           }),
         ).failures,
@@ -956,6 +961,23 @@ async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
       failures: [
         "setup invalid: the fixture supplies no request that needs doing, so the board has no " +
           "real work and 'the run still completed' would be vacuous",
+      ],
+      log: "",
+    };
+  }
+  // (E) can only tell the real work from the work that needed none if the two
+  // kinds of request are actually distinguishable by their text. Asserted here
+  // rather than argued in prose: a later intake where an answered request reads
+  // as an open one would silently hand (E) back its unbound behaviour, which is
+  // the exact defect this criterion was tightened to close.
+  const ambiguous = fx.settledRequests.filter((r) => servesOpenRequest(r.request));
+  if (ambiguous.length > 0) {
+    return {
+      failures: [
+        `setup invalid: already-answered request(s) ` +
+          `${JSON.stringify(ambiguous.map((r) => r.request))} also read as one of the open ` +
+          `requests ${JSON.stringify(fx.openRequests)}, so criterion (E) could no longer tell a ` +
+          `worker turn on the real work apart from one on work that needed none`,
       ],
       log: "",
     };
