@@ -4124,11 +4124,74 @@ check('a worker cannot add a slice as merged, or open one without handles', asyn
   assert.equal(opened.result.issues[0].subPrs.find((sp) => sp.id === 'b').status, 'open')
 })
 
+check('a reopened PR clears its closed-handle blocker', async () => {
+  // The blocker text advertises reopening on GitHub as a recovery needing no answer — and nothing cleared
+  // the blocker when the scan stopped reporting the handle closed, so the advertised path parked the row
+  // forever. The blocker is a scan observation, and it goes when the observation does.
+  const closed = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } } }),
+  })
+  assert.match(closed.result.issues[0].blocker || '', /Closed without merging/)
+  assert.equal(closed.result.issues[0].closedBlocker, true, 'tagged, so the next wake can tell it apart')
+
+  // Reopened: the scan no longer reports it closed, so the row resumes.
+  const reopened = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...closed.result.issues[0] }] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(reopened.result.issues[0].blocker, null, 'the observation is gone, so the blocker is too')
+  assert.deepEqual(workerLabels(reopened.calls), ['pr-feedback:FIX-2'], 'and the row is working again')
+
+  // A WORKER-raised blocker is not scan-derived and must survive — it is a real escalation.
+  const escalated = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blocker: 'which shape?' })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } } }),
+  })
+  assert.equal(escalated.result.issues[0].blocker, 'which shape?', 'untagged blockers are nobody else to clear')
+})
+
+check('late spec-PR feedback is routed instead of merged over', async () => {
+  // Comments can land on a retained or closed spec PR after the row has moved on. With no CI failure the
+  // row could take a merge gate over an unread comment; with one, the feedback worker consumed the shared
+  // cursor and cleared BOTH flags without being told to read it.
+  const { calls, result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8, newSpecReviewEvents: true, latestActivityAt: 'new', readyToMerge: true },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-2'], 'the comment is read')
+  const prompt = calls.find((c) => c.label === 'pr-feedback:FIX-2').prompt
+  assert.match(prompt, /on its SPEC PR #8/)
+  assert.match(prompt, /implementer notes/)
+  assert.match(prompt, /do not spend a spec review round/)
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'and not merged out from under it')
+
+  // Unreadable spec activity withholds the gate too, the same as unreadable impl activity.
+  const unreadable = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8, newSpecReviewEvents: true, latestActivityAt: null, readyToMerge: true },
+      },
+    }),
+  })
+  assert.deepEqual(unreadable.result.gates.filter((g) => g.kind === 'merge'), [])
+  assert.deepEqual(workerLabels(unreadable.calls), [], 'and nothing consumes what it cannot record')
+})
+
 check('an answered closed sub-PR is rebuilt, not resumed', async () => {
   // Its PR is closed, so the generic `resume` would point a worker at a dead handle and tell it not to
   // open a replacement — the one instruction that cannot satisfy the decision. Reset to pending with the
   // handles dropped, the next wake builds it, which is the recovery the blocker actually offers.
-  const { result } = await run('epic-wake.js', {
+  const { result, calls } = await run('epic-wake.js', {
     args: epicArgs({
       issues: [
         row('FIX-2', {
@@ -4166,10 +4229,18 @@ check('an answered closed sub-PR is rebuilt, not resumed', async () => {
   })
   const a = result.issues[0].subPrs.find((sp) => sp.id === 'a')
   assert.equal(a.status, 'pending', 'reset for the rebuild')
+
   assert.equal(result.issues[0].closedSlices, undefined, 'and the transient marker is not persisted')
   assert.equal(a.pr, null, 'and the dead handle is dropped')
   assert.equal(a.branch, null)
   assert.equal(a.stackedOn, null, 'a rebuild takes a fresh base, so the old stack marker goes too')
+
+  // Reset BEFORE dispatch, so the worker is handed the rebuild rather than a dead `open` handle it would
+  // classify as a resume and then be forbidden from replacing — a wasted wake.
+  const dispatch = calls.find((c) => (c.label || '').startsWith('implement:'))
+  assert.ok(dispatch, 'the row was dispatched')
+  assert.doesNotMatch(dispatch.prompt, /"pr":41/, 'the dead handle is not in the table the worker receives')
+  assert.match(dispatch.prompt, /"id":"a","status":"pending"/, 'it is handed the rebuild')
 
   // The sibling with a live PR is untouched.
   const b = result.issues[0].subPrs.find((sp) => sp.id === 'b')

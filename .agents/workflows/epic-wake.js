@@ -169,6 +169,12 @@ function pendingAction(row) {
       // waiting. A CI failure with no unreadable activity is untouched.
       if (row.ciFailed && !(row.newPrEvents && !cursorUsable(row))) return { action: 'pr-feedback', why: 'CI is failing' }
       if (row.newPrEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled PR activity' }
+      // Late SPEC-PR feedback belongs here too. Comments can land on a retained or closed spec PR after the
+      // row has moved on, and this branch reacted only to impl-PR activity and CI: with no CI failure the
+      // row could take a merge gate over an unread comment, and with one the feedback worker consumed the
+      // shared cursor and cleared BOTH flags without ever being told to read it. Same handling the
+      // approval batch gets — implementer notes, not a spec round.
+      if (row.newSpecReviewEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled spec-PR feedback to carry as implementer notes' }
       // A multi-PR row's DAG advances on merges and on its own deferred work, neither of which is
       // "PR activity". Without this the issue stalls the moment a merge unblocks its next slice.
       if (multiPrHasWork(row)) return { action: 'implement', why: 'multi-PR DAG has work: a ready slice, a deferred one, or the assembled goal' }
@@ -689,7 +695,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   // same "false evidence" rule that stops a deduped POC verdict from being fanned to an untested path.
   // `worker || {}` because this function is also reached for rows that ran no worker at all, which
   // return before the merge below — they get the carried table and no invalidation, which is correct.
-  const mergedSubPrs = (worker || {}).subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs)
+  const mergedSubPrs = (worker || {}).subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs, row.closedSlices)
   const sliceAdded = (mergedSubPrs || []).some((s) => !(row.subPrs || []).some((p) => p.id === s.id))
   const mergedGoal = invalidateGoalIfSliceAdded(
     (worker || {}).assembledGoal === undefined ? row.assembledGoal : { ...(row.assembledGoal || {}), ...worker.assembledGoal },
@@ -854,12 +860,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     subPrMergedThisWake: false,
     blockerResolution: null,
     blockerResolutionFor: null,
-    // An answered closed SUB-PR is REBUILT, not resumed. Its PR is closed, so `classify` dispatching the
-    // generic `resume` would point a worker at a dead handle while forbidding a replacement — the one
-    // instruction that cannot satisfy the decision. Reset to `pending` with the handles dropped, the next
-    // wake builds it, which is the recovery the blocker offers. Applied here, AFTER the worker merge, so a
-    // worker echoing the stale `open` row cannot undo it.
-    subPrs: rebuildClosedSlices(mergedSubPrs, row.closedSlices),
+    subPrs: mergedSubPrs,
     closedSlices: undefined,
     // Set EXPLICITLY when clearing: `...row` above already carries the old list, so merely omitting the
     // override left the stale records in place.
@@ -1131,14 +1132,31 @@ function foldMultiPrScan(row, fresh) {
     out.blocker =
       `Closed without merging: ${closedHandles.join(', ')}. Needs a human decision — either reopen the PR on GitHub (no answer needed here, the next scan picks it up), ` +
       `or answer to have the slice REBUILT from scratch. Dropping it means editing the issue's PR plan, which is not something this wake can do.`
+    // TAGGED, because this blocker is a scan OBSERVATION and not a durable escalation. Reopening the PR is
+    // the recovery the text above advertises, and nothing was clearing the blocker when the scan stopped
+    // reporting the handle closed — so the advertised path parked the row forever. The tag is what lets
+    // the next wake tell "the human reopened it" from "a worker escalated something".
+    out.closedBlocker = true
+  } else if (row.closedBlocker && !closedHandles.length) {
+    // The handle is open again (or merged): the observation that produced this blocker is gone, so the
+    // blocker goes with it. Same rule every other scan-derived field in this function follows.
+    out.blocker = null
+    out.blockerFor = null
+    out.closedBlocker = false
   }
 
-  // Which slices the scan saw CLOSED, recorded for `nextRow` to act on after it has merged the worker's
-  // table. Resetting them here instead does not survive: a worker echoing the slice as `open` is the one
-  // transition `mergeSubPrs` trusts (pending → open), so the echo undid the reset in the same wake.
+  // Which slices the scan saw CLOSED — and, once their answer is in hand, RESET HERE so the reset is in
+  // the table the dispatch serializes. Doing it after the worker returned meant the worker was handed the
+  // still-`open` slice, so the nested workflow classified it `resume` and was forbidden from opening a
+  // replacement: a wasted wake before the rebuild could even start. The marker rides along so
+  // `mergeSubPrs` can refuse a worker echoing the dead handle back to `open`, which is what undid the
+  // reset when it lived here before.
   if (binding) {
     const closed = (out.subPrs || []).filter((sp) => (binding.byId.get(sp.id) || {}).closedUnmerged).map((sp) => sp.id)
-    if (closed.length) out.closedSlices = closed
+    if (closed.length) {
+      out.closedSlices = closed
+      if ((row.blockerResolutions || []).length) out.subPrs = rebuildClosedSlices(out.subPrs, closed)
+    }
   }
 
   if (row.assembledGoal) {
@@ -1169,7 +1187,8 @@ function foldMultiPrScan(row, fresh) {
  * @param carried  the durable table (may be undefined for a first report)
  * @param reported the worker's rows
  */
-function mergeSubPrs(carried, reported) {
+function mergeSubPrs(carried, reported, deadHandleIds) {
+  const deadHandles = new Set(deadHandleIds || [])
   // Normalized to ONE spelling on the way in, so no later reader has to know there are two. Absence
   // stays absence — a slice with no declared edges gains no key it didn't have.
   const norm = (n) => {
@@ -1198,7 +1217,16 @@ function mergeSubPrs(carried, reported) {
       log(`${r.id}: added as merged, which only the refresh scan can observe — entering it as pending.`)
       merged.status = 'pending'
     }
-    if (prev && merged.status !== prev.status) {
+    // A slice whose PR the scan saw CLOSED takes NOTHING from the worker. The worker was handed the reset
+    // table; anything it echoes about that slice is the dead handle it read there, not an observation — and
+    // constraining only `status` was not enough, because the echoed `pr`/`branch` came straight back
+    // through the spread and restored the handle the reset had just dropped.
+    if (prev && deadHandles.has(r.id)) {
+      merged.status = prev.status
+      merged.pr = prev.pr
+      merged.branch = prev.branch
+      merged.stackedOn = prev.stackedOn
+    } else if (prev && merged.status !== prev.status) {
       const workerOwns = prev.status === 'pending' && merged.status === 'open'
       if (!workerOwns) merged.status = prev.status
     }
@@ -1898,6 +1926,9 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           (item.action === 'implement' && settlingClaimFor(item.row.id)
             ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close or delete the spec PR or its branch yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled.\n`
             : '') +
+          (item.action === 'pr-feedback' && item.row.newSpecReviewEvents
+            ? `Some of this row's unhandled activity is on its SPEC PR ${item.row.specPr ? `#${item.row.specPr}` : '(retained or closed)'}, not on the implementation PR. Read it and carry it as implementer notes — do not spend a spec review round on it and do not reopen the spec. The spec is approved; this is late commentary that must not be lost, and this pass is the only one that sees it.\n`
+            : '') +
           (item.action === 'implement' && item.row.newSpecReviewEvents
             ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes BEFORE you close the spec PR — do not spend a review round on it and do not fold it into the spec. This is the only pass that sees it: nothing looks at spec-PR review activity once this row reaches PR_FEEDBACK.\n`
             : '') +
@@ -2212,7 +2243,7 @@ const gates = [
     // here is the whole row's gates, which is deliberate: the same unreadable activity applies to the
     // sub-PR and repair handles, and the next scan with a timestamp releases all of them together.
     .filter((r) => !r.linearTerminal && !awaitingHumanDecision(r) && !(r.blockedBy && r.blockedBy.length))
-    .filter((r) => !(r.newPrEvents && !cursorUsable(r)))
+    .filter((r) => !((r.newPrEvents || r.newSpecReviewEvents) && !cursorUsable(r)))
     // A merge gate requires a POST-SPEC phase, independently of the handles. Refusing the worker's phase
     // jump was not enough on its own: the gate is derived from `readyToMerge && implPr`, and a worker
     // reporting those from a pre-approval row still produced a merge gate for a spec nobody approved.
