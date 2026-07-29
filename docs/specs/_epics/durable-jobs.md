@@ -326,7 +326,8 @@ Not "durable jobs work." Specifically:
    not relax it.** Stated separately for exactly that reason: folded into criterion 4 it would vanish
    with the progress surface. Today the accessor closes over the constructing request's emitter and
    returns `[]` across the boundary — silently, which is why this needs asserting rather than
-   assuming. See the `items()` hazard in §2 for the ownership recommendation.
+   assuming. **Owned by [FIX-991](https://linear.app/fixpoint-labs/issue/FIX-991)** (§3), which is
+   what makes this criterion satisfiable. See the `items()` hazard in §2 for the reasoning.
 5. The in-request `.work` / `.waitForWork` flavour still works, and any break to it is a
    declared, versioned break with a migration note — not a silent behavior change.
 6. **No new persistence backend, and no second *work registry*.** The board remains the single
@@ -885,7 +886,12 @@ silently dropping the task's messages, sources, and tool calls** — `items()` r
 erroring. Whichever issue owns this, its check must assert that a task's items are retrievable **from
 a different execution than the one that emitted them.**
 
-> **Recommendation — this needs its own issue, not M5. Recommended, not filed.**
+> **RESOLVED — this is now [FIX-991](https://linear.app/fixpoint-labs/issue/FIX-991)** (Bug, Medium,
+> parent FIX-939, blocked by FIX-982, relates to FIX-984). Filed after this document recommended it;
+> indexed in §3. Duplicate-checked against FIX-946, FIX-941, FIX-963 and FIX-481 — the last is
+> per-task item attribution for *rendering*, a single-request UI concern, not this. The reasoning that
+> put it in its own issue rather than M5 is kept below, because it is what keeps it alive if OQ-C
+> narrows M5.
 >
 > **Not M5's (FIX-984).** M5 adds a **new** persisted *progress* surface. This is an **existing**
 > `TaskHandle` contract returning wrong data across a boundary — a regression-shaped correctness
@@ -933,6 +939,34 @@ Fresh state is exactly what lets it through.
 
 This is worth more than the three places it was separately rediscovered, which is why those now
 point here.
+
+#### ⚠ Consequence — **M1 alone does not deliver the ownership guarantee**; it depends on M3
+
+The token above lives in the **detached worker's context**, which is **M3's** territory — while the
+epic's sequence treats **M1 (FIX-981) as having delivered ownership before M3 (FIX-982) starts.**
+Those cannot both be true. In the gap, an **attempt-1 model calls `completeTask`** after reclamation
+and attempt 2's claim, and the guardless tool call settles the new owner's row — **even though every
+direct collection settlement is fenced.**
+
+**The document's position: option (b) — M1's completion claim and its dependency edges stay
+explicitly pending on M3.** M1 ships the primitive and fences the collection surface; **it does not
+close the ownership guarantee until the tool surface is fenced too.** Chosen because it is the only
+one of the options that is a **statement of fact** rather than a design choice — and because the
+alternative widens M1 a fourth time on the same axis, which is the trap the write-path principle
+exists to stop.
+
+**A third option exists, and forcing the binary would have hidden it.** Not adopted here, because
+choosing it is mechanism design:
+
+| | Option | Cost |
+|---|---|---|
+| **(a)** | M1 carries the token through **every existing `taskTools` context** | Widens M1 a fourth time; touches every context that holds the capability |
+| **(b)** *(doc's position)* | **M1's claim stays pending on M3** | M1 delivers less than the sequence implies — and that must reach the gate |
+| **(c)** | **Fail closed at the substrate:** on a **durable** board, a settlement with no ownership token is **refused**, not applied | Doesn't need every context updated, and makes M1's guarantee real immediately — but **breaks `taskTools.completeTask` on durable boards until a token exists** (`record-result.ts` and `dispatch-and-execute.ts` already supply one; the model-facing path does not) |
+
+**(b) does not preclude (a) or (c).** If FIX-981's spec chooses either, M1's claim strengthens
+accordingly — the epic simply must not *assume* it will. **Whether to fail closed is FIX-981's
+design decision**, under 1a's open fork.
 
 ### Decision 2 — how board **lifetime** and collection **scope** compose (they are two axes, not one) **(rewritten — the previous version was a category error)**
 
@@ -1111,11 +1145,44 @@ are whole-map decisions; (2) the **flow definition**, for `flow.kind` and the is
 already-derived key as `sessionId` either **double-prefixes** it or **loses the tenant binding** —
 either way resolving a *different* session partition than the one holding the board.
 
-**The minimal travel set: `flowKind` + bare `sessionId` + `tenantId` + `userId` / `orgId`, as
-separate fields.** Conveniently this is exactly the shape `DispatchEnvelope` already carries
-(`engine/src/transports/dispatcher.ts:16-26`) — a shipped type FIX-982 can reuse rather than invent
-an envelope beside. Everything else the executor re-derives from the definitions, which is much
-smaller than "forward the isolation settings."
+**The identity fields are `flowKind` + bare `sessionId` + `tenantId` + `userId` / `orgId`, as
+separate fields** — the shape `DispatchEnvelope` already carries
+(`engine/src/transports/dispatcher.ts:16-26`), so FIX-982 reuses a shipped type rather than
+inventing an envelope beside it.
+
+##### But this document no longer asserts what "minimally" travels — the claim has been wrong twice
+
+> ### A detached task needs a **stable board/action execution coordinate** in addition to the identity tuple.
+>
+> **Determining that coordinate exhaustively is a required deliverable of FIX-982's spec**, done
+> against the code. This epic states the requirement, not the set.
+
+**Why the assertion is withdrawn rather than corrected again.** This is the **second** correction on
+this axis — round 7 replaced a derived session key with the bare `sessionId`/`tenantId` pair, and
+this one adds an entire missing dimension. **A claim wrong twice on the same axis should stop being
+asserted as minimal**; that is the enumeration trap from the write-path principle, one axis over.
+
+**What the identity tuple provably cannot do — verified:**
+
+| | Finding |
+|---|---|
+| **`DispatchEnvelope` needs more than identity** | `actionName: string` and `input: unknown` are **required, non-optional** fields (`dispatcher.ts:16-26`). Identity alone cannot construct a dispatch. |
+| **A task stores no execution coordinate** | The schema carries only `assignee: z.string().optional()` (`tasks/schema/task.ts:41`) — a bare key, no action, no board identity. |
+| **The registry is scoped to one board definition** | `workers: TaskWorker \| TaskWorkerRegistry` is an option on `taskBoard(...)` (`task-board/index.ts:288`), routed by `task.assignee`. So an assignee key is meaningful **only relative to that definition's registry.** |
+| **`flowKind` + identity cannot select the definition** | With **multiple boards, a nested board, or an event-addressed action**, nothing in the tuple discriminates which `taskBoard(...)` owns the task. |
+
+> **⚠ Hazard, stated plainly rather than as a footnote: re-running the originating action to reach
+> its drain may repeat that action's producer steps.** The shipped supervisor pipeline is documented
+> as **`captureAndPlan → board.drain → cascadeSkipDependents`** (`patterns/src/supervisor/index.ts:13`).
+> So an executor that "just re-enters the action" to reach the drain **re-runs the planner** —
+> re-seeding tasks and duplicating exactly the work the board exists to track. **Re-entering an
+> action is not a neutral way to reach a board**, and any M3 design that relies on it must say what
+> stops the producer half from running again.
+
+**The narrower alternative, offered because it sidesteps the whole problem:** restrict detached jobs
+to boards mounted on a **dedicated, re-enterable action** — one whose only job is to drain, with no
+producer steps to repeat. That trades generality for a coordinate that is trivially stable.
+**FIX-982 chooses; this epic records the option and the constraint.**
 
 **No new issue is needed for 3.a or 3.b.** Row 2 is the only unowned one (OQ-D).
 
@@ -1201,6 +1268,12 @@ each time this doc is updated. Empty columns mean not yet reached.
 |---|---|---|---|---|---|
 | **FIX-981** | M1 | Two executions over one durable board can both claim a task | Backlog | — | — |
 
+**⚠ FIX-981 does not close the ownership guarantee on its own.** It ships the primitive and fences
+the collection surface, but the `taskTools` settlement path is fenced only once the detached worker's
+context carries an ownership token — **M3's territory** (§2 → the `taskTools` hazard). So M1's
+*completion claim* is pending on FIX-982 even though M1 is not *blocked by* it. Recorded here because
+the index would otherwise read as if M1 alone delivered clause 1.
+
 **Filed, held as blocked** — parented under FIX-939, no lifecycle until their dependency lands:
 
 | Issue | M | Title (short) | Blocked by | Linear state | Spec PR | Impl PR |
@@ -1208,6 +1281,13 @@ each time this doc is updated. Empty columns mean not yet reached.
 | **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 | Backlog | — | — |
 | **FIX-983** | M4 | Tasks have no blocking/background disposition | FIX-982 | Backlog | — | — |
 | **FIX-984** | M5 | A detached task can't stream progress — `ctx.emit` doesn't survive | FIX-982 | Backlog | — | — |
+| **FIX-991** | — | `TaskHandle.items()` returns the wrong request's items once tasks execute out-of-request | FIX-982 | Backlog | — | — |
+
+**Six work items, not five.** FIX-991 is the `items()` issue this document recommended (Bug, Medium,
+parent FIX-939, blocked by FIX-982, relates to FIX-984). It carries **no milestone number** on
+purpose: it is not one of the description's M1–M5 but a correctness gap the decomposition exposed.
+**It is what makes completion criterion 4b satisfiable** — without an indexed owner, every indexed
+issue could complete while 4b still failed.
 
 **Tracked, not active** — parented here (or depended on) but running no lifecycle under this
 epic:
@@ -1234,6 +1314,18 @@ that need two mechanisms. **Evidence and pricing are in §2 Decision 1 — not r
 Also for the gate: the recommended path is **not** free — optional verbs preserve source but not
 behavioral compatibility, so it carries a **declared adapter migration** (durable boards refuse
 construction on an adapter lacking the verb).
+
+> **⚠ The "ship 1a alone" option is materially weaker than it looks, and the gate needs this.**
+> **1a cannot deliver its own guarantee until M3 lands** — the ownership token lives in the detached
+> worker's context, which is M3's territory, so a stale attempt-1 `completeTask` still settles the
+> new owner's row even with every collection write fenced (§2 → the `taskTools` hazard →
+> "M1 alone does not deliver the ownership guarantee"). The document's position is that **M1's
+> completion claim stays pending on M3**, with a fail-closed alternative available to FIX-981.
+>
+> **So "defer 1b, ship 1a" does not yield a self-contained deliverable** — it yields a primitive
+> plus a partial guarantee that closes only when M3 lands. **This interacts directly with the
+> leaner-epic default**, whose appeal rests partly on 1a being independently shippable. **Framed,
+> not resolved** — the gate decides whether that changes the answer.
 
 > **Sharpened option — not decided here.** Because 1b needs its own mechanism, a third path opens:
 > **is cap admission in FIX-981's scope at all, or its own milestone (or FIX-957's)?** Splitting
