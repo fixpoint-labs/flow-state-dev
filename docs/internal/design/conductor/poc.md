@@ -110,6 +110,11 @@ pnpm conductor tick          # fire a tick by hand (the CLI trigger)
 (§8/D1) — but "not optional" means auto-installed, not hand-declared. Linear is absent here and
 everything works.
 
+Note that "the GitHub connector" and "the Chat SDK's GitHub adapter" are different things doing
+different jobs: the connector reads PR state and performs structural writes (open, merge, label,
+submit a review); the chat adapter carries *conversation* on issue and PR threads. Conductor uses
+both (`conductor.md` §5).
+
 ---
 
 ## Level 2 — configure
@@ -159,16 +164,20 @@ export default defineConductor({
     onExhausted: "converge",     // "converge" | "escalate"
   },
 
-  // Triggers = how a run STARTS. Not how work gets done. PR writes (open, comment,
-  // label, merge) are handler blocks calling the GitHub API — they are not a
-  // transport concern and don't appear here. See conductor.md §5, "What the Chat
-  // SDK is and isn't."
+  // Two inbound transports with a clean division of labour — see conductor.md §5,
+  // "What the Chat SDK covers, and what it doesn't."
   triggers: {
-    webhook: true,               // world events: PR opened, CI concluded, review, conflict
+    // STATE events. The gates turn on these, and the GitHub chat adapter does not
+    // emit them: review submissions, merges, CI conclusions, conflicts.
+    webhook: true,
     cron: "*/10 * * * *",        // backstop + new-work discovery
-    // Chat SDK is chat-platform only (Slack/Teams/Google Chat/Discord). GitHub is
-    // not a supported platform and isn't a candidate — it isn't a chat platform.
-    chat: { platform: "slack", threadPerIssue: true },  // human ↔ conductor
+    // CONVERSATION. The Chat SDK has an official GitHub adapter that models issues
+    // and PRs as threads and comments as messages — so a human commenting on a PR
+    // and a human asking in Slack are the same primitive, one binding for both.
+    chat: {
+      platforms: ["slack", "github"],
+      threadPerIssue: true,
+    },
   },
 
   budget: { perIssueUsd: 15, perEpicUsd: 120 },

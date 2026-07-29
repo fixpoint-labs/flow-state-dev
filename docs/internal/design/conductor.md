@@ -351,110 +351,66 @@ isolation or they collide. The split:
 infrastructure every FSD app needs (tenet 4). It lives in conductor's dispatcher layer, and if a
 second consumer ever wants it, that is the moment to reconsider — not now.
 
-### What the Chat SDK is and isn't
+### What the Chat SDK covers, and what it doesn't
 
-Checked against the package rather than assumed, because it's easy to over-read "transport" as
-"integration surface."
+**Correction.** An earlier version of this section claimed GitHub isn't a Chat SDK platform. That
+was wrong — there is an [official GitHub adapter](https://chat-sdk.dev/adapters/official/github).
+The error came from reading FSD's `chat-sdk` README platform list (Slack, Teams, Google Chat,
+Discord, "plus future adapters") as exhaustive instead of checking the upstream catalog. What
+follows is checked against the adapter docs.
 
-**`@flow-state-dev/chat-sdk` is chat-platform specific, and it is an `InboundTransportAdapter`.**
-Concretely:
+**What the GitHub adapter models.** Issues and PRs as **threads**, comments as **messages**, with
+three thread types: PR-level (Conversation), review comments (Files Changed), and issue threads.
 
-- **Platforms are chat platforms** — Slack, Microsoft Teams, Google Chat, Discord, plus future
-  adapters. **GitHub is not among them and isn't a candidate**: it isn't a chat platform.
-- **Its event vocabulary is chat-shaped** — `mention`, `directMessage`, `reaction`,
-  `slashCommand`. There is no `pull_request.opened` in it, and adding one would be forcing a
-  non-chat event through a chat-shaped hole.
-- **Its job is inbound + reply.** Inbound events become action invocations; the flow's output
-  streams back to the originating thread. Its outbound surface is deliberately chat-shaped too
-  (`chatPost`, `chatTyping`, `chatReact`, cards, cross-thread sends).
-
-**So "could PR-open go through the chat integration?" is a category question, and the answer is
-no — twice over.** Not only is GitHub not a supported platform; **opening a PR is not something a
-transport does at all.** Two axes get conflated here, and separating them dissolves the question:
-
-| Axis | What it is | Examples |
+| | GitHub adapter | Covered by |
 |---|---|---|
-| **Transport** | how a run *starts*, and where its output streams | Chat SDK, webhook, HTTP, MCP, scheduled, CLI |
-| **Outbound action** | what a block *does* while running | opening a PR, posting a comment, applying a label, updating Linear |
+| **Issue comments, PR review comments (inbound)** | ✅ native — thread + message model | Chat SDK |
+| **Replying in a thread** | ✅ `thread.post()` | Chat SDK |
+| **PR opened / closed / merged** | ❌ not an adapter event | webhook transport |
+| **CI / check-run conclusions** | ❌ | webhook transport |
+| **Review *submissions* (an approval)** | ❌ — a review is not a comment | webhook transport |
+| **Merge conflict / base recovered** | ❌ | webhook transport |
+| **Opening a PR, merging, labels, submitting a review** | ❌ not adapter features | handler blocks over Octokit |
 
-Any block can call any API regardless of which transport started the run. So conductor opens PRs
-from **handler blocks**, and it would do so identically whether the run was triggered by a
-webhook, a cron tick, a CLI invocation, or a Slack message. There is no version of this where the
-PR write "goes through" a transport.
+**This resolves the open question rather than reopening it.** The case flagged as genuinely
+unsettled — *a human PR comment addressed to conductor, a conversation arriving over an event
+transport* — is exactly what the GitHub adapter is for. It's a message in a thread, and the SDK
+already models thread → session mapping and reply routing. So:
 
-**The Linear analogue, for completeness:** Linear isn't a chat platform either, so it doesn't
-belong to the Chat SDK. Its native equivalent is the **Linear Agent connector** (FIX-567,
-*Backlog / Low*) — exposing FSD flows as native Linear Agents. That's a separate inbound
-transport, not a chat one, and conductor doesn't need it: the Linear connector's outbound
-projection plus optional inbound status signals (§8/D1) covers what conductor uses Linear for.
+- **Human conversation on a PR or issue rides the Chat SDK's GitHub adapter.** No classification
+  heuristic in `decide`, no second code path. And it unifies the operator surface: a Slack thread
+  per issue and a GitHub PR thread per issue become **the same primitive**, served by one binding.
+- **The webhook transport is still required, and for the sharper reason** that the adapter carries
+  *conversation*, not *state*. Everything the approval gate actually turns on — a
+  `pull_request_review` submission, a merged PR, a CI conclusion — is a state event the adapter
+  does not emit. A conductor built on the adapter alone would be deaf to its own gates.
 
-### Gates are derived, not parked runs
+**One claim from before needs narrowing, not keeping.** "PR writes are handler blocks, never a
+transport" is right for opening, merging, labelling, and submitting reviews — none are adapter
+features. It is **wrong for comments**: when conductor replies in a thread the SDK owns, it should
+use `thread.post()`, because the SDK holds the thread context and the reply routing. The rule:
 
-A spec-approval gate can stay open for days. Parking a durable run on `ctx.suspend()`
-for days means holding a lease across restarts, and FIX-765 (*suspension inside
-detached durable execution — no path to surface the approval*, **Todo**) is exactly
-that path being missing. So:
+> **Reply in a thread the SDK owns → `thread.post()`. Write to something the SDK doesn't model →
+> a handler block over Octokit.**
 
-- **Long gates** (spec approval, PR approval, merge) are **re-derived** from world state on
-  every tick, and GitHub wins on the answer (§8/D1). Nothing is parked, no lease is held,
-  restart is free. Conductor still keeps its observed copy — that's what lets it notice a
-  gate that opened while it was down — but the copy never overrides a fresh read. This is
-  FIX-840's insight kept intact, and it means conductor does **not** block on FIX-765.
-- **Short in-phase human input** (a question mid-implementation) uses `ctx.suspend()`,
-  which FIX-811 made solid.
+The transport-vs-outbound-action distinction still holds — a transport is how a run starts and
+where output streams — but the Chat SDK's outbound surface is genuinely part of the transport, so
+comments belong to it and structural writes don't.
 
-Approval detection reuses the rules already written in `orchestration.md` → Gates:
-latest review per human reviewer, fresh against the current head, bots excluded.
+**Two things to verify before M3 commits to this** (unproven, not assumed):
 
-### The task board is the substrate — detach the task, not the coordinator
+1. **Vocabulary fit.** FSD's `chat.on` keys are `mention` / `directMessage` / `reaction` /
+   `slashCommand`, deliberately uniform across platforms. Whether a GitHub thread comment arrives
+   as `mention` — and whether "addressed to conductor" is distinguishable from any comment — needs
+   confirming against the adapter, not inferring from the vocabulary.
+2. **Session identity collision.** `sessionId` defaults to the canonical `thread.id`, so a GitHub
+   PR thread would mint its own session — while conductor already keys a session per *issue*. An
+   issue with a spec PR and an impl PR has three candidate thread ids. The `sessionId` override
+   exists for exactly this, but the mapping has to be decided deliberately rather than defaulted.
 
-Workers cannot be background work threads inside one run. Each issue needs its own
-durable work record and its own execution cycle. The **task board is exactly that
-primitive** — it is not a sibling of the queue conductor needs, it *is* the queue:
-
-- **Each issue is a durable task** on a **resource-backed** `TaskCollection`. Resource-backed
-  boards **survive across turns today**; that capability ships and works when the board is
-  built by hand in code, which is what conductor does. (The *delegation* board is
-  sequencer-backed and does **not** survive a checkpoint resume — FIX-958 corrected the docs
-  that claimed otherwise, and FIX-957 is what lets the delegation path ask for the durable
-  flavor. Conductor asks for it directly.)
-- **Gates are `awaiting_review`** — already in the task status enum, and cross-turn human
-  review works precisely *because* the board is resource-backed. Same for `blockTask` on an
-  external condition.
-- **Dependency gating, leases, CAS claim, attempts, per-task worker routing** all come with
-  the board. Conductor does not reimplement any of it.
-- **Observability** is `TaskHandle.items()` (a running task's emissions) plus `task-change`
-  events — that is the board view's data source, not something new.
-
-The governing principle comes from FIX-939 and it is the right one: **detach the TASK (the
-work), not the coordinator.** The board is the durable rendezvous. Conductor's `plan` stays
-request-bound, reads the board plus the world, and mutates tasks; each issue's phase work
-executes in its own cycle. That is also what gives per-issue isolation — one task, one
-execution, one stream — so "talking about A while it works on B" is settled structurally
-rather than by convention, and over the Chat SDK it maps to one thread per issue.
-
-### What the framework must gain (FIX-939)
-
-Conductor does not need a new primitive; it needs the board's execution model extended.
-This is the honest dependency list, and FIX-939 already names all of it:
-
-| Framework gap | Why conductor needs it | Gates |
-|---|---|---|
-| **Out-of-request executor** — a claimer that runs a leased task outside the originating request. The drain runs in-request today (via `.forEach`). | A phase — authoring a spec, implementing a PR — runs for many minutes to an hour. It cannot be bound to the tick's request. | M2, and unattended M1 |
-| **Progress decoupled from `ctx.emit`** — session-scoped resource + task-level observability | A detached task can't stream through the originating request's emitter. FIX-939 calls this its hardest change and a breaking one for existing sidechain callers. | a live board view |
-| **Lease heartbeat + automated reclaim sweeper** — `reclaim()` exists but no drain or dispatcher ever calls it | A crashed worker's issue has to return to the queue without a human intervening. | M2's crash-recovery criterion |
-| **Blocking / background flag on tasks** — no such distinction today | Conductor needs both "await this" and "let it run." | M2 |
-| **Task events as dispatch triggers**, not just a UI notification channel (FIX-825) | The board should *drive* work, not only display it. Note `reactTo` already covers *resource* changes (FIX-751/FIX-843, Done) — the gap is specifically **task** events. | M3 |
-
-**Sequencing — this does not block the fast path.** M0 and M1 ship **before** FIX-939: one
-issue, a per-tick drain, phase work in-request. That is what the POC did and it worked
-locally; M1's restart survival comes from gates being derived and the ledger living in
-conductor's own resources, re-seeding the board each tick. What FIX-939 genuinely gates is
-**M2 onward** — many issues, long-running detached phases, unattended operation.
-
-FIX-939 is currently **Todo / Low priority** and says explicitly "NOT to be specced or built
-yet." Conductor is the forcing function that changes that: it should be specced against
-these five gaps, in this order, and its priority raised to match.
+**The Linear analogue** is unchanged: Linear is not a chat platform, so its native path is the
+Linear Agent connector (FIX-567, *Backlog / Low*), which conductor doesn't need — outbound
+projection plus optional inbound status signals covers what it uses Linear for.
 
 ## 6. How it fits together
 
@@ -796,12 +752,13 @@ orchestration for non-development work.
 3. **Does guidance need lifecycle?** An objective can be achieved or abandoned; a lesson can
    be promoted into a tenet or retired. If that turns out to need real states, the guidance
    collection grows a status field — but only once a behavior depends on it, not upfront.
-4. **A human PR comment addressed to conductor** — a *conversation* arriving over an *event*
-   transport ("go ahead", "why did you do X?"). Either treat every GitHub comment as an event and
-   let `decide` classify it, or route human-authored comments into the chat surface. Worth
-   resolving before M3 wires either transport as primary. **This is all that's left of the
-   chat/webhook question** — see §5, "What the Chat SDK is and isn't," for why the rest was a
-   category error rather than an open choice.
+4. **Chat/webhook split** — *answered* (§5, "What the Chat SDK covers, and what it doesn't"): the
+   Chat SDK's **official GitHub adapter** carries issue and PR comments as thread messages, so
+   human conversation on a PR rides it natively; the webhook transport carries the *state* events
+   the adapter doesn't emit — review submissions, merges, CI conclusions, conflicts — which is
+   what the gates actually turn on. What remains is narrower and empirical: whether a GitHub thread
+   comment arrives as `mention`, and how a PR thread's `sessionId` reconciles with conductor's
+   per-issue session (an issue with two PRs has three candidate thread ids). Verify before M3.
 5. **Public name** (D2).
 6. **Where the process files live** — *answered:* on the filesystem under `.conductor/`, because
    the vendor harness must read them too (§5, "Harness on a harness"). What remains open is only
