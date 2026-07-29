@@ -69,7 +69,7 @@ The claim is narrower and it holds:
 | | Agent harness today | Conductor |
 |---|---|---|
 | Phase transitions | prompt-interpreted, probabilistic | code, deterministic and unit-tested |
-| Coordinator state | a transcript that compacts | derived from the world + an append-only ledger |
+| Coordinator state | a transcript that compacts | a reconciled copy of the world + an append-only workflow ledger |
 | Visibility | scroll the output | a queryable board, rendered |
 | Concurrency | one context holding N issues | one durable task per issue, one operator view |
 | Vendor | one | a dispatcher seam; Claude, Codex, or FSD-native |
@@ -86,8 +86,10 @@ way it does, and one of them contains a hard-won lesson we must not pay for agai
 - **FIX-832** (In Development, POC burned) — *drive a single Linear issue through its
   lifecycle.* A durable FSD flow plus a long-lived CLI babysitter. It worked, then
   broke: it carried **two state machines** — the Linear board and the flow's own
-  suspend/checkpoint progression — encoding the same progression. They drifted. A
-  cold restart between gate 1 and gate 2 looped forever. No code landed in the repo.
+  suspend/checkpoint progression — encoding the same progression **with no rule for who
+  wins and no path to reconcile.** They drifted. A cold restart between gate 1 and gate 2
+  looped forever. No code landed in the repo. Note the lesson precisely: the defect was
+  the missing authority rule, not the existence of a second copy (§7/D1).
 - **FIX-840** (Backlog) — *the reshape that diagnosed it.* Conclusion: delete the
   second ledger, make the board the single state machine, express the orchestrator as
   a pure `state → action` map firing discrete idempotent actions, triggered from
@@ -112,8 +114,12 @@ function:
 
 - **Phase** — where the work is (`SPEC`, `IMPLEMENTATION`, …).
 - **Gate** — what it is waiting on (`awaiting_spec_approval`, `awaiting_merge`).
-- **Signal** — what the world just reported (`review_submitted`, `ci_concluded`,
-  `merge_conflict`, `base_recovered`, `merged`, `approved`).
+- **Signal** — what the world reported (`review_submitted`, `ci_concluded`,
+  `merge_conflict`, `base_recovered`, `merged`, `approved`), **or what reconciliation
+  inferred was missed.** A signal is not necessarily live: comparing conductor's observed
+  copy against fresh world state yields **synthesized** signals for events that never
+  arrived — a `pr_opened` conductor never saw, backdated so the driver can process it
+  before the comment that revealed the gap (§7/D1).
 
 **Change 2 — one review cycle, parameterized.** `drafted → in_review → revised →
 in_review → approved` is the *same* cycle for a spec, an implementation, an epic-spec,
@@ -173,9 +179,11 @@ for days means holding a lease across restarts, and FIX-765 (*suspension inside
 detached durable execution — no path to surface the approval*, **Todo**) is exactly
 that path being missing. So:
 
-- **Long gates** (spec approval, PR approval, merge) are **derived** from world state on
-  every tick. Nothing is parked, no lease is held, restart is free. This is FIX-840's
-  insight, kept intact — and it means conductor does **not** block on FIX-765.
+- **Long gates** (spec approval, PR approval, merge) are **re-derived** from world state on
+  every tick, and GitHub wins on the answer (§7/D1). Nothing is parked, no lease is held,
+  restart is free. Conductor still keeps its observed copy — that's what lets it notice a
+  gate that opened while it was down — but the copy never overrides a fresh read. This is
+  FIX-840's insight kept intact, and it means conductor does **not** block on FIX-765.
 - **Short in-phase human input** (a question mid-implementation) uses `ctx.suspend()`,
   which FIX-811 made solid.
 
@@ -271,46 +279,62 @@ Two things that look like new layers and are not:
 
 ## 7. The three framing decisions (two called, one open)
 
-### D1 — Who owns state? **(DECIDED: split by fact owner)**
+### D1 — Who owns state? **(DECIDED: authority per fact class; conductor keeps copies)**
 
-The sketch says conductor's own resource system is the truth, with hooks to sync
-outward. FIX-840 says the board is the only state machine and conductor stores nothing.
-These read as opposites; they are not, and the reconciliation is the load-bearing
-design call.
+The sketch says conductor's own resource system is the truth, with hooks to sync outward.
+FIX-840 says the board is the only state machine and conductor stores nothing. Both
+framings miss the same distinction, and getting it right is the load-bearing call.
 
-FIX-840's bug was never "conductor has state." It was **two authorities for one fact.**
-So split by who owns the fact:
+**"Source of truth" means who wins when there is disagreement.** It does *not* mean who is
+allowed to hold data. Conductor is a **highly evented system** — it reacts to things
+happening in the world — and an evented system needs its own last-known copy to diff an
+incoming event against. So conductor keeps copies where they help, and the question is only
+ever *who wins on a conflict.*
 
-- **Derived, never stored** — anything the world owns. **GitHub owns every PR fact**: open
-  / closed / merged, the feedback on it, review states, CI conclusion, head SHA,
-  mergeability. Linear owns its own issue status. Re-read every tick; mirroring any of
-  these into a field we later trust *is* the FIX-832 bug.
-- **Stored, because nothing else owns it** — the orchestration ledger: review-round
-  counts, gate records with provenance, dispatch history and cost, lessons, objective
-  links. Linear has nowhere to put `spec_review_rounds: 2`.
+**Authority per fact class:**
 
-Phase is then derived wherever the world has it and stored only where it doesn't, so
-there is exactly one state machine with a mostly-derived state, plus an append-only
-ledger. It resolves the conflict, and it is what makes conductor work with **no Linear at
-all**.
+| Fact class | Who wins | Conductor's copy |
+|---|---|---|
+| **PR facts** — open / closed / merged, feedback, review states, CI conclusion, head SHA, mergeability | **GitHub**, always | kept, as an observed projection with provenance (what we saw, when, from where) |
+| **Workflow progress** — which phases completed, review-round counts, gate records, dispatch history and cost, lessons | **Conductor** | it *is* the record; nothing else has anywhere to put `spec_review_rounds: 2` |
+| **Linear issue status** | Linear, for its own field | kept if the connector is configured; see below |
+
+### The local copy is an asset, not a liability
+
+This is the part the earlier framing got backwards. A copy that can disagree with the world
+is exactly what makes **missed events recoverable**:
+
+> A PR comment arrives for a PR conductor never saw opened — because the `PR opened`
+> notification was dropped, or arrived while the process was down. Conductor's copy is out
+> of sync, and *that is how it knows*: it can backdate and fire the missed `PR opened`
+> transition, then process the comment in the right order.
+
+Without a local copy there is nothing to diff against, so a dropped event is simply lost.
+With one, **a divergence is a signal** — including a signal about a signal that never
+arrived. Reconciliation is therefore a first-class path, not an error handler: each tick
+compares observed against fresh, and any gap becomes one or more **synthesized signals**
+the driver plans against in order.
+
+**So what was FIX-832's bug, precisely?** Not "conductor kept a copy." It was a copy that
+was *authoritative* — a second state machine whose phase claim competed with the board's,
+with **no rule for who wins and no path to reconcile.** A copy with a designated winner and
+a reconcile path is a cache. A copy without one is a second authority. That is the whole
+distinction, and it is the lesson worth carrying.
 
 **Decided, with three consequences that are part of the decision:**
 
-1. **Each fact has exactly one owner, and for PRs that owner is GitHub.** Whether a PR is
-   open, closed, or merged, what feedback it carries, what its reviews say, what CI
-   concluded, whether it conflicts — **GitHub controls all of it**, and conductor reads it
-   every tick rather than keeping a copy. Conductor is not the source of truth for PRs and
-   neither is Linear. Conductor owns only the ledger nothing else owns, and **Linear is a
-   projection of that ledger** — the same relationship `orchestration.md` already draws
-   between the coordinator's status table and the epic-spec's running index. No connector
-   is a prerequisite: conductor runs standalone on its own store.
-2. **Connector sync is outbound by default, inbound by configuration.** A human moving a
-   Linear status can be accepted as an inbound **signal** (§4) that the driver plans
-   against — useful, and explicitly opt-in per connector. It is a signal, never a write
-   to the ledger, so accepting it cannot re-create the two-authority bug.
-3. **The connector layer is an interface, not two integrations.** GitHub and Linear are
-   its first two implementations. Adding a third is a v2 question — define the seam now,
-   don't build past it (tenet 3).
+1. **Copies are kept and reconciled, never trusted over their owner.** Every observed fact
+   carries provenance so a conflict is resolvable rather than ambiguous, and GitHub wins on
+   every PR fact. Conductor wins on what workflow has and has not completed — that is its
+   own domain and nothing else models it.
+2. **GitHub is essential to the workflow; Linear is configuration.** GitHub is where the
+   artifacts live and where the gates are read, so it is a substrate dependency. Linear is
+   not, and the config decides: whether it is connected at all, whether progress is mirrored
+   outbound, and whether inbound status changes are reacted to as signals. Conductor runs
+   fully with no Linear connected.
+3. **The connector layer is an interface, not two integrations.** GitHub and Linear are its
+   first two implementations. A third is a v2 question — define the seam now, don't build
+   past it (tenet 3).
 
 ### D2 — The name **(OPEN — internal name is `conductor`; public name deferred)**
 
@@ -337,11 +361,17 @@ Sequenced so the first milestone is the one that changes the daily experience.
 
 ### M0 — the model, as a pure module (days)
 
-`plan(entity, world) → Action[]`, the entity schemas, the phase/gate/signal types. No
-I/O, no agents, no connectors.
-**Verify:** unit tests covering the full phase × gate × signal matrix, including the
-paths §2 says the current harness drops (restart mid-gate, duplicate signal,
-out-of-order signal, backwards phase move).
+`plan(entity, world) → Action[]`, the entity schemas, the phase/gate/signal types, **and
+the reconciler** — a pure `reconcile(observed, fresh) → Signal[]` that turns a divergence
+between conductor's copy and the world into ordered signals, including backdated ones for
+events that never arrived (§7/D1). No I/O, no agents, no connectors.
+**Verify:** unit tests covering the full phase × gate × signal matrix, including the paths
+§2 says the current harness drops (restart mid-gate, duplicate signal, out-of-order signal,
+backwards phase move) **and the reconciliation paths D1 exists for**: a comment observed on
+a PR whose `pr_opened` was never seen (synthesizes the missed transition, ordered ahead of
+the comment); observed state ahead of fresh (stale read — no signal, no regression); and a
+conflict where the copy disagrees with GitHub on a PR fact (GitHub wins, divergence is
+recorded).
 
 ### M1 — one issue, end to end, driven by code (the payoff)
 
