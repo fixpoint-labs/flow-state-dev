@@ -243,6 +243,12 @@ Workflow tool:
   }
 ```
 
+**A non-empty `deferred` means run another step now, not end the turn.** Those slices were pushed back
+by the cap, not by anything external: a `pending` slice has no PR, so it cannot generate the activity
+that would wake this session. With four independent slices and a cap of three, the fourth would sit
+until the heartbeat. Re-enter while `deferred` is non-empty — the same rule `epic-lifecycle` follows for
+its own cap-deferred rows. The cap bounds concurrency, not scheduling.
+
 **Persist `assembledGoal` verbatim, whole.** It is a state machine's state, not a handful of
 flags: `passed` · `evidence` · `failure` · `owningSubPr` · `fixIssue` · `fixReady` · `fixPr` ·
 `fixBlocker` · `fixMerged`. Dropping any one of them silently changes which state the next wake

@@ -4124,6 +4124,91 @@ check('a worker cannot add a slice as merged, or open one without handles', asyn
   assert.equal(opened.result.issues[0].subPrs.find((sp) => sp.id === 'b').status, 'open')
 })
 
+check('a closed-handle blocker can actually be answered', async () => {
+  // A closed PR stays closed, so every later scan reports it again. Recreating the blocker on the next
+  // refresh parked the row before the human's reopen/reimplement/drop answer could reach a worker — the
+  // blocker was unresolvable by construction, which is worse than the idling it replaced.
+  const { calls, result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blockerResolutions: [{ for: null, answer: 'reopen it — the close was accidental' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      // Still closed, because it is still closed.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-2'], 'the answer reaches a worker')
+  assert.match(calls.find((c) => c.label === 'apply-decision:FIX-2').prompt, /reopen it/)
+  assert.equal(result.issues[0].blocker, null, 'and it is not immediately re-blocked')
+
+  // With no answer queued it still parks — the guard is about the pending answer, not about the report.
+  const unanswered = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } } }),
+  })
+  assert.match(unanswered.result.issues[0].blocker || '', /Closed without merging/)
+})
+
+check('an answer survives a resume that failed on an already-open slice', async () => {
+  // The epic refresh clears an answered slice's nested blocker before dispatch, so a resume coming back
+  // `failed` leaves the slice `open` with nothing to preserve — each layer expected the other to hold the
+  // blocker, and the answer was dropped with the PR unchanged and merge-eligible.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerFor: 'a',
+          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      // The resume failed: the slice comes back open, unchanged, with no blocker of its own.
+      worker: {
+        'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] },
+      },
+    }),
+  })
+  assert.deepEqual(
+    result.issues[0].blockerResolutions,
+    [{ for: 'a', answer: 'key on tenant + scope' }],
+    'retained until the slice merges, because nothing here proves it was applied',
+  )
+
+  // A MERGED slice proves it: the decision went in with the code.
+  const landed = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerFor: 'a',
+          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }] },
+      },
+    }),
+  })
+  assert.deepEqual(landed.result.issues[0].blockerResolutions, [], 'spent once the slice merged')
+})
+
 check('a repair PR closed without merging parks the row too', async () => {
   // Closed unmerged, `assembleState` stays at AWAITING_FIX, `multiPrHasWork` dispatches nothing and no
   // merge gate appears — the row idles indefinitely. The other two handles got this signal a round earlier.
@@ -4845,7 +4930,9 @@ check('an answered escalation dispatches the worker that applies it', async () =
           multiPrPending: false,
           blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
           blockerFor: 'a',
-          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }],
+          // PENDING, so the build that opens the PR is an observable delivery — an already-open slice
+          // coming back open proves nothing (that is the failed-resume case) and keeps its answer.
+          subPrs: [{ id: 'a', status: 'pending', blocker: 'which shape?' }],
         }),
       ],
     }),

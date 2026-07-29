@@ -608,6 +608,7 @@ function unspentResolutions(row, subPrs, goal, worker) {
   // The nested workflow never reported, so nothing was delivered at all.
   if (worker.subPrs === undefined) return list
   const carried = new Map((row.subPrs || []).map((sp) => [sp.id, sp.blocker || null]))
+  const carriedStatus = new Map((row.subPrs || []).map((sp) => [sp.id, sp.status]))
   const byId = new Map((subPrs || []).map((sp) => [sp.id, sp]))
   const carriedGoal = row.assembledGoal || {}
   const nextGoal = goal || {}
@@ -618,7 +619,18 @@ function unspentResolutions(row, subPrs, goal, worker) {
       // A DIFFERENT blocker on the same slice means the answer was applied and proved insufficient, so
       // the question is new. Re-handing the old answer would present a spent decision as fresh.
       if (sp.blocker && sp.blocker !== carried.get(sp.id)) return false
-      return sp.status === 'pending' || !!sp.blocker
+      // Spent only where something OBSERVABLE proves delivery. `pending || blocker` was not enough: the
+      // epic refresh clears an answered slice's nested blocker before dispatch, so a resume that comes
+      // back `failed` leaves the slice `open` with nothing left to preserve — each layer expected the
+      // other to hold the blocker, and the answer was dropped with the PR unchanged and merge-eligible.
+      //
+      // Two things prove it: the slice MERGED (the decision went in with the code), or it moved
+      // `pending → open` this wake (the build that opened the PR is the delivery). A slice that was
+      // ALREADY open and is still open proves nothing — that is exactly the failed resume — so the answer
+      // stays for the wake that lands it.
+      if (sp.status === 'merged') return false
+      if (carriedStatus.get(sp.id) === 'pending' && sp.status === 'open') return false
+      return true
     }
     // No slice target: this may be a REPAIR answer, which by design has no row in `subPrs`. It cannot be
     // recognised by `fixBlocker` — the resolution pass clears that field before this runs, and that
@@ -1070,7 +1082,12 @@ function foldMultiPrScan(row, fresh) {
       ? (out.subPrs || []).filter((sp) => (binding.byId.get(sp.id) || {}).closedUnmerged).map((sp) => `sub-PR ${sp.id}${sp.pr ? ` (#${sp.pr})` : ''}`)
       : []),
   ]
-  if (closedHandles.length && !out.blocker && !row.blocker) {
+  // ...and NOT while the answer to it is already queued. A closed PR stays closed, so every later scan
+  // reports it again: the coordinator would clear the blocker, record the human's reopen/reimplement/drop
+  // decision, and this branch would recreate the blocker on the very next refresh — parking the row before
+  // the answer could reach any worker. The blocker I added for this was therefore unresolvable by
+  // construction, which is worse than the idling it replaced.
+  if (closedHandles.length && !out.blocker && !row.blocker && !(row.blockerResolutions || []).length) {
     out.blocker = `Closed without merging: ${closedHandles.join(', ')}. Needs a human decision — reopen, re-implement, or drop.`
   }
 
