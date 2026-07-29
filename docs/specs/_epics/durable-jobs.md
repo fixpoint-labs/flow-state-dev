@@ -22,13 +22,18 @@ already have.**
 Three clauses, each falsifiable, and the order matters because each one is worthless without
 the one before it:
 
-1. **Exclusive ownership per attempt, and at-least-once execution.** At any moment a task has
-   at most one *current* owner; a **stale** owner's settlement is rejected rather than applied;
-   and concurrent executions are bounded at a creation cap. Today none of the three holds across
-   executions — measured, not inferred (the premise correction below).
+1. **Exclusive ownership per attempt, and at-least-once execution.** Two parts are
+   **unconditional**: at any moment a task has at most one *current* owner — **only one execution
+   may successfully claim it** — and a **stale** owner's settlement is rejected rather than
+   applied. Today neither holds across executions — measured, not inferred (the premise correction
+   below).
 
-   **The cap half has two possible guarantees, and no candidate mechanism yet satisfies the
-   stronger one** — **OQ-A**'s to settle, not this clause's to assume:
+   **A third part, cap admission, is *conditional* and may not be delivered at all.** It is
+   **not** promised by this clause. What the epic delivers depends on **OQ-A** (which guarantee)
+   and **OQ-D** (whether cap work lives here at all — it may be FIX-957's). **If OQ-A selects
+   narrowed-but-unbounded overshoot, or OQ-D defers the work, this epic makes no cap guarantee** —
+   see the table below and Decision 1 → 1b. Stated this way so the objective cannot be approved
+   against a promise its selected implementation will not keep.
 
    | Guarantee | Meaning | Requires |
    |---|---|---|
@@ -41,8 +46,8 @@ the one before it:
    overshoot scales with the number of concurrent admitters. Calling that "bounded" would be a
    guarantee this epic cannot honour — see Decision 1 → 1b, and the cross-issue finding there.
 
-   Whichever the gate picks, the *other two* parts of this clause (one current owner, stale
-   settlement rejected) are unconditional.
+   Whichever the gate picks — including "no cap guarantee at all" — the two parts named
+   unconditional above (one current owner, stale settlement rejected) still hold.
 2. **Reports what it is doing.** A task running outside its originating request has a
    persisted progress surface. Not `ctx.emit`, which dies with the request.
 3. **Steered.** A coordinator that is alive can read the board and act on it; a coordinator
@@ -204,10 +209,30 @@ subsumes another.
 
 Not "durable jobs work." Specifically:
 
-1. **Ownership (unconditional).** Two concurrent executions over one resource-backed board
-   cannot both settle one task, and a **stale** owner's settlement is rejected rather than
-   applied — demonstrated by checks that **fail** against today's code (the §5 numbers are the
-   falsification baseline).
+1. **Ownership (unconditional). The check asserts *claim* exclusivity first — settlement second.**
+   Under contention over one resource-backed board:
+
+   1. **Only one `claim()` succeeds — equivalently, only one worker starts.** This is the primary
+      assertion, because **the claim is the exclusivity boundary.**
+   2. **And** a **stale** owner's settlement is rejected rather than applied.
+
+   Both demonstrated by checks that **fail** against today's code (§5 is the falsification
+   baseline).
+
+   > **Why assertion 1 is stated first and cannot be dropped.** An earlier version of this
+   > criterion asserted only that two executions *"cannot both settle."* **That is passable by an
+   > implementation that violates the guarantee.** Convert settlement to a conditional write but
+   > leave `claim` on the unsafe path and: both claims return, **two workers launch and run to
+   > completion**, and only one settlement lands. The criterion passes. Exclusive ownership is
+   > broken, and the cost lands in full — **duplicate model execution, minutes to an hour of spend
+   > per duplicated Conductor phase**, which is the specific failure this epic exists to prevent.
+   >
+   > **How it slipped, recorded because FIX-981 should not inherit the habit:** the criterion was
+   > written when clause 1 still said "cannot both settle." Round 3 strengthened the clause to
+   > per-attempt ownership and added the stale-settlement half to the criterion, but never
+   > revisited the first half to make *claim* exclusivity assertable. **A criterion that cannot
+   > fail when its guarantee breaks is the failure mode our own grounding names** — a test that
+   > can't fail when the logic changes is wrong.
 1b. **Cap admission (conditional on OQ-A — state which was chosen):**
 
    | If OQ-A chooses | The distinct-ID goal check asserts |
@@ -620,6 +645,18 @@ task-cap work are related but not the same target.
 would **not** catch this by itself, because both writes succeed; the failure shows only in the final
 row count.
 
+> **FIX-981 inherits *one* contention harness with three assertions, not two half-specified
+> checks.** Same two-executions-over-one-board setup (Decision 4), asserting:
+>
+> | # | Assertion | Guards |
+> |---|---|---|
+> | 1 | **only one `claim()` succeeds / only one worker starts** — same-ID contention | 1a · the exclusivity boundary |
+> | 2 | a **stale** owner's settlement is **rejected** | 1a · post-reclaim ownership |
+> | 3 | the distinct-ID cap behaviour **OQ-A actually selected** — never asserting a maximum the chosen mechanism does not enforce | 1b (skipped entirely if 1b is deferred) |
+>
+> **Assertion 1 is the one a passing-but-broken implementation escapes without** — see §1's
+> completion criterion for why settlement-only assertions do not detect the violation.
+
 ##### The compatibility path — decided, because "non-breaking" was wrong
 
 An existing third-party adapter without the verb backs a durable board that worked before the
@@ -714,8 +751,9 @@ The docs say it outright — a section titled *"Backings set the lifetime"*
 (`apps/docs/guides/board-lifecycle.md:122-137`) and then **"The scope lives on the collection, not
 the board"** (`:172-173`). `scope` cannot express `block` vs `request` at all; those are the
 `sequencer` vs `request` **backings**. And **no `lifetime` field exists** anywhere in
-`packages/orchestration/src` — verified. **A durable board is backing `resource` + a scoped
-collection, and both halves already ship.**
+`packages/orchestration/src` — verified. **The durable board this epic secures is backing
+`resource` + a scoped collection, and both halves already ship** — but see 2.b: `resource` is
+**not** the only backing that can be durable.
 
 **FIX-957 also *rejected* the shape the old decision assumed.** Its spec
 ([#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954)) Decision 1 is one library
@@ -732,8 +770,9 @@ the durable rungs come from `scope`, which exists. Binding on every issue here:
 1. **Do not add a scope vocabulary.** `session`/`user`/`org` already exist on
    `defineTaskCollection`. An issue that finds itself defining a second way to say "which
    durable partition" has found a **conflict to surface**, not a design choice — bring it here.
-2. **A durable board is expressed as backing `resource` + a scoped collection.** That is the
-   shape FIX-982 and FIX-981 both build on.
+2. **The durable board this epic secures is backing `resource` + a scoped collection.** That is
+   the shape FIX-982 and FIX-981 build on — **and per 2.b it is not the only durable shape, so do
+   not write "`resource` is the durable backing" anywhere.**
 3. **If a new `lifetime` option appears, it replaces or wraps `backing`** — and whoever lands it
    says what happens to the four existing backing values.
 4. **Watch `FIX-960`, not FIX-957, for the collision on this axis.** FIX-960 renames the
@@ -744,6 +783,35 @@ the durable rungs come from `scope`, which exists. Binding on every issue here:
 5. **Still no dependency in either direction.** Nothing here waits on FIX-957 and FIX-957 does
    not wait on this — but for a different reason than the old text gave: not "widening is
    additive", rather **the durable rungs are already shipped, so there is nothing to wait for.**
+
+#### 2.b — `factory`-backed boards are a **second** durable path, and detached jobs do not cover it
+
+**`resource` is not the only backing that can be durable, and this document had been implying it
+was.** A caller using the documented `(ctx) => TaskCollectionRef` factory path to resolve an
+externally-managed durable collection gets **`backing: "factory"`**, not `"resource"`
+(`task-board/index.ts:911-923`). Binding FIX-981 and FIX-982 to the `resource` discriminant alone
+therefore leaves a **supported durable shape outside claim-safety and detached-executor semantics.**
+
+**Why it cannot simply be included: `factory` is opaque by design.** The type's own doc calls it
+**"caller-opaque"** and the capability *"defer[s] entirely to the user's factory"*
+(`index.ts:436-441`, `:468-474`). The framework does not introspect what a factory returns, so it
+**cannot verify** that a factory-supplied ref is durable, is backed by a store with a conditional
+write, or is even the same collection across executions.
+
+**The decision — detached-job guarantees attach only to a board whose durability the framework can
+verify:**
+
+1. **`factory`-backed boards are out of scope for detached jobs by default.** Not "broken" — the
+   framework cannot make a guarantee about a ref it cannot inspect, and pretending otherwise would
+   be exactly the "reports a guarantee it does not have" defect this set exists to remove.
+2. **Supporting them requires the ref to *advertise* the conditional-write capability** rather than
+   the framework inferring it — the same capability-advertisement shape `DeltaStoreOps` already
+   uses. **Whether to offer that, and how a ref advertises, is FIX-981's design decision**, tied to
+   1a's open fork (a ref that cannot advertise cannot be fenced).
+3. **Binding on FIX-981 and FIX-982: state explicitly which backings your guarantee covers.**
+   Neither may silently treat `backing: "resource"` as a proxy for "durable", and a durable board
+   arriving via `factory` must get a **named** outcome — supported-because-it-advertised, or
+   refused at construction the way an unsupporting adapter is (Decision 1's compatibility path).
 
 ### Decision 3 — allocating the scope that moved in from FIX-957
 
@@ -872,7 +940,7 @@ Nobody would write that down; it would simply appear.
 |---|---|
 | **Event-driven** (`task-change` → dispatch) | The eventual shape, but it *is* FIX-825 / Conductor M3, which §1 excludes. Not available to M3 without pulling that in. |
 | **Schedule tick** | **Not the cheap option it first appeared.** **FSD supplies no scheduler loop** — *"The host owns the actual scheduler… The framework does not run a cron daemon, retry queue, or scheduler loop"* (`docs/architecture/scheduled-actions.md:15-19`). So this needs an **externally configured scheduler** *plus* a **new mapping from each beat to pending board work**. |
-| **Native queue delivery** (`@flow-state-dev/bullmq`) | Shipped, and it **fires jobs itself with zero polling** — `createBullmqScheduleIndex.claimDue` returns `[]` precisely because BullMQ delivers natively (`packages/bullmq/src/schedule-index.ts:5,23,59`). Not free either: it brings the BullMQ package and its Redis infrastructure as a dependency. **M3 transport only** — the board stays the work registry. |
+| **Native queue delivery** (`@flow-state-dev/bullmq`) | **Not the cheap zero-polling path it appeared — corrected.** BullMQ does fire jobs natively (`claimDue` returns `[]` for that reason, `bullmq/src/schedule-index.ts:5,23`), but **pending tasks do not wake merely because BullMQ is installed**: repeatable jobs exist only after an explicit **schedule-row `upsert`** (`:39-40`), and a flow job is enqueued only when a caller invokes **`dispatch`** (`bullmq/src/dispatcher.ts:36`). **Neither observes task-board admission or reclamation.** So this needs a **board-to-queue producer that does not exist yet**, and it carries a **dual-write hazard**: a crash between the store write and the enqueue strands the task with nothing to wake it — so it also needs a recovery mechanism (outbox or reconciliation pass). Plus the package and its Redis infrastructure. **M3 transport only** — the board stays the work registry. |
 | **Liveness-triggered** | Hook onto FIX-978's reclaim/sweeper pass. Couples M3's wake to FIX-978's cadence — acceptable, but it makes the dependency tighter than "consume the outcome". |
 | **Bounded poll** | Legitimate *if declared*: state the interval, the scan cost, and how it behaves with an idle board. Not legitimate as a silent default. |
 
