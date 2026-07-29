@@ -422,9 +422,14 @@ function normalizeResolutions(row) {
  * @param reported  the count the worker reported, or undefined if it reported none
  */
 function chargeRound(finished, isRound, reported) {
-  if (!finished) return 0
-  if (isRound && reported === undefined) return 1
-  return reported || 0
+  // `isRound` is decided by the ACTION, and it is the whole authority on whether this dispatch can
+  // spend budget — so a report from any other action is ignored rather than added. `WORKER_SCHEMA`
+  // permits both count fields on every action (one schema, all actions), and no prompt asks for them
+  // outside a review or feedback dispatch; falling through to the reported value let a DAG build or a
+  // decision application charge rounds nobody dispatched, which walks an issue to a cap that
+  // orchestration.md says only feedback handling can reach.
+  if (!finished || !isRound) return 0
+  return reported === undefined ? 1 : reported || 0
 }
 
 /**

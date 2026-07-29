@@ -7312,6 +7312,24 @@ check('the PR-feedback counter charges rounds the way the cap needs', async () =
     'a worker that escalated did not finish the round — same rule as the cursor it also holds',
   )
   assert.equal(ran(done(), 'implement').prFeedbackRounds, 4, 'only a feedback dispatch is charged by default')
+
+  // ...and a count REPORTED by a non-feedback action is ignored, not added. One WORKER_SCHEMA serves
+  // every action, so both count fields are permitted on all of them while no prompt asks for them
+  // outside a review or feedback dispatch. Taking the reported value let a DAG build or a decision
+  // application charge rounds nobody dispatched, walking an issue to a cap that only feedback handling
+  // is supposed to be able to reach. The action decides; the report only sizes a round it authorized.
+  for (const action of ['implement', 'apply-verdict', 'apply-decision', 'spec']) {
+    assert.equal(
+      ran(done({ prFeedbackRoundsSpent: 3 }), action).prFeedbackRounds,
+      4,
+      `a ${action} dispatch charged the feedback cap`,
+    )
+    assert.equal(
+      ran(done({ specReviewRoundsSpent: 3 }), action).specReviewRounds,
+      row.specReviewRounds || 0,
+      `a ${action} dispatch charged the spec budget`,
+    )
+  }
   assert.equal(ran(undefined).prFeedbackRounds, 4, 'a dead worker mutates nothing beyond its cursor — the count is carried, not charged')
 
   // The reset is the coordinator's, so nothing in the script may ever lower the count.
