@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-28
 **Status:** DEFINITION — project framing and initial approach. **D1 (state ownership) and
-D3 (workforce) are decided** (§10); D2 (the public name) stays open until launch.
+D3 (workforce) are decided** (§10). D2: **`conductor` is the working name**; the public one is
+an open question for launch, not a blocker.
 **Type:** New package (`@flow-state-dev/conductor`) + surfaces (CLI, devtool module).
 Composes `core`, `orchestration`, `claude-code`, `engine`, `scheduled`; deliberately
 *not* a framework primitive change.
@@ -22,8 +23,8 @@ file-by-file shape sketch (four adoption levels, what ships vs. what you write).
 
 Conductor is a system that runs a software development process. You give it an
 objective and a set of work items; it drives each one from problem through spec,
-review, implementation, PR feedback, and retrospective — dispatching the actual coding
-work to a coding agent (Claude Code, Codex, or an FSD-native agent), pausing only where
+review, implementation, and PR feedback, then retrospects on the set — dispatching the
+actual coding work to a coding agent (Claude Code, Codex, or an FSD-native agent), pausing only where
 a human decision is genuinely required, and showing you where everything stands.
 
 It is built *on* FSD, and it ships *with* FSD. Any project that uses the framework can
@@ -131,9 +132,9 @@ where an **Artifact** happens to be hosted.
 
 ```
 Epic ──< Issue ──< Artifact ──< Review (round n, one per reviewer)
-            │          └──< hostedAt: PR | Linear doc | file
-            ├──< Dispatch (one agent run: vendor, skill, cost, outcome)
-            └──< Retrospective (conductor's own artifact, one per completed issue/epic)
+  │         │          └──< hostedAt: PR | Linear doc | file
+  │         └──< Dispatch (one agent run: vendor, skill, cost, outcome)
+  └──< Retrospective (conductor's own artifact, one per completed EPIC)
 
 Guidance  ·  the repo's own philosophy / tenets / objectives documents
    └─ read as context; NOT conductor's data, and not relocated (below)
@@ -147,7 +148,7 @@ Guidance  ·  the repo's own philosophy / tenets / objectives documents
 | **Artifact** | a reviewable output of a phase | unifies spec review and code review |
 | **Review** | one round against an artifact, by one reviewer | carries the round count the budget needs |
 | **Dispatch** | one agent run | observability and cost; "what actually ran" |
-| **Retrospective** | what a completed issue or epic taught, as a document | conductor's own work product; nothing else records it |
+| **Retrospective** | what a completed *epic* taught, as a document | conductor's own work product; nothing else records it |
 
 ### Guidance belongs to the repo, not to conductor
 
@@ -172,11 +173,15 @@ the paths; that is the whole integration. Three things fall out, all simplificat
   One mechanism instead of two.
 
 **Retrospectives are the exception, and they are conductor's.** A retrospective is a substantial
-per-issue document about how the work went — an internal artifact, not repo guidance. It lives
-under `.conductor/retrospectives/`. The loop runs *outward*: the retrospective phase writes the
-artifact, and `distill-lessons` reads across them and proposes the smallest edit to the repo's
-own guidance as an ordinary PR. Conductor produces the raw material; a human accepts what
-becomes doctrine.
+document about how a body of work went — an internal artifact, not repo guidance. It lives under
+`.conductor/retrospectives/`. The loop runs *outward*: the epic's WRAP phase writes the artifact,
+and `distill-lessons` reads across them and proposes the smallest edit to the repo's own guidance
+as an ordinary PR. Conductor produces the raw material; a human accepts what becomes doctrine.
+
+**Per epic, not per issue.** One issue rarely teaches a transferable lesson, and retrospecting
+each one would produce a pile of thin documents nobody reads and a distillation pass with nothing
+to generalize from. A set of related issues under a shared objective is the smallest unit that
+has actually *tried* something. So an issue ends at its goal check, and the epic retrospects.
 
 Objectives ground priority by being *read* during prioritization, not by being joined to issues.
 **If we ever need real graph queries** — every issue serving objective X, or which objectives
@@ -189,7 +194,8 @@ Spike | Prototype | Refactor` selects the discipline (`tdd` vs `diagnose`) and t
 review lenses. `issue-implement` already routes this way. Six types, one state machine.
 
 **Phases differ by entity.** Issue: `DISCOVERY? → SPEC → IMPLEMENTATION →
-RETROSPECTIVE`. Epic: `FRAMING → CROSS_SPEC_REVIEW → (issues run) → WRAP`. Stating this
+(ends at the goal check). Epic: `FRAMING → CROSS_SPEC_REVIEW → (issues run) → WRAP`, and WRAP is
+where the retrospective is written. Stating this
 explicitly avoids forcing one phase list onto both. `DISCOVERY` carries a question mark —
 see §12.
 
@@ -232,11 +238,11 @@ glance where a model is involved and where one isn't.
 | `phase_entered` | conductor's own transition | structural | all |
 | `dispatch_completed` | a phase execution settled | structural | all |
 | `dispatch_failed` | attempts exhausted | structural | all |
-| `goal_check_passed` / `_failed` | the `goals/` harness | structural | IMPLEMENTATION → RETROSPECTIVE |
+| `goal_check_passed` / `_failed` | the `goals/` harness | structural | IMPLEMENTATION |
 | `guidance_changed` | a guidance file's hash differs from last observed | structural | any |
 | `external_status_changed` | Linear webhook, opt-in | structural | any |
 | `objective_approved` | approval on the epic-spec artifact | structural | EPIC · FRAMING |
-| `issue_settled` | a child issue reached RETROSPECTIVE | structural | EPIC · WRAP |
+| `issue_settled` | a child issue passed its goal check | structural | EPIC · WRAP |
 
 Three things to read off it. Comments from bots and from conductor itself **never become
 signals at all** — they are dropped on author, structurally. Reconciliation adds no new signal
@@ -257,7 +263,7 @@ review. A model's reading of prose must not be able to advance a gate.
 | IMPLEMENTATION | `awaiting_merge` | `merge_conflict` | `resolveConflict` |
 | IMPLEMENTATION | `awaiting_merge` | `base_recovered` | `rebaseOnBase` |
 | IMPLEMENTATION | `awaiting_merge` | `merged` | `runGoalCheck` |
-| RETROSPECTIVE | — | `goal_check_passed` | `retrospect` |
+| EPIC · WRAP | `awaiting_issues` | `issue_settled` (last one) | `retrospect` · `polishDocs` |
 | *any* | *any* | `guidance_changed` | the configured reaction (e.g. `reExamineOpenPrs`) |
 
 Actions are discrete and idempotent, so a duplicate or out-of-order signal is harmless. Read
@@ -549,11 +555,10 @@ flowchart TD
   IROUND --> MGATE{{"HUMAN GATE<br/>merge (never automatic)"}}
   MGATE -->|not ready| IROUND
   MGATE -->|merged| GOAL["goal check on the real path<br/>(multi-PR: after the last one)"]
-  GOAL --> RETRO["ISSUE · RETROSPECTIVE<br/>writes .conductor/retrospectives/"]
-  RETRO --> GD[("repo guidance<br/>via distill-lessons PR")]
+  GOAL --> WRAP["EPIC · WRAP — once every issue settles<br/>writes the retrospective + docs polish"]
+  WRAP --> GD[("repo guidance<br/>via distill-lessons PR")]
   GD -.->|"guidance_changed"| REEX["configured reaction:<br/>re-examine open PRs"]
   REEX -.-> IROUND
-  GOAL --> WRAP["EPIC · WRAP<br/>lessons + docs polish"]
 
   classDef gate fill:#ffe9c7,stroke:#c98a1b
   class EGATE,SGATE,MGATE gate
@@ -817,7 +822,7 @@ a chat thread, and a classified question gets answered without advancing any gat
 Linear sync as a projection (outbound blocks, plus optional inbound status signals — no new
 layer, per §9). **Guidance wiring** (§4): conductor reads the repo's own philosophy, tenets, and
 objectives as decision context, and the tick's hash diff turns an edit into `guidance_changed`.
-The RETROSPECTIVE phase writes its artifact under `.conductor/retrospectives/`, and
+The epic's WRAP phase writes its retrospective under `.conductor/retrospectives/`, and
 `distill-lessons` reads across them to propose the smallest edit to *your* guidance as an
 ordinary PR — conductor produces the raw material, a human accepts what becomes doctrine.
 
@@ -861,8 +866,9 @@ work.
 1. **`DISCOVERY` as a phase.** A problem arriving already articulated needs no discovery
    phase; a vague one does. Is that a phase, or is it a *type* of issue (`Spike`) that
    happens to produce an issue set? Leaning towards the latter — it needs no new machinery.
-2. **Retrospective altitude.** Per issue, per epic, or both? `distill-lessons` currently
-   runs per-PR *and* periodically. Two altitudes may be right; two implementations are not.
+2. **Does anything still want a per-issue retrospective?** Settled as per-epic (§4). The open
+   remainder is narrower: `distill-lessons` also runs per-PR today, and whether that survives as a
+   second altitude or folds into the epic pass is worth deciding before M4 builds either.
 3. **Does guidance need lifecycle?** An objective can be achieved or abandoned. Since guidance
    is now the repo's own documents, the answer is probably "that's the repo's problem, and a
    heading" — but if a conductor behavior comes to depend on objective status, it needs somewhere

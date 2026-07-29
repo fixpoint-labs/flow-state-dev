@@ -28,12 +28,12 @@ my-project/
         definition.ts          #   level 4: only present once you eject it
       implement/instructions.md
       review/instructions.md
-      retrospective/instructions.md
+      wrap/instructions.md         #   epic-level: writes the retrospective + docs polish
       security/                #   a phase you added — same shape, no special case
         instructions.md
         definition.ts
-    retrospectives/            # conductor's OWN artifacts — one per completed issue/epic
-      FIX-967.md
+    retrospectives/            # conductor's OWN artifacts — one per completed EPIC
+      FIX-966.md
     blocks/                    # level 4: your own blocks
       security-review.ts
 ```
@@ -41,7 +41,7 @@ my-project/
 **Note what is *not* here: a guidance directory.** Philosophy, tenets, and objectives are
 app-level facts that matter whether or not conductor is running, and the vendor harness already
 reads them. Conductor points at their paths and owns none of it (`conductor.md` §4). The only
-documents it owns are **retrospectives** — its own work product — and `distill-lessons` proposes
+documents it owns are **retrospectives** (one per epic) — its own work product — and `distill-lessons` proposes
 edits to your guidance from them as an ordinary PR.
 
 **There is no separate "process" directory, because the process *is* the phases.** One
@@ -102,7 +102,7 @@ Explicit values stay available for the cases inference genuinely can't cover: a 
 PRs should target upstream, several remotes, or one conductor driving a repo it isn't inside.
 
 That gets the whole default process from `conductor.md` §8: epic framing → objective gate →
-per-issue spec → spec gate → implementation → PR feedback → merge gate → retrospective. Three
+per-issue spec → spec gate → implementation → PR feedback → merge gate → epic wrap. Three
 human gates, no auto-merge, the phase instructions from the shipped template.
 
 ```bash
@@ -180,7 +180,7 @@ export default defineConductor({
       claudeCodeDispatcher({ model: "claude-haiku-4-5-20251001", lens: "docs" }),
     ],
 
-    retrospective: claudeCodeDispatcher({ model: "claude-haiku-4-5-20251001" }),
+    wrap: claudeCodeDispatcher({ model: "claude-haiku-4-5-20251001" }),
   },
 
   concurrency: { issues: 4, perEpic: 3 },
@@ -404,7 +404,7 @@ export const securityPhase = definePhase({
 
   // Slot it into the default process without redefining the process.
   after: "IMPLEMENTATION",
-  before: "RETROSPECTIVE",
+  before: null,                 // last issue phase — nothing follows IMPLEMENTATION
 
   // Skip it where it doesn't apply — same routing key the built-ins use.
   appliesWhen: ({ issue }) => issue.type !== "Spike",
@@ -484,13 +484,13 @@ export default defineConductor({
 | | Ships built in | You write |
 |---|---|---|
 | **Driver** | `decide(entity, signal, world)`, `reconcile(observed, fresh)` | nothing — it's closed; you extend it with `definePhase` |
-| **Phases** | `SPEC`, `IMPLEMENTATION`, `RETROSPECTIVE`; epic `FRAMING`, `CROSS_SPEC_REVIEW`, `WRAP` | extra phases, slotted with `after` / `before` |
+| **Phases** | issue `SPEC`, `IMPLEMENTATION`; epic `FRAMING`, `CROSS_SPEC_REVIEW`, `WRAP` | extra phases, slotted with `after` / `before` |
 | **Phases** (files) | `instructions.md` scaffolded per built-in phase; `definition.ts` imported until ejected | your edits to the instructions (level 3), ejected definitions, whole new phase folders (level 4) |
 | **Blocks** | `conductorContext`, `reExamineOpenPrs`, GitHub PR ops, gate readers | your own, as ordinary FSD blocks |
 | **Dispatchers** | `claudeCodeDispatcher`, `codexDispatcher` | a dispatcher for any other agent — one interface |
 | **Connectors** | `githubConnector` (required), `linearConnector` (optional) | another connector if you need one — a v2 question |
 | **Signals** | the world set + `guidance_changed` + synthesized ones (`conductor.md` §5) | your own, emitted by your blocks |
-| **Documents** | retrospectives, written by the RETROSPECTIVE phase | philosophy / tenets / objectives — **already yours**, conductor only reads them |
+| **Documents** | retrospectives, one per epic, written by `WRAP` | philosophy / tenets / objectives — **already yours**, conductor only reads them |
 | **Surfaces** | CLI board, devtool module, chat threads | nothing |
 
 ---
