@@ -596,6 +596,21 @@ check('a present Linear row clears a resolved blocker', async () => {
   assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
 })
 
+check("the issue scout is told a human's CHANGES_REQUESTED beats another's approval", async () => {
+  // The epic gate prompt has carried this rule from the start; the issue scout asked only for a current-head
+  // approved review, so a spec could read approved while a human's latest state was CHANGES_REQUESTED — or
+  // while the SAME human had approved and then requested changes.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  const scout = calls.find((c) => c.label === 'refresh:FIX-2')
+  assert.ok(scout)
+  assert.match(scout.prompt, /Collapse each human's reviews to their latest state first/)
+  assert.match(scout.prompt, /ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved/)
+  assert.match(scout.prompt, /even when the same person approved earlier/)
+})
+
 check('GATE: implementation waits for the cross-spec coherence pass', async () => {
   // An epic's specs are authored in isolation, so each can be locally excellent while the SET claims the
   // same surface twice. `epic-lifecycle` runs one coherence pass before any of it is built — and moving the
@@ -651,19 +666,23 @@ check('GATE: implementation waits for the cross-spec coherence pass', async () =
   })
   assert.deepEqual(workerLabels(lone.calls), ['implement:FIX-2'])
 
-  // Nor is an epic whose specs are not all approved yet — aligning a good spec to an unvalidated one
-  // spreads the flaw, which is why the pass waits for the whole set.
+  // An epic whose specs are not ALL approved yet still holds the one that is. This sub-case formerly
+  // asserted the opposite — that the first approved spec implements while a sibling is still being written
+  // — which is the defect the gate exists to prevent: by the time the set could be checked, the first spec
+  // had been built for wakes. The pass is not ASKABLE yet (aligning to an unvalidated spec spreads the
+  // flaw), and "not askable" is not "go ahead".
   const partial = await run('epic-wake.js', {
     args: epicArgs({
       issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-3', { phase: 'NEEDS_SPEC' })],
     }),
     respond: epicResponder({
       fresh: { 'FIX-2': twoApproved['FIX-2'], 'FIX-3': { phase: 'NEEDS_SPEC' } },
-      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 }, 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 } },
+      worker: { 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 } },
     }),
   })
   assert.equal(partial.result.crossSpecGate, undefined, 'the set is not ready to be checked yet')
-  assert.ok(workerLabels(partial.calls).includes('implement:FIX-2'))
+  assert.ok(!workerLabels(partial.calls).includes('implement:FIX-2'), 'and the approved spec waits with it')
+  assert.ok(workerLabels(partial.calls).includes('spec:FIX-3'), 'while the unwritten spec keeps moving')
 })
 
 check('a failed build goes behind its siblings, not in front of them', async () => {
@@ -3099,14 +3118,31 @@ check('an in-session approval is refused when a live scan returns no head', asyn
   assert.deepEqual(workerLabels(calls), [], 'a live scan with no head confirms nothing')
   assert.equal(result.issues[0].specApproved, false)
 
-  // A DEAD scout still falls back to the carried head, so an approval isn't lost to an outage.
+  // A DEAD scout confirms nothing either, so it releases nothing — this half formerly asserted the
+  // opposite, falling back to the carried head so an approval was not "lost to an outage". That reasoning
+  // conflated losing the approval with declining to ACT on it: the approval is still persisted, and a push
+  // no scan has seen is precisely what the carried head cannot rule out. The epic gate was corrected the
+  // same way; this is its issue-level twin.
   const dead = await run('epic-wake.js', {
     args: epicArgs({
       issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1', headSha: 'head1' })],
     }),
     respond: epicResponder({ nulls: ['refresh:FIX-2'], worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } } }),
   })
-  assert.deepEqual(workerLabels(dead.calls), ['implement:FIX-2'])
+  assert.deepEqual(workerLabels(dead.calls), [], 'held for this wake')
+  assert.equal(dead.result.issues[0].approvedInSession, 'head1', 'and the approval itself is kept')
+
+  // The next wake with a usable scan releases it, so the hold is per-wake and not a lost approval.
+  const recovered = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1', headSha: 'head1' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, specPr: 7, headSha: 'head1' } },
+      worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(recovered.calls), ['implement:FIX-2'])
 })
 
 check('a multi-PR scan that omits per-handle state consumes nothing', async () => {
@@ -6679,6 +6715,9 @@ check('INVARIANT: every field the epic wake parks on is documented as one the co
   // and `blockerResolution` is the same shape: without it the human's answer to an escalation reaches
   // nobody and the replacement worker re-escalates the identical fork forever.
   const readsButCannotWrite = {
+    // The newest instance of this exact class, and the one that would have stalled every epic: the script
+    // holds all implementation until `crossSpecCleared`, and nothing in the script can ever set it.
+    crossSpecCleared: /Pass `crossSpecCleared` in the args, and persist it/,
     blockerResolutions: /\*\*append\*\* `\{ for, answer \}` to \*\*`blockerResolutions`\*\*/,
     approvedInSession: /record the \*\*head SHA they approved\*\* in this field/,
     // The epic-altitude twin, and the one that proves the invariant needed to exist: `openQuestions`

@@ -209,8 +209,17 @@ even if more are queued. State the chosen N and the cap to the user.
 
    It returns
    `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, heldForFold,
-   unsettled, verdicts, settleRequests, dispatched, deferred, converged }` — persist `epic` and
-   `issues` verbatim.
+   unsettled, verdicts, settleRequests, dispatched, deferred, converged, crossSpecGate, moreWorkNow,
+   mayWrap }` — persist `epic` and `issues` verbatim.
+
+   **Pass `crossSpecCleared` in the args, and persist it.** It is a durable coordinator field, `false`
+   until the cross-spec coherence pass has completed. While it is false, a multi-issue epic holds every
+   approved spec short of implementation — so a coordinator that never sends it holds the epic forever.
+   Set it to `true` once you have dispatched `cross-spec-review` and routed its alignment edits, and set it
+   back to `false` whenever the spec SET changes afterwards: a newly discovered child, or a spec reopened
+   for revision, means the set that was checked is not the set you have. `crossSpecGate` in the return is
+   the wake telling you the set is now open-and-approved and the pass is ready to be surfaced — the user
+   approves running it, so it is a question, not an instruction.
 
    **`moreWorkNow: true` means run another wake now, not end the turn.** The wake computes it, so the list
    of sources cannot drift out of this skill: fold-held rows, cap-deferred rows, queued settlement claims,

@@ -1291,8 +1291,11 @@ function approvedInSessionFor(row, fresh, refreshedLive) {
   // then to the carried head rather than to "nothing contradicts it", because a previous wake may
   // already have observed and persisted a push past the approved SHA.
   if (refreshedLive) return !!(fresh && fresh.headSha) && fresh.headSha === at
-  const head = row.headSha || null
-  return !head || head === at
+  // A DEAD scout confirms nothing, so it releases nothing. Comparing against the carried head accepted an
+  // approval for H1 while a push had already created H2 that no scan had seen — the issue-level twin of the
+  // epic-gate race, and the same fix: hold for this wake, and the next usable scan releases it. The
+  // approval itself is untouched; only its power to release work this wake is.
+  return false
 }
 
 function bindByPosition(results, ids, onMismatch) {
@@ -1659,7 +1662,7 @@ const [gate, linear, ...prStates] = await parallel([
           (row.assembledGoal && row.assembledGoal.fixPr
             ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
             : '') +
-          `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment or a current-head APPROVED review by a non-author human — a stale approval invalidated by a later push is NOT approval, and no bot review counts.\n` +
+          `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
           `Also report whether CI is failing.`,
         { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
@@ -1928,14 +1931,23 @@ if (routeConvergedEpicFeedback) {
 // and never carried, so the incoming table cannot answer "is every spec approved". It is OWED once every
 // planned spec is open and individually approved and the pass has not cleared; the coordinator is the only
 // thing that can clear it, since running the pass needs the user's approval first.
-crossSpecHold =
-  !args.crossSpecCleared &&
-  refreshed.length > 1 &&
-  refreshed.every((r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal) &&
-  refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))
-if (crossSpecHold) {
+// Two DIFFERENT conditions, which the first version of this conflated — and the conflation released the
+// very first approved spec while its siblings were still being written.
+//
+// The HOLD is the whole rule: `epic-lifecycle` runs one coherence pass "before any of them is built", so a
+// multi-issue epic parks EVERY approved row from the first approval until the pass clears. Keying the hold
+// on "all specs approved" made it engage far too late — by then the first spec had been built for wakes,
+// which is exactly the order the gate exists to prevent.
+crossSpecHold = !args.crossSpecCleared && refreshed.length > 1
+// The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
+// open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
+const crossSpecAskable =
+  crossSpecHold && refreshed.every((r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal)
+if (crossSpecHold && refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))) {
   log(
-    `All ${refreshed.length} specs are open and individually approved, but the cross-spec coherence pass has not cleared — holding implementation. Aligning a good spec to an unvalidated one spreads the flaw, so the set is checked before any of it is built.`,
+    crossSpecAskable
+      ? `All ${refreshed.length} specs are open and individually approved — holding implementation until the cross-spec coherence pass clears. Surface it: the user approves running it.`
+      : `Holding approved specs: the cross-spec coherence pass has not cleared, and the set is checked before any of it is built. Not askable yet — some spec is still unapproved.`,
   )
 }
 
@@ -2488,7 +2500,7 @@ return {
   blockers: epicBlockers,
   // The coordinator has to ASK before running the pass, so this is a gate like any other — without it the
   // hold above would be a silent stall rather than a question waiting on an answer.
-  ...(crossSpecHold ? { crossSpecGate: { issueIds: issues.filter((r) => r.specApproved).map((r) => r.id) } } : {}),
+  ...(crossSpecAskable ? { crossSpecGate: { issueIds: issues.filter((r) => r.specApproved).map((r) => r.id) } } : {}),
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),
