@@ -73,6 +73,11 @@ function pendingAction(row) {
   // An issue with an open blocked-by relation is not admitted to the active set; it's tracked
   // until its blocker merges. → epic-lifecycle § Intake, and § Boundaries (sequence, don't
   // run a dependent concurrently with its prerequisite).
+  // Linear is authoritative on whether this issue still exists as work. A carried row whose
+  // issue the human closed, canceled or dropped must stop dispatching — the terminal filter on
+  // newly discovered children doesn't help a row that was already in the table.
+  if (row.linearTerminal) return null
+
   if (row.blockedBy && row.blockedBy.length) return null
 
   // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
@@ -172,20 +177,24 @@ function nextRow(row, { worker, action, landed, folded }) {
   // as consumption would drop the concurrent feedback permanently. A deferred row keeps its
   // cursor for the same reason. (Invariant 2.)
   const hadNewActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
-  const cursor =
-    (worker && CONSUMES_REVIEW_ACTIVITY.has(action)) || !hadNewActivity
-      ? {
-          lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
-          lastSeenSha: row.headSha || row.lastSeenSha || null,
-        }
-      : { lastSeenActivityAt: row.lastSeenActivityAt || null, lastSeenSha: row.lastSeenSha || null }
+  // A scan reporting new activity WITHOUT a timestamp gives the cursor nothing to move to, so the
+  // consumed batch would be rediscovered every wake. That is the scan's failure, not the worker's:
+  // the worker's reported state is still folded below, but the cursor stays put and the flags stay
+  // live so the batch is genuinely re-derived rather than silently replayed.
+  const cursorMovable = !(hadNewActivity && !row.latestActivityAt)
+  const consumed = cursorMovable && ((worker && CONSUMES_REVIEW_ACTIVITY.has(action)) || !hadNewActivity)
+  const cursor = consumed
+    ? {
+        lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
+        lastSeenSha: row.headSha || row.lastSeenSha || null,
+      }
+    : { lastSeenActivityAt: row.lastSeenActivityAt || null, lastSeenSha: row.lastSeenSha || null }
 
   // Clear the transient flags this wake consumed. They are a SECOND representation of "there is
   // new activity" alongside the cursor, so leaving them set means a wake whose refresh scout dies
   // re-reads the carried `true` and re-dispatches an already-handled batch — spending a review
   // round twice, or applying the same fixes twice.
-  const consumedFlags =
-    worker && CONSUMES_REVIEW_ACTIVITY.has(action) ? { newSpecReviewEvents: false, newPrEvents: false } : {}
+  const consumedFlags = consumed && hadNewActivity ? { newSpecReviewEvents: false, newPrEvents: false } : {}
 
   if (!worker) return { ...row, ...cursor, verdicts }
 
@@ -339,7 +348,11 @@ const PR_STATE_SCHEMA = {
     merged: { type: 'boolean' },
     readyToMerge: { type: 'boolean' },
     // The advanced cursor, so the next wake can tell "already handled" from "new".
-    latestActivityAt: { type: ['string', 'null'], description: 'ISO timestamp of the newest comment/review seen on either PR, or null if none' },
+    latestActivityAt: {
+      type: ['string', 'null'],
+      description:
+        'ISO timestamp of the newest comment/review seen. REQUIRED to be non-null whenever newSpecReviewEvents or newPrEvents is true — without it the cursor cannot advance past the batch a worker just consumed, and the same events are rediscovered every wake.',
+    },
     headSha: { type: ['string', 'null'], description: 'Current head SHA of the open PR this row is waiting on' },
   },
 }
@@ -347,9 +360,11 @@ const PR_STATE_SCHEMA = {
 const WORKER_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
-  // must never let a previously-true value survive a push onto an unapproved head.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
+  // A worker reports what it DID; the scan reports observed PR state. So `readyToMerge` is
+  // required here (the worker knows whether it left the PR mergeable) while the scan-only flags
+  // — specApproved, newSpecReviewEvents, newPrEvents — belong to PR_STATE_SCHEMA and are
+  // deliberately NOT part of a worker's contract.
+  required: ['issueId', 'phase', 'readyToMerge'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string' },
@@ -415,7 +430,9 @@ const EPIC_NOTES_SCHEMA = {
 const POC_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['claim', 'verdict'],
+  // `evidence` is required: a settled claim's whole value is the reproducible observation behind
+  // it. Recording one without evidence closes a load-bearing question on nothing.
+  required: ['claim', 'verdict', 'evidence'],
   properties: {
     claim: { type: 'string' },
     verdict: { type: 'string', enum: ['CONFIRMED', 'REFUTED', 'INCONCLUSIVE'] },
@@ -515,6 +532,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
     linearState: li.state || row.linearState,
+    linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
@@ -711,7 +729,13 @@ const issues = refreshed.map((row) =>
 const pendingClaims = [...plan.settle, ...plan.queuedClaims, ...unsettled, ...newRequests]
 const contestedClaimFor = (issueId) => {
   const hit = pendingClaims.find((c) => (c.issues || [c.issueId]).includes(issueId))
-  return hit ? hit.claim : null
+  if (hit) return hit.claim
+  // A verdict that LANDED but hasn't been folded yet (cap-deferred, or its folder died) is still
+  // in flight for disclosure purposes: the coordinator must not close the spec PR while a REFUTED
+  // fold still needs that live artifact and thread.
+  const row = issues.find((r) => r.id === issueId)
+  const unfolded = row && row.verdicts && row.verdicts.length ? row.verdicts[0] : null
+  return unfolded ? `${unfolded.claim} (verdict ${unfolded.verdict}, not yet folded)` : null
 }
 
 const gates = [

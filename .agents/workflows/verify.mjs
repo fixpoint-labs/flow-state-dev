@@ -1385,6 +1385,32 @@ check('a build wake never reports DONE', async () => {
 // enumerate the inputs instead of sampling them, so that class fails here rather than in review.
 // ---------------------------------------------------------------------------
 
+check('INVARIANT: every schema is satisfiable', async () => {
+  // A `required` field absent from `properties` under `additionalProperties: false` is
+  // UNSATISFIABLE — omit it and `required` fails, include it and `additionalProperties` fails, so
+  // every response from that agent is rejected and the lifecycle silently never advances. This is
+  // trivially checkable and it caught exactly that in WORKER_SCHEMA, introduced by a bulk edit
+  // whose replace-all hit a second schema. Every schema in both scripts, every time.
+  for (const file of ['epic-wake.js', 'issue-multi-pr.js']) {
+    const src = readFileSync(join(HERE, file), 'utf8')
+    for (const m of src.matchAll(/const (\w+_SCHEMA) = \{/g)) {
+      const seg = src.slice(m.index, m.index + 2600)
+      const req = /required: \[([^\]]*)\]/.exec(seg)
+      if (!req) continue
+      const fields = req[1].split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean)
+      // Property keys are the ones indented inside this schema's `properties` block.
+      const props = [...seg.matchAll(/^ {4}(\w+):/gm)].map((x) => x[1])
+      const closed = /additionalProperties: false/.test(seg)
+      for (const f of fields) {
+        assert.ok(
+          props.includes(f),
+          `${file}: ${m[1]} requires "${f}" but never declares it${closed ? ' (and is additionalProperties:false — UNSATISFIABLE)' : ''}`,
+        )
+      }
+    }
+  }
+})
+
 check('INVARIANT: every gating field is schema-required', async () => {
   // Four separate defects across two rounds were the SAME shape: an optional schema boolean whose
   // omission got defaulted the permissive way — `specApproved` (implement on an unapproved head),
@@ -1396,6 +1422,7 @@ check('INVARIANT: every gating field is schema-required', async () => {
       GATE_SCHEMA: ['approved', 'newReviewEvents'],
       PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
       EPIC_FOLD_SCHEMA: ['roundsSpent', 'aboveBar'],
+      POC_SCHEMA: ['claim', 'verdict', 'evidence'],
     },
     'issue-multi-pr.js': {
       GAP_SCHEMA: ['issueFiled', 'ready'],
