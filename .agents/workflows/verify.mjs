@@ -7332,8 +7332,35 @@ check('the PR-feedback counter charges rounds the way the cap needs', async () =
   }
   assert.equal(ran(undefined).prFeedbackRounds, 4, 'a dead worker mutates nothing beyond its cursor — the count is carried, not charged')
 
-  // The reset is the coordinator's, so nothing in the script may ever lower the count.
-  for (const spent of [undefined, 0, 1, 5]) {
+  // A round is BOOLEAN: one dispatch is one pass over the outstanding batch, so the report says
+  // WHETHER this was a round and can never size it. `number` in the schema accepts anything an agent
+  // emits — a feedback worker that touched three sub-PR handles reporting `3` is a reading the
+  // multi-PR prompt invites — and adding that verbatim caps the issue after four dispatches. A
+  // negative is worse: it walks the counter backward, past a cap that has to stay reachable.
+  for (const [reported, charged] of [
+    [1, 1],
+    [2, 1],
+    [3, 1],
+    [12, 1],
+    [0.5, 1],
+    [0, 0],
+    [-1, 0],
+    [-99, 0],
+  ]) {
+    assert.equal(
+      ran(done({ prFeedbackRoundsSpent: reported })).prFeedbackRounds,
+      4 + charged,
+      `a worker reporting ${reported} charged something other than ${charged}`,
+    )
+    assert.equal(
+      ran(done({ specReviewRoundsSpent: reported }), 'spec-review').specReviewRounds,
+      (row.specReviewRounds || 0) + charged,
+      `the spec budget took ${reported} verbatim`,
+    )
+  }
+
+  // The reset is the coordinator's, so nothing in the script may ever lower either count.
+  for (const spent of [undefined, 0, 1, 5, -3]) {
     const out = ran(done(spent === undefined ? {} : { prFeedbackRoundsSpent: spent }))
     assert.ok(out.prFeedbackRounds >= row.prFeedbackRounds, `the script lowered the counter (spent=${spent})`)
   }

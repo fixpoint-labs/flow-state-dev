@@ -429,7 +429,14 @@ function chargeRound(finished, isRound, reported) {
   // decision application charge rounds nobody dispatched, which walks an issue to a cap that
   // orchestration.md says only feedback handling can reach.
   if (!finished || !isRound) return 0
-  return reported === undefined ? 1 : reported || 0
+  if (reported === undefined) return 1
+  // A round is BOOLEAN — one dispatch is one pass over the outstanding batch — so the report says
+  // whether this dispatch was one, and can never size it. `number` in the schema accepted anything an
+  // agent emitted and this added it verbatim: a feedback worker that touched three sub-PR handles and
+  // reported `3` (one pass, three handles — a reading the multi-PR prompt invites) parks the issue at
+  // the cap after four dispatches, and a negative would walk the counter BACKWARD, past a cap that is
+  // supposed to be reachable and against the monotonicity the reset rule depends on.
+  return reported > 0 ? 1 : 0
 }
 
 /**
@@ -1612,11 +1619,14 @@ const WORKER_SCHEMA = {
         fixBlocker: { type: ['string', 'null'] },
       },
     },
-    specReviewRoundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent this dispatch — 0 for a batch that was only factual corrections' },
+    specReviewRoundsSpent: {
+      type: 'number',
+      description: 'Did this dispatch spend a review round? 1 yes, 0 for a batch that was only factual corrections. Never more than 1 — one dispatch is one pass.',
+    },
     prFeedbackRoundsSpent: {
       type: 'number',
       description:
-        'PR-feedback rounds ACTUALLY spent this dispatch — 1 for a normal pass over the batch, 0 for a batch that was only acknowledgements and process chatter. Omit and you are charged 1.',
+        'Did this dispatch spend a PR-feedback round? 1 for a normal pass over the batch, 0 for a batch that was only acknowledgements and process chatter. Never more than 1, however many PR handles the pass touched. Omit and you are charged 1.',
     },
     specLevelFound: { type: 'boolean', description: 'Did this round surface a genuine spec-level finding? Authorizes the third round.' },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
@@ -2176,7 +2186,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           // read was a real round. Told nothing, it omits the field and is charged one by default —
           // correct, but it also means a batch of pure acknowledgements silently eats a round.
           (item.action === 'pr-feedback'
-            ? `Report \`prFeedbackRoundsSpent\`: 1 for a normal pass over this batch, 0 if it turned out to be only acknowledgements and process chatter with nothing to fix or answer. This issue has handled ${item.row.prFeedbackRounds || 0} of ${PR_FEEDBACK_CAP} auto-handled rounds.\n` +
+            ? `Report \`prFeedbackRoundsSpent\`: 1 for a normal pass over this batch, 0 if it turned out to be only acknowledgements and process chatter with nothing to fix or answer. It is never more than 1 — this dispatch is ONE pass over the outstanding batch, however many PR handles that batch spans. This issue has handled ${item.row.prFeedbackRounds || 0} of ${PR_FEEDBACK_CAP} auto-handled rounds.\n` +
               // CONDITIONAL on this batch actually being a round, which is not knowable until the
               // worker has read it. Stated unconditionally, this told the worker to report 1 and pause
               // — overriding the zero-cost rule one line above for exactly the batch it names, parking
