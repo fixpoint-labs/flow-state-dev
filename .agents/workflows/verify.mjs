@@ -1041,6 +1041,121 @@ check('a ready-to-merge issue surfaces a merge gate and is never merged here', a
   assert.equal(calls.filter((c) => /merge/i.test(c.prompt || '') && c.agentType === 'issue-worker').length, 0)
 })
 
+check('a refresh scan echoing a sibling id is discarded, not bound to the wrong row', async () => {
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
+    }),
+    // FIX-3's scout reports FIX-2's id along with an approval. Keying on the reported value would
+    // land that approval on FIX-2 and start implementing a spec the human approved for FIX-3.
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'linear:epic-children') return { issues: [] }
+      if (label === 'refresh:FIX-2') return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) }
+      if (label === 'refresh:FIX-3') return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, specPr: 8 }) }
+      return workerRes({ issueId: label.split(':')[1] })
+    },
+  })
+  const two = result.issues.find((r) => r.id === 'FIX-2')
+  const three = result.issues.find((r) => r.id === 'FIX-3')
+  assert.equal(two.specApproved, false, "FIX-2 must not inherit FIX-3's approval")
+  assert.equal(three.specApproved, false, 'a discarded scan fails closed on the row that requested it')
+  assert.match(logs.join('\n'), /refresh:FIX-3 reported issueId FIX-2 — discarding the scan/)
+})
+
+check('a worker echoing a sibling id is discarded and its settle request does not fan', async () => {
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'linear:epic-children') return { issues: [] }
+      if (label.startsWith('refresh:')) return { issueId: label.slice('refresh:'.length), ...freshRow() }
+      // FIX-3's worker reports FIX-2's id, and raises a claim while it's at it.
+      if (label === 'spec:FIX-3') {
+        return workerRes({ issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, settleRequested: { claim: 'c', load: 'x', falsify: 'y', threads: 't' } })
+      }
+      return workerRes({ issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })
+    },
+  })
+  const two = result.issues.find((r) => r.id === 'FIX-2')
+  const three = result.issues.find((r) => r.id === 'FIX-3')
+  assert.equal(two.specPr, 7, "FIX-2 keeps its own worker's handle")
+  assert.equal(three.phase, 'NEEDS_SPEC', 'a discarded worker leaves its row un-advanced, to retry next wake')
+  assert.deepEqual(result.settleRequests, [], 'and its claim is not attributed to the issue it echoed')
+  assert.match(logs.join('\n'), /worker for FIX-3 reported issueId FIX-2 — discarding the result/)
+})
+
+check('an INCONCLUSIVE issue verdict becomes a durable human decision, not a fold loop', async () => {
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, verdicts: [{ claim: 'does X stream?', verdict: 'INCONCLUSIVE', evidence: 'could not reproduce' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  const two = result.issues[0]
+  assert.deepEqual(two.verdicts, [], 'it leaves the field that drives dispatch — otherwise a folder runs every wake forever')
+  assert.match(two.blocker, /INCONCLUSIVE — needs a human decision: does X stream\?/)
+  assert.ok(
+    result.blockers.some((b) => b.issueId === 'FIX-2' && /does X stream/.test(b.blocker)),
+    'and is surfaced to the human rather than dropped',
+  )
+  assert.ok(!/re-dispatch/.test(logs.join('\n')))
+
+  // Next wake: the blocker parks the row, so nothing is dispatched and the decision persists.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...two }] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } } }),
+  })
+  assert.deepEqual(workerLabels(second.calls), [], 'a row awaiting a human decision dispatches nothing')
+  assert.match(second.result.issues[0].blocker, /needs a human decision/, 'and the decision survives the wake')
+})
+
+check('an INCONCLUSIVE epic verdict stops re-triggering the fold and stays surfaced', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, verdicts: [{ claim: 'shared claim', verdict: 'INCONCLUSIVE', evidence: 'ran it, ambiguous' }] },
+      issues: [],
+    }),
+    respond: epicResponder({}),
+  })
+  assert.deepEqual(result.epic.verdicts, [], 'a consumed INCONCLUSIVE leaves the field foldEpicWanted reads')
+  assert.deepEqual(
+    result.epic.unsettled.map((u) => u.claim),
+    ['shared claim'],
+    'it becomes durable epic state instead',
+  )
+  assert.ok(result.blockers.some((b) => b.issueId === 'FIX-1' && /shared claim/.test(b.blocker)))
+
+  // Next wake: no verdict to fold, so no epic-agent worktree is spent — and the decision is
+  // re-surfaced rather than shown once and forgotten.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ epic: { ...result.epic }, issues: [] }),
+    respond: epicResponder({}),
+  })
+  assert.deepEqual(labels(second.calls, 'fold:epic'), [], 'a verdict no fold can consume must not dispatch one')
+  assert.ok(second.result.blockers.some((b) => /shared claim/.test(b.blocker)), 'and it is still surfaced')
+  assert.equal(second.result.epic.unsettled.length, 1, 'recorded once, not duplicated each wake')
+})
+
+check('a terminal issue stops asking the human to approve its spec', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) }
+      return workerRes({ issueId: 'FIX-2' })
+    },
+  })
+  assert.deepEqual(result.gates, [], 'a cancelled child needs no spec approval')
+})
+
 // ---------------------------------------------------------------------------
 // issue-multi-pr
 // ---------------------------------------------------------------------------
@@ -1574,6 +1689,25 @@ check('INVARIANT: every gating field is schema-required', async () => {
   }
 })
 
+check('INVARIANT: every field the epic wake parks on is documented as one the coordinator clears', async () => {
+  // The same rule the assemble-state invariant applies to `issue-multi-pr`, at the epic altitude.
+  // `epic-wake` parks work on two durable human-decision fields, and neither has anything in the
+  // script that can clear it — only the coordinator can, so a field the skill never tells it to
+  // clear is a permanent stall however correct the script looks.
+  const src = readFileSync(join(HERE, 'epic-wake.js'), 'utf8')
+  const skill = readFileSync(join(HERE, '..', 'skills', 'epic-lifecycle', 'SKILL.md'), 'utf8')
+
+  // Set by the script (so the invariant fails if a field is renamed) and cleared only outside it.
+  const parksOn = {
+    blocker: /remove the field so the issue resumes/,
+    unsettled: /drop the matching `epic\.unsettled` entry/,
+  }
+  for (const [field, clearedBy] of Object.entries(parksOn)) {
+    assert.ok(src.includes(field), `${field} is no longer set by the script — update this invariant`)
+    assert.ok(clearedBy.test(skill), `the script parks on \`${field}\` but the skill never tells the coordinator to clear it`)
+  }
+})
+
 check('INVARIANT: no assemble state is a dead end', async () => {
   const { assembleState } = loadRules('issue-multi-pr.js', ['allMerged', 'assembleState'])
   const src = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
@@ -1668,6 +1802,67 @@ check('INVARIANT: a parked row is never dispatched, whatever else is true', asyn
     }
   }
   assert.ok(space.length >= 500, `expected a real space, enumerated ${space.length}`)
+})
+
+check('INVARIANT: an agent-reported id never decides which row a result lands on', async () => {
+  // The generalized form of the defect review found in the refresh scan, and which was also
+  // present in the worker map and the settle-request attribution. `issueId` is a free-form string
+  // in every schema, so ANY code path that keys on the reported value can move one issue's read
+  // onto another row — and the reads that matter are the gates. Rather than assert the three known
+  // call sites, drive the whole wake with every agent lying about its identity and require that no
+  // gating field can be set, and no gate surfaced, from a foreign read.
+  const ids = ['FIX-2', 'FIX-3', 'FIX-4']
+  // Each row gets a distinguishable handle, so a misattributed response is visible even when it
+  // carries no gating field at all.
+  const ownPr = { 'FIX-2': 72, 'FIX-3': 73, 'FIX-4': 74 }
+  let lied = 0
+
+  for (const liar of ids) {
+    for (const claimed of ids.filter((i) => i !== liar)) {
+      for (const kind of ['refresh', 'worker']) {
+        // The row shape has to actually DISPATCH for the worker path to exist: a row parked at
+        // AWAITING_SPEC_APPROVAL with no approval and no new events returns no action, which is
+        // how an earlier version of this invariant passed while the defect was still present.
+        const phase = kind === 'refresh' ? 'AWAITING_SPEC_APPROVAL' : 'NEEDS_SPEC'
+        const { result } = await run('epic-wake.js', {
+          args: epicArgs({ issues: ids.map((id) => row(id, { phase, specPr: ownPr[id] })) }),
+          respond: (prompt, opts) => {
+            const label = opts.label || ''
+            if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+            if (label === 'linear:epic-children') return { issues: [] }
+            if (label.startsWith('refresh:')) {
+              const self = label.slice('refresh:'.length)
+              const lying = kind === 'refresh' && self === liar
+              // The dangerous payload: an approval, and a merge-ready PR, attributed elsewhere.
+              return {
+                issueId: lying ? claimed : self,
+                ...freshRow({ phase, specApproved: lying, readyToMerge: lying, specPr: ownPr[self] }),
+              }
+            }
+            const self = label.split(':')[1]
+            const lying = kind === 'worker' && self === liar
+            return workerRes({ issueId: lying ? claimed : self, phase, readyToMerge: lying, specPr: ownPr[self] })
+          },
+        })
+        lied++
+        assert.ok(result.issues.length === ids.length)
+
+        for (const r of result.issues) {
+          assert.equal(r.specApproved, false, `${r.id} took an approval from ${liar}'s response (${kind})`)
+          assert.equal(r.readyToMerge, false, `${r.id} took merge-readiness from ${liar}'s response (${kind})`)
+          // A discarded response leaves the carried handle; it must never be replaced by another
+          // row's. Either the row's own value or nothing — never a sibling's.
+          assert.equal(r.specPr, ownPr[r.id], `${r.id} took a handle belonging to another row (${kind}, ${liar}→${claimed})`)
+        }
+        assert.deepEqual(
+          result.gates.filter((g) => g.kind !== 'spec-approval'),
+          [],
+          `a foreign ${kind} response surfaced a gate: ${JSON.stringify(result.gates)}`,
+        )
+      }
+    }
+  }
+  assert.equal(lied, 12)
 })
 
 check('INVARIANT: the activity cursor never advances past unconsumed activity', async () => {

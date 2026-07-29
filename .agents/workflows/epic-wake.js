@@ -171,6 +171,18 @@ function nextRow(row, { worker, action, landed, folded }) {
   // nothing, so its verdicts stay for the next wake.
   const verdicts = folded ? landed : [...(row.verdicts || []), ...landed]
 
+  // A fold consumes CONFIRMED / REFUTED — the evidence resolves those claims. An INCONCLUSIVE
+  // resolves nothing: orchestration.md hands the question back to the human. It still has to leave
+  // `verdicts`, because `pendingAction` ranks a non-empty list above every phase, so a verdict no
+  // fold can ever consume would re-dispatch a folder every wake forever. It converts instead to
+  // `blocker` — the row's one durable human-decision field, which parks the row, surfaces in
+  // `blockers`, survives every wake (a parked row dispatches no worker, and only a worker can
+  // clear it), and is cleared by the coordinator when it records the decision.
+  const unsettled = folded ? (row.verdicts || []).filter((v) => v.verdict === 'INCONCLUSIVE') : []
+  const unsettledBlocker = unsettled.length
+    ? `POC returned INCONCLUSIVE — needs a human decision: ${unsettled.map((v) => v.claim).join(' · ')}`
+    : null
+
   // The cursor moves only when this wake consumed that activity — which takes BOTH a worker that
   // returned AND an action that actually reads review events. `apply-verdict` outranks
   // `spec-review` in `pendingAction`, and its prompt carries no review content, so counting it
@@ -213,7 +225,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // round had authorized.
     specLevelFound: worker.specLevelFound === undefined ? !!row.specLevelFound : !!worker.specLevelFound,
     readyToMerge: !!worker.readyToMerge,
-    blocker: worker.blocker || null,
+    blocker: worker.blocker || unsettledBlocker || null,
     status: worker.status,
     verdicts,
   }
@@ -259,6 +271,36 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const queuedClaims = claims.slice(settle.length)
 
   return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims }
+}
+
+/**
+ * Bind positional agent results to the rows that REQUESTED them.
+ *
+ * `issueId` is a free-form string in every scout and worker schema, so keying a Map on the
+ * REPORTED value lets one agent's response land on a sibling row — including a `specApproved:
+ * true` that belongs to a different issue, which bypasses the one gate that must never be
+ * bypassable. `parallel()` preserves input order, so position is the only trustworthy key.
+ *
+ * A mismatch is DISCARDED, never reassigned: a result we cannot attribute is a result that didn't
+ * happen, and both call sites already fail closed on an absent one (the refresh re-derives the
+ * gates from scratch, and an absent worker reads as dead and mutates nothing but its cursor).
+ *
+ * @param results  agent results in dispatch order, `null` for any that died or was skipped
+ * @param ids      the issue id each dispatch was FOR, in the same order
+ * @param onMismatch called with (expectedId, reportedId) so the caller can log the discard
+ */
+function bindByPosition(results, ids, onMismatch) {
+  const byId = new Map()
+  results.forEach((res, i) => {
+    if (!res) return
+    const id = ids[i]
+    if (res.issueId && res.issueId !== id) {
+      onMismatch(id, res.issueId)
+      return
+    }
+    byId.set(id, res)
+  })
+  return byId
 }
 
 // ---------------------------------------------------------------------------
@@ -503,7 +545,12 @@ const epicHead = (gate && gate.headSha) || epic.headSha || null
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
 const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
-const freshById = new Map(prStates.filter(Boolean).map((s) => [s.issueId, s]))
+const freshById = bindByPosition(
+  prStates,
+  rows.map((r) => r.id),
+  (id, reported) =>
+    log(`refresh:${id} reported issueId ${reported} — discarding the scan rather than binding another issue's read (and its approval) to this row.`),
+)
 
 // Sub-issues Linear knows about that the carried table doesn't: `issue-manager` parented work
 // discovered mid-epic under the epic, so the Linear scan is where it first appears. Building the
@@ -704,11 +751,17 @@ for (const s of settled.filter(Boolean)) {
 // gates, sets the Linear mirrors, and owns the subscriptions.
 // ---------------------------------------------------------------------------
 
-const workerById = new Map(advanced.filter(Boolean).map((w) => [w.issueId, w]))
+const workerById = bindByPosition(
+  advanced,
+  plan.advance.map((i) => i.row.id),
+  (id, reported) => log(`worker for ${id} reported issueId ${reported} — discarding the result; ${id} counts as un-advanced this wake.`),
+)
 
 // Settlement requests raised during THIS wake — by an issue worker or by the epic fold.
+// Read through the POSITION-BOUND map, not the raw results: a request attributed by the worker's
+// self-reported id would fan a settlement — and its verdict — to an issue that never argued it.
 const newRequests = [
-  ...advanced.filter(Boolean).filter((w) => w.settleRequested).map((w) => ({ ...w.settleRequested, issueId: w.issueId })),
+  ...[...workerById].filter(([, w]) => w.settleRequested).map(([id, w]) => ({ ...w.settleRequested, issueId: id })),
   ...(epicFold && epicFold.settleRequested ? [{ ...epicFold.settleRequested, issueId: epic.issueId }] : []),
 ]
 
@@ -720,6 +773,21 @@ const foldedVerdict = new Set(
 )
 
 const actionByIssue = new Map(plan.advance.map((i) => [i.row.id, i.action]))
+
+// The epic's INCONCLUSIVE claims, carried the way a row's `blocker` is.
+//
+// Keeping an INCONCLUSIVE in `epic.verdicts` (the previous behaviour) made `foldEpicWanted` true
+// on every subsequent wake for a verdict no fold can consume — an epic-agent worktree spent every
+// wake, forever. Dropping it instead would lose a decision the human owes. So it leaves the
+// dispatch-driving field and becomes durable state that is re-surfaced in `blockers` each wake
+// until the coordinator records the decision and removes it: surfaced once and forgotten loses it
+// just as thoroughly as clearing it did.
+const epicUnsettled = [...(epic.unsettled || [])]
+for (const v of epicFold ? (epicVerdictsToFold || []).filter((v) => v.verdict === 'INCONCLUSIVE') : []) {
+  if (!epicUnsettled.some((u) => u.claim === v.claim)) {
+    epicUnsettled.push({ claim: v.claim, evidence: v.evidence || null, threads: v.threads || null })
+  }
+}
 
 const issues = refreshed.map((row) =>
   nextRow(row, {
@@ -749,7 +817,10 @@ const contestedClaimFor = (issueId) => {
 const gates = [
   // The objective gate comes first: until it's signed off, it's the only one that can move.
   ...(epicApproved ? [] : [{ kind: 'epic-objective', pr: epic.prNumber }]),
-  ...issues.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved).map((r) => ({
+  // Same terminal exclusion as the merge gate below: a child the human closed or dropped whose
+  // spec PR is still open must not keep asking them to approve a spec for removed work.
+  // `pendingAction` already parks the row, but this filter is independent of it.
+  ...issues.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal).map((r) => ({
     kind: 'spec-approval',
     issueId: r.id,
     pr: r.specPr,
@@ -792,11 +863,14 @@ return {
     // An epic-level verdict clears only once a fold returned to record it; otherwise it is
     // carried so the next wake retries. A settlement targeting the epic has no issue row to
     // land on, so this field is its only destination.
-    // An INCONCLUSIVE verdict settles nothing — orchestration.md hands the question to the human,
-    // so a returning fold must NOT clear it. Only CONFIRMED/REFUTED are consumed by folding.
+    // An INCONCLUSIVE verdict settles nothing, but it does not belong here either — see
+    // `epicUnsettled`, which is where it goes so it neither re-triggers a fold nor disappears.
     verdicts: epicFold
-      ? [...(epicVerdictsToFold || []).filter((v) => v.verdict === 'INCONCLUSIVE'), ...(verdictsByIssue.get(epic.issueId) || [])]
+      ? [...(verdictsByIssue.get(epic.issueId) || [])]
       : [...(epicVerdictsToFold || []), ...(verdictsByIssue.get(epic.issueId) || [])],
+    // Decisions the human owes on this epic. Durable across wakes; the coordinator drops an entry
+    // when it records the resolution, exactly as it clears a row's `blocker`.
+    unsettled: epicUnsettled,
   },
   epicFold: epicFold ? { folded: epicFold.folded, fanOut: epicFold.fanOut || [] } : null,
   // Converged epic-PR feedback, read but not folded — the coordinator routes each note to the
@@ -804,7 +878,10 @@ return {
   epicNotes: epicNotes ? epicNotes.notes || [] : null,
   issues,
   gates,
-  blockers: issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
+  blockers: [
+    ...issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
+    ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}` })),
+  ],
   blocked: plan.blocked.map((r) => ({ issueId: r.id, blockedBy: r.blockedBy })),
   held: plan.held.map((i) => i.row.id),
   verdicts: settled.filter(Boolean),

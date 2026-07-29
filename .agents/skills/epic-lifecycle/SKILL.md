@@ -135,7 +135,8 @@ even if more are queued. State the chosen N and the cap to the user.
    Workflow tool:
      name: epic-wake
      args: {
-       epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound, lastSeenSha },
+       epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound, lastSeenSha,
+                verdicts, unsettled },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker } ],
@@ -161,6 +162,11 @@ even if more are queued. State the chosen N and the cap to the user.
      not just the enum, because the folding worker has to reply with the evidence. `epic.verdicts`
      exists because a cross-cutting claim has no issue row to land on. Persist them under those
      plural names — a coordinator writing a singular `verdict` drops every carried settlement.
+   - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
+     decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
+     `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every
+     wake, forever). They are re-surfaced in `blockers` every wake until you drop the entry, so
+     dropping them from `args` is how the decision gets lost.
 
    It returns
    `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, verdicts,
@@ -204,6 +210,12 @@ even if more are queued. State the chosen N and the cap to the user.
    decision is waiting on *you*, not on an event. Once you've answered (in-session or on the PR),
    remove the field so the issue resumes; leave it and the issue never moves again. `blockers`
    are surfaced at step 4 — see [Gates & autonomy](#gates--autonomy).
+
+   A `blocker` reading **"POC returned INCONCLUSIVE"** is the same contract from a different
+   source: the evidence run couldn't settle the claim, so `orchestration.md` hands it back to the
+   human. Put the question to the user with what the POC *did* find, then clear the field (for a
+   cross-cutting claim, drop the matching `epic.unsettled` entry instead — the row-level field
+   isn't where it lives). Until you do, that issue is parked.
 4. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
    releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
