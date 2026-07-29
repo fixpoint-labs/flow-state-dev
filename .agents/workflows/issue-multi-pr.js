@@ -667,7 +667,11 @@ const subPrs = nodes.map((node) => {
   const openWithoutHandles = !rebasing && !resuming && r.status === 'open' && (!(r.pr || node.pr) || !(r.branch || node.branch))
   if (openWithoutHandles) {
     log(`${node.id}: reported open but returned no PR number or branch — treating as incomplete, will retry.`)
-    return { ...node, blocker: r.blocker || null, summary: r.summary }
+    // `node.blocker` preserved: an incomplete build delivered nothing, so it spends nothing. This early
+    // return sits one branch before the rule below that says exactly that, and cleared the answered
+    // slice's blocker anyway — while the outer wake, seeing `subPrs` come back, consumed the one-shot
+    // resolution. The retry then hit the architectural fork with no answer.
+    return { ...node, blocker: r.blocker || node.blocker || null, summary: r.summary }
   }
 
   let stackedOn = node.stackedOn || null

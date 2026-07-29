@@ -3770,6 +3770,34 @@ check('a rebase that escalates keeps its stack marker', async () => {
   assert.equal(b.blocker, 'rebase conflicts with the new cache key — which wins?')
 })
 
+check('a handleless open build keeps the answered blocker too', async () => {
+  // The incomplete-build early return sits one branch before the rule that says a delivery spends
+  // nothing, and cleared the blocker anyway — while the outer wake, seeing `subPrs` come back, consumed
+  // the one-shot resolution. `open` with no PR number or no branch is not a delivery.
+  for (const over of [{ status: 'open', pr: null }, { status: 'open', branch: null }]) {
+    const { result } = await run('issue-multi-pr.js', {
+      args: multiArgs({
+        subPrs: [{ id: 'a', status: 'pending', dependsOn: [], blocker: 'which shape?' }],
+        blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+      }),
+      respond: multiResponder({ build: { a: over } }),
+    })
+    assert.equal(result.subPrs[0].blocker, 'which shape?', `handleless open (${JSON.stringify(over)}) delivered nothing`)
+    assert.equal(result.subPrs[0].status, 'pending', 'and it stays pending for the retry')
+  }
+
+  // A complete open build IS a delivery and spends it.
+  const complete = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [{ id: 'a', status: 'pending', dependsOn: [], blocker: 'which shape?' }],
+      blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+    }),
+    respond: multiResponder(),
+  })
+  assert.equal(complete.result.subPrs[0].blocker, null)
+  assert.equal(complete.result.subPrs[0].status, 'open')
+})
+
 check('an answered PENDING slice keeps its blocker when the build fails', async () => {
   // The sibling of the failed-resume rule. An answered pending slice is delivered by a BUILD, so
   // restricting preservation to `resume` meant a schema-valid `failed`/`pending` cleared the blocker
@@ -3894,6 +3922,53 @@ check('a multi-PR answer is retained until the nested workflow reports back', as
     }),
   })
   assert.deepEqual(single.result.issues[0].blockerResolutions, [], 'spent, because that worker was the delivery')
+})
+
+check('a CI failure waits when the same scan reports unreadable activity', async () => {
+  // `pr-feedback` consumes the review cursor, and an unreadable cursor cannot advance — so dispatching
+  // here re-delivered the identical batch every wake and the worker re-posted its replies each time.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true, newPrEvents: true, latestActivityAt: null } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'duplicate review replies are not recoverable by waiting')
+
+  // CI alone stays actionable — the guard is about the unreadable activity, not about CI.
+  const ciOnly = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true, newPrEvents: false, latestActivityAt: null } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(ciOnly.calls), ['pr-feedback:FIX-2'])
+
+  // The guard is specifically about unreadable COMMENT ACTIVITY, not about `cursorUsable` in general:
+  // that helper also fails for an incomplete per-handle sub-PR scan, and a CI failure with no comment
+  // activity has nothing to re-deliver, so it must not be held hostage to an unrelated scan gap.
+  const scanGap = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
+    }),
+    respond: epicResponder({
+      // `subPrStates` deliberately omitted — an incomplete per-handle scan.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', ciFailed: true, newPrEvents: false, latestActivityAt: null } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  assert.deepEqual(workerLabels(scanGap.calls), ['pr-feedback:FIX-2'], 'a sub-PR scan gap does not hold the CI fix')
+
+  // ...and so does CI alongside activity that CAN be consumed.
+  const readable = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true, newPrEvents: true, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(readable.calls), ['pr-feedback:FIX-2'])
 })
 
 check('a spec-approval gate is withheld while spec feedback is unreadable', async () => {

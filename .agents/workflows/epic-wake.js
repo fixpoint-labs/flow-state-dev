@@ -152,7 +152,13 @@ function pendingAction(row) {
     case 'PR_FEEDBACK':
       // Same guard: a CI failure needs no timestamp (it is not comment activity), but reported PR
       // activity without one would be re-applied every wake.
-      if (row.ciFailed) return { action: 'pr-feedback', why: 'CI is failing' }
+      // CI is actionable on its own — but NOT while the same scan reports review activity it cannot
+      // timestamp. `pr-feedback` consumes the review cursor, and an unreadable cursor cannot advance, so
+      // the dispatch would re-deliver that identical batch every wake and the worker would re-post its
+      // replies each time. The cost is a CI fix waiting a wake for a scan that timestamps its activity;
+      // the alternative is unbounded duplicate replies on someone's PR, which is not recoverable by
+      // waiting. A CI failure with no unreadable activity is untouched.
+      if (row.ciFailed && !(row.newPrEvents && !cursorUsable(row))) return { action: 'pr-feedback', why: 'CI is failing' }
       if (row.newPrEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled PR activity' }
       // A multi-PR row's DAG advances on merges and on its own deferred work, neither of which is
       // "PR activity". Without this the issue stalls the moment a merge unblocks its next slice.
