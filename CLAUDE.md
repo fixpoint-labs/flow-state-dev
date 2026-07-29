@@ -149,6 +149,25 @@ docs/
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
 
+## Linear access (check the env first)
+
+Every skill that touches Linear — `issue-spec`, `issue-implement`, `linear-triage`, `plan-day`, the lifecycles, the `issue-manager` agent — picks its channel here, once, at the start of the task:
+
+- **`LINEAR_API_KEY` set → use the Linear GraphQL API directly. Do not use a Linear MCP server**, even if one is connected. It works in headless/cron runs, where an interactively-authenticated MCP server isn't there.
+- **unset → fall back to the Linear MCP tools**, as the skills describe.
+
+**Pick one channel per task and stay on it** — half the reads through MCP and half through the API is how a skill acts on two different views of the same issue. The skills name operations (`get_issue`, `save_issue`, `list_issue_statuses`); translate them to the equivalent GraphQL when you're on the API.
+
+POST to `https://api.linear.app/graphql` with the key as a **bare** `Authorization` header — no `Bearer` prefix:
+
+```bash
+curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"query($id:String!){ issue(id:$id){ identifier title state{name} } }","variables":{"id":"FIX-123"}}'
+```
+
+The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` → "Linear status is a mirror you own"; they are the same ids on both channels. **Never echo `LINEAR_API_KEY` into a log, a commit, a PR body, or a Linear comment.**
+
 ## Skills Library
 
 Development task skills live in `agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
@@ -177,7 +196,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `cross-spec-review`       | Review an epic's SET of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the coordinator |
 | `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local epic/issue lifecycle's webhook stand-in |
 
-> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), the epic-spec, and **the spec-review bar and convergence rule** — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
+> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
 
 
 ### Development skills

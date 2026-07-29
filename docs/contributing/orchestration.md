@@ -431,6 +431,83 @@ So the discipline is ours, not theirs:
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
 
+## PR feedback: the round cap
+
+A spec PR is bounded by the convergence rule above. An **implementation** PR is not, and it
+is the other place an unbounded loop lives: several reviewers (human and bot) comment on a
+diff, we fix and reply, the fixes draw fresh comments, and each round is individually
+reasonable. Nothing in that loop notices that round nine is re-litigating round three, or
+that the real problem is the approach rather than any of the lines being argued about.
+
+**Default cap: twelve auto-handled rounds per issue.** A *round* is one pass over the batch
+of PR feedback outstanding since the last push — the same unit as a spec-review round, and
+the same pass `issue-implement` Step 10 runs. At the twelfth, the lifecycle **stops
+auto-handling feedback and asks the human what to do.**
+
+The number is deliberately generous. This is not a convergence budget — a code PR's threads
+*do* gate its merge, so unlike a spec PR there is no "converged, carry the rest as notes"
+exit. Twelve is a **loop detector**: it is well past a normal review (two to four rounds),
+so reaching it is evidence that something structural is wrong, not that the reviewers are
+thorough.
+
+### What happens at the cap
+
+1. **Stop.** Dispatch no further feedback rounds on that issue. New comments and CI results
+   still arrive and are still recorded; they are simply not acted on.
+2. **Say so on the PR**, once: a comment stating that twelve rounds have been handled, what
+   is still open, and that the work is paused pending direction. A silent stop reads to a
+   reviewer as an agent that died mid-thread — and leaving a code comment unanswered is
+   exactly what Step 10.6 forbids.
+3. **Surface it to the human**, with what a decision needs: the round count, the threads
+   still open, and the assessment the agent actually has — is this converging slowly, or is
+   the same objection coming back in different words? Name the suspected loop if there is
+   one.
+4. **Wait.** The issue is parked. It is offered no merge gate and dispatches no worker until
+   the human answers.
+
+The human's answer is a direction, not a permission slip. In practice it is one of: keep
+going as-is (the reviews are just heavy); take a specific position on the disputed thread
+and stop re-opening it; re-examine the approach, which usually means folding a decision back
+into the spec; split the remainder into a follow-up issue; or merge as-is and handle the
+rest separately.
+
+**Recording the answer resets the counter to zero**, which is what un-parks the issue — the
+same shape as the spec budget's reset, and for the same reason: a fresh direction starts a
+fresh loop rather than resuming an exhausted one. Nothing else clears it. An issue whose
+answer is never recorded stays parked and stays surfaced every wake; that is a visible
+stall, not a silent one.
+
+**What counts.** Count rounds *handled*, not events received, and not comments. A worker
+reports the rounds it actually spent; a batch that turned out to be nothing but
+acknowledgements and process chatter costs zero, exactly as a spec batch of pure factual
+corrections does. A worker that escalated a blocker mid-round didn't finish it and charges
+nothing. A round that reports no count is charged one — an unreported round must not be
+free, or the cap is unreachable and the loop it exists to catch runs forever.
+
+**The counter is the coordinator's; the count has to travel to the worker.** Every round runs
+in a *fresh* sub-agent that cannot read the coordinator's cache, so each feedback dispatch
+must carry the running count, the cap, and — on the last allowed round — the instruction to
+post the pause comment if the batch turns out to be a real round. Leave it out and the cap
+fails in both directions from the same omission: an unprompted worker reports no count, so
+every acknowledgement batch is charged one, and the round that reaches the cap parks the issue
+with no pause comment on the PR and no assessment for the human. Both implementations owe this
+— `epic-wake` builds it into the `pr-feedback` prompt; standalone `issue-lifecycle` builds it
+into its dispatch.
+
+**What the cap does not gate.** Only feedback handling. On a multi-PR issue the DAG still
+advances — building the next ready slice, rebasing an unstacked one, running the assembled
+goal — because none of that is a feedback round, and parking it would stall the issue for a
+reason unrelated to the loop.
+
+### Where this lives
+
+- **`issue-implement`** Step 10 — the loop itself counts its rounds and reports them; Step
+  10.7 is where the cap is checked and the pause comment is posted.
+- **`issue-lifecycle`** — holds `prFeedbackRounds` in the handle cache and owns the ask.
+- **`.agents/workflows/epic-wake.js`** — `atPrFeedbackCap()`, the executable copy of this
+  rule, pinned by `.agents/workflows/verify.mjs`. As with the convergence rule: **this
+  section is canonical for both, so change it here first, then both implementations.**
+
 ## Settling a disputed claim (POC settlement)
 
 Some review threads don't converge because they aren't about direction at all — they turn

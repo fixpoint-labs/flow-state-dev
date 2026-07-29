@@ -72,6 +72,46 @@ function atReviewBudget(spent = 0, aboveBarFound = false) {
   return true
 }
 
+/** Auto-handled PR-feedback rounds allowed on one issue before the human is asked. */
+const PR_FEEDBACK_CAP = 12
+
+/**
+ * Has an issue's PR-feedback loop hit its cap?
+ * → orchestration.md § "PR feedback: the round cap" (canonical).
+ *
+ * Not a convergence budget — a code PR's threads DO gate its merge, so there is no
+ * "converged, carry the rest as notes" exit the way there is for a spec. This is a LOOP
+ * DETECTOR: twelve is well past a normal review (two to four rounds), so reaching it is
+ * evidence something structural is wrong and the human should say what to do.
+ *
+ * Cleared by RESETTING the counter, which the coordinator does when it records the human's
+ * answer — deliberately the same shape as the spec budget's reset, and there is no separate
+ * "cleared" flag to get out of step with the count.
+ */
+function atPrFeedbackCap(spent = 0) {
+  return spent >= PR_FEEDBACK_CAP
+}
+
+/**
+ * Is this row's feedback loop capped AND is there still work for the human to decide about?
+ *
+ * A DIFFERENT question from `atPrFeedbackCap`, which is the pure budget test ("may we spend another
+ * round?"). This is the human-facing one — "is a question owed about this row?" — and it is what the
+ * gates, the log line and the surfaced blocker all have to agree on. Composed from the budget test
+ * rather than restating it, so the threshold lives in exactly one place.
+ *
+ * The liveness clause is the whole difference: a row the human cancelled, or one whose PR merged out
+ * from under the loop, keeps its phase and its count, and asking whether to re-examine the approach of
+ * work that no longer exists is a question nothing can answer. It held `mayWrap` open forever, and the
+ * log claimed a row was "surfaced for a decision" that the blockers list had already excluded — two
+ * predicates over the same state disagreeing, which is the failure this file keeps producing.
+ */
+function cappedAwaitingDirection(row) {
+  return (
+    row.phase === 'PR_FEEDBACK' && atPrFeedbackCap(row.prFeedbackRounds) && !row.linearTerminal && !row.merged
+  )
+}
+
 /**
  * The next bounded action for one issue, or null if it is genuinely waiting on something
  * external. `why` is for the log line — a dispatch the user can't explain is drift.
@@ -183,7 +223,16 @@ function pendingAction(row) {
       if (crossSpecHold) return null
       return { action: 'implement', why: 'spec approved, implementation not started' }
 
-    case 'PR_FEEDBACK':
+    case 'PR_FEEDBACK': {
+      // The round cap. Past it, no feedback round is dispatched at all: the batch stays
+      // unconsumed (the cursor never advances, exactly as it doesn't for a converged spec) and
+      // `epicBlockers` surfaces the question every wake until the human answers it and the
+      // coordinator resets the counter. → orchestration.md § "PR feedback: the round cap".
+      //
+      // Scoped to the three feedback dispatches, NOT to the whole phase: a multi-PR DAG step
+      // below is not a feedback round, and parking it would stall the issue's remaining slices
+      // for a reason that has nothing to do with the review loop.
+      const capped = atPrFeedbackCap(row.prFeedbackRounds)
       // Same guard: a CI failure needs no timestamp (it is not comment activity), but reported PR
       // activity without one would be re-applied every wake.
       // CI is actionable on its own — but NOT while the same scan reports review activity it cannot
@@ -195,20 +244,21 @@ function pendingAction(row) {
       // EITHER flag unreadable holds the dispatch. This named only `newPrEvents`; once late spec-PR activity
       // started routing through the same worker and the same shared cursor, an unreadable spec batch would be
       // re-delivered every wake alongside the CI work, re-posting its replies each time.
-      if (row.ciFailed && !((row.newPrEvents || row.newSpecReviewEvents) && !cursorUsable(row))) {
+      if (!capped && row.ciFailed && !((row.newPrEvents || row.newSpecReviewEvents) && !cursorUsable(row))) {
         return { action: 'pr-feedback', why: 'CI is failing' }
       }
-      if (row.newPrEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled PR activity' }
+      if (!capped && row.newPrEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled PR activity' }
       // Late SPEC-PR feedback belongs here too. Comments can land on a retained or closed spec PR after the
       // row has moved on, and this branch reacted only to impl-PR activity and CI: with no CI failure the
       // row could take a merge gate over an unread comment, and with one the feedback worker consumed the
       // shared cursor and cleared BOTH flags without ever being told to read it. Same handling the
       // approval batch gets — implementer notes, not a spec round.
-      if (row.newSpecReviewEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled spec-PR feedback to carry as implementer notes' }
+      if (!capped && row.newSpecReviewEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled spec-PR feedback to carry as implementer notes' }
       // A multi-PR row's DAG advances on merges and on its own deferred work, neither of which is
       // "PR activity". Without this the issue stalls the moment a merge unblocks its next slice.
       if (multiPrHasWork(row)) return { action: 'implement', why: 'multi-PR DAG has work: a ready slice, a deferred one, or the assembled goal' }
       return null
+    }
 
     default:
       return null
@@ -353,6 +403,43 @@ function normalizeResolutions(row) {
 }
 
 /**
+ * How many rounds this dispatch spent against a budget — the spec-review budget and the PR-feedback
+ * cap alike, because both charge by the same three rules and a drift between them is a budget that
+ * silently stops bounding anything.
+ *
+ * 1. A worker that escalated a `blocker` **didn't finish the round**, any more than it finished
+ *    reading the batch — the cursor already holds for it, and the counter has to agree. Charged
+ *    anyway, one round becomes two, and after the human clears the blocker the retained batch reads
+ *    as CONVERGED and is never resumed: the guard silently eats the work it was protecting.
+ * 2. An **unreported round is charged one.** The field is optional, so charging zero would let every
+ *    batch consume its feedback, advance the cursor and add nothing — the budget never reached, which
+ *    is the exact unbounded sequence it exists to prevent.
+ * 3. A worker that genuinely spent none says so **explicitly with 0**, and that is honoured: a spec
+ *    batch of pure factual corrections, a feedback batch of pure acknowledgements.
+ *
+ * @param finished  did the worker return WITHOUT escalating a blocker?
+ * @param isRound   was this dispatch the kind that spends the budget at all?
+ * @param reported  the count the worker reported, or undefined if it reported none
+ */
+function chargeRound(finished, isRound, reported) {
+  // `isRound` is decided by the ACTION, and it is the whole authority on whether this dispatch can
+  // spend budget — so a report from any other action is ignored rather than added. `WORKER_SCHEMA`
+  // permits both count fields on every action (one schema, all actions), and no prompt asks for them
+  // outside a review or feedback dispatch; falling through to the reported value let a DAG build or a
+  // decision application charge rounds nobody dispatched, which walks an issue to a cap that
+  // orchestration.md says only feedback handling can reach.
+  if (!finished || !isRound) return 0
+  if (reported === undefined) return 1
+  // A round is BOOLEAN — one dispatch is one pass over the outstanding batch — so the report says
+  // whether this dispatch was one, and can never size it. `number` in the schema accepted anything an
+  // agent emitted and this added it verbatim: a feedback worker that touched three sub-PR handles and
+  // reported `3` (one pass, three handles — a reading the multi-PR prompt invites) parks the issue at
+  // the cap after four dispatches, and a negative would walk the counter BACKWARD, past a cap that is
+  // supposed to be reachable and against the monotonicity the reset rule depends on.
+  return reported > 0 ? 1 : 0
+}
+
+/**
  * Is this row waiting on a human decision?
  *
  * One predicate, because every consumer has to agree. `pendingAction` parks on it, and each GATE has
@@ -364,9 +451,17 @@ function normalizeResolutions(row) {
  * `blockedBy` is deliberately NOT part of this. An open prerequisite is a sequencing constraint that
  * does not change what the spec says, so approving early is harmless and saves a later wait; it still
  * withholds the MERGE gate, where landing order is the whole point.
+ *
+ * The PR-feedback cap belongs here for the reason this predicate exists at all. It parks a row without
+ * writing a `blocker` — the question is derived from the counter — so a gate filter testing only the
+ * stored field saw nothing: a capped row whose scan reported `readyToMerge` was offered the merge gate
+ * and the "we stopped, is the approach wrong?" question in the SAME wake. That invites the one
+ * irreversible action while telling the human we have stopped working, and "merge as-is" is one of the
+ * answers they may give — so it must come back as their decision, which resets the counter and releases
+ * the gate on the next wake, not as an invitation issued before they have answered.
  */
 function awaitingHumanDecision(row) {
-  return !!row.blocker
+  return !!row.blocker || cappedAwaitingDirection(row)
 }
 
 /**
@@ -807,18 +902,11 @@ function nextRow(row, { worker, action, landed, folded }) {
 
   if (!worker) return { ...row, ...cursor, verdicts, ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}) }
 
-  // See `specReviewRounds` below: a review round that reports no count is charged one, because
-  // charging zero makes the budget unreachable.
-  // A worker that escalated a `blocker` didn't finish the round any more than it finished reading
-  // the batch — the cursor already holds for it, and this counter has to agree. Charged anyway, one
-  // round becomes two, and after the human clears the blocker the retained batch reads as CONVERGED
-  // and is never resumed: the budget guard silently eats the work it was protecting.
-  const roundsSpent =
-    !workerFinished
-      ? 0
-      : action === 'spec-review' && worker.specReviewRoundsSpent === undefined
-        ? 1
-        : worker.specReviewRoundsSpent || 0
+  // Both budgets charge by the SAME three rules — see `chargeRound`. They were written out twice,
+  // identical but for the action string and the field, which made "the same rules" a claim in a
+  // comment rather than something the code enforced.
+  const roundsSpent = chargeRound(workerFinished, action === 'spec-review', worker.specReviewRoundsSpent)
+  const prRoundsSpent = chargeRound(workerFinished, action === 'pr-feedback', worker.prFeedbackRoundsSpent)
 
   const next = {
     ...row,
@@ -863,6 +951,9 @@ function nextRow(row, { worker, action, landed, folded }) {
     // exists to prevent. An unreported round is assumed spent. A worker that genuinely spent none
     // (a batch of pure factual corrections) says so explicitly with 0, which is honoured.
     specReviewRounds: (row.specReviewRounds || 0) + roundsSpent,
+    // The PR-feedback cap's counter. Only the COORDINATOR resets it — when it records the
+    // human's answer at the cap — so nothing here ever decreases it.
+    prFeedbackRounds: (row.prFeedbackRounds || 0) + prRoundsSpent,
     // Whose answer this is depends on WHICH worker ran, because the canonical rule ties the
     // third round to what the LATEST round found: "spend a third round only when round two
     // surfaced a genuine spec-level finding" (orchestration.md § The convergence rule).
@@ -1528,7 +1619,15 @@ const WORKER_SCHEMA = {
         fixBlocker: { type: ['string', 'null'] },
       },
     },
-    specReviewRoundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent this dispatch — 0 for a batch that was only factual corrections' },
+    specReviewRoundsSpent: {
+      type: 'number',
+      description: 'Did this dispatch spend a review round? 1 yes, 0 for a batch that was only factual corrections. Never more than 1 — one dispatch is one pass.',
+    },
+    prFeedbackRoundsSpent: {
+      type: 'number',
+      description:
+        'Did this dispatch spend a PR-feedback round? 1 for a normal pass over the batch, 0 for a batch that was only acknowledgements and process chatter. Never more than 1, however many PR handles the pass touched. Omit and you are charged 1.',
+    },
     specLevelFound: { type: 'boolean', description: 'Did this round surface a genuine spec-level finding? Authorizes the third round.' },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
     blocker: { type: ['string', 'null'], description: 'Needs a human decision — the coordinator surfaces it' },
@@ -1839,6 +1938,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
+    prFeedbackRounds: carriedCount(row, 'prFeedbackRounds', 'pr_feedback_rounds'),
     // Carried human decisions, as a list and aimed. Computed from the CARRIED row so an untargeted
     // answer can still be attributed to the slice the row surfaced — `foldMultiPrScan` below lifts the
     // next sibling over `blockerFor`, and after that the aim is unrecoverable.
@@ -1994,6 +2094,14 @@ for (const row of plan.blocked) {
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
 }
+// No silent stops: the cap is a question for the human, and it is the one hold that looks
+// identical to a healthy quiet row from the outside — no gate pending, no blocker text of its own.
+for (const row of refreshed.filter(cappedAwaitingDirection)) {
+  log(
+    `${row.id}: PR-feedback cap reached (${row.prFeedbackRounds} rounds handled) — not auto-handling further feedback. ` +
+      `Surfaced for a decision; recording the answer and resetting prFeedbackRounds to 0 is what resumes it.`,
+  )
+}
 // No silent holds: this one has a cause the user can act on (the epic PR has feedback in flight).
 if (plan.heldForFold.length) {
   log(
@@ -2072,6 +2180,26 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
                   (item.row.assembledGoal && item.row.assembledGoal.fixPr
                     ? `If the dead handle is the assembled-goal repair PR #${item.row.assembledGoal.fixPr} rather than a slice, pass \`assembledGoal\` with \`fixPr: null\` instead: the gap issue stays as it is and the repair is re-opened against it. Left set, assembly reports AWAITING_FIX forever on a PR that can never merge.\n`
                     : '')
+                : '')
+            : '') +
+          // The counter is the coordinator's, but only the worker knows whether the batch it just
+          // read was a real round. Told nothing, it omits the field and is charged one by default —
+          // correct, but it also means a batch of pure acknowledgements silently eats a round.
+          (item.action === 'pr-feedback'
+            ? `Report \`prFeedbackRoundsSpent\`: 1 for a normal pass over this batch, 0 if it turned out to be only acknowledgements and process chatter with nothing to fix or answer. It is never more than 1 — this dispatch is ONE pass over the outstanding batch, however many PR handles that batch spans. This issue has handled ${item.row.prFeedbackRounds || 0} of ${PR_FEEDBACK_CAP} auto-handled rounds.\n` +
+              // CONDITIONAL on this batch actually being a round, which is not knowable until the
+              // worker has read it. Stated unconditionally, this told the worker to report 1 and pause
+              // — overriding the zero-cost rule one line above for exactly the batch it names, parking
+              // the issue at a twelfth round that was never spent and claiming twelve handled rounds on
+              // the PR.
+              ((item.row.prFeedbackRounds || 0) >= PR_FEEDBACK_CAP - 1
+                ? `IF this batch is a real round, it is the LAST auto-handled one — after it, feedback handling stops until a human gives direction. In that case: finish the batch properly (every code comment answered), then post the pause comment on the PR per issue-implement 10.7 — the round count, the threads still open, and your read on whether this is converging or the same objection keeps coming back. ` +
+                  // NOT as a `blocker`: an escalating worker is charged zero rounds and keeps its
+                  // batch unconsumed, so reporting one here would stop the counter one short of the
+                  // cap, re-deliver this batch after the human answered, and re-post its replies.
+                  // The counter is the mechanism; the coordinator surfaces the ask from it.
+                  `Do NOT report a \`blocker\` for the cap itself — the coordinator raises it from the count. (A blocker for some OTHER decision you genuinely can't make is unaffected.) ` +
+                  `If instead the batch turns out to be acknowledgements only, report 0 as above and post NO pause comment: no round was spent, the cap is not reached, and the loop continues.\n`
                 : '')
             : '') +
           (item.action === 'pr-feedback' && item.row.newSpecReviewEvents
@@ -2524,6 +2652,23 @@ const epicOut = {
 // surfaced list is the only honest answer to that.
 const epicBlockers = [
     ...issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
+    // DERIVED, not a stored blocker: the cap is a property of the counter, so there is no second
+    // field that can disagree with it and nothing for the coordinator to forget to set. Resetting
+    // the counter is what removes this entry — the same act that un-parks the row — so the
+    // surfaced question and the park can never get out of step. It also holds `mayWrap`: an epic
+    // must not close over an issue whose review loop we stopped without an answer.
+    //
+    // ...but only while the work still EXISTS, which is `cappedAwaitingDirection`'s liveness clause —
+    // the same predicate the gates withhold on and the log reports, so the three cannot disagree
+    // about which rows are capped.
+    ...issues
+      .filter((r) => cappedAwaitingDirection(r) && !r.blocker)
+      .map((r) => ({
+        issueId: r.id,
+        blocker:
+          `PR-feedback cap reached — ${r.prFeedbackRounds} rounds handled on ${r.implPr ? `#${r.implPr}` : 'this issue'} and feedback is no longer being auto-handled. ` +
+          `Is this converging slowly, or is the approach the problem? Answer to resume (the answer resets the counter); the worker's read on the open threads is on the PR.`,
+      })),
     ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}`, evidence: u.evidence, threads: u.threads })),
     ...epicOpenQuestions.map((q) => ({ issueId: epic.issueId, blocker: `Epic-spec open question — needs a human: ${q}` })),
 ]

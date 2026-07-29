@@ -24,7 +24,7 @@ Use the Bash tool to check:
 - For each open PR, note: title, branch, whether it's approved/mergeable (i.e., likely to land soon)
 
 #### 1b: Linear Issues
-Use Linear MCP tools to fetch:
+Fetch from Linear (see CLAUDE.md → "Linear access" for the channel):
 - All active issues (backlog, todo, in progress) for the project
 - Include relations to understand blocking/blocked-by dependencies
 - Recently completed issues (last week) for context on momentum

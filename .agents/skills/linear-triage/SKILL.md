@@ -20,7 +20,7 @@ Read the following project files to understand objectives, current phase, archit
 
 ### Step 2: Fetch Linear Issues
 
-Use the Linear MCP tools to pull the current issues. If $ARGUMENTS is provided, use it to filter by team key or other criteria.
+Pull the current issues from Linear (see CLAUDE.md → "Linear access" for the channel). If $ARGUMENTS is provided, use it to filter by team key or other criteria.
 
 Fetch:
 - All active issues (backlog, todo, in progress)
@@ -88,7 +88,7 @@ Do NOT make any changes to Linear until the user explicitly approves.
 
 ### Step 5: Execute Approved Changes
 
-After approval, use the Linear MCP tools to:
+After approval, use Linear (same channel as above) to:
 - Update priorities on approved issues
 - Update issue ordering/ranking as approved
 - Create new issues that were approved

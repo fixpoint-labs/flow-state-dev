@@ -50,8 +50,8 @@ many rounds to converge. That cost is the signal — measure it from data you al
 produce, don't add ceremony.
 
 - **Auto-derive the ledger** from GitHub + Linear (GitHub MCP `pull_request_read` /
-  review + comment endpoints; Linear MCP for issue state history). For each recent
-  spec and implementation PR, record: **rounds-to-approval** (distinct review passes
+  review + comment endpoints; Linear for issue state history — see CLAUDE.md →
+  "Linear access" for the channel). For each recent spec and implementation PR, record: **rounds-to-approval** (distinct review passes
   before merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
   `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` · `nit`),
   whether the design was flagged "felt off" (by a reviewer or the challenger), and one

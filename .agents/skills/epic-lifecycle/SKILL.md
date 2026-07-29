@@ -139,7 +139,8 @@ even if more are queued. State the chosen N and the cap to the user.
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
                 verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
-       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
+       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound,
+                   prFeedbackRounds, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
                    approvedInSession, subPrs, assembledGoal, unsettled, blockerFor,
                    multiPrPending } ],
@@ -309,6 +310,16 @@ even if more are queued. State the chosen N and the cap to the user.
    work first signs off something the decision is about to alter. The question itself still appears in
    `blockers` every wake, so nothing is hidden; the gate returns once you have answered and the wake
    has dispatched the answer.
+
+   A blocker reading **"PR-feedback cap reached"** is the same contract with a different
+   clearing rule. It is **derived from `prFeedbackRounds`**, not stored, so there is no field to
+   remove: the issue's review loop ran twelve auto-handled rounds and stopped
+   ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR feedback: the round
+   cap"). Put the question to the user — keep going, take a position on the thread that keeps
+   coming back, re-examine the approach, split the rest into a follow-up, or merge as-is — then
+   record the answer in `blockerResolutions` **and set `prFeedbackRounds: 0`**. The reset is what
+   un-parks the row and removes the blocker; recording the answer alone leaves it capped, and
+   resetting alone sends a fresh worker back into the same loop with no direction.
 
    A `blocker` reading **"POC returned INCONCLUSIVE"** is the same contract from a different
    source: the evidence run couldn't settle the claim, so `orchestration.md` hands it back to the

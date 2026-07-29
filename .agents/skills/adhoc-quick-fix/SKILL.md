@@ -28,7 +28,7 @@ If the description is unclear or could mean multiple things, ask the user to cla
 
 Before creating anything, search Linear for duplicates:
 
-1. Use the Linear MCP `list_issues` tool to search for issues with similar keywords from the description.
+1. List Linear issues (see CLAUDE.md → "Linear access" for the channel) and search for issues with similar keywords from the description.
 2. Also search with `list_issues` using broader terms (the component name, the feature area).
 3. If you find a likely duplicate or related issue, tell the user:
    - Show the existing issue (ID, title, status, description summary)
