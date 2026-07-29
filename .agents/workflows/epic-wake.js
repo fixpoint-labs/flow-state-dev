@@ -83,7 +83,21 @@ function pendingAction(row) {
   // Linear is authoritative on whether this issue still exists as work. A carried row whose
   // issue the human closed, canceled or dropped must stop dispatching — the terminal filter on
   // newly discovered children doesn't help a row that was already in the table.
-  if (row.linearTerminal) return null
+  // ...but a CARRIED VERDICT outranks completion. A POC is non-blocking by design, so it can land after
+  // the implementation PR merged and Linear moved to Done — and parking first meant that verdict was
+  // never applied: not recorded in the spec, no evidence-backed reply on its thread, and the epic wrapped
+  // as though the question had never been asked. `orchestration.md` treats dropping evidence as a
+  // correctness failure, not an efficiency one.
+  //
+  // A CANCELLED issue is different: the work is gone, so there is nothing to fold a verdict into. It is
+  // dropped, but out loud (below), never silently.
+  if (row.linearTerminal) {
+    const finished = !CANCELLED_LINEAR.test((row.linearState || '').trim())
+    if (finished && row.verdicts && row.verdicts.length) {
+      return { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) landed after the issue completed` }
+    }
+    return null
+  }
 
   if (row.blockedBy && row.blockedBy.length) return null
 
@@ -171,6 +185,15 @@ function dedupeClaims(requests) {
       // to every issue while leaving the other threads without their evidence-backed reply.
       const extra = (req.threads || '').trim()
       if (extra && !(seen.threads || '').includes(extra)) seen.threads = [seen.threads, extra].filter(Boolean).join(' · ')
+      // And the FRAMING, for the same reason threads are merged. Two issues can argue the same claim in
+      // the same words while meaning it about different load-bearing paths, so keeping only the first
+      // request's `load`/`falsify` would have the POC exercise one path and the verdict fan to both — a
+      // verdict presented as evidence for something it never ran. Merging keeps the dedupe (one
+      // settlement, which is the point) while making its evidence cover every issue it answers.
+      for (const field of ['load', 'falsify']) {
+        const more = (req[field] || '').trim()
+        if (more && !(seen[field] || '').includes(more)) seen[field] = [seen[field], more].filter(Boolean).join(' · ')
+      }
     } else {
       byClaim.set(key, { ...req, issues: [...targets] })
     }
@@ -890,6 +913,16 @@ function mergeSubPrs(carried, reported) {
     const prev = byId.get(r.id)
     const reportedEdges = r.dependsOn !== undefined || r.depends_on !== undefined
     const merged = { ...(prev || {}), ...norm(r) }
+    // STATUS is an observation, and a worker is not the observer. Workers build and push; they never
+    // merge, and only the refresh scout reads PR metadata. An unrestricted spread let a worker echoing
+    // the table promote a slice to `merged` — which unlocks dependents onto `origin/main` and can run the
+    // assembled goal while that PR is still open — or demote an open one to `pending`, which the next
+    // wake rebuilds from scratch. The one transition a worker genuinely owns is pending → open: it just
+    // opened the PR. Everything else comes from `foldMultiPrScan`.
+    if (prev && merged.status !== prev.status) {
+      const workerOwns = prev.status === 'pending' && merged.status === 'open'
+      if (!workerOwns) merged.status = prev.status
+    }
     // Structural edges come from the carried row unless the worker actually reported them.
     if (!reportedEdges && prev && prev.dependsOn !== undefined) merged.dependsOn = prev.dependsOn
     byId.set(r.id, merged)
@@ -1126,7 +1159,9 @@ const WORKER_SCHEMA = {
 const EPIC_FOLD_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['roundsSpent', 'aboveBar'],
+  // `folded` is required so a fold always says what it did: it is the coordinator's only window into an
+  // artifact it deliberately never reads, and an empty string is a legitimate answer ("nothing changed").
+  required: ['roundsSpent', 'aboveBar', 'folded'],
   properties: {
     roundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent — 0 for a batch that was only factual corrections' },
     aboveBar: { type: 'boolean', description: 'Did anything folded change the objective or a cross-cutting decision? Authorizes the third round.' },
@@ -1309,6 +1344,9 @@ const freshById = bindByPosition(
 // the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
 // their own spec-approval gate like any other.
 const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
+// The subset where the WORK IS GONE, as opposed to finished. A verdict can still be folded into completed
+// work (the spec is there, the thread is there); there is nothing to fold it into on cancelled work.
+const CANCELLED_LINEAR = /^(cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 const discovered = (linear && linear.issues ? linear.issues : [])
   .filter((li) => li.id && li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
   // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would
@@ -1610,7 +1648,14 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
 //
 // `heldForFold` does not cover this: it defers WORK, and only when there is work to defer. A wake whose
 // children are all merely awaiting a human gate holds nothing and still emits those gates.
-const epicRevisedThisWake = !!(epicFold && (epicFold.folded || (epicFold.roundsSpent || 0) > 0))
+// ANY fold that returned. Keying on `folded` or a non-zero round count left the hole that mattered most:
+// a verdict fold and an answer fold are explicitly TOLD to report `roundsSpent: 0`, and `folded` was
+// optional — so the two folds most certain to write the epic-spec (recording a settled claim, recording a
+// human decision) could report neither signal and the guard read "nothing changed". The fold is only
+// dispatched when there is something to fold, so a fold that came back wrote. Withholding one wake's
+// child gates on a fold that genuinely changed nothing costs a wake; getting it wrong invites approval of
+// a superseded objective, and that approval is durable.
+const epicRevisedThisWake = !!epicFold
 // The head recorded for the next wake is the one the gate scout saw, which the fold has now moved. Marking
 // it unconfirmed is what stops a dead scout on the next wake from reading the durable approval as good.
 if (epicRevisedThisWake) headUnconfirmed = true
@@ -1793,7 +1838,12 @@ const gates = [
   // A merge gate is only actionable with a PR NUMBER, so it is emitted per HANDLE, not per row.
   // A multi-PR row has no `implPr` at all — one aggregate gate for it carried `pr: null`, which the
   // coordinator cannot surface, so the DAG stopped at its first merge-ready slice.
-  ...(epicRevisedThisWake ? [] : issues)
+  // `epicApproved` too, not just the revision guard. The objective gate holds the child RAMP — and a
+  // merge is the terminal step of that ramp, so letting work land while the gate is closed is the one
+  // outcome the gate cannot undo. (Only the spec-approval gate had this condition; the merge gate is the
+  // more consequential of the two to miss.) Deliberately not a dead end: the human is shown the
+  // epic-objective gate in the same list, and approving it releases these on the next wake.
+  ...(!epicApproved || epicRevisedThisWake ? [] : issues)
     // `pendingAction` parks a row carrying an unresolved decision or an open prerequisite, but the
     // merge gate is independent of it — so the human was still told to merge work whose blocker they
     // had not answered, or whose dependency had not landed. Parking has to mean parked everywhere.

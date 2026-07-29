@@ -222,7 +222,12 @@ function allMerged(nodes) {
  */
 function assembleState(nodes, goal) {
   if (!allMerged(nodes)) return null
-  if (goal.passed) return 'DONE'
+  // BOTH, matching `goalPassed()` in epic-wake.js — a bare boolean is not a proof, and `GOAL_SCHEMA`
+  // requires `evidence` for exactly that reason. The two predicates disagreeing was worse than either
+  // being wrong alone: the epic refused DONE on `{ passed: true }` and re-dispatched, this returned DONE
+  // immediately without running the goal, and the pair looped forever doing nothing. Falling through to
+  // NEEDS_GOAL re-runs the goal, which produces the evidence both sides are asking for.
+  if (goal.passed && goal.evidence) return 'DONE'
   // A confirmed failure is what distinguishes "not run yet" from "run and failed". A dead goal
   // agent records nothing, so it lands back here and retries rather than inventing a defect.
   if (!goal.failure) return 'NEEDS_GOAL'
@@ -373,11 +378,12 @@ const nodes = (args.subPrs || [])
   .map((n) => (n.status === 'building' ? { ...n, status: 'pending' } : n))
   // Clear the blocker each answer resolves (see above). A row-level answer with no slice named clears
   // whichever slice is blocked, matching how `epic-wake` lifts one nested blocker at a time.
-  // Only a PENDING slice is unblocked by the answer alone — its build has not happened, so the build
-  // IS the delivery. An OPEN slice keeps its blocker until a `resume` worker has applied the decision
-  // (see classify): clearing it here made the slice read as unblocked with the answer unapplied, so it
-  // became merge-gate eligible and the human was asked to merge an implementation that ignores it.
-  .map((n) => (n.blocker && n.status === 'pending' && (answeredIds.has(n.id) || rowLevelAnswer) ? { ...n, blocker: null } : n))
+  // NOT cleared here, for either status. `classify` lets an answered node through (see `answeredIds`)
+  // and the blocker is cleared when the DELIVERING WORKER RETURNS — the same rule as every other piece of
+  // state in this script. Clearing it up-front looked harmless for a pending slice ("the build is the
+  // delivery") and lost the decision whenever that build died: the node persisted already-unblocked while
+  // the caller consumed the one-shot resolution, so the next worker reached the fork with nothing.
+  // A dead worker must mutate nothing.
 for (const n of args.subPrs || []) {
   if (n.status === 'building') log(`${n.id}: carried status "building" is not a state a wake can resume — retrying the build.`)
 }
@@ -385,13 +391,14 @@ const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
 const goal = { ...(args.assembledGoal || {}) }
 
 // The repair blocker is the third copy of the same decision (row, sub-PR, goal), and it gets the same
-// treatment: answered means cleared, so REPAIR_BLOCKED is not a state a standalone caller can't leave.
-if (goal.fixBlocker && (rowLevelAnswer || answeredIds.has(goal.owningSubPr))) {
-  log(`Repair blocker for ${issueId} was answered by the human — clearing it so the repair can proceed.`)
-  delete goal.fixBlocker
+// treatment: an answer RELEASES the repair, and the blocker is cleared once the fix worker has actually
+// returned — not before it runs, or a dead worker would leave the decision spent and the fork unanswered.
+const repairAnswered = !!goal.fixBlocker && (rowLevelAnswer || answeredIds.has(goal.owningSubPr))
+if (repairAnswered) {
+  log(`Repair blocker for ${issueId} was answered by the human — releasing the repair; the blocker clears once a fix worker returns.`)
 }
 // ---- Assemble: one state, one action per wake. -----------------------------------------
-const state = assembleState(nodes, goal)
+const state = assembleState(nodes, repairAnswered ? { ...goal, fixBlocker: null } : goal)
 
 if (state === 'DONE') {
   return { issueId, subPrs: nodes, assembledGoal: goal, done: true }
@@ -531,7 +538,12 @@ if (state === 'NEEDS_FIX') {
   }
 
   log(`Repair PR #${fix.pr} opened for ${issueId}. Merge is yours; the goal re-runs once it lands.`)
-  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixPr: fix.pr }, fix, done: false }
+  // `fixBlocker: null` because THIS is where an answered repair decision is spent — the worker ran with
+  // the answer in its prompt and opened the PR. Carrying the blocker through would re-park the repair on
+  // the next wake, when the one-shot resolution is gone, and re-ask a question already answered and acted
+  // on. The two paths above deliberately do NOT clear it: a fresh escalation replaces it, and a worker
+  // that returned nothing delivered nothing.
+  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixPr: fix.pr, fixBlocker: null }, fix, done: false }
 }
 
 // ---- Otherwise: advance the DAG's ready set. -------------------------------------------
