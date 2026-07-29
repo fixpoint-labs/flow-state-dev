@@ -19,14 +19,20 @@
 a progress surface that survives the request, and no way to strand it — on the task board we
 already have.**
 
+> **Read the conditionality block below before treating any clause as a promise.** §1 was
+> **audited as a whole against the full open-question set (OQ-A, OQ-B, OQ-C, OQ-D)** — clause by
+> clause and criterion by criterion — so the conditionality here is deliberate and complete, not
+> patched where a reviewer happened to look. Several open questions permit outcomes that do
+> **not** satisfy the headline sentence above.
+
 Three clauses, each falsifiable, and the order matters because each one is worthless without
 the one before it:
 
-1. **Exclusive ownership per attempt, and at-least-once execution.** Two parts are
-   **unconditional**: at any moment a task has at most one *current* owner — **only one execution
-   may successfully claim it** — and a **stale** owner's settlement is rejected rather than
-   applied. Today neither holds across executions — measured, not inferred (the premise correction
-   below).
+1. **Exclusive ownership per attempt, and at-least-once execution.** Two parts hold **wherever
+   the guarantee applies at all** (see C1 below for where that is): at any moment a task has at
+   most one *current* owner — **only one execution may successfully claim it** — and a **stale**
+   owner's settlement is rejected rather than applied. Today neither holds across executions —
+   measured, not inferred (the premise correction below).
 
    **A third part, cap admission, is *conditional* and may not be delivered at all.** It is
    **not** promised by this clause. What the epic delivers depends on **OQ-A** (which guarantee)
@@ -46,12 +52,32 @@ the one before it:
    overshoot scales with the number of concurrent admitters. Calling that "bounded" would be a
    guarantee this epic cannot honour — see Decision 1 → 1b, and the cross-issue finding there.
 
-   Whichever the gate picks — including "no cap guarantee at all" — the two parts named
-   unconditional above (one current owner, stale settlement rejected) still hold.
-2. **Reports what it is doing.** A task running outside its originating request has a
-   persisted progress surface. Not `ctx.emit`, which dies with the request.
-3. **Steered.** A coordinator that is alive can read the board and act on it; a coordinator
-   that is gone does not strand the work.
+   Whichever the gate picks — including "no cap guarantee at all" — the two ownership parts above
+   still hold wherever the guarantee applies (C1).
+2. **Reports what it is doing — *conditional on OQ-C* (C2).** A task running outside its
+   originating request has a **persisted progress surface**. Not `ctx.emit`, which dies with the
+   request. **If OQ-C narrows M5 to liveness-only, this clause is not delivered** — a heartbeat
+   says a worker is *alive*, not what the task is *doing*, and those are different guarantees.
+3. **Steered — second half depends on FIX-978, which this epic does not build (C3).** A
+   coordinator that is alive can read the board and act on it; a coordinator that is gone does not
+   strand the work. **The non-stranding half is FIX-978's mechanism, consumed here** (Decision 0),
+   so this epic can satisfy it only if FIX-978 lands.
+
+#### Conditionality of this objective — the complete set
+
+Stated once, in one convention, so no clause reads as a promise the epic may not keep. **This is
+the output of the whole-§1 audit against OQ-A/B/C/D**; anything not listed here is unconditional.
+
+| | Clause / criterion | Conditional on | If the permitted outcome is taken |
+|---|---|---|---|
+| **C1** | clause 1 ownership · criterion 1 | **OQ-A** (whether the store change is adopted) · the adapter · the backing | Ownership holds only on a board the framework can actually fence: **(i)** if the gate **refuses** the conditional write, the guarantee falls to queue-level dedup, which this document shows is **bypassed by `taskTools` and `reclaim`** — so it is *not* delivered generally; **(ii)** on a store without the verb (e.g. **filesystem**, Decision 1 → feasibility) the durable board is refused rather than guaranteed; **(iii)** a **`factory`**-backed board is unverifiable and out of scope by default (Decision 2 → 2.b). |
+| **C1b** | clause 1 cap · criterion 1b | **OQ-A** (which guarantee) · **OQ-D** (whether cap work is here at all) | May be **narrowed-but-unbounded overshoot**, or **no cap guarantee at all**. Already conditional above. |
+| **C2** | clause 2 progress · criterion 4 | **OQ-C** | If M5 narrows to **liveness-only**, there is no persisted *progress* surface — only an alive/dead signal. Clause 2 and criterion 4 are then **not** delivered, and the epic should not claim them. |
+| **C3** | clause 3 non-stranding · criterion 3 | **FIX-978** (external — not an OQ) | This epic **consumes** reclamation and does not build it (Decision 0). If FIX-978 does not land, work can still strand and this half is undelivered. Recorded because a reader would otherwise read it as this epic's promise. |
+
+**OQ-B is the one open question that changes no clause.** Whether the blocking/background
+disposition is durable (M4) affects *how a caller waits*, not any guarantee in §1 — verified
+clause by clause during the audit rather than assumed.
 
 > **Why clause 1 says "per attempt" and not "exactly once" — folded from round 1 (Codex,
 > PR #993), and it corrected the gated statement itself.** An earlier draft claimed work is
@@ -70,19 +96,24 @@ the one before it:
 > a dispatch that fails after its row advances is dropped. Tasks want the opposite trade,
 > because a retried spec-authoring phase is recoverable and a silently dropped one is not.
 >
-> The completion criteria below were already consistent with the weaker property (criterion 1
-> only ever proved "two executions cannot both settle") — so it was the *claim* that was
-> wrong, not the criteria. They now agree.
+> **An earlier version of this note claimed the completion criteria "were already consistent" with
+> the weaker property, so only the claim had been wrong. That was itself wrong**, and the audit
+> withdraws it: criterion 1's settlement-only assertion was **not** consistent — it could pass while
+> exclusive ownership was violated, which is the defect the criterion now fixes by asserting *claim*
+> exclusivity first. Recorded because "the criteria are fine, only the prose drifted" is the
+> assumption that let it survive five rounds.
 
 ### What this epic is explicitly **not** doing
 
 Stated up front because the epic's own description had to correct itself once already, and
 because the tempting shape here is the wrong one:
 
-- **No sibling job queue.** The task board **is** the queue. Tasks are already durable
+- **No sibling job *registry*.** The task board **is** the queue: tasks are already durable
   resource-backed envelopes with a full mutation lifecycle and mid-flight observability
-  (`TaskHandle.items()`). A second queue primitive beside it would be two sources of truth
-  for one question.
+  (`TaskHandle.items()`). A second place that **defines what work exists** would be two sources of
+  truth for one question. **A queue used purely as M3 *transport* is not that** — Decision 5 offers
+  exactly that option (BullMQ delivery), and it is permitted precisely because the board stays the
+  registry. The line is registry vs transport, not "no queue anywhere."
 - **No new durable store.** Nothing here adds a persistence backend. Conductor's own
   requirement list says this outright: it puts one durable task per issue on a
   **resource-backed** `TaskCollection` and needs no store that doesn't exist.
@@ -120,7 +151,7 @@ number.
 | Set | Size | Members |
 |---|---|---|
 | **Sub-issues** — parented under FIX-939 | 6 | FIX-981, FIX-982, FIX-983, FIX-984, FIX-957, FIX-825 |
-| **Active set** — gets an `issue-lifecycle` now | 1 | FIX-981 (M1) |
+| **Active set** — gets an `issue-lifecycle` **once the objective gate passes** | 1 | FIX-981 (M1) |
 | **Filed, held as blocked** | 3 | FIX-982 (M3), FIX-983 (M4), FIX-984 (M5) |
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 (*In Spec Review* under FIX-980) |
@@ -245,14 +276,23 @@ Not "durable jobs work." Specifically:
    criterion is relaxed to criterion 1 alone** and the epic claims no cap guarantee at all.
 2. A leased task continues to execute after the request that created it has ended, and the
    thing running it is not the originating request's drain.
-3. A stranded claim returns to the queue with no human intervening — via FIX-978's mechanism,
-   consumed here, not rebuilt here.
-4. A detached task's progress is readable from a **persisted** surface, not from a
-   `transient: true` trace item and not from the originating request's emitter (Decision 4).
+3. **(Conditional — C3.)** A stranded claim returns to the queue with no human intervening — **via
+   FIX-978's mechanism, consumed here, not rebuilt here.** So this criterion is satisfiable only
+   once FIX-978 lands; it is not this epic's to demonstrate alone.
+4. **(Conditional on OQ-C — C2.)** A detached task's progress is readable from a **persisted**
+   surface, not from a `transient: true` trace item and not from the originating request's emitter
+   (Decision 4). **If OQ-C selects liveness-only, this criterion is replaced** by the weaker one it
+   actually delivers — an alive/dead signal on a persisted surface — and the epic states that it
+   ships no progress surface. **Do not assert the progress form against a liveness-only
+   implementation**; it would fail a correct build, the same defect as the old criterion 1.
 5. The in-request `.work` / `.waitForWork` flavour still works, and any break to it is a
    declared, versioned break with a migration note — not a silent behavior change.
-6. No new persistence backend and no second queue primitive were introduced (the §1
-   not-doing list holds at the end, not just at the start).
+6. **No new persistence backend, and no second *work registry*.** The board remains the single
+   source of truth for what work exists. **Stated as "work registry", not "queue primitive"** —
+   Decision 5 explicitly permits a **queue as M3 transport** (e.g. BullMQ delivery), and the
+   earlier wording ("no second queue primitive") would have been violated on its face by an option
+   this document offers. A transport that carries wake-ups is fine; a second place that *defines*
+   the work is not.
 
 ---
 
@@ -978,7 +1018,7 @@ each time this doc is updated. Empty columns mean not yet reached.
 
 **Epic PR:** [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) · never merged, open for the life of the epic.
 
-**Active set** — parented under FIX-939, runs an `issue-lifecycle` now:
+**Active set** — parented under FIX-939; runs an `issue-lifecycle` **once the objective gate passes**, and holds at `NEEDS_SPEC` until then (`orchestration.md` → Gates). Decision 1 is still awaiting that gate, so no lifecycle is dispatched yet:
 
 | Issue | M | Title (short) | Linear state | Spec PR | Impl PR |
 |---|---|---|---|---|---|
