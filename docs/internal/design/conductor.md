@@ -529,7 +529,7 @@ Everything between them moves without asking. Conductor never merges.
 flowchart LR
   L1["**1 · out of the box**<br/>install + one config file<br/>default phases, skills, gates"] --> L2
   L2["**2 · configure**<br/>concurrency, gate policy,<br/>which connectors, model per phase"] --> L3
-  L3["**3 · customize**<br/>edit the process files<br/>(SKILL.md per phase)"] --> L4
+  L3["**3 · customize**<br/>edit a phase's<br/>instructions.md"] --> L4
   L4["**4 · extend**<br/>own blocks, own phases,<br/>own signals + reactions"]
 ```
 
@@ -562,7 +562,7 @@ is §10/D1's mistake at config altitude.
 | Reconcile backstop + new-work discovery | `@flow-state-dev/scheduled` |
 | The hands | `@flow-state-dev/claude-code` (`/cli` and `/sdk`) |
 | Entity store, project-scoped, local → cloud unchanged | resource collections + `store-sqlite` / `store-postgres` |
-| User-editable process files | the skills runtime (`SKILL.md` folders, `agents:` delegation) |
+| User-editable phase instructions | plain markdown under `.conductor/phases/<name>/instructions.md`, carried to the vendor by the phase brief — **not** the FSD skills runtime, which activates resource-stored skills from an FSD generator (§6) |
 | Live view of activity | SSE item stream + `@flow-state-dev/react` renderers + devtool |
 | Operator CLI loop | `fsdev chat` (FIX-875) |
 | Proving the real path | the `goals/` harness |

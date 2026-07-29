@@ -19,24 +19,42 @@ defaults for everything it hasn't overridden.
 my-project/
   conductor.config.ts          # level 1–2: the only required file
   .conductor/
-    process/                   # level 3: the process files, copied from the template on init
-      spec/SKILL.md            #   how a spec gets written
-      implement/SKILL.md       #   how implementation runs
-      review/SKILL.md          #   how a PR gets reviewed
-      retrospective/SKILL.md   #   how a lesson gets extracted
+    phases/                    # every phase, built-in and yours, in one place
+      spec/
+        instructions.md        #   level 3: how a spec gets written  (scaffolded on init)
+        definition.ts          #   level 4: only present once you eject it
+      implement/instructions.md
+      review/instructions.md
+      retrospective/instructions.md
+      security/               #   a phase you added — same shape, no special case
+        instructions.md
+        definition.ts
     guidance/                  # the guidance collection's seed content
       objectives/*.md          #   { kind: objective, label, body }
       tenets/*.md              #   { kind: tenet, ... }  ← e.g. philosophy.md lives here
       lessons/*.md             #   written by the retrospective phase
     blocks/                    # level 4: your own blocks
       security-review.ts
-    phases/                    # level 4: your own phases
-      security.ts
 ```
 
+**There is no "process" directory, because the process *is* the phases.** An earlier version of
+this sketch split built-in phases (`process/*/SKILL.md`) from yours (`phases/*.ts`), which made
+"customize" and "extend" two different mechanisms in two different directories — a cliff where
+there should be a gradient. One directory, one shape: a phase is a folder with `instructions.md`
+and optionally a `definition.ts`. Changing what a built-in phase *says* means editing its
+instructions; changing what it *does* means ejecting its definition; adding a phase means adding
+a folder. Built-in and custom phases differ only in who wrote them first.
+
 `.conductor/` is versioned with the repo — the process is part of the codebase, not hidden in
-a service. Editing a `SKILL.md` is how you change how a phase behaves, and it shows up in code
-review like any other change.
+a service, and every change to it shows up in code review.
+
+**Scaffold vs. eject, since the tradeoff is real.** `conductor init` writes `instructions.md`
+for each built-in phase, because instructions are what you actually want to edit. It does *not*
+write `definition.ts` — the definition is imported from the package until you run
+`conductor eject <phase>`, which writes the default block structure into your repo for you to
+change. The cost of ejecting is that your copy stops receiving upstream improvements, so it
+should be a deliberate act rather than the starting state. Scaffolding every definition on init
+would make every project a fork on day one.
 
 **Why files rather than an FSD store:** conductor delegates the work inside a phase to a vendor
 harness (Claude Code, Codex), and that harness reads *the repo* — not conductor's resources. So
@@ -97,10 +115,11 @@ PRs should target upstream, several remotes, or one conductor driving a repo it 
 
 That gets the whole default process from `conductor.md` §8: epic framing → objective gate →
 per-issue spec → spec gate → implementation → PR feedback → merge gate → retrospective. Three
-human gates, no auto-merge, the process files from the shipped template.
+human gates, no auto-merge, the phase instructions from the shipped template.
 
 ```bash
-pnpm conductor init          # scaffolds .conductor/ from the template
+pnpm conductor init          # scaffolds .conductor/ (instructions only, no definitions)
+pnpm conductor eject spec    # write spec/definition.ts locally to change its structure
 pnpm conductor start FIX-123 # put one issue under management
 pnpm conductor board         # the board view
 pnpm conductor tick          # fire a tick by hand (the CLI trigger)
@@ -193,33 +212,22 @@ a question the environment *can't* — which is the test for whether a knob belo
 
 ## Level 3 — customize the process
 
-The process files are the process. No config change needed — edit the file.
+The phase instructions are the process. No config change needed — edit the file.
 
 ```md
-<!-- .conductor/process/spec/SKILL.md -->
+<!-- .conductor/phases/spec/instructions.md -->
 ---
 description: Research the issue and write a two-part spec. Part I is the case for a human; Part II is the build plan for the implementing agent.
 argument-hint: <issue-id>
-
-agents:
-  researcher:
-    prompt: |
-      You research implementation approaches. Read the codebase before proposing
-      anything. Cite the files you read. If two approaches are viable, present
-      both with the tradeoff named — do not pick silently.
-    tools: [read, grep, glob, webSearch]
-  author:
-    prompt: |
-      You write the spec. Lead with plain language (a reader should grok the
-      problem before any density). Name the 1–5 tenets this change turns on.
-    tools: [read, write]
-    visibility: primary
-
-allowed-tools: [read, grep, glob, webSearch, write]
 ---
 
 Research the issue, then write the spec to `docs/specs/<ISSUE-ID>.md` and open it as a PR
 marked ready for review.
+
+Read the codebase before proposing anything, and cite the files you read. If two approaches
+are viable, present both with the tradeoff named — do not pick silently. Lead with plain
+language: a reader should grok the problem before any density. Name the 1–5 tenets this
+change turns on.
 
 Reviewer contract for the PR description: this is a DIRECTION check, not a design review.
 Challenge the approach. Naming, file layout, and local structure are the implementer's.
@@ -245,10 +253,32 @@ dispatcher: {
 Worktrees stay in conductor's dispatcher layer and do **not** become an FSD concern — they're
 development-orchestration knowledge, not infrastructure every FSD app needs (tenet 4).
 
-This is deliberately the **same `SKILL.md` shape the framework already runs** — the skills
-runtime, `agents:` delegation, `allowed-tools`. Conductor ships a template of these; a project
-edits them; nothing about the mechanism is conductor-specific. That is the whole reason the
-process is customizable without a plugin API.
+### These are not FSD skills, and calling them that was wrong
+
+An earlier version of this sketch used `SKILL.md` and claimed it was "the same shape the
+framework already runs — the skills runtime, `agents:` delegation, `allowed-tools." That claim
+doesn't survive contact with either runtime, and it mattered enough to fix rather than paper
+over.
+
+FSD's skills system stores skills **as resources** and activates them when **an FSD generator**
+calls the `runSkill` tool, materializing them into pattern boards. Conductor's control path has
+no generator in it at all — that is the entire point of §5 — and the work inside a phase runs in
+a **vendor harness that has its own skill system** (§6). So a conductor phase is never activated
+by FSD's skills runtime. Two further mismatches followed from the same confusion: skills live in
+a resource store while §6 requires process files to be real files the vendor can read, and
+`agents:` / `allowed-tools` configure *FSD's* sub-agent materialization and tool gating, which
+mean nothing to Claude Code.
+
+So the file is `instructions.md`, and it is what it actually is: a **vendor-neutral instruction
+payload** carried by the phase brief. Each dispatcher decides how to present it —
+`claudeCodeDispatcher` hands it to Claude Code, which may then use its own `.claude/skills` and
+sub-agents; a future FSD-native dispatcher (D3) would activate it through the skills runtime,
+where `agents:` front-matter *would* be meaningful. That difference belongs to the dispatcher,
+not to the file.
+
+What survives intact is the property the old claim was reaching for: **the process is
+customizable without a plugin API**, because a phase is a markdown file plus an optional
+ordinary FSD block. That was never dependent on it being a skill.
 
 Guidance is the same idea, one directory over:
 
@@ -327,10 +357,15 @@ export const securityReview = sequencer({ name: "security-review" }).step(audit)
 A phase declares where it sits, what advances it, and what it dispatches. The `decide` reducer
 stays closed — you add transitions declaratively rather than patching a switch.
 
+This is the **same file a built-in phase has**, which is the payoff of collapsing `process/` and
+`phases/` into one directory: `conductor eject spec` writes exactly this shape for the built-in
+spec phase, so forking a default and writing a new phase are the same edit. The `instructions.md`
+beside it is the prompt payload; `definition.ts` is the structure.
+
 ```ts
-// .conductor/phases/security.ts
+// .conductor/phases/security/definition.ts
 import { definePhase } from "@flow-state-dev/conductor";
-import { securityReview } from "../blocks/security-review";
+import { securityReview } from "../../blocks/security-review";
 
 export const securityPhase = definePhase({
   name: "SECURITY",
@@ -369,7 +404,7 @@ export const securityPhase = definePhase({
 
 ```ts
 // conductor.config.ts (addition)
-import { securityPhase } from "./.conductor/phases/security";
+import { securityPhase } from "./.conductor/phases/security/definition";
 
 export default defineConductor({
   // …
@@ -417,7 +452,7 @@ export default defineConductor({
 |---|---|---|
 | **Driver** | `decide(entity, signal, world)`, `reconcile(observed, fresh)` | nothing — it's closed; you extend it with `definePhase` |
 | **Phases** | `SPEC`, `IMPLEMENTATION`, `RETROSPECTIVE`; epic `FRAMING`, `CROSS_SPEC_REVIEW`, `WRAP` | extra phases, slotted with `after` / `before` |
-| **Process files** | a template of `SKILL.md` per phase | your edits to them (level 3) |
+| **Phases** (files) | `instructions.md` scaffolded per built-in phase; `definition.ts` imported until ejected | your edits to the instructions (level 3), ejected definitions, whole new phase folders (level 4) |
 | **Blocks** | `conductorContext`, `reExamineOpenPrs`, GitHub PR ops, gate readers | your own, as ordinary FSD blocks |
 | **Dispatchers** | `claudeCodeDispatcher`, `codexDispatcher` | a dispatcher for any other agent — one interface |
 | **Connectors** | `githubConnector` (required), `linearConnector` (optional) | another connector if you need one — a v2 question |
@@ -428,7 +463,7 @@ export default defineConductor({
 
 ## The shape claim, stated plainly
 
-Everything above is **four kinds of file**: one config object, a directory of markdown, some
+Everything above is **four kinds of file**: one config object, directories of markdown, some
 ordinary FSD blocks, and declarative phase/reaction entries. There is no plugin system, no
 lifecycle-hook registry, and no conductor-specific DSL beyond `definePhase` and the reaction
 helpers — because the extension mechanisms are the framework's own (blocks, capabilities,
