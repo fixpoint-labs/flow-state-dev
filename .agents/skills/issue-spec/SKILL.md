@@ -26,11 +26,32 @@ This split has a consequence: **after writing the spec, you must reframe the iss
 
 **Specs earn their keep by avoiding implementation work, not by producing it.** Some Linear issues describe features that should not be built — the use case is already served by an existing primitive, the proposed API encodes single-vendor knowledge into a multi-vendor surface, or the new code is purely ergonomic over capability that already exists. When the research surfaces any of these patterns or patterns similar to them, your job is to *say so* and propose alternatives, not to mechanically deliver a spec that adds maintenance debt. Step 3.5 is a required gate that forces this question after research lands but before drafting begins. Do not skip it.
 
+## Who gets a spec — and who doesn't
+
+**A bug normally never reaches this skill.** Bugs take the *direct route*: no spec, no
+spec PR, no spec-approval gate — straight to `issue-implement`, where `diagnose` builds
+the reproduction and the fix is reviewed on its own PR. The rule and its reasoning are
+canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a
+spec". Don't write a spec for a bug just because one was asked for; say what the routing
+rule says and let it go straight to the fix.
+
+**Two things do send a bug here**, and if you're specced onto one, shape the spec around
+them rather than producing a full feature-shaped document:
+
+- **No reproduction / an ambiguous symptom.** The research *is* working out what is
+  happening. The valuable output is Part II §10: the reproduction shape and the seam the
+  regression test will live at. Part I stays short — the Case is "we don't yet know what
+  this is," and the Decisions are about where to look, not what to build.
+- **It isn't really a bug.** The fix is a new capability or a contract change. Then it's
+  a feature and gets the ordinary treatment; say so in Part I §1 so the mislabel is
+  visible at sign-off.
+
 ## Companion skills
 
-The spec is the input to `issue-implement`, which auto-routes based on the Linear category label:
+The spec is the input to `issue-implement`, which picks its discipline from the Linear category label:
 
-- **Bug** → implementation follows `diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
+- **Bug** (the rare specced one) → implementation follows `diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
 - **Feature / Enhancement** → implementation follows `tdd` (red-green-refactor with vertical tracer-bullet slices).
 
 Shape the spec's Testing Strategy (Part II §10) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
@@ -67,6 +88,13 @@ Fetch the full issue from Linear (see CLAUDE.md → "Linear access" for the chan
 6. **Look for an epic** (context, never a dependency). Check the issue's **parent**: if it's a Linear issue carrying the **`Epic` label (Kind group)**, this issue is under that epic — always the case under `epic-lifecycle`, and possible but not required for a standalone run. Read its epic-spec (the epic issue's attached document, or the `epic/<name>` branch — under `epic-lifecycle` the coordinator passes the epic handle so you needn't re-fetch). If one applies, **align** to its themes and longer-horizon direction (a reference, not a parent contract — you still make local calls), cite it in Part I §2, and carry the epic PR link. If you spot a **cross-cutting concern**, **comment up on the epic PR** (non-blocking) instead of deciding it here. No epic parent → proceed unchanged. See [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md).
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
+
+**Check the category label before anything else.** If it's **Bug**, stop and check it
+against the two exceptions in "Who gets a spec" above — no reproduction, or not really a
+bug. Neither applies? Say so in one line ("FIX-N is a bug with a clear repro — it takes
+the direct route; run `/issue-implement FIX-N`") and **do not write a spec**. Don't move
+its Linear state either: an issue parked in "In Spec Dev" for a spec nobody is writing is
+worse than no signal.
 
 Once the issue is loaded, **move it to "In Spec Dev"** with `save_issue` (set `state` to the "In Spec Dev" workflow state for the issue's team). This signals to the team that spec authoring is in flight. If the issue is already in "In Spec Dev" or a later state, leave it. If the team has no "In Spec Dev" state, fall back to the closest equivalent (e.g., "In Progress") and note it in the publishing comment.
 
@@ -271,7 +299,10 @@ The spec follows the **two-part template** in
 **Part I — The Case** (for the human decision-maker) and **Part II — The Build Plan**
 (for the implementing agent), split by a hard divider. **Read the template — it is
 the single source of truth for section order and what each section owes its reader.**
-Do not restate its section list here; if the structure changes, it changes there.
+Every section there is one line of instruction followed by a **worked example** of that
+section filled in, all from one running issue; write yours to match the example's shape
+and altitude rather than reasoning from the instruction alone. Do not restate its
+section list here; if the structure changes, it changes there.
 
 **Title:** `{ISSUE-ID}: {Issue Title} — Implementation Spec`
 

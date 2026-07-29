@@ -256,7 +256,10 @@ function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents 
       return {
         issues: Object.keys(fresh).map((id) => {
           const li = typeof linear[id] === 'string' ? { state: linear[id] } : linear[id] || {}
-          return { id, state: li.state || 'In Spec Review', blockedBy: li.blockedBy || [] }
+          // `category` is what ROUTES the issue ("Bug" → the direct route, no spec). Defaulted to null
+          // rather than omitted so the common fixture exercises the observed-but-unreadable case, which
+          // must fall back to the spec route — the safe direction.
+          return { id, state: li.state || 'In Spec Review', blockedBy: li.blockedBy || [], category: li.category ?? null }
         }),
       }
     }
@@ -1031,6 +1034,248 @@ check('a newly discovered epic child enters the table at NEEDS_SPEC', async () =
   )
   assert.deepEqual(workerLabels(calls).sort(), ['spec:FIX-2', 'spec:FIX-7'])
   assert.match(logs.join('\n'), /Discovered 1 new sub-issue\(s\) under the epic: FIX-7/)
+})
+
+// ---------------------------------------------------------------------------
+// The two routes → orchestration.md § "Which issues get a spec"
+// ---------------------------------------------------------------------------
+
+check('ROUTE: a bug goes straight to implementation with no spec', async () => {
+  // The whole direct route in one check: the Linear category decides it, the phase is corrected
+  // away from NEEDS_SPEC, `issue-spec` is never dispatched, and no spec-approval gate is offered
+  // for a spec that will never exist.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2')] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': { state: 'Todo', category: 'Bug' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 40 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'a bug must not be dispatched to issue-spec')
+  assert.equal(result.issues[0].route, 'direct')
+  assert.deepEqual(
+    result.gates.filter((g) => g.kind === 'spec-approval'),
+    [],
+    'a spec-approval gate for an issue with no spec parks the row on an answer nobody can give',
+  )
+  assert.match(logs.join('\n'), /FIX-2: bug — direct route, implementing with no spec/)
+
+  // And the dispatch has to SAY so: a fresh sub-agent that cannot read the coordinator's table
+  // would otherwise look for a spec, fail to find one, and report the absence as a blocker.
+  const dispatch = calls.find((c) => c.label === 'implement:FIX-2')
+  assert.match(dispatch.prompt, /ROUTE: direct \(this is a BUG\)/)
+  assert.match(dispatch.prompt, /do not treat its absence as a blocker/)
+})
+
+check('ROUTE: an unreadable category keeps the issue on the spec route', async () => {
+  // Fails CLOSED. An unread label costs one unnecessary document; guessing `direct` ships a feature
+  // through the one route with no gate in front of it.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }), // category defaults to null
+  })
+  assert.equal(result.issues[0].route, 'spec')
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
+})
+
+check('ROUTE: a bug that already has a spec PR keeps its spec gate', async () => {
+  // Someone specced it deliberately — honour that rather than stranding a reviewed document and
+  // implementing past its open approval gate.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+      linear: { 'FIX-2': { state: 'In Spec Review', category: 'Bug' } },
+    }),
+  })
+  assert.equal(result.issues[0].route, 'spec', 'an existing spec PR outranks the Bug label')
+  assert.deepEqual(workerLabels(calls), [], 'and it waits on its approval like any other spec')
+  assert.deepEqual(result.gates, [{ kind: 'spec-approval', issueId: 'FIX-2', pr: 8, settlingInFlight: null }])
+})
+
+check('ROUTE: a bug waiting at NEEDS_IMPLEMENTATION is not knocked back to NEEDS_SPEC', async () => {
+  // The second wake for a bug the cap deferred: it sits at NEEDS_IMPLEMENTATION with no PR yet.
+  // A direct row is unapproved BY CONSTRUCTION, so the approval-gate correction would read that as
+  // "implementation phase without approval" and re-phase it to NEEDS_SPEC — where the wake authors
+  // the very spec this route exists to skip, then re-derives `direct` and does it again next wake.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-9', { route: 'direct', phase: 'NEEDS_IMPLEMENTATION' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-9': { phase: 'NEEDS_IMPLEMENTATION' } },
+      linear: { 'FIX-9': { state: 'Todo', category: 'Bug' } },
+      worker: { 'FIX-9': { phase: 'PR_FEEDBACK', implPr: 44 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-9'], 'it must implement, not go write a spec')
+  assert.equal(result.issues[0].implPr, 44)
+})
+
+check('ROUTE: a bug whose PR already exists is not rebuilt', async () => {
+  // A carried row still at NEEDS_SPEC (nothing has read its category yet) whose scan finds an open
+  // implementation PR. For a spec-route row that report is a gate bypass and is refused; for a bug
+  // there is no gate to bypass, and refusing it re-dispatches `implement` on work already under
+  // review — a duplicate PR for the same fix.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-9')] }),
+    respond: epicResponder({
+      fresh: { 'FIX-9': { phase: 'PR_FEEDBACK', implPr: 44, newPrEvents: true } },
+      linear: { 'FIX-9': { state: 'In Review', category: 'Bug' } },
+      worker: { 'FIX-9': { phase: 'PR_FEEDBACK', implPr: 44, prFeedbackRoundsSpent: 1 } },
+    }),
+  })
+  assert.equal(result.issues[0].phase, 'PR_FEEDBACK', 'the scan\'s report stands — there was no gate to jump')
+  assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-9'], 'handle the PR, do not open a second one')
+})
+
+check('ROUTE: a promoted bug stays promoted across wakes', async () => {
+  // A worker that refused to build (no reproduction, or it is not really a bug) sends the row back
+  // to the spec route. The Linear label still says Bug, so without stickiness the very next refresh
+  // re-derives `direct` and undoes the promotion — every wake, forever.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2')] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': { state: 'Todo', category: 'Bug' } },
+      worker: { 'FIX-2': { phase: 'NEEDS_SPEC', specRequired: 'no reproduction and the symptom is ambiguous' } },
+    }),
+  })
+  assert.equal(first.result.issues[0].specRequired, 'no reproduction and the symptom is ambiguous')
+
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [first.result.issues[0]] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': { state: 'Todo', category: 'Bug' } }, // still labelled Bug
+    }),
+  })
+  assert.equal(second.result.issues[0].route, 'spec')
+  assert.deepEqual(workerLabels(second.calls), ['spec:FIX-2'], 'the promotion has to survive the re-derivation')
+  assert.match(second.logs.join('\n'), /FIX-2: promoted back to the spec route — no reproduction/)
+})
+
+check('ROUTE: the cross-spec pass neither waits for a bug nor holds one', async () => {
+  // Two failures in opposite directions, and both come from letting a spec-less row into the set.
+  // Counted as "still coming", its spec never arrives and the pass is never askable — every feature
+  // in the epic deadlocks behind a bug. Held by the pass, a bug waits on a coherence check about
+  // documents it does not have.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), // feature, approved this wake
+        row('FIX-3'), // feature, spec still to be written → the pass is not askable yet
+        row('FIX-9'), // bug
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true },
+        'FIX-3': { phase: 'NEEDS_SPEC' },
+        'FIX-9': { phase: 'NEEDS_SPEC' },
+      },
+      linear: { 'FIX-9': { state: 'Todo', category: 'Bug' } },
+      worker: { 'FIX-9': { phase: 'PR_FEEDBACK', implPr: 44 } },
+    }),
+  })
+  const dispatched = workerLabels(calls)
+  assert.ok(!dispatched.includes('implement:FIX-2'), 'the approved feature waits for the coherence pass')
+  assert.ok(dispatched.includes('implement:FIX-9'), 'the bug does not — it has no spec to be incoherent with')
+  assert.equal(result.crossSpecGate, undefined, 'and the bug is not counted as a spec still to arrive')
+})
+
+check('ROUTE: one spec plus a bug is not a set to check for coherence', async () => {
+  // Counting a bug as a member of the spec set makes the hold engage on an epic that has only ONE
+  // spec in it — so the single approved feature is parked waiting on a coherence pass with nothing
+  // to compare it against, and the human is asked to run one. "One spec has nothing to be
+  // incoherent with" is the rule; a row with no spec at all cannot make it two.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-9')],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true },
+        'FIX-9': { phase: 'NEEDS_SPEC' },
+      },
+      linear: { 'FIX-9': { state: 'Todo', category: 'Bug' } },
+      worker: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 41 },
+        'FIX-9': { phase: 'PR_FEEDBACK', implPr: 44 },
+      },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls).sort(), ['implement:FIX-2', 'implement:FIX-9'])
+  assert.equal(result.crossSpecGate, undefined, 'no pass should be asked for over a single spec')
+})
+
+check('ROUTE: the epic objective gate still holds a bug', async () => {
+  // The direct route removes the SPEC gate, not the epic's. A bug under an unapproved epic waits
+  // like everything else — it just waits at implementation instead of at spec.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-9')] }),
+    respond: epicResponder({
+      approved: false,
+      fresh: { 'FIX-9': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-9': { state: 'Todo', category: 'Bug' } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'no bug is built before the epic objective is signed off')
+  assert.deepEqual(result.held, ['FIX-9'])
+  assert.equal(result.issues[0].phase, 'NEEDS_IMPLEMENTATION', 'held at its own entry phase, not at NEEDS_SPEC')
+})
+
+check('INVARIANT: nothing routes an issue past the spec gate except an actual Bug label', async () => {
+  // The direct route is the only path to code with no human sign-off in front of it, so the ONE
+  // property worth checking over the whole input space is that nothing else opens it. Asserted as a
+  // property rather than a truth table on purpose: a table restating the implementation agrees with
+  // whatever the implementation does, including a wrong `||` that leaks `direct` out of an
+  // unreadable scan.
+  const { routeFor, isDirectRoute, directRoutePhase, PRE_APPROVAL_PHASES } = loadRules('epic-wake.js', [
+    'atReviewBudget',
+    'routeFor',
+    'isDirectRoute',
+    'directRoutePhase',
+    'PRE_APPROVAL_PHASES',
+  ])
+
+  const cases = product({
+    carried: [undefined, 'spec', 'direct'],
+    specRequired: [null, 'not really a bug'],
+    observed: [true, false],
+    category: [null, '', 'Bug', 'bug', 'bugs', 'Feature', 'Enhancement', 'Improvement', 'Debug'],
+    specPr: [null, 8],
+  })
+
+  for (const c of cases) {
+    const route = routeFor({ route: c.carried, specRequired: c.specRequired }, { category: c.category }, c.observed, c.specPr)
+    assert.ok(route === 'spec' || route === 'direct', `routeFor returned ${route}`)
+
+    const bugLabel = c.observed && /^bugs?$/i.test((c.category || '').trim())
+    if (route === 'direct') {
+      // Every clause that must be able to veto the label, checked from the outside.
+      assert.ok(bugLabel || c.carried === 'direct', `direct route with no bug label and no carried direct: ${JSON.stringify(c)}`)
+      assert.equal(c.specPr, null, `an existing spec PR must keep the issue on the spec route: ${JSON.stringify(c)}`)
+      assert.equal(c.specRequired, null, `a promotion must be sticky: ${JSON.stringify(c)}`)
+    }
+    // "Debug" and "" must not read as a bug — a substring or truthiness test would pass them.
+    if (!bugLabel && !c.specPr && !c.specRequired && c.carried !== 'direct') {
+      assert.equal(route, 'spec', `non-bug input routed direct: ${JSON.stringify(c)}`)
+    }
+  }
+
+  // And the phase correction only ever moves a direct row FORWARD out of the spec phases — never
+  // back into them, and never for a spec-route row.
+  for (const phase of ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL', 'NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE']) {
+    assert.equal(directRoutePhase({ route: 'spec', phase }), null, 'a spec-route row is never re-phased by the route rule')
+    const corrected = directRoutePhase({ route: 'direct', phase })
+    assert.equal(
+      corrected,
+      PRE_APPROVAL_PHASES.has(phase) ? 'NEEDS_IMPLEMENTATION' : null,
+      `directRoutePhase mis-handled ${phase}`,
+    )
+  }
+  assert.equal(isDirectRoute({ route: 'direct' }), true)
+  assert.equal(isDirectRoute({}), false, 'an absent route is never direct')
 })
 
 check('the epic itself is never added as one of its own children', async () => {
