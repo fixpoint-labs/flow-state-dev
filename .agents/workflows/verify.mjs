@@ -155,7 +155,8 @@ function epicResponder({ approved = true, epicReviewEvents = false, fresh = {}, 
     if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: 'In Spec Review', blockedBy: [] })) }
     if (label.startsWith('refresh:')) {
       const id = label.slice('refresh:'.length)
-      return { issueId: id, ...(fresh[id] || { phase: 'NEEDS_SPEC' }) }
+      // `specApproved` is schema-required, so the stub always states it explicitly.
+      return { issueId: id, specApproved: false, ...(fresh[id] || { phase: 'NEEDS_SPEC' }) }
     }
     if (label.startsWith('poc:')) return { claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it', ...poc }
     const id = label.split(':')[1]
@@ -547,6 +548,31 @@ check('a queued or newly-raised claim is still disclosed at the approval gate', 
     gates.map((g) => g.settlingInFlight),
     ['claim A', 'claim B'],
     'telling the user nothing is in flight while a premise is contested is the failure this prevents',
+  )
+})
+
+check('GATE: a stale specApproved can never survive a live refresh', async () => {
+  // The worst class in this design — implementing on a head the human never approved. The row
+  // carries specApproved:true from an earlier head; the live scan reports the new head and does
+  // NOT report approval. Spreading `fresh` over the row would leave the stale `true` in place.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true })] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
+      // Schema-valid, reports the pushed head, omits nothing required — but says NOT approved.
+      if (label.startsWith('refresh:')) {
+        return { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: false, headSha: 'pushed' }
+      }
+      return { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL' }
+    },
+  })
+  assert.equal(result.issues[0].specApproved, false, 'a push re-opens the gate')
+  assert.deepEqual(workerLabels(calls), [], 'and nothing implements against it')
+  assert.ok(
+    result.gates.some((g) => g.kind === 'spec-approval' && g.issueId === 'FIX-2'),
+    'the gate is surfaced again instead',
   )
 })
 
@@ -960,7 +986,7 @@ const multiResponder =
     const label = opts.label || ''
     if (nulls.some((n) => label.startsWith(n))) return null
     if (label.startsWith('assembled-goal:')) return goal
-    if (label.startsWith('assembled-gap:')) return gap
+    if (label.startsWith('assembled-gap:') || label.startsWith('gap-recheck:')) return gap
     if (label.startsWith('assembled-fix:')) return fix
     const id = label.split(':')[1]
     return { id, status: 'open', pr: 1, branch: `fix/FIX-9-${id}`, ...(build[id] || {}) }
@@ -1310,12 +1336,27 @@ check('a blocked gap parks the repair instead of starting it', async () => {
   assert.equal(result.assembledGoal.fixReady, false)
   assert.match(logs.join('\n'), /BLOCKED per issue-manager/)
 
-  const next = await run('issue-multi-pr.js', {
+  // Next wake: it RE-CHECKS rather than parking on the cached verdict — a blocked state with no
+  // way to observe its blocker clearing is a stall, not a wait.
+  const stillBlocked = await run('issue-multi-pr.js', {
     args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: result.assembledGoal }),
+    respond: multiResponder({ gap: { issueFiled: 'FIX-99', ready: false } }),
+  })
+  assert.deepEqual(stillBlocked.calls.map((c) => c.label), ['gap-recheck:FIX-9'], 're-derives readiness')
+  assert.equal(stillBlocked.calls[0].agentType, 'scout', 'a cheap read, not repair work')
+  assert.equal(stillBlocked.result.blockedGap, 'FIX-99')
+
+  // And once the blocker clears externally, the repair actually resumes.
+  const unblocked = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: result.assembledGoal }),
+    respond: multiResponder({ gap: { issueFiled: 'FIX-99', ready: true } }),
+  })
+  assert.equal(unblocked.result.assembledGoal.fixReady, true)
+  const resumed = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: unblocked.result.assembledGoal }),
     respond: multiResponder(),
   })
-  assert.deepEqual(next.calls, [], 'no repair work while issue-manager says the gap is blocked')
-  assert.equal(next.result.blockedGap, 'FIX-99')
+  assert.deepEqual(resumed.calls.map((c) => c.label), ['assembled-fix:FIX-9'], 'the repair resumes, not stalls')
 })
 
 check('the cap bounds parallel sub-PR builds', async () => {
@@ -1348,10 +1389,15 @@ check('INVARIANT: no assemble state is a dead end', async () => {
   const { assembleState } = loadRules('issue-multi-pr.js', ['allMerged', 'assembleState'])
   const src = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
 
-  // States that DISPATCH something, and states that WAIT. A waiting state is only legitimate if
-  // it waits on a handle a human can actually act on — otherwise it is a stall.
-  const dispatching = ['NEEDS_GOAL', 'NEEDS_GAP', 'NEEDS_FIX']
+  // States that DISPATCH something, and states that WAIT. A waiting state is legitimate only if
+  // it BOTH waits on a handle a human can act on AND has a path out — something that observes the
+  // wait ending. GAP_BLOCKED satisfied the first test and stalled anyway, because nothing ever
+  // re-read the flag it waited on; that's why "has a path out" is now its own assertion.
+  const dispatching = ['NEEDS_GOAL', 'NEEDS_GAP', 'NEEDS_FIX', 'GAP_BLOCKED']
   const waitingOn = { AWAITING_FIX: 'fixPr', GAP_BLOCKED: 'fixIssue' }
+  // How each waiting state gets unstuck: an external signal the coordinator writes, or a dispatch
+  // this script makes to re-derive the condition.
+  const pathOut = { AWAITING_FIX: 'fixMerged', GAP_BLOCKED: "label: `gap-recheck:" }
   const terminal = ['DONE', null]
 
   const nodes = [{ id: 'a', dependsOn: [], status: 'merged' }]
@@ -1378,6 +1424,14 @@ check('INVARIANT: no assemble state is a dead end', async () => {
     if (state in waitingOn && !goal[waitingOn[state]]) {
       stalls++
       assert.fail(`${state} with no ${waitingOn[state]} — waits on nothing: ${JSON.stringify(goal)}`)
+    }
+    // And a waiting state with no way to observe the wait ending is also a stall.
+    if (state in waitingOn) {
+      const out = pathOut[state]
+      assert.ok(
+        src.includes(out),
+        `${state} has no path out — nothing re-derives or receives "${out}", so it parks forever`,
+      )
     }
   }
   assert.equal(stalls, 0)

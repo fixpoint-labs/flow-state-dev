@@ -131,7 +131,9 @@ function allMerged(nodes) {
  *   null            — sub-PRs still building; assemble isn't reachable yet
  *   NEEDS_GOAL      — all merged, no confirmed failure → run (or confirm) the end-to-end goal
  *   NEEDS_GAP       — goal failed, no gap issue filed  → file it via `issue-manager`
- *   GAP_BLOCKED     — the filed gap is itself blocked  → park; the blocker is a human's to clear
+ *   GAP_BLOCKED     — the filed gap is itself blocked  → RE-CHECK it; a blocked state with no way
+ *                                                        to observe its blocker clearing is a stall,
+ *                                                        not a wait
  *   NEEDS_FIX       — gap filed and ready, no repair PR → open the repair PR
  *   AWAITING_FIX    — repair PR open, not merged        → wait; the human merges it
  *   DONE            — the goal passed on the assembled result
@@ -189,10 +191,12 @@ const GOAL_SCHEMA = {
 const GAP_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['issueFiled'],
+  // `ready` is REQUIRED: it is the verdict this agent exists to give, and treating an omission
+  // as "ready" would start repair work the manager may have meant to block.
+  required: ['issueFiled', 'ready'],
   properties: {
     issueFiled: { type: 'string', description: 'The Linear issue ID it filed (or the existing duplicate it found)' },
-    ready: { type: 'boolean' },
+    ready: { type: 'boolean', description: 'False when the filed gap has an unresolved blocker of its own' },
     summary: { type: 'string' },
   },
 }
@@ -229,8 +233,27 @@ if (state === 'AWAITING_FIX') {
 }
 
 if (state === 'GAP_BLOCKED') {
-  log(`Gap ${goal.fixIssue} is blocked per issue-manager — parked. Repair starts once its blocker clears.`)
-  return { issueId, subPrs: nodes, assembledGoal: goal, blockedGap: goal.fixIssue, done: false }
+  phase('Assemble')
+  // Re-derive readiness rather than trusting the cached verdict. Parking on a stale `fixReady:
+  // false` forever is the stall this branch exists to avoid: nothing else in the system ever
+  // clears that field, so the repair could never start once its blocker was resolved externally.
+  const recheck = await agent(
+    `Linear issue ${goal.fixIssue} is the repair gap for ${issueId}, previously reported as blocked. Re-read it: is it still blocked by an open relation, or is it ready to pick up now? Report readiness only — change nothing.`,
+    { label: `gap-recheck:${issueId}`, phase: 'Assemble', schema: GAP_SCHEMA, agentType: 'scout' },
+  )
+
+  if (!recheck) {
+    log(`Could not re-check gap ${goal.fixIssue} (scout returned nothing) — still parked, will re-check next wake.`)
+    return { issueId, subPrs: nodes, assembledGoal: goal, blockedGap: goal.fixIssue, incomplete: 'gap-recheck', done: false }
+  }
+
+  if (recheck.ready !== true) {
+    log(`Gap ${goal.fixIssue} is still blocked — parked, re-checking each wake.`)
+    return { issueId, subPrs: nodes, assembledGoal: goal, blockedGap: goal.fixIssue, done: false }
+  }
+
+  log(`Gap ${goal.fixIssue} is unblocked now — the repair PR is next.`)
+  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixReady: true }, done: false }
 }
 
 if (state === 'NEEDS_GOAL') {
@@ -296,7 +319,7 @@ if (state === 'NEEDS_GAP') {
     return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-gap', done: false }
   }
 
-  const ready = filed.ready !== false
+  const ready = filed.ready === true
   log(`Gap filed as ${filed.issueFiled} for ${issueId} — ${ready ? 'the repair PR is next' : 'BLOCKED per issue-manager; parking until its blocker clears'}.`)
   return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixIssue: filed.issueFiled, fixReady: ready }, done: false }
 }

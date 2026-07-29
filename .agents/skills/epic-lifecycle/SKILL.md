@@ -137,8 +137,8 @@ even if more are queued. State the chosen N and the cap to the user.
      args: {
        epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound, lastSeenSha },
        cap:   <the N you chose and stated>,
-       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdict,
-                   lastSeenActivityAt, lastSeenSha } ],
+       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
+                   lastSeenActivityAt, lastSeenSha, blocker } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
      }
    ```
@@ -156,9 +156,11 @@ even if more are queued. State the chosen N and the cap to the user.
      **timestamp is the real cursor** — a comment never moves a head SHA. The wake returns them
      advanced *only for rows it actually handled*, so persist them verbatim rather than
      recomputing.
-   - **`issues[].verdict` and `epic.verdict`** — the full POC settlement (claim, verdict,
-     evidence, threads), not just the enum, because the folding worker has to reply with the
-     evidence. `epic.verdict` exists because a cross-cutting claim has no issue row to land on.
+   - **`issues[].verdicts` and `epic.verdicts`** — **arrays** (two claims on one issue can settle
+     in the same wake), each entry the full POC settlement (claim, verdict, evidence, threads) and
+     not just the enum, because the folding worker has to reply with the evidence. `epic.verdicts`
+     exists because a cross-cutting claim has no issue row to land on. Persist them under those
+     plural names — a coordinator writing a singular `verdict` drops every carried settlement.
 
    It returns
    `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, verdicts,

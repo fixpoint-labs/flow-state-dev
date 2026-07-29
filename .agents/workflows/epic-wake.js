@@ -176,11 +176,19 @@ function nextRow(row, { worker, action, landed, folded }) {
         }
       : { lastSeenActivityAt: row.lastSeenActivityAt || null, lastSeenSha: row.lastSeenSha || null }
 
+  // Clear the transient flags this wake consumed. They are a SECOND representation of "there is
+  // new activity" alongside the cursor, so leaving them set means a wake whose refresh scout dies
+  // re-reads the carried `true` and re-dispatches an already-handled batch — spending a review
+  // round twice, or applying the same fixes twice.
+  const consumedFlags =
+    worker && CONSUMES_REVIEW_ACTIVITY.has(action) ? { newSpecReviewEvents: false, newPrEvents: false } : {}
+
   if (!worker) return { ...row, ...cursor, verdicts }
 
   return {
     ...row,
     ...cursor,
+    ...consumedFlags,
     phase: worker.phase || row.phase,
     specPr: worker.specPr === undefined ? row.specPr : worker.specPr,
     implPr: worker.implPr === undefined ? row.implPr : worker.implPr,
@@ -308,7 +316,9 @@ const LINEAR_SCHEMA = {
 const PR_STATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['issueId', 'phase'],
+  // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
+  // must never let a previously-true value survive a push onto an unapproved head.
+  required: ['issueId', 'phase', 'specApproved'],
   properties: {
     issueId: { type: 'string' },
     phase: {
@@ -332,7 +342,9 @@ const PR_STATE_SCHEMA = {
 const WORKER_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['issueId', 'phase'],
+  // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
+  // must never let a previously-true value survive a push onto an unapproved head.
+  required: ['issueId', 'phase', 'specApproved'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string' },
@@ -480,11 +492,16 @@ if (discovered.length) {
 
 const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
+  const refreshedLive = freshById.has(row.id)
   const li = linearById.get(row.id) || {}
   return {
     ...row,
     ...fresh,
     id: row.id,
+    // A live scan is the ONLY source of approval. Spreading `fresh` over the row would let a
+    // carried `specApproved: true` survive a scan that omitted it — implementing on a head the
+    // human never approved, which is the one gate that must not be bypassable.
+    specApproved: refreshedLive ? !!fresh.specApproved : false,
     linearState: li.state || row.linearState,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
@@ -723,7 +740,9 @@ return {
       : { lastSeenActivityAt: epic.lastSeenActivityAt || null, lastSeenSha: epic.lastSeenSha || null }),
     // Same rule as an issue's: add only the rounds the folder reports spending.
     reviewRounds: (epic.reviewRounds || 0) + (epicFold ? epicFold.roundsSpent || 0 : 0),
-    aboveBarFound: epicFold ? !!epicFold.aboveBar : !!epic.aboveBarFound,
+    // Same rule as a row's `specLevelFound`: `aboveBar` is optional, so a verdict-only fold
+    // omits it — coercing that to false would revoke the third round an earlier round authorized.
+    aboveBarFound: epicFold && epicFold.aboveBar !== undefined ? !!epicFold.aboveBar : !!epic.aboveBarFound,
     converged: epicAtBudget,
     // An epic-level verdict clears only once a fold returned to record it; otherwise it is
     // carried so the next wake retries. A settlement targeting the epic has no issue row to
