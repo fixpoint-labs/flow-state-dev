@@ -75,6 +75,33 @@ describe("materializeWorker — prompt-driven branches", () => {
     warn.mockRestore();
   });
 
+  // FIX-965: the tool catalog is a plain object, so an inherited
+  // `Object.prototype` member is truthy and can sail past a falsity-only
+  // guard as if it were a real catalog hit.
+  it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+    "treats prototype-named tool key %j as unknown, not as a catalog hit",
+    async (protoKey) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const spec: AgentSpec = { prompt: "hi", tools: [protoKey] };
+      const block = await materializeWorker(
+        "a",
+        spec,
+        deps({ catalog: { search: { config: { name: "search" } } as never } }),
+      );
+      // The point of the guard: an inherited `Object.prototype` member is
+      // truthy, so a falsity-only check smuggles it into the generator's
+      // `tools` array as if it were a real tool. Assert the resolved slot, not
+      // just the warning — the warning alone would pass if the entry were both
+      // warned about AND pushed.
+      const tools = (block as { config?: { tools?: unknown[] } }).config?.tools;
+      expect(tools).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`unknown tool "${protoKey}"`),
+      );
+      warn.mockRestore();
+    },
+  );
+
   it("resolves model: per-worker → deps default → 'intent/chat' fallback", async () => {
     const collection = createMockSkillsCollection();
 

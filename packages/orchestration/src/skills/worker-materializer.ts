@@ -272,14 +272,14 @@ function resolveTools(
   if (!toolKeys || toolKeys.length === 0) return [];
   const out: GeneratorTool[] = [];
   for (const key of toolKeys) {
-    const tool = catalog[key];
-    if (!tool) {
+    // BP-031: `key` is model-supplied — own-property guard (FIX-965, same as FIX-943).
+    if (!Object.hasOwn(catalog, key)) {
       console.warn(
         `[skills] agent "${agentKey}": unknown tool "${key}" — skipped`,
       );
       continue;
     }
-    out.push(tool);
+    out.push(catalog[key]!);
   }
   return out;
 }

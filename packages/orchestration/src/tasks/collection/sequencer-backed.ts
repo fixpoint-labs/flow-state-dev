@@ -62,6 +62,16 @@ export interface SequencerBackedOptions extends TaskCapOptions {
   now?: () => number;
 }
 
+/**
+ * Own-property task lookup (FIX-965). `id` is model-supplied (task tool
+ * calls declare `taskId: z.string()`), so BP-031 applies — indexing directly
+ * could resolve an inherited `Object.prototype` member instead of missing.
+ * Same guard as `keyedRouter` and `dispatch-and-execute.ts` (FIX-943).
+ */
+function ownTask<T>(tasks: Record<string, T>, id: string): T | undefined {
+  return Object.hasOwn(tasks, id) ? tasks[id] : undefined;
+}
+
 /** Create a `TaskCollectionRef` backed by a sequencer's state record. */
 export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = unknown>(
   options: SequencerBackedOptions
@@ -191,7 +201,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       | undefined;
 
     await casWrite((tasks) => {
-      const task = tasks[id];
+      const task = ownTask(tasks, id);
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
@@ -218,7 +228,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     let captured: Task<TInput, TOutput> | undefined;
 
     await casWrite((tasks) => {
-      const task = tasks[id];
+      const task = ownTask(tasks, id);
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
@@ -245,7 +255,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       // so the emitted item matches what's in state on a successful write.
       const task = buildInitialTask<TInput, TOutput>(init, now());
       await casWrite((tasks) => {
-        if (tasks[task.id] !== undefined) {
+        if (ownTask(tasks, task.id) !== undefined) {
           throw new Error(`[tasks] task with id "${task.id}" already exists`);
         }
         const next = { ...tasks, [task.id]: task };
@@ -262,10 +272,21 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       await casWrite((tasks) => {
         const next = { ...tasks };
         for (const task of built) {
-          if (next[task.id] !== undefined) {
+          if (ownTask(next, task.id) !== undefined) {
             throw new Error(`[tasks] task with id "${task.id}" already exists`);
           }
-          next[task.id] = task;
+          // Own-property insertion (FIX-965): `next[task.id] = task` is a
+          // phantom write when task.id is `"__proto__"` — it sets the
+          // object's prototype instead of creating an own property, so the
+          // task reports as added but is then absent from get/list/count.
+          // `defineProperty` always creates/updates an own data property,
+          // matching plain-object semantics for every other key.
+          Object.defineProperty(next, task.id, {
+            value: task,
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
         }
         assertWithinCaps(next);
         return next;
@@ -283,7 +304,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
       await casWrite((tasks) => {
         const lookup = (id: string): Task | undefined =>
-          (tasks[id] as unknown as Task | undefined);
+          (ownTask(tasks, id) as unknown as Task | undefined);
         const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
         const order = claimOptions?.order ?? defaultOrder;
 
@@ -336,7 +357,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       // branch and attempts a transition out of a terminal status. Threading
       // the guards into only the hard-fail branch leaves the escape live for
       // exactly that shape, and passes any test that never sets `maxAttempts`.
-      const current = readTasks()[id];
+      const current = ownTask(readTasks(), id);
       if (current !== undefined && shouldRetryOnFail(current)) {
         await transitionTo(
           id,
@@ -482,7 +503,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     get(id) {
-      const task = readTasks()[id];
+      const task = ownTask(readTasks(), id);
       return task === undefined ? undefined : wrap(task);
     },
 
