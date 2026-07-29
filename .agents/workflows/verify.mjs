@@ -197,6 +197,34 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
   assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked, not admitted to the active set/)
 })
 
+check('per-issue activity cursors are passed to the scout and advanced', async () => {
+  // Without this the same spec-PR feedback reads as new on every wake: it burns a review round
+  // per wake and dispatches duplicate PR-feedback workers.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, lastSeenActivityAt: '2026-07-01T00:00:00Z', lastSeenSha: 'sha1' })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specApproved: false,
+          newSpecReviewEvents: false,
+          specPr: 7,
+          latestActivityAt: '2026-07-02T00:00:00Z',
+          headSha: 'sha2',
+        },
+      },
+    }),
+  })
+  const refresh = calls.find((c) => c.label === 'refresh:FIX-2')
+  assert.match(refresh.prompt, /Last seen: activity at 2026-07-01T00:00:00Z, head sha1/)
+  assert.match(refresh.prompt, /strictly newer than that timestamp/)
+  assert.equal(result.issues[0].lastSeenActivityAt, '2026-07-02T00:00:00Z', 'the cursor advances to what was observed')
+  assert.equal(result.issues[0].lastSeenSha, 'sha2')
+  assert.deepEqual(workerLabels(calls), [], 'already-handled feedback is not a pending action')
+})
+
 check('the epic review cursor advances to the scanned head', async () => {
   // Otherwise the same epic-PR event re-triggers a fold every wake, forever.
   const { result } = await run('epic-wake.js', {
@@ -536,6 +564,59 @@ check('a failed assembled goal opens a NEW fix PR and keeps the issue out of DON
   assert.match(logs.join('\n'), /Issue is not DONE/)
 })
 
+check('a failed rebase keeps its stack marker so the next wake retries it', async () => {
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        node('a', { status: 'merged', branch: 'fix/FIX-9-a' }),
+        node('b', { dependsOn: ['a'], status: 'open', stackedOn: 'fix/FIX-9-a', branch: 'fix/FIX-9-b', pr: 2 }),
+      ],
+    }),
+    respond: multiResponder({ build: { b: { status: 'failed', pr: 2, branch: 'fix/FIX-9-b' } } }),
+  })
+  const b = result.subPrs.find((n) => n.id === 'b')
+  assert.equal(b.status, 'open', 'a failed rebase leaves the node open')
+  assert.equal(b.stackedOn, 'fix/FIX-9-a', 'and still stacked, or nothing ever retries the rebase')
+})
+
+check('a node declaring an unknown dependency fails closed', async () => {
+  // filter(Boolean) would drop the missing id, leaving zero deps — which reads as "all merged"
+  // and builds the dependent onto origin/main before its prerequisite exists.
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('b', { dependsOn: ['ghost'] })] }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls, [], 'never build a node whose declared dependency is not in the table')
+  assert.deepEqual(result.invalid, [{ id: 'b', missing: ['ghost'] }])
+  assert.match(logs.join('\n'), /b: declares unknown dependenc\(ies\) ghost — refusing to build it/)
+})
+
+check('a repair that filed an issue but opened no PR still gates the rerun', async () => {
+  // FIX_SCHEMA allows pr: null, which would otherwise walk straight back into the duplicate loop.
+  const { result, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })] }),
+    respond: multiResponder({
+      goal: { passed: false, failure: 'boom', owningSubPr: 'a' },
+      fix: { issueFiled: 'FIX-99', pr: null },
+    }),
+  })
+  assert.equal(result.assembledGoal.fixPr, null)
+  assert.equal(result.assembledGoal.fixIssue, 'FIX-99', 'the filed issue is the gate when there is no PR')
+  assert.match(logs.join('\n'), /Issue is not DONE/)
+
+  // Next wake: the repair is in flight even though no PR exists.
+  const next = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'merged' })],
+      assembledGoal: { passed: false, fixPr: null, fixIssue: 'FIX-99', fixMerged: false },
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(next.calls, [], 'no rerun and no second issue filed')
+  assert.equal(next.result.awaitingFix, 'FIX-99')
+  assert.match(next.logs.join('\n'), /filed issue FIX-99 \(no PR opened yet\) has not landed/)
+})
+
 check('an unmerged fix PR blocks the goal rerun instead of filing a duplicate', async () => {
   // Without this the failure path loops: sub-PRs stay merged, passed stays false, so every
   // wake re-runs the unchanged goal and files another Linear issue and another fix PR.
@@ -549,7 +630,7 @@ check('an unmerged fix PR blocks the goal rerun instead of filing a duplicate', 
   assert.deepEqual(calls, [], 'no goal rerun and no second fix PR while the repair is in flight')
   assert.equal(result.awaitingFix, 42)
   assert.equal(result.done, false)
-  assert.match(logs.join('\n'), /fix PR #42 has not merged — not re-running the goal, not filing a duplicate/)
+  assert.match(logs.join('\n'), /fix PR #42 has not landed — not re-running the goal, not filing a duplicate/)
 })
 
 check('a merged fix PR re-arms the assembled goal', async () => {

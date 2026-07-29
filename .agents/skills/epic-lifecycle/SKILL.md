@@ -137,18 +137,27 @@ even if more are queued. State the chosen N and the cap to the user.
      args: {
        epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound, lastSeenSha },
        cap:   <the N you chose and stated>,
-       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdict } ],
+       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdict,
+                   lastSeenActivityAt, lastSeenSha } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
      }
    ```
 
    Everything in `args` comes straight out of `.orchestration/` — the script has no
-   filesystem, so **you are its memory**. Three fields are load-bearing for exactly that
-   reason: the counters (`specReviewRounds`, `specLevelFound`, `epic.reviewRounds`) only
-   survive because you carry them — drop them and every budget silently resets to zero;
-   `epic.lastSeenSha` is the epic-PR review cursor the wake returns advanced, and carrying a
-   stale one re-triggers the same fold every wake; and `issues[].verdict` is how a POC verdict
-   from a previous wake reaches the worker that folds it. It returns
+   filesystem, so **you are its memory**. Four groups of fields are load-bearing for exactly
+   that reason, and each fails in its own way if you drop it:
+
+   - **The counters** (`specReviewRounds`, `specLevelFound`, `epic.reviewRounds`,
+     `epic.aboveBarFound`) — drop them and every review budget silently restarts at zero.
+   - **The activity cursors** (`issues[].lastSeenActivityAt` / `lastSeenSha`, and
+     `epic.lastSeenSha`) — these are how a scout tells new feedback from feedback already
+     handled. Carry a stale one and the *same* review comment reads as new every wake: it
+     burns a round per wake and dispatches duplicate PR-feedback workers. The wake returns
+     them advanced; persist them verbatim.
+   - **`issues[].verdict`** — how a POC verdict from a previous wake reaches the worker that
+     folds it.
+
+   It returns
    `{ epicApproved, epic, epicFold, issues, gates, blockers, blocked, held, verdicts,
    settleRequests, dispatched, deferred, converged }` — persist `epic` and `issues` verbatim.
 

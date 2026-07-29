@@ -215,11 +215,14 @@ const PR_STATE_SCHEMA = {
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
-    newSpecReviewEvents: { type: 'boolean' },
-    newPrEvents: { type: 'boolean' },
+    newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
+    newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean' },
     merged: { type: 'boolean' },
     readyToMerge: { type: 'boolean' },
+    // The advanced cursor, so the next wake can tell "already handled" from "new".
+    latestActivityAt: { type: ['string', 'null'], description: 'ISO timestamp of the newest comment/review seen on either PR, or null if none' },
+    headSha: { type: ['string', 'null'], description: 'Current head SHA of the open PR this row is waiting on' },
   },
 }
 
@@ -293,7 +296,10 @@ const [gate, linear, ...prStates] = await parallel([
   ...rows.map(
     (row) => () =>
       agent(
-        `Derive the current lifecycle phase of Linear issue ${row.id} from durable state only. Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}. Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment or a current-head APPROVED review by a non-author human — a stale approval invalidated by a later push is NOT approval, and no bot review counts. Report unhandled activity since the last wake and whether CI is failing.`,
+        `Derive the current lifecycle phase of Linear issue ${row.id} from durable state only. Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
+          `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment or a current-head APPROVED review by a non-author human — a stale approval invalidated by a later push is NOT approval, and no bot review counts.\n` +
+          `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
+          `Also report whether CI is failing.`,
         { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
       ),
   ),
@@ -438,10 +444,18 @@ const appliedVerdict = new Set(plan.advance.filter((i) => i.action === 'apply-ve
 const issues = refreshed.map((row) => {
   // A verdict this wake just applied is consumed; a verdict that just landed is carried.
   const verdict = appliedVerdict.has(row.id) ? null : verdictByIssue.get(row.id) || row.verdict || null
+  // Advance the activity cursor to what the scout just observed, so the next wake doesn't
+  // re-report the same feedback as new — which would burn a review round per wake on it and
+  // dispatch duplicate PR-feedback workers. Same rule as the epic PR's cursor.
+  const cursor = {
+    lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
+    lastSeenSha: row.headSha || row.lastSeenSha || null,
+  }
   const w = workerById.get(row.id)
-  if (!w) return { ...row, verdict }
+  if (!w) return { ...row, ...cursor, verdict }
   return {
     ...row,
+    ...cursor,
     phase: w.phase,
     specPr: w.specPr === undefined ? row.specPr : w.specPr,
     implPr: w.implPr === undefined ? row.implPr : w.implPr,

@@ -49,7 +49,9 @@ const TERMINAL = 'merged'
  * dep instead of rebasing onto main).
  */
 function classify(node, byId) {
-  const deps = (node.dependsOn || []).map((id) => byId.get(id)).filter(Boolean)
+  // Every declared dep is guaranteed resolvable here — readySet() rejects a node with a
+  // missing one rather than letting it through (see `invalid` there).
+  const deps = (node.dependsOn || []).map((id) => byId.get(id))
   const allMerged = deps.every((d) => d.status === TERMINAL)
   const allAtLeastOpen = deps.every((d) => d.status === TERMINAL || d.status === 'open')
 
@@ -70,15 +72,28 @@ function classify(node, byId) {
   return null
 }
 
-/** Ready sub-PRs this wake, capped; plus what the cap held back. */
+/**
+ * Ready sub-PRs this wake, capped; plus what the cap held back and what the table got wrong.
+ *
+ * A `dependsOn` id that isn't in the table (a cache-persistence slip, a malformed parsed plan)
+ * must **fail closed**. Dropping it would leave the node with zero deps, which reads as
+ * "everything merged" and builds a dependent straight onto origin/main before its prerequisite
+ * exists — the DAG violated by the one input we can't trust.
+ */
 function readySet(nodes, cap) {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const ready = []
+  const invalid = []
   for (const node of nodes) {
+    const missing = (node.dependsOn || []).filter((id) => !byId.has(id))
+    if (missing.length) {
+      invalid.push({ node, missing })
+      continue
+    }
     const next = classify(node, byId)
     if (next) ready.push({ node, ...next })
   }
-  return { ready: ready.slice(0, cap), deferred: ready.slice(cap) }
+  return { ready: ready.slice(0, cap), deferred: ready.slice(cap), invalid }
 }
 
 /** Every sub-PR merged — necessary for the assembled goal, never sufficient for DONE. */
@@ -94,7 +109,11 @@ function allMerged(nodes) {
  * and files a *duplicate* Linear issue and fix PR — every wake, until someone notices.
  */
 function awaitingAssembledFix(nodes, goal) {
-  return allMerged(nodes) && !goal.passed && !!goal.fixPr && !goal.fixMerged
+  // Gate on the repair EXISTING, not on it having a PR: `FIX_SCHEMA` allows `pr: null` (the
+  // worker filed the issue but couldn't open a PR), and gating on the PR alone would let that
+  // case straight back into the duplicate-filing loop this guard exists to stop.
+  const repairInFlight = !!(goal.fixPr || goal.fixIssue)
+  return allMerged(nodes) && !goal.passed && repairInFlight && !goal.fixMerged
 }
 
 /**
@@ -196,7 +215,10 @@ if (assembledGoalNeeded(nodes, goal)) {
       ...goal,
       passed: false,
       failure: verdict ? verdict.failure : 'goal agent returned nothing',
+      // Record the filed issue as well as the PR: either one is enough to prove a repair is
+      // already in flight, and the PR may legitimately be null.
       fixPr: (fix && fix.pr) || null,
+      fixIssue: (fix && fix.issueFiled) || null,
       fixMerged: false,
     },
     fix: fix || null,
@@ -206,19 +228,24 @@ if (assembledGoalNeeded(nodes, goal)) {
 
 // ---- A repair is in flight: don't re-run the goal, don't file a duplicate. --------------
 if (awaitingAssembledFix(nodes, goal)) {
-  log(`Assembled goal failed earlier; fix PR #${goal.fixPr} has not merged — not re-running the goal, not filing a duplicate.`)
-  return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr, done: false }
+  const repair = goal.fixPr ? `fix PR #${goal.fixPr}` : `filed issue ${goal.fixIssue} (no PR opened yet)`
+  log(`Assembled goal failed earlier; ${repair} has not landed — not re-running the goal, not filing a duplicate.`)
+  return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr || goal.fixIssue, done: false }
 }
 
 // ---- Otherwise: advance the DAG's ready set. -------------------------------------------
 phase('Build')
 
-const { ready, deferred } = readySet(nodes, cap)
+const { ready, deferred, invalid } = readySet(nodes, cap)
+
+for (const bad of invalid) {
+  log(`${bad.node.id}: declares unknown dependenc(ies) ${bad.missing.join(', ')} — refusing to build it. Fix the PR plan or the handle cache.`)
+}
 
 if (!ready.length) {
   const waiting = nodes.filter((n) => n.status !== TERMINAL).map((n) => `${n.id}(${n.status})`)
   log(`No sub-PR is ready — waiting on ${waiting.join(', ') || 'nothing'}.`)
-  return { issueId, subPrs: nodes, dispatched: [], done: false }
+  return { issueId, subPrs: nodes, dispatched: [], invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing })), done: false }
 }
 
 if (deferred.length) {
@@ -258,8 +285,15 @@ const subPrs = nodes.map((node) => {
   // back: the field is optional, so a worker that omits it would silently clear the marker —
   // and `classify` only schedules the required rebase while the marker is set, so the sub-PR
   // would keep its dependency's commits in its own diff forever.
+  //
+  // A rebase clears the marker only on SUCCESS. A failed rebase leaves the node `open` and
+  // still stacked, so keeping the marker is what makes the next wake retry it; clearing it
+  // would strand the sub-PR carrying its dependency's commits with nothing scheduled to fix it.
   let stackedOn = node.stackedOn || null
-  if (planned) stackedOn = planned.action === 'rebase' || planned.base === 'origin/main' ? null : planned.base
+  if (planned) {
+    if (planned.action === 'rebase') stackedOn = r.status === 'failed' ? node.stackedOn || null : null
+    else stackedOn = planned.base === 'origin/main' ? null : planned.base
+  }
   return {
     ...node,
     status: r.status === 'failed' ? node.status : r.status,
@@ -276,6 +310,7 @@ return {
   subPrs,
   dispatched: ready.map((i) => `${i.action}:${i.node.id}`),
   deferred: deferred.map((i) => i.node.id),
+  invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing })),
   blockers: subPrs.filter((n) => n.blocker).map((n) => ({ id: n.id, blocker: n.blocker })),
   // Never DONE from a build wake — merges are the human's, and the assembled goal comes after.
   done: false,

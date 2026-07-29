@@ -237,16 +237,25 @@ Workflow tool:
     issueId: "<ISSUE>",
     cap: <a few — one worktree per sub-PR>,
     subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
-    assembledGoal: { passed, ownedBy, fixPr, fixMerged }
+    assembledGoal: { passed, ownedBy, fixPr, fixIssue, fixMerged }
   }
 ```
 
-`stackedOn` and `fixPr` are the two fields you must carry back verbatim. `stackedOn` is set by
-the script from the base it chose, and it is what schedules the later rebase — lose it and a
-stacked sub-PR silently keeps its dependency's commits in its own diff. `fixPr` is the repair
-PR a failed assembled goal opened; while it's set and `fixMerged` is false the script refuses
-to re-run the goal, which is what stops a failure filing a duplicate issue and PR every wake.
-**Set `fixMerged: true` when that PR merges** — that's what re-arms the goal.
+Two things you must carry back verbatim:
+
+- **`stackedOn`** — set by the script from the base it chose, and it is what schedules the
+  later rebase. Lose it and a stacked sub-PR silently keeps its dependency's commits in its own
+  diff. It survives a *failed* rebase on purpose, so the next wake retries.
+- **`fixPr` / `fixIssue`** — the repair a failed assembled goal opened. While either is set and
+  `fixMerged` is false, the script refuses to re-run the goal; that's what stops a single
+  failure filing a duplicate issue and PR on every wake. Both are tracked because the repair
+  worker may legitimately file the issue without opening a PR. **Set `fixMerged: true` when the
+  repair lands** — that is what re-arms the goal.
+
+The script also returns **`invalid`**: sub-PRs that declare a `dependsOn` id absent from the
+table. It refuses to build those rather than treating them as dependency-free — an unresolved
+id means the PR plan or the handle cache is wrong, and guessing would build a dependent before
+its prerequisite exists. Fix the table; it won't self-heal.
 
 What the script decides, so you don't:
 
