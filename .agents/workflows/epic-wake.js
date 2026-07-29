@@ -527,6 +527,44 @@ function consumesReviewActivity(action, row) {
  *              settled this wake, `folded` whether a folder consumed them
  */
 /**
+ * Which queued human answers this wake did NOT spend.
+ *
+ * A multi-PR row's answers are delivered inside `issue-multi-pr`, and it serves only its ready set —
+ * its own cap can defer a blocked slice whose answer is already in hand. Consuming the whole list on
+ * "the nested workflow reported back" therefore discarded the deferred slice's answer, and the
+ * coordinator re-asked the human a question they had already settled.
+ *
+ * A slice counts as unserved only if it carries the SAME blocker text it came in with: unchanged means
+ * nothing was delivered for it, while a re-escalation (new text) means the answer WAS applied and
+ * turned out to be insufficient, so re-handing it to the next worker would present a spent decision
+ * as fresh.
+ */
+function unspentResolutions(row, subPrs, worker) {
+  const list = row.blockerResolutions || []
+  if (!list.length) return []
+  // A single-PR row's worker IS the delivery, so returning at all spends the answer.
+  if (!(row.subPrs || []).length) return []
+  // The nested workflow never reported, so nothing was delivered at all.
+  if (worker.subPrs === undefined) return list
+  const carried = new Map((row.subPrs || []).map((sp) => [sp.id, sp.blocker || null]))
+  const byId = new Map((subPrs || []).map((sp) => [sp.id, sp]))
+  return list.filter((r) => {
+    // A null `for` was aimed at whatever the row surfaced when it was given — `blockerFor` names it.
+    const sp = byId.get(r.for || row.blockerFor)
+    // No such slice: nothing is left to apply this to, and retaining it would restate a decision at
+    // every future worker forever. Same call as a verdict on cancelled work — dropped, not hoarded.
+    if (!sp) return false
+    // A DIFFERENT blocker on the same slice means the answer was applied and proved insufficient, so
+    // the question is new. Re-handing the old answer would present a spent decision as fresh.
+    if (sp.blocker && sp.blocker !== carried.get(sp.id)) return false
+    // Still `pending` means no build ran for it — the outer clears a nested blocker before dispatch, so
+    // a slice the nested cap deferred comes back unblocked and unbuilt, and its answer is what the
+    // build that eventually runs needs. Still blockered means the delivery did not land.
+    return sp.status === 'pending' || !!sp.blocker
+  })
+}
+
+/**
  * Drop a goal proof that a newly added slice has invalidated.
  *
  * Only `passed`/`evidence` go — the failure, gap issue, repair handle and blocker are still true of
@@ -694,7 +732,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // answer there left the decision spent with nothing applied, while the refresh had already cleared
     // the nested blocker so the unchanged PR became merge-eligible. A single-PR row is unaffected: its
     // worker IS the delivery, so returning at all is the receipt.
-    blockerResolutions: (row.subPrs || []).length && worker.subPrs === undefined ? row.blockerResolutions || [] : [],
+    blockerResolutions: unspentResolutions(row, mergedSubPrs, worker),
     blockerResolution: null,
     blockerResolutionFor: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
@@ -708,8 +746,20 @@ function nextRow(row, { worker, action, landed, folded }) {
   // clears the nested copy, destroying an escalation nobody has seen. Deriving the row-level field
   // from the nested ones makes the two consistent by construction: a fresh escalation always arrives
   // with its mirror, so the resolution rule only ever fires on a decision that was actually surfaced.
+  // The marker is derived whether or not the row-level mirror is present. Deriving it only when the
+  // mirror was ABSENT meant a worker that returned both channels — which the schema invites, and which
+  // is the natural thing for a worker to do — got no `blockerFor` at all. The resolution pass needs it
+  // to clear the right nested blocker, so without it the answered slice kept its blocker, the refresh
+  // re-lifted the identical question, and the row parked with the answer never dispatched.
+  const nestedBlocked = (next.subPrs || []).find((sp) => sp.blocker)
+  if (!next.blockerFor && nestedBlocked) {
+    // Prefer the slice the row-level text actually names (`a: ...`), since a worker that mirrored
+    // properly has told us which one; fall back to the queue head, the same order the re-lift uses.
+    const named = (next.subPrs || []).find((sp) => sp.blocker && String(next.blocker || '').startsWith(`${sp.id}: `))
+    next.blockerFor = (named || nestedBlocked).id
+  }
   if (!next.blocker) {
-    const nested = (next.subPrs || []).find((sp) => sp.blocker)
+    const nested = nestedBlocked
     if (nested) {
       next.blocker = `${nested.id}: ${nested.blocker}`
       // Which slice this answer will release. Without it, resolving one decision clears every nested

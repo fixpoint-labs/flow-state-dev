@@ -3883,6 +3883,145 @@ check('unconsumable PR activity withholds every merge gate on the row', async ()
   assert.deepEqual(quiet.gates.filter((g) => g.kind === 'merge').map((g) => g.pr), [9])
 })
 
+check('a nested blocker gets its marker even when the worker mirrors it to the row', async () => {
+  // The marker was derived only when the row-level mirror was ABSENT — but the schema invites both
+  // channels, and returning both is the natural thing for a worker to do. With no `blockerFor` the
+  // resolution pass cannot clear the right nested blocker, so the refresh re-lifts the identical
+  // question and the row parks with the answer never dispatched.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }], multiPrPending: true })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: false,
+          // BOTH channels, which is what the old guard tripped over.
+          blocker: 'a: which shape?',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }],
+        },
+      },
+    }),
+  })
+  assert.equal(result.issues[0].blockerFor, 'a', 'the marker names the slice the answer will release')
+
+  // ...and that marker is what makes the answer actually land: feeding the row back with the row-level
+  // blocker cleared dispatches a worker instead of re-lifting the same question.
+  const answered = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [{ ...result.issues[0], blocker: null, blockerResolutions: [{ for: null, answer: 'key on tenant + scope' }] }],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  assert.deepEqual(workerLabels(answered.calls), ['implement:FIX-2'], 'dispatched, not re-lifted')
+})
+
+check('an answer for a slice the nested cap deferred is retained', async () => {
+  // `issue-multi-pr` serves only its ready set, so its own cap can defer a blocked slice whose answer is
+  // already in hand. Consuming the whole list on "the nested workflow reported back" discarded that
+  // answer and the coordinator re-asked a question the human had already settled.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerFor: 'a',
+          blockerResolutions: [
+            { for: 'a', answer: 'A: key on tenant' },
+            { for: 'b', answer: 'B: Bob owns it' },
+          ],
+          // Both nested blockers are already cleared — the sibling queue clears one per wake, so by the
+          // time a worker runs with two answers in hand neither slice is still blocked.
+          subPrs: [
+            { id: 'a', status: 'pending' },
+            { id: 'b', status: 'pending' },
+          ],
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: false },
+            { id: 'b', merged: false, readyToMerge: false },
+          ],
+        },
+      },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          // `a` was built with its answer applied; `b` was deferred by the nested cap, so it comes back
+          // exactly as it went in — unbuilt, and still needing the answer already given for it.
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'pending' },
+          ],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(
+    result.issues[0].blockerResolutions,
+    [{ for: 'b', answer: 'B: Bob owns it' }],
+    "the served slice's answer is spent; the deferred slice's waits for the wake that serves it",
+  )
+
+  // An answer naming a slice the table no longer has is DROPPED, not hoarded: nothing is left to apply
+  // it to, and retaining it would restate a decision at every future worker forever.
+  const orphaned = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerFor: 'a',
+          blockerResolutions: [{ for: 'gone', answer: 'about a slice that no longer exists' }],
+          subPrs: [{ id: 'a', status: 'pending' }],
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  assert.deepEqual(orphaned.result.issues[0].blockerResolutions, [], 'dropped, not restated forever')
+
+  // A RE-ESCALATION is not a deferral: the answer was applied and proved insufficient, so re-handing it
+  // would present a spent decision as fresh. Changed blocker text is how the two are told apart.
+  const reEscalated = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerFor: 'a',
+          blockerResolutions: [{ for: 'a', answer: 'A: key on tenant' }],
+          subPrs: [{ id: 'a', status: 'pending' }],
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [{ id: 'a', status: 'pending', blocker: 'tenant key collides with the scope index — drop which?' }],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(reEscalated.result.issues[0].blockerResolutions, [], 'a new question does not re-serve the old answer')
+})
+
 check('a multi-PR answer is retained until the nested workflow reports back', async () => {
   // An outer worker can satisfy its schema while never successfully running `issue-multi-pr` — required
   // fields present, `subPrs` omitted. Consuming the answer there left the decision spent with nothing
