@@ -1,6 +1,6 @@
 # Epic: Honest task substrate
 
-**Epic issue:** [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) · **Project:** Orchestration Primitives · **Branch:** `epic/honest-task-substrate`
+**Epic issue:** [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) · **Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · **Project:** Orchestration Primitives · **Branch:** `epic/honest-task-substrate`
 
 > **What this document is.** A coordination artifact for a set of related issues, not an
 > implementing spec. Issues under this epic do **not** derive from it — they reference and
@@ -261,7 +261,7 @@ running — must hold after each of these issues lands. Two constraints follow:
 Durable audit log of every PR under this epic. Refreshed from the coordinator's status
 table each time this doc is updated. Empty columns mean not yet reached.
 
-**Epic PR:** _(pending — filled on first update)_ · never merged, open for the life of the epic.
+**Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · never merged, open for the life of the epic.
 
 | Issue | Title (short) | Track | Linear state | Spec PR | Impl PR |
 |---|---|---|---|---|---|
