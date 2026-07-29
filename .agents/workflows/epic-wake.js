@@ -430,6 +430,22 @@ function approvalGatedPhase(row) {
   return row.specPr ? 'AWAITING_SPEC_APPROVAL' : 'NEEDS_SPEC'
 }
 
+/**
+ * Reset slices whose PR the scan saw CLOSED, so the next wake rebuilds them.
+ *
+ * A closed handle cannot be resumed, so the recovery is a rebuild: `pending`, no PR, no branch, and no
+ * stack marker (a fresh build takes a fresh base).
+ *
+ * No "has it been answered" guard: reaching this at all means one arrived. A closed handle with no answer
+ * sets the row's blocker, which parks it — and a parked row runs no worker, so `nextRow` returns before
+ * this. Guarding for it looked prudent and was unreachable.
+ */
+function rebuildClosedSlices(subPrs, closedSlices) {
+  if (!closedSlices || !closedSlices.length) return subPrs
+  const ids = new Set(closedSlices)
+  return (subPrs || []).map((sp) => (ids.has(sp.id) ? { ...sp, status: 'pending', pr: null, branch: null, stackedOn: null } : sp))
+}
+
 /** Phases that exist only before the spec is signed off. */
 const PRE_APPROVAL_PHASES = new Set(['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL'])
 /** Phases that assert the spec IS signed off. */
@@ -694,8 +710,19 @@ function nextRow(row, { worker, action, landed, folded }) {
   // The blocker text alone loses what the POC actually found. The coordinator is told to put the
   // question to the user WITH that evidence, and the thread handles are where the answer gets posted,
   // so the structured record is kept alongside — the same `unsettled` shape the epic path carries.
+  // An `apply-decision` that RETURNED spent the queued answers, and those answers are what an unsettled
+  // record was waiting for — so the record goes with them. Carried unconditionally, the top-level
+  // `unsettled` output kept advertising an already-decided claim on every later wake, so orchestration
+  // state and the user-facing disclosure were permanently stale.
+  //
+  // Coarse on purpose: the row's blocker surfaced all of its unsettled claims as ONE question and the
+  // human answered that question, so they clear together. A later INCONCLUSIVE verdict re-populates the
+  // list, which is why losing an unanswered one here is not a risk worth extra bookkeeping.
+  // No `worker &&` guard: this is only reached with one, since the `if (!worker)` return above owns the
+  // dead case — and there `...row` preserves the records, which is what a dead worker should do.
+  const decisionApplied = action === 'apply-decision'
   const unsettledRecords = [
-    ...(row.unsettled || []),
+    ...(decisionApplied ? [] : row.unsettled || []),
     ...unsettled
       .filter((v) => !(row.unsettled || []).some((u) => u.claim === v.claim))
       .map((v) => ({ claim: v.claim, evidence: v.evidence || null, threads: v.threads || null })),
@@ -763,7 +790,6 @@ function nextRow(row, { worker, action, landed, folded }) {
     // straight onto origin/main while its prerequisite is still unmerged, the DAG violated by a
     // field nobody meant to change. Structural edges come from the carried row; only observations
     // the worker actually reported are applied. A genuinely new slice is added as given.
-    subPrs: mergedSubPrs,
     // Same rule as `subPrs`, and MERGED for the same reason: the schema permits a partial object, so a
     // worker reporting only what it changed (`{ fixPr: 42 }`, `{ fixMerged: true }`) would otherwise
     // drop the failure, the gap issue, the evidence and the blocker with it — and the next wake would
@@ -828,7 +854,16 @@ function nextRow(row, { worker, action, landed, folded }) {
     subPrMergedThisWake: false,
     blockerResolution: null,
     blockerResolutionFor: null,
-    ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
+    // An answered closed SUB-PR is REBUILT, not resumed. Its PR is closed, so `classify` dispatching the
+    // generic `resume` would point a worker at a dead handle while forbidding a replacement — the one
+    // instruction that cannot satisfy the decision. Reset to `pending` with the handles dropped, the next
+    // wake builds it, which is the recovery the blocker offers. Applied here, AFTER the worker merge, so a
+    // worker echoing the stale `open` row cannot undo it.
+    subPrs: rebuildClosedSlices(mergedSubPrs, row.closedSlices),
+    closedSlices: undefined,
+    // Set EXPLICITLY when clearing: `...row` above already carries the old list, so merely omitting the
+    // override left the stale records in place.
+    unsettled: unsettledRecords,
     status: worker.status,
     verdicts,
   }
@@ -1088,7 +1123,22 @@ function foldMultiPrScan(row, fresh) {
   // the answer could reach any worker. The blocker I added for this was therefore unresolvable by
   // construction, which is worse than the idling it replaced.
   if (closedHandles.length && !out.blocker && !row.blocker && !(row.blockerResolutions || []).length) {
-    out.blocker = `Closed without merging: ${closedHandles.join(', ')}. Needs a human decision — reopen, re-implement, or drop.`
+    // The options named here are the ones the machinery can actually carry out. "Drop" was in this text
+    // and is NOT one of them: removing a slice is a PR-plan edit, and promising it produced a decision the
+    // resume path could only refuse or re-escalate. Reopening is the human's own action on GitHub — the
+    // next scan simply stops reporting the handle closed — so the only answer this wake delivers is a
+    // rebuild, and that is what the text asks for.
+    out.blocker =
+      `Closed without merging: ${closedHandles.join(', ')}. Needs a human decision — either reopen the PR on GitHub (no answer needed here, the next scan picks it up), ` +
+      `or answer to have the slice REBUILT from scratch. Dropping it means editing the issue's PR plan, which is not something this wake can do.`
+  }
+
+  // Which slices the scan saw CLOSED, recorded for `nextRow` to act on after it has merged the worker's
+  // table. Resetting them here instead does not survive: a worker echoing the slice as `open` is the one
+  // transition `mergeSubPrs` trusts (pending → open), so the echo undid the reset in the same wake.
+  if (binding) {
+    const closed = (out.subPrs || []).filter((sp) => (binding.byId.get(sp.id) || {}).closedUnmerged).map((sp) => sp.id)
+    if (closed.length) out.closedSlices = closed
   }
 
   if (row.assembledGoal) {

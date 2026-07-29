@@ -4124,6 +4124,105 @@ check('a worker cannot add a slice as merged, or open one without handles', asyn
   assert.equal(opened.result.issues[0].subPrs.find((sp) => sp.id === 'b').status, 'open')
 })
 
+check('an answered closed sub-PR is rebuilt, not resumed', async () => {
+  // Its PR is closed, so the generic `resume` would point a worker at a dead handle and tell it not to
+  // open a replacement — the one instruction that cannot satisfy the decision. Reset to pending with the
+  // handles dropped, the next wake builds it, which is the recovery the blocker actually offers.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerResolutions: [{ for: 'a', answer: 'rebuild it' }],
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', stackedOn: 'fix/b' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: false, closedUnmerged: true },
+            { id: 'b', merged: false, readyToMerge: false },
+          ],
+        },
+      },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+        },
+      },
+    }),
+  })
+  const a = result.issues[0].subPrs.find((sp) => sp.id === 'a')
+  assert.equal(a.status, 'pending', 'reset for the rebuild')
+  assert.equal(result.issues[0].closedSlices, undefined, 'and the transient marker is not persisted')
+  assert.equal(a.pr, null, 'and the dead handle is dropped')
+  assert.equal(a.branch, null)
+  assert.equal(a.stackedOn, null, 'a rebuild takes a fresh base, so the old stack marker goes too')
+
+  // The sibling with a live PR is untouched.
+  const b = result.issues[0].subPrs.find((sp) => sp.id === 'b')
+  assert.equal(b.status, 'open')
+  assert.equal(b.pr, 42)
+
+  // With NO answer yet, the slice keeps its handles — it is parked on the blocker, and discarding a PR
+  // before the human has chosen would destroy the very thing they might tell you to reopen.
+  const unanswered = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false, closedUnmerged: true }] } },
+    }),
+  })
+  const held = unanswered.result.issues[0].subPrs[0]
+  assert.equal(held.status, 'open', 'nothing is reset until the decision arrives')
+  assert.equal(held.pr, 41)
+  assert.match(unanswered.result.issues[0].blocker || '', /Closed without merging/)
+})
+
+check('an applied decision stops being advertised as unsettled', async () => {
+  // Carried unconditionally, the top-level `unsettled` output kept advertising an already-decided claim on
+  // every later wake, so both the orchestration state and the user-facing disclosure were permanently stale.
+  const args = epicArgs({
+    issues: [
+      row('FIX-2', {
+        phase: 'AWAITING_SPEC_APPROVAL',
+        specPr: 8,
+        unsettled: [{ claim: 'SSE resumes after a redeploy', evidence: 'inconclusive under load', threads: null }],
+        blockerResolutions: [{ for: null, answer: 'assume it does not; buffer client-side' }],
+      }),
+    ],
+  })
+  const fresh = { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } }
+
+  const { result, calls } = await run('epic-wake.js', {
+    args,
+    respond: epicResponder({ fresh, worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-2'])
+  assert.deepEqual(result.issues[0].unsettled || [], [], 'the record goes with the answer that settled it')
+  assert.deepEqual(result.unsettled || [], [], 'and the disclosure stops naming it')
+
+  // A DEAD worker applied nothing, so the record stands — otherwise the claim would vanish unanswered.
+  const died = await run('epic-wake.js', { args, respond: epicResponder({ fresh, nulls: ['apply-decision:FIX-2'] }) })
+  assert.deepEqual(
+    (died.result.issues[0].unsettled || []).map((u) => u.claim),
+    ['SSE resumes after a redeploy'],
+  )
+})
+
 check('a closed-handle blocker can actually be answered', async () => {
   // A closed PR stays closed, so every later scan reports it again. Recreating the blocker on the next
   // refresh parked the row before the human's reopen/reimplement/drop answer could reach a worker — the
