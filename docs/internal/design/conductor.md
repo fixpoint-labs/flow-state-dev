@@ -156,8 +156,10 @@ already uses `philosophy.md` — a reference document consulted when making a de
 a record something joins to. An `Objective` entity would buy graph traversal that nothing in
 v1 needs, so it doesn't earn its place (tenet 3).
 
-So: **one resource collection** whose instances carry `{ kind, label, body }`, with `kind` a
-discriminator (`objective | tenet | lesson`) in the same way issue `type` is a routing key.
+So: **one collection** whose instances carry `{ kind, label, body }`, with `kind` a discriminator
+(`objective | tenet | lesson`) in the same way issue `type` is a routing key. It is
+**filesystem-backed** — real markdown files under `.conductor/guidance/`, because the vendor
+harness has to read them too (§5, "Harness on a harness").
 Objectives ground priority by being *read* during prioritization, not by being joined to
 issues.
 
@@ -250,6 +252,59 @@ gate passes" natively rather than as a special case.
 **Not settled — validate in M2:** whether the epic-task-with-nested-issue-subtasks shape holds
 up, or whether epics want a separate board from the project-level one. Both work on paper; the
 nesting is more elegant and less proven.
+
+### Harness on a harness — and why guidance lives on the filesystem
+
+Conductor is an orchestration layer **on top of another orchestration layer.** It delegates the
+work inside a phase to a vendor harness (Claude Code, Codex), and that harness has its own
+skills, sub-agents, and tool loop. We do not reinvent any of that — declining to is most of why
+this is weeks rather than months.
+
+That layering fixes an ownership boundary, and it is worth stating outright because a lot falls
+out of it:
+
+| | Conductor owns | The vendor harness owns |
+|---|---|---|
+| **Question** | *which* phase, *which* gate, what happens next | *how* the work inside a phase gets done |
+| **Mechanism** | `decide` / `reconcile`, the board, gates, the ledger | its own skills, sub-agents, tool loop, context management |
+| **State** | the workflow ledger | its own transcript, which we neither read nor keep |
+
+**The consequence: the filesystem is the interop surface.** Anything *both* layers need has to be
+readable by both, and the vendor harness reads the repo — not an FSD store. So **guidance is
+filesystem-first**: `.conductor/guidance/**/*.md` are real files, which the vendor harness picks
+up the same way Claude Code already picks up `philosophy.md` today. Storing them only in an FSD
+resource would make them invisible to the layer that needs them most.
+
+That splits metadata by audience:
+
+- **Front-matter** (`kind`, `label`) — shared. Both layers read it, and it travels with the body.
+- **A separate FSD-only resource, keyed by file path** — conductor's bookkeeping (when we last
+  acted on an objective, which lessons have been promoted). Deliberately *not* in the file: the
+  vendor harness shouldn't have to care about our accounting, and shouldn't be able to clobber it
+  by rewriting a document.
+
+**External changes are a reconciliation problem, not a new mechanism.** A guidance file can change
+without conductor doing it — a human edits it in their editor, or the vendor harness writes it
+mid-phase. `reactTo` fires on FSD-mediated mutations, so those edits are invisible to it. But this
+is *exactly* the missed-webhook case from §8/D1 wearing different clothes: the observed copy
+diverges from the world, and reconciliation is what notices. Each tick hashes the guidance files
+against what conductor last observed and emits a synthesized `guidance_changed` for anything that
+moved. **Correctness needs no framework work** — the reconciler already has to exist.
+
+What framework work *would* buy is **latency**, and the shape is already half-built:
+`defineExternalResourceCollection` (FIX-858, **Done**) models exactly this — a read-only collection
+resolved from an app-owned store rather than the framework's, sharing `reactTo`. Two pieces are
+missing for the filesystem case:
+
+1. **`ExternalReactiveBindings` has no `contentUpdated`** — only `created` / `stateUpdated` /
+   `deleted`. A markdown body is content, so the axis that matters most for guidance isn't there.
+2. **The change-signal helper isn't built.** FIX-858's own header notes it "lands in later PRs,"
+   and nothing in the tree emits external reactive events yet — the bindings are declared with no
+   producer.
+
+So: **conductor ships on reconciliation and gets tick-latency reactions; the external-collection
+path is an optimization to adopt when those two land.** Filed as the FIX-858 follow-up rather than
+left as a footnote here.
 
 ### Gates are derived, not parked runs
 
@@ -425,7 +480,8 @@ real file shapes.
 | The durable work record per issue, dependency-gated, leased, CAS-claimed, retried | `taskBoard` + resource-backed `TaskCollection` (`@flow-state-dev/orchestration`) — durable across turns today |
 | A cross-turn human gate on a work unit | task status `awaiting_review` + `blockTask` on a resource-backed board |
 | Per-task observability | `TaskHandle.items()` + `task-change` events |
-| React to a guidance document being added or edited | `reactTo` on a resource collection — state (FIX-751) **and content writes** (FIX-843), both Done |
+| React to a guidance document being added or edited **from inside conductor** | `reactTo` on a resource collection — state (FIX-751) **and content writes** (FIX-843), both Done |
+| Notice a guidance file edited **outside** conductor (a human's editor, the vendor harness) | the reconciler — same mechanism as a missed webhook (§5). `defineExternalResourceCollection` (FIX-858) would cut latency, but needs a `contentUpdated` axis and the unbuilt change-signal helper |
 | Off-request execution machinery to build the FIX-939 executor on | `enqueueAction({…, sessionId })` + `jobId` dedup; `@flow-state-dev/bullmq` for durable / separated workers |
 | Short-lived human input gate | `ctx.suspend()` + suspension records (FIX-811) |
 | GitHub events waking the right session | webhook transport, `flow.webhooks` + `sessionId(event)` (FIX-439) |
@@ -644,8 +700,9 @@ orchestration for non-development work.
    be promoted into a tenet or retired. If that turns out to need real states, the guidance
    collection grows a status field — but only once a behavior depends on it, not upfront.
 4. **Public name** (D2).
-5. **Where the process files live** so they are editable per project but versioned with
-   the repo — `.conductor/` alongside `.agents/skills/`, or inside it?
+5. **Where the process files live** — *answered:* on the filesystem under `.conductor/`, because
+   the vendor harness must read them too (§5, "Harness on a harness"). What remains open is only
+   whether `.conductor/` sits alongside `.agents/skills/` or inside it.
 
 ## 11. Immediate next step
 

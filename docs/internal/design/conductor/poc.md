@@ -38,6 +38,13 @@ my-project/
 a service. Editing a `SKILL.md` is how you change how a phase behaves, and it shows up in code
 review like any other change.
 
+**Why files rather than an FSD store:** conductor delegates the work inside a phase to a vendor
+harness (Claude Code, Codex), and that harness reads *the repo* — not conductor's resources. So
+anything both layers need is a file. See `conductor.md` §5, "Harness on a harness." Two
+consequences visible in the tree above: front-matter carries the metadata both layers read
+(`kind`, `label`), and conductor's own bookkeeping lives in a separate FSD-only resource keyed by
+file path, so the vendor harness can rewrite a document without clobbering our accounting.
+
 ---
 
 ## Level 1 — out of the box
@@ -188,8 +195,11 @@ outranks work that adds surface. If a spec adds a synchronous hop to the read pa
 direction problem, not a detail.
 ```
 
-Dropping that file in fires `guidance_changed`, which is what makes the next section
-interesting.
+Dropping that file in fires `guidance_changed` — and so does editing it in your editor, or the
+vendor harness rewriting it mid-phase. Edits that don't go through conductor are caught by the
+**reconciler**, which hashes the guidance files each tick against what it last observed; an
+out-of-band edit is the same class of event as a missed webhook (`conductor.md` §8/D1). That is
+what makes the next section work regardless of who made the change.
 
 ---
 
