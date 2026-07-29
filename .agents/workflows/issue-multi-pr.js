@@ -102,7 +102,28 @@ function readySet(nodes, cap) {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const ready = []
   const invalid = []
+  // A dependency CYCLE is a malformed plan, not a wait: no merge and no other external event can
+  // ever unblock it, so reporting the nodes as "waiting" parks the issue silently forever. Only a
+  // human fixing the plan resolves it, so it is reported as invalid like an unresolvable id.
+  const inCycle = new Set()
+  const seen = new Map() // id -> 1 visiting, 2 done
+  const walk = (id, stack) => {
+    if (seen.get(id) === 2) return
+    if (stack.includes(id)) {
+      for (const n of stack.slice(stack.indexOf(id))) inCycle.add(n)
+      return
+    }
+    seen.set(id, 1)
+    for (const dep of (byId.get(id) || {}).dependsOn || []) if (byId.has(dep)) walk(dep, [...stack, id])
+    seen.set(id, 2)
+  }
+  for (const n of nodes) walk(n.id, [])
+
   for (const node of nodes) {
+    if (inCycle.has(node.id)) {
+      invalid.push({ node, missing: [], cycle: true })
+      continue
+    }
     const missing = (node.dependsOn || []).filter((id) => !byId.has(id))
     if (missing.length) {
       invalid.push({ node, missing })
@@ -371,13 +392,17 @@ phase('Build')
 const { ready, deferred, invalid } = readySet(nodes, cap)
 
 for (const bad of invalid) {
-  log(`${bad.node.id}: declares unknown dependenc(ies) ${bad.missing.join(', ')} — refusing to build it. Fix the PR plan or the handle cache.`)
+  log(
+    bad.cycle
+      ? `${bad.node.id}: part of a dependency CYCLE — no event can unblock it. Fix the PR plan; this is not a wait.`
+      : `${bad.node.id}: declares unknown dependenc(ies) ${bad.missing.join(', ')} — refusing to build it. Fix the PR plan or the handle cache.`,
+  )
 }
 
 if (!ready.length) {
   const waiting = nodes.filter((n) => n.status !== TERMINAL).map((n) => `${n.id}(${n.status})`)
   log(`No sub-PR is ready — waiting on ${waiting.join(', ') || 'nothing'}.`)
-  return { issueId, subPrs: nodes, dispatched: [], invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing })), done: false }
+  return { issueId, subPrs: nodes, dispatched: [], invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle })), done: false }
 }
 
 if (deferred.length) {
@@ -456,7 +481,7 @@ return {
   subPrs,
   dispatched: ready.map((i) => `${i.action}:${i.node.id}`),
   deferred: deferred.map((i) => i.node.id),
-  invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing })),
+  invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle })),
   blockers: subPrs.filter((n) => n.blocker).map((n) => ({ id: n.id, blocker: n.blocker })),
   // Never DONE from a build wake — merges are the human's, and the assembled goal comes after.
   done: false,

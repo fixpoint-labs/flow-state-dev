@@ -296,7 +296,7 @@ const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
-  required: ['approved', 'newReviewEvents'],
+  required: ['approved', 'newReviewEvents', 'headSha', 'latestActivityAt'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
     approver: { type: ['string', 'null'] },
@@ -332,7 +332,7 @@ const PR_STATE_SCHEMA = {
   additionalProperties: false,
   // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
   // must never let a previously-true value survive a push onto an unapproved head.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
+  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'ciFailed'],
   properties: {
     issueId: { type: 'string' },
     phase: {
@@ -344,7 +344,7 @@ const PR_STATE_SCHEMA = {
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
-    ciFailed: { type: 'boolean' },
+    ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
     merged: { type: 'boolean' },
     readyToMerge: { type: 'boolean' },
     // The advanced cursor, so the next wake can tell "already handled" from "new".
@@ -487,7 +487,13 @@ const [gate, linear, ...prStates] = await parallel([
 // A live scan is authoritative in both directions. Only when the scout DIED do we fall back to
 // the durable approval the coordinator already recorded — re-locking an approved epic on an
 // infrastructure failure would stall every sub-issue for a wake.
-const epicApproved = gate ? !!gate.approved : !!epic.approved
+// An approval with no head cannot release work: `epicHead` would fall back to the carried,
+// possibly pre-approval SHA, and workers are told to align to it without re-fetching.
+const gateUsable = !!(gate && gate.headSha)
+if (gate && gate.approved && !gate.headSha) {
+  log('Epic gate reported approval without a current head — holding work this wake rather than aligning to a stale objective.')
+}
+const epicApproved = gateUsable ? !!gate.approved : !!epic.approved
 
 // The head workers align to. It has to be THIS wake's observation: the wake that first sees
 // approval is also the wake that releases the specs, and passing the carried SHA would align
@@ -531,6 +537,8 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
+    // Same rule: CI that recovered must stop looking like a failure, or pr-feedback re-dispatches forever.
+    ciFailed: refreshedLive ? !!fresh.ciFailed : false,
     linearState: li.state || row.linearState,
     linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
@@ -747,7 +755,8 @@ const gates = [
     pr: r.specPr,
     settlingInFlight: contestedClaimFor(r.id),
   })),
-  ...issues.filter((r) => r.readyToMerge).map((r) => ({ kind: 'merge', issueId: r.id, pr: r.implPr })),
+  // A child the human closed or dropped must not keep asking them to merge it.
+  ...issues.filter((r) => r.readyToMerge && !r.linearTerminal).map((r) => ({ kind: 'merge', issueId: r.id, pr: r.implPr })),
 ]
 
 return {

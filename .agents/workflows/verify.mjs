@@ -47,6 +47,39 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /**
+ * Enough JSON Schema to hold the stubs honest: required keys, `additionalProperties: false`,
+ * declared types, and enums. Returns a list of violations, empty when the value would be
+ * accepted. Not a general validator — it only needs to cover what these scripts' schemas use.
+ */
+function schemaViolations(value, schema, path = '') {
+  const out = []
+  const types = [].concat(schema.type || [])
+  const actual = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value
+  if (types.length && !types.includes(actual)) {
+    out.push(`${path || 'root'} is ${actual}, schema allows ${types.join('|')}`)
+    return out
+  }
+  if (schema.enum && !schema.enum.includes(value)) out.push(`${path} "${value}" not in enum`)
+  if (actual === 'array' && schema.items) {
+    value.forEach((v, i) => out.push(...schemaViolations(v, schema.items, `${path}[${i}]`)))
+  }
+  if (actual === 'object') {
+    for (const key of schema.required || []) {
+      if (!(key in value)) out.push(`${path}.${key} is required but missing`)
+    }
+    if (schema.additionalProperties === false && schema.properties) {
+      for (const key of Object.keys(value)) {
+        if (!(key in schema.properties)) out.push(`${path}.${key} is not declared (additionalProperties:false)`)
+      }
+    }
+    for (const [key, sub] of Object.entries(schema.properties || {})) {
+      if (key in value) out.push(...schemaViolations(value[key], sub, `${path}.${key}`))
+    }
+  }
+  return out
+}
+
+/**
  * Run a workflow script the way the harness does: `export const meta` becomes a local, and
  * the body runs inside an async function so its top-level `return` is the script's result.
  *
@@ -63,10 +96,20 @@ async function run(name, { args, respond }) {
   const calls = []
   const logs = []
   const phases = []
+  const invalid = []
 
   const agent = async (prompt, opts = {}) => {
     calls.push({ prompt, ...opts })
-    return respond(prompt, opts)
+    const result = respond(prompt, opts)
+    // The real hook returns ONLY schema-validated objects — an agent that can't satisfy the schema
+    // yields null. A mirror that skips validation lets fixtures exercise responses the harness
+    // would reject, so a passing test can describe a branch that never runs. Collected rather than
+    // thrown: `parallel`/`pipeline` swallow throws into null, which would hide the real cause.
+    if (opts.schema && result !== null && result !== undefined) {
+      const bad = schemaViolations(result, opts.schema)
+      if (bad.length) invalid.push(`"${opts.label}": ${bad.join('; ')}`)
+    }
+    return result
   }
   // Mirror the documented semantics: a thunk that throws resolves to null, the call never rejects.
   const parallel = (thunks) => Promise.all(thunks.map((t) => Promise.resolve().then(t).catch(() => null)))
@@ -104,6 +147,13 @@ async function run(name, { args, respond }) {
   )
 
   const result = await body(agent, parallel, pipeline, log, phase, args, budget, workflow, capture)
+
+  // A fixture the real harness would reject makes whatever this test asserts meaningless.
+  assert.equal(
+    invalid.length,
+    0,
+    `${name}: stub response(s) violate the agent schema, so the real harness would return null instead — this test would be exercising a branch that cannot happen:\n  ${invalid.join('\n  ')}`,
+  )
 
   return { result, calls, logs, phases, meta: capture.meta }
 }
@@ -155,16 +205,41 @@ function epicResponder({ approved = true, epicReviewEvents = false, fresh = {}, 
     if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: 'In Spec Review', blockedBy: [] })) }
     if (label.startsWith('refresh:')) {
       const id = label.slice('refresh:'.length)
-      // `specApproved` is schema-required, so the stub always states it explicitly.
-      return { issueId: id, specApproved: false, ...(fresh[id] || { phase: 'NEEDS_SPEC' }) }
+      // Every REQUIRED field of PR_STATE_SCHEMA gets a default here, so a fixture can never
+      // accidentally describe a response the real harness would reject.
+      return {
+        issueId: id,
+        phase: 'NEEDS_SPEC',
+        specApproved: false,
+        newSpecReviewEvents: false,
+        newPrEvents: false,
+        readyToMerge: false,
+        ciFailed: false,
+        ...(fresh[id] || {}),
+      }
     }
     if (label.startsWith('poc:')) return { claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it', ...poc }
     const id = label.split(':')[1]
-    return { issueId: id, phase: 'AWAITING_SPEC_APPROVAL', ...(worker[id] || {}) }
+    return { issueId: id, phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, ...(worker[id] || {}) }
   }
 }
 
 const row = (id, over = {}) => ({ id, phase: 'NEEDS_SPEC', specReviewRounds: 0, specLevelFound: false, ...over })
+
+/**
+ * Schema-complete fixtures. Every REQUIRED field has a default, so an inline responder can never
+ * describe a response the real harness would reject — the failure mode Codex found in 11 tests.
+ */
+const freshRow = (over = {}) => ({
+  phase: 'NEEDS_SPEC',
+  specApproved: false,
+  newSpecReviewEvents: false,
+  newPrEvents: false,
+  readyToMerge: false,
+  ciFailed: false,
+  ...over,
+})
+const workerRes = (over = {}) => ({ phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, ...over })
 
 // ---------------------------------------------------------------------------
 // epic-wake
@@ -211,7 +286,7 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') {
         return {
           issues: [
@@ -220,8 +295,8 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
           ],
         }
       }
-      if (label.startsWith('refresh:')) return { issueId: label.slice(8), phase: 'NEEDS_SPEC' }
-      return { issueId: label.split(':')[1], phase: 'AWAITING_SPEC_APPROVAL' }
+      if (label.startsWith('refresh:')) return { issueId: label.slice(8), ...freshRow() }
+      return { issueId: label.split(':')[1], ...workerRes() }
     },
   })
   assert.deepEqual(workerLabels(calls), ['spec:FIX-3'], 'the blocked issue must not run concurrently with its blocker')
@@ -428,12 +503,12 @@ check('two verdicts on one issue both survive to be folded', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', phase: 'PR_FEEDBACK', newPrEvents: false }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK' }) }
       if (label === 'poc:claim one') return { claim: 'claim one', verdict: 'CONFIRMED', evidence: 'a' }
       if (label === 'poc:claim two') return { claim: 'claim two', verdict: 'REFUTED', evidence: 'b' }
-      return { issueId: 'FIX-2', phase: 'PR_FEEDBACK' }
+      return { issueId: 'FIX-2', ...workerRes({ phase: 'PR_FEEDBACK' }) }
     },
   })
   assert.equal(labels(calls, 'poc:').length, 2)
@@ -461,11 +536,11 @@ check('a present Linear row clears a resolved blocker', async () => {
     args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'] })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       // Present row, `blockedBy` omitted — schema-valid, and means "no blockers".
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo' }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', phase: 'NEEDS_SPEC' }
-      return { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL' }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
+      return { issueId: 'FIX-2', ...workerRes() }
     },
   })
   assert.deepEqual(result.blocked, [], 'a merged blocker must actually un-block the issue')
@@ -559,13 +634,13 @@ check('GATE: a stale specApproved can never survive a live refresh', async () =>
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
       // Schema-valid, reports the pushed head, omits nothing required — but says NOT approved.
       if (label.startsWith('refresh:')) {
-        return { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: false, headSha: 'pushed' }
+        return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, headSha: 'pushed' }) }
       }
-      return { issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL' }
+      return { issueId: 'FIX-2', ...workerRes() }
     },
   })
   assert.equal(result.issues[0].specApproved, false, 'a push re-opens the gate')
@@ -623,7 +698,7 @@ check('a newly discovered epic child enters the table at NEEDS_SPEC', async () =
     args: epicArgs({ issues: [row('FIX-2')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       // issue-manager parented FIX-7 under the epic mid-run; the Linear scan is where it appears.
       if (label === 'linear:epic-children') {
         return {
@@ -633,8 +708,8 @@ check('a newly discovered epic child enters the table at NEEDS_SPEC', async () =
           ],
         }
       }
-      if (label.startsWith('refresh:')) return { issueId: label.slice(8), phase: 'NEEDS_SPEC' }
-      return { issueId: label.split(':')[1], phase: 'AWAITING_SPEC_APPROVAL' }
+      if (label.startsWith('refresh:')) return { issueId: label.slice(8), ...freshRow() }
+      return { issueId: label.split(':')[1], ...workerRes() }
     },
   })
   assert.ok(
@@ -650,7 +725,7 @@ check('the epic itself is never added as one of its own children', async () => {
     args: epicArgs({ issues: [] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-1', state: 'Todo', blockedBy: [] }] }
       return null
     },
@@ -1147,7 +1222,7 @@ check('a failed assembled goal walks gap then fix across wakes, never DONE', asy
   // One state, one action per wake — so a death mid-repair resumes instead of restarting.
   const first = await run('issue-multi-pr.js', {
     args: multiArgs({ subPrs: [node('a', { status: 'merged' }), node('b', { status: 'merged' })] }),
-    respond: multiResponder({ goal: { passed: false, failure: 'stream stalls on resume', owningSubPr: 'b' } }),
+    respond: multiResponder({ goal: { passed: false, evidence: 'fsdev run: FAIL at resume', failure: 'stream stalls on resume', owningSubPr: 'b' } }),
   })
   assert.deepEqual(first.calls.map((c) => c.label), ['assembled-goal:FIX-9'], 'the failure is recorded, the repair is next')
   assert.equal(first.result.assembledGoal.failure, 'stream stalls on resume')
@@ -1187,6 +1262,58 @@ check('a failed rebase keeps its stack marker so the next wake retries it', asyn
   assert.equal(b.stackedOn, 'fix/FIX-9-a', 'and still stacked, or nothing ever retries the rebase')
 })
 
+check('a dependency CYCLE is reported invalid, not parked forever', async () => {
+  // No merge and no other event can unblock a cycle, so "waiting" would be a silent permanent
+  // stall. Only a human fixing the plan resolves it.
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { dependsOn: ['b'] }), node('b', { dependsOn: ['a'] })] }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls, [], 'nothing is built out of a cyclic plan')
+  assert.deepEqual(result.invalid.map((i) => i.id).sort(), ['a', 'b'])
+  assert.ok(result.invalid.every((i) => i.cycle))
+  assert.match(logs.join('\n'), /part of a dependency CYCLE — no event can unblock it/)
+})
+
+check('a terminal Linear issue stops asking the human to merge it', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }) }
+      return { issueId: 'FIX-2', ...workerRes() }
+    },
+  })
+  assert.deepEqual(result.gates, [], 'a dropped child must not surface a merge gate')
+})
+
+check('recovered CI stops looking like a failure', async () => {
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: false } } }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a stale ciFailed would re-dispatch pr-feedback forever')
+})
+
+check('an approval with no current head holds work for the wake', async () => {
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, headSha: 'preapproval' }, issues: [row('FIX-2')] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      // Schema-valid but headSha null: we cannot align workers to the approved objective.
+      if (label === 'gate:epic') return { approved: true, headSha: null, newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
+      return { issueId: 'FIX-2', ...workerRes() }
+    },
+  })
+  assert.equal(result.epicApproved, false, 'falls back to the durable approval, which is unset here')
+  assert.deepEqual(workerLabels(calls), [], 'no worker aligns to a pre-approval objective')
+  assert.match(logs.join('\n'), /approval without a current head — holding work this wake/)
+})
+
 check('a node declaring an unknown dependency fails closed', async () => {
   // filter(Boolean) would drop the missing id, leaving zero deps — which reads as "all merged"
   // and builds the dependent onto origin/main before its prerequisite exists.
@@ -1195,7 +1322,7 @@ check('a node declaring an unknown dependency fails closed', async () => {
     respond: multiResponder(),
   })
   assert.deepEqual(calls, [], 'never build a node whose declared dependency is not in the table')
-  assert.deepEqual(result.invalid, [{ id: 'b', missing: ['ghost'] }])
+  assert.deepEqual(result.invalid, [{ id: 'b', missing: ['ghost'], cycle: false }])
   assert.match(logs.join('\n'), /b: declares unknown dependenc\(ies\) ghost — refusing to build it/)
 })
 
@@ -1315,7 +1442,7 @@ check('a failed re-verification clears spent handles and starts a fresh repair c
       subPrs: [node('a', { status: 'merged' })],
       assembledGoal: { passed: false, failure: 'old', fixIssue: 'FIX-99', fixPr: 42, fixMerged: true },
     }),
-    respond: multiResponder({ goal: { passed: false, failure: 'still broken', owningSubPr: 'a' } }),
+    respond: multiResponder({ goal: { passed: false, evidence: 'fsdev run: FAIL', failure: 'still broken', owningSubPr: 'a' } }),
   })
   assert.equal(result.assembledGoal.fixPr, null, 'the spent repair PR must not gate the next cycle')
   assert.equal(result.assembledGoal.fixIssue, null)
