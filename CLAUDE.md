@@ -151,45 +151,20 @@ docs/
 
 ## Linear access (check the env first)
 
-Every skill that touches Linear — `issue-spec`, `issue-implement`, `linear-triage`, `plan-day`, the lifecycles, the `issue-manager` agent — goes through **one** of two channels, and this is where that choice is made. Check the env at the start of the task:
+Every skill that touches Linear — `issue-spec`, `issue-implement`, `linear-triage`, `plan-day`, the lifecycles, the `issue-manager` agent — picks its channel here, once, at the start of the task:
+
+- **`LINEAR_API_KEY` set → use the Linear GraphQL API directly. Do not use a Linear MCP server**, even if one is connected. It works in headless/cron runs, where an interactively-authenticated MCP server isn't there.
+- **unset → fall back to the Linear MCP tools**, as the skills describe.
+
+**Pick one channel per task and stay on it** — half the reads through MCP and half through the API is how a skill acts on two different views of the same issue. The skills name operations (`get_issue`, `save_issue`, `list_issue_statuses`); translate them to the equivalent GraphQL when you're on the API.
+
+POST to `https://api.linear.app/graphql` with the key as a **bare** `Authorization` header — no `Bearer` prefix:
 
 ```bash
-[ -n "$LINEAR_API_KEY" ] && echo "direct API" || echo "MCP"
-```
-
-- **`LINEAR_API_KEY` is set → use the Linear GraphQL API directly. Do not use a Linear MCP server**, even if one is connected. The API is the same data with none of the MCP round-trips, and it works in headless/cron runs where an interactively-authenticated MCP server isn't there.
-- **`LINEAR_API_KEY` is unset → fall back to the Linear MCP tools**, as the skills describe.
-
-**Pick one channel per task and stay on it.** Half the reads through MCP and half through the API is how a skill ends up acting on two different views of the same issue.
-
-**The API.** POST GraphQL to `https://api.linear.app/graphql`, with the key as a bare `Authorization` header (no `Bearer` prefix):
-
-```bash
-curl -sS https://api.linear.app/graphql \
-  -H "Authorization: $LINEAR_API_KEY" \
+curl -sS https://api.linear.app/graphql -H "Authorization: $LINEAR_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"query":"query($id:String!){ issue(id:$id){ identifier title description state{name} labels{nodes{name}} comments{nodes{body user{name}}} } }","variables":{"id":"FIX-123"}}'
+  -d '{"query":"query($id:String!){ issue(id:$id){ identifier title state{name} } }","variables":{"id":"FIX-123"}}'
 ```
-
-Mutations take the same shape — `issueUpdate`, `issueCreate`, `commentCreate`:
-
-```bash
-curl -sS https://api.linear.app/graphql \
-  -H "Authorization: $LINEAR_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"query":"mutation($id:String!,$s:String!){ issueUpdate(id:$id, input:{stateId:$s}){ success } }","variables":{"id":"FIX-123","s":"<stateId>"}}'
-```
-
-What the skills' MCP calls map to:
-
-| Skill prose | GraphQL |
-| --- | --- |
-| fetch an issue (`get_issue`) | `issue(id:)` — pass the identifier (`FIX-123`) or the UUID |
-| search / list issues (`list_issues`) | `issues(filter:)` — e.g. `{ team: { key: { eq: "FIX" } }, state: { type: { neq: "canceled" } } }` |
-| set status (`save_issue` with `stateId`) | `issueUpdate(id:, input:{ stateId: })` |
-| create an issue (`create_issue`) | `issueCreate(input:{ teamId, title, description, ... })` |
-| comment | `commentCreate(input:{ issueId, body })` |
-| list workflow states (`list_issue_statuses`) | `team(id:){ states{ nodes{ id name type } } }` |
-| the spec document | `documentCreate` / `documentUpdate`, `issue(id:){ documents{ nodes{ id title } } }` |
 
 The `stateId`s and team id the lifecycles use are inlined in `issue-lifecycle` → "Linear status is a mirror you own"; they are the same ids on both channels. **Never echo `LINEAR_API_KEY` into a log, a commit, a PR body, or a Linear comment.**
 

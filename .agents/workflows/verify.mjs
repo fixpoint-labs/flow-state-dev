@@ -7236,6 +7236,54 @@ check('the PR-feedback cap stops feedback rounds and nothing else', async () => 
   assert.equal(next && next.action, 'implement', 'the cap stalled a multi-PR DAG step, which is not a feedback round')
 })
 
+check('a capped row is never invited to merge while the question is unanswered', async () => {
+  // The cap parks a row WITHOUT writing a `blocker` — the question is derived from the counter — so a
+  // gate filter testing only the stored field saw an ordinary ready row. The result was the merge gate
+  // and "we stopped, is the approach wrong?" surfaced in the same wake: an invitation to take the one
+  // irreversible action while we are telling the human we have stopped. "Merge as-is" is a legitimate
+  // ANSWER, and it has to arrive as their decision (which resets the counter and releases the gate next
+  // wake), not as an invitation issued before they answered.
+  const capped = { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, prFeedbackRounds: 12 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': freshRow({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }) },
+      worker: { 'FIX-2': capped },
+    }),
+  })
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'a capped row was invited to merge')
+  assert.ok(
+    result.blockers.some((b) => b.issueId === 'FIX-2' && /PR-feedback cap reached/.test(b.blocker)),
+    'withholding the gate without asking the question is a silent stall, not a fix',
+  )
+
+  // The same row below the cap keeps its gate — the withholding is the cap's, not a blanket stop.
+  const { result: below } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, prFeedbackRounds: 11 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': freshRow({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }) },
+      worker: { 'FIX-2': capped },
+    }),
+  })
+  assert.deepEqual(below.gates.filter((g) => g.kind === 'merge'), [{ kind: 'merge', issueId: 'FIX-2', pr: 9 }])
+})
+
+check('the last allowed round is told the pause is conditional on it being a real round', async () => {
+  // Stated unconditionally, the near-cap instruction overrode the zero-cost rule one line above it for
+  // exactly the batch that rule names: an acknowledgements-only batch would report 1 and post a pause
+  // comment, parking the issue at a twelfth round nobody spent and claiming twelve handled rounds on
+  // someone's PR.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, prFeedbackRounds: 11 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': freshRow({ phase: 'PR_FEEDBACK', implPr: 9, newPrEvents: true }) } }),
+  })
+  const prompt = (calls.find((c) => (c.label || '') === 'pr-feedback:FIX-2') || {}).prompt || ''
+  assert.ok(prompt, 'the near-cap round must still be dispatched — the cap is at 12, not 11')
+  assert.match(prompt, /IF this batch is a real round/, 'the pause must be conditional, not forced')
+  assert.match(prompt, /report 0 as above and post NO pause comment/, 'the zero-cost escape must survive the cap warning')
+  assert.doesNotMatch(prompt, /Report `prFeedbackRoundsSpent: 1`/, 'the count must not be forced ahead of reading the batch')
+})
+
 check('the PR-feedback counter charges rounds the way the cap needs', async () => {
   // The counter IS the cap's mechanism — there is no separate flag — so each of these rules is
   // load-bearing on its own. An unreported round charged zero makes the cap unreachable; an
