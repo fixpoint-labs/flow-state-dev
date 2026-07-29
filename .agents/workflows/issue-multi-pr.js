@@ -134,6 +134,7 @@ function allMerged(nodes) {
  *   GAP_BLOCKED     — the filed gap is itself blocked  → RE-CHECK it; a blocked state with no way
  *                                                        to observe its blocker clearing is a stall,
  *                                                        not a wait
+ *   REPAIR_BLOCKED  — the repair hit a human decision   → park; the coordinator clears `fixBlocker`
  *   NEEDS_FIX       — gap filed and ready, no repair PR → open the repair PR
  *   AWAITING_FIX    — repair PR open, not merged        → wait; the human merges it
  *   DONE            — the goal passed on the assembled result
@@ -152,6 +153,9 @@ function assembleState(nodes, goal) {
   if (!goal.fixIssue) return 'NEEDS_GAP'
   // `issue-manager` reported the gap it filed is blocked. Starting repair work anyway would
   // ignore the one verdict that agent exists to give.
+  // A repair escalated to the human parks until the coordinator records the decision by clearing
+  // `fixBlocker` — the same park-and-clear contract as an issue row's `blocker`.
+  if (goal.fixBlocker) return 'REPAIR_BLOCKED'
   if (goal.fixReady === false) return 'GAP_BLOCKED'
   if (!goal.fixPr) return 'NEEDS_FIX'
   return 'AWAITING_FIX'
@@ -178,7 +182,9 @@ const BUILD_SCHEMA = {
 const GOAL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['passed'],
+  // `evidence` is required alongside `passed`: DONE claims the goal was proven on the real path,
+  // and a pass with no command and no observed result proves nothing.
+  required: ['passed', 'evidence'],
   properties: {
     passed: { type: 'boolean' },
     evidence: { type: 'string', description: 'The command run and what it proved — a real model when the goal declares one; a model-free goal runs as-is' },
@@ -207,6 +213,10 @@ const FIX_SCHEMA = {
   required: ['pr'],
   properties: {
     pr: { type: ['number', 'null'] },
+    // A repair can hit an architectural fork it must escalate rather than guess. Without this the
+    // only way to say so was `pr: null`, which reads as "incomplete" and re-dispatches the worker
+    // at the same undecided fork every wake.
+    blocker: { type: ['string', 'null'], description: 'Needs a human decision — parks the repair and is surfaced' },
     summary: { type: 'string' },
   },
 }
@@ -230,6 +240,11 @@ if (state === 'DONE') {
 if (state === 'AWAITING_FIX') {
   log(`Assembled goal failed earlier; fix PR #${goal.fixPr} has not merged — not re-running the goal, not filing a duplicate.`)
   return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr, done: false }
+}
+
+if (state === 'REPAIR_BLOCKED') {
+  log(`Repair for ${issueId} is parked on a human decision: ${goal.fixBlocker}. Clear \`fixBlocker\` once answered.`)
+  return { issueId, subPrs: nodes, assembledGoal: goal, blocker: goal.fixBlocker, done: false }
 }
 
 if (state === 'GAP_BLOCKED') {
@@ -270,6 +285,10 @@ if (state === 'NEEDS_GOAL') {
   )
 
   if (verdict && verdict.passed) {
+    if (!verdict.evidence) {
+      log(`Assembled goal reported PASS for ${issueId} with no evidence — not accepting it as proof; retrying next wake.`)
+      return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-goal', done: false }
+    }
     return { issueId, subPrs: nodes, assembledGoal: { ...goal, passed: true, evidence: verdict.evidence }, done: true }
   }
 
@@ -331,6 +350,11 @@ if (state === 'NEEDS_FIX') {
       `Open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.`,
     { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
+
+  if (fix && fix.blocker) {
+    log(`Repair for ${issueId} is blocked on a human decision: ${fix.blocker} — parked, not retried.`)
+    return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixBlocker: fix.blocker }, blocker: fix.blocker, done: false }
+  }
 
   if (!fix || !fix.pr) {
     log(`No repair PR opened for ${issueId} yet (${fix ? 'worker reported none' : 'worker returned nothing'}) — retrying that stage next wake.`)

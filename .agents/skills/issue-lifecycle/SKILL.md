@@ -237,9 +237,17 @@ Workflow tool:
     issueId: "<ISSUE>",
     cap: <a few — one worktree per sub-PR>,
     subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
-    assembledGoal: { passed, ownedBy, fixPr, fixIssue, fixMerged }
+    assembledGoal: <persist VERBATIM — see below>
   }
 ```
+
+**Persist `assembledGoal` verbatim, whole.** It is a state machine's state, not a handful of
+flags: `passed` · `evidence` · `failure` · `owningSubPr` · `fixIssue` · `fixReady` · `fixPr` ·
+`fixBlocker` · `fixMerged`. Dropping any one of them silently changes which state the next wake
+computes — lose `failure` and it re-runs the expensive goal instead of filing its gap; lose
+`fixReady: false` and it starts repair work `issue-manager` reported as blocked; lose
+`fixBlocker` and it re-dispatches a worker at the fork it escalated. Round-trip the object; don't
+pick fields out of it.
 
 Two things you must carry back verbatim:
 

@@ -130,6 +130,10 @@ function dedupeClaims(requests) {
     const seen = byClaim.get(key)
     if (seen) {
       for (const id of targets) if (!seen.issues.includes(id)) seen.issues.push(id)
+      // Merge the THREADS as well. Keeping only the first request's handle would fan the verdict
+      // to every issue while leaving the other threads without their evidence-backed reply.
+      const extra = (req.threads || '').trim()
+      if (extra && !(seen.threads || '').includes(extra)) seen.threads = [seen.threads, extra].filter(Boolean).join(' · ')
     } else {
       byClaim.set(key, { ...req, issues: [...targets] })
     }
@@ -282,7 +286,8 @@ const SETTLE_REQUESTED_SCHEMA = {
 const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['approved'],
+  // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
+  required: ['approved', 'newReviewEvents'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
     approver: { type: ['string', 'null'] },
@@ -318,7 +323,7 @@ const PR_STATE_SCHEMA = {
   additionalProperties: false,
   // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
   // must never let a previously-true value survive a push onto an unapproved head.
-  required: ['issueId', 'phase', 'specApproved'],
+  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
   properties: {
     issueId: { type: 'string' },
     phase: {
@@ -344,7 +349,7 @@ const WORKER_SCHEMA = {
   additionalProperties: false,
   // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
   // must never let a previously-true value survive a push onto an unapproved head.
-  required: ['issueId', 'phase', 'specApproved'],
+  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string' },
@@ -362,7 +367,7 @@ const WORKER_SCHEMA = {
 const EPIC_FOLD_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['roundsSpent'],
+  required: ['roundsSpent', 'aboveBar'],
   properties: {
     roundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent — 0 for a batch that was only factual corrections' },
     aboveBar: { type: 'boolean', description: 'Did anything folded change the objective or a cross-cutting decision? Authorizes the third round.' },
@@ -482,8 +487,12 @@ const freshById = new Map(prStates.filter(Boolean).map((s) => [s.issueId, s]))
 // table only from `rows` would discard it — the issue would be invisible to the coordinator and
 // the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
 // their own spec-approval gate like any other.
+const TERMINAL_LINEAR = /^(done|closed|cancell?ed|duplicate|dropped|wo?n'?t ?do)$/i
 const discovered = (linear && linear.issues ? linear.issues : [])
   .filter((li) => li.id && li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
+  // A child the human already closed or dropped is not new work. Entering it at NEEDS_SPEC would
+  // dispatch a spec for a removed issue AND keep the epic from ever satisfying its wrap condition.
+  .filter((li) => !TERMINAL_LINEAR.test((li.state || '').trim()))
   .map((li) => ({ id: li.id, phase: 'NEEDS_SPEC', specReviewRounds: 0, specLevelFound: false, discovered: true }))
 
 if (discovered.length) {
@@ -502,6 +511,9 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // carried `specApproved: true` survive a scan that omitted it — implementing on a head the
     // human never approved, which is the one gate that must not be bypassable.
     specApproved: refreshedLive ? !!fresh.specApproved : false,
+    // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
+    // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
+    readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
     linearState: li.state || row.linearState,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
@@ -747,8 +759,10 @@ return {
     // An epic-level verdict clears only once a fold returned to record it; otherwise it is
     // carried so the next wake retries. A settlement targeting the epic has no issue row to
     // land on, so this field is its only destination.
+    // An INCONCLUSIVE verdict settles nothing — orchestration.md hands the question to the human,
+    // so a returning fold must NOT clear it. Only CONFIRMED/REFUTED are consumed by folding.
     verdicts: epicFold
-      ? verdictsByIssue.get(epic.issueId) || []
+      ? [...(epicVerdictsToFold || []).filter((v) => v.verdict === 'INCONCLUSIVE'), ...(verdictsByIssue.get(epic.issueId) || [])]
       : [...(epicVerdictsToFold || []), ...(verdictsByIssue.get(epic.issueId) || [])],
   },
   epicFold: epicFold ? { folded: epicFold.folded, fanOut: epicFold.fanOut || [] } : null,

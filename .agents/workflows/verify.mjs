@@ -1385,6 +1385,41 @@ check('a build wake never reports DONE', async () => {
 // enumerate the inputs instead of sampling them, so that class fails here rather than in review.
 // ---------------------------------------------------------------------------
 
+check('INVARIANT: every gating field is schema-required', async () => {
+  // Four separate defects across two rounds were the SAME shape: an optional schema boolean whose
+  // omission got defaulted the permissive way — `specApproved` (implement on an unapproved head),
+  // `ready` (repair a gap the manager blocked), `aboveBar` (revoke the third round),
+  // `newReviewEvents` (skip feedback while advancing its cursor). This asserts the class shut:
+  // if the script BRANCHES on a schema field, that field must be required.
+  const gating = {
+    'epic-wake.js': {
+      GATE_SCHEMA: ['approved', 'newReviewEvents'],
+      PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
+      EPIC_FOLD_SCHEMA: ['roundsSpent', 'aboveBar'],
+    },
+    'issue-multi-pr.js': {
+      GAP_SCHEMA: ['issueFiled', 'ready'],
+      GOAL_SCHEMA: ['passed', 'evidence'],
+      BUILD_SCHEMA: ['id', 'status'],
+    },
+  }
+  for (const [file, schemas] of Object.entries(gating)) {
+    const src = readFileSync(join(HERE, file), 'utf8')
+    for (const [schema, fields] of Object.entries(schemas)) {
+      const at = src.indexOf(`const ${schema} =`)
+      assert.ok(at > 0, `${file}: ${schema} not found`)
+      const required = /required: \[([^\]]*)\]/.exec(src.slice(at, at + 1600))
+      assert.ok(required, `${file}: ${schema} declares no required list`)
+      for (const f of fields) {
+        assert.ok(
+          required[1].includes(`'${f}'`),
+          `${file}: ${schema}.${f} is branched on but not required — an omission would default it silently`,
+        )
+      }
+    }
+  }
+})
+
 check('INVARIANT: no assemble state is a dead end', async () => {
   const { assembleState } = loadRules('issue-multi-pr.js', ['allMerged', 'assembleState'])
   const src = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
@@ -1394,10 +1429,14 @@ check('INVARIANT: no assemble state is a dead end', async () => {
   // wait ending. GAP_BLOCKED satisfied the first test and stalled anyway, because nothing ever
   // re-read the flag it waited on; that's why "has a path out" is now its own assertion.
   const dispatching = ['NEEDS_GOAL', 'NEEDS_GAP', 'NEEDS_FIX', 'GAP_BLOCKED']
-  const waitingOn = { AWAITING_FIX: 'fixPr', GAP_BLOCKED: 'fixIssue' }
-  // How each waiting state gets unstuck: an external signal the coordinator writes, or a dispatch
-  // this script makes to re-derive the condition.
-  const pathOut = { AWAITING_FIX: 'fixMerged', GAP_BLOCKED: "label: `gap-recheck:" }
+  const waitingOn = { AWAITING_FIX: 'fixPr', GAP_BLOCKED: 'fixIssue', REPAIR_BLOCKED: 'fixBlocker' }
+  // How each waiting state gets unstuck. Two different mechanisms, so they are checked in two
+  // different places: a state the SCRIPT re-derives must dispatch something, and a state the
+  // COORDINATOR clears must be documented in the skill as a field the coordinator clears — a
+  // field nobody is told to clear is a stall no matter how it reads in the script.
+  const skill = readFileSync(join(HERE, '..', 'skills', 'issue-lifecycle', 'SKILL.md'), 'utf8')
+  const scriptDispatches = { GAP_BLOCKED: 'label: `gap-recheck:' }
+  const coordinatorClears = { AWAITING_FIX: 'fixMerged', REPAIR_BLOCKED: 'fixBlocker' }
   const terminal = ['DONE', null]
 
   const nodes = [{ id: 'a', dependsOn: [], status: 'merged' }]
@@ -1408,6 +1447,7 @@ check('INVARIANT: no assemble state is a dead end', async () => {
     fixReady: [true, false, undefined],
     fixPr: [42, null, undefined],
     fixMerged: [true, false, undefined],
+    fixBlocker: ['needs a call', undefined],
   })
 
   let stalls = 0
@@ -1426,11 +1466,17 @@ check('INVARIANT: no assemble state is a dead end', async () => {
       assert.fail(`${state} with no ${waitingOn[state]} — waits on nothing: ${JSON.stringify(goal)}`)
     }
     // And a waiting state with no way to observe the wait ending is also a stall.
-    if (state in waitingOn) {
-      const out = pathOut[state]
+    if (state in scriptDispatches) {
       assert.ok(
-        src.includes(out),
-        `${state} has no path out — nothing re-derives or receives "${out}", so it parks forever`,
+        src.includes(scriptDispatches[state]),
+        `${state} has no path out — the script never dispatches "${scriptDispatches[state]}", so it parks forever`,
+      )
+    }
+    if (state in coordinatorClears) {
+      const field = coordinatorClears[state]
+      assert.ok(
+        skill.includes(field),
+        `${state} waits for the coordinator to clear \`${field}\`, but the skill never tells it to — a stall`,
       )
     }
   }
