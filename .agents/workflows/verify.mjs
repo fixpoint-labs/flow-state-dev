@@ -3883,6 +3883,203 @@ check('unconsumable PR activity withholds every merge gate on the row', async ()
   assert.deepEqual(quiet.gates.filter((g) => g.kind === 'merge').map((g) => g.pr), [9])
 })
 
+check('an INCONCLUSIVE verdict is never folded as resolved', async () => {
+  // `nextRow` turns an INCONCLUSIVE verdict into a human decision only AFTER the worker returns, so
+  // telling that worker to fold every verdict had it write "resolved with evidence" into the spec and the
+  // thread for a question nobody had answered — false evidence, in artifacts a later reader trusts.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          verdicts: [
+            { claim: 'SSE resumes', verdict: 'INCONCLUSIVE', evidence: 'could not reproduce either way' },
+            { claim: 'the store replays', verdict: 'CONFIRMED', evidence: 'ran it' },
+          ],
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } } }),
+  })
+  const prompt = calls.find((c) => c.label === 'apply-verdict:FIX-2').prompt
+  assert.match(prompt, /resolved-with-evidence[\s\S]*the store replays/, 'the settled claim is folded')
+  assert.doesNotMatch(
+    prompt.slice(0, prompt.indexOf('INCONCLUSIVE on')),
+    /SSE resumes/,
+    'the unsettled claim is not in the fold-and-record list',
+  )
+  assert.match(prompt, /Do NOT record these as resolved[\s\S]*SSE resumes/, 'it is handed over as an open question')
+
+  // The epic-level fold has the same ordering, so it gets the same split.
+  const epicSide = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        name: 'thing',
+        branch: 'epic/thing',
+        prNumber: 100,
+        verdicts: [{ claim: 'one store per scope', verdict: 'INCONCLUSIVE', evidence: 'inconclusive under load' }],
+      },
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  const foldPrompt = epicSide.calls.find((c) => c.label === 'fold:epic').prompt
+  assert.doesNotMatch(foldPrompt, /Fold them FIRST/, 'nothing settled, so nothing is written in as a decision')
+  assert.match(foldPrompt, /do NOT write a decision[\s\S]*one store per scope/)
+})
+
+check('an answered decision on a completed issue is still applied', async () => {
+  // An INCONCLUSIVE late verdict leaves `verdicts` when it becomes a blocker, so once the human answers
+  // there is no verdict left for the terminal branch to match — it parked the row and the epic wrapped
+  // without the answer reaching the completed spec or its thread.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'DONE', merged: true, implPr: 9, blockerResolutions: [{ for: null, answer: 'key on tenant + scope' }] })],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
+    },
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-2'], 'the decision reaches the completed artifact')
+  assert.match(calls.find((c) => c.label === 'apply-decision:FIX-2').prompt, /key on tenant \+ scope/)
+
+  // CANCELLED work is the deliberate exception, same as for a landed verdict: there is no artifact left
+  // to record the decision in, so the row parks rather than dispatching into nothing.
+  const cancelled = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blockerResolutions: [{ for: null, answer: 'key on tenant + scope' }] })],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      return workerRes({ issueId: 'FIX-2' })
+    },
+  })
+  assert.deepEqual(workerLabels(cancelled.calls), [], 'cancelled work applies nothing')
+})
+
+check('a worker cannot add a slice that is open with no handles', async () => {
+  // The status transition guard only runs when there IS a carried row, so a worker revising the PR plan
+  // could insert `{ id, status: 'open' }` with no PR and no branch: no DAG action, no handle to refresh,
+  // no merge gate able to name it.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }], multiPrPending: true })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [
+            { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open' },
+          ],
+        },
+      },
+    }),
+  })
+  const b = result.issues[0].subPrs.find((sp) => sp.id === 'b')
+  assert.equal(b.status, 'pending', 'entered as pending so the next wake builds it')
+
+  // A new slice WITH both handles is taken as open — the worker did open that PR.
+  const complete = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }], multiPrPending: true })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [
+            { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+        },
+      },
+    }),
+  })
+  assert.equal(complete.result.issues[0].subPrs.find((sp) => sp.id === 'b').status, 'open')
+})
+
+check('the one-wake merge trigger is consumed by the worker that ran', async () => {
+  // Left set, a later wake whose refresh scout died carried it forward and dispatched another worker on a
+  // merge already acted on, burning a slot in the shared cap every time the scout failed.
+  const args = epicArgs({
+    issues: [
+      row('FIX-2', {
+        phase: 'PR_FEEDBACK',
+        subPrs: [
+          { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+          { id: 'b', status: 'pending', dependsOn: ['a'] },
+        ],
+      }),
+    ],
+  })
+  const fresh = {
+    'FIX-2': {
+      phase: 'PR_FEEDBACK',
+      subPrStates: [
+        { id: 'a', merged: true, readyToMerge: false },
+        { id: 'b', merged: false, readyToMerge: false },
+      ],
+    },
+  }
+  const { result } = await run('epic-wake.js', {
+    args,
+    respond: epicResponder({
+      fresh,
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: false,
+          subPrs: [
+            { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+        },
+      },
+    }),
+  })
+  assert.equal(result.issues[0].subPrMergedThisWake, false, 'spent by the worker that acted on it')
+
+  // A row the CAP DEFERRED ran no worker, so the trigger is still owed — that is the reachable state the
+  // clearing has to skip. (A row whose worker DIED never reaches this code at all, so it cannot pin it.)
+  const deferred = await run('epic-wake.js', {
+    args: epicArgs({
+      cap: 1,
+      issues: [
+        row('FIX-1x', { phase: 'NEEDS_SPEC' }),
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'pending', dependsOn: ['a'] },
+          ],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-1x': { phase: 'NEEDS_SPEC' }, ...fresh },
+      worker: { 'FIX-1x': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  const held = deferred.result.issues.find((r) => r.id === 'FIX-2')
+  assert.ok(deferred.result.deferred.includes('FIX-2'), 'the cap deferred it')
+  assert.equal(held.subPrMergedThisWake, true, 'no worker ran on it, so the merge is still unacted')
+})
+
 check('a repair answer survives a repair that opened nothing', async () => {
   // A repair answer is aimed at `assembledGoal.fixBlocker`, which by design has no row in `subPrs` — so
   // the "no such slice, drop it" rule discarded it, and the next wake retried the repair at the identical

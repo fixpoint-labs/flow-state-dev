@@ -96,6 +96,14 @@ function pendingAction(row) {
     if (finished && row.verdicts && row.verdicts.length) {
       return { action: 'apply-verdict', why: `${row.verdicts.length} POC verdict(s) landed after the issue completed` }
     }
+    // ...and an ANSWERED DECISION outranks completion for the same reason a verdict does. An INCONCLUSIVE
+    // late verdict is folded into a human blocker and LEAVES `verdicts`, so by the time the human answers
+    // there is no verdict here to match — this return then parked the row and the epic wrapped without the
+    // answer ever reaching the completed spec or its thread. The decision was made; dropping it is the
+    // same correctness failure as dropping the evidence that prompted it.
+    if (finished && (row.blockerResolutions || []).length) {
+      return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) landed after the issue completed` }
+    }
     return null
   }
 
@@ -777,6 +785,12 @@ function nextRow(row, { worker, action, landed, folded }) {
     // the nested blocker so the unchanged PR became merge-eligible. A single-PR row is unaffected: its
     // worker IS the delivery, so returning at all is the receipt.
     blockerResolutions: unspentResolutions(row, mergedSubPrs, mergedGoal, worker),
+    // A ONE-WAKE trigger, consumed by the worker that ran on it. Left set, a later wake whose refresh
+    // scout died carried it forward and dispatched another worker on a merge already acted on — burning a
+    // slot in the shared cap every time the scout failed. Unconditional here because this object is only
+    // built when a worker RETURNED: the `if (!worker)` return above already preserves the trigger for a
+    // row that ran none (cap-deferred, parked), which is where it is still owed.
+    subPrMergedThisWake: false,
     blockerResolution: null,
     blockerResolutionFor: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
@@ -1072,6 +1086,15 @@ function mergeSubPrs(carried, reported) {
       const workerOwns = prev.status === 'pending' && merged.status === 'open'
       if (!workerOwns) merged.status = prev.status
     }
+    // A NEW slice cannot be `open` without both handles. The transition guard above only runs when
+    // there IS a carried row, so a worker revising the PR plan could insert `{ id, status: 'open' }` with
+    // no `pr` and no `branch` — schema-valid, and permanently stuck: `classify` has no action for an
+    // ordinary open node, there is no handle for the scout to refresh, and no merge gate can name it.
+    // Demoted to `pending`, the next wake simply builds it, which is what the worker meant.
+    if (!prev && merged.status === 'open' && !(merged.pr && merged.branch)) {
+      log(`${r.id}: worker added it as open with no PR/branch — entering it as pending so it gets built.`)
+      merged.status = 'pending'
+    }
     // Structural edges come from the carried row unless the worker actually reported them.
     if (!reportedEdges && prev && prev.dependsOn !== undefined) merged.dependsOn = prev.dependsOn
     byId.set(r.id, merged)
@@ -1116,6 +1139,11 @@ function bindByPosition(results, ids, onMismatch) {
  * be serialized field by field — string-interpolating it yields `[object Object]` and the
  * worker gets no claim, no evidence, and nothing to reply on the thread with.
  */
+/** CONFIRMED / REFUTED — the ones whose evidence actually resolves the claim. */
+const settledVerdicts = (verdicts) => (verdicts || []).filter((v) => v.verdict !== 'INCONCLUSIVE')
+/** INCONCLUSIVE — evidence that resolves nothing; orchestration.md hands the question to the human. */
+const unsettledVerdicts = (verdicts) => (verdicts || []).filter((v) => v.verdict === 'INCONCLUSIVE')
+
 function renderVerdicts(verdicts) {
   return verdicts
     .map(
@@ -1713,7 +1741,20 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           `Epic: ${epic.issueId} on branch ${epic.branch} (head ${epicHead || 'fetch it'}) — align to the epic-spec without re-fetching the epic.\n` +
           `A satisfied gate is NOT a wait — chain through it: a just-approved spec goes close-spec-PR → implement → open the impl PR in this one run.\n` +
           (item.action === 'apply-verdict'
-            ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(item.row.verdicts)}\n`
+            ? // SETTLED ones only get the "record as resolved" instruction. An INCONCLUSIVE verdict resolves
+              // nothing — `nextRow` turns it into a human decision AFTER this worker returns, so telling
+              // the worker to fold every verdict had it write "resolved with evidence" into the spec and
+              // the thread for a question the human had not answered yet. Recording a claim as settled
+              // when it is not is the false-evidence failure orchestration.md forbids, and it lands in
+              // artifacts a later reader trusts.
+              (settledVerdicts(item.row.verdicts).length
+                ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(settledVerdicts(item.row.verdicts))}\n`
+                : '') +
+              (unsettledVerdicts(item.row.verdicts).length
+                ? `A POC came back INCONCLUSIVE on ${unsettledVerdicts(item.row.verdicts).length} claim(s). ` +
+                  `Do NOT record these as resolved and do NOT fold a conclusion into the spec — the evidence settles nothing and the decision is the human's. ` +
+                  `Post what the POC actually found on the thread, leave the claim open in §12, and report it back unchanged so the coordinator can put it to them:\n${renderVerdicts(unsettledVerdicts(item.row.verdicts))}\n`
+                : '')
             : '') +
           // The decision this row escalated, and the human's answer to it. The escalating worker is
           // gone and you are a fresh agent in a fresh worktree: without this you reach the identical
@@ -1740,7 +1781,10 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
                 .map((sp) => `${sp.id}=${sp.pr ? `#${sp.pr}` : 'not opened'}`)
                 .join(', ')}${item.row.assembledGoal && item.row.assembledGoal.fixPr ? `, repair=#${item.row.assembledGoal.fixPr}` : ''}.\n`
             : '') +
-          (item.row.subPrs && item.row.subPrs.length
+          // ...but never for `apply-decision`: that dispatch records a human's answer on a row whose phase
+          // has nothing to advance (a terminal issue, or one whose phase yielded no action), so pointing
+          // it at the DAG would invite a step nobody asked for.
+          (item.action !== 'apply-decision' && item.row.subPrs && item.row.subPrs.length
             ? `This issue implements as a DAG of sub-PRs. Advance it with the issue-multi-pr workflow, passing this state as its args, and return the updated subPrs table AND assembledGoal.\n` +
               `  subPrs: ${JSON.stringify(item.row.subPrs)}\n` +
               // The worker runs in an isolated worktree and cannot read `.orchestration/`, so state
@@ -1776,7 +1820,13 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
   plan.foldEpic
     ? agent(
         (epicVerdictsToFold
-          ? `A POC settled ${epicVerdictsToFold.length} cross-cutting claim(s) for this epic. Fold them FIRST and record each in the epic-spec's cross-cutting decisions so a sibling issue can't reopen it:\n${renderVerdicts(epicVerdictsToFold)}\n` +
+          ? // Same split as the issue prompt: only a SETTLED verdict may be written in as a decision.
+            (settledVerdicts(epicVerdictsToFold).length
+              ? `A POC settled ${settledVerdicts(epicVerdictsToFold).length} cross-cutting claim(s) for this epic. Fold them FIRST and record each in the epic-spec's cross-cutting decisions so a sibling issue can't reopen it:\n${renderVerdicts(settledVerdicts(epicVerdictsToFold))}\n`
+              : '') +
+            (unsettledVerdicts(epicVerdictsToFold).length
+              ? `A POC came back INCONCLUSIVE on ${unsettledVerdicts(epicVerdictsToFold).length} cross-cutting claim(s). Record what it found, but do NOT write a decision — the call is the human's and the coordinator will put it to them. Report them back unchanged:\n${renderVerdicts(unsettledVerdicts(epicVerdictsToFold))}\n`
+              : '') +
             `Post the evidence-backed reply on the thread. This fold is outside the review budget — new evidence is not another opinion.\n\n`
           : '') +
         (epicAnswersToFold
