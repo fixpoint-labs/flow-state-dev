@@ -136,7 +136,7 @@ even if more are queued. State the chosen N and the cap to the user.
      name: epic-wake
      args: {
        epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound,
-                lastSeenActivityAt, lastSeenSha, verdicts, unsettled },
+                lastSeenActivityAt, lastSeenSha, verdicts, unsettled, openQuestions },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, approvedInSession,
@@ -185,6 +185,10 @@ even if more are queued. State the chosen N and the cap to the user.
      produce, and the thread to reply on. The row's `blocker` carries the question; this carries what
      to show the user when you ask it, and where their answer gets posted. Drop it and you can only
      relay the claim text. Cleared with the row's `blocker`, in the same breath.
+   - **`epic.openQuestions`** — cross-cutting decisions the fold raised that need *you*. Surfaced in
+     `blockers` every wake until you drop the entry, same contract as `unsettled` — put the question to
+     the user and remove it once answered. `epic-agent`'s return contract produces these; the schema
+     accepts them under this name, so the two agree.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
      decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
      `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every

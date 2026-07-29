@@ -196,7 +196,14 @@ function cursorUsable(row) {
   // persisted while the feedback worker eats the activity that announced it, and the dependent slice
   // or the assembled goal then parks with no further event coming. Requiring the field of every scan
   // would burden single-PR rows with a meaningless `[]`; this fails closed only where it matters.
-  if (row.subPrs && row.subPrs.length && !(row.subPrStates && row.subPrStates.length)) return false
+  if (row.subPrs && row.subPrs.length) {
+    const states = row.subPrStates || []
+    // One CORRECTLY ATTRIBUTED entry per requested handle. A non-empty check let a scan reporting one
+    // handle out of three through, and if the omitted one is the handle that merged, the merge is
+    // never persisted while the feedback worker consumes the activity that announced it.
+    const covered = new Set(states.filter((st) => st && st.id).map((st) => st.id))
+    if (row.subPrs.some((sp) => !covered.has(sp.id))) return false
+  }
   return true
 }
 
@@ -938,6 +945,16 @@ const EPIC_FOLD_SCHEMA = {
       },
     },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
+    // The epic-agent's contract tells it to return open questions when a cross-cutting decision needs
+    // a human (its `open_questions` line). Without the field here, `additionalProperties: false`
+    // rejects that response, the harness returns null, the wake reads "the fold died" and retries
+    // forever — while the question itself never reaches anyone. A contract the schema refuses is a
+    // stall, and the two have to agree.
+    openQuestions: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Cross-cutting decisions that need a human, one line each. Omit or [] when there are none.',
+    },
   },
 }
 
@@ -1228,6 +1245,13 @@ for (const item of plan.advance) {
   }
 }
 
+// A claim in flight or queued for this issue, at DISPATCH time. (`contestedClaimFor` below is the
+// richer disclosure view, but it is built after the workers have run.)
+const settlingClaimFor = (issueId) => {
+  const hit = [...plan.settle, ...plan.queuedClaims].find((c) => (c.issues || [c.issueId]).includes(issueId))
+  return hit ? hit.claim : null
+}
+
 phase('Advance')
 
 const [advanced, epicFold, epicNotes] = await Promise.all([
@@ -1239,6 +1263,9 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           `A satisfied gate is NOT a wait — chain through it: a just-approved spec goes close-spec-PR → implement → open the impl PR in this one run.\n` +
           (item.action === 'apply-verdict'
             ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(item.row.verdicts)}\n`
+            : '') +
+          (item.action === 'implement' && settlingClaimFor(item.row.id)
+            ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close or delete the spec PR or its branch yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled.\n`
             : '') +
           (item.action === 'implement' && item.row.newSpecReviewEvents
             ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes BEFORE you close the spec PR — do not spend a review round on it and do not fold it into the spec. This is the only pass that sees it: nothing looks at spec-PR review activity once this row reaches PR_FEEDBACK.\n`
@@ -1397,6 +1424,13 @@ const actionByIssue = new Map(plan.advance.map((i) => [i.row.id, i.action]))
 // dispatch-driving field and becomes durable state that is re-surfaced in `blockers` each wake
 // until the coordinator records the decision and removes it: surfaced once and forgotten loses it
 // just as thoroughly as clearing it did.
+// Durable, for the same reason `unsettled` is: a question surfaced once and forgotten is a decision
+// lost. The coordinator drops an entry when it records the answer.
+const epicOpenQuestions = [...(epic.openQuestions || [])]
+for (const q of (epicFold && epicFold.openQuestions) || []) {
+  if (!epicOpenQuestions.includes(q)) epicOpenQuestions.push(q)
+}
+
 const epicUnsettled = [...(epic.unsettled || [])]
 for (const v of epicFold ? (epicVerdictsToFold || []).filter((v) => v.verdict === 'INCONCLUSIVE') : []) {
   if (!epicUnsettled.some((u) => u.claim === v.claim)) {
@@ -1529,6 +1563,8 @@ return {
     // Decisions the human owes on this epic. Durable across wakes; the coordinator drops an entry
     // when it records the resolution, exactly as it clears a row's `blocker`.
     unsettled: epicUnsettled,
+    // Same contract: cross-cutting questions the fold raised, carried until answered.
+    openQuestions: epicOpenQuestions,
   },
   epicFold: epicFold ? { folded: epicFold.folded, fanOut: epicFold.fanOut || [] } : null,
   // Converged epic-PR feedback, read but not folded — the coordinator routes each note to the
@@ -1539,6 +1575,7 @@ return {
   blockers: [
     ...issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
     ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}`, evidence: u.evidence, threads: u.threads })),
+    ...epicOpenQuestions.map((q) => ({ issueId: epic.issueId, blocker: `Epic-spec open question — needs a human: ${q}` })),
   ],
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.

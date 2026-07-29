@@ -2441,6 +2441,86 @@ check('fold-held work is returned so the coordinator re-enters instead of waitin
   assert.deepEqual(result.heldForFold, [{ issueId: 'FIX-2', action: 'spec' }])
 })
 
+check("the fold's open questions reach the human instead of being rejected", async () => {
+  // The epic-agent's own contract tells it to return open questions when a cross-cutting decision
+  // needs a human. Without the field in the schema, `additionalProperties: false` rejects that whole
+  // response — the harness returns null, the wake reads "the fold died" and retries forever, and the
+  // question never reaches anyone.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [] }),
+    respond: epicResponder({
+      epicReviewEvents: true,
+      fold: { roundsSpent: 1, aboveBar: true, openQuestions: ['Do we keep the v1 transport or drop it?'] },
+    }),
+  })
+  assert.deepEqual(result.epic.openQuestions, ['Do we keep the v1 transport or drop it?'], 'carried durably')
+  assert.ok(
+    result.blockers.some((b) => /open question — needs a human: Do we keep the v1 transport/.test(b.blocker)),
+    'and surfaced to the coordinator',
+  )
+
+  // Still surfaced next wake — a question shown once and forgotten is a decision lost.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ epic: { ...result.epic }, issues: [] }),
+    respond: epicResponder({}),
+  })
+  assert.equal(second.result.epic.openQuestions.length, 1, 'carried, not duplicated')
+  assert.ok(second.result.blockers.some((b) => /open question/.test(b.blocker)))
+})
+
+check('a PARTIAL per-handle scan consumes nothing either', async () => {
+  // "Non-empty" is not "complete": one entry out of three passed the first version of this guard, and
+  // if the omitted handle is the one that merged, the merge is lost while the batch is consumed.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+          assembledGoal: { passed: false },
+          lastSeenActivityAt: 'old',
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      // Only one of the two handles reported.
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          newPrEvents: true,
+          latestActivityAt: 'new',
+          subPrStates: [{ id: 'a', merged: false, readyToMerge: false }],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(labels(calls, 'pr-feedback:'), [], 'a partial observation does not consume the batch')
+  assert.equal(result.issues[0].lastSeenActivityAt, 'old')
+})
+
+check('an implement dispatch keeps the spec PR open while a settlement is live', async () => {
+  // A late REFUTED verdict has to be folded into the spec and replied to on its thread, so closing
+  // the artifact on the way into implementation destroys what the fold needs.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      cap: 3,
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })],
+      settleRequests: [{ claim: 'does the router re-enter?', load: 'x', falsify: 'y', threads: 't', issueId: 'FIX-2' }],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 7 } },
+    }),
+  })
+  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.match(prompt, /settlement is IN FLIGHT on a load-bearing claim/)
+  assert.match(prompt, /do NOT close or delete the spec PR/)
+  assert.match(prompt, /does the router re-enter\?/)
+})
+
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
   // Its base is the prerequisite's branch, so merging lands it into that branch (or makes the
   // prerequisite's PR carry both slices) and pre-empts the rebase the DAG still has to schedule.

@@ -104,5 +104,5 @@ did: <one line — created | updated (folded feedback / index: <n> PRs)>
 epic_review: <rounds spent this dispatch; 0 for factual-only> · above_bar_found: <yes/no/n-a>
 settle_requested: none | claim: <X does/does not Y> · load: <which cross-cutting decision depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 not_folded: <none | below-the-bar items + which issue each belongs to, for the coordinator to route>
-open_questions: <none | one-line each needing a human>
+openQuestions: <none | one-line each needing a human — the field name the epic-wake schema accepts>
 ```
