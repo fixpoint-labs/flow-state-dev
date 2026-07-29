@@ -2338,6 +2338,18 @@ check("an answered sibling's decision is not lost when the next blocker is lifte
       issues: [{ ...rowA, blocker: null, blockerResolutions: [...rowA.blockerResolutions, { for: 'b', answer: 'B: Bob owns it' }] }],
     }),
     respond: epicResponder({
+      // This is the wake that DISPATCHES, so its worker has to report the DAG state it ran: for a
+      // multi-PR row that return is the receipt, and without it the answers are correctly retained.
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+        },
+      },
       fresh: {
         'FIX-2': {
           phase: 'PR_FEEDBACK',
@@ -3739,6 +3751,48 @@ check('the inner and outer DONE predicates agree about evidence', async () => {
   assert.deepEqual(proven.calls.filter((c) => (c.label || '').startsWith('assembled-goal')), [])
 })
 
+check('a rebase that escalates keeps its stack marker', async () => {
+  // `open` alone was read as success, so a rebase that stopped on a human decision cleared the marker.
+  // After the answer, `classify` picks the generic `resume`, which applies the decision but never
+  // retries the rebase — and the still-stacked PR could be offered for merge and land its dependency's
+  // commits, which is the exact outcome the marker exists to prevent.
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'merged', pr: 41, branch: 'fix/a', dependsOn: [] },
+        { id: 'b', status: 'open', pr: 42, branch: 'fix/b', dependsOn: ['a'], stackedOn: 'fix/a' },
+      ],
+    }),
+    respond: multiResponder({ build: { b: { status: 'open', blocker: 'rebase conflicts with the new cache key — which wins?' } } }),
+  })
+  const b = result.subPrs.find((n) => n.id === 'b')
+  assert.equal(b.stackedOn, 'fix/a', 'still stacked, so the rebase is still owed')
+  assert.equal(b.blocker, 'rebase conflicts with the new cache key — which wins?')
+})
+
+check('an answered PENDING slice keeps its blocker when the build fails', async () => {
+  // The sibling of the failed-resume rule. An answered pending slice is delivered by a BUILD, so
+  // restricting preservation to `resume` meant a schema-valid `failed`/`pending` cleared the blocker
+  // while the caller consumed the one-shot answer — and the next build retried the fork blind.
+  for (const status of ['failed', 'pending']) {
+    const { result } = await run('issue-multi-pr.js', {
+      args: multiArgs({
+        subPrs: [{ id: 'a', status: 'pending', dependsOn: [], blocker: 'which shape?' }],
+        blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+      }),
+      respond: multiResponder({ build: { a: { status } } }),
+    })
+    assert.equal(result.subPrs[0].blocker, 'which shape?', `a ${status} build delivered nothing`)
+  }
+
+  // An ordinary unblocked build that fails carries no blocker to preserve, so the rule costs nothing.
+  const plain = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [{ id: 'a', status: 'pending', dependsOn: [] }] }),
+    respond: multiResponder({ build: { a: { status: 'failed' } } }),
+  })
+  assert.equal(plain.result.subPrs[0].blocker, null)
+})
+
 check('a rebase is told to check out the branch it is rebasing', async () => {
   // The same re-entry the resume path needs, and the consequence here is worse: a reported success clears
   // `stackedOn`, so a rebase that moved whatever the worktree inherited leaves nothing to retry.
@@ -3799,6 +3853,68 @@ check('unconsumable PR activity withholds every merge gate on the row', async ()
     }),
   })
   assert.deepEqual(quiet.gates.filter((g) => g.kind === 'merge').map((g) => g.pr), [9])
+})
+
+check('a multi-PR answer is retained until the nested workflow reports back', async () => {
+  // An outer worker can satisfy its schema while never successfully running `issue-multi-pr` — required
+  // fields present, `subPrs` omitted. Consuming the answer there left the decision spent with nothing
+  // applied, and the refresh had already cleared the nested blocker, so the unchanged PR became
+  // merge-eligible. For a multi-PR row the returned `subPrs` IS the receipt.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blockerFor: 'a',
+          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      // Schema-valid, and it never reached the workflow.
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false } },
+    }),
+  })
+  assert.deepEqual(
+    result.issues[0].blockerResolutions,
+    [{ for: 'a', answer: 'key on tenant + scope' }],
+    'the answer waits for a worker that actually ran the DAG',
+  )
+
+  // A SINGLE-PR row is unaffected: its worker is the delivery, so returning at all is the receipt.
+  const single = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9, blockerResolutions: [{ for: null, answer: 'use the adapter' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 9, newPrEvents: true, latestActivityAt: 'new' } },
+      worker: { 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(single.result.issues[0].blockerResolutions, [], 'spent, because that worker was the delivery')
+})
+
+check('a spec-approval gate is withheld while spec feedback is unreadable', async () => {
+  // The sibling of the merge-gate rule, one gate kind over: approval chains STRAIGHT into
+  // implementation, so signing off before the newly reported review activity is triaged demotes it to
+  // implementer notes instead of weighing whether it changes the spec.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, newSpecReviewEvents: true, latestActivityAt: null } },
+    }),
+  })
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'spec-approval'), [], 'not while nobody can triage that feedback')
+  assert.deepEqual(workerLabels(calls), [], 'and the review batch is not consumed either')
+
+  // Quiet, the same row is offered — the withholding tracks the unreadable scan, not the phase.
+  const quiet = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  assert.deepEqual(quiet.result.gates.filter((g) => g.kind === 'spec-approval').map((g) => g.pr), [8])
 })
 
 check('a goal pass with a slice still pending is work, not completion', async () => {
@@ -3963,9 +4079,14 @@ check('an answered escalation dispatches the worker that applies it', async () =
         }),
       ],
     }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      // A worker that actually ran the DAG returns its table — that return IS the receipt for a
+      // multi-PR answer, so a fixture omitting it describes a worker which never got there.
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
   })
-  assert.deepEqual(result.issues[0].blockerResolutions, [], 'spent by the worker that ran')
+  assert.deepEqual(result.issues[0].blockerResolutions, [], 'spent by a worker that reported the DAG state')
 })
 
 check('a scan-derived spec approval needs a head to approve', async () => {

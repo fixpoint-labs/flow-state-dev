@@ -652,7 +652,11 @@ const subPrs = nodes.map((node) => {
   // marker has to survive or nothing ever retries the rebase and the slice keeps its
   // dependency's commits forever.
   const rebasing = planned && planned.action === 'rebase'
-  const rebased = rebasing && r.status === 'open'
+  // ...and NOT while it escalated. `open` alone was read as success, so a rebase that stopped on a human
+  // decision cleared the marker: after the answer, `classify` picks the generic `resume`, which applies
+  // the decision but never retries the rebase — and the still-stacked PR could then be offered for merge
+  // and land its dependency's commits.
+  const rebased = rebasing && r.status === 'open' && !r.blocker
   // A resume works on an EXISTING open PR, so like a rebase it can only ever confirm `open` — never
   // demote to `pending`, which the next wake would misread as "never built" and rebuild from scratch.
   const resuming = planned && planned.action === 'resume'
@@ -684,7 +688,12 @@ const subPrs = nodes.map((node) => {
     // consumes the one-shot resolution, the next wake sees neither a blocker nor a resume action, and a
     // readiness scan can offer the unchanged PR for merge. A worker that reports failure delivered
     // nothing, which is the same rule as a worker that returned nothing.
-    blocker: r.blocker || (resuming && r.status !== 'open' ? node.blocker || null : null),
+    // Any delivery that did not reach `open` spends nothing — no longer restricted to `resume`. An
+    // answered PENDING slice is delivered by a BUILD, so a schema-valid `failed`/`pending` from that
+    // build cleared the blocker while the caller consumed the one-shot answer, and the next build
+    // retried the architectural fork blind. For an ordinary unblocked build `node.blocker` is already
+    // null, so dropping the action distinction costs nothing and closes the sibling case with it.
+    blocker: r.blocker || (r.status !== 'open' ? node.blocker || null : null),
     summary: r.summary,
   }
 })

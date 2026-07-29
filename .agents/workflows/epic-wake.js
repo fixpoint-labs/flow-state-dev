@@ -682,7 +682,13 @@ function nextRow(row, { worker, action, landed, folded }) {
     // state: left set, every later worker on this row would be told an already-implemented decision
     // was fresh. A worker that DIED never reaches `nextRow`, so a failed dispatch leaves the
     // resolution intact for the retry — the same rule as the cursor.
-    blockerResolutions: [],
+    // ...but a MULTI-PR row's answer is delivered by the nested workflow, so `subPrs` coming back is the
+    // receipt. An outer worker can satisfy this schema while never successfully running
+    // `issue-multi-pr` — required fields present, `subPrs`/`assembledGoal` omitted — and consuming the
+    // answer there left the decision spent with nothing applied, while the refresh had already cleared
+    // the nested blocker so the unchanged PR became merge-eligible. A single-PR row is unaffected: its
+    // worker IS the delivery, so returning at all is the receipt.
+    blockerResolutions: (row.subPrs || []).length && worker.subPrs === undefined ? row.blockerResolutions || [] : [],
     blockerResolution: null,
     blockerResolutionFor: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
@@ -1888,7 +1894,14 @@ const gates = [
   ...(!epicApproved || epicRevisedThisWake
     ? []
     : issues
+        // `cursorUsable` for the same reason the merge gates have it, one gate kind over: a scan reporting
+        // spec-review activity it cannot timestamp makes `pendingAction` refuse the review batch, and
+        // approval chains STRAIGHT into implementation — so the human would sign off an artifact whose
+        // newly reported feedback nobody has triaged, and it would be demoted to implementer notes
+        // rather than weighed for whether it changes the spec. Adding the guard to merge gates alone was
+        // the same one-sided application this file keeps producing.
         .filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal && !awaitingHumanDecision(r))
+        .filter((r) => !(r.newSpecReviewEvents && !cursorUsable(r)))
         .map((r) => ({
           kind: 'spec-approval',
           issueId: r.id,
