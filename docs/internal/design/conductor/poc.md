@@ -40,14 +40,14 @@ review like any other change.
 
 **Why files rather than an FSD store:** conductor delegates the work inside a phase to a vendor
 harness (Claude Code, Codex), and that harness reads *the repo* — not conductor's resources. So
-anything both layers need is a file. See `conductor.md` §5, "Harness on a harness." Two
+anything both layers need is a file. See `conductor.md` §6, "Conductor over the vendor harness." Two
 consequences visible in the tree above: front-matter carries the metadata both layers read
 (`kind`, `label`), and conductor's own bookkeeping lives in a separate FSD-only resource keyed by
 file path, so the vendor harness can rewrite a document without clobbering our accounting.
 
 **Being a file isn't enough to be *found*.** Claude Code reads `CLAUDE.md` and `.claude/skills`;
 Codex reads `AGENTS.md`. Neither knows `.conductor/guidance/` exists. So exposure is two
-mechanisms (`conductor.md` §5, "Getting guidance into the vendor harness"): the **phase brief**
+mechanisms (`conductor.md` §6, "Getting guidance into the vendor harness"): the **phase brief**
 carries the relevant guidance as file references per dispatch — precise and vendor-agnostic — and
 conductor maintains a **generated, marked block** in `CLAUDE.md` / `AGENTS.md` pointing at the
 directory, for when a human drives the harness directly. A **pointer, never a copy**: inlining
@@ -95,7 +95,7 @@ issues to run at once, which vendor reviews, what the budget is.
 Explicit values stay available for the cases inference genuinely can't cover: a fork where the
 PRs should target upstream, several remotes, or one conductor driving a repo it isn't inside.
 
-That gets the whole default process from `conductor.md` §6: epic framing → objective gate →
+That gets the whole default process from `conductor.md` §8: epic framing → objective gate →
 per-issue spec → spec gate → implementation → PR feedback → merge gate → retrospective. Three
 human gates, no auto-merge, the process files from the shipped template.
 
@@ -107,13 +107,13 @@ pnpm conductor tick          # fire a tick by hand (the CLI trigger)
 ```
 
 **GitHub is the one connector that isn't optional** — it holds the artifacts and the gates
-(§8/D1) — but "not optional" means auto-installed, not hand-declared. Linear is absent here and
+(§10/D1) — but "not optional" means auto-installed, not hand-declared. Linear is absent here and
 everything works.
 
 Note that "the GitHub connector" and "the Chat SDK's GitHub adapter" are different things doing
 different jobs: the connector reads PR state and performs structural writes (open, merge, label,
 submit a review); the chat adapter carries *conversation* on issue and PR threads. Conductor uses
-both (`conductor.md` §5).
+both (`conductor.md` §7).
 
 ---
 
@@ -164,8 +164,8 @@ export default defineConductor({
     onExhausted: "converge",     // "converge" | "escalate"
   },
 
-  // Two inbound transports with a clean division of labour — see conductor.md §5,
-  // "What the Chat SDK covers, and what it doesn't."
+  // Two inbound transports with a clean division of labour — see conductor.md §7,
+  // "Transports: conversation and state."
   triggers: {
     // STATE events. The gates turn on these, and the GitHub chat adapter does not
     // emit them: review submissions, merges, CI conclusions, conflicts.
@@ -226,7 +226,7 @@ Challenge the approach. Naming, file layout, and local structure are the impleme
 ```
 
 **This phase writes to a branch, so something has to own the worktree.** The split
-(`conductor.md` §5, "Who owns the git worktree"): **conductor owns branch policy** — the name,
+(`conductor.md` §6, "Who owns the git worktree"): **conductor owns branch policy** — the name,
 and basing on freshly-fetched `origin/main` via `checkout -B`, never `git checkout main`, because
 the shared ref can be checked out in one worktree at a time and parallel phases race on it.
 **The dispatcher owns workspace isolation and declares its model**, because the answer really
@@ -267,7 +267,7 @@ direction problem, not a detail.
 Dropping that file in fires `guidance_changed` — and so does editing it in your editor, or the
 vendor harness rewriting it mid-phase. Edits that don't go through conductor are caught by the
 **reconciler**, which hashes the guidance files each tick against what it last observed; an
-out-of-band edit is the same class of event as a missed webhook (`conductor.md` §8/D1). That is
+out-of-band edit is the same class of event as a missed webhook (`conductor.md` §10/D1). That is
 what makes the next section work regardless of who made the change.
 
 ---
@@ -347,8 +347,14 @@ export const securityPhase = definePhase({
 
   // What this phase waits on, and what releases it. A gate is derived, never a
   // parked run — conductor re-reads it every tick.
+  //
+  // `reads` is what keeps `decide` pure (conductor.md §5): a gate declares the
+  // facts it needs, the tick fetches them during read-world, and `satisfiedBy`
+  // is an ordinary predicate over the resulting snapshot. A gate can't reach
+  // out to GitHub itself, and can't gate on a fact it didn't declare.
   gate: {
     name: "awaiting_security_signoff",
+    reads: ["artifact.reviews"],
     satisfiedBy: ({ artifact }) =>
       artifact.reviews.every((r) => r.findings.every((f) => f.severity !== "high")),
   },
@@ -435,9 +441,15 @@ programming model on top of FSD, the design would be wrong regardless of how the
 
 1. **`definePhase`'s `after` / `before` slotting.** Ordering by neighbour is readable but gets
    ambiguous with several inserted phases. A declared sequence might be more honest.
-2. **`gate.satisfiedBy` as a predicate.** Clean here, but real gates read GitHub, so it needs a
-   world handle — which risks turning a pure predicate into an I/O surface.
-3. **`ctx.conductor.*`** (`github`, `linear`, `notify`). Convenient, and exactly the kind of
-   ambient god-object that ages badly. Capabilities may be the right shape instead.
-4. **Whether `phases` should append or replace.** Appending is friendlier; replacing is more
+2. **`ctx.conductor.*`** (`github`, `linear`, `notify`). Convenient, and exactly the kind of
+   ambient god-object that ages badly. Capabilities are probably the right shape instead —
+   and this needs settling before M1 writes a phase block against it (`conductor.md` §12,
+   open question 7).
+3. **Whether `phases` should append or replace.** Appending is friendlier; replacing is more
    predictable. Currently appending, which makes the default process partly implicit.
+
+**Settled since the first draft:** `gate.satisfiedBy` was listed here as a pure predicate that
+real gates would force into an I/O surface. It doesn't: a gate declares its facts via `reads`
+and the tick materializes them before `decide` runs, so the predicate stays pure by
+construction (`conductor.md` §5, "Gates are predicates over a snapshot"). That is a
+precondition for M0 rather than a later refinement.
