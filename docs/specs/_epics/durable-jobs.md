@@ -23,9 +23,20 @@ Three clauses, each falsifiable, and the order matters because each one is worth
 the one before it:
 
 1. **Exclusive ownership per attempt, and at-least-once execution.** At any moment a task has
-   at most one *current* owner, and a stale owner's settlement is rejected rather than applied.
-   Two executions racing over one durable board cannot both win a task, and cannot both admit
-   past a cap. Today they can — measured, not inferred (the premise correction below).
+   at most one *current* owner; a **stale** owner's settlement is rejected rather than applied;
+   and concurrent executions are bounded at a creation cap. Today none of the three holds across
+   executions — measured, not inferred (the premise correction below).
+
+   **The cap half has two possible guarantees, and they are not interchangeable** — this is
+   **OQ-A**'s to settle, not this clause's to assume:
+
+   | Guarantee | Meaning |
+   |---|---|
+   | **Exact arbitration** | Concurrent executions can *never* admit past the cap. |
+   | **Bounded overshoot** | They may exceed it, by no more than a **stated bound**, and never unboundedly. |
+
+   Whichever the gate picks, the *other two* parts of this clause (one current owner, stale
+   settlement rejected) are unconditional.
 2. **Reports what it is doing.** A task running outside its originating request has a
    persisted progress surface. Not `ctx.emit`, which dies with the request.
 3. **Steered.** A coordinator that is alive can read the board and act on it; a coordinator
@@ -187,9 +198,20 @@ subsumes another.
 
 Not "durable jobs work." Specifically:
 
-1. Two concurrent executions over one resource-backed board cannot both settle one task, and
-   cannot both admit past a creation cap — demonstrated by a check that **fails** against
-   today's code (the §5 numbers are the falsification baseline).
+1. **Ownership (unconditional).** Two concurrent executions over one resource-backed board
+   cannot both settle one task, and a **stale** owner's settlement is rejected rather than
+   applied — demonstrated by checks that **fail** against today's code (the §5 numbers are the
+   falsification baseline).
+1b. **Cap admission (conditional on OQ-A — state which was chosen):**
+
+   | If OQ-A chooses | The distinct-ID goal check asserts |
+   |---|---|
+   | **Exact arbitration** | final row count **never exceeds** the cap |
+   | **Bounded overshoot** | final row count never exceeds the cap **by more than the stated bound**, and the bound is **named in FIX-981's spec** |
+
+   Under bounded overshoot the check must *not* assert "never exceeds" — a correct
+   implementation would fail it. **If 1b is deferred entirely (see OQ-D), this criterion is
+   relaxed to criterion 1 alone** and the epic does not claim a cap guarantee.
 2. A leased task continues to execute after the request that created it has ended, and the
    thing running it is not the originating request's drain.
 3. A stranded claim returns to the queue with no human intervening — via FIX-978's mechanism,
@@ -239,7 +261,7 @@ FIX-982**, not a deliverable of FIX-939. FIX-982 blocks on it in Linear. Concret
   the temptation is local — an out-of-request executor is exactly where someone reaches for
   "the lease expired, so take it."
 
-### Decision 1 — does this epic change `ResourceStateStore`? **(RECOMMENDATION — (a), staged and additive. Awaiting the objective gate.)**
+### Decision 1 — does this epic change `ResourceStateStore`? **(RECOMMENDATION in two parts — 1a and 1b. Awaiting the objective gate.)**
 
 **Settled here, in this document, before the gate — deliberately not deferred to FIX-981's
 spec.** Option (b) *is* FIX-982's territory (dispatch topology), so this decision picks the
@@ -250,7 +272,7 @@ Everything below is priced against the tree at `epic/durable-jobs`, not restated
 description. **Two of the description's own claims about option (a) turn out to be wrong**, and
 they are the two that make (a) look expensive.
 
-#### First — the precedent. This is not greenfield, and that changes the whole question **(verified, round 1)**
+#### First — the precedent. This is not greenfield, and that changes the whole question
 
 Cursor asserted in round 1 that **CAS precedent already exists in this repo**. **Verified in the
 tree — CONFIRMED, and it is stronger than the claim.** This is the single most important input
@@ -280,60 +302,40 @@ shouldn't be forced to migrate at once.** The recommendation below is therefore 
 design and should not be reviewed as one; it is **applying a shipped pattern to the one store
 that was left out of it.**
 
-##### And this is what the gap actually is: resource state has **tier 1 of a two-tier design, and no tier 2**
+##### The gap, in one finding: resource state has **tier 1 of a two-tier design and no tier 2**
 
-`packages/engine/src/stores/scope-lock.ts:1-5` states the architecture outright:
+`scope-lock.ts:1-5` states the architecture outright — *"Per-`StateContainer` async FIFO mutation
+queue. The two-tier dispatch lives in `applyMutation`; **CAS retries still apply at the durable
+boundary in `runWithCAS`**."*
 
-> *"Per-`StateContainer` async FIFO mutation queue. The two-tier dispatch lives in
-> `applyMutation`; **CAS retries still apply at the durable boundary in `runWithCAS`**."*
-
-| Tier | Scope state (session/user/org/request) | Resource state (**the task board**) |
+| Tier | Scope state | Resource state (**the task board**) |
 |---|---|---|
-| **1 — in-process serialization** | per-container async FIFO queue (`scope-lock.ts`) | ✅ `serializeResourceWrite` promise chain (`resource-registry.ts:540-546`) |
-| **2 — cross-execution, at the durable boundary** | ✅ `runWithCAS` + version-gated `set` | ❌ **absent.** `ResourceStateStore.set` is an unconditional upsert. |
+| **1 — in-process serialization** | per-container FIFO queue (`scope-lock.ts`) | ✅ `serializeResourceWrite` promise chain (`resource-registry.ts:540-546`) |
+| **2 — cross-execution, at the durable boundary** | ✅ `runWithCAS` + version-gated `set` | ❌ **absent** — `ResourceStateStore.set` is an unconditional upsert (`stores/types.ts:550-551`) |
 
-**That is the whole finding in one line: the task board has the local tier and is missing the
-durable tier, so its claim safety is real within an execution and vanishes across executions.**
-Decision 1 is not "should we add CAS to a store" — it is **"should we finish the two-tier
-pattern that scope state already implements."** Framed that way the answer is much less
-contentious, and the blast radius is a known quantity rather than an estimate.
+**Why tier 1 doesn't reach:** that promise chain lives in a `Map` on the `ResourceRegistry`, and
+a registry is built **per execution** (`createExecutionContext.ts:1649`, `:1664`, `:1682`). Two
+writers in one execution share a chain and serialize correctly; two writers in two executions
+share nothing, both read `pending`, and both write `in_progress`. `claim` inherits this because
+its whole guard runs inside `candidateRef.updateState` (`resource-backed.ts:270-308`).
 
-#### Second — where the guarantee is missing, traced end to end
+That is not a hypothesis — it is precisely §5's measurements ("two drains both settle one task";
+"`attempts` rolls 1 → 0", a textbook lost update). **So Decision 1 is not "should we add CAS to a
+store." It is "should we finish the two-tier pattern scope state already implements"** — which
+makes the blast radius a known quantity rather than an estimate.
 
-The description asks whether to add CAS to the *store*. But the store is not where the claim's
-atomicity currently comes from, so it is not where the gap starts. Traced:
+**Three code comments assert the opposite, and they are how the wrong reading keeps recurring**
+(the description notes "four wrong readings already paid"). All three are stale and all three must
+be corrected by whoever lands FIX-981 — leaving them is how a fifth reading happens:
 
-| Layer | What it does | File |
-|---|---|---|
-| `claim()` | lists candidates, then per candidate calls `candidateRef.updateState(...)` and **re-checks eligibility inside the updater** | `packages/orchestration/src/tasks/collection/resource-backed.ts:270-308` |
-| `ResourceRef.updateState` | `prev = readState()` → `updater(...)` → `persist(...)`, all wrapped in `serializeResourceWrite(storageKey, …)` | `packages/engine/src/context/resource-registry.ts:706-720` |
-| `serializeResourceWrite` | serializes writes per storage key **through an in-memory `Map<string, Promise<unknown>>` promise chain** | `packages/engine/src/context/resource-registry.ts:540-546` |
-| the store's `set` | unconditional upsert — "Creates or overwrites" | `packages/engine/src/stores/types.ts:550-551` |
-
-**The decisive fact: that promise chain is per-`ResourceRegistry`, and a registry is built
-per execution.** `createScopeResourceRegistry` is constructed inside `createExecutionContext`
-(`packages/engine/src/context/createExecutionContext.ts:1649`, `:1664`, `:1682`). So:
-
-- Two writers **in one execution** → one chain → correctly serialized.
-- Two writers **in two executions** → two chains, two `Map`s, **no serialization of any kind**.
-  Both read `pending`, both write `in_progress`.
-
-That is not a hypothesis — it is precisely the §5 measurements ("two drains both settle one
-task"; "`attempts` rolls 1 → 0", a textbook lost update). **The board's claim safety is an
-in-process promise queue, and it silently degrades to nothing at the exact boundary this epic
-is about.**
-
-**Two code comments assert the opposite, and they are how the wrong reading keeps recurring**
-(the description notes "four wrong readings already paid"). Both are stale and both must be
-corrected by whoever lands FIX-981 — leaving them is how a fifth reading happens:
-
-- `packages/orchestration/src/task-board/blocks/claim-task.ts:12-14` — *"The substrate's CAS
-  retry inside `collection.claim` guarantees exactly-once dispatch under contention."*
-  **There is no CAS and no retry anywhere in that path.** False, full stop.
-- `packages/orchestration/src/tasks/collection/resource-backed.ts:6-7, 22-26` — *"Per-task CAS
-  rides the underlying ResourceRef.updateState contract"* … *"Result: at most one worker claims
-  any given task."* **True within one execution, false across two** — and the sentence does not
-  say which it means.
+- `task-board/blocks/claim-task.ts:12-14` — *"The substrate's CAS retry inside `collection.claim`
+  guarantees exactly-once dispatch under contention."* **There is no CAS and no retry anywhere in
+  that path.** False, full stop.
+- `tasks/collection/resource-backed.ts:6-7, 22-26` — *"Per-task CAS rides the underlying
+  ResourceRef.updateState contract"* … *"Result: at most one worker claims any given task."*
+  **True within one execution, false across two** — and the sentence does not say which.
+- **`TaskDispatcher`'s header** — same false substrate-CAS claim, found in review. A third site in
+  one doc-debt class.
 
 #### The contract as it stands
 
@@ -346,34 +348,27 @@ store packages consume it as `import type { ResourceStateStore } from "@flow-sta
 So a **required** new method is a breaking change across a package boundary for any third-party
 adapter. An **optional** one is not.
 
-#### Option (a) — priced properly
+#### Option (a) — feasibility
 
-**The description's "all four adapters" is correct.** Verified — there are exactly four, and no
-more:
+**Exactly four adapters** — the description's count is correct — at in-memory, filesystem,
+SQLite, and Postgres. **The decision-relevant finding: none of them is *incapable* of a
+conditional write.** SQLite and Postgres are transactional (SQLite's adapter header calls
+last-write-wins a deliberate current choice, not a limit); in-memory is a synchronous compare;
+filesystem is the one awkward case but has an atomic compare primitive already in use. **So the
+"if a backing cannot do CAS, that decides a lot" branch does not obtain** — filesystem is the
+cost centre, not a blocker.
 
-| Adapter | File | Can its backing do CAS? |
-|---|---|---|
-| In-memory | `packages/engine/src/stores/memory/resource-state-store.ts:12` | **Yes, trivially.** Single-threaded JS: read-compare-write in one synchronous tick *is* atomic. Its meaningful scope is one process, which is where it is used. |
-| Filesystem | `packages/engine/src/stores/filesystem/resource-state-store.ts:19` over `filesystem-resource-store.ts` | **Yes, but it is the one awkward case.** `set` is write-temp-then-`rename` (`:376-382`) — atomic *replacement*, unconditional. It already uses an atomic compare primitive elsewhere: `link()` fails `EEXIST`, used for the layout marker (`:286-305`). So CAS is buildable, via a version-stamped sidecar or an `O_EXCL` lock — real work, not a one-liner. |
-| SQLite | `packages/store-sqlite/src/resource-state-store.ts:21` | **Yes, easily.** Its own header says *"Last-write-wins per key (no CAS/versioning)"* — a deliberate current choice, not a limitation. `better-sqlite3` is synchronous and transactional; a `WHERE`-guarded `UPDATE` or `BEGIN IMMEDIATE` does it. |
-| Postgres | `packages/store-postgres/src/resource-state-store.ts:14` | **Yes, easily.** `UPDATE … WHERE version = $n`, or a `WHERE` clause on the `ON CONFLICT` already there. |
+**Two consequences that *are* epic-level:**
 
-**So the "if any backing cannot do CAS, that decides a lot" scenario does not obtain.** No
-backing is incapable. The filesystem adapter is the cost centre, not a blocker.
+- The **conformance suite** builds one store handle per test, so a contention case needs a
+  "two handles, one backing" shape it does not have — and that shape is *meaningless* for
+  in-memory, where two handles are two different stores. **A shape change, not a new case.**
+- `ResourceStateStore` is **published** (exported from `packages/engine/src/index.ts`, consumed as
+  a type by both external store packages), so a **required** new method breaks third-party
+  adapters and an **optional** one does not — which is what the compatibility path turns on.
 
-**The conformance suite** is `packages/engine/src/stores/testing/resource-store-conformance.ts`
-(207 lines; `createResourceStateStoreConformanceTests` at `:200`), published via the
-`@flow-state-dev/engine/testing` entry point and registered at **three** sites:
-`packages/engine/test/resource-state-store.test.ts:225` (filesystem),
-`packages/store-sqlite/test/resource-durability.test.ts:47`,
-`packages/store-postgres/test/resource-stores.test.ts:55`.
-
-> **One wrinkle FIX-981 must design for, not discover:** the current suite builds **one** store
-> handle per test (`createStore: () => ResourceStateStore`). A CAS/contention case needs **two
-> handles over one backing** — and for the in-memory adapter two handles are two `Map`s, i.e.
-> two different stores, so the contention case is *meaningless* there rather than merely
-> failing. The suite's shape has to grow a notion of "two handles, one backing," with in-memory
-> either opting out explicitly or modelling a shared substrate.
+*Per-adapter mechanics and the suite's new shape are FIX-981's design work, routed to its
+implementer notes rather than decided here.*
 
 #### The two corrections that change the decision
 
@@ -415,46 +410,37 @@ a guarantee that "holds only for work routed through the queue." **What that qua
 concretely — who reaches a board *without* the queue today:**
 
 1. **`taskTools` — the model-facing tool surface.** Eight tools
-   (`packages/orchestration/src/skills/task-tools-capability.ts:560-585`) that a generator holds
-   via `uses: [taskTools]`: `assignTask`, `completeTask`, `failTask`, `cancelTask`, `updateTask`
-   and siblings. **An LLM calling `completeTask` is not "work routed through the queue."** And
-   the capability *explicitly* supports pointing at a shared board — *"Pass a resolver targeting
-   a shared board for the shared-board delegation case."* In an agent framework this is the
-   normal path, not an edge case.
-2. **The default `taskTools` instance is UNCAPPED** (`:588-600`, FIX-931): it closes over
-   `defaultOwnStateResolver`, which builds a board with **no** `maxEnqueuedTasks` /
-   `maxTotalTasks`. So the *cap* half of M1 is already bypassed by the hand-wired path,
-   independent of dispatch topology. (b) cannot fix that at all.
+   (`skills/task-tools-capability.ts:560-585`) a generator holds via `uses: [taskTools]`:
+   `assignTask`, `completeTask`, `failTask`, `cancelTask`, `updateTask` and siblings. **An LLM
+   calling `completeTask` is not "work routed through the queue"** — and the capability
+   *explicitly* supports pointing at a **shared** board. In an agent framework this is the normal
+   path, not an edge case.
+2. **The default `taskTools` instance is UNCAPPED** (`:588-600`, FIX-931) — no `maxEnqueuedTasks` /
+   `maxTotalTasks`. **(b) cannot fix that at all**, independent of dispatch topology.
 3. **`reclaim()`** flips `in_progress → pending` (`resource-backed.ts:406-450`) outside any
-   dispatcher.
-4. Pattern code calls `collection.*` directly — e.g. supervisor's post-drain labelling of
-   terminal tasks.
+   dispatcher; pattern code also calls `collection.*` directly.
 
-**Is (b) sufficient for Conductor M2 — the concrete consumer?** *Not reliably.* Conductor M2
-runs each issue as a durable task on a **shared** board, and its phases are agents. The moment
-a phase agent holding `taskTools` writes to that board, (b)'s dedup is bypassed. M2's stated
-acceptance criterion that a crashed worker's issue returns to the queue with no human
-intervening runs through `reclaim`, which is also outside the queue.
+**Is (b) sufficient for Conductor M2 — the concrete consumer?** *Not reliably.* M2 runs each issue
+as a durable task on a **shared** board and its phases are agents, so the moment a phase agent
+holding `taskTools` writes to that board, (b)'s dedup is bypassed. Its acceptance criterion that a
+crashed worker's issue returns to the queue unaided runs through `reclaim`, also outside the queue.
 
-**And (b) has a sequencing problem that is disqualifying on its own: the queue it depends on is
-milestone 3.** Queue-level dedup lives in the out-of-request executor — FIX-982. So choosing (b)
-means **M1's guarantee is delivered by M3's machinery**, which either inverts the epic's stated
-sequence (M1 → M3) or collapses M1 into M3. That is a real restructuring of two milestones, and
-it is precisely why this decision could not be left inside one issue's spec.
+**And (b) has a disqualifying sequencing problem: the queue it depends on is milestone 3.** So (b)
+means **M1's guarantee is delivered by M3's machinery** — inverting the stated sequence or
+collapsing M1 into M3. A restructuring of two milestones, which is precisely why this could not be
+left inside one issue's spec.
 
 #### Option (c) — neither
 
-(c) means M1 cannot be built here and the epic is itself blocked. But **Conductor M2 is blocked
-on this epic**, so (c) does not remove the block — it relocates it upward and leaves the
-measured defects (§5) shipped and unaddressed. (c) is only the right answer if the objective
-itself is not worth pursuing, which is the gate's question, not this decision's.
+(c) blocks the epic. But **Conductor M2 is blocked on this epic**, so (c) relocates the block
+upward and leaves §5's measured defects shipped. (c) is right only if the objective isn't worth
+pursuing — the gate's question, not this decision's.
 
-#### The objective has **two** clauses here, and they need **two** mechanisms — split into 1a and 1b **(round 2, P1)**
+#### Clause 1 needs **two** mechanisms — split into 1a and 1b
 
-**An earlier draft of this recommendation covered one and implied it covered both. That was the
-most consequential error in this document** — it would have left §5's *first measured row*
-unfixed while appearing to address it. Round 2 (Codex, PR #993) caught it; verified in code
-before folding.
+**An earlier draft covered one and implied it covered both — the most consequential error in this
+document**, since it would have left §5's *first measured row* unfixed while appearing to address
+it. Verified in code:
 
 | Clause | Contended thing | Per-key CAS enough? |
 |---|---|---|
@@ -483,31 +469,71 @@ Two compounding reasons per-key CAS cannot fix this, both confirmed:
 **That is exactly §5's row 1 — 8 rows against `maxInstances: 4`.** Two executions, four admits
 each.
 
-##### 1a — claim exclusivity · **recommendation: (a), staged, mirroring the scope-store precedent**
+##### 1a — ownership · **recommendation: (a), staged, mirroring the scope-store precedent**
 
-> Add the conditional write as an **optional** verb on `ResourceStateStore` and reach it through
-> a **new sibling** ref method — completing the two-tier pattern scope state already implements,
-> using the same optional-verb + feature-detect shape `DeltaStoreOps` established.
+> Add the conditional write as an **optional** verb on `ResourceStateStore`, reach it through a
+> **new sibling** ref method, and route **every ownership-sensitive write** through it —
+> completing the two-tier pattern scope state already implements.
 
-Staged, in dependency order, all within FIX-981:
+**Scope: claiming *and* settlement, not claiming alone. 1a grew as a result — it is the larger
+half of M1, not a narrow store change.** An earlier draft switched only `claim`, which left
+clause 1's *"a stale owner's settlement is rejected"* undelivered. Verified in code:
 
-1. **Correct the two false comments** (`claim-task.ts:12-14`, `resource-backed.ts:6-7,22-26`).
-   Cheap, and it stops the fifth wrong reading.
+- `complete` / `fail` / `cancel` all route through `transitionRef`
+  (`resource-backed.ts:176-213`), which evaluates FIX-951's guards **inside
+  `ref.updateState`** — the same tier-1-only path as `claim`.
+- FIX-951's `attemptOwnsTask` is `task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status)`
+  (`internal.ts:107-109`). **The logic is correct**; the problem is what feeds it. `current`
+  comes from `readState()` on the *calling execution's own mirror*, so a displaced worker A
+  whose execution never observed B's attempt-2 writes reads `attempts: 1, in_progress` — **its
+  own stale view** — the guard passes, and the unconditional write clobbers B.
+- So the guard is not wrong and must not be replaced. It is **starved of a fresh read**, which
+  is the *same* root cause as the claim gap and wants the *same* fix.
+
+**Compose with FIX-951, never replace it.** `ifAllowed` / `expectAttempt` /
+`TransitionDeclined` / `shouldDeclineTransition` are the shipped, merged **in-request** half of
+this guard. 1a adds the **cross-execution** half underneath them: the rules stay where they are
+and the write they wrap becomes version-gated, so a stale mirror can no longer win. A design
+that removes or reimplements those rules has misread this recommendation.
+
+**Worth recording, because FIX-951 already found the adjacent hazard and documented it:**
+`attemptOwnsTask`'s header notes that `reclaim()` returns a task to `pending` *without* touching
+`attempts`, so "in the window between a reclaim and the next claim a displaced worker matches
+the counter by construction" — mitigated today by the status check, since `pending` is not
+attempt-owned. That mitigation is in-request only, which is exactly the seam 1a closes.
+
+Staged, in dependency order, within FIX-981:
+
+1. **Correct the false comments** — `claim-task.ts:12-14`, `resource-backed.ts:6-7,22-26`, **and
+   `TaskDispatcher`'s header**, a third site in the same doc-debt class. Cheap; stops the fifth
+   wrong reading.
 2. **Add an optional version-gated verb to `ResourceStateStore`,** mirroring
-   `SessionStore.set(id, value, expectedVersion)` and the `DeltaStoreOps` capability-advertisement
-   pattern rather than inventing a signature.
-3. **Implement it in all four adapters** — Postgres and SQLite are near-trivial; filesystem uses
-   the existing atomic `link()`/`O_EXCL` primitive; in-memory is a synchronous compare.
-4. **Add a new sibling ref method** carrying an applied/declined outcome. `updateState` keeps its
+   `SessionStore.set(id, value, expectedVersion)` and `DeltaStoreOps`' capability advertisement
+   rather than inventing a signature.
+3. **Add a new sibling ref method** carrying an applied/declined outcome. `updateState` keeps its
    signature, so the 47 references stay untouched.
-5. **Switch `claim` to it**, and apply the compatibility path below.
-6. **Extend the conformance suite** with a CAS case and a two-handles-one-backing contention case.
+4. **Route `claim` *and* `transitionRef` through it**, preserving FIX-951's guard evaluation, and
+   apply the compatibility path below.
+5. **Reuse `runWithCAS`** rather than writing a second retry loop — it already has conflict
+   refresh, backoff, and `ConcurrentModificationError` (`cas.ts:119-175`). A parallel loop beside
+   it is the "two mechanisms for one question" failure this epic keeps warning about.
 
-**Reuse `runWithCAS` rather than writing a second retry loop.** It already has conflict refresh,
-backoff, and `ConcurrentModificationError` (`cas.ts:119-175`). A parallel loop beside it is the
-"two mechanisms for one question" failure this epic keeps warning about.
+**The reclaim write itself is FIX-978's, not FIX-981's.** `reclaim()` also writes through an
+unconditional `updateState` (`resource-backed.ts:406-450`), but reclamation belongs to FIX-978
+under FIX-980 (Decision 0). **Boundary: FIX-981 owns making *claim and settlement* conditional
+and ships the primitive; FIX-978 owns making the *reclaim* write use it.** Stated because
+otherwise both sides assume the other did it, and the gap is invisible until two workers race
+across a reclaim.
 
 ##### 1b — cap admission · **recommendation: align with FIX-957's decided answer (bounded overshoot), and do *not* invent exactness here**
+
+> ### ⛔ FIX-981's spec must **not** include 1b implementation until **OQ-D** is decided.
+>
+> FIX-981 is the only active issue, so an implementer reading this section will otherwise assume
+> cap work is in scope. **It may already be FIX-957's** (OQ-D). Build 1a; leave 1b's mechanism
+> unbuilt and its decision cited. **If 1b is deferred, §1's completion criterion 1b is relaxed
+> away** and the epic claims no cap guarantee. This is precisely the "built twice" failure OQ-D
+> exists to prevent.
 
 The mechanisms that could give **exact** cross-execution cap admission, and their costs:
 
@@ -543,7 +569,7 @@ creating *different* task IDs concurrently against one capped collection. The ex
 gap (resource-backed + two concurrent executions) would **not** catch this case even once
 extended, because both writes succeed — the failure is only visible in the final row count.
 
-##### The compatibility path — decided, because "non-breaking" was wrong **(round 2, P2)**
+##### The compatibility path — decided, because "non-breaking" was wrong
 
 An existing third-party adapter without the verb backs a durable board that worked before the
 upgrade. Two honest options, and this document picks one:
@@ -560,7 +586,7 @@ non-breakingness. In-request and non-durable boards are untouched — only the d
 the verb. State it in the changeset and the adapter docs (BP-030's "reject the removed/absent
 shape loudly", BP-035's "test the off state").
 
-##### Coarse locks are rejected — explicitly, here, not in a child spec **(round 1)**
+##### Coarse locks are rejected — explicitly, here, not in a child spec
 
 If M1 answers 1a or 1b with a **global board lock**, throughput collapses under parallel
 Conductor — the opposite of why this epic exists. The house pattern is already the right one and
@@ -589,62 +615,36 @@ M3 merge** and the epic's sequence is restated, because (b) can only be built wh
 gate answers, this heading changes to **DECIDED** and the rejected options stay recorded with
 their reasons, so a later reader does not re-open a settled fork.*
 
-### Decision 2 — how board **lifetime** and collection **scope** compose (they are two axes, not one) **(REWRITTEN in round 1 — the previous version was a category error)**
+### Decision 2 — how board **lifetime** and collection **scope** compose (they are two axes, not one) **(rewritten — the previous version was a category error)**
 
-**This decision said the wrong thing and would not have been executable.** It said: *"FIX-957
-ships board lifetimes `block | request`; whoever lands the durable rungs here widens that same
-option with `session`/`user`/`org`."* Round 1 (Codex, PR #993) challenged it, verification
-against the tree **and against FIX-957's own spec PR
-[#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954)** confirmed the challenge, and
-the correction runs deeper than the review stated. **You cannot widen a lifetime enum with scope
-values — they are orthogonal axes**, and the durable rungs are not ours to add because they
-already ship.
+**The previous version was not executable.** It said *"FIX-957 ships board lifetimes
+`block | request`; widen that option with `session`/`user`/`org`."* **You cannot widen a lifetime
+enum with scope values — they are orthogonal axes** — and the durable rungs are not ours to add,
+because they already ship.
 
-#### The two axes, as they actually exist
-
-| Axis | What it controls | Values today | Where |
+| Axis | Controls | Values today | Where |
 |---|---|---|---|
-| **Backing** — *the lifetime lever* | how long the board lives | `request` \| `resource` \| `sequencer` \| `factory` | `TaskBoardBacking`, `packages/orchestration/src/task-board/index.ts:442`; on the handle at `:488` |
-| **Scope** — *the identity partition* | **which** durable partition holds the state | `session` \| `user` \| `org` (`ResourceScope`) | required on `DefineTaskCollectionOptions` (`tasks/collection/define-task-collection.ts:65`); type at `packages/core/src/types/resource.ts:24`; runtime-enforced `core/src/types/resource-collection.ts:276-280` |
+| **Backing** — *the lifetime lever* | how long the board lives | `request` \| `resource` \| `sequencer` \| `factory` | `TaskBoardBacking`, `task-board/index.ts:442` |
+| **Scope** — *the identity partition* | **which** durable partition holds it | `session` \| `user` \| `org` | required on `DefineTaskCollectionOptions` (`define-task-collection.ts:65`); `core/src/types/resource.ts:24` |
 
-The docs state the relationship outright — the section is literally titled *"Backings set the
-lifetime"*, tabulating `request` = the whole request, `sequencer` = one `board.drain`,
-`resource` = across requests (`apps/docs/guides/board-lifecycle.md:122-137`) — and then:
-**"The scope lives on the collection, not the board"** (`:172-173`).
+The docs say it outright — a section titled *"Backings set the lifetime"*
+(`apps/docs/guides/board-lifecycle.md:122-137`) and then **"The scope lives on the collection, not
+the board"** (`:172-173`). `scope` cannot express `block` vs `request` at all; those are the
+`sequencer` vs `request` **backings**. And **no `lifetime` field exists** anywhere in
+`packages/orchestration/src` — verified. **A durable board is backing `resource` + a scoped
+collection, and both halves already ship.**
 
-Two consequences that unmake the old wording:
+**FIX-957 also *rejected* the shape the old decision assumed.** Its spec
+([#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954)) Decision 1 is one library
+option accepting a `defineTaskCollection` result — **no lifetime enum at all** — and it explicitly
+rejected a `boardScope: "turn" | "session" | "user" | "org"` enum because *"it invents a parallel
+scope vocabulary beside `defineTaskCollection`'s, which means two ways to say 'a durable task
+board' and two places for the definition to drift."* **That is the same objection this decision
+existed to raise, already sustained — so the old wording told this epic to build what FIX-957
+rejected with reasons.** Treat the spec as canonical and the description's paraphrase as stale.
 
-- **`scope` only subdivides the durable arm.** It cannot express `block` vs `request` at all;
-  those correspond to today's `sequencer` vs `request` **backings**.
-- **No field named or shaped as `lifetime` exists anywhere in `packages/orchestration/src`** —
-  verified. The old decision was widening an option that does not exist.
-
-**So a durable board is: backing `resource` **+** collection scope `session`/`user`/`org`.**
-Both halves already ship. If FIX-957 (or anyone) introduces a `lifetime` option, it competes
-with **`backing`**, never with `scope`.
-
-#### What FIX-957 actually proposes — and it *rejected* the shape the old decision assumed
-
-Read from spec PR #954 rather than from the epic description's paraphrase, and this is the part
-that matters most:
-
-- FIX-957's Decision 1 is **one library option that accepts a `defineTaskCollection` result**.
-  Omit it → today's per-turn board, unchanged. **It introduces no lifetime enum at all.**
-- FIX-957 **explicitly considered and rejected** a `boardScope: "turn" | "session" | "user" |
-  "org"` enum, for this reason: *"it invents a parallel scope vocabulary beside
-  `defineTaskCollection`'s, which means two ways to say 'a durable task board' and two places
-  for the definition to drift."*
-
-**That is the same objection the old Decision 2 existed to raise — and FIX-957 already
-sustained it, in the opposite direction.** The old wording would have instructed this epic to
-build precisely the parallel vocabulary FIX-957 rejected with reasons. The description's
-paraphrase ("FIX-957 now covers `block` and `request` board lifetimes only") does not match
-FIX-957's spec; **treat the spec as canonical and the paraphrase as stale.**
-
-#### The decision, restated
-
-**"Extend, never fork" survives — but the thing being extended is the *backing* axis, and the
-durable rungs come from `scope`, which already exists.** Binding on every issue under this epic:
+**The decision.** "Extend, never fork" survives, but the axis being extended is **`backing`**, and
+the durable rungs come from `scope`, which exists. Binding on every issue here:
 
 1. **Do not add a scope vocabulary.** `session`/`user`/`org` already exist on
    `defineTaskCollection`. An issue that finds itself defining a second way to say "which
@@ -665,10 +665,11 @@ durable rungs come from `scope`, which already exists.** Binding on every issue 
 ### Decision 3 — allocating the scope that moved in from FIX-957
 
 **DECIDED, and this allocation is the reason this section exists.** On 2026-07-29 the durable
-half of FIX-957 was factored into this epic; FIX-957 now covers `block` and `request` board
-lifetimes only. **Seven items moved.** The filed issues each carry a *"to be confirmed in the
-epic-spec"* marker pointing here — so leaving any row unallocated re-creates the vacuum this
-document exists to remove.
+half of FIX-957 was factored into this epic. **FIX-957 retains the in-request half; durable scope
+and backing already ship, and this epic's job is to make them *safe*** — not to add them (see
+Decision 2, and note there is no `lifetime` enum). **Seven items moved.** The filed issues each
+carry a *"to be confirmed in the epic-spec"* marker pointing here — so leaving any row
+unallocated re-creates the vacuum this document exists to remove.
 
 The cut FIX-957 was split along: **every concurrency consequence it had accumulated needs two
 executions over one board, and in-request there is only ever one.** That is the test applied
@@ -686,8 +687,7 @@ below.
 
 #### 2.a — the cap-enforcement ownership conflict (**needs a human; do not let two issues build it**)
 
-Round 1 read FIX-957's spec directly rather than the epic description's paraphrase, and the two
-disagree about who owns cap enforcement on the durable backing:
+FIX-957's spec and this epic's description disagree about who owns cap enforcement on the durable backing:
 
 - **FIX-957's spec (#954), Decision 3 — decided:** *"The creation caps move to one
   backing-agnostic check that both backings call; the durable backing accepts cap options like the
@@ -723,97 +723,57 @@ a shape that epic has already rejected**, so it is not adopted by inheritance.
 
 #### 3.b — `flowIsolation` is **re-derived**, not forwarded — and it is FIX-982's (**M3**)
 
-The filing agent found no obvious owner and guessed possibly FIX-982. **Owner confirmed —
-FIX-982 — but round 1 corrected the framing, and the correction is the useful part: there is
-nothing to "forward".**
+**Owner: FIX-982 — and there is nothing to "forward".** `flowIsolation` is declared **only on
+resource/collection definitions** (`core/src/types/resource.ts:186`; `resource-collection.ts:59`),
+with flow-level `isolateUserState` / `isolateOrgState` defaults (`types/flow.ts:489-499`) as the
+only other input. **It appears nowhere on a request**, and `createExecutionContext` already
+*recomputes* it from config + flow defaults + identity (`:867-880`, via
+`scope-keys.ts:140-160`). **So carrying a copy on the task would be a bug** — it would diverge
+from the definition and from the shared-prefix conflict rule that *throws* when collections
+disagree (`createExecutionContext.ts:818-861`).
 
-`flowIsolation?: boolean` is declared **only on resource/collection definitions**
-(`packages/core/src/types/resource.ts:186`, rejected at session scope `:431-435`;
-`resource-collection.ts:59`, `:282-286`), with flow-level `isolateUserState` / `isolateOrgState`
-defaults (`types/flow.ts:489-499`) as the only other input. **It appears nowhere on a request.**
-And `createExecutionContext` already *recomputes* it: `resolveConfigScopeId` reads the config's
-`flowIsolation`, resolves it against the flow defaults, and keys off identity
-(`createExecutionContext.ts:867-880`) via `resolveResourceIsolation` (resource wins over flow
-default, `stores/scope-keys.ts:140-147`) and `resolveResourceScopeId` (`scope-keys.ts:154-160`).
+**What the executor must load to re-derive** — recorded because FIX-982 would otherwise discover
+it late: (1) the **full config map** for that scope, since canonicalization and the prefix check
+are whole-map decisions; (2) the **flow definition**, for `flow.kind` and the isolation defaults;
+(3) the **identity triple** — `userId`, `orgId`, tenant-namespaced session key.
 
-**So carrying a copy on the task would be a bug, not a feature** — it would diverge from the
-definition, and from the per-prefix conflict rule `createExecutionContext` enforces across a
-whole scope's config map (`createExecutionContext.ts:818-861`, which *throws* when collections
-sharing a storage prefix disagree).
+**Only flow *kind* is request-derived**, so **flow kind + identity is the minimal thing that must
+travel with a detached task.** Much smaller than "forward the isolation settings", and it is the
+constraint FIX-982 designs against.
 
-**What the out-of-request executor must load to re-derive correctly** — recorded because it is
-what FIX-982 would otherwise discover late:
-
-1. **The full config map for that scope** — not just the one definition, since canonicalization
-   and the shared-prefix check are whole-map decisions (`createExecutionContext.ts:799-803`).
-2. **The flow definition** it runs under, for `flow.kind` plus the `isolateUserState` /
-   `isolateOrgState` defaults (`IsolationFlow`, `scope-keys.ts:27-36`).
-3. **The identity triple** — `userId`, `orgId`, and the tenant-namespaced session key
-   (`resolveSessionStorageKey`, `scope-keys.ts:75-82`).
-
-**Only the flow *kind* is request-derived.** So **flow kind + identity is the genuinely minimal
-thing that must travel with a detached task** — everything else the executor re-derives from the
-definitions. That is the constraint FIX-982 designs against, and it is much smaller than
-"forward the isolation settings."
-
-**No new issue is needed for 3.a or 3.b.** Both have owners. Row 2 is the only unowned one
-(OQ-D).
+**No new issue is needed for 3.a or 3.b.** Row 2 is the only unowned one (OQ-D).
 
 ### Decision 4 — the evidence branch is gone; the numbers live here now
 
-**The `spike/durable-board-claims` branch is not on `origin`.** Verified: 253 remote heads, no
+**The `spike/durable-board-claims` branch is not on `origin`** — verified, 253 remote heads, no
 `spike/*` ref of any kind. FIX-939's description cites it as *"do not delete"* and rests the
-premise correction (there is **no** CAS claim) on it.
+premise correction on it. **The measured numbers survive as text** (§5, treat as established); the
+**re-runnable rig does not**.
 
-**What survives and what does not**, stated plainly because the difference decides a cost:
+**But that costs less than first stated: the harness FIX-981 needs largely exists.**
+`integration-tests/src/scenarios/task-board-drain-containment.test.ts` already proves a board
+property through full `runAction` composition via `testFlow` — the altitude FIX-980's Decision 5
+made the bar — and `testFlow`'s seeding is **deliberately idempotent so multiple calls can share
+one store registry** (`testing/src/test-utilities/testFlow.ts:80-82`), which *is* the
+two-executions-over-one-board setup.
 
-- **The measured numbers survive as text.** They are carried into §5 of this document. The
-  epic's instruction to treat them as established stands — *"re-deriving these is exactly the
-  cost four wrong readings already paid."*
-- **The re-runnable harness does not survive.** Real `runAction` executions, real
-  per-execution resource registries, the real resource-backed collection, a real SQLite file
-  on disk, falsification conditions fixed before each run, a control per harness — all of that
-  was branch-local and is gone.
+**So the gap is "resource-backed + two concurrent executions" — an extension, not a new harness
+species. FIX-981 must not budget a spike redo.** It should budget the extension plus 1b's
+**distinct-ID contention test**, which that shape does not cover. Cite §5 rather than re-deriving;
+build a new rig only for a measurement §5 lacks.
 
-**Consequence — and round 1 substantially softened this, correctly.** An earlier draft said any
-spec wanting to re-run these experiments *"must rebuild the harness"* and told FIX-981 to budget
-that. **That over-priced it.** The harness FIX-981 needs largely exists:
+**Why the numbers live here.** A Linear description is unversioned, unreviewable, and not
+diffable — a poor home for the evidence an epic's premise rests on. §5 is reviewed, versioned, and
+reachable from every issue. **This epic also inherits FIX-980's persisted-surface rule:** any issue
+claiming it made progress or failure visible **states which persisted surface carries it**. A
+`transient: true` trace item is not observability.
 
-- `packages/integration-tests/src/scenarios/task-board-drain-containment.test.ts` already proves a
-  board property through **full `runAction` composition** via `testFlow` — the right altitude, and
-  the shape FIX-980's Decision 5 made the bar for board work.
-- `testFlow`'s seeding is **deliberately idempotent so multiple calls can share one store
-  registry**: *"only `set()` an entity when no record exists yet for its identity. Lets multiple
-  `testFlow` calls share a registry without resetting journals or resource state"*
-  (`packages/testing/src/test-utilities/testFlow.ts:80-82`). **That is exactly the
-  two-executions-over-one-board setup**, already supported.
+### Decision 5 — M3's executor needs a **named wake source**; it must not default to polling
 
-**So the gap is "resource-backed collection + two concurrent executions" — an extension of an
-existing scenario, not a new harness species. FIX-981 should not budget a spike redo.** What it
-should budget is the extension plus the **distinct-ID contention test** that 1b requires, which
-that scenario shape does not currently cover.
-
-The one thing genuinely gone is the *SQLite-on-disk, falsification-condition-per-run* rig. Cite
-the §5 numbers rather than re-deriving them; reach for a new rig only if a spec needs a
-measurement §5 does not contain.
-
-**Why the numbers moved into this document.** A Linear issue description is not a durable home
-for the evidence a whole epic's premise rests on: it is unversioned, has no review surface, and
-its history is not diffable. Putting them in §5 gives them a home that is reviewed, versioned,
-and reachable from every issue under the epic. This is Decision 4's own principle applied to
-Decision 4 — see also the persisted-surface rule that this epic inherits from FIX-980's
-Decision 4, which binds here too: **any issue in this set claiming it made progress or failure
-visible states which persisted surface carries it.** A `transient: true` trace item is not
-observability.
-
-### Decision 5 — M3's executor needs a **named wake source**; it must not default to polling **(added in round 1)**
-
-**A genuine hole in the epic, found by review rather than by us.** §1 puts
-task-events-as-dispatch-triggers **out** of scope (that is FIX-825 / Conductor M3). But an
-in-request worker wakes on `task-change` items, and **outside a request that stream is gone.** So
-FIX-982's executor is left with no named wake source at all — and the default in that vacuum is
-**store polling**, chosen by omission rather than by decision. Nobody would write that down; it
-would simply appear.
+§1 puts task-events-as-dispatch **out** of scope (FIX-825 / Conductor M3). But an in-request worker
+wakes on `task-change` items, and **outside a request that stream is gone** — so FIX-982's executor
+has no named wake source, and the default in that vacuum is **store polling, chosen by omission**.
+Nobody would write that down; it would simply appear.
 
 **Binding: FIX-982's spec must name its wake model explicitly**, from these, and state the cost:
 
@@ -828,10 +788,9 @@ would simply appear.
 whose wake source is an unstated poll is how a "durable job substrate" quietly becomes a busy
 loop against the store.
 
-### Reuse seams — cite these, or say why not **(added in round 1)**
+### Reuse seams — cite these, or say why not
 
-This document previously named no primitives one layer down, which left four child issues free to
-each reinvent liveness, dispatch, progress, and CAS. **Binding on every issue here: build on the
+**Binding on every issue here: build on the
 named seam or state in your spec why it doesn't fit.**
 
 | Seam | Where | Who should reuse it |
@@ -872,7 +831,7 @@ epic:
 
 | Issue | Relationship | Linear state | Why it is not in the active set |
 |---|---|---|---|
-| **FIX-957** | sub-issue of FIX-939 | Backlog | Retains only the **in-request** half (`block` \| `request` board lifetimes) after the 2026-07-29 split. Its durable half is Decision 3's seven rows. Coordinates via Decision 2's enum; blocks nothing here and is blocked by nothing here. |
+| **FIX-957** | sub-issue of FIX-939 | Backlog | Retains the **in-request** half after the 2026-07-29 split; its durable half is Decision 3's seven rows. Durable scope/backing already ship, so there is no enum to coordinate — **the real coordination point is FIX-960** (`sequencer` → `state` backing rename). Blocks nothing here and is blocked by nothing here, but **see OQ-D**: it may still own cap enforcement. |
 | **FIX-825** | sub-issue of FIX-939 | Backlog | Topic notification subscribers that bubble up into the flow — the **reactive-dispatch** concern. Parented per the epic description's explicit instruction ("reparent FIX-825 under this epic"), but it sits in the task-events-as-dispatch-triggers gap that §1 puts **out** of this decomposition (Conductor M3). **Reviewer note, routed not folded:** review argued `relates-to` would model this better than parenting, since a sub-issue outside the decomposition reads as scope the epic owns and isn't delivering. That is a defensible Linear-hygiene point, but the parenting was the owner's stated call and re-parenting is destructive — left as-is, flagged for the gate. Decision 5 is where its eventual capability is depended upon. |
 | **FIX-978** | **not** a sub-issue — owned by epic **FIX-980**, blocks **FIX-982** | In Spec Review | The M2 hole. Reclamation joined to execution liveness stays with FIX-980 per Decision 0; this epic consumes its outcome as FIX-982's dependency. Its spec activity is on FIX-980's epic PR [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983), not here. |
 
@@ -880,48 +839,30 @@ epic:
 
 ## 4. Open cross-cutting questions
 
-**OQ-A — Decision 1: does this epic change `ResourceStateStore`?** **This is the one the
-objective gate must answer**, and it is here rather than closed because §2 Decision 1 ends in a
-**recommendation**, not a settled call. The recommendation is **(a), staged and additive** —
-an *optional* `compareAndSet` on the store plus a *new sibling* ref method, so the guarantee
-becomes general without a breaking change to any published interface.
+**OQ-A — Decision 1: does this epic change `ResourceStateStore`?** **The question the objective
+gate must answer.** Two sub-answers are needed, because the objective's clause 1 has two halves
+that need two mechanisms. **Evidence and pricing are in §2 Decision 1 — not repeated here.**
 
-**It is now two recommendations, because the objective's two clauses need two mechanisms** — see
-§2 Decision 1 → 1a / 1b, stated once where the evidence that supports them lives. What the gate
-needs to know:
+| | Recommendation | If the gate refuses it |
+|---|---|---|
+| **1a — ownership** (one current owner; stale settlement rejected) | **(a), staged** — optional version-gated store verb + new sibling ref method, mirroring the shipped `runWithCAS` / `DeltaStoreOps` precedent, routed through **claim *and* settlement** | **M1 merges into M3** — (b)'s dedup can only live where the queue is. Not a smaller epic; a resequenced one. |
+| **1b — cap admission** | **Inherit FIX-957's bounded overshoot** (authoritative re-read); treat *exact* arbitration as out of scope unless asked | §1's criterion 1b is relaxed away and the epic claims **no** cap guarantee |
 
-- **1a (claim exclusivity) — recommend (a), staged.** Not greenfield: **CAS precedent is shipped**
-  one layer down (`runWithCAS`, version-gated `set(id, value, expectedVersion)`, and
-  `DeltaStoreOps`' optional-verb + feature-detect pattern). The task board has **tier 1 of a
-  two-tier design and no tier 2** — mirror the precedent rather than invent a shape.
-- **1b (cap admission) — recommend inheriting FIX-957's decided answer** (authoritative re-read →
-  **bounded overshoot**), and treating *exact* admission as out of scope unless asked. Per-key CAS
-  **cannot** do this: different task IDs are different keys, and `create()` counts from the
-  per-execution cache (`resource-registry.ts:981-1004`). This is §5's first measured row.
-- **Not "non-breaking".** Optional verbs preserve source compatibility, not behavioral
-  compatibility. The recommended path is **refuse durable-board construction on an adapter lacking
-  the verb** + a declared adapter migration — because a durable board that appears to have claim
-  safety and does not is the exact defect FIX-980 exists to eliminate.
-- **(b) is bypassed** by the model-facing `taskTools` surface (the normal way boards get mutated in
-  an agent framework), cannot fix the uncapped default board at all, and **needs M3's queue to
-  deliver M1's guarantee.**
-- **Refusing the store change does not yield (b) — it merges M1 into M3** and restates the epic's
-  sequence.
+Also for the gate: the recommended path is **not** free — optional verbs preserve source but not
+behavioral compatibility, so it carries a **declared adapter migration** (durable boards refuse
+construction on an adapter lacking the verb).
 
-> **Sharpened option for the gate — not decided here.** Given 1b needs its own mechanism, a third
-> path opens: **is cap admission in FIX-981's scope at all, or does it become its own milestone
-> (or fold into FIX-957)?** Splitting it would let 1a — the well-understood, precedent-backed half
-> — ship without waiting on the cap arbitration design. **Tradeoff:** the two clauses were framed
-> as one milestone because they share the two-execution setup and one integration harness;
-> splitting duplicates that setup across two issues. Interacts with **OQ-D**.
+> **Sharpened option — not decided here.** Because 1b needs its own mechanism, a third path opens:
+> **is cap admission in FIX-981's scope at all, or its own milestone (or FIX-957's)?** Splitting
+> lets 1a — the precedent-backed half — ship without waiting on cap-arbitration design.
+> **Tradeoff:** the two were one milestone because they share the two-execution setup and one
+> harness; splitting duplicates that. Interacts with **OQ-D**.
 
-**A human decides all of this.** It is recorded as open questions rather than decisions precisely
-so the gate is not asked to rubber-stamp an agent's pick.
+**A human decides all of this**, which is why it is an open question rather than a decision.
 
 **OQ-B — Does the blocking/background disposition need to be *durable*? (premise corrected in round 1.)**
 
-An earlier draft argued *"a caller holding a `TaskHandle` can already choose whether to await
-it."* **That premise is false and is withdrawn.** `TaskHandle` is
+**A `TaskHandle` cannot be awaited.** It is is
 `Task<TInput, TOutput> & { items(): readonly OutputItem[] }`
 (`tasks/collection/types.ts:109-111`); `Task` is pure Zod-inferred data
 (`tasks/schema/task.ts:13-58`), `items()` is documented *"Sync, throw-free"* (`types.ts:96`), and
@@ -951,15 +892,14 @@ one it replaces. Routed as a **precondition to speccing FIX-983**.
 > be one predicate helper — but it also buries the "does anything still await this task" question
 > inside the executor's design, where it is easy to answer implicitly and wrongly.
 
-**OQ-C — What is M5's real necessity argument? (my round-1 reframing was wrong; corrected in round 2.)**
+**OQ-C — What is M5's real necessity argument?**
 
 The description justifies FIX-984 by the conductor board view not being live — observability,
 which does not obviously carry a Medium–Large **breaking** change to `.work` / `.waitForWork`
 callers.
 
 An earlier draft of this question proposed a stronger framing: *"a detached task that reports
-nothing is indistinguishable from a detached task that died."* **Round 2 (Codex) refuted that,
-and it is right.** A **healthy but quiet or blocked** task's persisted progress is
+nothing is indistinguishable from a detached task that died."* **That is wrong.** A **healthy but quiet or blocked** task's persisted progress is
 indistinguishable from that of a worker that died at the same point. **Progress reporting cannot
 separate those — only liveness can.** And this document assigns liveness and reclamation to
 FIX-978 (Decision 0) and explicitly declines to design heartbeats here, so sizing M5 around
@@ -1016,124 +956,43 @@ a new measurement rebuilds the harness (Decision 4), and that is declared work.
 1 → 0" is a **lost update**, not a lock-contention symptom. It means the store's write path is
 read-modify-write with no conditional, which is the fact Decision 1 has to price.
 
-### Corroboration found in the tree (2026-07-29, this document's research)
+### Corroboration in the tree
 
-The measurements above were taken on a branch that no longer exists. **The mechanism that
-explains them is still in the tree and was located directly** — so the §5 numbers no longer rest
-on the vanished harness alone. Full trace in §2 Decision 1; the short form:
+The harness is gone, but **the mechanism that explains these numbers was located in the current
+code** — see §2 Decision 1's two-tier finding. So the measurements no longer rest on the vanished
+branch alone: **the numbers say what happened, and the mechanism says why it had to.** That is a
+stronger position than the harness by itself gave us.
 
-`claim()` → `ResourceRef.updateState` → `serializeResourceWrite`, which serializes writes through
-an in-memory `Map<string, Promise<unknown>>` promise chain
-(`packages/engine/src/context/resource-registry.ts:540-546`) held **per `ResourceRegistry`** —
-and a registry is constructed **per execution**
-(`packages/engine/src/context/createExecutionContext.ts:1649`). Two executions therefore share
-no serialization at all, and the store's `set` is an unconditional upsert in all four adapters.
-
-**Two drains both reading `pending` and both writing `in_progress` is the predicted behavior of
-that code, not a surprise.** This is a *stronger* position than the harness gave us: the numbers
-say what happened, and the mechanism says why it must.
+---
 
 ---
 
 ## Epic evolution
 
-- **Epic created (this document).** Previously a placeholder whose stated purpose was to keep
-  FIX-930 designing a detach-ready task contract. Promoted to active work by the Conductor M2
-  forcing function, with membership decided with the repo owner: FIX-981 active, FIX-982/983/984
-  filed-and-blocked, FIX-957 and FIX-825 parented but out of the active set, FIX-978 consumed as
-  an external dependency. The description's **M2 hole** is recorded as Decision 0 with its
-  reasoning, so it is not re-derived as an oversight.
-- **Decision 1 priced against the real tree, and it moved twice.** Researched rather than
-  restated, and two of the description's own claims about option (a) did not survive:
-  1. **The gap is not in the store.** Claim atomicity comes from `serializeResourceWrite`, an
-     **in-memory promise chain held per `ResourceRegistry`** — and registries are per execution.
-     So the substrate's claim safety is an in-process queue that degrades to nothing across
-     executions, which is exactly what §5 measured. The mechanism was located in the tree, so
-     the §5 numbers no longer rest solely on the deleted harness.
-  2. **(a) need not be a breaking change.** The description frames it as the largest blast
-     radius and implies a break; an optional store verb plus a *new sibling* ref method is
-     additive at every layer. Conversely (a)'s real surface is **wider** than stated — the
-     load-bearing type is `updateState` (`Promise<void>`, so it cannot report a declined write),
-     with 47 non-test references across 13 files in 6 packages, not just four adapters.
+A short stub by design. **The decisions and their reasoning live in §2, where they are
+load-bearing** — a parallel changelog of how they got there drifts from them and doubles the
+reading cost.
 
-  Also established: **exactly four adapters** (the description's count is right), **no backing is
-  incapable of CAS** (filesystem is the awkward one, not a blocker), the conformance suite needs
-  a **two-handles-one-backing** shape it does not currently have, and **two code comments
-  actively assert the false CAS premise** (`claim-task.ts:12-14`,
-  `resource-backed.ts:6-7,22-26`) — the likely source of the "four wrong readings" the
-  description mentions, and FIX-981's to correct.
+- **Epic created.** Previously a placeholder keeping FIX-930's task contract detach-ready.
+  Promoted to active work by the Conductor M2 forcing function; membership decided with the repo
+  owner (§1). The description's **M2 hole** is Decision 0, recorded with its reasoning so it is
+  not re-read as an oversight.
+- **Three review rounds spent; converged.** The default budget is two;
+  [`orchestration.md`](../../contributing/orchestration.md) authorises a third only when round two
+  surfaced a genuine spec-level finding. **It did, and the third was earned rather than drifted
+  into:** round 2 found the cap hole, round 2's own fix for it was incomplete, and round 3 found
+  **two contradictions inside the gated statement itself** — §1 still demanded a cap guarantee that
+  1b's recommendation provably does not deliver, and 1a as scoped did not deliver clause 1's
+  stale-settlement half. **Approving the objective as written would have signed off something the
+  recommendation cannot do.** A fourth round is refused.
 
-  **Recommendation: (a), staged and additive** — carried as **OQ-A** for the objective gate,
-  since the human decides. Recorded with the finding that refusing the store change does not
-  yield (b) but **merges M1 into M3**, because (b)'s dedup can only live where the queue is.
-- **Round 1 review folded (Codex + Cursor, PR #993) — five changes of substance, and three of them
-  corrected *this document*, not the description.**
-  1. **The gated objective was wrong.** It claimed work is *"claimed exactly once"*, which
-     `reclaim()` makes unachievable — a returned task lets a second worker repeat side effects.
-     Restated as **exclusive ownership per attempt + at-least-once execution**, with the explicit
-     note that side-effect fencing is *not* adopted here and task bodies must be safe to re-run.
-     The completion criteria already only proved the weaker property, so the claim was the defect.
-  2. **CAS precedent exists and it reframed Decision 1** — verified, and stronger than asserted:
-     `runWithCAS` (`cas.ts:119-175`), version-gated `set(id, value, expectedVersion)`, the
-     **optional + feature-detected** `DeltaStoreOps` verbs (the exact staging shape this document
-     had independently proposed), and `ScheduleIndex.claimDue`. Decisive framing: `scope-lock.ts`
-     documents a **two-tier** design, and the task board **has tier 1 and no tier 2**. Decision 1
-     is therefore *finishing an established pattern*, not novel design.
-  3. **Decision 2 was a category error — rewritten.** Board **lifetime** is the `backing` axis
-     (`request|resource|sequencer|factory`); collection **scope** (`session|user|org`) only
-     subdivides the durable arm; **no `lifetime` field exists**. You cannot widen a lifetime enum
-     with scope values. Worse, FIX-957's spec PR #954 **explicitly rejected** a parallel
-     `boardScope` vocabulary — so the old wording instructed this epic to build the thing FIX-957
-     rejected with reasons. The real coordination point is **FIX-960** (`sequencer` → `state`
-     rename), not enum-widening. Decision 3 row 1 fell with it: the durable rungs **already ship**.
-  4. **A cap-ownership conflict surfaced (OQ-D).** FIX-957's spec carries cap enforcement on the
-     durable backing as its own **decided** Decision 3, while this epic's description claims the
-     work moved here. Surfaced, not resolved.
-  5. **Decision 3.b reframed from "forwarding" to "re-derivation"** — `flowIsolation` lives on
-     definitions, never on a request, and `createExecutionContext` already recomputes it. Carrying
-     a copy would be a bug. Recorded the three inputs the executor must load, and the useful
-     constraint: **only flow *kind* is request-derived**, so flow kind + identity is the minimal
-     thing that must travel.
+  Six of this document's own conclusions changed across the three rounds: the **objective clause**
+  (twice — "exactly once" was unachievable, then its cap half needed two guarantees), **Decision 2**
+  (a category error, rewritten), the **"non-breaking" claim**, **OQ-C's framing**, **Decision 1's
+  scope** (split into 1a/1b, then 1a widened to settlement), and **Decision 4's cost** (materially
+  cheapened). **The direction never changed:** option (a), staged, mirroring a shipped precedent.
 
-  Also folded: **Decision 5** (M3 must name a wake source, so it cannot silently default to store
-  polling — a genuine hole); a **reuse-seam table** so four child issues don't each reinvent
-  liveness, dispatch, progress and CAS; **coarse locks rejected explicitly** at epic level; and
-  **Decision 4 softened** — `testFlow` already supports a shared registry across calls
-  (`testFlow.ts:80-82`) and the containment scenario already runs at `runAction` altitude, so the
-  gap is an *extension*, not a harness rebuild. FIX-981 no longer budgets a spike redo. **OQ-B's
-  premise was withdrawn**: `TaskHandle` has no awaitable surface, but `.waitForCondition` means
-  in-request blocking already ships, which makes M4's question sharper rather than dissolving it.
-- **Round 2 review folded (Codex, PR #993) — three findings, two of which corrected round 1's own
-  work.**
-  1. **P1 — the recommendation covered one clause of two.** Per-key CAS cannot enforce a creation
-     cap: different task IDs are **different keys**, and `create()` counts from the per-execution
-     cache and is not even under `serializeResourceWrite`
-     (`resource-registry.ts:981-1004`). As written it would have left **§5's first measured row (8
-     rows against `maxInstances: 4`) unfixed while appearing to fix it.** Decision 1 is now split
-     into **1a (claim exclusivity)** and **1b (cap admission)** with separate recommendations —
-     1b inherits FIX-957's bounded-overshoot answer rather than inventing exactness — plus a
-     required **distinct-ID contention test**, which the extended harness would otherwise miss
-     because both writes succeed and only the final count reveals the failure.
-  2. **P2 — "non-breaking at any layer" was overstated** (my claim, from round 1). Optional verbs
-     preserve **source** compatibility, not **behavioral** compatibility: a third-party adapter
-     without the verb backs a durable board that worked before the upgrade. Now decided as
-     **refuse durable-board construction + a declared adapter migration**, with degrade-and-warn
-     explicitly rejected as the default — a durable board that appears safe and isn't is the exact
-     defect FIX-980 exists to eliminate.
-  3. **P2 — OQ-C's reframing borrowed FIX-978's property** (also mine, from round 1). "A silent
-     detached task is indistinguishable from a dead one" is false as a *progress* argument: a
-     healthy-but-quiet task looks identical to one that died at the same point. **Only liveness
-     separates them**, and liveness is FIX-978's. M5 is now framed honestly as **observability**,
-     with alive-vs-dead recorded as an explicit *dependency* option on FIX-978.
-
-  **Net across both rounds: four of this document's own conclusions changed** — the gated
-  objective clause, Decision 2 entirely, the "non-breaking" claim, and OQ-C's framing — plus
-  Decision 1 split in two and Decision 4 materially cheapened. The direction did not change:
-  still (a), still staged, still mirroring a shipped precedent.
-- **The epic-spec has converged.** Two review rounds spent; the budget is exhausted. Remaining
-  questions are the four open ones in §4 — **OQ-A** (the gate's decision, now two-part), **OQ-B**,
-  **OQ-C**, **OQ-D** — and the three sharpened scope options recorded for the user rather than
-  decided: collapsing M4 into M3, narrowing M5 to liveness-only, and whether cap admission belongs
-  in FIX-981 at all. Below-the-bar items are routed to the issues they belong to. Further edits
-  should be driven by what the gate decides and what implementation discovers, not by another
-  review pass.
+- **Open at the gate:** OQ-A (two-part), OQ-B, OQ-C, OQ-D, plus the sharpened scope options
+  recorded for the user rather than adopted — including the **leaner-epic default** (collapse
+  M4 into M3, narrow M5, split 1b out), which this document's own necessity check arguably implies
+  but does not decide.
