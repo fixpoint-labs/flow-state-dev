@@ -128,6 +128,9 @@ function pendingAction(row) {
 
     case 'PR_FEEDBACK':
       if (row.newPrEvents || row.ciFailed) return { action: 'pr-feedback', why: 'unhandled PR activity' }
+      // A multi-PR row's DAG advances on merges and on its own deferred work, neither of which is
+      // "PR activity". Without this the issue stalls the moment a merge unblocks its next slice.
+      if (multiPrHasWork(row)) return { action: 'implement', why: 'multi-PR DAG has work: a ready slice, a deferred one, or the assembled goal' }
       return null
 
     default:
@@ -161,6 +164,42 @@ function dedupeClaims(requests) {
     }
   }
   return [...byClaim.values()]
+}
+
+/**
+ * A multi-PR row's phase is DERIVED, never taken from the scout.
+ *
+ * Two failures, in opposite directions, come from letting a scout name it. `DONE` is schema-valid,
+ * and a scout looking at a row whose last sub-PR just merged will reasonably say it — which finishes
+ * the issue without ever running the assembled end-to-end goal that the merges do *not* satisfy.
+ * And `PR_FEEDBACK` with no newer comment dispatches nothing, so the DAG stalls exactly when a merge
+ * has unblocked its next slice.
+ *
+ * So: never DONE until the goal has actually passed, and otherwise PR_FEEDBACK, where the
+ * multi-PR clause in `pendingAction` decides whether there is work.
+ *
+ * @returns the derived phase, or null when this is not a multi-PR row
+ */
+function multiPrPhase(row) {
+  if (!row.subPrs || !row.subPrs.length) return null
+  return (row.assembledGoal || {}).passed ? 'DONE' : 'PR_FEEDBACK'
+}
+
+/**
+ * Does a multi-PR row have DAG work that needs no external event?
+ *
+ * `issue-multi-pr` is the only thing that knows its own ready set, so the worker reports
+ * `multiPrPending` and that answer is trusted for one wake. Two things the row itself knows are
+ * added, because they are external events that just landed: a sub-PR merged this wake (unblocking
+ * whatever depended on it), and every slice being merged while the goal is still owed.
+ */
+function multiPrHasWork(row) {
+  if (!row.subPrs || !row.subPrs.length) return false
+  const goal = row.assembledGoal || {}
+  if (goal.passed) return false
+  if (row.multiPrPending) return true
+  if (row.subPrMergedThisWake) return true
+  return row.subPrs.every((s) => s.status === 'merged')
 }
 
 /**
@@ -255,7 +294,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   const roundsSpent =
     action === 'spec-review' && worker.specReviewRoundsSpent === undefined ? 1 : worker.specReviewRoundsSpent || 0
 
-  return {
+  const next = {
     ...row,
     ...cursor,
     ...consumedFlags,
@@ -269,6 +308,11 @@ function nextRow(row, { worker, action, landed, folded }) {
     // Same rule, and for the same reason: the assemble state machine resumes from these handles
     // across wakes, so clearing them restarts it — re-running the goal and filing a duplicate gap.
     assembledGoal: worker.assembledGoal === undefined ? row.assembledGoal : worker.assembledGoal,
+    // Only the worker that RAN THE DAG knows whether work remains that needs no external event, so
+    // only an `implement` dispatch may change this. A spec-review or verdict fold on the same row
+    // reports nothing about the DAG, and coercing that silence to false would strand cap-deferred
+    // slices: nothing external will ever wake them. It is cleared by the run that finds none left.
+    multiPrPending: action === 'implement' ? !!worker.multiPrPending : !!row.multiPrPending,
     // Add only the rounds the worker reports SPENDING — never one per event dispatched.
     //
     // But a REVIEW worker that omits the count cannot be charged zero: the field is optional, so
@@ -299,6 +343,13 @@ function nextRow(row, { worker, action, landed, folded }) {
     status: worker.status,
     verdicts,
   }
+
+  // The derived phase wins over the worker's too, not just the scout's. A worker finishing the last
+  // sub-PR will reasonably report DONE — and that is precisely the premature completion the rule
+  // exists to prevent, since the merges do not satisfy the assembled goal. Deriving it in only one
+  // of the two places it can be set is deriving it nowhere.
+  const derived = multiPrPhase(next)
+  return derived && derived !== next.phase ? { ...next, phase: derived } : next
 }
 
 /**
@@ -391,13 +442,24 @@ function foldMultiPrScan(row, fresh) {
   const out = {}
   const states = (fresh && fresh.subPrStates) || []
   if (states.length && row.subPrs && row.subPrs.length) {
-    const byId = new Map(states.map((s) => [s.id, s]))
-    out.subPrs = row.subPrs.map((s) => {
-      const live = byId.get(s.id)
+    // Bound to the REQUESTED handles, not to the reported ids — the same rule as every other
+    // agent-reported identifier. The prompt lists the sub-PRs in table order and asks for one entry
+    // each, so position is the trustworthy key, and an id that doesn't match its position is
+    // discarded rather than believed: a misattributed `merged: true` marks the wrong node merged,
+    // and a dependent then builds off origin/main before its real prerequisite has landed.
+    out.subPrs = row.subPrs.map((s, i) => {
+      const live = states[i]
+      if (!live) return s
+      if (live.id && live.id !== s.id) return s
       // Only ever ADVANCE a sub-PR to merged. A scan that omits an entry says nothing about it, and
       // demoting an open sub-PR to pending would have the next wake rebuild it from scratch.
-      return live && live.merged && s.status !== 'merged' ? { ...s, status: 'merged' } : s
+      return live.merged && s.status !== 'merged' ? { ...s, status: 'merged' } : s
     })
+    // A merge is the external event that unblocks the next slice, and it is not "PR activity" —
+    // `pendingAction` needs to know it happened THIS wake or the DAG stalls right there.
+    out.subPrMergedThisWake = out.subPrs.some((s, i) => s.status === 'merged' && row.subPrs[i].status !== 'merged')
+    const mismatched = row.subPrs.filter((s, i) => states[i] && states[i].id && states[i].id !== s.id)
+    if (mismatched.length) out.subPrStateMismatch = mismatched.map((s) => s.id)
   }
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
@@ -419,7 +481,11 @@ function foldMultiPrScan(row, fresh) {
 function approvedInSessionFor(row, fresh) {
   const at = row.approvedInSession
   if (!at) return false
-  const head = (fresh && fresh.headSha) || null
+  // Fall back to the CARRIED head, not to "no head". A previous wake may already have observed and
+  // persisted a push past the approved SHA; if this wake's scout then dies, treating that as "no
+  // head to contradict it" would implement on a head the coordinator already knows is newer than
+  // what the human approved. Only a row that has never had an observed head goes unchallenged.
+  const head = (fresh && fresh.headSha) || row.headSha || null
   return !head || head === at
 }
 
@@ -587,6 +653,11 @@ const WORKER_SCHEMA = {
           stackedOn: { type: ['string', 'null'] },
         },
       },
+    },
+    multiPrPending: {
+      type: 'boolean',
+      description:
+        'Multi-PR only: the DAG still has work needing no external event (a ready or cap-deferred sub-PR, or an assemble step), so dispatch again next wake.',
     },
     // The other half of a multi-PR issue's durable state. `subPrs` alone is not enough: the
     // assemble phase is a multi-wake state machine (goal → gap → fix → re-verify) that resumes from
@@ -828,6 +899,20 @@ const refreshed = [...rows, ...discovered].map((row) => {
     ...foldMultiPrScan(row, fresh),
   }
 })
+  // Derived AFTER the fold, because it reads the freshly-merged sub-PRs and the folded goal. A
+  // scout naming this phase either finishes the issue without its assembled goal or stalls it.
+  .map((row) => {
+    const derived = multiPrPhase(row)
+    return derived && derived !== row.phase ? { ...row, phase: derived } : row
+  })
+
+for (const r of refreshed) {
+  if (r.subPrStateMismatch && r.subPrStateMismatch.length) {
+    log(
+      `${r.id}: refresh reported sub-PR states whose ids don't match the handles they were asked about (${r.subPrStateMismatch.join(', ')}) — those entries were discarded rather than applied to the wrong slice.`,
+    )
+  }
+}
 
 const claims = dedupeClaims(requests)
 if (claims.length < requests.length) {
@@ -904,7 +989,13 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
             ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes BEFORE you close the spec PR — do not spend a review round on it and do not fold it into the spec. This is the only pass that sees it: nothing looks at spec-PR review activity once this row reaches PR_FEEDBACK.\n`
             : '') +
           (item.row.subPrs && item.row.subPrs.length
-            ? `This issue implements as a DAG of sub-PRs. Its plan and handles: ${JSON.stringify(item.row.subPrs)}. Advance it with the issue-multi-pr workflow and return the updated subPrs table AND assembledGoal state.\n`
+            ? `This issue implements as a DAG of sub-PRs. Advance it with the issue-multi-pr workflow, passing this state as its args, and return the updated subPrs table AND assembledGoal.\n` +
+              `  subPrs: ${JSON.stringify(item.row.subPrs)}\n` +
+              // The worker runs in an isolated worktree and cannot read `.orchestration/`, so state
+              // it isn't handed does not exist for it. Given only `subPrs`, a resumed issue would
+              // re-run the end-to-end goal and file a second repair for a gap already tracked.
+              `  assembledGoal: ${JSON.stringify(item.row.assembledGoal || {})}\n` +
+              `Report multiPrPending: true if its DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step), so the next wake dispatches you again rather than waiting for an event that will never come.\n`
             : '') +
           `Do not prompt the user. Return the compact status object and exit.`,
         {
@@ -1097,8 +1188,10 @@ const gates = [
       // Single-PR: the row's own impl PR.
       if (r.readyToMerge && r.implPr) gates.push({ kind: 'merge', issueId: r.id, pr: r.implPr })
       // Multi-PR: each sub-PR the scan reported green, named so the human knows which slice.
-      for (const s of r.subPrs || []) {
-        const live = (r.subPrStates || []).find((x) => x.id === s.id)
+      for (const [i, s] of (r.subPrs || []).entries()) {
+        // Positional, and an id mismatch is not trusted — same rule as the merge fold above.
+        const live = (r.subPrStates || [])[i]
+        if (live && live.id && live.id !== s.id) continue
         if (live && live.readyToMerge && !live.merged && s.pr) {
           gates.push({ kind: 'merge', issueId: r.id, pr: s.pr, subPr: s.id })
         }

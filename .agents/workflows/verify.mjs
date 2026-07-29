@@ -1620,6 +1620,222 @@ check('per-handle merge readiness never survives a wake as stale state', async (
   assert.deepEqual(second.result.gates, [], 'a gate must rest on a live observation')
 })
 
+check('a multi-PR row is never DONE until its assembled goal passed', async () => {
+  // Both a scout and a worker will reasonably call the last merge "done". It isn't: the merges do
+  // not satisfy the end-to-end goal, so accepting either finishes the issue without ever proving it.
+  for (const source of ['scout', 'worker']) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({
+        issues: [
+          row('FIX-2', {
+            phase: 'PR_FEEDBACK',
+            subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+            assembledGoal: { passed: false },
+          }),
+        ],
+      }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: source === 'scout' ? 'DONE' : 'PR_FEEDBACK' } },
+        worker: { 'FIX-2': { phase: source === 'worker' ? 'DONE' : 'PR_FEEDBACK' } },
+      }),
+    })
+    assert.equal(result.issues[0].phase, 'PR_FEEDBACK', `${source}-reported DONE must not finish the issue`)
+  }
+
+  // And it IS done once the goal actually passed.
+  const passed = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: true, evidence: 'ran it' },
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  assert.equal(passed.result.issues[0].phase, 'DONE')
+})
+
+check('a merge advances the DAG without waiting for PR activity', async () => {
+  // A sub-PR merging is what unblocks the next slice, and it is not a comment or a review. Left to
+  // `newPrEvents`, the DAG stalls at exactly the moment it became able to move.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'pending', pr: null, branch: null },
+          ],
+          assembledGoal: { passed: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      // No new comments or reviews — only the merge.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'the merge is the event')
+})
+
+check('a quiet multi-PR row with nothing ready dispatches nothing', async () => {
+  // The other side: every slice open and waiting on a human merge is a genuine external wait, not
+  // work. Dispatching there would spend a worktree worker per wake to be told "nothing is ready".
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false },
+          multiPrPending: false,
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } } }),
+  })
+  assert.deepEqual(workerLabels(calls), [])
+})
+
+check('a worker reporting deferred DAG work is dispatched again next wake', async () => {
+  // Cap-deferred slices need no external event, so nothing would ever wake them.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        },
+      },
+    }),
+  })
+  assert.equal(first.result.issues[0].multiPrPending, true)
+
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...first.result.issues[0] }] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.deepEqual(workerLabels(second.calls), ['implement:FIX-2'])
+  assert.equal(second.result.issues[0].multiPrPending, false, 'and the flag is one wake old, not durable')
+})
+
+check('a non-DAG worker on a multi-PR row cannot clear its pending work', async () => {
+  // A verdict fold reports nothing about the DAG. Coercing that silence to false strands
+  // cap-deferred slices for good: no external event will ever wake them.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'e' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-verdict:FIX-2'], 'the verdict outranks the DAG this wake')
+  assert.equal(result.issues[0].multiPrPending, true, 'and the DAG work it said nothing about survives')
+})
+
+check('the worker is handed the assemble state, not just the sub-PR table', async () => {
+  // It runs in an isolated worktree with no access to `.orchestration/`, so state it isn't given
+  // does not exist for it: it would re-run the goal and file a second repair for a tracked gap.
+  const assembledGoal = { passed: false, failure: 'stream closed early', fixIssue: 'FIX-50', fixPr: 77 }
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal,
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.match(prompt, /assembledGoal: /)
+  assert.match(prompt, /FIX-50/)
+  assert.match(prompt, /"fixPr":77/)
+})
+
+check('a sub-PR state echoing the wrong id is discarded, not applied to another slice', async () => {
+  // The fourth instance of this class. A misattributed `merged: true` marks the wrong node merged,
+  // and a dependent then builds off origin/main before its real prerequisite has landed.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+          assembledGoal: { passed: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          // ONE entry, at position 0 (which is `a`), labelled `b` and called merged. Keyed by the
+          // reported id this marks `b` merged; bound by position it is discarded. An earlier version
+          // of this fixture had two entries both named `b`, which passed under either rule — inert.
+          subPrStates: [{ id: 'b', merged: true, readyToMerge: false }],
+        },
+      },
+    }),
+  })
+  const subPrs = result.issues[0].subPrs
+  assert.equal(subPrs.find((s) => s.id === 'a').status, 'open', 'the mismatched entry is discarded')
+  assert.equal(subPrs.find((s) => s.id === 'b').status, 'open', 'and never applied to the id it named')
+  assert.match(logs.join('\n'), /ids don't match the handles they were asked about/)
+})
+
+check('an in-session approval is refused once a newer head has been observed', async () => {
+  // The two-wake case: a previous wake persisted a push past the approved SHA. If this wake's scout
+  // dies, "no fresh head" must not read as "nothing contradicts it" — the coordinator already knows.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 7,
+          approvedInSession: 'head1',
+          headSha: 'head2', // observed and persisted by an earlier wake
+        }),
+      ],
+    }),
+    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a known-newer head invalidates the approval')
+  assert.equal(result.issues[0].specApproved, false)
+})
+
 check('a terminal issue stops asking the human to approve its spec', async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
@@ -1647,6 +1863,10 @@ const multiResponder =
     build = {},
     goal = { passed: true, evidence: 'fsdev run: PASS' },
     gap = { issueFiled: 'FIX-99', ready: true },
+    // The RE-CHECK has its own readiness-only schema — it files nothing, so `issueFiled` is not part
+    // of its contract. Sharing the filing fixture is what hid the prompt/schema disagreement: the
+    // stub answered in a shape the real hook would have rejected as null.
+    recheck = null,
     fix = { pr: 42 },
     nulls = [],
   } = {}) =>
@@ -1654,7 +1874,8 @@ const multiResponder =
     const label = opts.label || ''
     if (nulls.some((n) => label.startsWith(n))) return null
     if (label.startsWith('assembled-goal:')) return goal
-    if (label.startsWith('assembled-gap:') || label.startsWith('gap-recheck:')) return gap
+    if (label.startsWith('gap-recheck:')) return recheck || { ready: gap.ready }
+    if (label.startsWith('assembled-gap:')) return gap
     if (label.startsWith('assembled-fix:')) return fix
     const id = label.split(':')[1]
     return { id, status: 'open', pr: 1, branch: `fix/FIX-9-${id}`, ...(build[id] || {}) }

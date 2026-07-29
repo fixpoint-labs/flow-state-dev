@@ -242,6 +242,24 @@ const GAP_SCHEMA = {
   },
 }
 
+/**
+ * The gap RE-CHECK's own schema — readiness only, no filing.
+ *
+ * It used to reuse GAP_SCHEMA, whose `required` includes `issueFiled`. The recheck prompt asks for
+ * readiness and explicitly says to change nothing, so the compliant `{ ready: true }` answer was
+ * rejected by the validating hook and came back as `null` — read as "the scout died", leaving the
+ * repair in GAP_BLOCKED and re-checking forever. A prompt and a schema that disagree is a stall.
+ */
+const GAP_RECHECK_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['ready'],
+  properties: {
+    ready: { type: 'boolean', description: 'Is the gap issue pickable now — no open blocking relation?' },
+    summary: { type: 'string' },
+  },
+}
+
 const FIX_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -298,7 +316,7 @@ if (state === 'GAP_BLOCKED') {
   // clears that field, so the repair could never start once its blocker was resolved externally.
   const recheck = await agent(
     `Linear issue ${goal.fixIssue} is the repair gap for ${issueId}, previously reported as blocked. Re-read it: is it still blocked by an open relation, or is it ready to pick up now? Report readiness only — change nothing.`,
-    { label: `gap-recheck:${issueId}`, phase: 'Assemble', schema: GAP_SCHEMA, agentType: 'scout' },
+    { label: `gap-recheck:${issueId}`, phase: 'Assemble', schema: GAP_RECHECK_SCHEMA, agentType: 'scout' },
   )
 
   if (!recheck) {
