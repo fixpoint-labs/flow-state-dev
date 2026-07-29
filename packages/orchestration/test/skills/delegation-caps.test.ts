@@ -16,6 +16,12 @@
  * The tool contract is asserted too: a breach is a SOFT error the model can act
  * on (drain, then continue), with distinct codes per cap — never a throw into
  * the turn.
+ *
+ * The shared fixture's `self` and `parent` point at the SAME state on purpose,
+ * and that matters here specifically: it is the shape in which an uncapped
+ * `ctx.parent` resolver would still reach the right board — through an uncapped
+ * view of it. So a cap biting in these tests is real evidence of the
+ * convergence, not of the two paths landing on different boards.
  */
 import { describe, expect, it, vi } from "vitest";
 import { generator, handler } from "@flow-state-dev/core";
@@ -30,7 +36,7 @@ import {
   DELEGATION_BOARD_FIELD,
 } from "../../src/skills/task-tools-capability";
 import { taskWorkerInputSchema } from "../../src/task-board";
-import { createMockSkillsCollection } from "./mocks";
+import { buildDelegationCtx } from "./delegation-ctx";
 
 const workerBlock = handler({
   name: "caps-analyst",
@@ -52,58 +58,6 @@ const teamSkill: InitialSkill = {
     "Plan tasks with addTask, then call runBoard.",
   ].join("\n"),
 };
-
-/**
- * A mock generator execution context. `self` is the generator's own-state ref
- * (where the delegation board lives) and `parent` mirrors it, which is what a
- * tool child sees. Both point at the SAME state on purpose: that is the shape
- * in which an uncapped `ctx.parent` resolver would still reach the right board
- * — through an uncapped view of it. So a cap biting here is real evidence of
- * the convergence, not of the two paths landing on different boards.
- */
-function buildExecCtx() {
-  const collection = createMockSkillsCollection();
-  const selfState: Record<string, unknown> = { [DELEGATION_BOARD_FIELD]: {} };
-  const stateRef = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return selfState;
-    },
-    atomicState: async (
-      fn: (
-        state: Record<string, unknown>,
-      ) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      Object.assign(selfState, await fn(selfState));
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(selfState, updates);
-    },
-  };
-  const ctx = {
-    self: stateRef,
-    parent: stateRef,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: { identity: { id: "s1", userId: "u1" }, state: {}, patchState: async () => {} },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: {
-      skills: collection,
-      get: (k: string) => (k === "skills" ? collection : undefined),
-      list: () => [collection],
-    },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  };
-  return { ctx: ctx as never, selfState };
-}
 
 /** Capture each worker's materialize options so the fan-out surface is reachable. */
 function deterministicAgents(captured: Array<Record<string, unknown>>) {
@@ -172,7 +126,7 @@ async function buildSurface(
     inputSchema: z.object({}),
     uses: [skills.with({ active: ["caps-team"] } as never)],
   });
-  const { ctx, selfState } = buildExecCtx();
+  const { ctx, selfState } = buildDelegationCtx();
   const tools = await resolveTools(gen, ctx);
   return { tools, ctx, selfState, captured };
 }
@@ -274,10 +228,11 @@ describe("delegation board addTask — failure ORDER across both gates", () => {
     // observable, without pretending the combination is a production path.
     const roster = { has: () => false, describe: () => "analyst (…)" };
     const [addTaskOnly] = buildTaskToolsList(async () => undefined, roster);
+    const { ctx } = buildDelegationCtx();
     const result = (await runForTest(
       addTaskOnly as never,
       { goal: "x", assignee: "ghost-agent" },
-      buildExecCtx().ctx,
+      ctx,
     )) as AddTaskResult;
     // A phantom assignee is present, but the board gate answers first.
     expect(result.error).toBe("no_delegation_board");
@@ -310,7 +265,7 @@ describe("the documented hand-wired bounded board actually runs", () => {
   it("resolves the host generator's board and enforces the bound", async () => {
     const cap = createTaskToolsCapability(boundedResolver as never);
     const addTask = capabilityAddTask(cap);
-    const { ctx, selfState } = buildExecCtx();
+    const { ctx, selfState } = buildDelegationCtx();
 
     const results: AddTaskResult[] = [];
     for (let i = 0; i < 3; i++) {

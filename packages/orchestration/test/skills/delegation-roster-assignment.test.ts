@@ -20,58 +20,9 @@ import { generator } from "@flow-state-dev/core";
 import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
-import { createMockSkillsCollection } from "./mocks";
+import { buildDelegationCtx } from "./delegation-ctx";
 import { createSkillsLibrary } from "../../src/skills/library";
 import { DELEGATION_BOARD_FIELD } from "../../src/skills/task-tools-capability";
-
-// ---------------------------------------------------------------------------
-// Harness — a mock generator execution ctx (board on own state).
-// ---------------------------------------------------------------------------
-
-function buildExecCtx(collection = createMockSkillsCollection()) {
-  const selfState: Record<string, unknown> = { [DELEGATION_BOARD_FIELD]: {} };
-  const stateRef = {
-    name: "executive",
-    instanceId: "executive#0",
-    get state() {
-      return selfState;
-    },
-    atomicState: async (
-      fn: (s: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>,
-    ): Promise<void> => {
-      Object.assign(selfState, await fn(selfState));
-    },
-    patchState: async (updates: Record<string, unknown>) => {
-      Object.assign(selfState, updates);
-    },
-  };
-  const ctx = {
-    self: stateRef,
-    parent: stateRef,
-    request: { identity: { id: "r1", userId: "u1" }, state: {} },
-    session: {
-      identity: { id: "s1", userId: "u1" },
-      state: {} as Record<string, unknown>,
-      patchState: async () => {},
-    },
-    org: { identity: { type: "org" as const, id: "p1" } },
-    user: {},
-    resources: {
-      skills: collection,
-      get: (k: string) => (k === "skills" ? collection : undefined),
-      list: () => [collection],
-    },
-    signal: new AbortController().signal,
-    response: { emit: async () => {}, getItems: () => [] },
-    cap: {},
-    getTarget: () => undefined,
-    getBlockOutput: () => undefined,
-    getBlockResult: () => ({ status: "not_started" as const }),
-    targets: {},
-    emit: { message: () => {}, component: () => {}, status: () => {} },
-  };
-  return { ctx: ctx as never, selfState };
-}
 
 async function resolveTools(
   gen: ReturnType<typeof generator>,
@@ -126,7 +77,7 @@ function rosterSurface() {
     inputSchema: z.object({}),
     uses: [skills.with({ active: ["research"] } as never)],
   });
-  return { gen, ...buildExecCtx() };
+  return { gen, ...buildDelegationCtx() };
 }
 
 function board(selfState: Record<string, unknown>): Record<string, { assignee?: string }> {
@@ -238,7 +189,7 @@ describe("delegation surface — a rosterless board validates nothing", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"], delegation: true } as never)],
     });
-    const { ctx, selfState } = buildExecCtx();
+    const { ctx, selfState } = buildDelegationCtx();
     const addTask = pickTool(await resolveTools(gen, ctx), "addTask");
 
     const result = await runForTest(addTask, { goal: "x", assignee: "whoever" }, ctx);
@@ -256,7 +207,7 @@ describe("delegation surface — a rosterless board validates nothing", () => {
       inputSchema: z.object({}),
       uses: [skills.with({ active: ["coordinator"], delegation: true } as never)],
     });
-    const { ctx } = buildExecCtx();
+    const { ctx } = buildDelegationCtx();
     const guidance = await buildGuidanceText(gen, ctx);
     expect(guidance).toContain("default worker");
     expect(guidance).not.toContain("Your agents:");
