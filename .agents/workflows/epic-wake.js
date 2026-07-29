@@ -75,6 +75,12 @@ function pendingAction(row) {
   // run a dependent concurrently with its prerequisite).
   if (row.blockedBy && row.blockedBy.length) return null
 
+  // A worker that escalated a decision it could not make is WAITING ON A HUMAN. Re-dispatching
+  // it on the next unrelated PR event or heartbeat would either retry the same dead end or push
+  // the worker to invent the answer at the fork it was required to escalate. The coordinator
+  // clears `blocker` when it records the human's resolution; until then this row is parked.
+  if (row.blocker) return null
+
   // Verdicts are a LIST: two distinct claims on one issue can settle in the same wake, and a
   // single-slot field would drop one while consuming both settlement requests.
   if (row.verdicts && row.verdicts.length) {
@@ -129,6 +135,57 @@ function dedupeClaims(requests) {
     }
   }
   return [...byClaim.values()]
+}
+
+/**
+ * Fold one wake's outcome into one row — the single place a row's state advances.
+ *
+ * This is a named function rather than an inline map because it is where the field-by-field
+ * update rules live, and scattering them produced repeated regressions: a field cleared when its
+ * worker died, a flag reset by a worker that never reported it, a cursor advanced for work that
+ * was deferred. Each rule below states what it protects against; change them here, together.
+ *
+ * @param row   the refreshed row (carried state + this wake's scout reads)
+ * @param ctx   `worker` this wake's returned worker result (undefined if none ran or it died),
+ *              `landed` verdicts that settled this wake, `folded` whether a folder consumed them
+ */
+function nextRow(row, { worker, landed, folded }) {
+  // Carried + newly settled, minus whatever a RETURNING folder consumed. A dead folder consumes
+  // nothing, so its verdicts stay for the next wake.
+  const verdicts = folded ? landed : [...(row.verdicts || []), ...landed]
+
+  // The cursor moves only when this wake consumed that activity — a worker ran AND returned, or
+  // there was nothing new. A deferred row keeps its old cursor, or the feedback just logged as
+  // "deferred to the next wake" reads as already-handled and vanishes. (Invariant 2.)
+  const hadNewActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
+  const cursor =
+    worker || !hadNewActivity
+      ? {
+          lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
+          lastSeenSha: row.headSha || row.lastSeenSha || null,
+        }
+      : { lastSeenActivityAt: row.lastSeenActivityAt || null, lastSeenSha: row.lastSeenSha || null }
+
+  if (!worker) return { ...row, ...cursor, verdicts }
+
+  return {
+    ...row,
+    ...cursor,
+    phase: worker.phase || row.phase,
+    specPr: worker.specPr === undefined ? row.specPr : worker.specPr,
+    implPr: worker.implPr === undefined ? row.implPr : worker.implPr,
+    // Add only the rounds the worker reports SPENDING — never one per event dispatched.
+    specReviewRounds: (row.specReviewRounds || 0) + (worker.specReviewRoundsSpent || 0),
+    // Only a worker that ACTUALLY REPORTED this flag may change it. `specLevelFound` is optional
+    // in the schema, so a non-review worker (an apply-verdict fold, an implement run) omits it —
+    // and coercing that absence to false would silently revoke the third round a real review
+    // round had authorized.
+    specLevelFound: worker.specLevelFound === undefined ? !!row.specLevelFound : !!worker.specLevelFound,
+    readyToMerge: !!worker.readyToMerge,
+    blocker: worker.blocker || null,
+    status: worker.status,
+    verdicts,
+  }
 }
 
 /**
@@ -288,7 +345,21 @@ const EPIC_FOLD_SCHEMA = {
     roundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent — 0 for a batch that was only factual corrections' },
     aboveBar: { type: 'boolean', description: 'Did anything folded change the objective or a cross-cutting decision? Authorizes the third round.' },
     folded: { type: 'string', description: 'One compact line on what changed in the epic-spec' },
-    fanOut: { type: 'array', items: { type: 'string' }, description: 'Issue IDs an above-the-bar item touches — the coordinator routes these' },
+    // Note TEXT, not just target IDs: the coordinator deliberately never reads epic-PR content,
+    // so an ID with no summary tells it where to route a note it cannot reproduce.
+    fanOut: {
+      type: 'array',
+      description: 'Issue-local feedback routed OUT of the epic-spec, with the note to record',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['summary', 'issues'],
+        properties: {
+          summary: { type: 'string', description: 'The note to record, verbatim enough to act on' },
+          issues: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
   },
 }
@@ -379,7 +450,20 @@ const epicApproved = gate ? !!gate.approved : !!epic.approved
 const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
 const freshById = new Map(prStates.filter(Boolean).map((s) => [s.issueId, s]))
 
-const refreshed = rows.map((row) => {
+// Sub-issues Linear knows about that the carried table doesn't: `issue-manager` parented work
+// discovered mid-epic under the epic, so the Linear scan is where it first appears. Building the
+// table only from `rows` would discard it — the issue would be invisible to the coordinator and
+// the epic could wrap without it (→ epic-lifecycle § Intake). They enter at NEEDS_SPEC and hit
+// their own spec-approval gate like any other.
+const discovered = (linear && linear.issues ? linear.issues : [])
+  .filter((li) => li.id && li.id !== epic.issueId && !rows.some((r) => r.id === li.id))
+  .map((li) => ({ id: li.id, phase: 'NEEDS_SPEC', specReviewRounds: 0, specLevelFound: false, discovered: true }))
+
+if (discovered.length) {
+  log(`Discovered ${discovered.length} new sub-issue(s) under the epic: ${discovered.map((d) => d.id).join(', ')} — entering at NEEDS_SPEC.`)
+}
+
+const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
   const li = linearById.get(row.id) || {}
   return {
@@ -411,14 +495,21 @@ const epicAtBudget = atReviewBudget(epic.reviewRounds, epic.aboveBarFound)
 // A POC verdict on a cross-cutting claim is folded regardless of the budget — new evidence is
 // not another opinion (orchestration.md § "What it costs").
 const epicVerdictsToFold = epic.verdicts && epic.verdicts.length ? epic.verdicts : null
+// The verdict's budget exemption covers the VERDICT ONLY. When a carried verdict and ordinary
+// converged review feedback coexist, folding both would let the evidence exemption smuggle in a
+// full extra review round — so the two paths run side by side: the fold takes the verdict, and
+// the converged feedback still goes out through the notes route.
 const foldEpicWanted = !!epicVerdictsToFold || (newEpicReviewEvents && !epicAtBudget)
 // At budget the epic-spec stops being FOLDED — but the feedback still has to be ROUTED, or
 // convergence silently drops it. The gate scout returns only a boolean and a timestamp, so
 // nothing here knows what the comments said or which issues they touch: that needs its own
 // cheap read. Without it this branch logged "routed as implementer notes" while routing nothing.
-const routeConvergedEpicFeedback = newEpicReviewEvents && epicAtBudget && !epicVerdictsToFold
+const routeConvergedEpicFeedback = newEpicReviewEvents && epicAtBudget
 if (routeConvergedEpicFeedback) {
-  log(`Epic-spec converged (${epic.reviewRounds || 0} rounds spent) — not folding; reading the feedback to route it as implementer notes.`)
+  log(
+    `Epic-spec converged (${epic.reviewRounds || 0} rounds spent) — not folding review feedback; reading it to route as implementer notes` +
+      `${epicVerdictsToFold ? ', while the POC verdict folds separately (evidence is exempt from the budget, ordinary feedback is not)' : ''}.`,
+  )
 }
 
 const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
@@ -480,8 +571,10 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           ? `A POC settled ${epicVerdictsToFold.length} cross-cutting claim(s) for this epic. Fold them FIRST and record each in the epic-spec's cross-cutting decisions so a sibling issue can't reopen it:\n${renderVerdicts(epicVerdictsToFold)}\n` +
             `Post the evidence-backed reply on the thread. This fold is outside the review budget — new evidence is not another opinion.\n\n`
           : '') +
-          `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
-          `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return those issue IDs as fanOut.\n` +
+        (epicAtBudget
+          ? `The epic-spec has CONVERGED and its review budget is spent. Fold the verdict above and NOTHING ELSE — do not fold outstanding review feedback, and report roundsSpent: 0. The evidence exemption covers the verdict only.\n`
+          : `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
+            `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return each as a fanOut entry with the note text and the issues it concerns.\n`) +
           `Refresh the epic-spec's running index from the PR handles already recorded. Never re-review to satisfy a bot.\n` +
           `Report the rounds you ACTUALLY spent — a batch of only factual corrections or broken references costs zero — and whether anything folded was above the bar.\n` +
           `Do not prompt the user.`,
@@ -556,40 +649,7 @@ const foldedVerdict = new Set(
   plan.advance.filter((i) => i.action === 'apply-verdict' && workerById.has(i.row.id)).map((i) => i.row.id),
 )
 
-const issues = refreshed.map((row) => {
-  // Carried + newly settled, minus whatever a returning folder just consumed.
-  const landed = verdictsByIssue.get(row.id) || []
-  const verdicts = foldedVerdict.has(row.id) ? landed : [...(row.verdicts || []), ...landed]
-
-  // Advance the activity cursor ONLY when this wake consumed that activity — a worker ran and
-  // returned, or there was nothing new to begin with. A row the cap deferred keeps its old
-  // cursor, or the feedback just logged as "deferred to the next wake" would read as
-  // already-handled and vanish. (Invariant 2 in the header.)
-  const hadNewActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
-  const cursor =
-    workerById.has(row.id) || !hadNewActivity
-      ? {
-          lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
-          lastSeenSha: row.headSha || row.lastSeenSha || null,
-        }
-      : { lastSeenActivityAt: row.lastSeenActivityAt || null, lastSeenSha: row.lastSeenSha || null }
-  const w = workerById.get(row.id)
-  if (!w) return { ...row, ...cursor, verdicts }
-  return {
-    ...row,
-    ...cursor,
-    phase: w.phase,
-    specPr: w.specPr === undefined ? row.specPr : w.specPr,
-    implPr: w.implPr === undefined ? row.implPr : w.implPr,
-    // Add only the rounds the worker reports SPENDING — never one per event dispatched.
-    specReviewRounds: (row.specReviewRounds || 0) + (w.specReviewRoundsSpent || 0),
-    specLevelFound: !!w.specLevelFound,
-    readyToMerge: !!w.readyToMerge,
-    blocker: w.blocker || null,
-    status: w.status,
-    verdicts,
-  }
-})
+const issues = refreshed.map((row) => nextRow(row, { worker: workerById.get(row.id), landed: verdictsByIssue.get(row.id) || [], folded: foldedVerdict.has(row.id) }))
 
 // Disclosure must cover EVERY unresolved claim touching an issue, not just the ones this wake
 // happened to dispatch: a claim the cap queued, one a worker raised this wake, and one whose POC

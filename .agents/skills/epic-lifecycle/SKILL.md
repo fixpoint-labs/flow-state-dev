@@ -161,7 +161,7 @@ even if more are queued. State the chosen N and the cap to the user.
      evidence. `epic.verdict` exists because a cross-cutting claim has no issue row to land on.
 
    It returns
-   `{ epicApproved, epic, epicFold, issues, gates, blockers, blocked, held, verdicts,
+   `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, verdicts,
    settleRequests, dispatched, deferred, converged }` — persist `epic` and `issues` verbatim.
 
    The workflow runs in the background: **end the turn** and continue at step 3 when its
@@ -186,10 +186,22 @@ even if more are queued. State the chosen N and the cap to the user.
    state and the label is already present. **The gate is the fresh approval the wake
    re-derived, never the label** — the label can go stale behind a later push.
 
-   Route `epicFold.fanOut` if it came back non-empty: those are the issues an above-the-bar
-   epic-PR item touches, and they take it as implementer notes (not into their specs).
-   `blockers` are surfaced at step 4 only if they genuinely need a human call — see
-   [Gates & autonomy](#gates--autonomy).
+   **Route the epic-PR feedback the wake handed you — both channels, or it is lost.** Neither
+   is optional, because the coordinator never reads epic-PR content itself and nothing else will
+   pick these up:
+
+   - **`epicFold.fanOut`** — issue-local items the fold triaged *out* of the epic-spec. Each
+     entry carries `{ summary, issues }`: record the summary as an implementer note on each named
+     issue (never into its spec).
+   - **`epicNotes`** — the same shape, from a *converged* epic-spec that stopped folding. Route
+     each `{ summary, fanOut }` identically. The wake advanced the cursor on the assumption you
+     did, so skipping this drops the feedback permanently.
+
+   **Clear a resolved `blocker` on the row before the next wake.** A row carrying `blocker` is
+   parked by design — the wake won't dispatch it again, because a worker that escalated a
+   decision is waiting on *you*, not on an event. Once you've answered (in-session or on the PR),
+   remove the field so the issue resumes; leave it and the issue never moves again. `blockers`
+   are surfaced at step 4 — see [Gates & autonomy](#gates--autonomy).
 4. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
    releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:

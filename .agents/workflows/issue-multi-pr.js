@@ -115,32 +115,33 @@ function allMerged(nodes) {
 }
 
 /**
- * A previous wake's assembled-goal failure opened a repair PR that hasn't merged yet.
+ * The assemble phase as an explicit state machine, because the ad-hoc predicates it replaces
+ * produced two opposite bugs in as many rounds: one that re-ran the goal and filed a duplicate
+ * repair every wake, and then a guard that blocked the rerun but dispatched no repair either,
+ * stalling the issue permanently after a single dead agent.
  *
- * This is its own state because without it the failure path loops: the sub-PRs stay merged and
- * `passed` stays false, so the next wake re-runs the goal against unchanged code, fails again,
- * and files a *duplicate* Linear issue and fix PR — every wake, until someone notices.
+ * Every state is derived from durable handles alone, and each names exactly one next action.
+ * The order is the recovery path: a repair that dies mid-way resumes at the stage it reached.
+ *
+ *   null          — sub-PRs still building; assemble isn't reachable yet
+ *   NEEDS_GOAL    — all merged, no confirmed failure → run (or confirm) the end-to-end goal
+ *   NEEDS_GAP     — goal failed, no gap issue filed  → file it via `issue-manager`
+ *   NEEDS_FIX     — gap filed, no repair PR open     → open the repair PR
+ *   AWAITING_FIX  — repair PR open, not merged       → wait; the human merges it
+ *   DONE          — the goal passed on the assembled result
+ *
+ * `fixMerged` returns to NEEDS_GOAL rather than DONE: a landed repair still has to be proven.
  */
-function awaitingAssembledFix(nodes, goal) {
-  // Gate on the repair EXISTING, not on it having a PR: `FIX_SCHEMA` allows `pr: null` (the
-  // worker filed the issue but couldn't open a PR), and gating on the PR alone would let that
-  // case straight back into the duplicate-filing loop this guard exists to stop.
-  // `repairPending` covers a dead repair agent, where not even the issue handle exists — the
-  // failure is still confirmed, so the next wake owes a repair, never another goal run.
-  const repairInFlight = !!(goal.fixPr || goal.fixIssue || goal.repairPending)
-  return allMerged(nodes) && !goal.passed && repairInFlight && !goal.fixMerged
-}
-
-/**
- * Does the assembled end-to-end goal still need running? Two ways it's already satisfied: a
- * previous wake ran it and it passed, or the spec designated an integrating sub-PR that owns
- * it (confirm the recorded verdict, don't double-run).
- */
-function assembledGoalNeeded(nodes, goal) {
-  if (!allMerged(nodes)) return false
-  if (goal && goal.passed) return false
-  if (awaitingAssembledFix(nodes, goal)) return false
-  return true
+function assembleState(nodes, goal) {
+  if (!allMerged(nodes)) return null
+  if (goal.passed) return 'DONE'
+  // A confirmed failure is what distinguishes "not run yet" from "run and failed". A dead goal
+  // agent records nothing, so it lands back here and retries rather than inventing a defect.
+  if (!goal.failure) return 'NEEDS_GOAL'
+  if (goal.fixMerged) return 'NEEDS_GOAL'
+  if (!goal.fixIssue) return 'NEEDS_GAP'
+  if (!goal.fixPr) return 'NEEDS_FIX'
+  return 'AWAITING_FIX'
 }
 
 // ---------------------------------------------------------------------------
@@ -204,13 +205,23 @@ const nodes = args.subPrs || []
 const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
 const goal = args.assembledGoal || {}
 
-// ---- All merged: the assembled goal is the only thing between here and DONE. -----------
-if (assembledGoalNeeded(nodes, goal)) {
+// ---- Assemble: one state, one action per wake. -----------------------------------------
+const state = assembleState(nodes, goal)
+
+if (state === 'DONE') {
+  return { issueId, subPrs: nodes, assembledGoal: goal, done: true }
+}
+
+if (state === 'AWAITING_FIX') {
+  log(`Assembled goal failed earlier; fix PR #${goal.fixPr} has not merged — not re-running the goal, not filing a duplicate.`)
+  return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr, done: false }
+}
+
+if (state === 'NEEDS_GOAL') {
   phase('Assemble')
 
-  if (goal.ownedBy) {
-    log(`Assembled goal is owned by sub-PR ${goal.ownedBy} — confirming its recorded verdict, not re-running it.`)
-  }
+  if (goal.fixMerged) log(`Repair ${goal.fixPr ? `#${goal.fixPr}` : goal.fixIssue} merged — re-running the assembled goal to prove it.`)
+  if (goal.ownedBy) log(`Assembled goal is owned by sub-PR ${goal.ownedBy} — confirming its recorded verdict, not re-running it.`)
 
   const verdict = await agent(
     goal.ownedBy
@@ -223,66 +234,59 @@ if (assembledGoalNeeded(nodes, goal)) {
     return { issueId, subPrs: nodes, assembledGoal: { ...goal, passed: true, evidence: verdict.evidence }, done: true }
   }
 
-  // No verdict at all is an incomplete attempt, NOT a failure. Filing a gap and opening a
-  // repair PR off a dead agent would invent a defect that was never observed — and then the
-  // repair gate would suppress the retry that should have happened.
+  // No verdict is an incomplete attempt, NOT a failure: recording one would invent a defect
+  // nobody observed and send the machine into NEEDS_GAP off a dead agent.
   if (!verdict) {
-    log(`Assembled-goal agent returned nothing for ${issueId} — treating as an incomplete attempt; will retry next wake. No gap filed.`)
+    log(`Assembled-goal agent returned nothing for ${issueId} — incomplete attempt, retrying next wake. No gap filed.`)
     return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-goal', done: false }
   }
 
-  // The sub-PRs are already merged and their branches may be gone, so the repair is a NEW
-  // fix PR owned by the breaking slice — not a reopen. The issue stays out of DONE.
-  log(`Assembled goal FAILED for ${issueId} — filing the gap and opening a fix PR. Issue is not DONE.`)
-
-  // Record the confirmed failure BEFORE dispatching the repair. If the repair agent dies, the
-  // next wake must retry the *repair*, not the expensive goal — re-running the goal would also
-  // risk duplicating whatever Linear/GitHub side effects the dead agent managed first.
-  const failedGoal = { ...goal, passed: false, failure: verdict.failure, owningSubPr: verdict.owningSubPr || null }
-
-  // File through the `issue-manager` AGENT, not by asking a worker to imitate it: the duplicate
-  // check, project placement and relation wiring are that agent's job (AGENTS.md → "File
-  // discovered work"). A near-duplicate gap issue wired to nothing is worse than none.
-  const filed = await agent(
-    `The assembled end-to-end goal for ${issueId} failed after all its sub-PRs merged.\nFailure: ${verdict.failure || 'unknown'}\nLikely owning slice: ${verdict.owningSubPr || 'unknown'}\n` +
-      `File this gap as a Linear issue related to ${issueId}, in the same project. Duplicate-check first. Return the issue ID and whether it is ready to pick up.`,
-    { label: `assembled-gap:${issueId}`, phase: 'Assemble', schema: GAP_SCHEMA, agentType: 'issue-manager' },
-  )
-
-  if (!filed) {
-    log(`issue-manager returned nothing — repair still needed for ${issueId}; the next wake retries the repair, not the goal.`)
-    return { issueId, subPrs: nodes, assembledGoal: { ...failedGoal, repairPending: true }, incomplete: 'assembled-gap', done: false }
-  }
-
-  const fix = await agent(
-    `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${filed.issueFiled}.\nFailure: ${verdict.failure || 'unknown'}\nLikely owning slice: ${verdict.owningSubPr || 'unknown'}\n` +
-      `Open a NEW fix PR against the default branch that makes the assembled goal pass. The sub-PRs are already merged and their branches may be gone — do not attempt to reopen them.`,
-    { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
-  )
-
+  // Record the confirmed failure and stop. The repair is the NEXT state's job, so a repair agent
+  // that dies resumes from the stage it reached instead of re-running this goal.
+  log(`Assembled goal FAILED for ${issueId} — recording the failure; the repair starts next. Issue is not DONE.`)
   return {
     issueId,
     subPrs: nodes,
-    assembledGoal: {
-      ...failedGoal,
-      // Either handle proves a repair is in flight and gates the goal rerun; the PR may
-      // legitimately be null. `repairPending` covers the case where even the issue is missing.
-      fixIssue: filed.issueFiled,
-      fixPr: (fix && fix.pr) || null,
-      repairPending: !fix,
-      fixMerged: false,
-    },
-    fix: fix || null,
-    incomplete: fix ? undefined : 'assembled-fix',
+    assembledGoal: { ...goal, passed: false, failure: verdict.failure || 'unspecified', owningSubPr: verdict.owningSubPr || null, fixMerged: false },
     done: false,
   }
 }
 
-// ---- A repair is in flight: don't re-run the goal, don't file a duplicate. --------------
-if (awaitingAssembledFix(nodes, goal)) {
-  const repair = goal.fixPr ? `fix PR #${goal.fixPr}` : `filed issue ${goal.fixIssue} (no PR opened yet)`
-  log(`Assembled goal failed earlier; ${repair} has not landed — not re-running the goal, not filing a duplicate.`)
-  return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr || goal.fixIssue, done: false }
+if (state === 'NEEDS_GAP') {
+  phase('Assemble')
+  // File through the `issue-manager` AGENT, not by asking a worker to imitate it: the duplicate
+  // check, project placement and relation wiring are that agent's job (AGENTS.md → "File
+  // discovered work"). A near-duplicate gap issue wired to nothing is worse than none.
+  const filed = await agent(
+    `The assembled end-to-end goal for ${issueId} failed after all its sub-PRs merged.\nFailure: ${goal.failure}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
+      `File this gap as a Linear issue related to ${issueId}, in the same project. Duplicate-check first — a previous attempt may already have filed it. Return the issue ID and whether it is ready to pick up.`,
+    { label: `assembled-gap:${issueId}`, phase: 'Assemble', schema: GAP_SCHEMA, agentType: 'issue-manager' },
+  )
+
+  if (!filed) {
+    log(`issue-manager returned nothing for ${issueId} — still owed a gap issue; retrying that stage next wake, not the goal.`)
+    return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-gap', done: false }
+  }
+
+  log(`Gap filed as ${filed.issueFiled} for ${issueId} — the repair PR is next.`)
+  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixIssue: filed.issueFiled }, done: false }
+}
+
+if (state === 'NEEDS_FIX') {
+  phase('Assemble')
+  const fix = await agent(
+    `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${goal.fixIssue}.\nFailure: ${goal.failure}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
+      `Open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.`,
+    { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
+  )
+
+  if (!fix || !fix.pr) {
+    log(`No repair PR opened for ${issueId} yet (${fix ? 'worker reported none' : 'worker returned nothing'}) — retrying that stage next wake.`)
+    return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-fix', done: false }
+  }
+
+  log(`Repair PR #${fix.pr} opened for ${issueId}. Merge is yours; the goal re-runs once it lands.`)
+  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixPr: fix.pr }, fix, done: false }
 }
 
 // ---- Otherwise: advance the DAG's ready set. -------------------------------------------
