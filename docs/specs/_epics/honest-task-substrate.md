@@ -37,10 +37,16 @@ number.
 | **Sub-issues** — parented under FIX-980 | 6 | FIX-978, FIX-976, FIX-964, FIX-963, FIX-951, FIX-948 |
 | **Completed anchor** — shipped, no lifecycle | 1 | FIX-951 (*Done*, merged) |
 | **Active set** — each gets an `issue-lifecycle` | 5 | FIX-978, FIX-976, FIX-964, FIX-963, FIX-948 |
-| ├ **Decision-1-bound** | 2 | FIX-976, FIX-964 |
-| └ **Decision-1-independent** | 3 | FIX-978, FIX-948, FIX-963 |
+| ├ **Decision-1-bound** | **1** | FIX-976 |
+| └ **Decision-1-independent** | **4** | FIX-978, FIX-948, FIX-963, FIX-964 |
 | **Project siblings** — off-objective, direct-fix, *not* parented | 2 | FIX-972 (PR #984), FIX-962 (PR #985) |
-| **Indexed rows** (§3) = sub-issues + project siblings | 8 | — |
+| **Discovered work** — same defect family, filed separately, *not* parented | 1 | FIX-985 |
+| **Indexed rows** (§3) = sub-issues + project siblings + discovered | 9 | — |
+
+**The bound set has shrunk twice.** It was three (FIX-976, FIX-963, FIX-964), then two when round 2
+moved FIX-963 out, and is now **one** — round 3 moved FIX-964 out as well, on the argument its own
+spec (PR #994) makes. Decision 1 therefore rests entirely on FIX-976; §2 states the cost arithmetic
+that follows from that.
 
 ### Why this is one body of work
 
@@ -98,11 +104,12 @@ That contract, verbatim from `packages/orchestration/src/tasks/collection/types.
 **This is live behavior on `main` today, not a proposal under review — and that is the single
 most important thing to hold while reading §2.** Decision 1 was not "how do we coordinate with
 work that is still in flight." It was **"do we revise a shipped public contract, and what does
-that cost"** — and the answer is yes (§2, Decision 1, **DECIDED**). Two of the five active
-issues sit directly on that sentence: FIX-976 wants failure to be loud on paths that route
-through it; FIX-964 is about the guard being absent entirely on a documented extension point.
-FIX-963 was a third until round 2 established it needs its own error channel regardless of the
-return value — see Decision 1's "What this decision does not reach."
+that cost"** — and the answer is yes (§2, Decision 1, **DECIDED**). **One** of the five active
+issues now sits directly on that sentence: **FIX-976**, which wants failure to be loud on the paths
+that route through it. Two others were counted here in earlier drafts and have since left: FIX-963
+(round 2 — it needs its own error channel regardless of the return value) and FIX-964 (round 3 — its
+spec's mechanism does not depend on the widening at all). See Decision 1's "What this decision does
+not reach."
 
 Two consequences the decision in §2 had to price, which the earlier draft of this document
 did not:
@@ -323,38 +330,73 @@ both shapes sit inside Option A. It is a reason the decision is not yet a design
 - Satisfies FIX-976 with one mechanism.
 - Keeps every guard inside the atomic write, satisfying the constraint above and FIX-951's
   stated invariant.
-- **Partial bonus for FIX-964 — SETTLED by POC, see §5.** A return-type widening *does* reject
-  a legacy two-arg ref at compile time, using neither of the two mechanisms FIX-964 explicitly
-  rejects (a `__advisoryWrites` brand, an `fn.length >= 3` arity probe). But it catches only
-  half of what FIX-964 asks for: a ref that returns the new outcome while still declaring **no
-  `options` parameter** compiles clean, because dropping a parameter stays assignable, and a
-  cast bypasses the check outright. **So Option A substantially helps FIX-964 and does not
-  close it.** FIX-964's spec still owes a mechanism for the options-parameter gap and for
-  casts.
-- Cost, **accepted by the repo owner**: a breaking change to a shipped public interface,
-  across more methods than first stated, plus one new guard on the assignment write path.
-  **First-party blast radius is small and now measured: 6 call sites in 3 files** —
-  `resource-backed.ts:310,325`, `sequencer-backed.ts:332,347`, and
-  `task-tools-capability.ts:423,433` (the last pair in the reverse direction, so the tool
-  wrappers' return types open too). Zero new errors in `patterns`, `workforce`, or any test
-  file.
+- **No longer a bonus FIX-964 depends on — round 3.** The compile-time signal the widening
+  produces is real (§5, evidence stands), but FIX-964's spec no longer uses it: PR #994 rejected
+  the whole "certify the store" family on a code-derived argument and picked a behavioral
+  mechanism instead. **The widening is a bonus in one direction and a dependency in neither.**
+  See §5 → "Is FIX-964's fix reachable by certifying the store?"
+- Cost, **accepted by the repo owner** — and **re-measured in round 3, roughly 4× the earlier
+  figure**: a breaking change to a shipped public interface, across more methods than first
+  stated, plus one new guard on the assignment write path. The earlier "6 sites in 3 files"
+  counted only `complete` / `fail`; all four widened methods (`complete`, `fail`, `cancel`,
+  `setAssignee`) give:
+
+  | Bucket | Sites / files | Where |
+  |---|---|---|
+  | **Backings** — must change to compile | **17 / 3** | `types.ts` (4 signatures + the new `TaskWriteOutcome` type); `resource-backed.ts` (`transitionRef`, `patchRef`, `complete`, `fail` ×2 return points, `cancel`, `setAssignee`); `sequencer-backed.ts` (the same six) |
+  | **Tool wrappers** — must change to compile | **5–6 / 1** | `task-tools-capability.ts:411,423,433,453`, plus `withTask`'s `mutator: (collection) => Promise<void>` at `:306` |
+  | **Discard-only** — typecheck-clean, semantically owed | **8 / 6** | `record-result.ts:59,105`; `dispatch-and-execute.ts:184,191`; `routedSpecialists/index.ts:443,472`; `task-tools-capability.ts:479` |
+
+  **Totals: ~22 sites / 4 files to compile clean; ~30 sites / 10 files to be semantically
+  complete.** Baseline measurement: 67 errors confirmed, 71 across the full widening — and **an
+  error count undercounts the work**, because a file you correctly fix stops erroring.
+
+  Three things the old figure missed, each verified in code:
+
+  - **The `withTask` trap.** Widening `mutator` to `Promise<unknown>` silences all four tool-wrapper
+    errors in one line — *by discarding the outcome*. Doing it honestly also requires `okOrError`
+    (`task-tools-capability.ts:284`) to gain a **`declined`** arm; today it is a two-arm
+    `{ok:true}` / `{ok:false,error}` union with nowhere to put "the write was declined."
+  - **A second shared helper ripples.** `setAssignee` routes through **`patchRef` / `patchOne`**,
+    which also serve `setPriority` / `addLabel` / `removeLabel` / `patchMetadata` — **8 further
+    call sites** (4 per backing) that stay `Promise<void>` and would silently drop an outcome.
+    This is the same helper A1 forbids guarding wholesale, now also a return-type boundary.
+  - **The test suite gives zero signal.** ~50 test call sites (51 measured) await these methods and
+    discard the result, so **nothing in CI would catch a backing returning the wrong outcome.** Any
+    issue implementing this owes new assertions, not just green existing ones.
 - Does **not** reach FIX-963 — see below.
 
-##### What Option A actually buys, once both settled results are in
+##### What Option A actually buys, once all three settled results are in
 
-Worth stating plainly, because the decided option is easy to over-read. Two of the three
-issues it was framed to serve turned out to need their own work regardless:
+Worth stating plainly, because the decided option is easy to over-read. **All three** of the issues
+it was framed to serve turned out to need their own work regardless:
 
 | | Does Option A resolve it? |
 |---|---|
 | **FIX-976** | **Yes** — this is the one Option A squarely fixes. `assignTask` / `cancelTask` / `updateTask` stop reporting `{ ok: true }` on writes that didn't happen. |
-| **FIX-964** | **Partly** — real compile-time signal, but the options-parameter gap and the cast bypass survive it (§5). Its spec owes a mechanism either way. |
+| **FIX-964** | **No — changed in round 3.** The compile-time signal is real (§5) but FIX-964's spec (PR #994) does not use it: it rejected the certify-the-store family outright and chose a behavioral mechanism at the advisory write-back seam. Not a dependency, not needed as a bonus. |
 | **FIX-963** | **No** — a return value is a channel for a decline, and FIX-963's failure is a throw after commit. Needs its own error channel (below). |
 
-**So Decision 1 rests primarily on FIX-976.** That does not unmake the decision — the objective
-says a caller must be able to act on what the substrate reports, and FIX-976 is the path where
-a model reads that report directly. But nobody should carry away that one contract change
-settles three issues. It settles one, helps one, and misses one.
+**So Decision 1 rests entirely on FIX-976.** It was framed to serve three issues; it serves one.
+
+The arithmetic, stated without a recommendation attached, because the reader should draw their own
+conclusion from it:
+
+> Option A's accepted cost is **~22 sites across 4 files to compile, ~30 across 10 to be
+> semantically complete, plus a breaking change to a contract already shipped on `main`** with an
+> unenumerable population of custom-ref implementers — **in service of one issue, FIX-976.**
+
+**This remains DECIDED, with the cost restated — not reopened.** The re-measurement and FIX-964's
+departure both landed after the repo owner chose Option A, so the decision was made against smaller
+numbers and a wider payoff than the ones now on record. That has been surfaced to the repo owner;
+**Option A stands as the answer to Decision 1 unless they say otherwise.** Nothing in this set waits
+on that, and no issue should re-litigate the fork on its own initiative — Options B and C stay
+rejected for the reasons recorded below, which the new numbers do not touch.
+
+What the numbers do *not* undercut is the objective: FIX-976 is the path where a model reads the
+substrate's report directly and acts on it, which is the objective's central case rather than an
+incidental one. A cheap fix serving one issue and an expensive fix serving one issue differ in price,
+not in whether the issue is worth fixing.
 
 ##### What this decision does not reach — FIX-963 is not Decision-1-bound
 
@@ -382,8 +424,9 @@ to something a caller can branch on." It cannot, because there is no return valu
 "the task committed and then the recorder fell over" to be recorded and read — and that design
 is required whether or not the write contract returns a value. So:
 
-- **FIX-963 leaves the Decision-1-bound set.** It is not gated on Decision 1 and its spec may
-  finalize without it. (Membership table in §1 is updated: bound = FIX-976, FIX-964.)
+- **FIX-963 leaves the Decision-1-bound set** (round 2). It is not gated on Decision 1 and its spec
+  may finalize without it. FIX-964 left for its own reasons in round 3, so the bound set is now
+  **FIX-976 alone** — see §1's membership table.
 - **The residual link is an input, not a dependency.** Once `fail()` returns an outcome,
   `recordError` *could* learn that its own failure write was declined because the task had
   already settled — which is one useful ingredient for FIX-963's design. An ingredient is not
@@ -422,27 +465,32 @@ no third position to choose.
 
 ### Decision 2 — with Decision 1 answered, nothing in the active set is gated; the whole set may spec in parallel
 
-This decision used to say "the Decision-1-bound three wait." Two things retired that:
-**Decision 1 is now answered** (Option A), and **round 2 moved FIX-963 out of the bound set**
-entirely. What remains is a grouping, not a gate.
+This decision used to say "the Decision-1-bound three wait." Three things retired that:
+**Decision 1 is now answered** (Option A), **round 2 moved FIX-963 out of the bound set**, and
+**round 3 moved FIX-964 out too**. What remains is a grouping, not a gate.
 
-- **Decision-1-bound: FIX-976, FIX-964** — two, not three. They build *on* Option A rather
-  than waiting for it. FIX-976 implements the widened contract at the tool boundary and owns
-  open sub-question A-i. FIX-964 inherits the widening's compile-time signal, which §5 confirms
-  is real but incomplete — so FIX-964 is bound to Decision 1 for what it *gets*, and still owes
-  its own mechanism for the options-parameter gap and the cast bypass.
-- **Decision-1-independent: FIX-978, FIX-948, FIX-963.** FIX-978 has no dependency at all.
+- **Decision-1-bound: FIX-976** — one, not three. It builds *on* Option A rather than waiting for
+  it: it implements the widened contract at the tool boundary and owns open sub-question A-i.
+- **Decision-1-independent: FIX-978, FIX-948, FIX-963, FIX-964.** FIX-978 has no dependency at all.
   FIX-948 has its own precondition (OQ-C), which is not Decision 1. **FIX-963 is here as of
   round 2** — it needs its own recorder-state/error-channel design regardless of the return
-  value.
-- **`cross-spec-review` still runs across FIX-976, FIX-963 and FIX-964** once each is
-  individually approved. Note this set is deliberately *not* the same as the Decision-1-bound
-  set — cross-spec-review is scoped by **file collision**, and all three touch
-  `sequencer-backed.ts`, `resource-backed.ts` and `task-tools-capability.ts`. FIX-963 leaving
-  the gated set does not take it out of the collision set.
-- **A1 is a shared constraint across that collision set:** all three touch the patch surface,
-  and only FIX-976's `setAssignee` may guard it. Whichever lands first must not leave a
-  helper-level guard behind for the others to inherit.
+  value. **FIX-964 is here as of round 3** — its mechanism is behavioral and does not consume the
+  widening's compile-time signal at all.
+- **`cross-spec-review` runs over the FULL active spec set** — FIX-978, FIX-963, FIX-976, FIX-964,
+  **plus FIX-948 if it specs** — not over a file-colliding subset. **Corrected in round 3; the
+  earlier scoping was wrong and would have skipped a gate.** Verified against `epic-lifecycle` →
+  "Cross-spec coherence": the gate is *"every spec the epic planned to open is open and has cleared
+  its own spec-approval gate"*, and `crossSpecCleared: false` holds **every** approved spec short of
+  implementation. Scoping the pass to the three file-colliding issues would have let **FIX-978 and
+  FIX-948 be released to implementation with no conformance check** against the epic or their
+  siblings. **File collision is one *kind* of conflict the pass looks for, never the rule for
+  selecting the set** — scope overlap, contradictory decisions, and one spec assuming what another
+  removes are all invisible to a file-overlap filter.
+- **A1 is a shared constraint across the file-colliding subset** (FIX-976, FIX-963, FIX-964 — all
+  three touch `sequencer-backed.ts`, `resource-backed.ts`, `task-tools-capability.ts`): only
+  FIX-976's `setAssignee` may guard the patch surface. Whichever lands first must not leave a
+  helper-level guard behind for the others to inherit. That subset is a *constraint-sharing* group,
+  and naming it here is **not** a scoping rule for `cross-spec-review` — see the bullet above.
 
 ### Decision 3 — an expired lease is not evidence of abandonment; no issue in this set may assume otherwise
 
@@ -499,11 +547,15 @@ table each time this doc is updated. Empty columns mean not yet reached.
 
 | Issue | Title (short) | Decision 1 | Linear state | Spec PR | Impl PR |
 |---|---|---|---|---|---|
-| **FIX-978** | Stranded `in_progress` lease hangs a later drain ~14h | independent | Todo | — | — |
-| **FIX-976** | `assignTask` rewrites a terminal task; `cancelTask` no-ops; both `ok: true` | **bound** · owns A-i | Todo | — | — |
-| **FIX-963** | Recorder failure after a task commits is swallowed | independent *(round 2)* | Todo | — | — |
-| **FIX-964** | Custom `TaskCollectionRef`s silently skip FIX-951's guards | **bound** | Todo | — | — |
+| **FIX-978** | Stranded `in_progress` lease hangs a later drain ~14h | independent | In Review | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) · *spec review* | — |
+| **FIX-976** | `assignTask` rewrites a terminal task; `cancelTask` no-ops; both `ok: true` | **bound** *(the only one)* · owns A-i | In Review | [#995](https://github.com/fixpoint-labs/flow-state-dev/pull/995) · *spec review* | — |
+| **FIX-963** | Recorder failure after a task commits is swallowed | independent *(round 2)* | In Review | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | — |
+| **FIX-964** | Custom `TaskCollectionRef`s silently skip FIX-951's guards | independent *(round 3)* | In Review | [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) · *spec review* | — |
 | **FIX-948** | `maxAttempts` retry storms invisible to `maxTotalTasks`/`maxEnqueuedTasks` | independent · blocked on OQ-C | Backlog | — | — |
+
+All four open specs are **at spec review** — none has cleared its own approval gate, so
+`cross-spec-review` has not run and cannot yet (Decision 2: it runs over the full set, and FIX-948
+has not specced).
 
 **Completed anchor** — parented under FIX-980, shipped before the epic opened, no lifecycle:
 
@@ -516,8 +568,23 @@ for audit continuity only. Neither shapes any cross-cutting decision here:
 
 | Issue | Title (short) | Linear state | PR |
 |---|---|---|---|
-| **FIX-972** | Skill named `constructor` crashes `unionAllowedTools` | In Review | [#984](https://github.com/fixpoint-labs/flow-state-dev/pull/984) |
-| **FIX-962** | Goal criterion E's salt guard isn't bound to the open request | In Review | [#985](https://github.com/fixpoint-labs/flow-state-dev/pull/985) |
+| **FIX-972** | Skill named `constructor` crashes `unionAllowedTools` | Done | [#984](https://github.com/fixpoint-labs/flow-state-dev/pull/984) **merged** |
+| **FIX-962** | Goal criterion E's salt guard isn't bound to the open request | Done | [#985](https://github.com/fixpoint-labs/flow-state-dev/pull/985) **merged** |
+
+**Discovered work** — surfaced *by* this epic's investigation, **same defect family**, filed
+separately and **not** parented under FIX-980. Carried here so the epic's audit trail shows where it
+went, not because the epic owns it:
+
+| Issue | Title (short) | Linear state | PR |
+|---|---|---|---|
+| **FIX-985** | `cascade-skip-dependents.ts:73` treats a declined `cancel()` as success | Triage | — |
+
+FIX-985 is flavour (a) exactly — `await collection.cancel(task.id, ...)` is followed unconditionally
+by `addLabel(task.id, "skipped")` and `cascading.add(task.id)`, so a declined cancel is recorded as a
+completed skip and cascades further. **It is deliberately not in the epic:** it is a caller-side
+misread of today's silent contract, fixable on its own, and adding it would grow the set without
+changing any cross-cutting decision. It is also **evidence for Decision 1** — an independent
+first-party caller that the current `void` return already misled.
 
 ---
 
@@ -530,16 +597,34 @@ shipped behavior — read what its cap counts and when it is evaluated, then dec
 FIX-948 is still a gap or is already covered. Routed as a **precondition to speccing
 FIX-948**, assigned to whoever picks it up. Not a human blocker.
 
-> **The one remaining open item lives in §2, not here, deliberately** — stated once, where the
+**OQ-D — is `TaskCollectionRef` the wrong shape for an extension point? *(follow-up beyond this
+epic — explicitly not this epic's work.)*** Recorded in round 3 from FIX-964's spec (PR #994), which
+names it a deliberate **non-goal** of that issue. The finding: `TaskCollectionRef` asks a custom-store
+author to re-derive **~18 methods** (19 measured on the interface) of state-machine, claim, CAS and
+advisory-write semantics correctly — which is *why* FIX-964's bug exists, since re-deriving
+`complete` / `fail` without the guards is the easy mistake and the interface invites it. The
+structurally right fix is a narrower **store-shaped** extension point (persistence primitives only)
+with the **substrate composing the ref** on top, so the semantics can't be re-implemented wrong
+because they're no longer the extender's to implement.
+
+**Why it is out of scope and recorded anyway.** It is a redesign of a shipped public extension point
+— strictly larger than this epic's objective, and it would swallow FIX-964 rather than resolve it.
+FIX-964 ships the behavioral decline-classification fix; this is the deeper cause underneath it. It
+is captured here so it is **not lost when FIX-964 closes**, which is the specific failure mode of a
+non-goal noted only inside one issue's spec. **Needs a human to decide whether it becomes its own
+epic** — no issue in this set should start on it, and no issue in this set is blocked by it.
+
+> **One open item lives in §2, not here, deliberately** — stated once, where the
 > reasoning it depends on lives. Duplicating it is how two copies drift apart.
 >
 > - **A-i — what `updateTask` reports when it patches several fields and settles mid-sequence.**
 >   A *design* question inside the already-decided Option A, not a fork. Owned by whoever specs
 >   FIX-976. See §2 Decision 1 → A-i.
 >
-> Two items that used to live here are now closed. The **Decision-1 fork** (A / B / C) is
+> Three items that used to live here are now closed. The **Decision-1 fork** (A / B / C) is
 > decided — Option A, approved by the repo owner; the rejected options and their reasons stay
-> in §2. The **type-widening claim** is settled empirically — see §5.
+> in §2. The **type-widening claim** is settled empirically — see §5. **FIX-964's dependence on
+> that widening** is settled too (round 3): there is none — see §5's second entry.
 
 ---
 
@@ -582,6 +667,44 @@ not closed** — its spec still owes a mechanism for the options-parameter gap.
 and `packages/orchestration/test/flow-policy.test.ts:45` already does exactly that. Any
 FIX-964 claim of "custom refs now get a signal" states what it does about casts.
 
+> **⚠ Superseded inference (round 3) — the evidence above stands, the conclusion drawn from it does
+> not.** Both gaps remain true facts about the type system; do not delete them, and do not re-run
+> this POC. What is superseded is the *inference* this document then drew: that FIX-964 needs a
+> mechanism **because** the widening is incomplete, i.e. that its scope is defined by this residue.
+> FIX-964's spec (PR #994) rejected the entire family this framing assumed. Its fix does not depend
+> on the widening at all — see the next claim.
+
+### Is FIX-964's fix reachable by certifying the store? — **REFUTED (code-derived, round 3)**
+
+From FIX-964's spec (PR #994), **independently verified against the code in this fold** because it is
+load-bearing for Decision 1's scope. Bears on §1's membership table, §2 Decision 1 and Decision 2.
+
+**The convergence point has two writers, and the bug report named only one.**
+
+| Writer | How it gets its collection | Certifiable? |
+|---|---|---|
+| `task-board/blocks/record-result.ts` | via the board's **factory** — `collection: (ctx) => Promise<TaskCollectionRef>` (`:39`, `:73`), which the substrate calls | **Yes** — the substrate owns an interposition point |
+| `tasks/helpers/dispatch-and-execute.ts` | **handed a ref directly as an option** — `DispatchAndExecuteOptions.collection: TaskCollectionRef` (`:36`), already constructed by the caller | **No** — there is no factory to interpose on |
+
+`dispatchAndExecuteBlock` is exported from `tasks/index.ts:118` with **no first-party caller in
+`packages/`** — it exists for patterns and users to compose, so the ref arrives from outside the
+substrate fully built. A brand check, an `fn.length` arity probe, or a capability check
+**structurally cannot protect that path** through the factory seam, because the value never passes
+through a substrate-owned factory. (`routedSpecialists` is excluded for the opposite reason: it
+builds its own collection via `getOrCreateTaskCollection` / `getCollection` — `index.ts:194,383`,
+writes at `:443,472` — so no custom store reaches it at all.)
+
+**FIX-964's mechanism is therefore behavioral, at the substrate's advisory write-back seam:** attempt
+the write; on a throw, re-read the task; if it is settled by someone else (terminal, or `attempts`
+moved past the claimed attempt), classify the throw as a decline. **No guard, so no check-then-write
+window is reopened** — which is what makes it compatible with the constraint stated before Decision
+1's options.
+
+**Also empirically refuted: "make `options` non-optional."** Against `tsc 6.0.2` with this repo's
+settings, a two-parameter implementation is **still assignable** to a three-**required**-parameter
+signature, in both object-literal and `class … implements` form. So Gap 1 above cannot be closed by
+removing the `?`, and nobody should retry it.
+
 ---
 
 ## Epic evolution
@@ -609,8 +732,10 @@ FIX-964 claim of "custom refs now get a signal" states what it does about casts.
   outcome while declaring no `options` parameter still compiles, and a cast bypasses the check
   outright. **This moved the design**: Option A's FIX-964 bonus is downgraded from "closes it"
   to "substantially helps, leaves the options-parameter gap," so FIX-964's scope must cover
-  that residue under any answer to Decision 1. Full evidence in §5; blast radius of the
-  widening measured at 6 sites in 3 files and recorded against Option A's cost.
+  that residue under any answer to Decision 1. Full evidence in §5. *(Both follow-on claims in this
+  entry were later corrected in round 3: the blast radius recorded here — 6 sites in 3 files —
+  measured only `complete`/`fail` and is superseded by the ~22–30 site table in §2; and FIX-964's
+  scope turned out not to depend on the widening at all. The POC's own verdict stands.)*
 - **Objective approved** — the repo owner approved the epic objective in-session at head
   `1126cd1`; recorded durably as the `epic approved` label on PR #983, and the Epic issue moved
   to *In Development*. The gate is closed; the sub-issue lifecycles may run.
@@ -644,10 +769,56 @@ FIX-964 claim of "custom refs now get a signal" states what it does about casts.
 
   Taken together with the settled type-widening result above, these folds narrow what the
   decided option delivers: **Option A resolves FIX-976, partly helps FIX-964, and does not
-  reach FIX-963.** Decision 1 now rests primarily on FIX-976. Stated explicitly in §2 so the
-  decision is not read as buying more than it does.
-- **The epic-spec has converged.** Two review rounds spent, the objective is approved, and the
-  one decision this epic existed to make is made. Remaining questions are issue-level (A-i and
-  the FIX-964 type test to FIX-976 / FIX-964; OQ-C to FIX-948) and are carried as implementer
-  notes, not as epic-spec work. Further edits should be driven by what implementation
-  discovers, not by another review pass.
+  reach FIX-963** — leaving Decision 1 resting primarily on FIX-976 as of this round. *(Round 3
+  removed the FIX-964 half too; it now rests on FIX-976 alone.)*
+- **The epic-spec converged at round 2.** The objective is approved and the one decision this epic
+  existed to make is made. *(Round 3 followed — see below — and did not reopen either.)*
+- **Round 3 folded — a third round spent deliberately, outside the two-round budget, because all
+  three items were evidence-driven corrections or a coordination error that would have skipped a
+  gate; none was a new approach question, and leaving any of them would have left the doc factually
+  wrong or the process broken.** That is the convergence rule's stated exception, recorded here in
+  one line so the extra round is a visible decision rather than drift. All three verified against the
+  code in this fold, not taken on faith.
+  1. **The blast-radius figure was wrong by ~4×.** "6 sites in 3 files" measured only
+     `complete`/`fail`. Across all four widened methods it is **~22 sites / 4 files to compile,
+     ~30 / 10 to be semantically complete** (67 baseline errors → 71; an error count *undercounts*,
+     since a correctly-fixed file stops erroring). Three ripples the old figure missed, all verified:
+     the `withTask` trap (widening `mutator` to `Promise<unknown>` silences four errors *by
+     discarding the outcome*; honest handling needs a **`declined`** arm on `okOrError`); a **second**
+     shared helper, `patchRef`/`patchOne`, serving 8 further call sites that would silently drop an
+     outcome; and **zero test signal** — 51 test call sites discard these results, so CI would not
+     catch a backing returning the wrong outcome.
+  2. **`cross-spec-review`'s scope was wrong and could have skipped a gate.** Decision 2 scoped the
+     pass to the file-colliding subset. Verified against `epic-lifecycle` → "Cross-spec coherence":
+     the gate covers *every* spec the epic planned to open, and `crossSpecCleared: false` holds all of
+     them short of implementation. The old scoping would have released **FIX-978 and FIX-948** with no
+     conformance check. Corrected: the pass runs over the **full active spec set**; file collision is
+     one kind of conflict, not the set-selection rule.
+  3. **FIX-964 left Decision 1's orbit, so Decision 1 now rests on FIX-976 alone.** FIX-964's spec
+     (PR #994) rejected the whole certify-the-store family on a code-derived argument this fold
+     independently confirmed: the convergence point has **two writers**, and only one is certifiable.
+     `record-result.ts` receives a *factory* the substrate calls; `dispatch-and-execute.ts` is handed
+     a **ref directly as an option** (`:36`) with no factory, so a brand, arity probe, or capability
+     check structurally cannot reach it — and the helper is exported with no first-party caller, so
+     the ref arrives from outside fully built. FIX-964's mechanism is instead behavioral at the
+     advisory write-back seam (attempt, then on a throw re-read and classify a settled-by-someone-else
+     task as a decline), which opens no check-then-write window. Separately, "make `options`
+     non-optional" is **empirically refuted** — a two-parameter implementation stays assignable to a
+     three-required-parameter signature. §5's evidence is kept and the *inference* drawn from it is
+     marked superseded rather than deleted.
+
+  **Consequences.** The Decision-1-bound set drops from three to two to **one — FIX-976**. Decision 1
+  is recorded as **DECIDED with the cost restated, not reopened**: Option A's accepted cost is
+  ~22–30 sites plus a breaking change to a shipped contract, **in service of one issue**. That
+  arithmetic is stated in §2 without a recommendation attached; it has been surfaced to the repo
+  owner, and Option A stands unless they say otherwise. FIX-964's architectural finding — that
+  `TaskCollectionRef` asks a custom-store author to re-derive ~18 methods of semantics, and the right
+  fix is a narrower store-shaped extension point with the substrate composing the ref — is recorded
+  as **OQ-D, a follow-up beyond this epic**, so it is not lost when FIX-964 closes. **FIX-985**
+  (`cascade-skip-dependents.ts:73` treats a declined `cancel()` as success) is indexed as discovered
+  work: same defect family, filed separately, deliberately not in the epic, and independent evidence
+  for Decision 1.
+- **Still converged.** Nothing in round 3 reopened the objective or the decided option, and no
+  further review pass is expected. Remaining questions are issue-level (A-i to FIX-976; OQ-C to
+  FIX-948) or beyond the epic (OQ-D, needs a human). Further edits should be driven by what
+  implementation discovers.
