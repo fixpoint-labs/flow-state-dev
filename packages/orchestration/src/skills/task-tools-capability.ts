@@ -342,10 +342,10 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
       "Add a new task to your delegation board. Returns the new task id. " +
       "assignee optionally names one of your agents; leave it unset to run the task " +
       "on a capable default worker. Set deps to task ids that must finish first, and input " +
-      "to a structured payload for the worker. Execute the plan by calling runBoard once " +
-      "all tasks are added. The board bounds how many tasks may wait at once and how many it " +
-      "may hold in total: enqueued_task_cap_exceeded means drain with runBoard first, and " +
-      "total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
+      "to a structured payload for the worker. This records the task on the board; it does " +
+      "not run it. The board may bound how many tasks wait at once and how many it may hold " +
+      "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
+      "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
     inputSchema: z.object({
       goal: z.string(),
       assignee: z.string().optional(),
