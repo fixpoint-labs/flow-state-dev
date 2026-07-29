@@ -7,8 +7,61 @@
  * the underlying storage directly.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { Task } from "../schema/task";
+import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
+
+/**
+ * Why a write was refused (FIX-976). Resolved in a **fixed precedence order** —
+ * `terminal` → `disallowed` → `lost-claim` — so a decline where two conditions
+ * hold always reports the same one, and two callers cannot render two different
+ * messages for the same refusal.
+ *
+ * - `terminal` — the task had already reached `completed` / `errored` /
+ *   `cancelled`. The majority of the exposure, but not all of it.
+ * - `disallowed` — the state machine rejects the move from a **non**-terminal
+ *   status (`pending → errored`, `blocked → errored`).
+ * - `lost-claim` — `expectAttempt` no longer owns the task: it was reclaimed,
+ *   re-queued, or parked while the caller was working.
+ */
+export type TaskWriteDeclineReason = "terminal" | "disallowed" | "lost-claim";
+
+/**
+ * What a write actually did (FIX-976).
+ *
+ * Produced **inside** the same atomic write that made the decision, so the
+ * verdict cannot race the write it describes and no caller has to re-read task
+ * state to find out what happened. Re-deriving it from a post-write read would
+ * be a check-after-write race — the thing the guards were moved inside the CAS
+ * to avoid.
+ *
+ * Three variants, and all three are load-bearing:
+ *
+ * - `recorded` — a task field changed and a `task-change` item was emitted.
+ * - `unchanged` — the desired state already held, so nothing was written and no
+ *   `task-change` item was emitted. This is a **task-level** outcome: on the
+ *   resource backing the underlying `updateState` still runs, so a
+ *   `resource_change` may still fire (unchanged from before FIX-976).
+ * - `declined` — the write was refused, carrying why and the status observed
+ *   inside the write. A decline is a **value, not an error**: it never throws.
+ *
+ * `unchanged` is not a nicety. Without it an idempotent `setAssignee` (the
+ * assignee already matches) would have to report `recorded`, claiming a write
+ * that did not happen — the same dishonesty FIX-976 exists to remove.
+ *
+ * Discarding the return value is a supported way to call these methods
+ * (BP-030). The substrate's own containment write-backs do exactly that, which
+ * is what keeps FIX-951's behaviour intact: reporting a decline and acting on
+ * one are deliberately separate.
+ */
+export type TaskWriteOutcome =
+  | { outcome: "recorded" }
+  | { outcome: "unchanged" }
+  | {
+      outcome: "declined";
+      reason: TaskWriteDeclineReason;
+      /** The status the task was in when the write was refused. */
+      status: TaskStatus;
+    };
 
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
@@ -178,7 +231,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   unblock(id: string): Promise<void>;
   awaitReview(id: string, feedback?: string): Promise<void>;
   resumeFromReview(id: string, feedback?: string): Promise<void>;
-  cancel(id: string, reason?: string): Promise<void>;
+  /**
+   * Cancel the task (terminal).
+   *
+   * Advisory by construction: cancelling an already-settled task writes
+   * nothing. Since FIX-976 it also **says so** — the returned
+   * {@link TaskWriteOutcome} is `declined` with reason `terminal`, instead of
+   * returning silently and leaving the caller to infer success. Discard the
+   * verdict and behaviour is exactly as before.
+   */
+  cancel(id: string, reason?: string): Promise<TaskWriteOutcome>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
@@ -189,7 +251,20 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   reclaim(now?: number): Promise<number>;
 
   // mutation
-  setAssignee(id: string, assignee: string): Promise<void>;
+  //
+  // Exactly ONE of these five refuses anything: `setAssignee` declines on a
+  // terminal task, because reassigning work that will never run again is a write
+  // no caller can act on. The other four deliberately keep writing to terminal
+  // tasks — labelling, re-prioritizing, or annotating a finished task is a real
+  // and used thing (a post-drain failure audit, a cascade's `skipped` marker).
+  /**
+   * Set the task's assignee.
+   *
+   * **Declines on a terminal task** (`completed` / `errored` / `cancelled`) —
+   * the one refusal on this surface. Returns `unchanged` when the assignee
+   * already matches, `recorded` when it is written.
+   */
+  setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
   setPriority(id: string, priority: number): Promise<void>;
   addLabel(id: string, label: string): Promise<void>;
   removeLabel(id: string, label: string): Promise<void>;

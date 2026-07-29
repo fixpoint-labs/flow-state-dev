@@ -47,6 +47,8 @@ export type {
   ClaimOptions,
   TaskHandle,
   TaskTransitionOptions,
+  TaskWriteOutcome,
+  TaskWriteDeclineReason,
 } from "./collection/types";
 export { createSequencerBackedTaskCollection } from "./collection/sequencer-backed";
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
