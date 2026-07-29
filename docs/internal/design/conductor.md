@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28
 **Status:** DEFINITION — project framing and initial approach. **D1 (state ownership) and
-D3 (workforce) are decided** (§7); D2 (the public name) stays open until launch.
+D3 (workforce) are decided** (§8); D2 (the public name) stays open until launch.
 **Type:** New package (`@flow-state-dev/conductor`) + surfaces (CLI, devtool module).
 Composes `core`, `orchestration`, `claude-code`, `engine`, `scheduled`; deliberately
 *not* a framework primitive change.
@@ -11,6 +11,8 @@ reshape — its `state → action` insight is kept and generalized), and is the 
 first surface under FIX-820 (DevTool as orchestration surface).
 **Home:** Linear project *Development Workflow Orchestration*; epic **FIX-966**, milestones
 **FIX-967** (M0) → **FIX-971** (M4).
+**Companion:** [`conductor/poc.md`](conductor/poc.md) — the config and extension surface as a
+file-by-file shape sketch (four adoption levels, what ships vs. what you write).
 
 ---
 
@@ -30,7 +32,7 @@ framework we have.
 **This is the dev-orchestrator growing up.** The earlier attempt (§3) was a POC that
 served its purpose. The bar here is different and it should be stated plainly: a product
 other people would want to use. That bar is what settles most of the design arguments
-below — notably that no connector may be a prerequisite (§7/D1) and that the process
+below — notably that no connector may be a prerequisite (§8/D1) and that the process
 files are a configurable, documented surface rather than our prompts with our names in
 them.
 
@@ -89,7 +91,7 @@ way it does, and one of them contains a hard-won lesson we must not pay for agai
   suspend/checkpoint progression — encoding the same progression **with no rule for who
   wins and no path to reconcile.** They drifted. A cold restart between gate 1 and gate 2
   looped forever. No code landed in the repo. Note the lesson precisely: the defect was
-  the missing authority rule, not the existence of a second copy (§7/D1).
+  the missing authority rule, not the existence of a second copy (§8/D1).
 - **FIX-840** (Backlog) — *the reshape that diagnosed it.* Conclusion: delete the
   second ledger, make the board the single state machine, express the orchestrator as
   a pure `state → action` map firing discrete idempotent actions, triggered from
@@ -97,7 +99,7 @@ way it does, and one of them contains a hard-won lesson we must not pay for agai
 
 FIX-840's stated rule was "Linear is the single state machine, conductor stores
 nothing." That rule is too strong for a product — it makes Linear a hard dependency
-and leaves nowhere to put facts Linear cannot hold. §7/D1 sharpens it.
+and leaves nowhere to put facts Linear cannot hold. §8/D1 sharpens it.
 
 **Related, already done:** `@flow-state-dev/claude-code` CLI dispatch (FIX-672) and
 in-process Agent SDK (FIX-671); webhook receivers (FIX-439); same-request
@@ -119,7 +121,7 @@ function:
   inferred was missed.** A signal is not necessarily live: comparing conductor's observed
   copy against fresh world state yields **synthesized** signals for events that never
   arrived — a `pr_opened` conductor never saw, backdated so the driver can process it
-  before the comment that revealed the gap (§7/D1). Signals are not only external:
+  before the comment that revealed the gap (§8/D1). Signals are not only external:
   `guidance_changed` fires when an objective, tenet, or lesson is added or edited (below).
 
 **Change 2 — one review cycle, parameterized.** `drafted → in_review → revised →
@@ -179,7 +181,7 @@ review lenses. `issue-implement` already routes this way. Six types, one state m
 RETROSPECTIVE`. Epic: `FRAMING → CROSS_SPEC_REVIEW → (issues run) → WRAP`. Stating this
 explicitly avoids forcing one phase list onto both.
 
-`DISCOVERY` carries a question mark in the sketch and it should stay open — see §9.
+`DISCOVERY` carries a question mark in the sketch and it should stay open — see §10.
 
 ## 5. The deterministic spine
 
@@ -198,7 +200,7 @@ the wrong reading.
 
 The signal is an explicit parameter rather than something dug out of `world`, because
 conductor is an event loop: **one signal in, actions out.** That also makes the reconciler
-(§7/D1) compose cleanly — it produces signals, and each one is fed through `decide` in
+(§8/D1) compose cleanly — it produces signals, and each one is fed through `decide` in
 order:
 
 ```
@@ -257,7 +259,7 @@ detached durable execution — no path to surface the approval*, **Todo**) is ex
 that path being missing. So:
 
 - **Long gates** (spec approval, PR approval, merge) are **re-derived** from world state on
-  every tick, and GitHub wins on the answer (§7/D1). Nothing is parked, no lease is held,
+  every tick, and GitHub wins on the answer (§8/D1). Nothing is parked, no lease is held,
   restart is free. Conductor still keeps its observed copy — that's what lets it notice a
   gate that opened while it was down — but the copy never overrides a fresh read. This is
   FIX-840's insight kept intact, and it means conductor does **not** block on FIX-765.
@@ -317,7 +319,106 @@ FIX-939 is currently **Todo / Low priority** and says explicitly "NOT to be spec
 yet." Conductor is the forcing function that changes that: it should be specced against
 these five gaps, in this order, and its priority raised to match.
 
-## 6. What we already have (the reason this isn't a multi-month project)
+## 6. How it fits together
+
+Three views. The first is the machine, the second is the process it runs, the third is how a
+project adopts it. A worked file-by-file sketch of the config and extension surface lives in
+[`conductor/poc.md`](conductor/poc.md).
+
+### The machine
+
+```mermaid
+flowchart TB
+  WH[GitHub webhook]:::trig --> TICK
+  CR[cron reconcile<br/>backstop + discovery]:::trig --> TICK
+  CL[conductor CLI]:::trig --> TICK
+  CH[chat thread]:::trig --> TICK
+
+  subgraph TICK["one tick · a short request · zero model calls"]
+    direction LR
+    RD[read world] --> RC[reconcile<br/>observed vs fresh] --> DE["decide(entity, signal, world)<br/>pure reducer"] --> MU[mutate / enqueue tasks]
+  end
+
+  MU --> BOARD[("task board<br/>resource-backed TaskCollection<br/>one task per issue")]
+  BOARD -->|detached execution · FIX-939| EX[phase execution<br/>minutes to an hour]
+  EX --> DISP{Dispatcher seam}
+  DISP --> CC[claude-code]
+  DISP --> CX[codex]
+  DISP --> NA[FSD-native agent]
+
+  EX -->|PR ops · comments · labels| GH[(GitHub<br/>wins on every PR fact)]
+  GH -.->|read every tick| RD
+  BOARD --> LED[("conductor ledger<br/>phases · rounds · gates · dispatches")]
+  LED -.->|outbound projection · optional| LIN[(Linear)]
+  LIN -.->|inbound signal · opt-in| RD
+
+  GUID[("guidance collection<br/>objectives · tenets · lessons")] -->|reactTo · guidance_changed| TICK
+  GUID -.->|injected as context| EX
+  BOARD --> SURF[surfaces<br/>CLI board · devtool module · chat]
+
+  classDef trig fill:#eef,stroke:#88a
+```
+
+Two things to read off it. **The tick is the only decision-maker, and it holds no model** —
+every generator call happens inside a phase execution, downstream of a decision already made.
+And **GitHub is read every tick and written by phases**, never mirrored-then-trusted; the
+ledger holds only what GitHub has no place for.
+
+### The default development process, end to end
+
+This is what ships out of the box. Every box is a phase or a gate that already exists in
+`orchestration.md` — conductor is running the process we already wrote down.
+
+```mermaid
+flowchart TD
+  START(["work arrives<br/>(issue filed, or cron discovers it)"]) --> EPICQ{part of a set?}
+  EPICQ -->|no| SPEC
+  EPICQ -->|yes| FRAME["EPIC · FRAMING<br/>epic-agent drafts the epic-spec"]
+  FRAME --> EGATE{{"HUMAN GATE<br/>epic objective approved?"}}
+  EGATE -->|not yet| FRAME
+  EGATE -->|approved| XSPEC["EPIC · CROSS_SPEC_REVIEW<br/>specs checked against each other"]
+  XSPEC --> RAMP[issues ramp in parallel]
+  RAMP --> SPEC
+  RAMP --> SPEC2["… sibling issues,<br/>each its own task"]
+
+  SPEC["ISSUE · SPEC<br/>dispatch issue-spec"] --> SPR["spec PR open<br/>Part I + Part II"]
+  SPR --> SROUND["review rounds<br/>budget: 2 · fold / note / drop"]
+  SROUND --> SGATE{{"HUMAN GATE<br/>spec approved?"}}
+  SGATE -->|feedback| SROUND
+  SGATE -->|approved| IMPL["ISSUE · IMPLEMENTATION<br/>dispatch issue-implement<br/>routed by issue type: tdd | diagnose"]
+  IMPL --> IPR[impl PR open]
+  IPR --> IROUND["PR feedback rounds<br/>CI · reviews · merge conflict · base recovered"]
+  IROUND --> MGATE{{"HUMAN GATE<br/>merge (never automatic)"}}
+  MGATE -->|not ready| IROUND
+  MGATE -->|merged| GOAL["goal check on the real path<br/>(multi-PR: after the last one)"]
+  GOAL --> RETRO["ISSUE · RETROSPECTIVE<br/>emits a Lesson"]
+  RETRO --> GD[("guidance collection")]
+  GD -.->|"guidance_changed"| REEX["configured reaction:<br/>re-examine open PRs"]
+  REEX -.-> IROUND
+  GOAL --> WRAP["EPIC · WRAP<br/>lessons + docs polish"]
+
+  classDef gate fill:#ffe9c7,stroke:#c98a1b
+  class EGATE,SGATE,MGATE gate
+```
+
+**Three human gates, and only three:** the epic objective, each spec, and every merge.
+Everything between them moves without asking. Conductor never merges.
+
+### How a project adopts it
+
+```mermaid
+flowchart LR
+  L1["**1 · out of the box**<br/>install + one config file<br/>default phases, skills, gates"] --> L2
+  L2["**2 · configure**<br/>concurrency, gate policy,<br/>which connectors, model per phase"] --> L3
+  L3["**3 · customize**<br/>edit the process files<br/>(SKILL.md per phase)"] --> L4
+  L4["**4 · extend**<br/>own blocks, own phases,<br/>own signals + reactions"]
+```
+
+Each layer is additive and none is a fork: level 4 still runs the level-1 defaults for
+everything it doesn't override. [`conductor/poc.md`](conductor/poc.md) walks all four with
+real file shapes.
+
+## 7. What we already have (the reason this isn't a multi-month project)
 
 | Conductor needs | Already shipped |
 |---|---|
@@ -355,7 +456,7 @@ Two things that look like new layers and are not:
   data-access layer, no mapping layer, no repository pattern. If a sub-issue starts
   building one, that's the signal to stop.
 
-## 7. The three framing decisions (two called, one open)
+## 8. The three framing decisions (two called, one open)
 
 ### D1 — Who owns state? **(DECIDED: authority per fact class; conductor keeps copies)**
 
@@ -433,7 +534,7 @@ agents** that don't need a full coding harness. **Decided: bypass `workforce` fo
 keep the `Dispatcher` seam clean so it drops in later.** Workforce Layer 2 is still in
 flight; taking a dependency on it now couples two moving things.
 
-## 8. Initial approach — four milestones, payoff at M1
+## 9. Initial approach — four milestones, payoff at M1
 
 Sequenced so the first milestone is the one that changes the daily experience.
 
@@ -442,7 +543,7 @@ Sequenced so the first milestone is the one that changes the daily experience.
 `decide(entity, signal, world) → Action[]`, the entity schemas, the phase/gate/signal types,
 **and the reconciler** — a pure `reconcile(observed, fresh) → Signal[]` that turns a divergence
 between conductor's copy and the world into ordered signals, including backdated ones for
-events that never arrived (§7/D1). No I/O, no agents, no connectors.
+events that never arrived (§8/D1). No I/O, no agents, no connectors.
 **Verify:** unit tests covering the full phase × gate × signal matrix, including the paths
 §2 says the current harness drops (restart mid-gate, duplicate signal, out-of-order signal,
 backwards phase move) **and the reconciliation paths D1 exists for**: a comment observed on
@@ -500,7 +601,7 @@ questioned from a chat thread.
 ### M4 — Linear sync, guidance, and the loop that improves itself
 
 Linear sync as a projection (outbound blocks, plus optional inbound status signals — no new
-layer, per §6). The **guidance collection** (§4): objectives, tenets, and lessons as
+layer, per §7). The **guidance collection** (§4): objectives, tenets, and lessons as
 `label + body` documents injected into decisions, with `reactTo` on the collection so a
 guidance change is a signal. Retrospective phase writes lessons *into* that collection, and
 the `distill-lessons` pass proposes the smallest upstream fix to the process files.
@@ -512,7 +613,7 @@ reactive path, proven on the real collection rather than asserted.
 **M1 is the fast path.** M0+M1 are the milestone worth committing to; M2–M4 are ordered
 but re-decidable once we've lived on M1.
 
-## 9. Out of scope (and open questions)
+## 10. Out of scope (and open questions)
 
 **The one hard framework dependency: FIX-939** (*Durable jobs & detached-task substrate*).
 M0 and M1 clear it; M2 onward does not. §5 lists the five gaps it has to close, in the
@@ -546,7 +647,7 @@ orchestration for non-development work.
 5. **Where the process files live** so they are editable per project but versioned with
    the repo — `.conductor/` alongside `.agents/skills/`, or inside it?
 
-## 10. Immediate next step
+## 11. Immediate next step
 
 **D1 and D3 are called.** The epic and the milestone issues are filed under the
 *Development Workflow Orchestration* project. First spec to write: **M0 + M1 as a single
