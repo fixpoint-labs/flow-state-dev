@@ -1142,6 +1142,77 @@ check('an INCONCLUSIVE epic verdict stops re-triggering the fold and stays surfa
   assert.equal(second.result.epic.unsettled.length, 1, 'recorded once, not duplicated each wake')
 })
 
+check('a quiet round two revokes the third round that round one authorized', async () => {
+  // The canonical rule is "spend a third round only when ROUND TWO surfaced a genuine spec-level
+  // finding" (orchestration.md § The convergence rule). A review round's answer is therefore
+  // authoritative in both directions — carrying round one's `true` through a quiet round two
+  // authorizes a third round the rule does not.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRounds: 1, specLevelFound: true })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, specPr: 7 } },
+      // Round two reports the round it spent and omits the optional flag: it found nothing.
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRoundsSpent: 1 } },
+    }),
+  })
+  assert.equal(result.issues[0].specReviewRounds, 2)
+  assert.equal(result.issues[0].specLevelFound, false, "a review round's silence means it found nothing")
+
+  // So the next wake converges instead of spending a third round.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...result.issues[0] }] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, specPr: 7 } } }),
+  })
+  assert.deepEqual(workerLabels(second.calls), [], 'converged — no third round')
+})
+
+check('a non-review worker still cannot revoke an authorized third round', async () => {
+  // The other half of the same rule: an apply-verdict fold is not a review round, so its silence
+  // must PRESERVE the flag. Both halves have to hold at once, which is why the rule keys on the
+  // action rather than on whether the field was reported.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 7,
+          specReviewRounds: 2,
+          specLevelFound: true,
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'e' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  assert.equal(result.issues[0].specLevelFound, true, 'an apply-verdict fold reports nothing about review findings')
+})
+
+check('a verdict-only epic fold cannot revoke the epic third round', async () => {
+  // `aboveBar` is REQUIRED, so a verdict-only fold must report something and reports false. Keyed
+  // on `roundsSpent`, that zero-round fold preserves the flag instead of revoking it.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        branch: 'epic/t',
+        prNumber: 100,
+        reviewRounds: 2,
+        aboveBarFound: true,
+        verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }],
+      },
+      issues: [],
+    }),
+    respond: epicResponder({ fold: { roundsSpent: 0, aboveBar: false } }),
+  })
+  assert.equal(result.epic.aboveBarFound, true, 'a fold that spent no round is not a review round')
+  assert.equal(result.epic.reviewRounds, 2)
+})
+
 check('a terminal issue stops asking the human to approve its spec', async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
@@ -1216,13 +1287,55 @@ check('a build on origin/main records no stack marker', async () => {
 })
 
 check('a dependent whose dependency is still pending is not ready', async () => {
-  const { result, calls, logs } = await run('issue-multi-pr.js', {
-    args: multiArgs({ subPrs: [node('a', { status: 'building' }), node('b', { dependsOn: ['a'] })] }),
+  // `a` is dispatchable and `b` is not: a dependency that hasn't even opened a PR is not a base.
+  // This check used to reach for `status: 'building'` to make `a` undispatchable, which quietly
+  // asserted that a carried `building` node waits forever — the stall review found. The fixture
+  // now uses only statuses the script actually knows.
+  const { result, calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a'), node('b', { dependsOn: ['a'] })] }),
     respond: multiResponder(),
   })
-  assert.deepEqual(calls, [])
+  assert.deepEqual(
+    calls.map((c) => c.label),
+    ['build:a'],
+    'only the independent node builds; the dependent waits for a base',
+  )
+  assert.equal(result.subPrs.find((n) => n.id === 'b').status, 'pending')
   assert.equal(result.done, false)
-  assert.match(logs.join('\n'), /No sub-PR is ready — waiting on a\(building\), b\(pending\)/)
+})
+
+check('a carried "building" status retries the build instead of waiting forever', async () => {
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'building' })] }),
+    respond: multiResponder(),
+  })
+  // Nothing external can ever move a `building` node — no PR exists to comment on or merge — so
+  // parking on it is permanent. It normalizes to `pending` and the build is retried.
+  assert.deepEqual(
+    calls.map((c) => c.label),
+    ['build:a'],
+  )
+  assert.match(logs.join('\n'), /carried status "building" is not a state a wake can resume/)
+  assert.notEqual(result.subPrs[0].status, 'building', 'and the status the script cannot act on does not survive the wake')
+})
+
+check('a build result echoing another sub-PR id is discarded, not applied to it', async () => {
+  const { result, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a'), node('b')] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      // `b`'s worker reports `a`'s id along with its own handles.
+      if (label === 'build:b') return { id: 'a', status: 'open', pr: 42, branch: 'fix/FIX-9-b', summary: 'done' }
+      return { id: 'a', status: 'open', pr: 41, branch: 'fix/FIX-9-a', summary: 'done' }
+    },
+  })
+  const a = result.subPrs.find((n) => n.id === 'a')
+  const b = result.subPrs.find((n) => n.id === 'b')
+  assert.equal(a.pr, 41, "a keeps its own worker's PR")
+  assert.equal(a.branch, 'fix/FIX-9-a')
+  assert.equal(b.status, 'pending', 'a discarded result leaves the node to retry, not half-applied')
+  assert.equal(b.pr, null)
+  assert.match(logs.join('\n'), /b: worker reported id a — discarding the result/)
 })
 
 check('two open dependencies are waited on rather than stacked arbitrarily', async () => {
@@ -1651,6 +1764,43 @@ check('INVARIANT: every schema is satisfiable', async () => {
       }
     }
   }
+})
+
+check('INVARIANT: every phase a row can hold is one the state machine handles', async () => {
+  // A phase is the row's whole program counter: `pendingAction` switches on it and `nextRow`
+  // persists whatever a worker reported. So a value outside the set the switch handles is a row
+  // that can never be acted on again, carrying no gate and no blocker to say why — a silent park.
+  // Review found `WORKER_SCHEMA.phase` as a free-form string; this asserts the two sides agree in
+  // both directions, so adding a phase to the machine without the schema (or the reverse) fails.
+  const { pendingAction, LIFECYCLE_PHASES } = loadRules('epic-wake.js', ['atReviewBudget', 'LIFECYCLE_PHASES', 'pendingAction'])
+  const src = readFileSync(join(HERE, 'epic-wake.js'), 'utf8')
+
+  // Every schema that carries a phase constrains it to the SAME shared set.
+  for (const schema of ['PR_STATE_SCHEMA', 'WORKER_SCHEMA']) {
+    const at = src.indexOf(`const ${schema} =`)
+    assert.ok(at > 0, `${schema} not found`)
+    const body = src.slice(at, at + 1600)
+    assert.match(
+      body,
+      /phase: \{ type: 'string', enum: LIFECYCLE_PHASES \}/,
+      `${schema}.phase is not constrained to LIFECYCLE_PHASES — a free-form value gets persisted and then parks the row forever`,
+    )
+  }
+
+  // And the machine covers the set: every phase either dispatches or is a deliberate terminal.
+  const terminal = ['DONE']
+  for (const phase of LIFECYCLE_PHASES) {
+    if (terminal.includes(phase)) continue
+    // At least one input in this phase must produce an action, or the phase is unreachable work.
+    const anyAction = [
+      { phase, specApproved: true },
+      { phase, newSpecReviewEvents: true },
+      { phase, newPrEvents: true },
+      { phase },
+    ].some((r) => pendingAction(r))
+    assert.ok(anyAction, `${phase} is in the schema enum but no input in it ever dispatches — a row that reaches it is stuck`)
+  }
+  assert.ok(LIFECYCLE_PHASES.length >= 5)
 })
 
 check('INVARIANT: every gating field is schema-required', async () => {

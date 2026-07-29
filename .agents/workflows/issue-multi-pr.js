@@ -247,7 +247,16 @@ const FIX_SCHEMA = {
 // ---------------------------------------------------------------------------
 
 const issueId = args.issueId
-const nodes = args.subPrs || []
+// Tolerate the status the previous, prose-driven path persisted. `issue-lifecycle` documents the
+// cached statuses as `building / open / merged`, but a wake is synchronous — a node either has a
+// PR (`open`) or does not (`pending`) — so `classify()` only knows the latter pair. A carried
+// `building` node therefore matched no branch, produced no action, and logged as "waiting" on
+// every wake with no external event able to move it: a permanent stall. It normalizes to
+// `pending`, which retries the build; a build that never returned left no PR to lose. (BP-030.)
+const nodes = (args.subPrs || []).map((n) => (n.status === 'building' ? { ...n, status: 'pending' } : n))
+for (const n of args.subPrs || []) {
+  if (n.status === 'building') log(`${n.id}: carried status "building" is not a state a wake can resume — retrying the build.`)
+}
 const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
 const goal = args.assembledGoal || {}
 
@@ -431,7 +440,25 @@ const built = await parallel(
   ),
 )
 
-const resultById = new Map(built.filter(Boolean).map((b) => [b.id, b]))
+// Bind each build result to the sub-PR it was DISPATCHED for, by position.
+//
+// `id` is a free-form string in BUILD_SCHEMA, so keying on the reported value lets worker A's PR,
+// branch and status land on node B — or overwrite B's real result — while A stays pending and gets
+// rebuilt from scratch next wake. `parallel()` preserves input order, so position is the only
+// trustworthy key, and a mismatch is discarded because a result we can't attribute is a result
+// that didn't happen (the node keeps its state and the next wake retries).
+// Twin of `bindByPosition` in epic-wake.js — a workflow script cannot import, so the rule is
+// stated in both places; change them together.
+const resultById = new Map()
+built.forEach((b, i) => {
+  if (!b) return
+  const id = ready[i].node.id
+  if (b.id && b.id !== id) {
+    log(`${id}: worker reported id ${b.id} — discarding the result rather than applying it to another sub-PR; ${id} retries next wake.`)
+    return
+  }
+  resultById.set(id, b)
+})
 const plannedById = new Map(ready.map((i) => [i.node.id, i]))
 
 const subPrs = nodes.map((node) => {

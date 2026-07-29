@@ -54,6 +54,13 @@ export const meta = {
 const REVIEW_BUDGET = 2
 
 /**
+ * The only phases a row may hold. Shared by the scan schema and the worker schema deliberately:
+ * `pendingAction` switches on this, so a value outside the set is a row that can never be acted
+ * on again and carries nothing to explain why.
+ */
+const LIFECYCLE_PHASES = ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL', 'NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE']
+
+/**
  * Has a direction artifact's review run out of budget?
  * → orchestration.md § "The convergence rule" (canonical). One function for issue specs and
  * the epic PR alike, because they carry the same budget on the same terms.
@@ -219,11 +226,23 @@ function nextRow(row, { worker, action, landed, folded }) {
     implPr: worker.implPr === undefined ? row.implPr : worker.implPr,
     // Add only the rounds the worker reports SPENDING — never one per event dispatched.
     specReviewRounds: (row.specReviewRounds || 0) + (worker.specReviewRoundsSpent || 0),
-    // Only a worker that ACTUALLY REPORTED this flag may change it. `specLevelFound` is optional
-    // in the schema, so a non-review worker (an apply-verdict fold, an implement run) omits it —
-    // and coercing that absence to false would silently revoke the third round a real review
-    // round had authorized.
-    specLevelFound: worker.specLevelFound === undefined ? !!row.specLevelFound : !!worker.specLevelFound,
+    // Whose answer this is depends on WHICH worker ran, because the canonical rule ties the
+    // third round to what the LATEST round found: "spend a third round only when round two
+    // surfaced a genuine spec-level finding" (orchestration.md § The convergence rule).
+    //
+    // A `spec-review` worker is that round, so its answer is authoritative in both directions —
+    // an omission means "this round found nothing", and carrying round one's `true` through a
+    // quiet round two would authorize a third round the rule doesn't.
+    //
+    // Any other worker (an apply-verdict fold, an implement run) isn't a review round at all and
+    // the field is optional, so its silence must PRESERVE the flag — coercing that absence to
+    // false revokes a third round a real review round had authorized.
+    specLevelFound:
+      action === 'spec-review'
+        ? !!worker.specLevelFound
+        : worker.specLevelFound === undefined
+          ? !!row.specLevelFound
+          : !!worker.specLevelFound,
     readyToMerge: !!worker.readyToMerge,
     blocker: worker.blocker || unsettledBlocker || null,
     status: worker.status,
@@ -377,10 +396,7 @@ const PR_STATE_SCHEMA = {
   required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'ciFailed'],
   properties: {
     issueId: { type: 'string' },
-    phase: {
-      type: 'string',
-      enum: ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL', 'NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE'],
-    },
+    phase: { type: 'string', enum: LIFECYCLE_PHASES },
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
@@ -409,7 +425,11 @@ const WORKER_SCHEMA = {
   required: ['issueId', 'phase', 'readyToMerge'],
   properties: {
     issueId: { type: 'string' },
-    phase: { type: 'string' },
+    // The SAME enum the scan uses. A free-form string here is schema-valid, gets persisted by
+    // `nextRow`, and then falls through `pendingAction`'s default on every subsequent wake — the
+    // row parks forever with no gate and no blocker to explain it. A phase outside the lifecycle
+    // is not a state the coordinator can act on, so it is rejected at the schema instead.
+    phase: { type: 'string', enum: LIFECYCLE_PHASES },
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specReviewRoundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent this dispatch — 0 for a batch that was only factual corrections' },
@@ -856,9 +876,12 @@ return {
       : { lastSeenActivityAt: epic.lastSeenActivityAt || null, lastSeenSha: epic.lastSeenSha || null }),
     // Same rule as an issue's: add only the rounds the folder reports spending.
     reviewRounds: (epic.reviewRounds || 0) + (epicFold ? epicFold.roundsSpent || 0 : 0),
-    // Same rule as a row's `specLevelFound`: `aboveBar` is optional, so a verdict-only fold
-    // omits it — coercing that to false would revoke the third round an earlier round authorized.
-    aboveBarFound: epicFold && epicFold.aboveBar !== undefined ? !!epicFold.aboveBar : !!epic.aboveBarFound,
+    // Same rule as a row's `specLevelFound`, keyed on the same question: was this dispatch a
+    // review round? `aboveBar` is REQUIRED, so a verdict-only fold has to report something — and
+    // it reports `false`, which would revoke a third round an earlier real round authorized. So
+    // the fold's answer is authoritative only when it actually spent a round; a zero-round fold
+    // (evidence exemption, or a batch of pure factual corrections) preserves the flag.
+    aboveBarFound: epicFold && (epicFold.roundsSpent || 0) > 0 ? !!epicFold.aboveBar : !!epic.aboveBarFound,
     converged: epicAtBudget,
     // An epic-level verdict clears only once a fold returned to record it; otherwise it is
     // carried so the next wake retries. A settlement targeting the epic has no issue row to

@@ -291,8 +291,12 @@ What the script decides, so you don't:
    out of DONE until that lands.
 
 `subPrs` comes from the handle cache and goes back to it: the `.orchestration/<ISSUE>.md` record
-adds one row per sub-PR — `id · depends_on · branch · PR# · stackedOn · status (pending /
-building / open / merged)` — alongside the issue-level fields. You hold only this table, never
+adds one row per sub-PR — `id · depends_on · branch · PR# · stackedOn · status (pending / open /
+merged)` — alongside the issue-level fields. There is deliberately no `building`: a wake is
+synchronous, so a sub-PR either has a PR (`open`) or doesn't (`pending`), and a status the script
+can't act on is a node that waits forever. A table carried over from before this record shape
+normalizes `building` back to `pending` on the way in, so the build simply retries. You hold only
+this table, never
 sub-PR content (same token discipline). **You still own every merge gate**: a dependency's merge
 is an external event that re-enters this lifecycle, and the script never merges anything.
 
