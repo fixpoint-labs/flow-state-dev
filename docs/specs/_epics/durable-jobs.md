@@ -27,13 +27,19 @@ the one before it:
    and concurrent executions are bounded at a creation cap. Today none of the three holds across
    executions — measured, not inferred (the premise correction below).
 
-   **The cap half has two possible guarantees, and they are not interchangeable** — this is
-   **OQ-A**'s to settle, not this clause's to assume:
+   **The cap half has two possible guarantees, and no candidate mechanism yet satisfies the
+   stronger one** — **OQ-A**'s to settle, not this clause's to assume:
 
-   | Guarantee | Meaning |
-   |---|---|
-   | **Exact arbitration** | Concurrent executions can *never* admit past the cap. |
-   | **Bounded overshoot** | They may exceed it, by no more than a **stated bound**, and never unboundedly. |
+   | Guarantee | Meaning | Requires |
+   |---|---|---|
+   | **Exact arbitration** | Concurrent executions can *never* admit past the cap | a **named mechanism that enforces a hard maximum on concurrent admitters** — none is identified yet |
+   | **Narrowed, unbounded overshoot** | The race window shrinks; the overshoot **still grows with concurrency** | an authoritative read before the decision |
+
+   **The second row is deliberately not called "bounded".** An authoritative read followed by a
+   distinct-key write narrows *when* the race happens and bounds *nothing about how much*: any
+   number of executions can each observe remaining capacity before any of them writes, so
+   overshoot scales with the number of concurrent admitters. Calling that "bounded" would be a
+   guarantee this epic cannot honour — see Decision 1 → 1b, and the cross-issue finding there.
 
    Whichever the gate picks, the *other two* parts of this clause (one current owner, stale
    settlement rejected) are unconditional.
@@ -206,12 +212,12 @@ Not "durable jobs work." Specifically:
 
    | If OQ-A chooses | The distinct-ID goal check asserts |
    |---|---|
-   | **Exact arbitration** | final row count **never exceeds** the cap |
-   | **Bounded overshoot** | final row count never exceeds the cap **by more than the stated bound**, and the bound is **named in FIX-981's spec** |
+   | **Exact arbitration** | final row count **never exceeds** the cap — available only once a mechanism enforcing a hard maximum is named |
+   | **Narrowed, unbounded overshoot** | that the window narrowed; it **cannot** assert a maximum, because the mechanism enforces none |
 
-   Under bounded overshoot the check must *not* assert "never exceeds" — a correct
-   implementation would fail it. **If 1b is deferred entirely (see OQ-D), this criterion is
-   relaxed to criterion 1 alone** and the epic does not claim a cap guarantee.
+   Under the second, the check must *not* assert "never exceeds" nor "exceeds by at most N" — a
+   correct implementation would fail either. **If 1b is deferred entirely (see OQ-D), this
+   criterion is relaxed to criterion 1 alone** and the epic claims no cap guarantee at all.
 2. A leased task continues to execute after the request that created it has ended, and the
    thing running it is not the originating request's drain.
 3. A stranded claim returns to the queue with no human intervening — via FIX-978's mechanism,
@@ -469,63 +475,57 @@ Two compounding reasons per-key CAS cannot fix this, both confirmed:
 **That is exactly §5's row 1 — 8 rows against `maxInstances: 4`.** Two executions, four admits
 each.
 
-##### 1a — ownership · **recommendation: (a), staged, mirroring the scope-store precedent**
+##### 1a — ownership · **direction: yes, additively, reusing existing precedent; no breaking change**
 
-> Add the conditional write as an **optional** verb on `ResourceStateStore`, reach it through a
-> **new sibling** ref method, and route **every ownership-sensitive write** through it —
-> completing the two-tier pattern scope state already implements.
+> **The direction, which is all this epic decides:** give resource state a conditional write at
+> the durable boundary, added **additively** so no existing caller and no third-party adapter is
+> forced to change, and reuse the scope-store precedent rather than inventing a parallel
+> mechanism. **The shape is FIX-981's to design** (see the open fork below).
 
-**Scope: claiming *and* settlement, not claiming alone. 1a grew as a result — it is the larger
-half of M1, not a narrow store change.** An earlier draft switched only `claim`, which left
-clause 1's *"a stale owner's settlement is rejected"* undelivered. Verified in code:
+**Scope: every ownership-sensitive write, not claiming alone.** An earlier draft scoped this to
+`claim`, which left clause 1's *"a stale owner's settlement is rejected"* undelivered. `complete` /
+`fail` / `cancel` all route through `transitionRef` (`resource-backed.ts:176-213`), which evaluates
+FIX-951's guards **inside `ref.updateState`** — the same tier-1-only path as `claim`. **So 1a is
+the larger half of M1, not a narrow store change.**
 
-- `complete` / `fail` / `cancel` all route through `transitionRef`
-  (`resource-backed.ts:176-213`), which evaluates FIX-951's guards **inside
-  `ref.updateState`** — the same tier-1-only path as `claim`.
-- FIX-951's `attemptOwnsTask` is `task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status)`
-  (`internal.ts:107-109`). **The logic is correct**; the problem is what feeds it. `current`
-  comes from `readState()` on the *calling execution's own mirror*, so a displaced worker A
-  whose execution never observed B's attempt-2 writes reads `attempts: 1, in_progress` — **its
-  own stale view** — the guard passes, and the unconditional write clobbers B.
-- So the guard is not wrong and must not be replaced. It is **starved of a fresh read**, which
-  is the *same* root cause as the claim gap and wants the *same* fix.
-
-**Compose with FIX-951, never replace it.** `ifAllowed` / `expectAttempt` /
+**Constraint — compose with FIX-951, never replace it.** `ifAllowed` / `expectAttempt` /
 `TransitionDeclined` / `shouldDeclineTransition` are the shipped, merged **in-request** half of
-this guard. 1a adds the **cross-execution** half underneath them: the rules stay where they are
-and the write they wrap becomes version-gated, so a stale mirror can no longer win. A design
-that removes or reimplements those rules has misread this recommendation.
+this guard, and the logic is *correct*: `attemptOwnsTask` is
+`task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status)`
+(`internal.ts:107-109`). What fails is the *read* feeding it — `current` comes from the calling
+execution's own mirror, so a displaced worker evaluates a correct guard against a stale view. **The
+guard is starved of a fresh read, not wrong.** A design that removes or reimplements those rules
+has misread this direction.
 
-**Worth recording, because FIX-951 already found the adjacent hazard and documented it:**
-`attemptOwnsTask`'s header notes that `reclaim()` returns a task to `pending` *without* touching
-`attempts`, so "in the window between a reclaim and the next claim a displaced worker matches
-the counter by construction" — mitigated today by the status check, since `pending` is not
-attempt-owned. That mitigation is in-request only, which is exactly the seam 1a closes.
+> **⚠ Open fork — there is no version to gate on, so "mirror `runWithCAS`" is a direction, not a
+> design. This is FIX-981's first design decision.**
+>
+> `ResourceStateStore.get()` returns a bare `JsonObject` (`stores/types.ts:548`) and resource refs
+> carry **no version at all** — `packages/core/src/types/resource.ts` contains zero occurrences of
+> "version". But `runWithCAS` requires an initial `expectedVersion` and a `currentVersion` on
+> conflict (`cas.ts:119-175`), supplied for scope state by `StateContainer.getVersion()`
+> (`state-container.ts:54-78`) over records that *carry* a version. **Resource state has no such
+> representation.**
+>
+> Three shapes could supply one, and **they are different public and adapter contracts** — not
+> variants of one design:
+>
+> | Shape | Nature of the change |
+> |---|---|
+> | **Versioned read / envelope** | `get` returns value + version; every adapter stores and returns it |
+> | **Expected-value CAS** | compare against the prior value rather than a version; no version to store |
+> | **Atomic mutate verb** | the store applies a caller-supplied transform; no version crosses the boundary |
+>
+> **Nothing in this document picks one.** Whoever specs FIX-981 does, and states the adapter and
+> public-contract consequences. Earlier wording implying the shape was settled is withdrawn.
 
-Staged, in dependency order, within FIX-981:
-
-1. **Correct the false comments** — `claim-task.ts:12-14`, `resource-backed.ts:6-7,22-26`, **and
-   `TaskDispatcher`'s header**, a third site in the same doc-debt class. Cheap; stops the fifth
-   wrong reading.
-2. **Add an optional version-gated verb to `ResourceStateStore`,** mirroring
-   `SessionStore.set(id, value, expectedVersion)` and `DeltaStoreOps`' capability advertisement
-   rather than inventing a signature.
-3. **Add a new sibling ref method** carrying an applied/declined outcome. `updateState` keeps its
-   signature, so the 47 references stay untouched.
-4. **Route `claim` *and* `transitionRef` through it**, preserving FIX-951's guard evaluation, and
-   apply the compatibility path below.
-5. **Reuse `runWithCAS`** rather than writing a second retry loop — it already has conflict
-   refresh, backoff, and `ConcurrentModificationError` (`cas.ts:119-175`). A parallel loop beside
-   it is the "two mechanisms for one question" failure this epic keeps warning about.
-
-**The reclaim write itself is FIX-978's, not FIX-981's.** `reclaim()` also writes through an
+**Constraint — the reclaim write is FIX-978's, not FIX-981's.** `reclaim()` also writes through an
 unconditional `updateState` (`resource-backed.ts:406-450`), but reclamation belongs to FIX-978
-under FIX-980 (Decision 0). **Boundary: FIX-981 owns making *claim and settlement* conditional
-and ships the primitive; FIX-978 owns making the *reclaim* write use it.** Stated because
-otherwise both sides assume the other did it, and the gap is invisible until two workers race
-across a reclaim.
+under FIX-980 (Decision 0). **FIX-981 ships the primitive and converts claim + settlement; FIX-978
+converts the reclaim write.** Stated because otherwise both sides assume the other did it, and the
+gap is invisible until two workers race across a reclaim.
 
-##### 1b — cap admission · **recommendation: align with FIX-957's decided answer (bounded overshoot), and do *not* invent exactness here**
+##### 1b — cap admission · **constraint only; this epic names no mechanism**
 
 > ### ⛔ FIX-981's spec must **not** include 1b implementation until **OQ-D** is decided.
 >
@@ -535,39 +535,48 @@ across a reclaim.
 > away** and the epic claims no cap guarantee. This is precisely the "built twice" failure OQ-D
 > exists to prevent.
 
-The mechanisms that could give **exact** cross-execution cap admission, and their costs:
+**The binding constraint, and the only thing this epic decides about 1b:**
 
-| Mechanism | Cost |
-|---|---|
-| **CAS-guarded cardinality counter** (one key holding the count; per-key CAS on *that* key) | Reuses 1a's primitive exactly — but makes **every create contend on one key**, a write hot spot precisely under parallel Conductor. This is a coarse lock wearing a CAS costume; see the rejection below. |
-| **Reservation / two-phase admit** | Correct and general; needs a reservation record, a release path, and a leak story when a reserver dies. Substantial. |
-| **Multi-key transaction** | **The resource registry has no verb for it** — independently confirmed by FIX-957's spec, which rejected a related approach for this reason. |
+> ### No mechanism may claim a bound it does not enforce.
+>
+> Either **name a mechanism that enforces a hard maximum on the number of concurrent admitters**,
+> or **stop calling the result bounded** and say plainly that it gives *narrowed but unbounded*
+> overshoot. A guarantee row no candidate mechanism satisfies is worse than an honest
+> "unbounded" — it reads as safety that isn't there.
 
-**FIX-957 already answered this question at the task-cap layer, and chose bounded overshoot.**
-Its Decision 3: the check *"reads authoritatively from the collection immediately before it
-decides, leaving only the decide-then-write instant racy… That restores a small, bounded
-overshoot."* It reached that after rejecting the mirror-only check for the same reason found
-here — *"separate long-lived references each admit the full remaining budget without seeing each
-other."*
+**Why the obvious answer fails.** An authoritative read immediately before the decision narrows
+*when* the race can happen; it bounds *nothing about how much*. Any number of executions can each
+observe remaining capacity before any of them writes, and because the writes go to **distinct
+keys** none of them conflicts. **Overshoot therefore scales with concurrency** — which is precisely
+the failure mode that ruled out the weaker mirror-only check, merely with a tighter window.
 
-**So the recommendation for 1b is to inherit that answer, not to compete with it:** authoritative
-re-read immediately before the decision, accepting a bounded overshoot, and **exact** admission
-treated as out of scope unless the gate asks for it.
+**This document names no mechanism for 1b.** Doing so is what produced three rounds of
+mechanism-level churn; it is FIX-981's (or FIX-957's — OQ-D) design work, under the constraint
+above.
 
-Two things the gate must see plainly:
+> **⚠ Cross-issue finding for the owner — FIX-957's Decision 3 carries the same defect, and
+> nothing here edits FIX-957.**
+>
+> FIX-957's spec chose the same authoritative-re-read mechanism and described the result as *"a
+> small, bounded overshoot."* By the argument above **that mechanism does not bound** — and
+> FIX-957's own spec makes the case against itself, having rejected the mirror-only check because
+> *"the overshoot grows with the number of concurrent writers rather than staying within a few
+> tasks."* The re-read shrinks the window, not the admitter count.
+>
+> **Consequence: OQ-D's "inherit FIX-957's answer" is now conditional on FIX-957's bound being
+> real.** If it is not, neither issue has a bounded-cap mechanism and the gate is choosing between
+> exact arbitration and an honest unbounded statement. **Raised for the owner to route to FIX-957;
+> not edited here.**
 
-- **`maxInstances` and the task caps are different ceilings.** `maxInstances` is a
-  resource-registry **live-capacity** limit; `maxTotalTasks`/`maxEnqueuedTasks` are task-layer
-  ceilings. FIX-957's spec flags that conflating them *"has already cost a cycle"* — so §5's
-  `maxInstances` row and the task-cap work are related but not the same target.
-- **Ownership overlaps FIX-957.** Its Decision 3 (cap enforcement on the durable backing) is
-  **decided in its spec**, while this epic's description lists that work as having *moved here*.
-  **That is a live conflict, surfaced not resolved** — see Decision 3, row 2.
+**Two ceilings, not one — and they are easy to conflate.** `maxInstances` is a resource-registry
+**live-capacity** limit; `maxTotalTasks` / `maxEnqueuedTasks` are task-layer ceilings. FIX-957's
+spec flags that confusing them *"has already cost a cycle"*, so §5's `maxInstances` row and the
+task-cap work are related but not the same target.
 
-**Required goal check for FIX-981 either way: a distinct-ID contention test.** Two executions
-creating *different* task IDs concurrently against one capped collection. The existing harness
-gap (resource-backed + two concurrent executions) would **not** catch this case even once
-extended, because both writes succeed — the failure is only visible in the final row count.
+**Required verification either way: a distinct-ID contention check** — two executions creating
+*different* task IDs concurrently against one capped collection. The harness extension in Decision 4
+would **not** catch this by itself, because both writes succeed; the failure shows only in the final
+row count.
 
 ##### The compatibility path — decided, because "non-breaking" was wrong
 
@@ -595,7 +604,7 @@ version-gated CAS at the durable boundary** (`scope-lock.ts:1-5`). Per-record, n
 
 **Binding on every issue here:** no issue may serialize a whole board to obtain claim safety. A
 single-key cardinality counter (1b's first row) is a coarse lock by another name and falls under
-this rejection too — which is part of why bounded overshoot is recommended over exactness.
+this rejection too — a single-key counter serialises every create against one row.
 
 ##### Why (a) over (b), and what refusing costs
 
@@ -614,6 +623,36 @@ M3 merge** and the epic's sequence is restated, because (b) can only be built wh
 *Recorded in §4 as **OQ-A**, because these are recommendations and the human decides. When the
 gate answers, this heading changes to **DECIDED** and the rejected options stay recorded with
 their reasons, so a later reader does not re-open a settled fork.*
+
+### Hazard — `taskTools` is the path guarantees escape through
+
+**Promoted to a named hazard because it has now broken an assumption in this document three
+separate times**, each discovered independently: it bypasses option (b)'s dedup, its default
+instance is **uncapped** (`task-tools-capability.ts:588-600`, FIX-931), and — found in review —
+its settlement tools carry **no ownership token at all**:
+
+```ts
+completeTask → withTask(ctx, id, (c) => c.complete(input.taskId, input.output))   // :415-423
+failTask     → withTask(ctx, id, (c) => c.fail(input.taskId, input.error))        // :425-433
+```
+
+**No third argument, so no `expectAttempt` and no `ifAllowed`.** That means making `transitionRef`
+conditional does **not** fence the model-facing settlement path — and CAS arguably makes it worse:
+a conflicting write refreshes to the *current* row (attempt 2, `in_progress`), the guardless
+transition is legal from there, and the stale attempt-1 tool call **settles the new owner's task**.
+Fresh state is exactly what lets it through.
+
+> **The constraint, stated once, for the whole set:**
+> **Any guarantee not enforced on the `taskTools` path is not enforced** — that path is the normal
+> way boards get mutated in an agent framework, not an edge case.
+>
+> **Concretely: a detached worker's tool context must carry an attempt or owner token**, so its
+> settlement calls are fenced the way `dispatchAndExecuteBlock` and `recordResult` already fence
+> theirs (`expectAttempt: claimed.attempts`, `dispatch-and-execute.ts:186,193`). Whoever owns the
+> detached worker's context owns this; the mechanism is theirs to design.
+
+This is worth more than the three places it was separately rediscovered, which is why those now
+point here.
 
 ### Decision 2 — how board **lifetime** and collection **scope** compose (they are two axes, not one) **(rewritten — the previous version was a category error)**
 
@@ -678,7 +717,7 @@ below.
 | # | Moved-in item | Owner | Why |
 |---|---|---|---|
 | 1 | `session` / `user` / `org` board lifetimes | **nothing to build — already shipped** | **Corrected in round 1.** These are `ResourceScope` values on `defineTaskCollection`, shipped today (`define-task-collection.ts:65`, `core/src/types/resource.ts:24`). This epic **consumes** them; it does not add them. What FIX-981 owns is making a board *safe* at those scopes, which is 1a/1b — not the scopes themselves. See Decision 2. |
-| 2 | FIX-957's former **Decision 3** (cap enforcement on durable storage) **+ its five consequences** | **⚠️ CONFLICT — surfaced, not resolved** | **This document cannot allocate this row.** FIX-957's spec PR [#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954) carries cap enforcement on the durable backing as **its own Decision 3, already decided** (backing-agnostic check, durable backing accepts cap options, authoritative re-read → bounded overshoot). The epic description says the work moved *here*. **Both cannot own it.** See 2.a below. |
+| 2 | FIX-957's former **Decision 3** (cap enforcement on durable storage) **+ its five consequences** | **⚠️ CONFLICT — surfaced, not resolved** | **This document cannot allocate this row.** FIX-957's spec PR [#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954) carries cap enforcement on the durable backing as **its own Decision 3, already decided** (backing-agnostic check, durable backing accepts cap options, authoritative re-read, described there as bounded overshoot — see 1b's cross-issue finding). The epic description says the work moved *here*. **Both cannot own it.** See 2.a below. |
 | 3 | The unresolved **(a)/(b) claim-recovery mechanism** | **Decision 1, this document** | Not deferred to a spec — it *is* Decision 1, settled below rather than inside one issue, because option (b) is FIX-982's territory and option (a) is FIX-981's. |
 | 4 | The **durable collection-identity seam** | **FIX-981 (M1)** | A durable board must be re-findable across executions before anything can contend for it. It is a precondition of M1's own tests, not separable work. |
 | 5 | The **mandatory hydration memo** | **FIX-981 (M1)** | Same reason: hydrating a durable board is how the second execution reaches the first one's task. M1 needs it to exist in order to demonstrate the race at all. |
@@ -735,11 +774,19 @@ disagree (`createExecutionContext.ts:818-861`).
 **What the executor must load to re-derive** — recorded because FIX-982 would otherwise discover
 it late: (1) the **full config map** for that scope, since canonicalization and the prefix check
 are whole-map decisions; (2) the **flow definition**, for `flow.kind` and the isolation defaults;
-(3) the **identity triple** — `userId`, `orgId`, tenant-namespaced session key.
+(3) the **identity fields** below.
 
-**Only flow *kind* is request-derived**, so **flow kind + identity is the minimal thing that must
-travel with a detached task.** Much smaller than "forward the isolation settings", and it is the
-constraint FIX-982 designs against.
+**Carry the *bare* identity fields, never a derived key.** An earlier draft said to carry the
+"tenant-namespaced session key" — **that is wrong and would strand the board.**
+`createExecutionContext` derives the storage key from `(sessionId, tenantId)`, so passing an
+already-derived key as `sessionId` either **double-prefixes** it or **loses the tenant binding** —
+either way resolving a *different* session partition than the one holding the board.
+
+**The minimal travel set: `flowKind` + bare `sessionId` + `tenantId` + `userId` / `orgId`, as
+separate fields.** Conveniently this is exactly the shape `DispatchEnvelope` already carries
+(`engine/src/transports/dispatcher.ts:16-26`) — a shipped type FIX-982 can reuse rather than invent
+an envelope beside. Everything else the executor re-derives from the definitions, which is much
+smaller than "forward the isolation settings."
 
 **No new issue is needed for 3.a or 3.b.** Row 2 is the only unowned one (OQ-D).
 
@@ -795,7 +842,7 @@ named seam or state in your spec why it doesn't fit.**
 
 | Seam | Where | Who should reuse it |
 |---|---|---|
-| **CAS**: `runWithCAS`, version-gated `set(id, value, expectedVersion)`, `DeltaStoreOps` capability advertisement | `engine/src/stores/cas.ts:119-175`, `stores/types.ts:181-272` | **FIX-981** — mirror this shape; do not invent a retry loop (Decision 1). |
+| **CAS**: `runWithCAS`, version-gated `set(id, value, expectedVersion)`, `DeltaStoreOps` capability advertisement | `engine/src/stores/cas.ts:119-175`, `stores/types.ts:181-272` | **FIX-981** — the precedent to reuse rather than invent beside. **But note: resource state has no version to gate on**, so this is a direction, not a drop-in — see 1a's open fork. |
 | **Two-tier dispatch**: in-process FIFO queue + CAS at the durable boundary | `engine/src/stores/scope-lock.ts:1-5` | **FIX-981** — the architecture being completed, and the reason coarse locks are rejected. |
 | **Liveness**: `LeaseStore` (4 adapters), `durability-sweeper`, interrupted-request detection | `engine/src/stores/{memory,filesystem}/lease-store.ts`, `store-{sqlite,postgres}/src/lease-store.ts`, `engine/src/durability/durability-sweeper.ts` | **FIX-978 / FIX-980** — align "gone vs slow" with these rather than inventing a parallel liveness notion. Ownership stays with FIX-980 (Decision 0). |
 | **Out-of-request execution**: `FlowDispatcher` + `StreamBridge` | `engine/src/transports/dispatcher.ts` | **FIX-982** — structurally this seam at flow-run granularity. Its spec must state **compose vs rebuild**. |
@@ -845,8 +892,8 @@ that need two mechanisms. **Evidence and pricing are in §2 Decision 1 — not r
 
 | | Recommendation | If the gate refuses it |
 |---|---|---|
-| **1a — ownership** (one current owner; stale settlement rejected) | **(a), staged** — optional version-gated store verb + new sibling ref method, mirroring the shipped `runWithCAS` / `DeltaStoreOps` precedent, routed through **claim *and* settlement** | **M1 merges into M3** — (b)'s dedup can only live where the queue is. Not a smaller epic; a resequenced one. |
-| **1b — cap admission** | **Inherit FIX-957's bounded overshoot** (authoritative re-read); treat *exact* arbitration as out of scope unless asked | §1's criterion 1b is relaxed away and the epic claims **no** cap guarantee |
+| **1a — ownership** (one current owner; stale settlement rejected) | **Yes — (a), additively**, reusing the existing scope-store precedent rather than a parallel mechanism, and covering **claim *and* settlement**. **The shape is not decided here** — resource state has no version to gate on, so it is FIX-981's first design fork | **M1 merges into M3** — (b)'s dedup can only live where the queue is. Not a smaller epic; a resequenced one. |
+| **1b — cap admission** | **No mechanism recommended.** The constraint: name one that enforces a hard maximum on concurrent admitters, or state honestly that overshoot is *narrowed but unbounded*. **Conditional on OQ-D and on FIX-957's claimed bound being real** — 1b's cross-issue finding argues it is not | §1's criterion 1b is relaxed away and the epic claims **no** cap guarantee |
 
 Also for the gate: the recommended path is **not** free — optional verbs preserve source but not
 behavioral compatibility, so it carries a **declared adapter migration** (durable boards refuse
@@ -926,6 +973,12 @@ Decision 3, already decided**; this epic's description lists the same work as ha
 warns about.** Most likely the description is stale. **FIX-981 must not start cap work until this
 is answered.** See §2 Decision 3 → 2.a. **Needs a human.**
 
+**And the question is now larger than ownership.** 1b's cross-issue finding argues FIX-957's chosen
+mechanism **does not deliver the bound its spec claims**. So OQ-D is no longer only "who builds it"
+but **"does either issue have a cap mechanism at all"** — if the bound is not real, the gate is
+choosing between *exact arbitration* (needs a mechanism nobody has named) and an *honest unbounded
+statement*. **Route the finding to FIX-957's owner alongside this question.**
+
 ---
 
 ## 5. Evidence on record
@@ -991,6 +1044,18 @@ reading cost.
   (a category error, rewritten), the **"non-breaking" claim**, **OQ-C's framing**, **Decision 1's
   scope** (split into 1a/1b, then 1a widened to settlement), and **Decision 4's cost** (materially
   cheapened). **The direction never changed:** option (a), staged, mirroring a shipped precedent.
+
+- **Final convergence — the document was narrowed, not extended.** The last round diagnosed the
+  real problem: **the epic had been specifying a mechanism it cannot verify at its own altitude.**
+  Each of three successive fixes became the next round's defect — the cap framing, then the
+  objective contradicting it, then a "bounded" overshoot nothing bounds; a conditional
+  `transitionRef`, then the model-facing path that was never fenced. **Every one of those defects
+  was in a *mechanism* claim. The direction survived all of them untouched.**
+
+  So the final edit **removed** claims about *how*: 1a's staged implementation list, 1b's mechanism
+  table, and every implication that the conditional-write shape was settled (**it is not — resource
+  state has no version to gate on**, recorded as FIX-981's first design fork). **Decision 1 now
+  states direction and constraints only, with mechanism explicitly delegated to FIX-981.**
 
 - **Open at the gate:** OQ-A (two-part), OQ-B, OQ-C, OQ-D, plus the sharpened scope options
   recorded for the user rather than adopted — including the **leaner-epic default** (collapse
