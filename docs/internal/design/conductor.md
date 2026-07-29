@@ -370,7 +370,7 @@ confusion about where models and skills belong dissolves once the layers are nam
 |---|---|---|---|---|
 | **1 · the tick** | which phase, which gate, what's next | **no** — `decide` is pure | none | conductor |
 | **2 · the steward** | how to read a human comment; what to work on next | yes | **FSD skills** (`orchestration/skills`), personas from `workforce` | conductor |
-| **3 · the vendor harness** | how the work inside a phase actually gets done | yes | **project skills** (`agents/skills/`) — the ones we already have | Claude Code / Codex |
+| **3 · the vendor harness** | how the work inside a phase actually gets done | yes | **project skills** (`.agents/skills/`, surfaced to Claude via `.claude/skills`) — the ones we already have | Claude Code / Codex |
 
 **Two skill systems is correct, not a smell.** They are different runtimes at different layers:
 FSD skills are resources activated when an FSD generator calls `runSkill`; project skills are
@@ -877,8 +877,12 @@ work.
    and how a PR thread's `sessionId` reconciles with conductor's per-issue session. Verify
    before M3.
 5. **Public name** (D2).
-6. **Where `.conductor/` sits** — on the filesystem is settled (§6, the vendor harness must
-   read it). Whether it sits alongside `.agents/skills/` or inside it is not.
+6. **Where `.conductor/` sits** — *answered:* alongside `.agents/`, not inside it, and
+   `poc.md`'s worked repo tree shows why. `.agents/` holds **vendor-harness assets** (skills,
+   sub-agents) that the harness runs; `.conductor/` holds **process and orchestration state**
+   that conductor runs. Different owners and different runtimes, so different roots — nesting
+   one inside the other would imply conductor's process is something Claude Code activates,
+   which is the layer confusion §6 exists to prevent.
 7. **The `ctx.conductor.*` ambient handle** (`poc.md` §4c) — convenient, and exactly the kind
    of ambient god-object that ages badly. Capabilities are probably the right shape. Settle
    before M1 writes a phase block against it.

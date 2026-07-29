@@ -13,62 +13,87 @@ defaults for everything it hasn't overridden.
 
 ---
 
-## The file tree a project ends up with
+## A repo with conductor in it
+
+This is `flow-state-dev` itself, lightly trimmed — everything above the line already exists
+today, and everything below it is what adopting conductor adds.
 
 ```
-my-project/
-  docs/
-    philosophy.md              # your tenets — ALREADY YOURS. Conductor reads, never owns.
-    objectives.md              #   likewise. Claude Code reads these today.
-  conductor.config.ts          # level 1–2: the only required file
-  .conductor/
-    phases/                    # every phase, built-in and yours, in one place
-      spec/
-        instructions.md        #   level 3: how a spec gets written  (scaffolded on init)
-        definition.ts          #   level 4: only present once you eject it
-      implement/instructions.md
-      review/instructions.md
-      wrap/instructions.md         #   epic-level: writes the retrospective + docs polish
-      security/                #   a phase you added — same shape, no special case
-        instructions.md
-        definition.ts
-    retrospectives/            # conductor's OWN artifacts — one per completed EPIC
-      FIX-966.md
-    blocks/                    # level 4: your own blocks
-      security-review.ts
+flow-state-dev/
+│
+│  ── already here: the vendor harness's world, and yours ──────────────────
+├── .agents/                      the harness-neutral home for agent assets
+│   ├── skills/                     tdd/, review/, issue-spec/ … SKILL.md folders
+│   └── subagents/                  code-reviewer, scout, spec-implementer …
+├── .claude/                      Claude Code's view — symlinks into .agents/
+│   ├── skills    -> ../.agents/skills
+│   └── agents    -> ../.agents/subagents
+├── CLAUDE.md                     Claude Code's entrypoint
+├── AGENTS.md                     Codex's entrypoint
+├── docs/
+│   ├── philosophy.md               your tenets
+│   ├── objectives.md               what the work is for
+│   ├── contributing/               best practices, orchestration.md
+│   └── specs/FIX-967.md            spec artifacts, reviewed as PRs
+├── goals/                        the real-path harness the goal check runs
+├── packages/  apps/  …           the actual code
+│
+│  ── what conductor adds: one file and one directory ────────────────────
+├── conductor.config.ts
+└── .conductor/
+    ├── phases/                     built-in AND yours, one shape
+    │   ├── spec/instructions.md
+    │   ├── implement/instructions.md
+    │   ├── review/instructions.md
+    │   ├── wrap/instructions.md      epic-level: retrospective + docs polish
+    │   └── security/                 a phase you added — no special case
+    │       ├── instructions.md
+    │       └── definition.ts         present because you ejected/wrote it
+    ├── retrospectives/FIX-966.md   conductor's own artifact, one per EPIC
+    ├── blocks/security-review.ts   level 4: your own blocks
+    └── worktrees/FIX-967/          gitignored; provisioned per issue for local dispatch
 ```
 
-**Note what is *not* here: a guidance directory.** Philosophy, tenets, and objectives are
-app-level facts that matter whether or not conductor is running, and the vendor harness already
-reads them. Conductor points at their paths and owns none of it (`conductor.md` §4). The only
-documents it owns are **retrospectives** (one per epic) — its own work product — and `distill-lessons` proposes
-edits to your guidance from them as an ordinary PR.
+**Conductor adds a config file and a directory. That is the entire footprint.** It does not
+create a guidance folder, does not rewrite `CLAUDE.md`, and does not move `philosophy.md`. A repo
+that already runs coding agents keeps everything it has.
 
-**There is no separate "process" directory, because the process *is* the phases.** One
-directory, one shape: a phase is a folder with `instructions.md` and optionally a
-`definition.ts`. Changing what a phase *says* means editing its instructions; changing what it
-*does* means ejecting its definition; adding a phase means adding a folder. Built-in and custom
-phases differ only in who wrote them first — customizing and extending are points on one axis,
-not two mechanisms in two places.
+### Who owns what, and who reads it
 
-`.conductor/` is versioned with the repo — the process is part of the codebase, not hidden in
-a service, and every change to it shows up in code review.
+| Path | Owner | Conductor | Vendor harness |
+|---|---|---|---|
+| `.agents/skills/`, `.agents/subagents/` | **you** | names relevant ones in a phase brief | **runs them** |
+| `CLAUDE.md`, `AGENTS.md` | **you** | never touches | reads at startup |
+| `docs/philosophy.md`, `docs/objectives.md` | **you** | **reads** as decision context | reads |
+| `docs/specs/` | the SPEC phase | opens the PR | writes the file |
+| `goals/` | **you** | invokes at the goal check | runs |
+| `conductor.config.ts` | **you** | reads | — |
+| `.conductor/phases/*/instructions.md` | **you**, scaffolded on init | carries to the dispatcher | receives as its brief |
+| `.conductor/phases/*/definition.ts` | the package, until you eject | executes | — |
+| `.conductor/retrospectives/` | **conductor** | writes | — |
+| `.conductor/worktrees/` | conductor | provisions | works inside |
 
-**Scaffold vs. eject, since the tradeoff is real.** `conductor init` writes `instructions.md`
-for each built-in phase, because instructions are what you actually want to edit. It does *not*
-write `definition.ts` — the definition is imported from the package until you run
-`conductor eject <phase>`, which writes the default block structure into your repo for you to
-change. The cost of ejecting is that your copy stops receiving upstream improvements, so it
-should be a deliberate act rather than the starting state. Scaffolding every definition on init
-would make every project a fork on day one.
+Read the middle column: conductor **reads** far more than it owns. The one place it is the author
+is `retrospectives/` — its own work product (`conductor.md` §4).
 
-**Why files rather than an FSD store:** conductor delegates the work inside a phase to a vendor
-harness, and that harness reads *the repo* — not conductor's resources (`conductor.md` §6). Since
-guidance already lives in the repo and the harness already reads it, there is nothing to expose:
-the phase brief just names the paths relevant to that phase, which is scoping, not plumbing.
-Conductor's own bookkeeping — when it last acted on an objective, which retrospectives have been
-distilled — stays in an FSD resource keyed by file path, so a human rewriting a doc can't clobber
-it.
+**Two skill systems are visible here**, and the tree is why that's fine rather than confusing:
+`.agents/skills/` are the vendor harness's (layer 3, `conductor.md` §6), and a phase's
+`instructions.md` is the brief conductor hands it. Different files, different runtimes, no
+overlap to reconcile.
+
+**`.conductor/` is versioned** — except `worktrees/`, which is scratch. The process is part of the
+codebase, so changing it shows up in code review like any other change.
+
+**There is no separate "process" directory, because the process *is* the phases.** A phase is a
+folder with `instructions.md` and optionally a `definition.ts`. Changing what a phase *says*
+means editing its instructions; changing what it *does* means ejecting its definition; adding a
+phase means adding a folder. Built-in and custom phases differ only in who wrote them first.
+
+**Scaffold vs. eject, since the tradeoff is real.** `conductor init` writes `instructions.md` for
+each built-in phase, because instructions are what you actually want to edit. It does *not* write
+`definition.ts` — that is imported from the package until you run `conductor eject <phase>`. An
+ejected copy stops receiving upstream improvements, so scaffolding every definition on init would
+make every project a fork on day one.
 
 ---
 
@@ -300,7 +325,7 @@ depends on the layer the phase dispatches to (`conductor.md` §6):
 
 | Dispatched to | Consumed by | `agents:` / `allowed-tools` front-matter |
 |---|---|---|
-| **Layer 3** — `claudeCodeDispatcher`, `codexDispatcher` | the vendor harness, as its brief. It brings its own skills from `agents/skills/` | ignored — the vendor materializes its own sub-agents |
+| **Layer 3** — `claudeCodeDispatcher`, `codexDispatcher` | the vendor harness, as its brief. It brings its own skills from `.agents/skills/` | ignored — the vendor materializes its own sub-agents |
 | **Layer 2** — a steward worker | FSD's skills runtime, or an `Agent` from `workforce` | honored |
 
 The dispatcher declares which it is, so a phase can't silently carry front-matter nothing will
