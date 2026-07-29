@@ -639,6 +639,79 @@ check('a converged epic folds only the verdict while routing ordinary feedback',
   assert.deepEqual(result.epicNotes, [{ summary: 'rename the helper', fanOut: ['FIX-2'] }])
 })
 
+check('an apply-verdict does not consume concurrent review activity', async () => {
+  // apply-verdict outranks spec-review, and its prompt carries no review content — counting it
+  // as consumption would drop the concurrent feedback permanently.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 7,
+          lastSeenActivityAt: 'old',
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'e' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, newSpecReviewEvents: true, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-verdict:FIX-2'])
+  assert.equal(result.issues[0].lastSeenActivityAt, 'old', 'the review feedback is still owed a round')
+})
+
+check('workers align to the head the gate scan just observed', async () => {
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, headSha: 'stale' }, issues: [row('FIX-2')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  const p = calls.find((c) => c.label === 'spec:FIX-2').prompt
+  assert.match(p, /head abc/, 'the wake that releases the spec must pass the fresh head, not the pre-fold one')
+  assert.ok(!p.includes('stale'))
+})
+
+check('the epic cursor holds when requested note routing fails', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        branch: 'epic/t',
+        prNumber: 100,
+        reviewRounds: 2,
+        lastSeenActivityAt: 'old',
+        verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }],
+      },
+      issues: [],
+    }),
+    // The verdict fold returns; the notes scout dies. The ordinary feedback was never routed.
+    respond: epicResponder({ epicReviewEvents: true, nulls: ['route:epic-notes'] }),
+  })
+  assert.equal(result.epic.lastSeenActivityAt, 'old', 'unrouted feedback must not be consumed')
+})
+
+check('a verdict-only fold is not told to fold absent review feedback', async () => {
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        branch: 'epic/t',
+        prNumber: 100,
+        reviewRounds: 0,
+        verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }],
+      },
+      issues: [],
+    }),
+    // Budget remains, but there is NO new epic review activity.
+    respond: epicResponder({ epicReviewEvents: false }),
+  })
+  const p = calls.find((c) => c.label === 'fold:epic').prompt
+  assert.match(p, /Fold the verdict above and NOTHING ELSE/)
+  assert.match(p, /report roundsSpent: 0/)
+  assert.ok(!/Triage against the bar first/.test(p), 'no re-reading of already-consumed comments')
+})
+
 check('the epic review cursor advances to the scanned head', async () => {
   // Otherwise the same epic-PR event re-triggers a fold every wake, forever.
   const { result } = await run('epic-wake.js', {
@@ -1160,6 +1233,63 @@ check('an open build with no PR or branch is treated as incomplete', async () =>
   assert.equal(a.status, 'pending', 'an open sub-PR with no handles cannot be subscribed to or merged')
   assert.equal(a.pr, null)
   assert.match(logs.join('\n'), /reported open but returned no PR number or branch — treating as incomplete/)
+})
+
+check('a sub-PR carrying a human blocker is parked, not re-dispatched', async () => {
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { blocker: 'needs a call on the store shape' })] }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls, [], 'the escalated fork is the human’s, so nothing re-dispatches')
+})
+
+check('an open build missing EITHER handle is incomplete', async () => {
+  for (const [label, build] of [
+    ['no pr', { status: 'open', pr: null, branch: 'fix/FIX-9-a' }],
+    ['no branch', { status: 'open', pr: 5, branch: null }],
+  ]) {
+    const { result } = await run('issue-multi-pr.js', {
+      args: multiArgs({ subPrs: [node('a')] }),
+      respond: multiResponder({ build: { a: build } }),
+    })
+    assert.equal(result.subPrs[0].status, 'pending', `${label}: an && guard would have accepted this`)
+  }
+})
+
+check('a failed re-verification clears spent handles and starts a fresh repair cycle', async () => {
+  // The stall: keeping the merged PR in fixPr reads as AWAITING_FIX forever.
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'merged' })],
+      assembledGoal: { passed: false, failure: 'old', fixIssue: 'FIX-99', fixPr: 42, fixMerged: true },
+    }),
+    respond: multiResponder({ goal: { passed: false, failure: 'still broken', owningSubPr: 'a' } }),
+  })
+  assert.equal(result.assembledGoal.fixPr, null, 'the spent repair PR must not gate the next cycle')
+  assert.equal(result.assembledGoal.fixIssue, null)
+  assert.equal(result.assembledGoal.fixMerged, false)
+
+  const next = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: result.assembledGoal }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(next.calls.map((c) => c.label), ['assembled-gap:FIX-9'], 'a fresh repair cycle, not a stall')
+})
+
+check('a blocked gap parks the repair instead of starting it', async () => {
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: { passed: false, failure: 'boom' } }),
+    respond: multiResponder({ gap: { issueFiled: 'FIX-99', ready: false } }),
+  })
+  assert.equal(result.assembledGoal.fixReady, false)
+  assert.match(logs.join('\n'), /BLOCKED per issue-manager/)
+
+  const next = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: result.assembledGoal }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(next.calls, [], 'no repair work while issue-manager says the gap is blocked')
+  assert.equal(next.result.blockedGap, 'FIX-99')
 })
 
 check('the cap bounds parallel sub-PR builds', async () => {

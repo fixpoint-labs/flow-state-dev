@@ -57,6 +57,11 @@ const TERMINAL = 'merged'
  * dep instead of rebasing onto main).
  */
 function classify(node, byId) {
+  // A sub-PR whose worker escalated a decision is WAITING ON A HUMAN, whatever its status says.
+  // Re-dispatching would drop the executor back at the fork it was required to escalate. The
+  // coordinator clears `blocker` when it records the answer. (Same rule as epic-wake's rows.)
+  if (node.blocker) return null
+
   // Every declared dep is guaranteed resolvable here — readySet() rejects a node with a
   // missing one rather than letting it through (see `invalid` there).
   const deps = (node.dependsOn || []).map((id) => byId.get(id))
@@ -123,14 +128,17 @@ function allMerged(nodes) {
  * Every state is derived from durable handles alone, and each names exactly one next action.
  * The order is the recovery path: a repair that dies mid-way resumes at the stage it reached.
  *
- *   null          — sub-PRs still building; assemble isn't reachable yet
- *   NEEDS_GOAL    — all merged, no confirmed failure → run (or confirm) the end-to-end goal
- *   NEEDS_GAP     — goal failed, no gap issue filed  → file it via `issue-manager`
- *   NEEDS_FIX     — gap filed, no repair PR open     → open the repair PR
- *   AWAITING_FIX  — repair PR open, not merged       → wait; the human merges it
- *   DONE          — the goal passed on the assembled result
+ *   null            — sub-PRs still building; assemble isn't reachable yet
+ *   NEEDS_GOAL      — all merged, no confirmed failure → run (or confirm) the end-to-end goal
+ *   NEEDS_GAP       — goal failed, no gap issue filed  → file it via `issue-manager`
+ *   GAP_BLOCKED     — the filed gap is itself blocked  → park; the blocker is a human's to clear
+ *   NEEDS_FIX       — gap filed and ready, no repair PR → open the repair PR
+ *   AWAITING_FIX    — repair PR open, not merged        → wait; the human merges it
+ *   DONE            — the goal passed on the assembled result
  *
  * `fixMerged` returns to NEEDS_GOAL rather than DONE: a landed repair still has to be proven.
+ * And if that proof FAILS, the caller clears the spent handles so this lands in NEEDS_GAP for a
+ * fresh repair cycle — leaving a merged PR in `fixPr` would read as AWAITING_FIX forever.
  */
 function assembleState(nodes, goal) {
   if (!allMerged(nodes)) return null
@@ -140,6 +148,9 @@ function assembleState(nodes, goal) {
   if (!goal.failure) return 'NEEDS_GOAL'
   if (goal.fixMerged) return 'NEEDS_GOAL'
   if (!goal.fixIssue) return 'NEEDS_GAP'
+  // `issue-manager` reported the gap it filed is blocked. Starting repair work anyway would
+  // ignore the one verdict that agent exists to give.
+  if (goal.fixReady === false) return 'GAP_BLOCKED'
   if (!goal.fixPr) return 'NEEDS_FIX'
   return 'AWAITING_FIX'
 }
@@ -217,6 +228,11 @@ if (state === 'AWAITING_FIX') {
   return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr, done: false }
 }
 
+if (state === 'GAP_BLOCKED') {
+  log(`Gap ${goal.fixIssue} is blocked per issue-manager — parked. Repair starts once its blocker clears.`)
+  return { issueId, subPrs: nodes, assembledGoal: goal, blockedGap: goal.fixIssue, done: false }
+}
+
 if (state === 'NEEDS_GOAL') {
   phase('Assemble')
 
@@ -247,7 +263,19 @@ if (state === 'NEEDS_GOAL') {
   return {
     issueId,
     subPrs: nodes,
-    assembledGoal: { ...goal, passed: false, failure: verdict.failure || 'unspecified', owningSubPr: verdict.owningSubPr || null, fixMerged: false },
+    assembledGoal: {
+      ...goal,
+      passed: false,
+      failure: verdict.failure || 'unspecified',
+      owningSubPr: verdict.owningSubPr || null,
+      // Clear any SPENT repair handles. If this failure came from re-verifying a repair that
+      // already merged, carrying its PR forward would put the machine in AWAITING_FIX on a
+      // merged PR — a permanent stall instead of a fresh repair cycle.
+      fixIssue: null,
+      fixPr: null,
+      fixReady: undefined,
+      fixMerged: false,
+    },
     done: false,
   }
 }
@@ -268,8 +296,9 @@ if (state === 'NEEDS_GAP') {
     return { issueId, subPrs: nodes, assembledGoal: goal, incomplete: 'assembled-gap', done: false }
   }
 
-  log(`Gap filed as ${filed.issueFiled} for ${issueId} — the repair PR is next.`)
-  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixIssue: filed.issueFiled }, done: false }
+  const ready = filed.ready !== false
+  log(`Gap filed as ${filed.issueFiled} for ${issueId} — ${ready ? 'the repair PR is next' : 'BLOCKED per issue-manager; parking until its blocker clears'}.`)
+  return { issueId, subPrs: nodes, assembledGoal: { ...goal, fixIssue: filed.issueFiled, fixReady: ready }, done: false }
 }
 
 if (state === 'NEEDS_FIX') {
@@ -349,10 +378,10 @@ const subPrs = nodes.map((node) => {
   const rebasing = planned && planned.action === 'rebase'
   const rebased = rebasing && r.status === 'open'
 
-  // "open" without a PR number or branch is not a usable open sub-PR: the coordinator has
-  // nothing to subscribe to or surface a merge gate for, and a dependent would try to stack on
-  // an undefined base. Treat it as an incomplete build and let the next wake retry.
-  const openWithoutHandles = !rebasing && r.status === 'open' && !(r.pr || node.pr) && !(r.branch || node.branch)
+  // "open" needs BOTH handles to be usable: without the PR the coordinator can't subscribe or
+  // surface a merge gate, and without the branch a dependent would stack on `undefined`. Either
+  // one missing makes it an incomplete build, so the next wake retries.
+  const openWithoutHandles = !rebasing && r.status === 'open' && (!(r.pr || node.pr) || !(r.branch || node.branch))
   if (openWithoutHandles) {
     log(`${node.id}: reported open but returned no PR number or branch — treating as incomplete, will retry.`)
     return { ...node, blocker: r.blocker || null, summary: r.summary }

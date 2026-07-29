@@ -138,6 +138,13 @@ function dedupeClaims(requests) {
 }
 
 /**
+ * Actions whose worker actually READS the PR review/CI events for its row. Only these consume
+ * the activity cursor; `spec` has no events yet, and `implement` / `apply-verdict` are dispatched
+ * on other grounds and never look at the review batch.
+ */
+const CONSUMES_REVIEW_ACTIVITY = new Set(['spec-review', 'pr-feedback'])
+
+/**
  * Fold one wake's outcome into one row — the single place a row's state advances.
  *
  * This is a named function rather than an inline map because it is where the field-by-field
@@ -147,19 +154,22 @@ function dedupeClaims(requests) {
  *
  * @param row   the refreshed row (carried state + this wake's scout reads)
  * @param ctx   `worker` this wake's returned worker result (undefined if none ran or it died),
- *              `landed` verdicts that settled this wake, `folded` whether a folder consumed them
+ *              `action` the action that was dispatched for this row, `landed` verdicts that
+ *              settled this wake, `folded` whether a folder consumed them
  */
-function nextRow(row, { worker, landed, folded }) {
+function nextRow(row, { worker, action, landed, folded }) {
   // Carried + newly settled, minus whatever a RETURNING folder consumed. A dead folder consumes
   // nothing, so its verdicts stay for the next wake.
   const verdicts = folded ? landed : [...(row.verdicts || []), ...landed]
 
-  // The cursor moves only when this wake consumed that activity — a worker ran AND returned, or
-  // there was nothing new. A deferred row keeps its old cursor, or the feedback just logged as
-  // "deferred to the next wake" reads as already-handled and vanishes. (Invariant 2.)
+  // The cursor moves only when this wake consumed that activity — which takes BOTH a worker that
+  // returned AND an action that actually reads review events. `apply-verdict` outranks
+  // `spec-review` in `pendingAction`, and its prompt carries no review content, so counting it
+  // as consumption would drop the concurrent feedback permanently. A deferred row keeps its
+  // cursor for the same reason. (Invariant 2.)
   const hadNewActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
   const cursor =
-    worker || !hadNewActivity
+    (worker && CONSUMES_REVIEW_ACTIVITY.has(action)) || !hadNewActivity
       ? {
           lastSeenActivityAt: row.latestActivityAt || row.lastSeenActivityAt || null,
           lastSeenSha: row.headSha || row.lastSeenSha || null,
@@ -445,6 +455,11 @@ const [gate, linear, ...prStates] = await parallel([
 // infrastructure failure would stall every sub-issue for a wake.
 const epicApproved = gate ? !!gate.approved : !!epic.approved
 
+// The head workers align to. It has to be THIS wake's observation: the wake that first sees
+// approval is also the wake that releases the specs, and passing the carried SHA would align
+// them to the objective as it stood before the fold that made it approvable.
+const epicHead = (gate && gate.headSha) || epic.headSha || null
+
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
 const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
@@ -549,7 +564,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
     plan.advance.map((item) => () =>
       agent(
         `Advance ${item.row.id} to its next external wait, in your own worktree. Reason it is pending: ${item.why}.\n` +
-          `Epic: ${epic.issueId} on branch ${epic.branch} (head ${epic.headSha || 'fetch it'}) — align to the epic-spec without re-fetching the epic.\n` +
+          `Epic: ${epic.issueId} on branch ${epic.branch} (head ${epicHead || 'fetch it'}) — align to the epic-spec without re-fetching the epic.\n` +
           `A satisfied gate is NOT a wait — chain through it: a just-approved spec goes close-spec-PR → implement → open the impl PR in this one run.\n` +
           (item.action === 'apply-verdict'
             ? `POC settlement(s) landed on this issue. Apply them per issue-spec 6.5.3 BEFORE anything else — fold each verdict, post the evidence-backed reply on its thread, and record the claim as resolved-with-evidence in the spec's §12:\n${renderVerdicts(item.row.verdicts)}\n`
@@ -571,8 +586,8 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           ? `A POC settled ${epicVerdictsToFold.length} cross-cutting claim(s) for this epic. Fold them FIRST and record each in the epic-spec's cross-cutting decisions so a sibling issue can't reopen it:\n${renderVerdicts(epicVerdictsToFold)}\n` +
             `Post the evidence-backed reply on the thread. This fold is outside the review budget — new evidence is not another opinion.\n\n`
           : '') +
-        (epicAtBudget
-          ? `The epic-spec has CONVERGED and its review budget is spent. Fold the verdict above and NOTHING ELSE — do not fold outstanding review feedback, and report roundsSpent: 0. The evidence exemption covers the verdict only.\n`
+        (epicAtBudget || !newEpicReviewEvents
+          ? `Fold the verdict above and NOTHING ELSE — there is no new review feedback to fold${epicAtBudget ? ' and the review budget is spent' : ''}, so do not re-read or re-fold already-consumed comments, and report roundsSpent: 0. The evidence exemption covers the verdict only.\n`
           : `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
             `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return each as a fanOut entry with the note text and the issues it concerns.\n`) +
           `Refresh the epic-spec's running index from the PR handles already recorded. Never re-review to satisfy a bot.\n` +
@@ -649,7 +664,16 @@ const foldedVerdict = new Set(
   plan.advance.filter((i) => i.action === 'apply-verdict' && workerById.has(i.row.id)).map((i) => i.row.id),
 )
 
-const issues = refreshed.map((row) => nextRow(row, { worker: workerById.get(row.id), landed: verdictsByIssue.get(row.id) || [], folded: foldedVerdict.has(row.id) }))
+const actionByIssue = new Map(plan.advance.map((i) => [i.row.id, i.action]))
+
+const issues = refreshed.map((row) =>
+  nextRow(row, {
+    worker: workerById.get(row.id),
+    action: actionByIssue.get(row.id),
+    landed: verdictsByIssue.get(row.id) || [],
+    folded: foldedVerdict.has(row.id),
+  }),
+)
 
 // Disclosure must cover EVERY unresolved claim touching an issue, not just the ones this wake
 // happened to dispatch: a claim the cap queued, one a worker raised this wake, and one whose POC
@@ -683,13 +707,15 @@ return {
     // The FUNCTIONAL head handle, always refreshed from the live scan. Issue workers align to
     // `epic.headSha` and are told not to re-fetch it, so a stale one aligns their specs and
     // implementations to a superseded objective. This is not the review cursor.
-    headSha: (gate && gate.headSha) || epic.headSha || null,
+    headSha: epicHead,
     // A previously recorded approval is DURABLE (the coordinator mirrors it to a label), so a
     // dead scout must not re-lock an epic that was already signed off — that would stall every
     // sub-issue on an infrastructure failure. A live scan still revokes it (a push after
     // approval re-opens the gate), which is the case failing closed actually protects.
     approved: gate ? !!gate.approved : !!epic.approved,
-    ...(epicFold || epicNotes || !newEpicReviewEvents
+    // Requested note routing that DIDN'T return leaves the ordinary feedback unrouted, so the
+    // cursor must not move — otherwise it is consumed permanently. (Invariant 2.)
+    ...((routeConvergedEpicFeedback ? !!epicNotes : !!epicFold) || !newEpicReviewEvents
       ? {
           lastSeenActivityAt: (gate && gate.latestActivityAt) || epic.lastSeenActivityAt || null,
           lastSeenSha: (gate && gate.headSha) || epic.lastSeenSha || null,
