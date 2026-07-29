@@ -57,4 +57,20 @@ describe("unionAllowedTools", () => {
       unionAllowedTools(active, { foo: ["a", "b"], bar: ["b", "c"] }),
     ).toEqual(["a", "b", "c"]);
   });
+
+  // FIX-972: a skill name colliding with an `Object.prototype` member must not
+  // resolve to the inherited member. `perSkillAllowed["constructor"]` returns
+  // `Object` — truthy, and `.length > 0` (its arity) — so it passed the old
+  // guard and then threw `TypeError: list is not iterable`. It must instead
+  // behave exactly like a skill that declares no `allowed-tools`.
+  it("ignores prototype-inherited names and leaves the union unrestricted", () => {
+    expect(unionAllowedTools([entry("constructor")], {})).toBeUndefined();
+    // A sibling that really declares tools still restricts — and the
+    // prototype-named skill contributes nothing to the union.
+    expect(
+      unionAllowedTools([entry("constructor"), entry("foo")], {
+        foo: ["a"],
+      }),
+    ).toEqual(["a"]);
+  });
 });
