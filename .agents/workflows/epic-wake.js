@@ -222,6 +222,22 @@ function approvalGatedPhase(row) {
   return row.specPr ? 'AWAITING_SPEC_APPROVAL' : 'NEEDS_SPEC'
 }
 
+/**
+ * `DONE` requires observed merge evidence, on a single-PR row as much as a multi-PR one.
+ *
+ * Both schemas let an agent report `phase: 'DONE'` with `merged` false or absent — and a worker that
+ * has just opened an implementation PR will reasonably feel done. `pendingAction` then never revisits
+ * the row, so the coordinator mirrors Done in Linear and can wrap the epic before the human merges
+ * anything: the merge gate bypassed by a self-report. The multi-PR derivation already refuses this
+ * (its evidence is `assembledGoal.passed`); this is the single-PR half, whose evidence is the merge.
+ */
+function unmergedDonePhase(row) {
+  if (row.phase !== 'DONE') return null
+  if (row.subPrs && row.subPrs.length) return null // multiPrPhase owns these
+  if (row.merged) return null
+  return 'PR_FEEDBACK'
+}
+
 function multiPrPhase(row) {
   if (!row.subPrs || !row.subPrs.length) return null
   return (row.assembledGoal || {}).passed ? 'DONE' : 'PR_FEEDBACK'
@@ -456,7 +472,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   // sub-PR will reasonably report DONE — and that is precisely the premature completion the rule
   // exists to prevent, since the merges do not satisfy the assembled goal. Deriving it in only one
   // of the two places it can be set is deriving it nowhere.
-  const derived = multiPrPhase(next) || approvalGatedPhase(next)
+  const derived = multiPrPhase(next) || approvalGatedPhase(next) || unmergedDonePhase(next)
   return derived && derived !== next.phase ? { ...next, phase: derived } : next
 }
 
@@ -600,13 +616,24 @@ function foldMultiPrScan(row, fresh) {
   // terminates, rather than a single field pretending to hold several decisions.
   if (!row.blocker) {
     const base = out.subPrs || row.subPrs || []
-    // A row persisted before `blockerFor` existed names no slice, so fall back to the one the old
-    // lift would have surfaced — the first. Still one per answer, so it still terminates. (BP-030.)
-    const target = row.blockerFor || (base.find((s) => s.blocker) || {}).id
-    if (target && base.some((s) => s.id === target && s.blocker)) {
-      out.subPrs = base.map((s) => (s.id === target ? { ...s, blocker: null } : s))
+    // ONLY the slice `blockerFor` names. The fallback that used to pick "the first nested blocker"
+    // when no slice was named had a window: after clearing the answered one and its marker, a wake
+    // with no DAG work runs no worker, so nothing lifts the next sibling — and the following refresh
+    // saw no blocker and no marker, took the fallback, and cleared a decision nobody had answered.
+    // A row with nested blockers and no marker (legacy, or exactly that window) gets one LIFTED
+    // below instead of cleared, which is the fail-closed direction.
+    if (row.blockerFor && base.some((s) => s.id === row.blockerFor && s.blocker)) {
+      out.subPrs = base.map((s) => (s.id === row.blockerFor ? { ...s, blocker: null } : s))
     }
-    if (row.blockerFor) out.blockerFor = null
+    // Re-lift in the SAME pass, so the invariant "nested blockers imply a row-level marker" holds at
+    // every wake boundary rather than only on wakes that happen to run a worker.
+    const remaining = (out.subPrs || base).find((sp) => sp.blocker)
+    if (remaining) {
+      out.blocker = `${remaining.id}: ${remaining.blocker}`
+      out.blockerFor = remaining.id
+    } else if (row.blockerFor) {
+      out.blockerFor = null
+    }
   }
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
@@ -705,11 +732,14 @@ const LINEAR_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'state'],
+        // `blockedBy` is REQUIRED. It gates admission to the active set, and the code reads a present
+        // row as authoritative — so an omission meant "no blockers" and dispatched an issue
+        // concurrently with the prerequisite it is waiting on. An unblocked issue says `[]`.
+        required: ['id', 'state', 'blockedBy'],
         properties: {
           id: { type: 'string' },
           state: { type: 'string' },
-          blockedBy: { type: 'array', items: { type: 'string' } },
+          blockedBy: { type: 'array', items: { type: 'string' }, description: 'Open blocked-by relations; [] when there are none' },
         },
       },
     },
@@ -1061,7 +1091,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Derived AFTER the fold, because it reads the freshly-merged sub-PRs and the folded goal. A
   // scout naming this phase either finishes the issue without its assembled goal or stalls it.
   .map((row) => {
-    const derived = multiPrPhase(row) || approvalGatedPhase(row)
+    const derived = multiPrPhase(row) || approvalGatedPhase(row) || unmergedDonePhase(row)
     return derived && derived !== row.phase ? { ...row, phase: derived } : row
   })
 

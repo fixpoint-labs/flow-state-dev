@@ -559,8 +559,10 @@ check('a present Linear row clears a resolved blocker', async () => {
     respond: (prompt, opts) => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
-      // Present row, `blockedBy` omitted — schema-valid, and means "no blockers".
-      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo' }] }
+      // A present row is authoritative and CLEARS a resolved relation — but it has to SAY it has no
+      // blockers. This fixture used to omit the field and assert the omission meant "none", which is
+      // precisely the reading that admitted a still-blocked issue alongside its prerequisite.
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
       return { issueId: 'FIX-2', ...workerRes() }
     },
@@ -2032,6 +2034,7 @@ check('clearing a row blocker also clears a nested sub-PR blocker', async () => 
         row('FIX-2', {
           phase: 'PR_FEEDBACK',
           blocker: null, // the coordinator recorded the human's answer
+          blockerFor: 'a', // …to this slice's decision
           subPrs: [
             { id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' },
             { id: 'b', status: 'pending', pr: null, branch: null, blocker: null },
@@ -2184,6 +2187,69 @@ check("a multi-PR row's PR feedback is handled before the DAG step", async () =>
   assert.match(prompt, /BEFORE any DAG step/)
   assert.match(prompt, /a=#41/)
   assert.match(prompt, /repair=#77/)
+})
+
+check('DONE without merge evidence is refused on a single-PR row too', async () => {
+  // A worker that has just opened the impl PR will reasonably feel done. Accepting it means the
+  // coordinator mirrors Done in Linear and can wrap the epic before the human merges anything.
+  for (const source of ['scout', 'worker']) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: source === 'scout' ? 'DONE' : 'PR_FEEDBACK', implPr: 9, newPrEvents: true } },
+        worker: { 'FIX-2': { phase: source === 'worker' ? 'DONE' : 'PR_FEEDBACK', implPr: 9 } },
+      }),
+    })
+    assert.equal(result.issues[0].phase, 'PR_FEEDBACK', `${source}-reported DONE without a merge must not finish the row`)
+  }
+
+  // With the merge observed it is genuinely done.
+  const merged = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'DONE', implPr: 9, merged: true } } }),
+  })
+  assert.equal(merged.result.issues[0].phase, 'DONE')
+})
+
+check('the next sibling blocker is lifted in the same pass that clears the answered one', async () => {
+  // Clearing the answered slice and its marker without re-lifting left a window: a wake with no DAG
+  // work runs no worker, so nothing surfaced the next sibling, and the following refresh saw neither
+  // a blocker nor a marker — then cleared a decision nobody had answered.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: null,
+          blockerFor: 'a',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b', blocker: 'which owner?' },
+          ],
+          assembledGoal: { passed: false },
+        }),
+      ],
+    }),
+    // Deliberately no DAG work and no worker this wake — the window the old code fell into.
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  const two = first.result.issues[0]
+  assert.equal(two.subPrs.find((s) => s.id === 'a').blocker, null, 'the answered slice is released')
+  assert.equal(two.subPrs.find((s) => s.id === 'b').blocker, 'which owner?', 'the unanswered one is not')
+  assert.match(two.blocker, /b: which owner\?/, 'and it is surfaced in the same pass, not left unmarked')
+  assert.equal(two.blockerFor, 'b')
+
+  // So the next resolution clears exactly that one, and nothing remains unmarked.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...two, blocker: null }] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  assert.deepEqual(
+    second.result.issues[0].subPrs.filter((s) => s.blocker),
+    [],
+    'both decisions answered, both slices released',
+  )
+  assert.equal(second.result.issues[0].blockerFor, null)
 })
 
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
@@ -3078,6 +3144,11 @@ check('INVARIANT: every gating field is schema-required', async () => {
       PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
       EPIC_FOLD_SCHEMA: ['roundsSpent', 'aboveBar'],
       POC_SCHEMA: ['claim', 'verdict', 'evidence'],
+      // Nested, and the reason this list now reaches nested `required` blocks at all: `blockedBy`
+      // gates admission to the active set, the code reads a present row as authoritative, and the
+      // field sat inside `issues.items` where a top-level-only check could not see it. An omission
+      // therefore read as "no blockers" and dispatched an issue alongside its prerequisite.
+      LINEAR_SCHEMA: ['blockedBy'],
     },
     'issue-multi-pr.js': {
       GAP_SCHEMA: ['issueFiled', 'ready'],
@@ -3090,11 +3161,15 @@ check('INVARIANT: every gating field is schema-required', async () => {
     for (const [schema, fields] of Object.entries(schemas)) {
       const at = src.indexOf(`const ${schema} =`)
       assert.ok(at > 0, `${file}: ${schema} not found`)
-      const required = /required: \[([^\]]*)\]/.exec(src.slice(at, at + 1600))
-      assert.ok(required, `${file}: ${schema} declares no required list`)
+      const body = balancedFrom(src, at)
+      const requiredLists = [...body.matchAll(/required: \[([^\]]*)\]/g)].map((m) => m[1])
+      assert.ok(requiredLists.length, `${file}: ${schema} declares no required list`)
+      // Any of them: a gating field may live in a nested item schema (LINEAR_SCHEMA's `blockedBy`),
+      // and checking only the outermost list is how that one stayed optional.
+      const requiredAnywhere = requiredLists.join(' ')
       for (const f of fields) {
         assert.ok(
-          required[1].includes(`'${f}'`),
+          requiredAnywhere.includes(`'${f}'`),
           `${file}: ${schema}.${f} is branched on but not required — an omission would default it silently`,
         )
       }
