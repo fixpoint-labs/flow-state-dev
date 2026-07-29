@@ -239,7 +239,7 @@ function product(spec) {
 // ---------------------------------------------------------------------------
 
 /** Build an epic-wake responder from per-issue fresh PR state and per-issue worker results. */
-function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, nulls = [] } = {}) {
+function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, linear = {}, nulls = [] } = {}) {
   return (prompt, opts) => {
     const label = opts.label || ''
     // `nulls` names labels whose agent "died" — the harness returns null for those.
@@ -249,7 +249,10 @@ function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents 
     }
     if (label === 'fold:epic') return { roundsSpent: 1, aboveBar: false, folded: 'tightened the objective', fanOut: [], ...fold }
     if (label === 'route:epic-notes') return { notes: [] }
-    if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: 'In Spec Review', blockedBy: [] })) }
+    // `linear` overrides a child's Linear state. Terminal and cancelled states are only ever OBSERVED
+    // here — the refresh scout's schema has no `linearState` — so a fixture that sets them on the row
+    // instead describes a response the real harness would reject.
+    if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: linear[id] || 'In Spec Review', blockedBy: [] })) }
     if (label.startsWith('refresh:')) {
       const id = label.slice('refresh:'.length)
       // Via `freshRow`, not a second copy of the same defaults. Keeping two lists is what let them
@@ -683,6 +686,59 @@ check('GATE: implementation waits for the cross-spec coherence pass', async () =
   assert.equal(partial.result.crossSpecGate, undefined, 'the set is not ready to be checked yet')
   assert.ok(!workerLabels(partial.calls).includes('implement:FIX-2'), 'and the approved spec waits with it')
   assert.ok(workerLabels(partial.calls).includes('spec:FIX-3'), 'while the unwritten spec keeps moving')
+
+  // The set the gate ASKS about and the set it HANDS OVER have to be the same set. A sibling already
+  // implementing or done has no observable spec approval — its spec PR is closed — so filtering the
+  // surfaced list on `specApproved` alone handed a re-run (a newly discovered child invalidates the
+  // clearance) only the newcomer, and reported coherence against a spec it never read.
+  const rejoined = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 11 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11, headSha: 'abc' },
+        'FIX-3': twoApproved['FIX-3'],
+      },
+    }),
+  })
+  assert.ok(rejoined.result.crossSpecGate, 'the set is checkable: one spec approved, one already past its gate')
+  assert.deepEqual(
+    rejoined.result.crossSpecGate.issueIds,
+    ['FIX-2', 'FIX-3'],
+    'the implemented sibling is part of the set being checked, approval observable or not',
+  )
+
+  // ...but not a CANCELLED one, which `linearTerminal` would otherwise sweep in. Its spec is dead, and
+  // putting it in front of the reviewer manufactures conflicts with work nobody is doing — the
+  // over-correction of "when askable, every row qualifies".
+  const withCancelled = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }),
+        row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 }),
+        row('FIX-4', { phase: 'NEEDS_SPEC' }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': twoApproved['FIX-2'], 'FIX-3': twoApproved['FIX-3'], 'FIX-4': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-4': 'Canceled' },
+    }),
+  })
+  assert.ok(withCancelled.result.crossSpecGate, 'a cancelled row does not block the ask either')
+  assert.deepEqual(withCancelled.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3'])
+})
+
+check('the cross-spec hold clears on a LANDED alignment, not a routed one', async () => {
+  // Nothing in the script can see this, which is why it is pinned as a documented rule: a PR comment
+  // asking for an alignment leaves the target spec's approval exactly as it was, so `specApproved` still
+  // reads true and the next wake starts implementation on the unaligned spec. `crossSpecCleared` is the
+  // coordinator's field and the only thing standing between "conflict found" and "conflict built".
+  const flat = readFileSync(join(HERE, '..', 'skills', 'epic-lifecycle', 'SKILL.md'), 'utf8').replace(/\s+/g, ' ')
+  assert.match(flat, /alignment edit has \*\*landed in its spec\*\* and every spec it changed has \*\*cleared approval again\*\*/)
+  assert.match(flat, /Not when the edits are \*routed\*/)
+  // And the walkthrough step it defers to still says both things, or the condition above points at nothing.
+  assert.match(flat, /\*\*Re-review the aligned specs\*\* and keep the \*\*stop-before-implement\*\* gate/)
 })
 
 check('a failed build goes behind its siblings, not in front of them', async () => {
@@ -3565,6 +3621,105 @@ check('an answered blocker on an already-OPEN slice gets a worker to apply it', 
     respond: multiResponder(),
   })
   assert.deepEqual(parked.calls.filter((c) => /^(resume|build|rebase):/.test(c.label || '')), [])
+})
+
+check('a step with nothing runnable names the wait, so the caller stops re-invoking', async () => {
+  // `issue-lifecycle` runs another step unless the result NAMES a wait. This return named none, and the
+  // state it covers is the one a multi-PR issue spends most of its life in — every slice built, every PR
+  // open, nothing left but merges the human owns. Standalone, that was an infinite loop on an identical
+  // result. Under an epic it was survivable only because the worker reports `multiPrPending` instead.
+  const open = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [] },
+        { id: 'b', status: 'open', pr: 42, branch: 'fix/b', dependsOn: [] },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(open.result.dispatched, [], 'nothing is runnable')
+  assert.deepEqual(open.result.awaiting.merge, ['a', 'b'], 'and the wait is the human merge gate on both')
+  assert.deepEqual(open.result.awaiting.decision, [])
+  assert.deepEqual(open.result.awaiting.plan, [])
+
+  // A slice waiting on a HUMAN and a slice waiting on a MERGE are different waits, and the coordinator
+  // acts differently on them — one is a question to put, the other is nothing to say. `merge` claiming the
+  // blockered slice would ask for a merge on a PR whose fork is unsettled.
+  const mixed = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which shape?' },
+        { id: 'b', status: 'pending', dependsOn: ['a'] },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(mixed.result.awaiting.decision, [{ id: 'a', blocker: 'which shape?' }])
+  assert.deepEqual(mixed.result.awaiting.merge, ['b'], "b is pending behind a's merge — a merge wait, and it is not runnable")
+
+  // A malformed plan is NOT a wait: no merge and no answer can resolve a cycle, only a human editing the
+  // table. Reporting it under `merge` would tell the coordinator to sit on a merge gate that can never
+  // arrive — the over-correction of naming every live node.
+  const cycle = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'pending', dependsOn: ['b'] },
+        { id: 'b', status: 'pending', dependsOn: ['a'] },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(cycle.result.awaiting.plan.sort(), ['a', 'b'])
+  assert.deepEqual(cycle.result.awaiting.merge, [], 'a cycle waits on a human editing the plan, not on a merge')
+
+  // The other half of the same rule, and the stall this marker could reintroduce: a step that DISPATCHED
+  // must not name a wait. Cap-deferred slices are pending, have no PR, and nothing external will ever
+  // wake them — so a marker on this path would end the turn and strand them.
+  const dispatching = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      cap: 1,
+      subPrs: [
+        { id: 'a', status: 'pending', dependsOn: [] },
+        { id: 'b', status: 'pending', dependsOn: [] },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(dispatching.result.deferred, ['b'])
+  assert.equal(dispatching.result.awaiting, undefined, 'a step that ran is never a wait, whatever it held back')
+})
+
+check("INVARIANT: every wait `issue-lifecycle` stops on is one the workflow can emit", async () => {
+  const src = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
+  const skill = readFileSync(join(HERE, '..', 'skills', 'issue-lifecycle', 'SKILL.md'), 'utf8')
+  // The re-invoke rule is NEGATIVE — another step unless the result names a wait — so drift is a stall in
+  // whichever direction it happens: a return path naming no wait loops forever, and a wait the skill lists
+  // but the script never emits ends the turn on a condition that cannot arrive. Both ends, mechanically.
+  // The rule is asserted on the FLATTENED text (markdown wraps it mid-sentence) and the list is parsed
+  // from the raw lines, so the anchor is the short fragment that survives both.
+  assert.match(
+    skill.replace(/\s+/g, ' '),
+    /Run another step unless the result carries one of:/,
+    'the re-invoke rule moved — repoint this invariant',
+  )
+  const ANCHOR = 'carries one of:'
+  assert.ok(skill.includes(ANCHOR), 'the list anchor wrapped — repoint this invariant')
+  const after = skill.slice(skill.indexOf(ANCHOR) + ANCHOR.length)
+  const listed = []
+  for (const line of after.split('\n')) {
+    // `[^`]*` because a bullet names the shape it stops on, not just the field: `done: true`.
+    const m = /^- `([A-Za-z]+)[^`]*`/.exec(line)
+    if (m) listed.push(m[1])
+    else if (listed.length && !line.trim()) break
+  }
+  assert.ok(
+    listed.length >= 4 && listed.includes('done'),
+    `expected the skill's wait list, parsed ${JSON.stringify(listed)}`,
+  )
+  assert.ok(listed.includes('awaiting'), 'the no-step return names its wait; the skill has to recognise it')
+  for (const wait of listed) {
+    assert.match(src, new RegExp(`\\b${wait}[,:]`), `the skill stops on \`${wait}\` but the workflow never returns it`)
+  }
 })
 
 check('an unapplied decision withholds that slice\'s merge gate', async () => {

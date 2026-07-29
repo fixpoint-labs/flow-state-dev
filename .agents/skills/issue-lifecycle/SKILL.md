@@ -256,6 +256,15 @@ step unless the result carries one of:
 - `awaitingFix` — a repair PR is open and a human has to merge it.
 - `blockedGap` — the filed gap is blocked by a Linear relation someone else must move.
 - `blocker` — a human decision is owed.
+- `awaiting` — no DAG step is runnable at all. `awaiting.merge` lists slices open on the merge gate (or
+  pending behind a dependency that has to merge first), `awaiting.decision` slices that escalated a fork,
+  `awaiting.plan` slices refused as malformed — that last one isn't an external event, it's the `invalid`
+  case below, and it needs the plan fixed rather than another call.
+
+This is the state a multi-PR issue spends most of its life in: every slice built, every PR open, nothing
+left but merges the human owns. It is on the *result* rather than re-derived from `subPrs` because the
+workflow is the only thing that knows its own ready set — a table that looks runnable from outside may
+have no classifiable node in it.
 
 Anything else, including a non-empty `deferred`, is work this workflow can do the moment you call it again.
 Cap-deferred slices are the clearest case: a `pending` slice has no PR, so nothing external will ever wake

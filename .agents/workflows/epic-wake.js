@@ -1941,8 +1941,13 @@ if (routeConvergedEpicFeedback) {
 crossSpecHold = !args.crossSpecCleared && refreshed.length > 1
 // The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
 // open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
-const crossSpecAskable =
-  crossSpecHold && refreshed.every((r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal)
+// A row is settled enough to enter the pass three ways, and this has to be ONE predicate because the
+// gate's `issueIds` is the same question asked again. Filtering that list on `specApproved` alone omitted
+// exactly the rows the two other arms admit: a sibling already implementing or done normally has no
+// observable spec approval (its spec PR is closed), so a re-run triggered by a newly discovered child
+// reviewed the newcomer against nothing and reported coherence it never checked.
+const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal
+const crossSpecAskable = crossSpecHold && refreshed.every(crossSpecEligible)
 if (crossSpecHold && refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))) {
   log(
     crossSpecAskable
@@ -2500,7 +2505,15 @@ return {
   blockers: epicBlockers,
   // The coordinator has to ASK before running the pass, so this is a gate like any other — without it the
   // hold above would be a silent stall rather than a question waiting on an answer.
-  ...(crossSpecAskable ? { crossSpecGate: { issueIds: issues.filter((r) => r.specApproved).map((r) => r.id) } } : {}),
+  // The SAME eligibility the ask was decided on — a narrower list here would hand the pass a subset of
+  // the set it was asked about and call the rest reviewed. Cancelled work is the one exclusion: its spec
+  // is dead, and `linearTerminal` alone would put it in front of the reviewer as a live conflict.
+  // `issues` rather than `refreshed` only to match the rest of this return; they are the same rows, and
+  // eligibility is monotone across the wake (an approval never un-approves, a phase never falls back
+  // across the gate), so the two lists cannot disagree.
+  ...(crossSpecAskable
+    ? { crossSpecGate: { issueIds: issues.filter((r) => crossSpecEligible(r) && !CANCELLED_LINEAR.test((r.linearState || '').trim())).map((r) => r.id) } }
+    : {}),
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),

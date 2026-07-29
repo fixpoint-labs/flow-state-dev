@@ -584,9 +584,26 @@ for (const bad of invalid) {
 }
 
 if (!ready.length) {
-  const waiting = nodes.filter((n) => n.status !== TERMINAL).map((n) => `${n.id}(${n.status})`)
-  log(`No sub-PR is ready — waiting on ${waiting.join(', ') || 'nothing'}.`)
-  return { issueId, subPrs: nodes, dispatched: [], invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle, duplicate: !!b.duplicate })), done: false }
+  const live = nodes.filter((n) => n.status !== TERMINAL)
+  log(`No sub-PR is ready — waiting on ${live.map((n) => `${n.id}(${n.status})`).join(', ') || 'nothing'}.`)
+  // NAME the wait, because the caller ends its turn on a named wait and re-invokes on anything else.
+  // This return carried no marker at all, so `issue-lifecycle` read the commonest state a multi-PR
+  // issue is ever in — every slice open on the human merge gate — as "work you can do the moment you
+  // call again", and re-invoked forever on an identical result. `awaiting` exists ONLY here, on the
+  // path where nothing is runnable, so it can never be confused with the build return below, which
+  // reports slice `blockers` while other slices were genuinely dispatched.
+  //  - `merge` — open on its own merge gate, or pending behind a dependency that has to merge first.
+  //    Both are merges and both are the human's, so one name covers them.
+  //  - `decision` — a slice escalated an architectural fork. Nothing moves until a human answers.
+  //  - `plan` — refused by `readySet` (a cycle, a duplicate, an unknown edge). Deliberately NOT
+  //    reported as awaiting a merge: no merge or answer can fix a malformed plan, only a human
+  //    editing it. Kept inside `awaiting` so this marker alone is enough to end the loop.
+  const awaiting = {
+    merge: invalid.length ? [] : live.filter((n) => !n.blocker).map((n) => n.id),
+    decision: live.filter((n) => n.blocker).map((n) => ({ id: n.id, blocker: n.blocker })),
+    plan: invalid.map((b) => b.node.id),
+  }
+  return { issueId, subPrs: nodes, dispatched: [], awaiting, invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle, duplicate: !!b.duplicate })), done: false }
 }
 
 if (deferred.length) {
