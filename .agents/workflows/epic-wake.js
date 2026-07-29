@@ -291,8 +291,16 @@ function nextRow(row, { worker, action, landed, folded }) {
 
   // See `specReviewRounds` below: a review round that reports no count is charged one, because
   // charging zero makes the budget unreachable.
+  // A worker that escalated a `blocker` didn't finish the round any more than it finished reading
+  // the batch — the cursor already holds for it, and this counter has to agree. Charged anyway, one
+  // round becomes two, and after the human clears the blocker the retained batch reads as CONVERGED
+  // and is never resumed: the budget guard silently eats the work it was protecting.
   const roundsSpent =
-    action === 'spec-review' && worker.specReviewRoundsSpent === undefined ? 1 : worker.specReviewRoundsSpent || 0
+    !workerFinished
+      ? 0
+      : action === 'spec-review' && worker.specReviewRoundsSpent === undefined
+        ? 1
+        : worker.specReviewRoundsSpent || 0
 
   const next = {
     ...row,
@@ -342,6 +350,25 @@ function nextRow(row, { worker, action, landed, folded }) {
     blocker: worker.blocker || unsettledBlocker || null,
     status: worker.status,
     verdicts,
+  }
+
+  // A transition without its durable handle is refused. The schema requires `phase` but cannot make
+  // `specPr`/`implPr` conditionally required, so a spec worker could report AWAITING_SPEC_APPROVAL
+  // with no spec PR — an approval gate with nothing to open — and an implement could report
+  // PR_FEEDBACK with no impl PR, leaving every later refresh scanning "Impl PR: none" and the PR's
+  // reviews, CI and subscription invisible. Keeping the old phase means the next wake retries the
+  // transition, which is the recoverable outcome; accepting it strands the issue behind a handle
+  // that will never appear.
+  const needs = { AWAITING_SPEC_APPROVAL: 'specPr', PR_FEEDBACK: 'implPr' }
+  const needed = needs[next.phase]
+  // A multi-PR row's implementation handles live in `subPrs`, so it satisfies PR_FEEDBACK without
+  // an `implPr` — that is the whole point of the sub-PR table.
+  const hasSubPrs = !!(next.subPrs && next.subPrs.length)
+  if (needed && next.phase !== row.phase && !next[needed] && !(needed === 'implPr' && hasSubPrs)) {
+    next.phase = row.phase
+    next.handleMissing = { phase: worker.phase, needed }
+  } else if (next.handleMissing) {
+    next.handleMissing = null
   }
 
   // The derived phase wins over the worker's too, not just the scout's. A worker finishing the last
@@ -815,11 +842,19 @@ const [gate, linear, ...prStates] = await parallel([
 // infrastructure failure would stall every sub-issue for a wake.
 // An approval with no head cannot release work: `epicHead` would fall back to the carried,
 // possibly pre-approval SHA, and workers are told to align to it without re-fetching.
+// A LIVE scan is authoritative even when it is incomplete. `headSha` is what workers align to, so a
+// scan that returns none cannot release anything — falling back to the carried approval would ramp
+// child workers against a possibly-superseded objective SHA. The durable approval is only for the
+// case where there was no scan at all (the scout died); an infrastructure failure must not re-lock
+// an epic that was already signed off, but a partial observation must not release one either.
+const scanned = !!gate
 const gateUsable = !!(gate && gate.headSha)
-if (gate && gate.approved && !gate.headSha) {
-  log('Epic gate reported approval without a current head — holding work this wake rather than aligning to a stale objective.')
+if (scanned && !gate.headSha) {
+  log(
+    `Epic gate scan returned no current head — holding work this wake rather than aligning to a stale objective${gate.approved ? ' (it reported approval, which needs a head to be actionable)' : ''}.`,
+  )
 }
-const epicApproved = gateUsable ? !!gate.approved : !!epic.approved
+const epicApproved = scanned ? gateUsable && !!gate.approved : !!epic.approved
 
 // The head workers align to. It has to be THIS wake's observation: the wake that first sees
 // approval is also the wake that releases the specs, and passing the carried SHA would align
@@ -922,6 +957,12 @@ if (claims.length < requests.length) {
 // The epic PR is a direction artifact on the same budget as an issue spec — the one surface
 // where an unbounded review loop would otherwise sit directly on the top-level gate.
 const newEpicReviewEvents = !!(gate && gate.newReviewEvents)
+// GATE_SCHEMA permits `newReviewEvents: true` with a null timestamp, and that combination cannot
+// advance a cursor. Folding under it spends a review round on a batch the next wake rediscovers.
+const epicCursorMovable = !(newEpicReviewEvents && !(gate && gate.latestActivityAt))
+if (!epicCursorMovable) {
+  log('Epic gate reported new review activity with no timestamp — the cursor cannot advance past it, so it is left live to be re-derived rather than folded and lost.')
+}
 const epicAtBudget = atReviewBudget(epic.reviewRounds, epic.aboveBarFound)
 // A POC verdict on a cross-cutting claim is folded regardless of the budget — new evidence is
 // not another opinion (orchestration.md § "What it costs").
@@ -930,7 +971,7 @@ const epicVerdictsToFold = epic.verdicts && epic.verdicts.length ? epic.verdicts
 // converged review feedback coexist, folding both would let the evidence exemption smuggle in a
 // full extra review round — so the two paths run side by side: the fold takes the verdict, and
 // the converged feedback still goes out through the notes route.
-const foldEpicWanted = !!epicVerdictsToFold || (newEpicReviewEvents && !epicAtBudget)
+const foldEpicWanted = !!epicVerdictsToFold || (epicCursorMovable && newEpicReviewEvents && !epicAtBudget)
 // At budget the epic-spec stops being FOLDED — but the feedback still has to be ROUTED, or
 // convergence silently drops it. The gate scout returns only a boolean and a timestamp, so
 // nothing here knows what the comments said or which issues they touch: that needs its own
@@ -1192,7 +1233,11 @@ const gates = [
         // Positional, and an id mismatch is not trusted — same rule as the merge fold above.
         const live = (r.subPrStates || [])[i]
         if (live && live.id && live.id !== s.id) continue
-        if (live && live.readyToMerge && !live.merged && s.pr) {
+        // A green dependent whose `stackedOn` still names an unmerged prerequisite must NOT be
+        // offered for merge: its base is that branch, so merging lands it into the prerequisite (or
+        // makes the prerequisite's PR carry both slices), destroying the isolation the DAG exists
+        // for and pre-empting the rebase `classify` still has to schedule.
+        if (live && live.readyToMerge && !live.merged && s.pr && !s.stackedOn) {
           gates.push({ kind: 'merge', issueId: r.id, pr: s.pr, subPr: s.id })
         }
       }
@@ -1219,10 +1264,15 @@ return {
     // dead scout must not re-lock an epic that was already signed off — that would stall every
     // sub-issue on an infrastructure failure. A live scan still revokes it (a push after
     // approval re-opens the gate), which is the case failing closed actually protects.
-    approved: gate ? !!gate.approved : !!epic.approved,
+    // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
+    // usable observation, so it neither grants nor revokes — the durable value stands.
+    approved: gateUsable ? !!gate.approved : !!epic.approved,
     // Requested note routing that DIDN'T return leaves the ordinary feedback unrouted, so the
     // cursor must not move — otherwise it is consumed permanently. (Invariant 2.)
-    ...((routeConvergedEpicFeedback ? !!epicNotes : !!epicFold) || !newEpicReviewEvents
+    // Same guard the issue rows get: activity reported with NO timestamp gives the cursor nothing to
+    // move to, so the batch would be rediscovered and re-charged every wake until the budget
+    // converged. The observation is the scan's failure, so the cursor holds and the flag stays live.
+    ...((epicCursorMovable && (routeConvergedEpicFeedback ? !!epicNotes : !!epicFold)) || !newEpicReviewEvents
       ? {
           lastSeenActivityAt: (gate && gate.latestActivityAt) || epic.lastSeenActivityAt || null,
           lastSeenSha: (gate && gate.headSha) || epic.lastSeenSha || null,

@@ -1836,6 +1836,127 @@ check('an in-session approval is refused once a newer head has been observed', a
   assert.equal(result.issues[0].specApproved, false)
 })
 
+check('a headless live epic scan holds work even when the epic was already approved', async () => {
+  // The distinguishing case: with a DURABLE approval carried, falling back to it on a partial scan
+  // releases child workers against an objective SHA the scan just failed to confirm. The sibling
+  // check above carries no prior approval, so it cannot tell the two rules apart — it passed under
+  // both until this one was added.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, approved: true, headSha: 'preapproval' },
+      issues: [row('FIX-2')],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: null, newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
+      return { issueId: 'FIX-2', ...workerRes() }
+    },
+  })
+  assert.equal(result.epicApproved, false, 'a live scan with no head releases nothing, approved or not')
+  assert.deepEqual(workerLabels(calls), [], 'so no child worker is dispatched')
+  assert.equal(result.epic.approved, true, 'but the durable approval is not revoked by an unusable scan either')
+  assert.match(logs.join('\n'), /no current head/)
+})
+
+check('a stacked sub-PR is not offered for merge before its rebase', async () => {
+  // Its base is the prerequisite's branch, so merging lands it into that branch (or makes the
+  // prerequisite's PR carry both slices) and pre-empts the rebase the DAG still has to schedule.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', stackedOn: null },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b', stackedOn: 'fix/a' },
+          ],
+          assembledGoal: { passed: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: true },
+            { id: 'b', merged: false, readyToMerge: true },
+          ],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }], 'only the unstacked slice is mergeable')
+})
+
+check('a review worker that escalates is not charged its round either', async () => {
+  // The cursor already holds for a blocked worker; this counter has to agree. Charged anyway, one
+  // round becomes two and the retained batch reads as converged once the human answers.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRounds: 1, lastSeenActivityAt: 'old' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, specPr: 7, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRoundsSpent: 1, blocker: 'which approach?' } },
+    }),
+  })
+  assert.equal(result.issues[0].specReviewRounds, 1, 'the round is not spent on a round that did not finish')
+  assert.equal(result.issues[0].lastSeenActivityAt, 'old', 'and the batch is still live, consistently')
+})
+
+check('a worker transition without its durable handle is refused', async () => {
+  for (const [phase, handle] of [
+    ['AWAITING_SPEC_APPROVAL', 'specPr'],
+    ['PR_FEEDBACK', 'implPr'],
+  ]) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+        // Schema-valid, but the handle the phase depends on is absent.
+        worker: { 'FIX-2': { phase } },
+      }),
+    })
+    assert.equal(result.issues[0].phase, 'NEEDS_SPEC', `${phase} without ${handle} must not be accepted`)
+    assert.deepEqual(
+      result.gates.filter((g) => g.pr === null || g.pr === undefined),
+      [],
+      'and no gate is surfaced with nothing to open',
+    )
+  }
+
+  // A multi-PR row is the deliberate exception: its handles are the sub-PR table, not `implPr`.
+  const multi = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  assert.equal(multi.result.issues[0].phase, 'PR_FEEDBACK')
+})
+
+check('epic activity reported without a timestamp is not folded and lost', async () => {
+  // The cursor could not advance past it, so the batch would be rediscovered and re-charged every
+  // wake until the budget converged — spending the whole budget on one batch.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' }, issues: [] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [] }
+      return {}
+    },
+  })
+  assert.deepEqual(labels(calls, 'fold:epic'), [], 'no round is spent on a batch that cannot be consumed')
+  assert.equal(result.epic.reviewRounds, 0)
+  assert.equal(result.epic.lastSeenActivityAt, 'old', 'and the cursor holds so it is genuinely re-derived')
+  assert.match(logs.join('\n'), /new review activity with no timestamp/)
+})
+
 check('a terminal issue stops asking the human to approve its spec', async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
@@ -2203,9 +2324,9 @@ check('an approval with no current head holds work for the wake', async () => {
       return { issueId: 'FIX-2', ...workerRes() }
     },
   })
-  assert.equal(result.epicApproved, false, 'falls back to the durable approval, which is unset here')
+  assert.equal(result.epicApproved, false, 'a live scan with no head releases nothing, whatever it says about approval')
   assert.deepEqual(workerLabels(calls), [], 'no worker aligns to a pre-approval objective')
-  assert.match(logs.join('\n'), /approval without a current head — holding work this wake/)
+  assert.match(logs.join('\n'), /Epic gate scan returned no current head — holding work this wake/)
 })
 
 check('a node declaring an unknown dependency fails closed', async () => {
