@@ -285,8 +285,8 @@ What the script decides, so you don't:
 3. **The assembled goal.** Every sub-PR merged is necessary but **not sufficient**: each
    `issue-implement` run only proved its own slice, and the merges are the first moment the
    end-to-end goal is runnable. The script runs it on the real path before the issue can be
-   DONE; if the plan designated an integrating sub-PR to own it, the script confirms that
-   verdict instead of double-running. On FAIL it files the gap and opens a **new fix PR** owned
+   DONE — always, from a fresh `origin/main` checkout, because the worktree it inherits may predate
+   some of those merges. On FAIL it files the gap and opens a **new fix PR** owned
    by the breaking slice — the sub-PRs are merged and can't be reopened — and keeps the issue
    out of DONE until that lands.
 

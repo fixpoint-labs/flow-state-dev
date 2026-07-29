@@ -2252,6 +2252,83 @@ check('the next sibling blocker is lifted in the same pass that clears the answe
   assert.equal(second.result.issues[0].blockerFor, null)
 })
 
+check('a multi-PR row is not DONE until every slice merged AND the goal passed', async () => {
+  // Each condition is necessary and neither is sufficient. A worker can report `passed: true` while a
+  // slice is still open, which would stop all DAG dispatch and let Linear and the epic wrap first.
+  for (const subPrs of [
+    [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }, { id: 'b', status: 'open', pr: 42, branch: 'fix/b' }],
+    [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }, { id: 'b', status: 'pending', pr: null, branch: null }],
+  ]) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs, assembledGoal: { passed: true, evidence: 'ran it' } })] }),
+      respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+    })
+    assert.equal(result.issues[0].phase, 'PR_FEEDBACK', 'a passed goal does not finish an unmerged DAG')
+  }
+
+  // Both conditions met.
+  const done = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }], assembledGoal: { passed: true, evidence: 'ran it' } })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  assert.equal(done.result.issues[0].phase, 'DONE')
+})
+
+check('a worker sub-PR table is merged into the durable one, never substituted', async () => {
+  // A compact row that omits `dependsOn` would leave the slice reading as dependency-free — built
+  // straight onto origin/main while its prerequisite is still unmerged.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [] },
+            { id: 'b', status: 'pending', pr: null, branch: null, dependsOn: ['a'] },
+          ],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      // Compact report: only what changed, and no edges.
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs: [{ id: 'b', status: 'open', pr: 42, branch: 'fix/b' }] } },
+    }),
+  })
+  const subPrs = result.issues[0].subPrs
+  assert.deepEqual(subPrs.find((s) => s.id === 'b').dependsOn, ['a'], 'the DAG edge survives a compact report')
+  assert.equal(subPrs.find((s) => s.id === 'b').pr, 42, 'and the reported change is applied')
+  assert.ok(subPrs.find((s) => s.id === 'a'), 'a row the worker said nothing about is not dropped')
+})
+
+check('an in-session approval is refused when a live scan returns no head', async () => {
+  // The epic gate already fails closed here; this is the issue-level twin. Falling back to the
+  // carried head would approve against a SHA the live scan just failed to confirm.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1', headSha: 'head1' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, specPr: 7, headSha: null } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a live scan with no head confirms nothing')
+  assert.equal(result.issues[0].specApproved, false)
+
+  // A DEAD scout still falls back to the carried head, so an approval isn't lost to an outage.
+  const dead = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1', headSha: 'head1' })],
+    }),
+    respond: epicResponder({ nulls: ['refresh:FIX-2'], worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } } }),
+  })
+  assert.deepEqual(workerLabels(dead.calls), ['implement:FIX-2'])
+})
+
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
   // Its base is the prerequisite's branch, so merging lands it into that branch (or makes the
   // prerequisite's PR carry both slices) and pre-empts the rebase the DAG still has to schedule.
@@ -2550,31 +2627,22 @@ check('a duplicate sub-PR id is refused before anything is dispatched', async ()
   assert.match(logs.join('\n'), /a: appears MORE THAN ONCE in the plan/)
 })
 
-check('an owned assembled goal is re-run, not confirmed, once its repair merges', async () => {
-  // The recorded verdict predates the repair, so confirming it either re-reads an old failure and
-  // starts a second repair cycle, or accepts an old pass and finishes an unproven issue.
-  const { calls, logs } = await run('issue-multi-pr.js', {
-    args: multiArgs({
-      subPrs: [node('a', { status: 'merged' })],
-      assembledGoal: { ownedBy: 'a', passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: true },
-    }),
-    respond: (prompt, opts) =>
-      (opts.label || '').startsWith('assembled-goal:') ? { passed: true, evidence: 'ran it on the repaired result' } : {},
-  })
-  const prompt = calls.find((c) => (c.label || '').startsWith('assembled-goal:')).prompt
-  assert.match(prompt, /run the spec's end-to-end goal against the fully-assembled result/)
-  assert.doesNotMatch(prompt, /do not re-run the goal/)
-  // A goal is only proof if it ran against the MERGED tree — the inherited checkout may predate the
-  // very merges the goal exists to verify, so a verdict from it describes code that doesn't exist.
-  assert.match(prompt, /FIRST fetch and check out fresh origin\/main/)
-  assert.match(logs.join('\n'), /not confirming a's pre-repair verdict/)
+check('the assembled goal always runs on the real path — there is no confirm-a-record path', async () => {
+  // The `ownedBy` shortcut ("a designated slice already ran it, confirm its verdict") was removed:
+  // nothing ever set the field, and the one time it got exercised it accepted a verdict recorded
+  // before a repair merged. Saving one real-path run is not worth a stale proof.
+  const src = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
+  assert.doesNotMatch(src, /goal\.ownedBy/, 'the unreachable shortcut is gone, not just bypassed')
 
-  // Before any repair, the shortcut is still correct.
-  const owned = await run('issue-multi-pr.js', {
-    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: { ownedBy: 'a' } }),
-    respond: (prompt, opts) => ((opts.label || '').startsWith('assembled-goal:') ? { passed: true, evidence: 'recorded' } : {}),
-  })
-  assert.match(owned.calls.find((c) => (c.label || '').startsWith('assembled-goal:')).prompt, /do not re-run the goal/)
+  for (const goal of [{}, { fixMerged: true, fixPr: 77, fixIssue: 'FIX-50', failure: 'f' }]) {
+    const { calls } = await run('issue-multi-pr.js', {
+      args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: goal }),
+      respond: (prompt, opts) => ((opts.label || '').startsWith('assembled-goal:') ? { passed: true, evidence: 'ran it' } : {}),
+    })
+    const prompt = calls.find((c) => (c.label || '').startsWith('assembled-goal:')).prompt
+    assert.match(prompt, /run the spec's end-to-end goal against the fully-assembled result/)
+    assert.doesNotMatch(prompt, /do not re-run/)
+  }
 })
 
 check('a failed assembled goal keeps its evidence and hands it to the repair', async () => {
@@ -2727,18 +2795,6 @@ check('the last merge is not DONE — the assembled goal runs first', async () =
   assert.match(calls[0].prompt, /REAL path/)
   assert.match(calls[0].prompt, /cost-based skip is not an acceptable outcome/)
   assert.equal(result.done, true)
-})
-
-check('a designated integrating sub-PR is confirmed, not re-run', async () => {
-  const { calls, logs } = await run('issue-multi-pr.js', {
-    args: multiArgs({
-      subPrs: [node('a', { status: 'merged' }), node('b', { status: 'merged' })],
-      assembledGoal: { ownedBy: 'b' },
-    }),
-    respond: multiResponder(),
-  })
-  assert.match(calls[0].prompt, /Confirm its run was recorded and PASSED — read the verdict, do not re-run/)
-  assert.match(logs.join('\n'), /owned by sub-PR b/)
 })
 
 check('an already-passed assembled goal is not re-run', async () => {

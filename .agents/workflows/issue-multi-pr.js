@@ -343,20 +343,16 @@ if (state === 'GAP_BLOCKED') {
 if (state === 'NEEDS_GOAL') {
   phase('Assemble')
 
-  // The owned-goal shortcut ("a designated sub-PR already ran it; confirm the record") is only sound
-  // while the assembled result is the one that was recorded. Once a REPAIR has merged, the code
-  // changed underneath that verdict: confirming it either re-reads an old failure and starts a
-  // second repair cycle, or accepts an old pass and finishes an issue whose goal was never proven
-  // against the fix. Both log lines used to fire together, which is the contradiction made visible.
-  const confirmRecorded = !!goal.ownedBy && !goal.fixMerged
-
-  if (goal.fixMerged) log(`Repair ${goal.fixPr ? `#${goal.fixPr}` : goal.fixIssue} merged — re-running the assembled goal to prove it${goal.ownedBy ? `, not confirming ${goal.ownedBy}'s pre-repair verdict` : ''}.`)
-  else if (confirmRecorded) log(`Assembled goal is owned by sub-PR ${goal.ownedBy} — confirming its recorded verdict, not re-running it.`)
+  // REMOVED: an "a designated sub-PR already ran the goal, so confirm its record instead of
+  // re-running" shortcut. Nothing in the orchestration ever set `assembledGoal.ownedBy` — no
+  // coordinator produced it and no contract documented it — so the branch was unreachable, and the
+  // one round it did get exercised (in tests) it turned out to accept a verdict recorded before a
+  // repair merged. The goal always runs. It costs one real-path run; the shortcut cost correctness,
+  // and saving a run is not worth a stale proof.
+  if (goal.fixMerged) log(`Repair ${goal.fixPr ? `#${goal.fixPr}` : goal.fixIssue} merged — re-running the assembled goal to prove it.`)
 
   const verdict = await agent(
-    confirmRecorded
-      ? `Sub-PR ${goal.ownedBy} of ${issueId} was designated to own the assembled end-to-end goal. Confirm its run was recorded and PASSED — read the verdict, do not re-run the goal. Report passed accordingly.`
-      : `Every sub-PR of ${issueId} has merged. FIRST fetch and check out fresh origin/main in your worktree — the checkout you inherit may predate some of those merges, and a goal run against a tree missing a merged slice records a verdict about code that does not exist. THEN run the spec's end-to-end goal against the fully-assembled result on the REAL path. Use a real model if the goal declares one; a model-free goal runs as-is. A cost-based skip is not an acceptable outcome — run it. Report PASS/FAIL with the command and what it proved, and name the sub-PR that broke it if it failed.`,
+    `Every sub-PR of ${issueId} has merged. FIRST fetch and check out fresh origin/main in your worktree — the checkout you inherit may predate some of those merges, and a goal run against a tree missing a merged slice records a verdict about code that does not exist. THEN run the spec's end-to-end goal against the fully-assembled result on the REAL path. Use a real model if the goal declares one; a model-free goal runs as-is. A cost-based skip is not an acceptable outcome — run it. Report PASS/FAIL with the command and what it proved, and name the sub-PR that broke it if it failed.`,
     { label: `assembled-goal:${issueId}`, phase: 'Assemble', schema: GOAL_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
 

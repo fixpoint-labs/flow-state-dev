@@ -240,7 +240,13 @@ function unmergedDonePhase(row) {
 
 function multiPrPhase(row) {
   if (!row.subPrs || !row.subPrs.length) return null
-  return (row.assembledGoal || {}).passed ? 'DONE' : 'PR_FEEDBACK'
+  // BOTH conditions. Every sub-PR merged is necessary but not sufficient (the goal still has to be
+  // proven) — and the goal passing is equally not sufficient on its own: a worker can report
+  // `passed: true` while a slice is still pending or open, which would mark the issue DONE, stop all
+  // DAG dispatch, and let Linear and the epic wrap before those PRs merge. Same shape as the
+  // single-PR rule, whose evidence is its own merge.
+  const allMerged = row.subPrs.every((s) => s.status === 'merged')
+  return allMerged && (row.assembledGoal || {}).passed ? 'DONE' : 'PR_FEEDBACK'
 }
 
 /**
@@ -385,7 +391,12 @@ function nextRow(row, { worker, action, landed, folded }) {
     // Same rule for a multi-PR issue's sub-PR table: only a worker that reported one replaces it.
     // These are the handles the coordinator subscribes to, so silently clearing them would make
     // every sub-PR's review, CI and merge event invisible for the rest of the epic.
-    subPrs: worker.subPrs === undefined ? row.subPrs : worker.subPrs,
+    // MERGED into the durable table, never substituted for it. A worker returns what it changed, and
+    // a compact row that omits `dependsOn` would leave the slice reading as dependency-free — built
+    // straight onto origin/main while its prerequisite is still unmerged, the DAG violated by a
+    // field nobody meant to change. Structural edges come from the carried row; only observations
+    // the worker actually reported are applied. A genuinely new slice is added as given.
+    subPrs: worker.subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs),
     // Same rule, and for the same reason: the assemble state machine resumes from these handles
     // across wakes, so clearing them restarts it — re-running the goal and filing a duplicate gap.
     assembledGoal: worker.assembledGoal === undefined ? row.assembledGoal : worker.assembledGoal,
@@ -652,14 +663,37 @@ function foldMultiPrScan(row, fresh) {
   return out
 }
 
-function approvedInSessionFor(row, fresh) {
+/**
+ * Fold a worker's reported sub-PR rows into the durable table.
+ *
+ * Keyed by id, which is right here (unlike a positional bind) because the worker is echoing ids the
+ * script gave it and the set may legitimately grow. What must NOT come from the response is the
+ * structural part of the plan: `dependsOn` is the DAG, and a compact row omitting it reads as
+ * dependency-free.
+ *
+ * @param carried  the durable table (may be undefined for a first report)
+ * @param reported the worker's rows
+ */
+function mergeSubPrs(carried, reported) {
+  const byId = new Map((carried || []).map((s) => [s.id, s]))
+  for (const r of reported) {
+    const prev = byId.get(r.id)
+    byId.set(r.id, prev ? { ...prev, ...r, dependsOn: r.dependsOn === undefined ? prev.dependsOn : r.dependsOn } : r)
+  }
+  return [...byId.values()]
+}
+
+function approvedInSessionFor(row, fresh, refreshedLive) {
   const at = row.approvedInSession
   if (!at) return false
-  // Fall back to the CARRIED head, not to "no head". A previous wake may already have observed and
-  // persisted a push past the approved SHA; if this wake's scout then dies, treating that as "no
-  // head to contradict it" would implement on a head the coordinator already knows is newer than
-  // what the human approved. Only a row that has never had an observed head goes unchallenged.
-  const head = (fresh && fresh.headSha) || row.headSha || null
+  // A LIVE scan that returns no head is not a usable observation — same rule the epic gate follows.
+  // Falling back to the carried head there would approve against a SHA the scan just failed to
+  // confirm: if the spec PR has moved and `approvedInSession` matches the old head, implementation
+  // starts on direction the human never saw. Only an ABSENT refresh (the scout died) falls back, and
+  // then to the carried head rather than to "nothing contradicts it", because a previous wake may
+  // already have observed and persisted a push past the approved SHA.
+  if (refreshedLive) return !!(fresh && fresh.headSha) && fresh.headSha === at
+  const head = row.headSha || null
   return !head || head === at
 }
 
@@ -831,6 +865,7 @@ const WORKER_SCHEMA = {
           pr: { type: ['number', 'null'] },
           branch: { type: ['string', 'null'] },
           stackedOn: { type: ['string', 'null'] },
+          dependsOn: { type: 'array', items: { type: 'string' }, description: 'Only if the plan itself changed — omit to keep the carried edges' },
           blocker: { type: ['string', 'null'], description: 'This slice needs a human decision' },
         },
       },
@@ -1061,7 +1096,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // would leave that documented path unable to ever release the issue. The coordinator records it
     // as `approvedInSession: <the head it was given for>`, and it counts only while that head is
     // still current — a push after the human spoke is exactly the staleness the scan rule guards.
-    specApproved: (refreshedLive ? !!fresh.specApproved : false) || approvedInSessionFor(row, fresh),
+    specApproved: (refreshedLive ? !!fresh.specApproved : false) || approvedInSessionFor(row, fresh, refreshedLive),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
