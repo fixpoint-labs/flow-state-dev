@@ -102,6 +102,16 @@ function readySet(nodes, cap) {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const ready = []
   const invalid = []
+  // Duplicate ids are a malformed plan too, and worse than an unresolvable one: `byId` silently
+  // keeps the last of each pair while the loop below still visits every row, so both would be
+  // dispatched — two workers building and pushing the SAME branch concurrently, then one result
+  // applied to both rows. Refused before anything is scheduled.
+  const dupes = new Set()
+  const counted = new Set()
+  for (const n of nodes) {
+    if (counted.has(n.id)) dupes.add(n.id)
+    counted.add(n.id)
+  }
   // A dependency CYCLE is a malformed plan, not a wait: no merge and no other external event can
   // ever unblock it, so reporting the nodes as "waiting" parks the issue silently forever. Only a
   // human fixing the plan resolves it, so it is reported as invalid like an unresolvable id.
@@ -120,6 +130,10 @@ function readySet(nodes, cap) {
   for (const n of nodes) walk(n.id, [])
 
   for (const node of nodes) {
+    if (dupes.has(node.id)) {
+      invalid.push({ node, missing: [], duplicate: true })
+      continue
+    }
     if (inCycle.has(node.id)) {
       invalid.push({ node, missing: [], cycle: true })
       continue
@@ -339,6 +353,11 @@ if (state === 'NEEDS_GOAL') {
       ...goal,
       passed: false,
       failure: verdict.failure || 'unspecified',
+      // Keep the evidence, not just the verdict. It is schema-REQUIRED precisely because it carries
+      // the command and the observed result, and the gap and repair workers that run next are the
+      // ones that need to reproduce the failure — a terse `failure` string leaves them guessing at
+      // what actually broke.
+      evidence: verdict.evidence || null,
       owningSubPr: verdict.owningSubPr || null,
       // Clear any SPENT repair handles. If this failure came from re-verifying a repair that
       // already merged, carrying its PR forward would put the machine in AWAITING_FIX on a
@@ -358,7 +377,7 @@ if (state === 'NEEDS_GAP') {
   // check, project placement and relation wiring are that agent's job (AGENTS.md → "File
   // discovered work"). A near-duplicate gap issue wired to nothing is worse than none.
   const filed = await agent(
-    `The assembled end-to-end goal for ${issueId} failed after all its sub-PRs merged.\nFailure: ${goal.failure}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
+    `The assembled end-to-end goal for ${issueId} failed after all its sub-PRs merged.\nFailure: ${goal.failure}\nEvidence (what was run and what happened): ${goal.evidence || 'none recorded'}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
       `File this gap as a Linear issue related to ${issueId}, in the same project. Duplicate-check first — a previous attempt may already have filed it. Return the issue ID and whether it is ready to pick up.`,
     { label: `assembled-gap:${issueId}`, phase: 'Assemble', schema: GAP_SCHEMA, agentType: 'issue-manager' },
   )
@@ -376,7 +395,7 @@ if (state === 'NEEDS_GAP') {
 if (state === 'NEEDS_FIX') {
   phase('Assemble')
   const fix = await agent(
-    `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${goal.fixIssue}.\nFailure: ${goal.failure}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
+    `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${goal.fixIssue}.\nFailure: ${goal.failure}\nEvidence (what was run and what happened): ${goal.evidence || 'none recorded'}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
       `Open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.`,
     { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
@@ -402,16 +421,18 @@ const { ready, deferred, invalid } = readySet(nodes, cap)
 
 for (const bad of invalid) {
   log(
-    bad.cycle
-      ? `${bad.node.id}: part of a dependency CYCLE — no event can unblock it. Fix the PR plan; this is not a wait.`
-      : `${bad.node.id}: declares unknown dependenc(ies) ${bad.missing.join(', ')} — refusing to build it. Fix the PR plan or the handle cache.`,
+    bad.duplicate
+      ? `${bad.node.id}: appears MORE THAN ONCE in the plan — refusing to build it. Two workers would push the same branch. Fix the PR plan or the handle cache.`
+      : bad.cycle
+        ? `${bad.node.id}: part of a dependency CYCLE — no event can unblock it. Fix the PR plan; this is not a wait.`
+        : `${bad.node.id}: declares unknown dependenc(ies) ${bad.missing.join(', ')} — refusing to build it. Fix the PR plan or the handle cache.`,
   )
 }
 
 if (!ready.length) {
   const waiting = nodes.filter((n) => n.status !== TERMINAL).map((n) => `${n.id}(${n.status})`)
   log(`No sub-PR is ready — waiting on ${waiting.join(', ') || 'nothing'}.`)
-  return { issueId, subPrs: nodes, dispatched: [], invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle })), done: false }
+  return { issueId, subPrs: nodes, dispatched: [], invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle, duplicate: !!b.duplicate })), done: false }
 }
 
 if (deferred.length) {
@@ -508,7 +529,7 @@ return {
   subPrs,
   dispatched: ready.map((i) => `${i.action}:${i.node.id}`),
   deferred: deferred.map((i) => i.node.id),
-  invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle })),
+  invalid: invalid.map((b) => ({ id: b.node.id, missing: b.missing, cycle: !!b.cycle, duplicate: !!b.duplicate })),
   blockers: subPrs.filter((n) => n.blocker).map((n) => ({ id: n.id, blocker: n.blocker })),
   // Never DONE from a build wake — merges are the human's, and the assembled goal comes after.
   done: false,

@@ -217,6 +217,11 @@ function nextRow(row, { worker, action, landed, folded }) {
 
   if (!worker) return { ...row, ...cursor, verdicts }
 
+  // See `specReviewRounds` below: a review round that reports no count is charged one, because
+  // charging zero makes the budget unreachable.
+  const roundsSpent =
+    action === 'spec-review' && worker.specReviewRoundsSpent === undefined ? 1 : worker.specReviewRoundsSpent || 0
+
   return {
     ...row,
     ...cursor,
@@ -224,8 +229,18 @@ function nextRow(row, { worker, action, landed, folded }) {
     phase: worker.phase || row.phase,
     specPr: worker.specPr === undefined ? row.specPr : worker.specPr,
     implPr: worker.implPr === undefined ? row.implPr : worker.implPr,
+    // Same rule for a multi-PR issue's sub-PR table: only a worker that reported one replaces it.
+    // These are the handles the coordinator subscribes to, so silently clearing them would make
+    // every sub-PR's review, CI and merge event invisible for the rest of the epic.
+    subPrs: worker.subPrs === undefined ? row.subPrs : worker.subPrs,
     // Add only the rounds the worker reports SPENDING — never one per event dispatched.
-    specReviewRounds: (row.specReviewRounds || 0) + (worker.specReviewRoundsSpent || 0),
+    //
+    // But a REVIEW worker that omits the count cannot be charged zero: the field is optional, so
+    // every batch would consume its feedback, advance the cursor, and add nothing, and the budget
+    // would never be reached — an unbounded review sequence, which is the exact failure the budget
+    // exists to prevent. An unreported round is assumed spent. A worker that genuinely spent none
+    // (a batch of pure factual corrections) says so explicitly with 0, which is honoured.
+    specReviewRounds: (row.specReviewRounds || 0) + roundsSpent,
     // Whose answer this is depends on WHICH worker ran, because the canonical rule ties the
     // third round to what the LATEST round found: "spend a third round only when round two
     // surfaced a genuine spec-level finding" (orchestration.md § The convergence rule).
@@ -308,6 +323,24 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
  * @param ids      the issue id each dispatch was FOR, in the same order
  * @param onMismatch called with (expectedId, reportedId) so the caller can log the discard
  */
+/**
+ * Does the coordinator's in-session approval still apply?
+ *
+ * `approvedInSession` carries the head SHA the human approved, so it is checked against the head
+ * this wake observed rather than trusted outright: an approval that predates a push is the same
+ * stale approval the scan rule refuses. A row with no observed head yet (no PR scanned) can't be
+ * contradicted, so the recorded approval stands.
+ *
+ * @param row    the carried row (`approvedInSession` is the coordinator's record)
+ * @param fresh  this wake's scan for that row, `{}` when the scout died
+ */
+function approvedInSessionFor(row, fresh) {
+  const at = row.approvedInSession
+  if (!at) return false
+  const head = (fresh && fresh.headSha) || null
+  return !head || head === at
+}
+
 function bindByPosition(results, ids, onMismatch) {
   const byId = new Map()
   results.forEach((res, i) => {
@@ -432,6 +465,26 @@ const WORKER_SCHEMA = {
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
+    // A multi-PR issue's implementation is a DAG of sub-PRs, not one `implPr`. Without this the
+    // worker has nowhere to return the table `issue-multi-pr` produced (`additionalProperties` is
+    // false), so the coordinator can't persist or subscribe to the sub-PRs it just opened and every
+    // later review, CI and merge event on them is invisible to the epic.
+    subPrs: {
+      type: 'array',
+      description: 'For a multi-PR issue: the sub-PR table from issue-multi-pr, verbatim. Omit for single-PR issues.',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: ['id', 'status'],
+        properties: {
+          id: { type: 'string' },
+          status: { type: 'string' },
+          pr: { type: ['number', 'null'] },
+          branch: { type: ['string', 'null'] },
+          stackedOn: { type: ['string', 'null'] },
+        },
+      },
+    },
     specReviewRoundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent this dispatch — 0 for a batch that was only factual corrections' },
     specLevelFound: { type: 'boolean', description: 'Did this round surface a genuine spec-level finding? Authorizes the third round.' },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
@@ -597,10 +650,18 @@ const refreshed = [...rows, ...discovered].map((row) => {
     ...row,
     ...fresh,
     id: row.id,
-    // A live scan is the ONLY source of approval. Spreading `fresh` over the row would let a
-    // carried `specApproved: true` survive a scan that omitted it — implementing on a head the
-    // human never approved, which is the one gate that must not be bypassable.
-    specApproved: refreshedLive ? !!fresh.specApproved : false,
+    // Two channels satisfy this gate, and they need opposite handling.
+    //
+    // A SCAN-derived approval is never carried: spreading `fresh` over the row would let a stale
+    // `specApproved: true` survive a scan that omitted it, implementing on a head the human never
+    // approved — the one gate that must not be bypassable.
+    //
+    // An IN-SESSION approval ("the user saying 'approved' in-session", epic-lifecycle § Gates &
+    // autonomy) is a first-class channel with no PR artifact for a scout to find, so discarding it
+    // would leave that documented path unable to ever release the issue. The coordinator records it
+    // as `approvedInSession: <the head it was given for>`, and it counts only while that head is
+    // still current — a push after the human spoke is exactly the staleness the scan rule guards.
+    specApproved: (refreshedLive ? !!fresh.specApproved : false) || approvedInSessionFor(row, fresh),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
@@ -738,7 +799,12 @@ const settled = await parallel(
         `claim:   ${claim.claim}\nload:    ${claim.load}\nfalsify: ${claim.falsify}\nthreads: ${claim.threads}\n` +
         `Design the runnable check yourself; run it on the real path. Return CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Open a PR only if you found something worth a human's eyes.`,
       { label: `poc:${(claim.claim || '').slice(0, 40)}`, phase: 'Settle', schema: POC_SCHEMA, agentType: 'poc-agent', isolation: 'worktree' },
-    ).then((poc) => (poc ? { ...claim, ...poc, issues: claim.issues } : null)),
+      // The REQUESTED claim wins over the reported one. `claim` is a free-form string in POC_SCHEMA,
+      // so a POC that paraphrases it — or echoes a sibling's — would replace the canonical text
+      // while its request is consumed: the verdict then fans to the requesting issues and is folded
+      // onto their threads under a claim nobody argued. Same rule as the row-id binding above:
+      // identity comes from the dispatch, not from the response.
+    ).then((poc) => (poc ? { ...claim, ...poc, claim: claim.claim, issues: claim.issues } : null)),
   ),
 )
 
@@ -788,8 +854,23 @@ const newRequests = [
 // A verdict is consumed only when its folding worker actually RETURNED. Deriving this from the
 // planned dispatch would clear the row's only copy even when the worker died — losing the POC
 // result permanently, since its settlement request was consumed too.
+// A worker that returned a `blocker` escalated instead of finishing, so it did NOT fold. Counting
+// it as a fold deletes the row's only copy of the claim, evidence and owed thread reply, and then
+// parks the row — so once the human answers the blocker there is nothing left to apply. Returning
+// is necessary but not sufficient; completing without escalating is the condition.
 const foldedVerdict = new Set(
-  plan.advance.filter((i) => i.action === 'apply-verdict' && workerById.has(i.row.id)).map((i) => i.row.id),
+  plan.advance
+    .filter((i) => i.action === 'apply-verdict')
+    .filter((i) => {
+      const w = workerById.get(i.row.id)
+      if (!w) return false
+      if (w.blocker) {
+        log(`${i.row.id}: the verdict fold escalated a decision (${w.blocker}) — keeping the verdict to apply once it's answered.`)
+        return false
+      }
+      return true
+    })
+    .map((i) => i.row.id),
 )
 
 const actionByIssue = new Map(plan.advance.map((i) => [i.row.id, i.action]))

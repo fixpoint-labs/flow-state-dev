@@ -135,11 +135,11 @@ even if more are queued. State the chosen N and the cap to the user.
    Workflow tool:
      name: epic-wake
      args: {
-       epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound, lastSeenSha,
-                verdicts, unsettled },
+       epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound,
+                lastSeenActivityAt, lastSeenSha, verdicts, unsettled },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
-                   lastSeenActivityAt, lastSeenSha, blocker } ],
+                   lastSeenActivityAt, lastSeenSha, blocker, approvedInSession, subPrs } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
      }
    ```
@@ -162,6 +162,15 @@ even if more are queued. State the chosen N and the cap to the user.
      not just the enum, because the folding worker has to reply with the evidence. `epic.verdicts`
      exists because a cross-cutting claim has no issue row to land on. Persist them under those
      plural names — a coordinator writing a singular `verdict` drops every carried settlement.
+   - **`issues[].approvedInSession`** — when the user approves a spec **in-session** rather than on
+     the PR (a channel [Gates & autonomy](#gates--autonomy) explicitly supports), there is no
+     comment or review for a scout to find, so record the **head SHA they approved** in this field.
+     The wake treats it as approval while that head is still current, and ignores it once a push has
+     moved on — the same staleness rule the scan channel gets. Omit it and the in-session
+     go-ahead is silently discarded, and the issue waits for an approval that already happened.
+   - **`issues[].subPrs`** — for a **multi-PR** issue, the sub-PR table (`id · status · pr ·
+     branch · stackedOn`) its worker returned from `issue-multi-pr`. These are the handles you
+     subscribe to; drop them and every sub-PR's review, CI and merge event goes unseen.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
      decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
      `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every

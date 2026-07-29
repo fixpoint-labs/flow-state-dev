@@ -1213,6 +1213,134 @@ check('a verdict-only epic fold cannot revoke the epic third round', async () =>
   assert.equal(result.epic.reviewRounds, 2)
 })
 
+check('a verdict fold that escalated a decision keeps the verdict', async () => {
+  // Returning is not the same as finishing. A folder that hit an undecided fork returns a
+  // `blocker`; counting that as a fold deletes the row's only copy of the claim, evidence and owed
+  // thread reply AND parks the row — so once the human answers there is nothing left to apply.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 7,
+          verdicts: [{ claim: 'does X stream?', verdict: 'REFUTED', evidence: 'ran it', threads: 't' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, blocker: 'which behaviour do we want?' } },
+    }),
+  })
+  assert.equal(result.issues[0].verdicts.length, 1, 'an escalated fold consumes nothing')
+  assert.equal(result.issues[0].verdicts[0].evidence, 'ran it', 'and the evidence survives for the retry')
+  assert.match(result.issues[0].blocker, /which behaviour/)
+  assert.match(logs.join('\n'), /the verdict fold escalated a decision/)
+})
+
+check('a review worker that reports no round count is still charged one', async () => {
+  // `specReviewRoundsSpent` is optional, so an omission charged zero would consume the feedback,
+  // advance the cursor, and never reach the budget — an unbounded review sequence.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRounds: 1 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  assert.equal(result.issues[0].specReviewRounds, 2, 'an unreported round is assumed spent')
+})
+
+check('an explicit zero-round review batch still costs nothing', async () => {
+  // The other side of the same rule: the canonical zero-cost factual batch has to survive.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRounds: 1 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', newSpecReviewEvents: true, specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specReviewRoundsSpent: 0 } },
+    }),
+  })
+  assert.equal(result.issues[0].specReviewRounds, 1, 'a batch of only factual corrections is free')
+})
+
+check('an in-session approval releases the issue when no PR artifact exists', async () => {
+  // The documented second channel: "the user saying 'approved' in-session". No comment or review
+  // exists for a scout to find, so a scan-only rule would hold the issue forever.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, specPr: 7, headSha: 'head1' } },
+      worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'a satisfied gate is a release, not a stop')
+  assert.deepEqual(
+    result.gates.filter((g) => g.kind === 'spec-approval'),
+    [],
+    'and the human is not asked to approve again',
+  )
+})
+
+check('an in-session approval does not survive a later push', async () => {
+  // It carries the head it was given for, so it gets the same staleness rule as a scan approval.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, specPr: 7, headSha: 'head2' } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a push after the human spoke invalidates it')
+  assert.ok(result.gates.some((g) => g.kind === 'spec-approval' && g.issueId === 'FIX-2'))
+})
+
+check("a multi-PR issue's sub-PR handles survive the epic wake", async () => {
+  // One `implPr` cannot hold a DAG. Without the passthrough the coordinator can't subscribe to the
+  // sub-PRs the worker just opened, and their review/CI/merge events are invisible for the epic.
+  const subPrs = [
+    { id: 'a', status: 'open', pr: 41, branch: 'fix/FIX-2-a', stackedOn: null },
+    { id: 'b', status: 'pending', pr: null, branch: null, stackedOn: null },
+  ]
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs } },
+    }),
+  })
+  assert.deepEqual(result.issues[0].subPrs, subPrs)
+
+  // And a later worker that says nothing about them must not clear them.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...result.issues[0] }] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.deepEqual(second.result.issues[0].subPrs, subPrs, 'only a worker that reported a table replaces it')
+})
+
+check('a POC that paraphrases the claim settles the claim that was requested', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })],
+      settleRequests: [{ claim: 'does the router re-enter?', load: 'x', falsify: 'y', threads: 't', issueId: 'FIX-2' }],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+      // The POC answers a differently-worded — or entirely different — claim.
+      poc: { claim: 'something else entirely', verdict: 'CONFIRMED', evidence: 'ran it' },
+    }),
+  })
+  const landed = result.issues[0].verdicts
+  assert.equal(landed.length, 1)
+  assert.equal(landed[0].claim, 'does the router re-enter?', 'the requested claim is what gets folded and replied to')
+})
+
 check('a terminal issue stops asking the human to approve its spec', async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
@@ -1317,6 +1445,44 @@ check('a carried "building" status retries the build instead of waiting forever'
   )
   assert.match(logs.join('\n'), /carried status "building" is not a state a wake can resume/)
   assert.notEqual(result.subPrs[0].status, 'building', 'and the status the script cannot act on does not survive the wake')
+})
+
+check('a duplicate sub-PR id is refused before anything is dispatched', async () => {
+  // `byId` collapses the pair while the loop still visits both rows, so both would build and push
+  // the SAME branch concurrently and one result would be applied to both.
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a'), node('a'), node('b')] }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(
+    calls.map((c) => c.label),
+    ['build:b'],
+    'the duplicated node is refused; the sound one still builds',
+  )
+  assert.ok(result.invalid.some((i) => i.id === 'a' && i.duplicate))
+  assert.match(logs.join('\n'), /a: appears MORE THAN ONCE in the plan/)
+})
+
+check('a failed assembled goal keeps its evidence and hands it to the repair', async () => {
+  // `evidence` is schema-required because it carries the command and the observed result. The gap
+  // and repair workers are the ones that have to reproduce the failure.
+  const first = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: { goal: 'g' } }),
+    respond: (prompt, opts) =>
+      (opts.label || '').startsWith('assembled-goal:')
+        ? { passed: false, evidence: 'ran `fsdev run x` → exit 1, stream closed early', failure: 'stream closed early' }
+        : {},
+  })
+  assert.equal(first.result.assembledGoal.evidence, 'ran `fsdev run x` → exit 1, stream closed early')
+
+  // The gap worker gets it, not just the terse failure line.
+  const second = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: { ...first.result.assembledGoal } }),
+    respond: (prompt, opts) => ((opts.label || '').startsWith('assembled-gap:') ? { issueFiled: 'FIX-50', ready: true } : {}),
+  })
+  const gap = second.calls.find((c) => (c.label || '').startsWith('assembled-gap:'))
+  assert.match(gap.prompt, /stream closed early/)
+  assert.match(gap.prompt, /Evidence \(what was run and what happened\)/)
 })
 
 check('a build result echoing another sub-PR id is discarded, not applied to it', async () => {
@@ -1550,7 +1716,7 @@ check('a node declaring an unknown dependency fails closed', async () => {
     respond: multiResponder(),
   })
   assert.deepEqual(calls, [], 'never build a node whose declared dependency is not in the table')
-  assert.deepEqual(result.invalid, [{ id: 'b', missing: ['ghost'], cycle: false }])
+  assert.deepEqual(result.invalid, [{ id: 'b', missing: ['ghost'], cycle: false, duplicate: false }])
   assert.match(logs.join('\n'), /b: declares unknown dependenc\(ies\) ghost — refusing to build it/)
 })
 
