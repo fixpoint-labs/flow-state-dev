@@ -471,6 +471,24 @@ const POST_SPEC_PHASES = new Set(['NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE']
  * implementing row reports `false` forever — gating every post-spec phase on it would knock all real
  * work back to `NEEDS_SPEC`. What is illegitimate is the TRANSITION, and only this wake can see it.
  */
+/**
+ * The phase a refresh scan is allowed to move a row to.
+ *
+ * A scout reports FACTS — which PRs exist, what Linear says — and both directions across the approval gate
+ * are conclusions rather than facts. Forward is the bypass (`PR_FEEDBACK` with an impl handle on a row
+ * still awaiting approval, reaching a merge gate with no sign-off). BACKWARD is the mirror, and it costs
+ * duplicate work rather than a bypass: a carried `PR_FEEDBACK` row reported as `NEEDS_SPEC` while its
+ * implementation PR is open makes the next wake dispatch `issue-spec` and open a second spec PR for work
+ * already under review. Re-gating a row is a decision, and no scan gets to make it.
+ */
+function scoutPhaseFor(row, reportedPhase, scanApproved) {
+  if (!reportedPhase) return row.phase
+  if (jumpsTheApprovalGate({ ...row, specApproved: scanApproved }, reportedPhase)) return row.phase
+  const regresses = POST_SPEC_PHASES.has(row.phase) && PRE_APPROVAL_PHASES.has(reportedPhase)
+  if (regresses && (row.implPr || (row.subPrs || []).length)) return row.phase
+  return reportedPhase
+}
+
 function jumpsTheApprovalGate(row, reportedPhase) {
   if (!reportedPhase || row.specApproved) return false
   return PRE_APPROVAL_PHASES.has(row.phase) && POST_SPEC_PHASES.has(reportedPhase)
@@ -1657,11 +1675,21 @@ if (scanned && !gate.headSha) {
 // last real observation could not confirm was current. `headUnconfirmed` is that hold made durable —
 // set by a live scan with no head, cleared by any usable scan, and preserved (like the approval
 // itself) when there was no scan at all.
-const epicApproved = scanned ? gateUsable && !!gate.approved : !!epic.approved && !epic.headUnconfirmed
+// NO dead-scout fallback at all, which REVERSES an earlier decision here. Carrying the approval through a
+// dead scan was sound while the epic approval was a one-time objective sign-off; round-29 work made it
+// HEAD-SENSITIVE (a push invalidates it), and nothing revisited the fallback. The hole that left: H1 is
+// approved, a push creates H2, and the scout dies on the next wake — `headUnconfirmed` is still false
+// because no live scan has seen H2, so the carried `true` released every child worker against an objective
+// nobody approved. `headUnconfirmed` only ever covered the case where a LIVE scan came back headless.
+//
+// The cost is one wake of held work whenever the scout flakes, and the next usable scan releases it. The
+// alternative is children authoring specs and PRs against an objective that may have just changed, which
+// costs their rework. This is the gate the file says everywhere must not be bypassable.
+const epicApproved = scanned && gateUsable && !!gate.approved
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
-if (!scanned && epic.headUnconfirmed && epic.approved) {
+if (!scanned && epic.approved) {
   log(
-    `Epic gate scout died and the last live scan could not confirm the objective head — holding child work rather than releasing it against an unconfirmed approval.`,
+    `Epic gate scout died — holding child work for this wake rather than releasing it against an approval no live scan could confirm is still current.`,
   )
 }
 
@@ -1749,7 +1777,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // refresh is an INDEPENDENT producer of `phase`: a scan reporting `PR_FEEDBACK` with an impl handle on a
     // row still awaiting approval walked straight past it, and `approvalGatedPhase` only repairs the one
     // intermediate phase. Same rule, other channel.
-    phase: jumpsTheApprovalGate({ ...row, specApproved: scanApproved }, fresh.phase) ? row.phase : fresh.phase || row.phase,
+    phase: scoutPhaseFor(row, fresh.phase, scanApproved),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
@@ -1980,7 +2008,8 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           // has nothing to advance (a terminal issue, or one whose phase yielded no action), so pointing
           // it at the DAG would invite a step nobody asked for.
           (item.action !== 'apply-decision' && item.row.subPrs && item.row.subPrs.length
-            ? `This issue implements as a DAG of sub-PRs. Advance it with the issue-multi-pr workflow, passing this state as its args, and return the updated subPrs table AND assembledGoal.\n` +
+            ? `This issue implements as a DAG of sub-PRs. Advance it with the issue-multi-pr workflow, passing this state as its args — including \`cap: ${Math.max(1, cap)}\` — and return the updated subPrs table AND assembledGoal.\n` +
+              `That cap is not optional: omitting it leaves the nested workflow on its own default, so a single outer worker can spawn that many sub-PR worktrees beneath itself and several outer rows multiply it. The number here is sized to this VM, and it stops meaning anything if the nested fan-out ignores it.\n` +
               `  subPrs: ${JSON.stringify(item.row.subPrs)}\n` +
               // The worker runs in an isolated worktree and cannot read `.orchestration/`, so state
               // it isn't handed does not exist for it. Given only `subPrs`, a resumed issue would

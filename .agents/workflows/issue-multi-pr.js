@@ -717,7 +717,11 @@ const subPrs = nodes.map((node) => {
     // caller either dropping the answer (if it assumed success) or re-dispatching the same resume forever
     // while the merge gate stayed withheld (if it assumed failure). Neither guess is recoverable; saying so
     // is. Only a resume sets it, and only when it actually landed.
-    ...(resuming && r.status === 'open' && !r.blocker ? { answerApplied: true } : {}),
+    // Set EXPLICITLY every pass, not spread-in-when-true: `...node` carries the previous value, so a second
+    // decision on the same slice inherited the first one's acknowledgement — and if that second resume then
+    // failed or died, the stale `true` told the caller the new answer had landed, deleting a one-shot answer
+    // while the PR it was meant to change stayed as it was. An acknowledgement describes ONE delivery.
+    answerApplied: resuming && r.status === 'open' && !r.blocker ? true : undefined,
     summary: r.summary,
   }
 })

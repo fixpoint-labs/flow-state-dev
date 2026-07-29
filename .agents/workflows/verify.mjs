@@ -596,7 +596,14 @@ check('a present Linear row clears a resolved blocker', async () => {
   assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
 })
 
-check('a durable epic approval survives a dead gate scout', async () => {
+check('a dead gate scout holds child work, and keeps the approval for persistence', async () => {
+  // This check formerly asserted the OPPOSITE — that a durable approval releases work through a dead scan,
+  // so infrastructure failure could not re-lock an epic. That was sound while the epic approval was a
+  // one-time objective sign-off. Once a push could invalidate it, the fallback stopped being sound and
+  // nobody revisited it: H1 approved, a push creates H2, the scout dies, `headUnconfirmed` is still false
+  // because no live scan has seen H2 — and the carried `true` released every child against an objective
+  // nobody approved. The cost of the reversal is one wake of held work per flaky scan; the next usable scan
+  // releases it. The cost of the old rule was children authoring against an objective that had moved.
   const { result, calls } = await run('epic-wake.js', {
     args: epicArgs({
       epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, approved: true },
@@ -604,9 +611,17 @@ check('a durable epic approval survives a dead gate scout', async () => {
     }),
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } }, nulls: ['gate:epic'] }),
   })
-  assert.equal(result.epicApproved, true, 'infrastructure failure must not re-lock an approved epic')
-  assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
-  assert.equal(result.epic.approved, true, 'and the approval is returned for persistence')
+  assert.equal(result.epicApproved, false, 'an unconfirmable approval does not release work')
+  assert.deepEqual(workerLabels(calls), [], 'so no child is dispatched this wake')
+  assert.equal(result.epic.approved, true, 'but the approval itself is NOT discarded — the human gave it once')
+
+  // The next wake with a usable scan releases immediately: the hold is per-wake, not a re-lock.
+  const recovered = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, approved: true }, issues: [row('FIX-2')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.equal(recovered.result.epicApproved, true)
+  assert.deepEqual(workerLabels(recovered.calls), ['spec:FIX-2'])
 })
 
 check('a live scan still revokes an approval that a push invalidated', async () => {
@@ -4550,6 +4565,78 @@ check('a dead or partial scan cannot clear a closed-handle blocker', async () =>
     }),
   })
   assert.equal(live.result.issues[0].blocker, null, 'a live complete scan is an observation')
+})
+
+check('a scout cannot regress a row back across the gate either', async () => {
+  // The mirror of the forward jump, and it costs duplicate work rather than a bypass: a carried PR_FEEDBACK
+  // row reported as NEEDS_SPEC while its implementation PR is open makes the next wake dispatch `issue-spec`
+  // and open a SECOND spec PR for work already under review. Re-gating is a decision; a scan reports facts.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC', implPr: 9 } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(result.issues[0].phase, 'PR_FEEDBACK', 'the durable phase stands')
+  assert.deepEqual(workerLabels(calls), [], 'and no duplicate spec is authored')
+
+  // A multi-PR row is protected by its sub-PR table for the same reason.
+  const dag = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+    }),
+  })
+  assert.equal(dag.result.issues[0].phase, 'PR_FEEDBACK')
+
+  // With NO durable handle there is nothing to protect, so the scan is believed — that is what makes the
+  // rule about contradicting evidence rather than about refusing scans.
+  const noHandle = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+    }),
+  })
+  assert.equal(noHandle.result.issues[0].phase, 'AWAITING_SPEC_APPROVAL')
+})
+
+check('the nested DAG workflow inherits the epic cap', async () => {
+  // Omitting it leaves the nested workflow on its own default, so one outer worker can spawn that many
+  // sub-PR worktrees beneath itself — and several outer rows multiply it, so the VM-sized cap stops meaning
+  // anything.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      cap: 2,
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'pending', dependsOn: [] }], multiPrPending: true })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  const dispatch = calls.find((c) => (c.label || '').startsWith('implement:'))
+  assert.ok(dispatch)
+  assert.match(dispatch.prompt, /`cap: 2`/, 'the epic cap travels into the nested step')
+  assert.match(dispatch.prompt, /not optional/)
+})
+
+check('an acknowledgement describes one delivery, not the slice', async () => {
+  // `...node` carried the previous value, so a second decision on the same slice inherited the first one's
+  // acknowledgement — and if that second resume then failed, the stale marker told the caller the new answer
+  // had landed, deleting a one-shot answer while the PR stayed as it was.
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which shape now?', answerApplied: true }],
+      blockerResolutions: [{ for: 'a', answer: 'the second decision' }],
+    }),
+    respond: multiResponder({ build: { a: { status: 'failed' } } }),
+  })
+  assert.equal(result.subPrs[0].answerApplied, undefined, 'the stale acknowledgement does not carry over')
+  assert.equal(result.subPrs[0].blocker, 'which shape now?', 'so the new answer is still owed')
 })
 
 check('GATE: a scout cannot jump a row across the approval gate either', async () => {
