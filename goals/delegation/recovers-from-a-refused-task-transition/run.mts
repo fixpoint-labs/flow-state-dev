@@ -28,6 +28,10 @@
  *   - The recovery is BOUND TO THE REFUSED TASK by id, not inferred from the
  *     task leaving `pending` — a `runBoard` drain moves it out of `pending` on
  *     its own. See criterion (C) and the probe suite that falsifies it.
+ *   - The salted worker turn is BOUND TO THE OPEN REQUEST by the task's goal,
+ *     not accepted from any completed task — the fixture also holds requests
+ *     that arrived answered, and running one of THOSE on a worker is the
+ *     inversion of what the skill says. See criterion (E) and its probe.
  *   - The pre-fix shape is detected explicitly: a `completeTask` that FAILED
  *     with a raw `illegal status transition` throw is reported as its own
  *     failure, not silently rolled into "the case never came up".
@@ -227,7 +231,10 @@ interface StreamItem {
   output?: unknown;
   error?: { message?: string };
   toolCall?: { stepNumber?: number; arguments?: string };
-  data?: { task?: { id: string; status: string; output?: unknown } };
+  // `goal` is read by criterion (E) to bind the salted completion to the request
+  // that actually needed doing. The change stream carries the whole task, so
+  // this narrowing is the runner's own — widen it, don't work around it.
+  data?: { task?: { id: string; status: string; output?: unknown; goal?: string } };
 }
 
 /** One tool call the COORDINATOR made, as the stream recorded it. */
@@ -248,6 +255,17 @@ interface Call {
 /** How a run's step indices were established. Reported in the verdict log. */
 type StepSource = "toolCall.stepNumber" | "dispatch burst";
 
+/**
+ * A task's final state, as the change stream left it. `goal` is what the
+ * coordinator logged the task under — criterion (E) reads it to tell the
+ * request that needed doing apart from the ones that arrived answered.
+ */
+interface TaskState {
+  status: string;
+  output?: unknown;
+  goal?: string;
+}
+
 /** What one run produced, read entirely from the emitted item stream. */
 interface Observed {
   /** Terminal answer the caller received. */
@@ -256,8 +274,8 @@ interface Observed {
   calls: Call[];
   /** Where the step indices came from. */
   stepSource: StepSource;
-  /** Final status + output per task. */
-  tasks: Map<string, { status: string; output?: unknown }>;
+  /** Final status, output and goal per task. */
+  tasks: Map<string, TaskState>;
   /** Set when the action itself errored, so the graders can say so. */
   runError: string | undefined;
 }
@@ -313,7 +331,7 @@ async function run(sessionId: string): Promise<Observed> {
   });
 
   const items = res.items as unknown as StreamItem[];
-  const tasks = new Map<string, { status: string; output?: unknown }>();
+  const tasks = new Map<string, TaskState>();
   const raw: Omit<Call, "step">[] = [];
   const recorded: (number | undefined)[] = [];
 
@@ -321,7 +339,7 @@ async function run(sessionId: string): Promise<Observed> {
     if (item.type === "component" && item.component === "task-change" && item.data?.task) {
       const task = item.data.task;
       // Keyed items upsert — the last snapshot per id is the final state.
-      tasks.set(task.id, { status: task.status, output: task.output });
+      tasks.set(task.id, { status: task.status, output: task.output, goal: task.goal });
       continue;
     }
     if (item.type !== "tool_output" || typeof item.blockName !== "string") continue;
@@ -395,6 +413,28 @@ function callsAfterStep(observed: Observed, step: number): Call[] {
 }
 
 const describe = (c: Call) => `${c.name}@step${c.step}${c.threw !== undefined ? "(THREW)" : ""}`;
+
+/** Lowercased, whitespace-collapsed, for comparing a task goal to a request. */
+const normalizeRequest = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+
+const OPEN_REQUESTS = fx.openRequests.map(normalizeRequest);
+
+/**
+ * True when `goal` is one of the requests that still needed doing.
+ *
+ * Read off the FIXTURE, never a literal — swap the intake and this follows it.
+ * The skill tells the coordinator to log each request with its text as the
+ * goal, so containment is checked in both directions: the goal may quote the
+ * request and add to it, or drop its trailing period. Anything looser would
+ * stop distinguishing an open request from an already-answered one, which is
+ * the whole point of the comparison.
+ */
+function servesOpenRequest(goal: string | undefined): boolean {
+  if (goal === undefined) return false;
+  const g = normalizeRequest(goal);
+  if (g === "") return false;
+  return OPEN_REQUESTS.some((open) => g.includes(open) || open.includes(g));
+}
 
 // ---------------------------------------------------------------------------
 // Grading
@@ -578,6 +618,14 @@ function grade(observed: Observed): {
         `completing the intake is a failure of this outcome, not a pass`,
     );
   }
+  //        The salt has to sit ON THE OPEN REQUEST, not merely somewhere on the
+  //        board. The salt alone proves only that SOME worker turn happened; it
+  //        is silent about which request that turn served. The fixture supplies
+  //        both kinds, and the skill says an already-answered one must never be
+  //        handed to a worker — so a run that got the routing exactly backwards
+  //        (worked a settled request, dropped the open one) still produces a
+  //        salted completion. Binding it to `fx.openRequests` is what makes this
+  //        an assertion about the real work getting done. See the probe suite.
   const salted = [...observed.tasks.values()].filter(
     (t) => t.status === "completed" && String(t.output ?? "").includes(fx.workerSalt),
   );
@@ -585,6 +633,13 @@ function grade(observed: Observed): {
     failures.push(
       `no completed task carries the held-out worker salt "${fx.workerSalt}" — the request that ` +
         `genuinely needed doing never ran, so the recovery came at the cost of the real work`,
+    );
+  } else if (!salted.some((t) => servesOpenRequest(t.goal))) {
+    failures.push(
+      `the held-out worker salt "${fx.workerSalt}" appears only on completed task(s) whose goal ` +
+        `is not one of the requests that needed doing ${JSON.stringify(fx.openRequests)} — ` +
+        `salted goals were ${JSON.stringify(salted.map((t) => t.goal ?? "(no goal)"))}. A worker ` +
+        `ran, but on work that did not need doing, while the request that did went unserved`,
     );
   }
 
@@ -651,6 +706,13 @@ function summarize(observed: Observed, refusal: Call | undefined, advertised: st
 const REFUSED_ID = "task_probe_refused";
 const OTHER_ID = "task_probe_other";
 const REAL_ID = "task_probe_real";
+/** A second already-answered request, used by the inverted-routing probe. */
+const SETTLED_RAN_ID = "task_probe_settled_ran";
+
+/** The goal a probe's task carries — read from the fixture, never a literal. */
+const OPEN_GOAL = fx.openRequests[0]!;
+const SETTLED_GOAL = fx.settledRequests[0]!.request;
+const OTHER_SETTLED_GOAL = (fx.settledRequests[1] ?? fx.settledRequests[0]!).request;
 
 /** The result a `completeTask` on a still-pending task really returns. */
 const REFUSAL_MESSAGE =
@@ -677,7 +739,7 @@ const refusedCompleteTask = probeCall({
  */
 function observedRun(over: {
   calls?: Call[];
-  tasks?: [string, { status: string; output?: unknown }][];
+  tasks?: [string, TaskState][];
 } = {}): Observed {
   return {
     answer: "Handled the intake.",
@@ -690,8 +752,15 @@ function observedRun(over: {
     stepSource: "dispatch burst",
     tasks: new Map(
       over.tasks ?? [
-        [REFUSED_ID, { status: "cancelled" }],
-        [REAL_ID, { status: "completed", output: `Drafted the notice. ${fx.workerSalt}` }],
+        [REFUSED_ID, { status: "cancelled", goal: SETTLED_GOAL }],
+        [
+          REAL_ID,
+          {
+            status: "completed",
+            output: `Drafted the notice. ${fx.workerSalt}`,
+            goal: OPEN_GOAL,
+          },
+        ],
       ],
     ),
     runError: undefined,
@@ -713,8 +782,37 @@ const codexScenario = observedRun({
     probeCall({ name: RUN_BOARD_TOOL_NAME, step: 3 }),
   ],
   tasks: [
-    [REFUSED_ID, { status: "completed", output: `Ran it anyway. ${fx.workerSalt}` }],
-    [OTHER_ID, { status: "cancelled" }],
+    [
+      REFUSED_ID,
+      { status: "completed", output: `Ran it anyway. ${fx.workerSalt}`, goal: SETTLED_GOAL },
+    ],
+    [OTHER_ID, { status: "cancelled", goal: OTHER_SETTLED_GOAL }],
+    // The real work still got done here — this probe isolates C1, so it must
+    // trip C1 and nothing else. Without it the drained settled task would be
+    // the only salted completion and (E) would fire too.
+    [
+      REAL_ID,
+      { status: "completed", output: `Drafted the notice. ${fx.workerSalt}`, goal: OPEN_GOAL },
+    ],
+  ],
+});
+
+/**
+ * The inversion criterion (E) exists to catch: the coordinator recovers from
+ * the refusal correctly (A–D all clean), but the work it actually ran was an
+ * already-answered request — handed to a worker, which the skill says must
+ * never happen — while the one request that genuinely needed doing was
+ * cancelled. A salted `completed` task exists, so an (E) that only looks for
+ * the salt PASSES this run.
+ */
+const invertedRoutingScenario = observedRun({
+  tasks: [
+    [REFUSED_ID, { status: "cancelled", goal: SETTLED_GOAL }],
+    [
+      SETTLED_RAN_ID,
+      { status: "completed", output: `Confirmed it. ${fx.workerSalt}`, goal: OTHER_SETTLED_GOAL },
+    ],
+    [REAL_ID, { status: "cancelled", goal: OPEN_GOAL }],
   ],
 });
 
@@ -725,6 +823,10 @@ const saysUnbound = (failures: string[]) =>
 /** True when some failure mentions the refused task still being pending. */
 const saysStillPending = (failures: string[]) =>
   failures.some((f) => f.includes(`is still "pending" at the end of the run`));
+
+/** True when some failure mentions the salt not sitting on an open request. */
+const saysUnserved = (failures: string[]) =>
+  failures.some((f) => f.includes("not one of the requests that needed doing"));
 
 const PROBES: readonly (readonly [string, () => boolean])[] = [
   // Positive control. Without this, a C1 that rejects everything would look
@@ -791,6 +893,18 @@ const PROBES: readonly (readonly [string, () => boolean])[] = [
           }),
         ).failures,
       ),
+  ],
+
+  // (E)'s salt assertion, falsified. The salt alone only proves SOME worker
+  // ran; this run has one, on an already-answered request, with the real one
+  // cancelled. EXACTLY ONE failure is the load-bearing number: it means the
+  // unbound grader returned zero and would have PASSED the inversion.
+  [
+    "E: salt on an already-answered request with the open one cancelled FAILS",
+    () => {
+      const { failures } = grade(invertedRoutingScenario);
+      return failures.length === 1 && saysUnserved(failures);
+    },
   ],
 ];
 
