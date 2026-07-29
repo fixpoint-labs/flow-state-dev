@@ -3883,6 +3883,101 @@ check('unconsumable PR activity withholds every merge gate on the row', async ()
   assert.deepEqual(quiet.gates.filter((g) => g.kind === 'merge').map((g) => g.pr), [9])
 })
 
+check('GATE: a worker cannot jump a row across the approval gate', async () => {
+  // `approvalGatedPhase` only corrected a row SITTING at NEEDS_IMPLEMENTATION unapproved. A worker
+  // reporting PR_FEEDBACK with an implPr straight from NEEDS_SPEC skipped the gate entirely and reached a
+  // merge gate with no human sign-off — the one gate that must never be bypassable, bypassed by a
+  // self-report.
+  for (const from of ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL']) {
+    for (const to of ['NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE']) {
+      const { result } = await run('epic-wake.js', {
+        args: epicArgs({ issues: [row('FIX-2', { phase: from, specPr: from === 'NEEDS_SPEC' ? null : 8 })] }),
+        respond: epicResponder({
+          fresh: { 'FIX-2': { phase: from, specPr: from === 'NEEDS_SPEC' ? null : 8 } },
+          worker: { 'FIX-2': { phase: to, implPr: 9, readyToMerge: true } },
+        }),
+      })
+      assert.equal(result.issues[0].phase, from, `${from} → ${to} is refused without an approval`)
+      assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'and no merge gate follows it')
+    }
+  }
+
+  // An APPROVED row makes the same jump legitimately — that is the documented chain-through.
+  const approved = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(approved.result.issues[0].phase, 'PR_FEEDBACK', 'an approved spec chains straight through')
+
+  // And a row ALREADY implementing is untouched, even though a closed spec PR means no scan can still
+  // report `specApproved` — gating on that flag rather than on the transition would strand all real work.
+  const implementing = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(implementing.result.issues[0].phase, 'PR_FEEDBACK')
+})
+
+check('a PR closed without merging parks the row on a human decision', async () => {
+  // The scout reads PR metadata but could only express merged / ready / not-ready, so a closed-unmerged
+  // handle left a single-PR row idle in PR_FEEDBACK forever and a slice durably `open`, which the DAG
+  // cannot advance either.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } } }),
+  })
+  assert.match(result.issues[0].blocker || '', /Closed without merging: impl PR #9/)
+  assert.ok(
+    result.blockers.some((b) => b.issueId === 'FIX-2'),
+    'and it is surfaced to the human rather than idling',
+  )
+
+  // Per-slice too.
+  const slice = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false, closedUnmerged: true }] } },
+    }),
+  })
+  assert.match(slice.result.issues[0].blocker || '', /Closed without merging: sub-PR a \(#41\)/)
+})
+
+check('the Linear refresh covers carried members, not just parent children', async () => {
+  // orchestration.md keeps an existing functional parent and links such a member with relates-to, so it is
+  // never in the parent→children set. Omitting it froze its Linear state at whatever was cached: a blocked
+  // member never noticed its prerequisite merge, and a cancelled one kept being dispatched.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' }), row('FIX-7', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-7': { phase: 'NEEDS_SPEC' } } }),
+  })
+  const linear = calls.find((c) => c.label === 'linear:epic-children')
+  assert.match(linear.prompt, /FIX-2, FIX-7/, 'the carried ids are asked for by name')
+  assert.match(linear.prompt, /relates-to/, 'and the reason is stated, so the scout does not treat it as redundant')
+})
+
+check('the repair worker bases its fix on fresh origin/main', async () => {
+  // A fresh worktree starts on the lifecycle checkout, which drifts as slices merge — basing the repair
+  // there puts unrelated commits in the fix PR or omits the merged slices whose interaction is failing.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a', dependsOn: [] }],
+      assembledGoal: { passed: false, failure: 'slices disagree', evidence: 'ran it', fixIssue: 'FIX-9', owningSubPr: 'a' },
+    }),
+    respond: multiResponder(),
+  })
+  const fix = calls.find((c) => (c.label || '').startsWith('assembled-fix'))
+  assert.ok(fix)
+  assert.match(fix.prompt, /branch from FRESH origin\/main first/)
+})
+
 check('an INCONCLUSIVE verdict is never folded as resolved', async () => {
   // `nextRow` turns an INCONCLUSIVE verdict into a human decision only AFTER the worker returns, so
   // telling that worker to fold every verdict had it write "resolved with evidence" into the spec and the

@@ -224,6 +224,11 @@ even if more are queued. State the chosen N and the cap to the user.
    third would sit until the heartbeat, which is precisely the stall "Drain, don't stall" forbids. The
    cap is a concurrency limit, not a scheduling delay.
 
+   **A returned `settleRequests` counts too**, for exactly that reason. A claim the cap queued comes back
+   only in `settleRequests`, never in `deferred` — so checking only the two lists above left a runnable
+   POC waiting on unrelated PR activity. Nothing external separates a queued settlement from being
+   dispatched; it is waiting on a slot, and the next wake has one.
+
    The workflow runs in the background: **end the turn** and continue at step 3 when its
    completion notification arrives.
 

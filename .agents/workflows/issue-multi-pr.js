@@ -527,7 +527,8 @@ if (state === 'NEEDS_FIX') {
   phase('Assemble')
   const fix = await agent(
     `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${goal.fixIssue}.\nFailure: ${goal.failure}\nEvidence (what was run and what happened): ${goal.evidence || 'none recorded'}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
-      `Open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.` +
+      `Fetch origin and branch from FRESH origin/main first — your worktree starts on the lifecycle's checkout, which drifts as slices merge. Basing the repair on it would put unrelated commits in the fix PR, or omit the very merged slices whose interaction the goal is failing on.\n` +
+      `Then open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.` +
       resolutionNote(goal.owningSubPr),
     { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )

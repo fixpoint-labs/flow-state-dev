@@ -430,6 +430,29 @@ function approvalGatedPhase(row) {
   return row.specPr ? 'AWAITING_SPEC_APPROVAL' : 'NEEDS_SPEC'
 }
 
+/** Phases that exist only before the spec is signed off. */
+const PRE_APPROVAL_PHASES = new Set(['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL'])
+/** Phases that assert the spec IS signed off. */
+const POST_SPEC_PHASES = new Set(['NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE'])
+
+/**
+ * Does this worker-reported phase jump ACROSS the approval gate?
+ *
+ * `approvalGatedPhase` corrects a row that is SITTING at `NEEDS_IMPLEMENTATION` unapproved, which only
+ * catches the one intermediate phase. A worker reporting `PR_FEEDBACK` with an `implPr` straight from
+ * `NEEDS_SPEC` skipped past it entirely and reached a merge gate with no human sign-off — the one gate
+ * this file says everywhere must never be bypassable, bypassed by a self-report.
+ *
+ * Deliberately keyed on the CARRIED phase, not on `specApproved` alone. `specApproved` is re-derived
+ * from a live scan every wake, and once implementation starts the spec PR is closed, so a legitimately
+ * implementing row reports `false` forever — gating every post-spec phase on it would knock all real
+ * work back to `NEEDS_SPEC`. What is illegitimate is the TRANSITION, and only this wake can see it.
+ */
+function jumpsTheApprovalGate(row, reportedPhase) {
+  if (!reportedPhase || row.specApproved) return false
+  return PRE_APPROVAL_PHASES.has(row.phase) && POST_SPEC_PHASES.has(reportedPhase)
+}
+
 /**
  * A single-PR row's completion is DERIVED FROM THE MERGE, in both directions.
  *
@@ -715,7 +738,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     ...row,
     ...cursor,
     ...consumedFlags,
-    phase: worker.phase || row.phase,
+    phase: jumpsTheApprovalGate(row, worker.phase) ? row.phase : worker.phase || row.phase,
     // `== null`, not `=== undefined` — an explicit null from a worker wiped the handle the same way an
     // omission would have, and the guard only covered the omission.
     specPr: worker.specPr == null ? row.specPr : worker.specPr,
@@ -1035,6 +1058,19 @@ function foldMultiPrScan(row, fresh) {
     // the question being answered and park the row behind it forever — the clearing rule below is the
     // correct reader of this state. (Tried the symmetric version; it deadlocked.)
   }
+  // A CLOSED-UNMERGED handle is a human decision, not a state the wake can resolve: reopen the PR,
+  // re-implement the slice, or drop it. Left unreported it idled the row forever; reported and ignored it
+  // would idle just the same, so it parks the row with the question named.
+  const closedHandles = [
+    ...(fresh.closedUnmerged && row.implPr ? [`impl PR #${row.implPr}`] : []),
+    ...(binding
+      ? (out.subPrs || []).filter((sp) => (binding.byId.get(sp.id) || {}).closedUnmerged).map((sp) => `sub-PR ${sp.id}${sp.pr ? ` (#${sp.pr})` : ''}`)
+      : []),
+  ]
+  if (closedHandles.length && !out.blocker && !row.blocker) {
+    out.blocker = `Closed without merging: ${closedHandles.join(', ')}. Needs a human decision — reopen, re-implement, or drop.`
+  }
+
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
     let changed = false
@@ -1217,6 +1253,15 @@ const PR_STATE_SCHEMA = {
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
+    // A PR CLOSED WITHOUT MERGING was unreportable: the scout reads PR metadata, but the only outcomes it
+    // could express were merged / ready / not-ready. A single-PR row then sat in PR_FEEDBACK forever —
+    // nothing merged, no activity, no action — and a sub-PR stayed durably `open`, which `classify()`
+    // cannot advance either. Not required, since most scans have no closed handle to report; a `true`
+    // parks the row on a human decision rather than idling it silently.
+    closedUnmerged: {
+      type: 'boolean',
+      description: 'The row-level implementation PR was closed WITHOUT merging. For a slice use subPrStates[].closedUnmerged.',
+    },
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
@@ -1240,6 +1285,8 @@ const PR_STATE_SCHEMA = {
           merged: { type: 'boolean' },
           readyToMerge: { type: 'boolean' },
           ciFailed: { type: 'boolean' },
+          /** This slice's PR was closed WITHOUT merging — durably `open` otherwise, which nothing advances. */
+          closedUnmerged: { type: 'boolean' },
         },
       },
     },
@@ -1435,7 +1482,8 @@ const [gate, linear, ...prStates] = await parallel([
     ),
   () =>
     agent(
-      `In ONE Linear query, fetch epic issue ${epic.issueId} and all of its sub-issues (parent→children). Return each sub-issue's id, current state name, and the ids of any open blocked-by relations. Do not fetch them individually.`,
+      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's id, current state name, and the ids of any open blocked-by relations. Do not fetch them individually.\n` +
+        `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
     ),
   ...rows.map(
@@ -2083,6 +2131,12 @@ const gates = [
     // sub-PR and repair handles, and the next scan with a timestamp releases all of them together.
     .filter((r) => !r.linearTerminal && !awaitingHumanDecision(r) && !(r.blockedBy && r.blockedBy.length))
     .filter((r) => !(r.newPrEvents && !cursorUsable(r)))
+    // A merge gate requires a POST-SPEC phase, independently of the handles. Refusing the worker's phase
+    // jump was not enough on its own: the gate is derived from `readyToMerge && implPr`, and a worker
+    // reporting those from a pre-approval row still produced a merge gate for a spec nobody approved.
+    // Keeping the handle but refusing the gate loses nothing — an orphaned PR still needs tracking — while
+    // a merge gate on a row that is still AWAITING_SPEC_APPROVAL is incoherent whatever produced it.
+    .filter((r) => POST_SPEC_PHASES.has(r.phase))
 
     .flatMap((r) => {
       const gates = []
