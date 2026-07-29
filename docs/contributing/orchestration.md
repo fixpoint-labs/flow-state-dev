@@ -49,6 +49,31 @@ parallelism is a property of an epic, not a mode of its own.
   scripts get state via `args` and return it. That boundary is what decides which half of a
   lifecycle is prose and which half is code — see `epic-lifecycle` → "Each wake is a workflow".
 
+### The workflow-script contract
+
+A workflow script is **not a standalone ES module** and will not run under `node`. Claude Code's
+**Workflow tool** executes it: the harness hoists `export const meta` out, wraps the body in an
+async function (so a top-level `return` is the script's result), and injects its API as globals.
+That's why these files have no imports and why their top-level `return` is legal.
+
+| Injected | What it does |
+|---|---|
+| `agent(prompt, opts)` | Spawn a sub-agent. With `opts.schema` (JSON Schema) it returns the validated object; without one, the agent's final text. `null` if the agent dies or is skipped. `opts`: `label` · `phase` · `schema` · `agentType` · `model` · `effort` · `isolation: 'worktree'`. |
+| `parallel(thunks)` | Barrier — awaits all. A thunk that throws resolves to `null` and the call **never rejects**, so filter before use. |
+| `pipeline(items, ...stages)` | Each item runs every stage independently, no barrier between stages. A throwing stage drops that item to `null`. |
+| `log(msg)` / `phase(title)` | Progress output. Every `phase()` title must appear in `meta.phases`. |
+| `args` / `budget` / `workflow()` | The tool's `args` verbatim; the turn's token target; run another workflow inline (one level only). |
+
+Hard limits worth knowing before writing one: **no filesystem, no imports, no `Date.now()` /
+`Math.random()`** (they'd break resume), concurrency capped at `min(16, cores − 2)`, and plain
+JS — no TypeScript syntax.
+
+**`.agents/workflows/verify.mjs` is this contract's local mirror.** It reproduces the hook
+semantics with stubs so the scripts' decisions are testable without spawning agents. Its
+passing tests prove the scripts behave correctly *against that mirror*; they do not prove the
+mirror matches the harness. If harness behavior ever surprises you, fix `verify.mjs` first —
+it is the thing that encodes our understanding of the contract.
+
 ```mermaid
 flowchart TD
   U([Human]) -->|approves gates| Coord

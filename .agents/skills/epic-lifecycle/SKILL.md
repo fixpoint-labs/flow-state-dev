@@ -72,7 +72,7 @@ filesystem. So the division is fixed:
 
 | The `epic-wake` script owns | The coordinator (this session) owns |
 |---|---|
-| Scanning the epic PR for its objective sign-off, and returning early with **nothing dispatched** if it's unmet | **Surfacing every gate** to you (epic objective, per-issue spec approval, merge) |
+| Scanning the epic PR for its objective sign-off, and holding every sub-issue if it's unmet (the epic-spec's own review still folds) | **Surfacing every gate** to you (epic objective, per-issue spec approval, merge) |
 | Per-issue refresh via `scout` (Linear parent→children in one query; PR comments/reviews/checks/meta) | **Resolving the set** and confirming it with you (loop step 1) |
 | Deciding each issue's pending action, and the **review round budget** for issue specs *and* the epic PR | **`.orchestration/` reads and writes** — the script gets the table via `args`, returns the new one |
 | Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
@@ -143,15 +143,24 @@ even if more are queued. State the chosen N and the cap to the user.
    ```
 
    Everything in `args` comes straight out of `.orchestration/` — the script has no
-   filesystem, so **you are its memory**. The counters in particular (`specReviewRounds`,
-   `specLevelFound`, `epic.reviewRounds`) only survive across wakes because you carry them;
-   drop them and every budget silently resets to zero. It returns
-   `{ epicApproved, epic, epicFold, issues, gates, blockers, verdicts, settleRequests,
-   dispatched, deferred, converged }`.
+   filesystem, so **you are its memory**. Three fields are load-bearing for exactly that
+   reason: the counters (`specReviewRounds`, `specLevelFound`, `epic.reviewRounds`) only
+   survive because you carry them — drop them and every budget silently resets to zero;
+   `epic.lastSeenSha` is the epic-PR review cursor the wake returns advanced, and carrying a
+   stale one re-triggers the same fold every wake; and `issues[].verdict` is how a POC verdict
+   from a previous wake reaches the worker that folds it. It returns
+   `{ epicApproved, epic, epicFold, issues, gates, blockers, blocked, held, verdicts,
+   settleRequests, dispatched, deferred, converged }` — persist `epic` and `issues` verbatim.
 
    The workflow runs in the background: **end the turn** and continue at step 3 when its
-   completion notification arrives. If `epicApproved` is false it dispatched nothing by
-   design — the objective gate holds the whole set (step 4).
+   completion notification arrives.
+
+   Two things it does that are easy to misread as bugs. **`epicApproved: false` does not mean
+   it did nothing** — it held every sub-issue (`held`) but still folded epic-PR review if the
+   budget allowed, because folding is how the objective becomes approvable; blocking it would
+   deadlock the gate it's waiting on. And an issue in **`blocked`** was skipped on purpose: it
+   has an open blocked-by relation, so it's tracked until its blocker merges rather than run
+   concurrently with its prerequisite ([Intake](#intake--filing--queueing-discovered-issues)).
 3. **Write the mirrors.** Persist the returned `issues` table and `epic` to
    `.orchestration/`, then **write the Linear-status mirror** for every phase transition the
    wake surfaced (Linear auto-status is off; the mapping + state IDs live in `issue-lifecycle`
@@ -379,7 +388,8 @@ returns a ready/blocked verdict).
 
 Then decide whether it joins the epic:
 
-- **Belongs under the epic and unblocked** (nothing it's blocked-by is still open/in-progress)
+- **Belongs under the epic and unblocked** (nothing it's blocked-by is still open/in-progress
+  — the wake enforces this from Linear each refresh and reports anything blocked in `blocked`)
   → it *may be added to the active set*, up to the concurrency cap, entering at NEEDS_SPEC.
   It still hits its own **spec-approval gate** before any implementation — so this
   starts a *spec*, not unreviewed code. Surface each addition to the user. **Pass the epic

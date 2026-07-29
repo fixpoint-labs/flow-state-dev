@@ -1,26 +1,23 @@
 /**
  * epic-wake — one wake of the epic-lifecycle coordinator, as deterministic control flow.
  *
- * This script is steps 2–4 of the `epic-lifecycle` loop (refresh → advance → collect).
- * It exists because those steps are pure procedure: an epic gate that holds every issue,
- * a two-round spec-review budget with one conditional third round, a concurrency cap
- * shared between issue workers and POC settlements, and a claim dedupe. Encoded as prose
- * the coordinator had to re-derive all of that every wake; encoded here it is `if`
- * statements that cannot drift.
+ * NOT RUNNABLE STANDALONE. This is a Claude Code **Workflow script**, not an ESM module: the
+ * harness injects `agent` / `parallel` / `pipeline` / `log` / `phase` / `args` / `budget` /
+ * `workflow` as globals and wraps the body in an async function, so the top-level `return`
+ * below is legal here and illegal in a plain module. It has no imports and no filesystem.
+ * The contract is summarized in `docs/contributing/orchestration.md` → "The workflow-script
+ * contract"; `.agents/workflows/verify.mjs` mirrors it to test this file.
+ *
+ * This script is steps 2–4 of the `epic-lifecycle` loop (refresh → advance → collect) —
+ * the parts that are pure procedure rather than judgment. Canonical rules live in
+ * `docs/contributing/orchestration.md` (→ "Gates", "Spec review: the bar and the convergence
+ * rule", "Settling a disputed claim"). **When a rule changes, change it there first.** The
+ * comments here point at it rather than restating it.
  *
  * What it deliberately does NOT do — these stay with the coordinator (the session), because
- * a workflow script cannot do them at all:
- *   - prompt the human (every gate: spec approval, epic objective, merge)
- *   - hold a PR subscription or receive a webhook
- *   - schedule a check-in, or wait for anything external
- *   - read or write `.orchestration/` (no filesystem in a script) — state arrives via
- *     `args` and leaves via the return value; the coordinator owns the file
- *
- * Canonical rules this encodes live in `docs/contributing/orchestration.md`
- * (→ "Gates", "Spec review: the bar and the convergence rule", "Settling a disputed claim").
- * When a rule changes, it changes there first, then here.
- *
- * Verified by `.agents/workflows/verify.mjs` (stubbed hooks, no agents spawned).
+ * a workflow script cannot do them at all: prompt the human (every gate), hold a PR
+ * subscription or receive a webhook, schedule anything, or read/write `.orchestration/`.
+ * State arrives via `args` and leaves via the return value.
  */
 
 export const meta = {
@@ -45,14 +42,8 @@ const REVIEW_BUDGET = 2
 
 /**
  * Has a direction artifact's review run out of budget?
- *
- * Two rules, both from orchestration.md → "The convergence rule", and both easy to get
- * wrong in prose: the count is rounds the worker *reported spending* (a batch of pure
- * factual corrections costs zero), and a third round is authorized when — and only when —
- * round two reported something above the bar.
- *
- * One function, because the epic PR carries the same budget on the same terms — three
- * separate prose restatements of this is what it replaces.
+ * → orchestration.md § "The convergence rule" (canonical). One function for issue specs and
+ * the epic PR alike, because they carry the same budget on the same terms.
  */
 function atReviewBudget(spent = 0, aboveBarFound = false) {
   if (spent < REVIEW_BUDGET) return false
@@ -66,6 +57,11 @@ function atReviewBudget(spent = 0, aboveBarFound = false) {
  * external. `why` is for the log line — a dispatch the user can't explain is drift.
  */
 function pendingAction(row) {
+  // An issue with an open blocked-by relation is not admitted to the active set; it's tracked
+  // until its blocker merges. → epic-lifecycle § Intake, and § Boundaries (sequence, don't
+  // run a dependent concurrently with its prerequisite).
+  if (row.blockedBy && row.blockedBy.length) return null
+
   if (row.verdict) return { action: 'apply-verdict', why: `POC verdict ${row.verdict} to fold` }
 
   switch (row.phase) {
@@ -95,9 +91,9 @@ function pendingAction(row) {
 }
 
 /**
- * One claim argued on two issues is ONE settlement fanned to both. Keyed on the normalized
- * claim text, because the same claim reaches us from independent workers that phrased it
- * slightly differently.
+ * One claim argued on two issues is ONE settlement fanned to both.
+ * → orchestration.md § "Settling a disputed claim" ("Bound the fan-out"). Keyed on normalized
+ * claim text, because independent workers phrase the same claim slightly differently.
  */
 function dedupeClaims(requests) {
   const byClaim = new Map()
@@ -117,36 +113,61 @@ function dedupeClaims(requests) {
 /**
  * Split the wake's work across the cap.
  *
- * An epic-agent fold and a POC are each a full worktree, so they draw from the same cap as
- * the issue workers. Priority is deliberate: issue workers first (they are the actual work),
- * then the epic fold (cheap, and its result fans down), then settlements. Anything over the
- * cap queues to the next wake rather than starving a worker.
+ * An epic-agent fold and a POC are each a full worktree, so all three draw from one cap.
+ * Priority is deliberate: issue workers first (the actual work), then the epic fold (cheap,
+ * and its result fans down), then settlements — anything over the cap queues to the next wake
+ * rather than starving a worker.
+ *
+ * `epicApproved` gates **issue dispatch only.** The objective gate holds the sub-issues; it
+ * does not hold the epic-spec's own review, which is explicitly budgeted during
+ * AWAITING_OBJECTIVE (→ epic-lifecycle § "The epic's phases"). Folding epic-PR feedback is how
+ * the objective gets revised into something approvable, so blocking it would deadlock the gate
+ * it is waiting on.
  */
-function allocate(rows, claims, cap, foldEpicWanted) {
+function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const actionable = []
   const converged = []
+  const blocked = []
   const waiting = []
 
   for (const row of rows) {
+    if (row.blockedBy && row.blockedBy.length) {
+      blocked.push(row)
+      continue
+    }
     const next = pendingAction(row)
     if (next) actionable.push({ row, ...next })
     else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) converged.push(row)
     else waiting.push(row)
   }
 
-  const advance = actionable.slice(0, cap)
-  const deferred = actionable.slice(cap)
+  const held = epicApproved ? [] : actionable
+  const advance = epicApproved ? actionable.slice(0, cap) : []
+  const deferred = epicApproved ? actionable.slice(cap) : []
 
   const foldEpic = foldEpicWanted && advance.length < cap
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
-  return { advance, deferred, converged, waiting, foldEpic, settle, queuedClaims }
+  return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims }
 }
 
 // ---------------------------------------------------------------------------
 // Agent result schemas
 // ---------------------------------------------------------------------------
+
+/** The claim slice a requester owes → orchestration.md § "Settling a disputed claim". */
+const SETTLE_REQUESTED_SCHEMA = {
+  type: ['object', 'null'],
+  additionalProperties: false,
+  required: ['claim', 'load', 'falsify', 'threads'],
+  properties: {
+    claim: { type: 'string' },
+    load: { type: 'string' },
+    falsify: { type: 'string' },
+    threads: { type: 'string' },
+  },
+}
 
 const GATE_SCHEMA = {
   type: 'object',
@@ -213,17 +234,7 @@ const WORKER_SCHEMA = {
     implPr: { type: ['number', 'null'] },
     specReviewRoundsSpent: { type: 'number', description: 'Rounds ACTUALLY spent this dispatch — 0 for a batch that was only factual corrections' },
     specLevelFound: { type: 'boolean', description: 'Did this round surface a genuine spec-level finding? Authorizes the third round.' },
-    settleRequested: {
-      type: ['object', 'null'],
-      additionalProperties: false,
-      required: ['claim', 'load', 'falsify', 'threads'],
-      properties: {
-        claim: { type: 'string' },
-        load: { type: 'string' },
-        falsify: { type: 'string' },
-        threads: { type: 'string' },
-      },
-    },
+    settleRequested: SETTLE_REQUESTED_SCHEMA,
     blocker: { type: ['string', 'null'], description: 'Needs a human decision — the coordinator surfaces it' },
     readyToMerge: { type: 'boolean' },
     status: { type: 'string', description: 'One compact status line' },
@@ -239,17 +250,7 @@ const EPIC_FOLD_SCHEMA = {
     aboveBar: { type: 'boolean', description: 'Did anything folded change the objective or a cross-cutting decision? Authorizes the third round.' },
     folded: { type: 'string', description: 'One compact line on what changed in the epic-spec' },
     fanOut: { type: 'array', items: { type: 'string' }, description: 'Issue IDs an above-the-bar item touches — the coordinator routes these' },
-    settleRequested: {
-      type: ['object', 'null'],
-      additionalProperties: false,
-      required: ['claim', 'load', 'falsify', 'threads'],
-      properties: {
-        claim: { type: 'string' },
-        load: { type: 'string' },
-        falsify: { type: 'string' },
-        threads: { type: 'string' },
-      },
-    },
+    settleRequested: SETTLE_REQUESTED_SCHEMA,
   },
 }
 
@@ -298,19 +299,11 @@ const [gate, linear, ...prStates] = await parallel([
   ),
 ])
 
-// The epic gate: no objective sign-off means every sub-issue holds at NEEDS_SPEC. Return
-// before dispatching anything — this is the one place the whole set is blocked at once.
-if (!gate || !gate.approved) {
-  log(`Epic gate not met — holding all ${rows.length} issue(s) at NEEDS_SPEC.`)
-  return {
-    epicApproved: false,
-    epicReviewEvents: gate ? gate.newReviewEvents : false,
-    gates: [{ kind: 'epic-objective', pr: epic.prNumber }],
-    issues: rows,
-    settleRequests: requests,
-    dispatched: [],
-  }
-}
+// The epic gate holds every sub-issue at NEEDS_SPEC until the objective is signed off — but it
+// does NOT hold the epic-spec's own review (see allocate()). A dead gate scout is treated as
+// "not approved": failing closed can only delay work, where failing open would ramp an epic
+// nobody approved.
+const epicApproved = !!(gate && gate.approved)
 
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
@@ -337,18 +330,27 @@ if (claims.length < requests.length) {
   log(`Deduped ${requests.length} settlement request(s) into ${claims.length} claim(s).`)
 }
 
-// The epic PR is a direction artifact on the same budget as an issue spec — the epic-spec
-// stops being folded when it converges, which is the one surface where an unbounded review
-// loop would otherwise sit directly on the top-level gate.
+// The epic PR is a direction artifact on the same budget as an issue spec — the one surface
+// where an unbounded review loop would otherwise sit directly on the top-level gate.
+const newEpicReviewEvents = !!(gate && gate.newReviewEvents)
 const epicAtBudget = atReviewBudget(epic.reviewRounds, epic.aboveBarFound)
-const foldEpicWanted = !!gate.newReviewEvents && !epicAtBudget
-if (gate.newReviewEvents && epicAtBudget) {
+const foldEpicWanted = newEpicReviewEvents && !epicAtBudget
+if (newEpicReviewEvents && epicAtBudget) {
   log(`Epic-spec converged (${epic.reviewRounds || 0} rounds spent) — epic-PR feedback logged and routed as implementer notes, not folded.`)
 }
 
-const plan = allocate(refreshed, claims, cap, foldEpicWanted)
+const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
 
 // No silent caps — say what was held back and why.
+if (!epicApproved) {
+  log(
+    `Epic objective not signed off — holding ${plan.held.length} issue(s) at NEEDS_SPEC` +
+      `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.`,
+  )
+}
+for (const row of plan.blocked) {
+  log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked, not admitted to the active set.`)
+}
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
 }
@@ -404,19 +406,25 @@ const [advanced, epicFold] = await Promise.all([
 
 phase('Settle')
 
-// A genuine two-stage pipeline: each POC's verdict routes to its issues the moment that
-// POC finishes, without waiting on the other settlements or on the issue workers.
-const settled = await pipeline(
-  plan.settle,
-  (claim) =>
+const settled = await parallel(
+  plan.settle.map((claim) => () =>
     agent(
       `Settle ONE disputed claim with a throwaway POC in your worktree, rebased on fresh origin/main.\n` +
         `claim:   ${claim.claim}\nload:    ${claim.load}\nfalsify: ${claim.falsify}\nthreads: ${claim.threads}\n` +
         `Design the runnable check yourself; run it on the real path. Return CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Open a PR only if you found something worth a human's eyes.`,
       { label: `poc:${(claim.claim || '').slice(0, 40)}`, phase: 'Settle', schema: POC_SCHEMA, agentType: 'poc-agent', isolation: 'worktree' },
-    ),
-  (poc, claim) => ({ claim: claim.claim, issues: claim.issues, ...(poc || { verdict: 'INCONCLUSIVE' }) }),
+    ).then((poc) => ({ claim: claim.claim, issues: claim.issues, ...(poc || { verdict: 'INCONCLUSIVE' }) })),
+  ),
 )
+
+// A verdict has to land ON the issue rows, not just in the return payload: the settled request
+// is consumed this wake, so a verdict the coordinator can't see on a row would be lost — the
+// claim would never get folded. `pendingAction` picks `row.verdict` up as 'apply-verdict' on
+// the next wake, which is the path that fold travels.
+const verdictByIssue = new Map()
+for (const s of settled.filter(Boolean)) {
+  for (const id of s.issues || []) verdictByIssue.set(id, s.verdict)
+}
 
 // ---------------------------------------------------------------------------
 // The updated table — the coordinator writes this to `.orchestration/`, surfaces the
@@ -425,9 +433,13 @@ const settled = await pipeline(
 
 const workerById = new Map(advanced.filter(Boolean).map((w) => [w.issueId, w]))
 
+const appliedVerdict = new Set(plan.advance.filter((i) => i.action === 'apply-verdict').map((i) => i.row.id))
+
 const issues = refreshed.map((row) => {
+  // A verdict this wake just applied is consumed; a verdict that just landed is carried.
+  const verdict = appliedVerdict.has(row.id) ? null : verdictByIssue.get(row.id) || row.verdict || null
   const w = workerById.get(row.id)
-  if (!w) return row
+  if (!w) return { ...row, verdict }
   return {
     ...row,
     phase: w.phase,
@@ -439,11 +451,13 @@ const issues = refreshed.map((row) => {
     readyToMerge: !!w.readyToMerge,
     blocker: w.blocker || null,
     status: w.status,
-    verdict: null, // consumed by this wake's apply-verdict dispatch
+    verdict,
   }
 })
 
 const gates = [
+  // The objective gate comes first: until it's signed off, it's the only one that can move.
+  ...(epicApproved ? [] : [{ kind: 'epic-objective', pr: epic.prNumber }]),
   ...issues.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved).map((r) => ({
     kind: 'spec-approval',
     issueId: r.id,
@@ -454,9 +468,12 @@ const gates = [
 ]
 
 return {
-  epicApproved: true,
+  epicApproved,
   epic: {
     ...epic,
+    // Advance the review cursor to the head we just scanned, or the same epic-PR event keeps
+    // re-triggering a fold every wake — a zero-round fold would repeat forever.
+    lastSeenSha: (gate && gate.headSha) || epic.lastSeenSha || null,
     // Same rule as an issue's: add only the rounds the folder reports spending.
     reviewRounds: (epic.reviewRounds || 0) + (epicFold ? epicFold.roundsSpent || 0 : 0),
     aboveBarFound: epicFold ? !!epicFold.aboveBar : !!epic.aboveBarFound,
@@ -466,6 +483,8 @@ return {
   issues,
   gates,
   blockers: issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
+  blocked: plan.blocked.map((r) => ({ issueId: r.id, blockedBy: r.blockedBy })),
+  held: plan.held.map((i) => i.row.id),
   verdicts: settled.filter(Boolean),
   settleRequests: [
     ...plan.queuedClaims,

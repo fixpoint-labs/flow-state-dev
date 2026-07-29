@@ -1,27 +1,25 @@
 /**
  * issue-multi-pr — advance a multi-PR issue's plan by one bounded step.
  *
- * When a spec declares a PR plan (`issue-spec` Part II §8), the issue's implementation is a
- * DAG of sub-PRs rather than one PR. Three things about that DAG are pure procedure, and
- * all three were prose the orchestrator had to re-derive every wake:
+ * NOT RUNNABLE STANDALONE. This is a Claude Code **Workflow script**, not an ESM module — the
+ * harness injects `agent` / `parallel` / `pipeline` / `log` / `phase` / `args` as globals and
+ * wraps the body in an async function, which is why the top-level `return` below is legal.
+ * Contract: `docs/contributing/orchestration.md` → "The workflow-script contract".
  *
- *   1. The ready set — which sub-PRs can start, and on what base. A sub-PR whose deps are
- *      all MERGED bases on fresh origin/main; one whose deps are merely OPEN stacks on the
- *      dep's branch so review can start before the dep merges.
- *   2. The rebase — a stacked sub-PR whose dep has since merged has to come off the dep's
- *      branch onto main, or it carries the dep's commits into its own diff.
- *   3. The assembled goal — the last merge does NOT make the issue DONE. Each sub-PR only
- *      proved its own slice; the end-to-end goal is the proof no single sub-PR could give,
- *      and the merges are the first moment it is runnable.
+ * When a spec declares a PR plan (`issue-spec` Part II §8), the issue's implementation is a
+ * DAG of sub-PRs rather than one PR. The ready set, the base each sub-PR takes, the rebase a
+ * merged dependency forces, and the assembled end-to-end goal are pure procedure — canonical
+ * in `issue-lifecycle` § "Multi-PR issues" and `orchestration.md` § "Worktree branching".
+ *
+ * NOTE — deliberate twin of framework code. `classify`/`readySet` below re-derive what
+ * `packages/orchestration` already does for tasks (`topologicalDispatcher`,
+ * `depsSatisfied` in `src/tasks/`), because a workflow script cannot import. The semantics
+ * intentionally differ: this one picks a git *base* per node (merged dep → origin/main,
+ * single open dep → stack on its branch), which task dispatch has no concept of. Keep them
+ * separate, but check both when the DAG rules change.
  *
  * What stays with the orchestrator (a script cannot do it): the merge gate on every sub-PR,
  * PR subscriptions, waiting for a dependency to merge, and the `.orchestration/` cache.
- * State arrives via `args`, leaves via the return value.
- *
- * Canonical rules: `issue-lifecycle` → "Multi-PR issues", and
- * `docs/contributing/orchestration.md` → "Worktree branching".
- *
- * Verified by `.agents/workflows/verify.mjs` (stubbed hooks, no agents spawned).
  */
 
 export const meta = {
@@ -83,17 +81,31 @@ function readySet(nodes, cap) {
   return { ready: ready.slice(0, cap), deferred: ready.slice(cap) }
 }
 
+/** Every sub-PR merged — necessary for the assembled goal, never sufficient for DONE. */
+function allMerged(nodes) {
+  return nodes.length > 0 && nodes.every((n) => n.status === TERMINAL)
+}
+
 /**
- * Does the assembled end-to-end goal still need running?
+ * A previous wake's assembled-goal failure opened a repair PR that hasn't merged yet.
  *
- * Every sub-PR merged is necessary but not sufficient. Two ways it is already satisfied:
- * the spec designated an integrating sub-PR that owns the goal (don't double-run — just
- * confirm the verdict was recorded), or a previous wake already ran it and it passed.
+ * This is its own state because without it the failure path loops: the sub-PRs stay merged and
+ * `passed` stays false, so the next wake re-runs the goal against unchanged code, fails again,
+ * and files a *duplicate* Linear issue and fix PR — every wake, until someone notices.
+ */
+function awaitingAssembledFix(nodes, goal) {
+  return allMerged(nodes) && !goal.passed && !!goal.fixPr && !goal.fixMerged
+}
+
+/**
+ * Does the assembled end-to-end goal still need running? Two ways it's already satisfied: a
+ * previous wake ran it and it passed, or the spec designated an integrating sub-PR that owns
+ * it (confirm the recorded verdict, don't double-run).
  */
 function assembledGoalNeeded(nodes, goal) {
-  if (!nodes.length) return false
-  if (!nodes.every((n) => n.status === TERMINAL)) return false
+  if (!allMerged(nodes)) return false
   if (goal && goal.passed) return false
+  if (awaitingAssembledFix(nodes, goal)) return false
   return true
 }
 
@@ -110,7 +122,6 @@ const BUILD_SCHEMA = {
     status: { type: 'string', enum: ['open', 'pending', 'failed'] },
     pr: { type: ['number', 'null'] },
     branch: { type: ['string', 'null'] },
-    stackedOn: { type: ['string', 'null'], description: 'The dep branch this stacked on, if any — drives the later rebase' },
     blocker: { type: ['string', 'null'] },
     summary: { type: 'string', description: 'One compact line' },
   },
@@ -179,10 +190,24 @@ if (assembledGoalNeeded(nodes, goal)) {
   return {
     issueId,
     subPrs: nodes,
-    assembledGoal: { ...goal, passed: false, failure: verdict ? verdict.failure : 'goal agent returned nothing' },
+    // `fixPr` is what stops the next wake re-running the goal and filing a duplicate. The
+    // coordinator sets `fixMerged` when that PR merges, which re-arms the goal.
+    assembledGoal: {
+      ...goal,
+      passed: false,
+      failure: verdict ? verdict.failure : 'goal agent returned nothing',
+      fixPr: (fix && fix.pr) || null,
+      fixMerged: false,
+    },
     fix: fix || null,
     done: false,
   }
+}
+
+// ---- A repair is in flight: don't re-run the goal, don't file a duplicate. --------------
+if (awaitingAssembledFix(nodes, goal)) {
+  log(`Assembled goal failed earlier; fix PR #${goal.fixPr} has not merged — not re-running the goal, not filing a duplicate.`)
+  return { issueId, subPrs: nodes, assembledGoal: goal, awaitingFix: goal.fixPr, done: false }
 }
 
 // ---- Otherwise: advance the DAG's ready set. -------------------------------------------
@@ -223,17 +248,24 @@ const built = await parallel(
 )
 
 const resultById = new Map(built.filter(Boolean).map((b) => [b.id, b]))
+const plannedById = new Map(ready.map((i) => [i.node.id, i]))
 
 const subPrs = nodes.map((node) => {
   const r = resultById.get(node.id)
   if (!r) return node
+  const planned = plannedById.get(node.id)
+  // Derive the stack marker from the base THIS SCRIPT chose, never from the worker echoing it
+  // back: the field is optional, so a worker that omits it would silently clear the marker —
+  // and `classify` only schedules the required rebase while the marker is set, so the sub-PR
+  // would keep its dependency's commits in its own diff forever.
+  let stackedOn = node.stackedOn || null
+  if (planned) stackedOn = planned.action === 'rebase' || planned.base === 'origin/main' ? null : planned.base
   return {
     ...node,
     status: r.status === 'failed' ? node.status : r.status,
     pr: r.pr === undefined || r.pr === null ? node.pr : r.pr,
     branch: r.branch || node.branch,
-    // A rebase clears the stack marker; a fresh build sets it when it stacked.
-    stackedOn: ready.find((i) => i.node.id === node.id && i.action === 'rebase') ? null : r.stackedOn || node.stackedOn || null,
+    stackedOn,
     blocker: r.blocker || null,
     summary: r.summary,
   }

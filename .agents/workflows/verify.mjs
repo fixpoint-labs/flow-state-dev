@@ -6,12 +6,37 @@
  * conditional third round, the concurrency cap, the claim dedupe, the epic gate that holds
  * every issue, and the sub-PR DAG's ready set. Moving them into code is only worth it if
  * they're actually checkable — so this runs each script for real with the harness hooks
- * (`agent` / `parallel` / `pipeline` / `log` / `phase`) stubbed, and asserts the decisions.
+ * stubbed, and asserts the decisions.
  *
  * No agents are spawned, nothing is dispatched, no network or git access. Fast enough to run
  * on every edit to either script.
  *
  *   node .agents/workflows/verify.mjs
+ *
+ * ## The harness contract these stubs mirror
+ *
+ * Workflow scripts are executed by Claude Code's **Workflow tool**, not by node. What it
+ * provides — and what `run()` below reproduces — is:
+ *
+ *   - `agent(prompt, opts)` → the sub-agent's result. With `opts.schema` (JSON Schema) the
+ *     agent is forced into structured output and the validated object is returned; without
+ *     one, its final text. Returns `null` if the agent dies or is skipped.
+ *     `opts`: `label` · `phase` · `schema` · `agentType` · `model` · `effort` · `isolation`.
+ *   - `parallel(thunks)` → `Promise<any[]>`, a barrier. A thunk that throws resolves to
+ *     `null`; **the call itself never rejects**, so results need `.filter(Boolean)`.
+ *   - `pipeline(items, ...stages)` → each item runs every stage independently, no barrier
+ *     between stages. A stage that throws drops that item to `null`.
+ *   - `log(msg)` / `phase(title)` → progress output; `phase` titles must match `meta.phases`.
+ *   - `args` → the value passed as the tool's `args`, verbatim. `budget` → the turn's token
+ *     target. `workflow(name, args)` → run another workflow inline (one level only).
+ *   - The script body is wrapped in an async function, so a top-level `return` is its result,
+ *     and `export const meta` is hoisted out. No imports, no filesystem, no `Date.now()`.
+ *
+ * `budget` and `workflow` are injected here even though neither script uses them today —
+ * this function IS the contract's local documentation, so it mirrors the whole surface rather
+ * than only the parts currently exercised. Passing tests prove consistency with this mirror;
+ * they do not prove the mirror matches the harness. See `docs/contributing/orchestration.md`
+ * → "The workflow-script contract".
  */
 
 import assert from 'node:assert/strict'
@@ -30,7 +55,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
  * @returns {Promise<{result: unknown, calls: object[], logs: string[], phases: string[], meta: object}>}
  */
 async function run(name, { args, respond }) {
-  const src = readFileSync(join(HERE, name), 'utf8').replace(/^export const meta/m, 'const meta')
+  // Hoist `meta` out the way the harness does, and capture it as the declaration executes —
+  // no second parse of the source, so reformatting the object literal can't break this.
+  const capture = {}
+  const src = readFileSync(join(HERE, name), 'utf8').replace(/^export const meta\s*=/m, 'const meta = capture.meta =')
 
   const calls = []
   const logs = []
@@ -71,15 +99,13 @@ async function run(name, { args, respond }) {
     'args',
     'budget',
     'workflow',
+    'capture',
     `return (async () => {\n${src}\n})()`,
   )
 
-  const result = await body(agent, parallel, pipeline, log, phase, args, budget, workflow)
+  const result = await body(agent, parallel, pipeline, log, phase, args, budget, workflow, capture)
 
-  // `meta` is validated separately — re-extract it from a module-shaped eval.
-  const meta = new Function(`${src.slice(src.indexOf('const meta'), src.indexOf('\n}', src.indexOf('const meta')) + 2)}; return meta`)()
-
-  return { result, calls, logs, phases, meta }
+  return { result, calls, logs, phases, meta: capture.meta }
 }
 
 const labels = (calls, prefix) => calls.filter((c) => (c.label || '').startsWith(prefix)).map((c) => c.label)
@@ -131,7 +157,53 @@ check('epic gate unmet holds every issue and dispatches no worker', async () => 
   assert.equal(result.epicApproved, false)
   assert.deepEqual(result.gates, [{ kind: 'epic-objective', pr: 100 }])
   assert.deepEqual(workerLabels(calls), [], 'no issue-worker may be dispatched before the objective gate')
-  assert.match(logs.join('\n'), /Epic gate not met/)
+  assert.deepEqual(result.held, ['FIX-2', 'FIX-3'])
+  assert.match(logs.join('\n'), /Epic objective not signed off — holding 2 issue\(s\)/)
+})
+
+check('epic-PR review still folds while the objective is unapproved', async () => {
+  // The gate holds the sub-issues, not the epic-spec's own review — blocking the fold would
+  // deadlock the very gate it is waiting on, since folding is how the objective gets revised.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2')] }),
+    respond: epicResponder({ approved: false, epicReviewEvents: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'the epic fold must run during AWAITING_OBJECTIVE')
+  assert.deepEqual(workerLabels(calls), [], 'but no sub-issue advances')
+  assert.equal(result.epic.reviewRounds, 1)
+  assert.match(logs.join('\n'), /still folding epic-PR review so the objective can be revised/)
+})
+
+check('an issue with an open blocked-by relation is tracked, not dispatched', async () => {
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false }
+      if (label === 'linear:epic-children') {
+        return {
+          issues: [
+            { id: 'FIX-2', state: 'Todo', blockedBy: ['FIX-9'] },
+            { id: 'FIX-3', state: 'Todo', blockedBy: [] },
+          ],
+        }
+      }
+      if (label.startsWith('refresh:')) return { issueId: label.slice(8), phase: 'NEEDS_SPEC' }
+      return { issueId: label.split(':')[1], phase: 'AWAITING_SPEC_APPROVAL' }
+    },
+  })
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-3'], 'the blocked issue must not run concurrently with its blocker')
+  assert.deepEqual(result.blocked, [{ issueId: 'FIX-2', blockedBy: ['FIX-9'] }])
+  assert.match(logs.join('\n'), /FIX-2: blocked by FIX-9 — tracked, not admitted to the active set/)
+})
+
+check('the epic review cursor advances to the scanned head', async () => {
+  // Otherwise the same epic-PR event re-triggers a fold every wake, forever.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, lastSeenSha: 'old' }, issues: [] }),
+    respond: epicResponder({ epicReviewEvents: true }),
+  })
+  assert.equal(result.epic.lastSeenSha, 'abc', 'the cursor must move off the SHA we just scanned')
 })
 
 check('spec at budget with no spec-level finding converges instead of dispatching', async () => {
@@ -220,6 +292,27 @@ check('one claim argued on two issues is one POC fanned to both', async () => {
   assert.equal(pocs.length, 1, 'the same claim must settle once')
   assert.deepEqual(result.verdicts[0].issues, ['FIX-2', 'FIX-3'], 'the verdict fans out to both issues')
   assert.match(logs.join('\n'), /Deduped 2 settlement request\(s\) into 1 claim/)
+  // The verdict has to land ON the rows — the request is consumed this wake, so a verdict only
+  // in the return payload would be lost and the claim would never get folded.
+  assert.deepEqual(
+    result.issues.map((r) => r.verdict),
+    ['CONFIRMED', 'CONFIRMED'],
+    'both issues carry the verdict into the next wake',
+  )
+  assert.deepEqual(result.settleRequests, [], 'and the settled request is not re-queued')
+})
+
+check('a carried verdict is dispatched as apply-verdict, then cleared', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, verdict: 'REFUTED' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['apply-verdict:FIX-2'])
+  assert.match(calls.find((c) => c.label === 'apply-verdict:FIX-2').prompt, /A POC verdict landed: REFUTED/)
+  assert.equal(result.issues[0].verdict, null, 'an applied verdict is consumed, not re-applied next wake')
 })
 
 check('settlements queue behind issue workers at the cap', async () => {
@@ -334,13 +427,25 @@ check('an independent sub-PR builds on fresh origin/main', async () => {
 })
 
 check('a dependent stacks on its open dependency so review can start', async () => {
-  const { calls } = await run('issue-multi-pr.js', {
+  const { result, calls } = await run('issue-multi-pr.js', {
     args: multiArgs({ subPrs: [node('a', { status: 'open', branch: 'fix/FIX-9-a', pr: 1 }), node('b', { dependsOn: ['a'] })] }),
     respond: multiResponder(),
   })
   assert.deepEqual(calls.map((c) => c.label), ['build:b'])
   assert.match(calls[0].prompt, /based on fix\/FIX-9-a/)
   assert.match(calls[0].prompt, /stacking on an unmerged dependency/)
+  // The worker response here deliberately omits `stackedOn` (the common case — it's optional).
+  // The marker must come from the base the SCRIPT chose, or the later rebase never schedules
+  // and the sub-PR keeps its dependency's commits in its own diff.
+  assert.equal(result.subPrs.find((n) => n.id === 'b').stackedOn, 'fix/FIX-9-a')
+})
+
+check('a build on origin/main records no stack marker', async () => {
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a')] }),
+    respond: multiResponder(),
+  })
+  assert.equal(result.subPrs[0].stackedOn, null)
 })
 
 check('a dependent whose dependency is still pending is not ready', async () => {
@@ -427,7 +532,36 @@ check('a failed assembled goal opens a NEW fix PR and keeps the issue out of DON
   assert.match(calls[1].prompt, /Do not attempt to reopen the merged sub-PRs/)
   assert.equal(result.done, false)
   assert.equal(result.assembledGoal.passed, false)
+  assert.equal(result.assembledGoal.fixPr, 42, 'the fix PR is tracked as the gate on re-running the goal')
   assert.match(logs.join('\n'), /Issue is not DONE/)
+})
+
+check('an unmerged fix PR blocks the goal rerun instead of filing a duplicate', async () => {
+  // Without this the failure path loops: sub-PRs stay merged, passed stays false, so every
+  // wake re-runs the unchanged goal and files another Linear issue and another fix PR.
+  const { result, calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'merged' }), node('b', { status: 'merged' })],
+      assembledGoal: { passed: false, fixPr: 42, fixMerged: false },
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls, [], 'no goal rerun and no second fix PR while the repair is in flight')
+  assert.equal(result.awaitingFix, 42)
+  assert.equal(result.done, false)
+  assert.match(logs.join('\n'), /fix PR #42 has not merged — not re-running the goal, not filing a duplicate/)
+})
+
+check('a merged fix PR re-arms the assembled goal', async () => {
+  const { result, calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'merged' })],
+      assembledGoal: { passed: false, fixPr: 42, fixMerged: true },
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls.map((c) => c.label), ['assembled-goal:FIX-9'])
+  assert.equal(result.done, true)
 })
 
 check('the cap bounds parallel sub-PR builds', async () => {

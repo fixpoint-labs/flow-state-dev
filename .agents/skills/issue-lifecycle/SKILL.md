@@ -237,9 +237,16 @@ Workflow tool:
     issueId: "<ISSUE>",
     cap: <a few — one worktree per sub-PR>,
     subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
-    assembledGoal: { passed, ownedBy }
+    assembledGoal: { passed, ownedBy, fixPr, fixMerged }
   }
 ```
+
+`stackedOn` and `fixPr` are the two fields you must carry back verbatim. `stackedOn` is set by
+the script from the base it chose, and it is what schedules the later rebase — lose it and a
+stacked sub-PR silently keeps its dependency's commits in its own diff. `fixPr` is the repair
+PR a failed assembled goal opened; while it's set and `fixMerged` is false the script refuses
+to re-run the goal, which is what stops a failure filing a duplicate issue and PR every wake.
+**Set `fixMerged: true` when that PR merges** — that's what re-arms the goal.
 
 What the script decides, so you don't:
 
