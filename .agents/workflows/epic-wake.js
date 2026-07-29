@@ -456,6 +456,21 @@ function multiPrHasWork(row) {
   // action and no gate (a pending slice has no PR to generate one), parked indefinitely. Two predicates
   // over the same state have to agree about what is finished, or the disagreement is the stall.
   if (goalPassed(goal) && row.subPrs.every((s) => s.status === 'merged')) return false
+  // An ANSWERED escalation is work, and it has to be checked BEFORE the waiting states below — a
+  // decision escalated from feedback on an OPEN repair PR is a `goal.fixPr && !fixMerged` row, which the
+  // next line parks. (Not `fixBlocker`, as this comment first claimed: the resolution pass clears that
+  // one before this predicate ever sees it, so ordering makes no difference to it.) This was the
+  // read channel missing from the merge-gate guards added alongside it: the gate correctly withholds
+  // while an answer is unapplied, the worker correctly reports `multiPrPending: false` while waiting
+  // for the human, and nothing dispatched the worker that applies the answer — so the row sat with no
+  // action and no gate forever. Requiring a live TARGET (a blockered slice or a blocked repair) keeps
+  // this from burning a worker on a resolution that has nothing left to apply to.
+  // Deliberately NO "is anything still blocked" condition. By the time this runs, the resolution pass
+  // has already cleared the answered slice's nested blocker (and the row marker with it), so a
+  // still-blocked target is exactly what a queued resolution does NOT have. Testing for one made this
+  // guard unfireable. It cannot loop either: `nextRow` empties `blockerResolutions` once a worker ran,
+  // so a queued answer buys exactly one dispatch — the one that spends it.
+  if ((row.blockerResolutions || []).length) return true
   // The assemble phase's own WAITING states. Without these, a row whose repair PR is open reads as
   // "all slices merged, goal not passed" and dispatches a worker every wake — which finds nothing to
   // do (issue-multi-pr just reports AWAITING_FIX) and, worse, voids the merge readiness the repair
@@ -505,10 +520,31 @@ function consumesReviewActivity(action, row) {
  *              `action` the action that was dispatched for this row, `landed` verdicts that
  *              settled this wake, `folded` whether a folder consumed them
  */
+/**
+ * Drop a goal proof that a newly added slice has invalidated.
+ *
+ * Only `passed`/`evidence` go — the failure, gap issue, repair handle and blocker are still true of
+ * the work done so far, and clearing those would restart the gap/repair cycle from scratch.
+ */
+function invalidateGoalIfSliceAdded(goal, sliceAdded) {
+  if (!goal || !sliceAdded || !goal.passed) return goal
+  const { passed, evidence, ...rest } = goal
+  return rest
+}
+
 function nextRow(row, { worker, action, landed, folded }) {
   // Carried + newly settled, minus whatever a RETURNING folder consumed. A dead folder consumes
   // nothing, so its verdicts stay for the next wake.
   const verdicts = folded ? landed : [...(row.verdicts || []), ...landed]
+
+  // A goal proof covers the slice set it was RUN against. A late verdict can add a slice to a plan
+  // whose goal already passed, and preserving that proof meant the row went DONE the moment the new
+  // slice merged — end-to-end evidence that never exercised the code it was claiming to cover. The
+  // same "false evidence" rule that stops a deduped POC verdict from being fanned to an untested path.
+  // `worker || {}` because this function is also reached for rows that ran no worker at all, which
+  // return before the merge below — they get the carried table and no invalidation, which is correct.
+  const mergedSubPrs = (worker || {}).subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs)
+  const sliceAdded = (mergedSubPrs || []).some((s) => !(row.subPrs || []).some((p) => p.id === s.id))
 
   // A fold consumes CONFIRMED / REFUTED — the evidence resolves those claims. An INCONCLUSIVE
   // resolves nothing: orchestration.md hands the question back to the human. It still has to leave
@@ -593,13 +629,15 @@ function nextRow(row, { worker, action, landed, folded }) {
     // straight onto origin/main while its prerequisite is still unmerged, the DAG violated by a
     // field nobody meant to change. Structural edges come from the carried row; only observations
     // the worker actually reported are applied. A genuinely new slice is added as given.
-    subPrs: worker.subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs),
+    subPrs: mergedSubPrs,
     // Same rule as `subPrs`, and MERGED for the same reason: the schema permits a partial object, so a
     // worker reporting only what it changed (`{ fixPr: 42 }`, `{ fixMerged: true }`) would otherwise
     // drop the failure, the gap issue, the evidence and the blocker with it — and the next wake would
     // re-run the goal before an unmerged repair, or restart the gap/repair cycle from scratch.
-    assembledGoal:
+    assembledGoal: invalidateGoalIfSliceAdded(
       worker.assembledGoal === undefined ? row.assembledGoal : { ...(row.assembledGoal || {}), ...worker.assembledGoal },
+      sliceAdded,
+    ),
     // Per-handle merge readiness was observed BEFORE this worker ran, and a worker pushes commits —
     // which invalidates an approval and re-runs checks. Surfacing the pre-worker observation would
     // tell the human to merge a head nobody has verified, so any worker that ran on this row voids
@@ -1037,7 +1075,11 @@ const PR_STATE_SCHEMA = {
   additionalProperties: false,
   // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
   // must never let a previously-true value survive a push onto an unapproved head.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed'],
+  // `headSha` is required because it now GATES the scan-derived approval, which is this PR's standing
+  // rule for any field an action depends on — and the epic gate's own schema has always required it.
+  // `['string','null']` still lets a scout say "did not observe"; what it can no longer do is stay
+  // silent and have the approval accepted anyway.
+  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
@@ -1392,7 +1434,11 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // would leave that documented path unable to ever release the issue. The coordinator records it
     // as `approvedInSession: <the head it was given for>`, and it counts only while that head is
     // still current — a push after the human spoke is exactly the staleness the scan rule guards.
-    specApproved: (refreshedLive ? !!fresh.specApproved : false) || approvedInSessionFor(row, fresh, refreshedLive),
+    // And a HEAD, for the reason `approvedInSessionFor` already enforces one function away: an approval
+    // that names no head cannot be shown to apply to the spec PR's current content, so accepting it
+    // dispatched implementation on direction the human may never have seen. The scan channel was the
+    // looser of the two, which is backwards — it is the one with no human in the loop this wake.
+    specApproved: (refreshedLive ? !!(fresh.specApproved && fresh.headSha) : false) || approvedInSessionFor(row, fresh, refreshedLive),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,

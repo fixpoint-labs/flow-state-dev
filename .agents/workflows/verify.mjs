@@ -252,20 +252,10 @@ function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents 
     if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: 'In Spec Review', blockedBy: [] })) }
     if (label.startsWith('refresh:')) {
       const id = label.slice('refresh:'.length)
-      // Every REQUIRED field of PR_STATE_SCHEMA gets a default here, so a fixture can never
-      // accidentally describe a response the real harness would reject.
-      return {
-        issueId: id,
-        phase: 'NEEDS_SPEC',
-        specApproved: false,
-        newSpecReviewEvents: false,
-        newPrEvents: false,
-        readyToMerge: false,
-        merged: false,
-        ciFailed: false,
-        latestActivityAt: 'new',
-        ...(fresh[id] || {}),
-      }
+      // Via `freshRow`, not a second copy of the same defaults. Keeping two lists is what let them
+      // drift: a newly required field was added to one and the other kept producing responses the real
+      // harness would reject, which the fixture validator then reported against every check at once.
+      return { issueId: id, ...freshRow(fresh[id] || {}) }
     }
     if (label.startsWith('poc:')) return { claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it', ...poc }
     const id = label.split(':')[1]
@@ -291,6 +281,9 @@ const freshRow = (over = {}) => ({
   // the wake deliberately withholds the work. Defaulting it here keeps that pathological combination
   // something a check has to ask for (`latestActivityAt: null`) rather than get by omission.
   latestActivityAt: 'new',
+  // Same reasoning for the head: a scan-derived approval is only an approval OF a head, so the default
+  // supplies one and a check that wants the pathological case has to ask for `headSha: null`.
+  headSha: 'abc',
   ...over,
 })
 const workerRes = (over = {}) => ({ phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, multiPrPending: false, ...over })
@@ -3435,7 +3428,12 @@ check('an unapplied decision withholds that slice\'s merge gate', async () => {
           ],
         },
       },
-      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true } },
+      // DEAD, deliberately. A queued answer is now dispatchable work, and a worker that RUNS voids the
+      // pre-worker readiness for the whole row — so the per-slice guard would be invisible behind that.
+      // A dead worker mutates nothing, so the scan's per-handle readiness survives and this guard is
+      // what decides each slice. That is also the state where it matters most: nothing applied the
+      // answer, so nothing should invite the human to merge the slice waiting on it.
+      nulls: ['implement:FIX-2'],
     }),
   })
   assert.deepEqual(
@@ -3842,6 +3840,143 @@ check('a scan reporting a null PR handle does not destroy it', async () => {
   })
   assert.deepEqual(workerLabels(viaWorker.calls), ['apply-verdict:FIX-2'])
   assert.equal(viaWorker.result.issues[0].implPr, 9, 'a worker cannot null it either')
+})
+
+check('an answered escalation dispatches the worker that applies it', async () => {
+  // The read channel that was missing from the merge-gate guards: the gate correctly withholds while an
+  // answer is unapplied, the worker correctly reports `multiPrPending: false` while waiting for the
+  // human, and nothing dispatched the worker that applies the answer — so the row sat with no action and
+  // no gate forever. An answered repair blocker is the same shape one level down.
+  for (const [label, over] of [
+    // `blockerFor` is what the coordinator sets when it surfaces a nested blocker, and it is what the
+    // resolution pass uses to clear the right slice. Without it the row re-lifts and parks instead.
+    [
+      'a blockered slice',
+      {
+        blockerFor: 'a',
+        subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }, { id: 'b', status: 'pending', dependsOn: ['a'] }],
+      },
+    ],
+    // An OPEN repair PR is where the ordering earns its place: `goal.fixPr && !goal.fixMerged` returns
+    // false just below, so a decision escalated from feedback on that PR would be queued behind a
+    // waiting state and never dispatched.
+    [
+      'an open repair PR',
+      {
+        subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+        assembledGoal: { passed: false, failure: 'disagree on the cache key', fixIssue: 'FIX-9', fixPr: 55, owningSubPr: 'a' },
+      },
+    ],
+    [
+      'a blocked repair',
+      {
+        subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+        assembledGoal: { passed: false, failure: 'disagree on the cache key', fixIssue: 'FIX-9', fixBlocker: 'which shape?', owningSubPr: 'a' },
+      },
+    ],
+  ]) {
+    const { calls } = await run('epic-wake.js', {
+      args: epicArgs({
+        issues: [row('FIX-2', { phase: 'PR_FEEDBACK', multiPrPending: false, blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }], ...over })],
+      }),
+      respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+    })
+    assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], `dispatched for ${label}`)
+  }
+
+  // It buys exactly ONE dispatch: the returned row carries no resolutions, so the next wake is quiet
+  // again. That is what keeps "a queued answer is work" from re-dispatching a no-op forever.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: false,
+          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+          blockerFor: 'a',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  assert.deepEqual(result.issues[0].blockerResolutions, [], 'spent by the worker that ran')
+})
+
+check('a scan-derived spec approval needs a head to approve', async () => {
+  // `approvedInSessionFor` has enforced this one function away all along: an approval naming no head
+  // cannot be shown to apply to the spec PR's current content. The scan channel was the looser of the
+  // two, which is backwards — it is the one with no human in the loop this wake.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: null } } }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'a headless approval implements nothing')
+
+  const withHead = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'def' } } }),
+  })
+  assert.deepEqual(workerLabels(withHead.calls), ['implement:FIX-2'], 'and with one it releases')
+})
+
+check('a slice added after the goal passed invalidates that proof', async () => {
+  // A goal proof covers the slice set it was RUN against. Preserving it across an added slice meant the
+  // row went DONE the moment that slice merged — end-to-end evidence that never exercised the code it
+  // claimed to cover.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: true, evidence: 'fsdev run: PASS', failure: 'disagree on the cache key', fixIssue: 'FIX-9' },
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'ran it' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: true,
+          // The verdict fold added a slice to a plan whose goal had already passed.
+          subPrs: [
+            { id: 'a', status: 'merged', pr: 41, branch: 'fix/a' },
+            { id: 'c', status: 'pending', dependsOn: [] },
+          ],
+        },
+      },
+    }),
+  })
+  const goal = result.issues[0].assembledGoal
+  assert.equal(goal.passed, undefined, 'the stale proof is dropped')
+  assert.equal(goal.evidence, undefined)
+  // ONLY the proof. The failure, gap issue and repair handle are still true of the work done so far, and
+  // clearing them would restart the gap/repair cycle from scratch on top of the re-run.
+  assert.equal(goal.failure, 'disagree on the cache key')
+  assert.equal(goal.fixIssue, 'FIX-9')
+  assert.equal(result.issues[0].phase, 'PR_FEEDBACK')
+
+  // A plan that did NOT change keeps its proof — otherwise the goal would re-run every wake forever.
+  const unchanged = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: true, evidence: 'fsdev run: PASS' },
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'ran it' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false, subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  assert.equal(unchanged.result.issues[0].assembledGoal.passed, true)
 })
 
 check('a merge gate is withheld while the epic objective is unapproved', async () => {
@@ -4711,7 +4846,11 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // `merged` joined this list once completion was derived from it in both directions: optional, a
       // scan could report DONE and omit it, and the corrected demotion then had no action and no gate,
       // parking the row for good.
-      PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged'],
+      // `headSha` joined when the scan-derived approval started requiring one: an approval that names no
+      // head cannot be shown to apply to the spec PR's current content, and the in-session channel had
+      // enforced that from the start. A behavioural check cannot pin it — the shared fixture always
+      // supplies a head — so this is the only place the requirement itself is asserted.
+      PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will
@@ -5077,3 +5216,4 @@ for (const { name, fn } of checks) {
 
 console.log(`\n${checks.length - failed}/${checks.length} passed`)
 process.exit(failed ? 1 : 0)
+
