@@ -100,8 +100,13 @@ function classify(node, byId, answeredIds) {
     // rule above makes. Without a PR NUMBER it has no subscribable or mergeable handle, so it can
     // never merge — and `classify` only rebases a stacked dependent once its deps have merged, so
     // stacking on it strands both slices with no remaining action at all.
+    // ...and never on a dep carrying a BLOCKER, in either of its two states. Unanswered, the dependent
+    // would encode one side of an architectural fork the human has explicitly not settled. Answered, the
+    // dep's `resume` and this build are dispatched in the SAME `parallel()` call, so the dependent would
+    // base itself on a branch that is being pushed to as it reads it. Waiting one wake is the same trade
+    // the two rules above already make.
     const openDeps = deps.filter((d) => d.status === 'open')
-    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1 && openDeps[0].branch && openDeps[0].pr) {
+    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1 && openDeps[0].branch && openDeps[0].pr && !openDeps[0].blocker) {
       return { action: 'build', base: openDeps[0].branch }
     }
     return null
@@ -671,7 +676,12 @@ const subPrs = nodes.map((node) => {
     pr: r.pr === undefined || r.pr === null ? node.pr : r.pr,
     branch: r.branch || node.branch,
     stackedOn,
-    blocker: r.blocker || null,
+    // Cleared only by a resume that actually SUCCEEDED. `BUILD_SCHEMA` permits `failed` and `pending`,
+    // and clearing on those lost the human's decision exactly like a dead worker would: the caller
+    // consumes the one-shot resolution, the next wake sees neither a blocker nor a resume action, and a
+    // readiness scan can offer the unchanged PR for merge. A worker that reports failure delivered
+    // nothing, which is the same rule as a worker that returned nothing.
+    blocker: r.blocker || (resuming && r.status !== 'open' ? node.blocker || null : null),
     summary: r.summary,
   }
 })

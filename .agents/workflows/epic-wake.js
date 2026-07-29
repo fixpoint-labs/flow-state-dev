@@ -450,9 +450,12 @@ function multiPrPhase(row) {
 function multiPrHasWork(row) {
   if (!row.subPrs || !row.subPrs.length) return false
   const goal = row.assembledGoal || {}
-  // Same predicate as the DONE derivation, so an evidence-free pass re-runs the goal instead of
-  // parking the row between the two rules.
-  if (goalPassed(goal)) return false
+  // BOTH conditions, matching `multiPrPhase` exactly — that is the whole point. `multiPrPhase` requires
+  // `allMerged && goalPassed` to call a row DONE, so a pass reported while a slice is still pending
+  // leaves the phase at PR_FEEDBACK; suppressing DAG work on the pass ALONE then left that row with no
+  // action and no gate (a pending slice has no PR to generate one), parked indefinitely. Two predicates
+  // over the same state have to agree about what is finished, or the disagreement is the stall.
+  if (goalPassed(goal) && row.subPrs.every((s) => s.status === 'merged')) return false
   // The assemble phase's own WAITING states. Without these, a row whose repair PR is open reads as
   // "all slices merged, goal not passed" and dispatches a worker every wake — which finds nothing to
   // do (issue-multi-pr just reports AWAITING_FIX) and, worse, voids the merge readiness the repair
@@ -578,8 +581,10 @@ function nextRow(row, { worker, action, landed, folded }) {
     ...cursor,
     ...consumedFlags,
     phase: worker.phase || row.phase,
-    specPr: worker.specPr === undefined ? row.specPr : worker.specPr,
-    implPr: worker.implPr === undefined ? row.implPr : worker.implPr,
+    // `== null`, not `=== undefined` — an explicit null from a worker wiped the handle the same way an
+    // omission would have, and the guard only covered the omission.
+    specPr: worker.specPr == null ? row.specPr : worker.specPr,
+    implPr: worker.implPr == null ? row.implPr : worker.implPr,
     // Same rule for a multi-PR issue's sub-PR table: only a worker that reported one replaces it.
     // These are the handles the coordinator subscribes to, so silently clearing them would make
     // every sub-PR's review, CI and merge event invisible for the rest of the epic.
@@ -1366,6 +1371,16 @@ const refreshed = [...rows, ...discovered].map((row) => {
     ...row,
     ...fresh,
     id: row.id,
+    // Durable handles survive a scan that reports them as null. Both are declared `['number','null']`,
+    // so a scout omitting or nulling one was schema-valid and the spread destroyed it: an
+    // AWAITING_SPEC_APPROVAL row would emit an approval gate with no PR to approve, and a PR_FEEDBACK
+    // row would lose the handle its subscription and merge gate are derived from — with no action able
+    // to recover either, since nothing re-derives a PR number from scratch. BP-030: tolerate the old
+    // shape, and treat null as "did not observe" rather than "no longer exists". The cost is a closed
+    // spec PR staying on the row until a worker replaces it, which is visible; the alternative was a
+    // gate pointing at nothing, which is not.
+    specPr: fresh.specPr == null ? row.specPr : fresh.specPr,
+    implPr: fresh.implPr == null ? row.implPr : fresh.implPr,
     // Two channels satisfy this gate, and they need opposite handling.
     //
     // A SCAN-derived approval is never carried: spreading `fresh` over the row would let a stale
@@ -1875,8 +1890,15 @@ const gates = [
           gates.push({ kind: 'merge', issueId: r.id, pr: s.pr, subPr: s.id })
         }
       }
-      // And the assembled-goal repair PR, which is neither of those.
-      if (r.assembledGoal && r.assembledGoal.fixPr && !r.assembledGoal.fixMerged && r.repairReadyToMerge) {
+      // And the assembled-goal repair PR, which is neither of those — and which needs the SAME answer
+      // guard as the slices above, for the same reason. `assembledGoal.fixPr` lives outside `subPrs`, so
+      // the per-slice `answerPending` check never covered it: a decision escalated from feedback on an
+      // open repair PR would clear, the assemble machine would report AWAITING_FIX with nothing to
+      // dispatch, and the human would be invited to merge a repair that ignores their own answer.
+      const repairAnswerPending = (r.blockerResolutions || []).some(
+        (x) => !x.for || x.for === (r.assembledGoal || {}).owningSubPr,
+      )
+      if (r.assembledGoal && r.assembledGoal.fixPr && !r.assembledGoal.fixMerged && r.repairReadyToMerge && !repairAnswerPending) {
         gates.push({ kind: 'merge', issueId: r.id, pr: r.assembledGoal.fixPr, repair: true })
       }
       return gates
