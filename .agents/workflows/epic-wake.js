@@ -1908,7 +1908,14 @@ const gates = [
     // `pendingAction` parks a row carrying an unresolved decision or an open prerequisite, but the
     // merge gate is independent of it — so the human was still told to merge work whose blocker they
     // had not answered, or whose dependency had not landed. Parking has to mean parked everywhere.
+    // ...and the same for activity nobody can consume. A scan reporting `newPrEvents` with no timestamp
+    // makes `pendingAction` refuse the feedback worker — the cursor cannot advance, so handling it would
+    // re-handle it every wake — but the merge gate was independent of that too. The human merged, the row
+    // went terminal, and the feedback that scan just reported was never handled by anyone. Withholding
+    // here is the whole row's gates, which is deliberate: the same unreadable activity applies to the
+    // sub-PR and repair handles, and the next scan with a timestamp releases all of them together.
     .filter((r) => !r.linearTerminal && !awaitingHumanDecision(r) && !(r.blockedBy && r.blockedBy.length))
+    .filter((r) => !(r.newPrEvents && !cursorUsable(r)))
     .flatMap((r) => {
       const gates = []
       // Single-PR: the row's own impl PR.

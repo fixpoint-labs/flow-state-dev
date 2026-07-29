@@ -3391,6 +3391,9 @@ check('an answered blocker on an already-OPEN slice gets a worker to apply it', 
   const resume = calls.find((c) => c.label === 'resume:a')
   assert.ok(resume, 'an open slice with an answered decision is dispatched, not left silently unblocked')
   assert.match(resume.prompt, /Apply the decision to that EXISTING PR/)
+  // A fresh worktree starts on the lifecycle's checkout, not on this sub-PR — the build path already
+  // warns about that drift, and these two paths, the ones operating on an EXISTING branch, did not.
+  assert.match(resume.prompt, /Fetch and check out fix\/a first/)
   assert.match(resume.prompt, /Do not open a new PR and do not merge it/)
   assert.match(resume.prompt, /key on tenant \+ scope/)
 
@@ -3734,6 +3737,68 @@ check('the inner and outer DONE predicates agree about evidence', async () => {
   })
   assert.equal(proven.result.done, true)
   assert.deepEqual(proven.calls.filter((c) => (c.label || '').startsWith('assembled-goal')), [])
+})
+
+check('a rebase is told to check out the branch it is rebasing', async () => {
+  // The same re-entry the resume path needs, and the consequence here is worse: a reported success clears
+  // `stackedOn`, so a rebase that moved whatever the worktree inherited leaves nothing to retry.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'merged', pr: 41, branch: 'fix/a', dependsOn: [] },
+        { id: 'b', status: 'open', pr: 42, branch: 'fix/b', dependsOn: ['a'], stackedOn: 'fix/a' },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  const rebase = calls.find((c) => c.label === 'rebase:b')
+  assert.ok(rebase)
+  assert.match(rebase.prompt, /Fetch and check out fix\/b first/)
+  assert.match(rebase.prompt, /NOT on this sub-PR/)
+})
+
+check('unconsumable PR activity withholds every merge gate on the row', async () => {
+  // `pendingAction` refuses the feedback worker when a scan reports activity it cannot timestamp — the
+  // cursor cannot advance, so handling it would re-handle it every wake. The merge gate was independent
+  // of that, so the human merged, the row went terminal, and that feedback was never handled by anyone.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 }),
+        row('FIX-3', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, fixIssue: 'FIX-8', fixPr: 55, owningSubPr: 'a' },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, newPrEvents: true, latestActivityAt: null },
+        'FIX-3': {
+          phase: 'PR_FEEDBACK',
+          readyToMerge: false,
+          newPrEvents: true,
+          latestActivityAt: null,
+          repairReadyToMerge: true,
+          subPrStates: [{ id: 'a', merged: false, readyToMerge: true }],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'the row-level, sub-PR and repair gates all withhold')
+  assert.deepEqual(workerLabels(calls), [], 'and nothing was dispatched to consume it either')
+
+  // The SAME readiness with no unreadable activity is offered, which is what makes the case above about
+  // the unconsumable scan rather than about readiness. (A usable cursor is not the contrast to reach for:
+  // it dispatches the feedback worker, and a worker that ran voids the pre-worker readiness anyway.)
+  const { result: quiet } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, newPrEvents: false, latestActivityAt: null } },
+    }),
+  })
+  assert.deepEqual(quiet.gates.filter((g) => g.kind === 'merge').map((g) => g.pr), [9])
 })
 
 check('a goal pass with a slice still pending is work, not completion', async () => {
@@ -4402,7 +4467,7 @@ check('a merged dependency triggers a rebase off the stack and clears the marker
     respond: multiResponder({ build: { b: { status: 'open', pr: 2, branch: 'fix/FIX-9-b' } } }),
   })
   assert.deepEqual(calls.map((c) => c.label), ['rebase:b'])
-  assert.match(calls[0].prompt, /Rebase it onto fresh origin\/main/)
+  assert.match(calls[0].prompt, /rebase it onto fresh origin\/main/)
   assert.match(calls[0].prompt, /Do not merge it/)
   assert.equal(result.subPrs.find((n) => n.id === 'b').stackedOn, null)
 })
