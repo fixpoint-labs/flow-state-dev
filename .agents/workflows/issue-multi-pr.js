@@ -341,11 +341,18 @@ if (state === 'GAP_BLOCKED') {
 if (state === 'NEEDS_GOAL') {
   phase('Assemble')
 
-  if (goal.fixMerged) log(`Repair ${goal.fixPr ? `#${goal.fixPr}` : goal.fixIssue} merged — re-running the assembled goal to prove it.`)
-  if (goal.ownedBy) log(`Assembled goal is owned by sub-PR ${goal.ownedBy} — confirming its recorded verdict, not re-running it.`)
+  // The owned-goal shortcut ("a designated sub-PR already ran it; confirm the record") is only sound
+  // while the assembled result is the one that was recorded. Once a REPAIR has merged, the code
+  // changed underneath that verdict: confirming it either re-reads an old failure and starts a
+  // second repair cycle, or accepts an old pass and finishes an issue whose goal was never proven
+  // against the fix. Both log lines used to fire together, which is the contradiction made visible.
+  const confirmRecorded = !!goal.ownedBy && !goal.fixMerged
+
+  if (goal.fixMerged) log(`Repair ${goal.fixPr ? `#${goal.fixPr}` : goal.fixIssue} merged — re-running the assembled goal to prove it${goal.ownedBy ? `, not confirming ${goal.ownedBy}'s pre-repair verdict` : ''}.`)
+  else if (confirmRecorded) log(`Assembled goal is owned by sub-PR ${goal.ownedBy} — confirming its recorded verdict, not re-running it.`)
 
   const verdict = await agent(
-    goal.ownedBy
+    confirmRecorded
       ? `Sub-PR ${goal.ownedBy} of ${issueId} was designated to own the assembled end-to-end goal. Confirm its run was recorded and PASSED — read the verdict, do not re-run the goal. Report passed accordingly.`
       : `Every sub-PR of ${issueId} has merged. Run the spec's end-to-end goal against the fully-assembled result on the REAL path. Use a real model if the goal declares one; a model-free goal runs as-is. A cost-based skip is not an acceptable outcome — run it. Report PASS/FAIL with the command and what it proved, and name the sub-PR that broke it if it failed.`,
     { label: `assembled-goal:${issueId}`, phase: 'Assemble', schema: GOAL_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },

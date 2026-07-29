@@ -1042,13 +1042,45 @@ check('the epic-spec converges too, and stops being folded', async () => {
 })
 
 check('the epic fold queues behind issue workers at the cap', async () => {
+  // A `pr-feedback` row does not author against the objective, so it keeps its priority and the fold
+  // waits. (A `spec` or `implement` row is held for the fold instead — the check below.)
   const { calls, logs } = await run('epic-wake.js', {
-    args: epicArgs({ cap: 1, epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2')] }),
-    respond: epicResponder({ epicReviewEvents: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+    args: epicArgs({
+      cap: 1,
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 },
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })],
+    }),
+    respond: epicResponder({ epicReviewEvents: true, fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } } }),
   })
   assert.equal(workerLabels(calls).length, 1)
   assert.deepEqual(labels(calls, 'fold:epic'), [])
   assert.match(logs.join('\n'), /epic-spec fold queued behind the issue workers/)
+})
+
+check('work that authors against the objective is held for one wake while it folds', async () => {
+  // A spec or an implementation written against an objective this wake is revising starts from
+  // direction that is about to change. Held ONE wake, not re-gated — the approval stays intact.
+  const { calls, logs, result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 },
+      issues: [row('FIX-2'), row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9 })],
+    }),
+    respond: epicResponder({
+      epicReviewEvents: true,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-3': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-3'], 'only the non-authoring row runs')
+  assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'and the fold it is waiting for takes priority')
+  assert.match(logs.join('\n'), /Holding FIX-2\(spec\) for one wake/)
+  assert.equal(result.issues.find((r) => r.id === 'FIX-2').phase, 'NEEDS_SPEC', 'the held row is unchanged')
+
+  // Next wake, with the fold consumed, it dispatches.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2')] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(workerLabels(second.calls), ['spec:FIX-2'])
 })
 
 check('a ready-to-merge issue surfaces a merge gate and is never merged here', async () => {
@@ -1329,7 +1361,7 @@ check("a multi-PR issue's sub-PR handles survive the epic wake", async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs } },
     }),
   })
@@ -1430,7 +1462,7 @@ check("a multi-PR issue's assemble state and sub-PR handles both survive", async
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs, assembledGoal } },
     }),
   })
@@ -1713,7 +1745,7 @@ check('a worker reporting deferred DAG work is dispatched again next wake', asyn
       issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })],
     }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
       worker: {
         'FIX-2': {
           phase: 'PR_FEEDBACK',
@@ -1996,6 +2028,107 @@ check('a repair PR awaiting its human merge dispatches nothing and keeps its gat
   assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
 })
 
+check('NEEDS_IMPLEMENTATION cannot dispatch without an established approval', async () => {
+  // The phase NAME asserts approval; only `specApproved` establishes it, and the schema validates the
+  // two independently — so a mis-derived phase would implement a spec no human approved.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: false, specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'the one mandatory gate is not carried by a phase name')
+  assert.ok(result.gates.some((g) => g.kind === 'spec-approval' && g.issueId === 'FIX-2'))
+
+  // With the approval established it proceeds.
+  const approved = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true, specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 7 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(approved.calls), ['implement:FIX-2'])
+})
+
+check('a parked row is never offered for merge', async () => {
+  // `pendingAction` parks on an unresolved decision or an open prerequisite; the merge gate was
+  // independent of it, so the human was told to merge work whose blocker they had not answered.
+  for (const park of [{ blocker: 'which behaviour?' }, { blockedBy: ['FIX-9'] }]) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, ...park })] }),
+      respond: (prompt, opts) => {
+        const label = opts.label || ''
+        if (label === 'gate:epic') return { approved: true, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+        if (label === 'linear:epic-children') return { issues: [] }
+        if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', readyToMerge: true, implPr: 9 }) }
+        return workerRes({ issueId: 'FIX-2' })
+      },
+    })
+    assert.deepEqual(
+      result.gates.filter((g) => g.kind === 'merge'),
+      [],
+      `a row parked by ${Object.keys(park)[0]} must not be merge-gated`,
+    )
+  }
+})
+
+check('an unanswered sibling blocker survives its neighbour being resolved', async () => {
+  // Two sub-PR workers can escalate different decisions in one wake; the row surfaces the first.
+  // Clearing all of them on that one answer lets the sibling's slice resume on a decision nobody made.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: null, // the human answered the one the row named
+          blockerFor: 'a',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b', blocker: 'which owner?' },
+          ],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  const subPrs = result.issues[0].subPrs
+  assert.equal(subPrs.find((s) => s.id === 'a').blocker, null, 'the answered slice resumes')
+  assert.equal(subPrs.find((s) => s.id === 'b').blocker, 'which owner?', 'the unanswered one does not')
+  assert.match(result.issues[0].blocker, /b: which owner\?/, 'and it is surfaced next — a queue, not a loss')
+})
+
+check("a multi-PR row's PR feedback is handled before the DAG step", async () => {
+  // issue-multi-pr only builds, rebases and assembles — it has no notion of an open PR's review
+  // comments, so pointed straight at the DAG the row reports "waiting" and the batch is consumed.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, fixPr: 77, fixMerged: false },
+          lastSeenActivityAt: 'old',
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  const prompt = calls.find((c) => c.label === 'pr-feedback:FIX-2').prompt
+  assert.match(prompt, /Handle it the way issue-implement handles PR feedback/)
+  assert.match(prompt, /BEFORE any DAG step/)
+  assert.match(prompt, /a=#41/)
+  assert.match(prompt, /repair=#77/)
+})
+
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
   // Its base is the prerequisite's branch, so merging lands it into that branch (or makes the
   // prerequisite's PR carry both slices) and pre-empts the rebase the DAG still has to schedule.
@@ -2123,7 +2256,7 @@ check('a worker transition without its durable handle is refused', async () => {
   const multi = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION' })] }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION' } },
+      fresh: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specApproved: true } },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
     }),
   })
@@ -2292,6 +2425,30 @@ check('a duplicate sub-PR id is refused before anything is dispatched', async ()
   )
   assert.ok(result.invalid.some((i) => i.id === 'a' && i.duplicate))
   assert.match(logs.join('\n'), /a: appears MORE THAN ONCE in the plan/)
+})
+
+check('an owned assembled goal is re-run, not confirmed, once its repair merges', async () => {
+  // The recorded verdict predates the repair, so confirming it either re-reads an old failure and
+  // starts a second repair cycle, or accepts an old pass and finishes an unproven issue.
+  const { calls, logs } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'merged' })],
+      assembledGoal: { ownedBy: 'a', passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: true },
+    }),
+    respond: (prompt, opts) =>
+      (opts.label || '').startsWith('assembled-goal:') ? { passed: true, evidence: 'ran it on the repaired result' } : {},
+  })
+  const prompt = calls.find((c) => (c.label || '').startsWith('assembled-goal:')).prompt
+  assert.match(prompt, /Run the spec's end-to-end goal against the fully-assembled result/)
+  assert.doesNotMatch(prompt, /do not re-run the goal/)
+  assert.match(logs.join('\n'), /not confirming a's pre-repair verdict/)
+
+  // Before any repair, the shortcut is still correct.
+  const owned = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [node('a', { status: 'merged' })], assembledGoal: { ownedBy: 'a' } }),
+    respond: (prompt, opts) => ((opts.label || '').startsWith('assembled-goal:') ? { passed: true, evidence: 'recorded' } : {}),
+  })
+  assert.match(owned.calls.find((c) => (c.label || '').startsWith('assembled-goal:')).prompt, /do not re-run the goal/)
 })
 
 check('a failed assembled goal keeps its evidence and hands it to the repair', async () => {

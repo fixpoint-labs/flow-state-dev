@@ -128,6 +128,11 @@ function pendingAction(row) {
       return null
 
     case 'NEEDS_IMPLEMENTATION':
+      // The phase NAME asserts approval; only `specApproved` establishes it, and the schema validates
+      // the two independently — so a scout that derives the phase wrongly would dispatch
+      // implementation on a spec no human ever approved. This is the one gate that must never be
+      // bypassable, so the phase is not allowed to be the thing that carries it.
+      if (!row.specApproved) return null
       return { action: 'implement', why: 'spec approved, implementation not started' }
 
     case 'PR_FEEDBACK':
@@ -201,6 +206,22 @@ function cursorUsable(row) {
  *
  * @returns the derived phase, or null when this is not a multi-PR row
  */
+/**
+ * A phase that ASSERTS approval is corrected to what the row can actually prove.
+ *
+ * `NEEDS_IMPLEMENTATION` means "the spec was approved and implementation hasn't started", but only
+ * `specApproved` establishes that and the schema validates the two independently — so a scout that
+ * derives the phase wrongly would implement a spec no human approved, the one gate that must never be
+ * bypassable. Refusing to DISPATCH is not enough on its own: the row then sits at a phase whose gate
+ * filter doesn't match, so nothing is surfaced either — a silent stall in place of the bypass. So the
+ * phase is corrected: with a spec PR it is awaiting approval (and gets that gate), without one there
+ * is no spec to approve and it needs authoring.
+ */
+function approvalGatedPhase(row) {
+  if (row.phase !== 'NEEDS_IMPLEMENTATION' || row.specApproved) return null
+  return row.specPr ? 'AWAITING_SPEC_APPROVAL' : 'NEEDS_SPEC'
+}
+
 function multiPrPhase(row) {
   if (!row.subPrs || !row.subPrs.length) return null
   return (row.assembledGoal || {}).passed ? 'DONE' : 'PR_FEEDBACK'
@@ -394,7 +415,12 @@ function nextRow(row, { worker, action, landed, folded }) {
   // with its mirror, so the resolution rule only ever fires on a decision that was actually surfaced.
   if (!next.blocker) {
     const nested = (next.subPrs || []).find((sp) => sp.blocker)
-    if (nested) next.blocker = `${nested.id}: ${nested.blocker}`
+    if (nested) {
+      next.blocker = `${nested.id}: ${nested.blocker}`
+      // Which slice this answer will release. Without it, resolving one decision clears every nested
+      // blocker, including a sibling's that nobody answered.
+      next.blockerFor = nested.id
+    }
   }
 
   // A transition without its durable handle is refused. The schema requires `phase` but cannot make
@@ -420,7 +446,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   // sub-PR will reasonably report DONE — and that is precisely the premature completion the rule
   // exists to prevent, since the merges do not satisfy the assembled goal. Deriving it in only one
   // of the two places it can be set is deriving it nowhere.
-  const derived = multiPrPhase(next)
+  const derived = multiPrPhase(next) || approvalGatedPhase(next)
   return derived && derived !== next.phase ? { ...next, phase: derived } : next
 }
 
@@ -443,6 +469,15 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const converged = []
   const blocked = []
   const waiting = []
+  // Work that AUTHORS against the objective — a spec, or an implementation of one. When this wake is
+  // also folding epic-PR feedback, the fold may commit an objective or cross-cutting change, so that
+  // work would start from direction this wake is in the middle of revising. It is deferred ONE wake,
+  // not re-gated: the next wake dispatches it against the folded head with the approval intact.
+  // (Review raised the stronger form — hold until the objective is re-approved — twice; that one
+  // deadlocks, because folding is how the objective becomes approvable at all. This is the narrow
+  // version that removes the risk without the deadlock.)
+  const AUTHORS_AGAINST_OBJECTIVE = new Set(['spec', 'implement'])
+  const heldForFold = []
 
   for (const row of rows) {
     if (row.blockedBy && row.blockedBy.length) {
@@ -450,6 +485,10 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
       continue
     }
     const next = pendingAction(row)
+    if (next && foldEpicWanted && AUTHORS_AGAINST_OBJECTIVE.has(next.action)) {
+      heldForFold.push({ row, ...next })
+      continue
+    }
     if (next) actionable.push({ row, ...next })
     else if (row.phase === 'AWAITING_SPEC_APPROVAL' && row.newSpecReviewEvents) converged.push(row)
     else waiting.push(row)
@@ -459,11 +498,13 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   const advance = epicApproved ? actionable.slice(0, cap) : []
   const deferred = epicApproved ? actionable.slice(cap) : []
 
-  const foldEpic = foldEpicWanted && advance.length < cap
+  // Priority inverts while a fold is pending: the fold is what the held work is waiting for, so
+  // starving it behind other dispatches would defer that work for nothing.
+  const foldEpic = foldEpicWanted && (heldForFold.length > 0 || advance.length < cap)
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
-  return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims }
+  return { advance, deferred, held, blocked, converged, waiting, foldEpic, settle, queuedClaims, heldForFold }
 }
 
 /**
@@ -537,8 +578,20 @@ function foldMultiPrScan(row, fresh) {
   // here), and `classify()` refuses to dispatch a slice while it is set. The documented resolution
   // path clears the row-level one, so a nested copy left behind parks that slice permanently. Same
   // rule as `fixBlocker`: the row-level field is where the human is answered, and these follow it.
-  if (!row.blocker && (out.subPrs || row.subPrs || []).some((s) => s.blocker)) {
-    out.subPrs = (out.subPrs || row.subPrs).map((s) => (s.blocker ? { ...s, blocker: null } : s))
+  // Only the ONE the row-level field represents. Two sub-PR workers can escalate different decisions
+  // in the same wake, and the row surfaces the first; clearing all of them on that answer would let
+  // the sibling's slice resume on a decision nobody made. The lift prefixes the id (`a: ...`), so the
+  // answered slice is identifiable and the next wake lifts the next unanswered one — a queue, which
+  // terminates, rather than a single field pretending to hold several decisions.
+  if (!row.blocker) {
+    const base = out.subPrs || row.subPrs || []
+    // A row persisted before `blockerFor` existed names no slice, so fall back to the one the old
+    // lift would have surfaced — the first. Still one per answer, so it still terminates. (BP-030.)
+    const target = row.blockerFor || (base.find((s) => s.blocker) || {}).id
+    if (target && base.some((s) => s.id === target && s.blocker)) {
+      out.subPrs = base.map((s) => (s.id === target ? { ...s, blocker: null } : s))
+    }
+    if (row.blockerFor) out.blockerFor = null
   }
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
@@ -993,7 +1046,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Derived AFTER the fold, because it reads the freshly-merged sub-PRs and the folded goal. A
   // scout naming this phase either finishes the issue without its assembled goal or stalls it.
   .map((row) => {
-    const derived = multiPrPhase(row)
+    const derived = multiPrPhase(row) || approvalGatedPhase(row)
     return derived && derived !== row.phase ? { ...row, phase: derived } : row
   })
 
@@ -1057,6 +1110,12 @@ for (const row of plan.blocked) {
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
 }
+// No silent holds: this one has a cause the user can act on (the epic PR has feedback in flight).
+if (plan.heldForFold.length) {
+  log(
+    `Holding ${plan.heldForFold.map((h) => `${h.row.id}(${h.action})`).join(', ')} for one wake — the epic-spec is being folded, and these author against the objective it may change. The fold takes priority this wake; they dispatch next wake against the folded head with their approvals intact.`,
+  )
+}
 if (plan.deferred.length) {
   log(`Cap ${cap} reached — deferring ${plan.deferred.map((d) => d.row.id).join(', ')} to the next wake.`)
 }
@@ -1086,6 +1145,16 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
             : '') +
           (item.action === 'implement' && item.row.newSpecReviewEvents
             ? `The approving batch on spec PR ${item.row.specPr || '(the spec PR)'} ALSO carries outstanding review feedback. Read it and carry it as implementer notes BEFORE you close the spec PR — do not spend a review round on it and do not fold it into the spec. This is the only pass that sees it: nothing looks at spec-PR review activity once this row reaches PR_FEEDBACK.\n`
+            : '') +
+          // `issue-multi-pr` only builds pending nodes, rebases stacked ones and advances assembly —
+          // it has no notion of an ordinary open PR's review comments. Dispatched for `pr-feedback`
+          // and pointed straight at the DAG, the row reports "waiting", the cursor advances, and the
+          // batch is consumed unfixed. So the feedback is handled FIRST, on whichever handle carries
+          // it, and only then does the DAG step run.
+          (item.action === 'pr-feedback' && item.row.subPrs && item.row.subPrs.length
+            ? `The activity is on one of this issue's sub-PRs or its assembled-goal repair PR — NOT on a single impl PR. Handle it the way issue-implement handles PR feedback (address or answer each comment, fix failing CI) on the handle that carries it, BEFORE any DAG step. Handles: ${item.row.subPrs
+                .map((sp) => `${sp.id}=${sp.pr ? `#${sp.pr}` : 'not opened'}`)
+                .join(', ')}${item.row.assembledGoal && item.row.assembledGoal.fixPr ? `, repair=#${item.row.assembledGoal.fixPr}` : ''}.\n`
             : '') +
           (item.row.subPrs && item.row.subPrs.length
             ? `This issue implements as a DAG of sub-PRs. Advance it with the issue-multi-pr workflow, passing this state as its args, and return the updated subPrs table AND assembledGoal.\n` +
@@ -1285,7 +1354,10 @@ const gates = [
   // A multi-PR row has no `implPr` at all — one aggregate gate for it carried `pr: null`, which the
   // coordinator cannot surface, so the DAG stopped at its first merge-ready slice.
   ...issues
-    .filter((r) => !r.linearTerminal)
+    // `pendingAction` parks a row carrying an unresolved decision or an open prerequisite, but the
+    // merge gate is independent of it — so the human was still told to merge work whose blocker they
+    // had not answered, or whose dependency had not landed. Parking has to mean parked everywhere.
+    .filter((r) => !r.linearTerminal && !r.blocker && !(r.blockedBy && r.blockedBy.length))
     .flatMap((r) => {
       const gates = []
       // Single-PR: the row's own impl PR.
