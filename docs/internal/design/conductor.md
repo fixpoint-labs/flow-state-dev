@@ -169,7 +169,7 @@ a change to it (FIX-751 for state, **FIX-843 for content writes** — both **Don
 is buildable today, not a framework gap). That makes the interesting behavior configurable
 rather than bespoke: *a new objective lands → re-examine every open PR and ask whether the
 new objective changes the approach.* A guidance change is just another signal class the
-driver plans against, which is why separating signal from phase and gate paid off here.
+driver reduces over, which is why separating signal from phase and gate paid off here.
 
 **Issue `type` is a routing key, not a state machine.** `Feature | Improvement | Bug |
 Spike | Prototype | Refactor` selects the discipline (`tdd` vs `diagnose`) and the
@@ -186,17 +186,68 @@ explicitly avoids forcing one phase list onto both.
 One function, no model in the loop:
 
 ```ts
-plan(entity, world) → Action[]
+decide(entity, signal, world) → Action[]
 ```
 
-Pure, synchronous, exhaustively unit-testable over the phase × gate × signal matrix.
-This is FIX-840's `state → action` map generalized past a single issue. Actions
-(`draftSpec`, `reviseSpec`, `recordApproval`, `implement`, `addressFeedback`,
-`resolveConflict`, `runGoalCheck`, `retrospect`) are discrete and idempotent — a
-duplicate or out-of-order signal is harmless. **Only actions dispatch agents.** The
-decision of *what to do next* never involves a generator.
+**It is a reducer, not a planner.** Given an entity, the one thing that just happened, and
+the world, it returns the actions that follow — the `(state, event) → effects` shape, not
+"work out an approach" and not "choose which tasks to do next." It is deliberately **not**
+called `plan`: in FSD, *plan* already means agentic planning (plan-and-execute, True Plan
+Mode, plan mode), and this function never involves a model. Naming it `plan` invited exactly
+the wrong reading.
+
+The signal is an explicit parameter rather than something dug out of `world`, because
+conductor is an event loop: **one signal in, actions out.** That also makes the reconciler
+(§7/D1) compose cleanly — it produces signals, and each one is fed through `decide` in
+order:
+
+```
+observed + fresh ──reconcile()──▶ Signal[] ──decide() per signal──▶ Action[] ──▶ execute
+```
+
+Pure, synchronous, exhaustively unit-testable over the phase × gate × signal matrix. This is
+FIX-840's `state → action` map generalized past a single issue. Actions (`draftSpec`,
+`reviseSpec`, `recordApproval`, `implement`, `addressFeedback`, `resolveConflict`,
+`runGoalCheck`, `retrospect`) are discrete and idempotent — a duplicate or out-of-order
+signal is harmless. **Only actions dispatch agents.** The decision of *what to do next* never
+involves a generator.
 
 That single property is what kills four of the five pains in §2.
+
+### The loop: a tick, not a daemon
+
+"Where does the loop live" has a deliberately boring answer, and the boringness is the
+feature: **there is no resident loop.** There is an idempotent **tick** — a short request
+that reconciles, decides, and mutates tasks, then returns.
+
+```
+trigger (webhook | cron | CLI | chat)
+  └─▶ tick  = one request:  read world → reconcile → decide per signal → mutate/enqueue tasks → return
+        └─▶ phase work = a separate, detached task execution (its own cycle, minutes to an hour)
+```
+
+- **A tick is a request.** Short, no model calls, no long-held anything. It is safe to fire
+  redundantly — three triggers can all fire it and the result is the same, because actions
+  are idempotent and state is re-derived. That is what makes restart free: nothing is
+  resident, so nothing is lost.
+- **Phase work is not in the tick.** Authoring a spec or implementing a PR runs as its own
+  detached task execution (§5, FIX-939). The tick starts it and returns; it does not wait.
+  Conflating the two is what would force a long-lived process back into the design.
+- **Triggers are interchangeable.** Webhook (an event arrived), cron (the backstop and
+  new-work discovery), CLI, or chat all call the same tick. None of them is privileged, and
+  losing any one of them costs latency, not correctness — the cron backstop plus
+  reconciliation recovers whatever the webhooks missed.
+
+**Altitude: one board per epic, one state machine, many instances.** There is not a loop per
+entity — there is one state machine *definition* and N entity instances that a tick advances.
+Concurrency comes from the board: a resource-backed `TaskCollection` per epic, one task per
+issue, the drain advancing them in parallel. The epic itself is a task too, with its issues
+as **nested** sub-tasks, so dependency gating expresses "issues hold until the epic objective
+gate passes" natively rather than as a special case.
+
+**Not settled — validate in M2:** whether the epic-task-with-nested-issue-subtasks shape holds
+up, or whether epics want a separate board from the project-level one. Both work on paper; the
+nesting is more elegant and less proven.
 
 ### Gates are derived, not parked runs
 
@@ -340,7 +391,7 @@ Without a local copy there is nothing to diff against, so a dropped event is sim
 With one, **a divergence is a signal** — including a signal about a signal that never
 arrived. Reconciliation is therefore a first-class path, not an error handler: each tick
 compares observed against fresh, and any gap becomes one or more **synthesized signals**
-the driver plans against in order.
+the driver reduces over in order.
 
 **So what was FIX-832's bug, precisely?** Not "conductor kept a copy." It was a copy that
 was *authoritative* — a second state machine whose phase claim competed with the board's,
@@ -388,8 +439,8 @@ Sequenced so the first milestone is the one that changes the daily experience.
 
 ### M0 — the model, as a pure module (days)
 
-`plan(entity, world) → Action[]`, the entity schemas, the phase/gate/signal types, **and
-the reconciler** — a pure `reconcile(observed, fresh) → Signal[]` that turns a divergence
+`decide(entity, signal, world) → Action[]`, the entity schemas, the phase/gate/signal types,
+**and the reconciler** — a pure `reconcile(observed, fresh) → Signal[]` that turns a divergence
 between conductor's copy and the world into ordered signals, including backdated ones for
 events that never arrived (§7/D1). No I/O, no agents, no connectors.
 **Verify:** unit tests covering the full phase × gate × signal matrix, including the paths
