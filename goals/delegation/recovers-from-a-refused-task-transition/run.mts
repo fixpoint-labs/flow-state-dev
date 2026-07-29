@@ -40,6 +40,7 @@
  */
 import {
   DEFAULT_MODEL,
+  fail,
   loadFixture,
   runGoal,
   stripIntentOverrides,
@@ -414,8 +415,18 @@ function callsAfterStep(observed: Observed, step: number): Call[] {
 
 const describe = (c: Call) => `${c.name}@step${c.step}${c.threw !== undefined ? "(THREW)" : ""}`;
 
-/** Lowercased, whitespace-collapsed, for comparing a task goal to a request. */
-const normalizeRequest = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+/**
+ * The differences a coordinator's logged goal is allowed to have from the
+ * request text: case, whitespace, and trailing punctuation. Everything else
+ * has to match, so the comparison below can stay one-way.
+ */
+const normalizeRequest = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.,;:!?]+$/, "")
+    .trim();
 
 const OPEN_REQUESTS = fx.openRequests.map(normalizeRequest);
 
@@ -423,18 +434,76 @@ const OPEN_REQUESTS = fx.openRequests.map(normalizeRequest);
  * True when `goal` is one of the requests that still needed doing.
  *
  * Read off the FIXTURE, never a literal — swap the intake and this follows it.
- * The skill tells the coordinator to log each request with its text as the
- * goal, so containment is checked in both directions: the goal may quote the
- * request and add to it, or drop its trailing period. Anything looser would
- * stop distinguishing an open request from an already-answered one, which is
- * the whole point of the comparison.
+ *
+ * Containment is ONE-WAY: the goal must contain the WHOLE open request. The
+ * skill has the coordinator log each request's text as the goal, so the two
+ * shapes worth tolerating are a goal that quotes the request and adds to it,
+ * and one that drops its trailing period — `normalizeRequest` plus this
+ * direction cover both. The reverse (`open.includes(goal)`) is deliberately
+ * NOT accepted: it matches any fragment, so a task goal of "draft" would
+ * satisfy (E) while the request it was supposed to serve sat cancelled. That
+ * is the same false pass (E) was tightened to close, and putting it back
+ * inside the new guard would make the guard decorative.
  */
 function servesOpenRequest(goal: string | undefined): boolean {
   if (goal === undefined) return false;
   const g = normalizeRequest(goal);
-  if (g === "") return false;
-  return OPEN_REQUESTS.some((open) => g.includes(open) || open.includes(g));
+  return OPEN_REQUESTS.some((open) => g.includes(open));
 }
+
+/**
+ * Setup honesty — the fixture is a valid intake for this check at all.
+ *
+ * Runs at module load, which is BEFORE the probe constants below index the
+ * fixture and before the probe suite runs. The ordering is deliberate: probes
+ * still precede any model call, but a probe driven by a dishonest fixture
+ * reports `PROBE FAILED (grader bug)` for what is really a bad intake, and an
+ * empty array would throw on the index before reaching a boundary check that
+ * lived further down. A setup error should say so, so it is asserted first.
+ */
+function assertFixtureIsHonest(): void {
+  if (fx.settledRequests.length === 0) {
+    fail(
+      "setup invalid: the fixture supplies no already-answered request, so nothing would ever " +
+        "ask the board to complete a task that was never started",
+    );
+  }
+  if (fx.openRequests.length === 0) {
+    fail(
+      "setup invalid: the fixture supplies no request that needs doing, so the board has no " +
+        "real work and 'the run still completed' would be vacuous",
+    );
+  }
+  // A blank open request would make (E)'s containment vacuous — every goal
+  // contains the empty string, so every completed task would look like the
+  // real work.
+  if (OPEN_REQUESTS.some((open) => open === "")) {
+    fail(
+      `setup invalid: an open request is blank once normalized ` +
+        `(${JSON.stringify(fx.openRequests)}), so every task goal would read as serving it`,
+    );
+  }
+  // (E) can only tell the real work from the work that needed none if the two
+  // kinds of request are actually distinguishable by their text. Asserted here
+  // rather than argued in prose: a later intake where an answered request reads
+  // as an open one would silently hand (E) back its unbound behaviour, which is
+  // the exact defect this criterion was tightened to close.
+  const ambiguous = fx.settledRequests.filter((r) => servesOpenRequest(r.request));
+  if (ambiguous.length > 0) {
+    fail(
+      `setup invalid: already-answered request(s) ` +
+        `${JSON.stringify(ambiguous.map((r) => r.request))} also read as one of the open ` +
+        `requests ${JSON.stringify(fx.openRequests)}, so criterion (E) could no longer tell a ` +
+        `worker turn on the real work apart from one on work that needed none`,
+    );
+  }
+  const desk = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
+  if (desk.includes(fx.workerSalt.toLowerCase())) {
+    fail("setup invalid: the worker salt leaked into the coordinator's own context");
+  }
+}
+
+assertFixtureIsHonest();
 
 // ---------------------------------------------------------------------------
 // Grading
@@ -816,6 +885,32 @@ const invertedRoutingScenario = observedRun({
   ],
 });
 
+/**
+ * The same inversion, dressed to defeat a matcher that accepts a FRAGMENT of
+ * the open request. The salted completion's goal is one word of that request —
+ * enough for `open.includes(goal)`, nowhere near enough to be the work — while
+ * the request itself sits cancelled.
+ *
+ * This is the shape the first cut of `servesOpenRequest` let through: its
+ * containment ran both ways, which put the very false pass (E) was tightened
+ * to close back inside the new guard. One-way containment is what closes it,
+ * and this probe is what keeps it closed.
+ */
+const fragmentGoalScenario = observedRun({
+  tasks: [
+    [REFUSED_ID, { status: "cancelled", goal: SETTLED_GOAL }],
+    [
+      SETTLED_RAN_ID,
+      {
+        status: "completed",
+        output: `Confirmed it. ${fx.workerSalt}`,
+        goal: OPEN_GOAL.split(" ")[0]!,
+      },
+    ],
+    [REAL_ID, { status: "cancelled", goal: OPEN_GOAL }],
+  ],
+});
+
 /** True when some failure mentions the recovery not being bound to the refused task. */
 const saysUnbound = (failures: string[]) =>
   failures.some((f) => f.includes("no advertised recovery call targeted the refused task"));
@@ -911,6 +1006,17 @@ const PROBES: readonly (readonly [string, () => boolean])[] = [
       return failures.length === 1 && saysUnserved(failures);
     },
   ],
+
+  // The same inversion with the salted goal reduced to a fragment of the open
+  // request. Guards the matcher's direction: a bidirectional `servesOpenRequest`
+  // PASSES this run, which is how the fragment path got in the first time.
+  [
+    "E: salt on a goal that is only a fragment of the open request FAILS",
+    () => {
+      const { failures } = grade(fragmentGoalScenario);
+      return failures.length === 1 && saysUnserved(failures);
+    },
+  ],
 ];
 
 function runProbes(): string[] {
@@ -946,50 +1052,8 @@ async function runGoalCheck(): Promise<{ failures: string[]; log: string }> {
     };
   }
 
-  // Setup honesty, asserted before any model call.
-  if (fx.settledRequests.length === 0) {
-    return {
-      failures: [
-        "setup invalid: the fixture supplies no already-answered request, so nothing would ever " +
-          "ask the board to complete a task that was never started",
-      ],
-      log: "",
-    };
-  }
-  if (fx.openRequests.length === 0) {
-    return {
-      failures: [
-        "setup invalid: the fixture supplies no request that needs doing, so the board has no " +
-          "real work and 'the run still completed' would be vacuous",
-      ],
-      log: "",
-    };
-  }
-  // (E) can only tell the real work from the work that needed none if the two
-  // kinds of request are actually distinguishable by their text. Asserted here
-  // rather than argued in prose: a later intake where an answered request reads
-  // as an open one would silently hand (E) back its unbound behaviour, which is
-  // the exact defect this criterion was tightened to close.
-  const ambiguous = fx.settledRequests.filter((r) => servesOpenRequest(r.request));
-  if (ambiguous.length > 0) {
-    return {
-      failures: [
-        `setup invalid: already-answered request(s) ` +
-          `${JSON.stringify(ambiguous.map((r) => r.request))} also read as one of the open ` +
-          `requests ${JSON.stringify(fx.openRequests)}, so criterion (E) could no longer tell a ` +
-          `worker turn on the real work apart from one on work that needed none`,
-      ],
-      log: "",
-    };
-  }
-  const desk = `${COORDINATOR_PROMPT}\n${USER_TURN}`.toLowerCase();
-  if (desk.includes(fx.workerSalt.toLowerCase())) {
-    return {
-      failures: ["setup invalid: the worker salt leaked into the coordinator's own context"],
-      log: "",
-    };
-  }
-
+  // Setup honesty already ran at module load — see `assertFixtureIsHonest`,
+  // which has to precede the probe constants that index the fixture.
   const observed = await run("refused-transition");
   const { failures, refusal, advertised } = grade(observed);
   return { failures, log: summarize(observed, refusal, advertised) };
