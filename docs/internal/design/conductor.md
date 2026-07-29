@@ -632,7 +632,13 @@ GitHub each round and applying the two-round convergence budget from
 `orchestration.md`. This is not deferrable to M2: it is most of what M1's PR-feedback
 phase does.
 **Ships before FIX-939.** One issue, a per-tick drain, phase work in-request — that is
-what the POC did and it worked locally. Restart survival comes from gates being derived
+what the POC did and it worked locally.
+
+**One mechanical gotcha, learned the hard way on this very PR:** replying to a GitHub review
+thread opens a *pending review*, and a second reply then fails with `422 — user_id can only have
+one pending review per pull request`. So the PR-feedback phase must either submit each review as
+it goes, or deliberately batch all replies into one review submission. Getting this wrong looks
+like the phase silently failing to respond to feedback. Restart survival comes from gates being derived
 (§5) and the ledger living in conductor's own resources, re-seeding the board each tick.
 **Verify:** a real FIX issue reaches a real merge-ready PR with **zero coordinator
 model calls**, and the run survives a process restart mid-gate.
