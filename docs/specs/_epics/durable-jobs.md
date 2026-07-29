@@ -150,12 +150,16 @@ number.
 
 | Set | Size | Members |
 |---|---|---|
-| **Sub-issues** — parented under FIX-939 | 6 | FIX-981, FIX-982, FIX-983, FIX-984, FIX-957, FIX-825 |
+| **Sub-issues** — parented under FIX-939 | **7** | FIX-981, FIX-982, FIX-983, FIX-984, **FIX-991**, FIX-957, FIX-825 |
 | **Active set** — gets an `issue-lifecycle` **once the objective gate passes** | 1 | FIX-981 (M1) |
-| **Filed, held as blocked** | 3 | FIX-982 (M3), FIX-983 (M4), FIX-984 (M5) |
+| **Filed, held as blocked** | **4** | FIX-982 (M3), FIX-983 (M4), FIX-984 (M5), **FIX-991** (no milestone) |
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 (*In Spec Review* under FIX-980) |
-| **Indexed rows** (§3) = sub-issues + external dependency | 7 | — |
+| **Indexed rows** (§3) = sub-issues + external dependency | **8** | — |
+
+**FIX-991 carries no milestone number** — it is not one of the description's M1–M5 but a correctness
+gap the decomposition exposed, and **completion criterion 4b depends on it.** Counted here because
+status summaries derive from this table, so omitting it would drop that dependency.
 
 **The milestone numbering is the description's, and it has a hole in it.** M1–M5 below are the
 epic description's milestones. **M2 has no issue in this epic on purpose** — see §2 Decision 0.
@@ -320,8 +324,18 @@ Not "durable jobs work." Specifically:
    actually delivers — an alive/dead signal on a persisted surface — and the epic states that it
    ships no progress surface. **Do not assert the progress form against a liveness-only
    implementation**; it would fail a correct build, the same defect as the old criterion 1.
-4b. **A detached task's own emitted items are retrievable from a *different* execution than the one
-   that emitted them.** **Unconditional, and separate from criterion 4** — this is the existing
+4b. **A detached task's own emitted items are retrievable from *every* execution that emitted them —
+   including across a reclaim/retry, not merely across one boundary.**
+
+   > **Fourth instance of the criterion-that-cannot-fail class, not a new discovery.** As written
+   > before, an implementation that mapped a task only to its **latest** request satisfied this
+   > criterion while **silently dropping attempt 1's items** — and that violates the shipped
+   > contract, which is explicit: *"Retries do NOT reset the start; **all attempts append to the same
+   > window**"* (`tasks/collection/types.ts:98-100`), pinned by
+   > `test/items/extract-window.test.ts:167` — *"retries union all attempts under the same task"*.
+   > So the check must span **request A (attempt 1) and request B (attempt 2 after reclaim)**.
+
+   **Unconditional, and separate from criterion 4** — this is the existing
    `TaskHandle.items()` contract, not the new progress surface, so **OQ-C's liveness-only outcome does
    not relax it.** Stated separately for exactly that reason: folded into criterion 4 it would vanish
    with the progress surface. Today the accessor closes over the constructing request's emitter and
@@ -909,6 +923,23 @@ a different execution than the one that emitted them.**
 > **Sequencing:** after M3 (which creates the boundary), and it should **share whatever persisted
 > item storage M5 lands** if M5 lands one — one mechanism, two contracts. If M5 narrows to
 > liveness-only, this issue owns the storage question outright.
+
+##### Cross-cutting lifetime constraint — item storage must outlive the board
+
+**This is Decision 2's axis one layer down** (board lifetime vs storage scope), so it is recorded
+here rather than left to one issue: **item storage lifetime must not be shorter than the board's.**
+
+Verified: retention **"operates at request granularity — entire old requests are removed, not
+individual items within a request"** (`engine/src/execution/retention.ts:33-37`). So a session with
+`request.retention.maxAge`/`maxItems` and a task on a longer-lived **user/org** board hits a real
+mismatch — the request record is deleted and **`items()` silently returns `[]` while the task is
+still alive and referenced.** Sharing ordinary request item storage is therefore insufficient on its
+own.
+
+**Binding: any issue that persists task items states how their lifetime relates to the board's.**
+**FIX-991** owns the mechanism and chooses between **pinning or copying the relevant items into
+storage with the board's lifetime**, or **explicitly bounding the cross-request contract to request
+retention and testing eviction.** **This document does not choose.**
 
 ### Hazard — `taskTools` is the path guarantees escape through
 
