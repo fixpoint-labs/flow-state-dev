@@ -252,11 +252,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
 
   // mutation
   //
-  // Exactly ONE of these five refuses anything: `setAssignee` declines on a
-  // terminal task, because reassigning work that will never run again is a write
-  // no caller can act on. The other four deliberately keep writing to terminal
+  // All five report a {@link TaskWriteOutcome}, so ONE return convention covers
+  // the whole patch surface rather than two conventions on five methods sharing
+  // one helper.
+  //
+  // Exactly ONE of them refuses anything: `setAssignee` declines on a terminal
+  // task, because reassigning work that will never run again is a write no
+  // caller can act on. The other four deliberately keep writing to terminal
   // tasks — labelling, re-prioritizing, or annotating a finished task is a real
-  // and used thing (a post-drain failure audit, a cascade's `skipped` marker).
+  // and used thing (a post-drain failure audit, a cascade's `skipped` marker) —
+  // so they can only ever answer `recorded` or `unchanged`.
   /**
    * Set the task's assignee.
    *
@@ -265,10 +270,10 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * already matches, `recorded` when it is written.
    */
   setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
-  setPriority(id: string, priority: number): Promise<void>;
-  addLabel(id: string, label: string): Promise<void>;
-  removeLabel(id: string, label: string): Promise<void>;
-  patchMetadata(id: string, patch: Record<string, unknown>): Promise<void>;
+  setPriority(id: string, priority: number): Promise<TaskWriteOutcome>;
+  addLabel(id: string, label: string): Promise<TaskWriteOutcome>;
+  removeLabel(id: string, label: string): Promise<TaskWriteOutcome>;
+  patchMetadata(id: string, patch: Record<string, unknown>): Promise<TaskWriteOutcome>;
 
   // query
   get(id: string): TaskHandle<TInput, TOutput> | undefined;

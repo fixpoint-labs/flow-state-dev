@@ -519,13 +519,13 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async setPriority(id, priority) {
-      await patchOne(id, "priority_changed", (task) =>
+      return patchOne(id, "priority_changed", (task) =>
         task.priority === priority ? undefined : { priority }
       );
     },
 
     async addLabel(id, label) {
-      await patchOne(id, "label_changed", (task) => {
+      return patchOne(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (labels.includes(label)) return undefined;
         return { labels: [...labels, label] };
@@ -533,7 +533,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async removeLabel(id, label) {
-      await patchOne(id, "label_changed", (task) => {
+      return patchOne(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (!labels.includes(label)) return undefined;
         return { labels: labels.filter((l) => l !== label) };
@@ -541,7 +541,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async patchMetadata(id, patch) {
-      await patchOne(id, "metadata_changed", (task) => {
+      return patchOne(id, "metadata_changed", (task) => {
         const merged = { ...(task.metadata ?? {}), ...patch };
         return { metadata: merged };
       });

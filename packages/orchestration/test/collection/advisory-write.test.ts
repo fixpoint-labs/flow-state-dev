@@ -573,41 +573,52 @@ describe.each([
    */
   describe("the four sibling patch methods stay writable on a terminal task", () => {
     it.each(["completed", "errored", "cancelled"] as const)(
-      "addLabel writes the label on a %s task",
+      "addLabel records on a %s task and writes the label",
       async (status) => {
         await settledInto(status);
         events.length = 0;
 
-        await collection.addLabel("t", "worker-error");
+        const outcome = await collection.addLabel("t", "worker-error");
 
+        expect(outcome).toEqual({ outcome: "recorded" });
         expect(collection.get("t")?.labels).toEqual(["worker-error"]);
         expect(events.at(-1)?.kind).toBe("label_changed");
       },
     );
 
-    it("removeLabel writes on a terminal task", async () => {
+    it("removeLabel records on a terminal task", async () => {
       await collection.addTask({ id: "t", goal: "t", labels: ["stale"] });
       await collection.cancel("t", "dropped");
 
-      await collection.removeLabel("t", "stale");
+      const outcome = await collection.removeLabel("t", "stale");
 
+      expect(outcome).toEqual({ outcome: "recorded" });
       expect(collection.get("t")?.labels).toEqual([]);
     });
 
-    it("setPriority writes on a terminal task", async () => {
+    it("setPriority records on a terminal task", async () => {
       await settledInto("errored");
 
-      await collection.setPriority("t", 9);
+      const outcome = await collection.setPriority("t", 9);
 
+      expect(outcome).toEqual({ outcome: "recorded" });
       expect(collection.get("t")?.priority).toBe(9);
     });
 
-    it("patchMetadata writes on a terminal task", async () => {
+    it("patchMetadata records on a terminal task", async () => {
       await settledInto("completed");
 
-      await collection.patchMetadata("t", { audited: true });
+      const outcome = await collection.patchMetadata("t", { audited: true });
 
+      expect(outcome).toEqual({ outcome: "recorded" });
       expect(collection.get("t")?.metadata).toEqual({ audited: true });
+    });
+
+    it("reports unchanged for an idempotent sibling write", async () => {
+      await collection.addTask({ id: "t", goal: "t", labels: ["dup"], priority: 3 });
+      expect(await collection.addLabel("t", "dup")).toEqual({ outcome: "unchanged" });
+      expect(await collection.removeLabel("t", "absent")).toEqual({ outcome: "unchanged" });
+      expect(await collection.setPriority("t", 3)).toEqual({ outcome: "unchanged" });
     });
 
     it("still throws on a missing task — a decline is not a blanket suppressor", async () => {

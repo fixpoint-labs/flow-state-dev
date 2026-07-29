@@ -515,13 +515,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setPriority(id, priority) {
-      await patchRef(id, "priority_changed", (task) =>
+      return patchRef(id, "priority_changed", (task) =>
         task.priority === priority ? undefined : { priority }
       );
     },
 
     async addLabel(id, label) {
-      await patchRef(id, "label_changed", (task) => {
+      return patchRef(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (labels.includes(label)) return undefined;
         return { labels: [...labels, label] };
@@ -529,7 +529,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async removeLabel(id, label) {
-      await patchRef(id, "label_changed", (task) => {
+      return patchRef(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (!labels.includes(label)) return undefined;
         return { labels: labels.filter((l) => l !== label) };
@@ -537,7 +537,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async patchMetadata(id, patch) {
-      await patchRef(id, "metadata_changed", (task) => {
+      return patchRef(id, "metadata_changed", (task) => {
         const merged = { ...(task.metadata ?? {}), ...patch };
         return { metadata: merged };
       });
