@@ -784,7 +784,7 @@ check('a converged epic folds only the verdict while routing ordinary feedback',
   assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'the verdict still folds')
   assert.deepEqual(labels(calls, 'route:epic-notes'), ['route:epic-notes'], 'and the ordinary feedback still routes')
   const foldPrompt = calls.find((c) => c.label === 'fold:epic').prompt
-  assert.match(foldPrompt, /Fold the verdict above and NOTHING ELSE/)
+  assert.match(foldPrompt, /Fold what is listed above and NOTHING ELSE/)
   assert.match(foldPrompt, /report roundsSpent: 0/)
   assert.equal(result.epic.reviewRounds, 2, 'the exemption buys no extra review round')
   assert.deepEqual(result.epicNotes, [{ summary: 'rename the helper', fanOut: ['FIX-2'] }])
@@ -858,7 +858,7 @@ check('a verdict-only fold is not told to fold absent review feedback', async ()
     respond: epicResponder({ epicReviewEvents: false }),
   })
   const p = calls.find((c) => c.label === 'fold:epic').prompt
-  assert.match(p, /Fold the verdict above and NOTHING ELSE/)
+  assert.match(p, /Fold what is listed above and NOTHING ELSE/)
   assert.match(p, /report roundsSpent: 0/)
   assert.ok(!/Triage against the bar first/.test(p), 'no re-reading of already-consumed comments')
 })
@@ -1595,6 +1595,59 @@ check('a multi-PR row surfaces a merge gate per green sub-PR, with its own PR nu
     result.gates.every((g) => g.pr),
     'a merge gate with no PR number cannot be surfaced',
   )
+
+  // ...and the same gate is produced when the scan answers those handles in its own order. The merge
+  // FOLD was converted to id-binding while this second consumer of `subPrStates` stayed positional, so
+  // a reordered scan folded correctly and then produced no gate at all: the green slice was never
+  // offered for merge, and a scout that consistently orders that way parks the DAG for good.
+  const reordered = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'b', merged: false, readyToMerge: false },
+            { id: 'a', merged: false, readyToMerge: true },
+          ],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(reordered.result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }])
+})
+
+check('a child spec review is held while the epic-spec is being folded', async () => {
+  // `spec` and `implement` were held because they author against the objective; `spec-review` was not,
+  // because the set was built from "creates a spec" rather than "writes against the objective".
+  // Folding review feedback into an existing spec is authoring, and it is the expensive one to get
+  // wrong: the worker is aligned to the pre-fold head and SPENDS A REVIEW ROUND against direction the
+  // fold may be replacing, and a round is not refundable.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' },
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specReviewRounds: 0, lastSeenActivityAt: 'old' })],
+    }),
+    respond: epicResponder({
+      epicReviewEvents: true,
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, newSpecReviewEvents: true, latestActivityAt: 'new' } },
+    }),
+  })
+  assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'the epic fold runs')
+  assert.deepEqual(workerLabels(calls), [], 'and the child spec-review does not run alongside it')
+  assert.deepEqual(result.heldForFold, [{ issueId: 'FIX-2', action: 'spec-review' }])
+  assert.equal(result.issues[0].specReviewRounds, 0, 'a held review spends no round')
+  assert.equal(result.issues[0].lastSeenActivityAt, 'old', 'and keeps its cursor, so the batch survives')
 })
 
 check('a merged sub-PR is folded into the durable table so the rebase gets scheduled', async () => {
@@ -2459,6 +2512,131 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
     'use the store adapter, not a bespoke cache',
     'a dead worker consumes nothing',
   )
+})
+
+check("a multi-PR row's blocker answer is forwarded to the nested DAG workers", async () => {
+  // One hop short is the same defect as no channel at all. The escalation came from a build or fix
+  // worker inside `issue-multi-pr`, and those are freshly spawned each wake — so a resolution that
+  // reaches only the outer issue-worker leaves the agent that actually hits the fork with nothing, able
+  // only to escalate the identical question again or guess the answer the gate existed to supply.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'pending' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+          blocker: null, // answered
+          blockerFor: 'a',
+          blockerResolution: 'use the store adapter, not a bespoke cache',
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: false },
+            { id: 'b', merged: false, readyToMerge: false },
+          ],
+        },
+      },
+    }),
+  })
+  const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.match(prompt, /Pass those through to issue-multi-pr/, 'the worker is told to forward it, not just told the answer')
+  assert.match(prompt, /blockerResolution: "use the store adapter, not a bespoke cache"/, 'in the args block, as a value it can pass')
+  assert.match(prompt, /blockerResolutionFor: "a"/, 'aimed at the slice that escalated, not broadcast to the ready set')
+})
+
+check('a nested DAG worker is given the answer, aimed at the slice that asked', async () => {
+  // The receiving half, in issue-multi-pr: the build worker for the slice that escalated gets the
+  // decision, and its sibling does not — a broadcast answer invites a worker to apply a decision made
+  // about someone else's fork.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: {
+      issueId: 'FIX-2',
+      subPrs: [
+        { id: 'a', status: 'pending', dependsOn: [] },
+        { id: 'b', status: 'pending', dependsOn: [] },
+      ],
+      blockerResolution: 'use the store adapter, not a bespoke cache',
+      blockerResolutionFor: 'a',
+    },
+    respond: multiResponder({}),
+  })
+  const forA = calls.find((c) => c.label === 'build:a').prompt
+  const forB = calls.find((c) => c.label === 'build:b').prompt
+  assert.match(forA, /has been ANSWERED by the human: use the store adapter/)
+  assert.match(forA, /do not escalate the same fork again/)
+  assert.doesNotMatch(forB, /ANSWERED by the human/, "a sibling slice is not handed another slice's decision")
+})
+
+check("an answered epic question is folded into the epic-spec before it is cleared", async () => {
+  // The question was persisted and re-surfaced every wake; the ANSWER had nowhere to live. No field
+  // held it, no prompt carried it to `epic-agent`, and nothing triggered a fold — so unless unrelated
+  // review activity happened to arrive, the epic-spec was never updated and every child issue kept
+  // working against the unresolved version. The coordinator dropping the question on the user's answer
+  // completed the loss: decision made, nothing recorded, no trace it was ever asked.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        name: 'thing',
+        branch: 'epic/thing',
+        prNumber: 100,
+        openQuestions: ['one store or two?'],
+        unsettled: [{ claim: 'does SSE resume across redeploys?', evidence: 'inconclusive', threads: 't' }],
+        answers: [
+          { question: 'one store or two?', answer: 'one, scoped per tenant' },
+          { question: 'does SSE resume across redeploys?', answer: 'assume it does not; buffer client-side' },
+        ],
+      },
+      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'an answer triggers a fold on its own')
+  const prompt = calls.find((c) => c.label === 'fold:epic').prompt
+  assert.match(prompt, /A: one, scoped per tenant/, 'and the fold is given the decision to record')
+  assert.match(prompt, /outside the review budget/, 'an answer to a question we asked is not another opinion')
+  assert.equal(result.epic.reviewRounds, 1, 'the fold still reports what it spent')
+
+  assert.deepEqual(result.epic.openQuestions, [], 'the folded question is cleared by the wake, not by the coordinator')
+  assert.deepEqual(result.epic.unsettled, [], 'and an answered INCONCLUSIVE claim with it')
+  assert.deepEqual(result.epic.answers, [], 'the answers are consumed')
+  assert.match(logs.join('\n'), /Folded 2 answered question\(s\)/)
+  assert.deepEqual(
+    result.blockers.filter((b) => /open question|INCONCLUSIVE/.test(b.blocker)),
+    [],
+    'and the human is not asked again',
+  )
+})
+
+check('an answered epic question survives a dead fold', async () => {
+  // The clearing is what makes the fold load-bearing: consume the answer without applying it and the
+  // question is gone AND the spec is unchanged, which is worse than either alone.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        name: 'thing',
+        branch: 'epic/thing',
+        prNumber: 100,
+        openQuestions: ['one store or two?'],
+        answers: [{ question: 'one store or two?', answer: 'one, scoped per tenant' }],
+      },
+      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({ nulls: ['fold:epic'], fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(result.epic.answers, [{ question: 'one store or two?', answer: 'one, scoped per tenant' }])
+  assert.deepEqual(result.epic.openQuestions, ['one store or two?'], 'the question stays until an answer is actually applied')
 })
 
 check('the next sibling blocker is lifted in the same pass that clears the answered one', async () => {
@@ -3695,6 +3873,10 @@ check('INVARIANT: every field the epic wake parks on is documented as one the co
   const readsButCannotWrite = {
     blockerResolution: /write the human's decision into \*\*`blockerResolution`\*\*/,
     approvedInSession: /record the \*\*head SHA they approved\*\* in this field/,
+    // The epic-altitude twin, and the one that proves the invariant needed to exist: `openQuestions`
+    // and `unsettled` were both durable, re-surfaced questions whose ANSWER had no field at all, so the
+    // coordinator's only move was to drop the question — decision made, spec unchanged, no record.
+    answers: /add `\{ question, answer \}` to this array/,
   }
   for (const [field, writtenBy] of Object.entries(readsButCannotWrite)) {
     assert.ok(src.includes(field), `${field} is no longer read by the script — update this invariant`)

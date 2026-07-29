@@ -304,6 +304,24 @@ for (const n of args.subPrs || []) {
 }
 const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
 const goal = args.assembledGoal || {}
+// The human's answer to a decision a slice escalated, forwarded by the caller.
+//
+// This DAG's workers are the ones that hit the fork — the escalation came from a build or fix worker,
+// not from the caller — so a resolution that stops at the caller stops one agent too early: the worker
+// that resumes is freshly spawned, never saw the question, and can only escalate it again or guess.
+// Same channel as `epic-wake`'s `blockerResolution`, one hop further down. Consumed by the caller
+// (which clears its copy once it has dispatched), so this script only reads it.
+const blockerResolution = args.blockerResolution || null
+// Prefixed by `epic-wake`'s lift as `<sub-pr id>: <question>`, so the answer can be pointed at the
+// slice it belongs to rather than broadcast to every worker in the ready set.
+const resolutionFor = args.blockerResolutionFor || null
+const resolutionNote = (nodeId) =>
+  blockerResolution && (!resolutionFor || resolutionFor === nodeId)
+    ? `\nA decision this slice escalated has been ANSWERED by the human: ${blockerResolution}\nImplement it as given — do not re-derive the choice and do not escalate the same fork again. If it does not answer the fork you actually hit, report a new blocker naming precisely what is still open.\n`
+    : ''
+if (blockerResolution) {
+  log(`Carrying a human decision into ${resolutionFor ? `sub-PR ${resolutionFor}` : 'this issue\'s workers'}: ${blockerResolution}`)
+}
 
 // ---- Assemble: one state, one action per wake. -----------------------------------------
 const state = assembleState(nodes, goal)
@@ -430,7 +448,8 @@ if (state === 'NEEDS_FIX') {
   phase('Assemble')
   const fix = await agent(
     `Fix the assembled end-to-end goal failure for ${issueId}, tracked as ${goal.fixIssue}.\nFailure: ${goal.failure}\nEvidence (what was run and what happened): ${goal.evidence || 'none recorded'}\nLikely owning slice: ${goal.owningSubPr || 'unknown'}\n` +
-      `Open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.`,
+      `Open a NEW fix PR against the default branch that makes the assembled goal pass. A previous attempt may have died part-way — check for an existing branch or PR for ${goal.fixIssue} before creating another. The sub-PRs are already merged and their branches may be gone, so do not attempt to reopen them.` +
+      resolutionNote(goal.owningSubPr),
     { label: `assembled-fix:${issueId}`, phase: 'Assemble', schema: FIX_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
 
@@ -477,12 +496,14 @@ const built = await parallel(
   ready.map((item) => () =>
     agent(
       item.action === 'rebase'
-        ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged. Rebase it onto fresh ${item.base} so its diff carries only its own slice, push, and report. Do not merge it.`
+        ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged. Rebase it onto fresh ${item.base} so its diff carries only its own slice, push, and report. Do not merge it.` +
+          resolutionNote(item.node.id)
         : `Implement sub-PR ${item.node.id} of ${issueId} in your own worktree.\n` +
           `Branch: fix/${issueId}-${item.node.id}, based on ${item.base}.\n` +
           (item.base === 'origin/main'
             ? `Fetch origin/main first — the checkout you inherited drifts behind as sibling PRs merge.\n`
             : `You are stacking on an unmerged dependency's branch so review can start now; it will be rebased onto main when the dependency merges.\n`) +
+          resolutionNote(item.node.id) +
           `Run issue-implement scoped to THIS sub-PR's deliverables only: implement the slice, run \`review\`, open the sub-PR. Stop before merge. Do not prompt the user.`,
       {
         label: `${item.action}:${item.node.id}`,

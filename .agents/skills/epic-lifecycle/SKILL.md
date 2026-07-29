@@ -137,7 +137,7 @@ even if more are queued. State the chosen N and the cap to the user.
      args: {
        epic:  { issueId, name, branch, headSha, prNumber, approved, headUnconfirmed,
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
-                verdicts, unsettled, openQuestions },
+                verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolution,
@@ -188,14 +188,24 @@ even if more are queued. State the chosen N and the cap to the user.
      to show the user when you ask it, and where their answer gets posted. Drop it and you can only
      relay the claim text. Cleared with the row's `blocker`, in the same breath.
    - **`epic.openQuestions`** — cross-cutting decisions the fold raised that need *you*. Surfaced in
-     `blockers` every wake until you drop the entry, same contract as `unsettled` — put the question to
-     the user and remove it once answered. `epic-agent`'s return contract produces these; the schema
-     accepts them under this name, so the two agree.
+     `blockers` every wake. `epic-agent`'s return contract produces these; the schema accepts them
+     under this name, so the two agree.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
      decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
      `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every
-     wake, forever). They are re-surfaced in `blockers` every wake until you drop the entry, so
-     dropping them from `args` is how the decision gets lost.
+     wake, forever). Also re-surfaced in `blockers` every wake.
+   - **`epic.answers`** — **how both of those get resolved, and the only way they do.** When the user
+     answers a question from either list, add `{ question, answer }` to this array — `question` matching
+     the `openQuestions` string or the `unsettled` claim verbatim, so the wake can pair them — and
+     **leave the original entry where it is.** Do not drop it yourself. An answer here triggers an
+     `epic-agent` fold on its own (no review activity or verdict needed), outside the review budget,
+     which records the decision in the epic-spec; the wake then removes the question from
+     `openQuestions`/`unsettled` for you, and only once that fold actually returned.
+
+     Getting this backwards is a silent loss, and it's why the field exists: dropping the question when
+     the user answers leaves the epic-spec unchanged and the answer nowhere, so every child issue keeps
+     working against the unresolved version and the decision has to be made again — with no record that
+     it ever was. You can't clear the question yourself because you can't know the fold succeeded.
 
    It returns
    `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, heldForFold,

@@ -515,6 +515,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // was fresh. A worker that DIED never reaches `nextRow`, so a failed dispatch leaves the
     // resolution intact for the retry — the same rule as the cursor.
     blockerResolution: null,
+    blockerResolutionFor: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
     status: worker.status,
     verdicts,
@@ -589,7 +590,15 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   // (Review raised the stronger form — hold until the objective is re-approved — twice; that one
   // deadlocks, because folding is how the objective becomes approvable at all. This is the narrow
   // version that removes the risk without the deadlock.)
-  const AUTHORS_AGAINST_OBJECTIVE = new Set(['spec', 'implement'])
+  // `spec-review` belongs here for the same reason the other two do, and was missed because the set was
+  // built from "creates a spec" rather than "writes against the objective". Folding review feedback into
+  // an existing spec is authoring: the worker is aligned to the pre-fold `epicHead`, and if the fold
+  // changes the objective or a cross-cutting decision it commits — and SPENDS A REVIEW ROUND — against
+  // direction that no longer holds. That round is not refundable, which makes this the most expensive
+  // of the three to get wrong. Deferring it one wake is safe in the way the others are: the epic fold
+  // doesn't wait on a child spec review, so nothing deadlocks, and the row keeps its cursor so the
+  // batch is genuinely re-derived rather than consumed.
+  const AUTHORS_AGAINST_OBJECTIVE = new Set(['spec', 'spec-review', 'implement'])
   const heldForFold = []
 
   for (const row of rows) {
@@ -723,6 +732,12 @@ function foldMultiPrScan(row, fresh) {
       out.blockerFor = null
     }
   }
+  // Which slice a pending resolution answers, kept for the dispatch. The lift prefixes the id into
+  // `blocker` (`a: which shape?`), and `blockerFor` records it — but the clearing below nulls that
+  // marker in the same pass, so by dispatch time the row would no longer know which of its slices the
+  // human answered, and the resolution would be broadcast to every worker in the ready set. Derived
+  // here rather than asked of the coordinator: it already exists, one hop earlier.
+  if (row.blockerResolution && row.blockerFor) out.blockerResolutionFor = row.blockerFor
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
     let changed = false
@@ -1278,11 +1293,25 @@ const epicAtBudget = atReviewBudget(epic.reviewRounds, epic.aboveBarFound)
 // A POC verdict on a cross-cutting claim is folded regardless of the budget — new evidence is
 // not another opinion (orchestration.md § "What it costs").
 const epicVerdictsToFold = epic.verdicts && epic.verdicts.length ? epic.verdicts : null
+// The human's ANSWERS to questions this epic asked — `openQuestions` and `unsettled` claims alike.
+//
+// Both were persisted, re-surfaced every wake, and dropped by the coordinator once answered, which
+// made the question durable and its answer nothing at all: no field held it, no prompt carried it to
+// `epic-agent`, and no fold was triggered by it — so unless unrelated review activity happened to
+// arrive, the epic-spec was never updated and every child issue kept working against the unresolved
+// version. A question surfaced forever is better than one dropped; a question ANSWERED and dropped is
+// the same loss with the audit trail removed.
+//
+// Modelled on `verdicts`, which is the same shape one step earlier (new information that has to reach
+// the spec): it triggers a fold on its own, is carried until a fold returns to consume it, and is
+// exempt from the review budget — an answer to a question we asked is not another opinion.
+const epicAnswersToFold = epic.answers && epic.answers.length ? epic.answers : null
 // The verdict's budget exemption covers the VERDICT ONLY. When a carried verdict and ordinary
 // converged review feedback coexist, folding both would let the evidence exemption smuggle in a
 // full extra review round — so the two paths run side by side: the fold takes the verdict, and
 // the converged feedback still goes out through the notes route.
-const foldEpicWanted = !!epicVerdictsToFold || (epicCursorMovable && newEpicReviewEvents && !epicAtBudget)
+const foldEpicWanted =
+  !!epicVerdictsToFold || !!epicAnswersToFold || (epicCursorMovable && newEpicReviewEvents && !epicAtBudget)
 // At budget the epic-spec stops being FOLDED — but the feedback still has to be ROUTED, or
 // convergence silently drops it. The gate scout returns only a boolean and a timestamp, so
 // nothing here knows what the comments said or which issues they touch: that needs its own
@@ -1383,6 +1412,14 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // re-run the end-to-end goal and file a second repair for a gap already tracked.
               `  assembledGoal: ${JSON.stringify(item.row.assembledGoal || {})}\n` +
               `  multiPrPending (carried): ${!!item.row.multiPrPending}\n` +
+              // The nested workers are the ones that hit the fork, so the answer has to travel with the
+              // args — telling YOU the decision and stopping there leaves the freshly-spawned build or
+              // fix worker at the same fork, able only to escalate again or guess. One hop short is the
+              // same defect as no channel at all.
+              (item.row.blockerResolution
+                ? `  blockerResolution: ${JSON.stringify(item.row.blockerResolution)}${item.row.blockerResolutionFor ? `\n  blockerResolutionFor: ${JSON.stringify(item.row.blockerResolutionFor)}` : ''}\n` +
+                  `Pass those through to issue-multi-pr as well — its build and fix workers are the ones that escalated, and they are freshly spawned with none of this context.\n`
+                : '') +
               `ALWAYS report multiPrPending — true if the DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step) so the next wake dispatches you again rather than waiting for an event that will never come, false once it has drained. If you did not run a DAG step this pass, echo the carried value above rather than answering false: guessing false strands slices that no external event will wake, and there is no other channel that can set it again.\n` +
               // A malformed plan (duplicate id, dependency cycle, unknown dependency) dispatches
               // nothing and only a human can fix it, so it has to come back as a BLOCKER. Returned
@@ -1406,8 +1443,13 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           ? `A POC settled ${epicVerdictsToFold.length} cross-cutting claim(s) for this epic. Fold them FIRST and record each in the epic-spec's cross-cutting decisions so a sibling issue can't reopen it:\n${renderVerdicts(epicVerdictsToFold)}\n` +
             `Post the evidence-backed reply on the thread. This fold is outside the review budget — new evidence is not another opinion.\n\n`
           : '') +
+        (epicAnswersToFold
+          ? `The human ANSWERED ${epicAnswersToFold.length} open question(s) this epic asked. Fold each into the epic-spec as a recorded decision — in cross-cutting decisions if it is one, otherwise wherever the question was raised — so no sibling issue reopens it and every child worker reads the resolved version:\n` +
+            epicAnswersToFold.map((a) => `  - Q: ${a.question}\n    A: ${a.answer}`).join('\n') +
+            `\nReply on the thread where the question was raised if there is one. This fold is outside the review budget — an answer to a question we asked is not another opinion. These are DECISIONS: record them as given rather than re-deriving or re-opening them.\n\n`
+          : '') +
         (epicAtBudget || !newEpicReviewEvents
-          ? `Fold the verdict above and NOTHING ELSE — there is no new review feedback to fold${epicAtBudget ? ' and the review budget is spent' : ''}, so do not re-read or re-fold already-consumed comments, and report roundsSpent: 0. The evidence exemption covers the verdict only.\n`
+          ? `Fold what is listed above and NOTHING ELSE — there is no new review feedback to fold${epicAtBudget ? ' and the review budget is spent' : ''}, so do not re-read or re-fold already-consumed comments, and report roundsSpent: 0. The exemption covers the verdict and the answers only.\n`
           : `Fold the outstanding review feedback on epic PR #${epic.prNumber} into the epic-spec on branch ${epic.branch}, in your worktree.\n` +
             `Triage against the bar first: only objective-level or cross-cutting-decision-level feedback is folded. Anything about a single issue's internals is routed to that issue as an implementer note, never into the epic-spec — return each as a fanOut entry with the note text and the issues it concerns.\n`) +
           `Refresh the epic-spec's running index from the PR handles already recorded. Never re-review to satisfy a bot.\n` +
@@ -1522,12 +1564,22 @@ const actionByIssue = new Map(plan.advance.map((i) => [i.row.id, i.action]))
 // just as thoroughly as clearing it did.
 // Durable, for the same reason `unsettled` is: a question surfaced once and forgotten is a decision
 // lost. The coordinator drops an entry when it records the answer.
-const epicOpenQuestions = [...(epic.openQuestions || [])]
+// An answer is only spent once a fold RETURNED to record it — the same rule verdicts get, and for the
+// same reason: a dead `epic-agent` folded nothing, so dropping the answer would leave the question
+// removed and the spec unchanged, which is worse than either alone.
+const answeredThisWake = new Set(epicFold ? (epicAnswersToFold || []).map((a) => a.question) : [])
+if (answeredThisWake.size) {
+  log(`Folded ${answeredThisWake.size} answered question(s) into the epic-spec; clearing them from the epic's open list.`)
+}
+
+const epicOpenQuestions = [...(epic.openQuestions || [])].filter((q) => !answeredThisWake.has(q))
 for (const q of (epicFold && epicFold.openQuestions) || []) {
   if (!epicOpenQuestions.includes(q)) epicOpenQuestions.push(q)
 }
 
-const epicUnsettled = [...(epic.unsettled || [])]
+// Same removal for an INCONCLUSIVE claim the human has now decided: `unsettled` entries are questions
+// too, keyed by their claim text, and they were subject to the identical drop-without-applying gap.
+const epicUnsettled = [...(epic.unsettled || [])].filter((u) => !answeredThisWake.has(u.claim))
 for (const v of epicFold ? (epicVerdictsToFold || []).filter((v) => v.verdict === 'INCONCLUSIVE') : []) {
   if (!epicUnsettled.some((u) => u.claim === v.claim)) {
     epicUnsettled.push({ claim: v.claim, evidence: v.evidence || null, threads: v.threads || null })
@@ -1590,10 +1642,15 @@ const gates = [
       // Single-PR: the row's own impl PR.
       if (r.readyToMerge && r.implPr) gates.push({ kind: 'merge', issueId: r.id, pr: r.implPr })
       // Multi-PR: each sub-PR the scan reported green, named so the human knows which slice.
-      for (const [i, s] of (r.subPrs || []).entries()) {
-        // Positional, and an id mismatch is not trusted — same rule as the merge fold above.
-        const live = (r.subPrStates || [])[i]
-        if (live && live.id && live.id !== s.id) continue
+      // Bound through `subPrScanBinding` — the SAME reader the durable fold uses. This was the second
+      // consumer of `subPrStates` and it stayed positional when the fold was converted, so a scan that
+      // answered every handle in its own order was folded correctly and then produced no merge gate:
+      // the green slice was never offered, and a scout that consistently orders that way parks the DAG
+      // for good. Two readers of one array is how the first version of this bug happened; leaving one
+      // of them behind is how it came back.
+      const gateBinding = subPrScanBinding(r.subPrs, r.subPrStates)
+      for (const s of r.subPrs || []) {
+        const live = gateBinding ? gateBinding.byId.get(s.id) : null
         // A green dependent whose `stackedOn` still names an unmerged prerequisite must NOT be
         // offered for merge: its base is that branch, so merging lands it into the prerequisite (or
         // makes the prerequisite's PR carry both slices), destroying the isolation the DAG exists
@@ -1665,6 +1722,9 @@ return {
     unsettled: epicUnsettled,
     // Same contract: cross-cutting questions the fold raised, carried until answered.
     openQuestions: epicOpenQuestions,
+    // Answers awaiting a fold. Cleared only once one RETURNED and applied them — a dead fold keeps
+    // them, exactly as it keeps a verdict, so an infrastructure failure can't swallow a human decision.
+    answers: epicFold ? [] : epicAnswersToFold || [],
   },
   epicFold: epicFold ? { folded: epicFold.folded, fanOut: epicFold.fanOut || [] } : null,
   // Converged epic-PR feedback, read but not folded — the coordinator routes each note to the
