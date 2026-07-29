@@ -359,7 +359,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async complete(id, output, options) {
-      await transitionRef(
+      return transitionRef(
         id,
         "completed",
         "completed",
@@ -387,7 +387,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
         if (shouldRetryOnFail(current as Task)) {
-          await transitionRef(
+          return transitionRef(
             id,
             "pending",
             "retried",
@@ -398,10 +398,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             }),
             options
           );
-          return;
         }
       }
-      await transitionRef(
+      return transitionRef(
         id,
         "errored",
         "errored",

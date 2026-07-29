@@ -207,9 +207,15 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Mark the task completed with `output`.
    *
    * Throws on an illegal transition. Pass `options` to make the write
-   * advisory instead — see `TaskTransitionOptions`.
+   * advisory instead — see `TaskTransitionOptions`. An advisory decline is
+   * reported on the returned {@link TaskWriteOutcome}; discarding it is
+   * supported and behaves exactly as before.
    */
-  complete(id: string, output: TOutput, options?: TaskTransitionOptions): Promise<void>;
+  complete(
+    id: string,
+    output: TOutput,
+    options?: TaskTransitionOptions
+  ): Promise<TaskWriteOutcome>;
   /**
    * Mark the task failed.
    *
@@ -225,8 +231,16 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    *   `task-change` item with `kind: "retried"`.
    * - Otherwise this is a *hard* fail: status transitions to terminal
    *   `errored` with the error captured on `task.error`.
+   *
+   * An advisory decline is reported on the returned {@link TaskWriteOutcome},
+   * from whichever branch ran; discarding it is supported and behaves exactly
+   * as before.
    */
-  fail(id: string, error: string, options?: TaskTransitionOptions): Promise<void>;
+  fail(
+    id: string,
+    error: string,
+    options?: TaskTransitionOptions
+  ): Promise<TaskWriteOutcome>;
   block(id: string, reason?: string): Promise<void>;
   unblock(id: string): Promise<void>;
   awaitReview(id: string, feedback?: string): Promise<void>;

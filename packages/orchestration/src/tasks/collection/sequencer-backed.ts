@@ -367,7 +367,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async complete(id, output, options) {
-      await transitionTo(
+      return transitionTo(
         id,
         "completed",
         "completed",
@@ -396,7 +396,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       // exactly that shape, and passes any test that never sets `maxAttempts`.
       const current = ownTask(readTasks(), id);
       if (current !== undefined && shouldRetryOnFail(current)) {
-        await transitionTo(
+        return transitionTo(
           id,
           "pending",
           "retried",
@@ -407,9 +407,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           }),
           options
         );
-        return;
       }
-      await transitionTo(
+      return transitionTo(
         id,
         "errored",
         "errored",

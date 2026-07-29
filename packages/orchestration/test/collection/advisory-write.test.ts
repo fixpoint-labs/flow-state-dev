@@ -212,9 +212,11 @@ describe.each([
       await collection.cancel("t", "coordinator changed its mind");
       events.length = 0;
 
+      // Resolves rather than throwing — that is the FIX-951 contract. What it
+      // resolves TO is the FIX-976 verdict; either way nothing is thrown.
       await expect(
         collection.fail("t", "worker blew up", ADVISORY)
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ outcome: "declined" });
 
       const task = collection.get("t");
       expect(task?.status).toBe("cancelled");
@@ -252,7 +254,7 @@ describe.each([
 
       await expect(
         collection.fail("t", "worker blew up", ADVISORY)
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ outcome: "declined" });
 
       const task = collection.get("t");
       expect(task?.status).toBe("cancelled");
@@ -624,6 +626,102 @@ describe.each([
     it("still throws on a missing task — a decline is not a blanket suppressor", async () => {
       await expect(collection.setAssignee("nope", "w")).rejects.toThrow(/not found/);
       await expect(collection.addLabel("nope", "l")).rejects.toThrow(/not found/);
+    });
+  });
+
+  /**
+   * `complete` / `fail` report their advisory decline too. FIX-976 never calls
+   * these — its tools reach `setAssignee` and `cancel` — so this is the
+   * epic-coherence half. It is also the only place `disallowed` and `lost-claim`
+   * become observable through a public method, since `cancelled` is a legal
+   * target from every non-terminal status.
+   *
+   * The decline itself stays SILENT: nothing written, no change item. Only the
+   * return value is new.
+   */
+  describe("complete / fail report their advisory decline", () => {
+    it("declines a complete onto a settled task with reason terminal, still silently", async () => {
+      await claimed({ id: "t" });
+      await collection.cancel("t", "coordinator changed its mind");
+      events.length = 0;
+
+      const outcome = await collection.complete("t", "worker finished anyway", ADVISORY);
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "terminal",
+        status: "cancelled",
+      });
+      expect(collection.get("t")?.output).toBeUndefined();
+      expect(events).toHaveLength(0);
+    });
+
+    it("declines a fail from pending with reason disallowed, not terminal", async () => {
+      // The nonterminal illegal move. Reported as `disallowed` because it is not
+      // about terminality at all — mis-attributing it would have a tool tell a
+      // coordinator its live task is finished.
+      await claimed({ id: "p" });
+      await collection.reclaim(Number.MAX_SAFE_INTEGER); // lease expiry → pending
+      expect(collection.get("p")?.status).toBe("pending");
+
+      const outcome = await collection.fail("p", "stale worker", ADVISORY);
+
+      expect(outcome).toEqual({ outcome: "declined", reason: "disallowed", status: "pending" });
+      expect(collection.get("p")?.status).toBe("pending");
+    });
+
+    it("declines a fail from blocked with reason disallowed", async () => {
+      await collection.addTask({ id: "b", goal: "b" });
+      await collection.block("b", "waiting on a human");
+
+      const outcome = await collection.fail("b", "stale worker", ADVISORY);
+
+      expect(outcome).toEqual({ outcome: "declined", reason: "disallowed", status: "blocked" });
+    });
+
+    it("declines a stale write with reason lost-claim on a legal transition", async () => {
+      // `in_progress → completed` is perfectly legal, so `ifAllowed` waves it
+      // through and only `expectAttempt` stops it. The reason has to say so, or a
+      // caller reads "terminal" about a task that is actively running.
+      const a = await claimed({ id: "t" });
+      await collection.reclaim(Number.MAX_SAFE_INTEGER);
+      await collection.claim("worker-2", { eligibility: (t) => t.id === "t" });
+      events.length = 0;
+
+      const outcome = await collection.complete("t", "stale output", {
+        ...ADVISORY,
+        expectAttempt: a.attempts,
+      });
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "lost-claim",
+        status: "in_progress",
+      });
+      expect(events).toHaveLength(0);
+    });
+
+    it("reports recorded on the normal path, from both fail branches", async () => {
+      await claimed({ id: "hard" });
+      expect(await collection.fail("hard", "no budget", ADVISORY)).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("hard")?.status).toBe("errored");
+
+      // The retry branch reports too — it is a different `transitionTo` call, and
+      // threading the verdict into only the hard-fail branch would pass every
+      // case that never sets `maxAttempts`.
+      await claimed({ id: "soft", maxAttempts: 3 });
+      expect(await collection.fail("soft", "flaky", ADVISORY)).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("soft")?.status).toBe("pending");
+      expect(collection.get("soft")?.feedback).toBe("flaky");
+    });
+
+    it("reports recorded from complete on a live task", async () => {
+      await claimed({ id: "t" });
+      expect(await collection.complete("t", "ok", ADVISORY)).toEqual({ outcome: "recorded" });
     });
   });
 });
