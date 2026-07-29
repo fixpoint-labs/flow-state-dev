@@ -301,6 +301,11 @@ After the PR is open, the skill's job is not finished — every re-invocation fa
 
 Once the PR is open, this skill owns it until it merges. Whenever the skill is re-invoked with PR activity (new comments, new review, change requests), run this loop. The "never leave a code-related comment unresponded to" rule applies across re-invocations: a comment from yesterday is still a new comment if it doesn't yet have an `eyes` reaction from us.
 
+**The loop is capped at twelve rounds.** One pass over the outstanding batch is one round. At the twelfth, stop auto-handling feedback and ask the human — the full rule, and why the number is what it is, is in [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR feedback: the round cap" (canonical). Two things are this skill's:
+
+- **Report the round you spent.** Under a coordinator, return `prFeedbackRoundsSpent` — `1` for a normal pass, `0` for a batch that was nothing but acknowledgements and process chatter (no code comment, nothing to fix or answer). Standalone, keep the count in the handle cache yourself. If you escalate a blocker mid-round you didn't finish it: report `0`.
+- **Check the cap at 10.7**, before deciding to continue.
+
 #### 10.1: Enumerate every comment and review on the PR
 
 **First, get onto the PR branch.** Under a coordinator each feedback round runs in a *fresh* worktree, so don't assume you're still on `fix/{ISSUE-ID}`. Run `gh pr view` for the identifiers, extract `headRefName`, then check out the PR head from origin before enumerating (and before any later change or `git push`) — do **not** re-base it on `main`, that would drop the PR's commits:
@@ -409,9 +414,19 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 
-#### 10.7: Continue until merged
+#### 10.7: Continue until merged — or until the twelfth round
 
-After processing the batch:
+After processing the batch, **check the round count first.**
+
+**If this was the twelfth round**, the loop stops here. Twelve rounds is well past a normal review, so the working assumption is that something structural is wrong — the same objection coming back in different words, or an approach that should be revisited rather than patched. Do three things and then stop:
+
+1. **Post one pause comment on the PR** — the round count, which threads are still open, and that the work is paused pending direction. Every comment in *this* batch still gets its reply first (10.6 is not waived by the cap); the pause comment is in addition to those, not instead of them. Don't push further code after it.
+2. **Say what you actually think.** The human is deciding whether to keep going or re-examine the approach, and you have the one thing they don't: you've read every round. State plainly whether this is converging slowly or looping, name the objection that keeps coming back if there is one, and say what you'd change. A bare "12 rounds reached" makes them re-read the thread to recover what you already know.
+3. **Surface it and stop.** Standalone, ask the user directly. Under a coordinator, report `prFeedbackRoundsSpent: 1` and let the count do it — **do not report a `blocker` for the cap itself.** An escalating worker is charged zero rounds and keeps its batch unconsumed, so a blocker here would leave the counter one short of the cap and re-deliver this same batch after the human answered, re-posting every reply. The coordinator raises the question from the count. (A blocker for some *other* decision you genuinely can't make is unaffected.) Either way, **handle no further feedback on this PR** — no fixes, no pushes, not even for a comment that looks trivial — until they answer.
+
+When the answer comes back, carry it in as given (implement the decision, don't re-derive it), reset the count to zero, and resume the loop. The reset is what un-parks the issue.
+
+**Otherwise, continue:**
 
 - If reviews requested changes and you've addressed them all, re-request review:
   `gh pr edit {PR} --add-reviewer {handle}`

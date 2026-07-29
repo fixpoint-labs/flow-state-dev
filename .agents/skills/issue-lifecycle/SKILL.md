@@ -39,7 +39,8 @@ spec review, implementation, and several rounds of PR feedback.
 On each invocation, reconstruct the phase from a **small** read:
 
 - **Durable truth:** the Linear issue state + whether a spec PR / impl PR exist and
-  their status (open / review / CI / merged). Fetch these compactly (Linear MCP; the
+  their status (open / review / CI / merged). Fetch these compactly (Linear — see
+  CLAUDE.md → "Linear access" for the channel; the
   GitHub `pull_request_read` methods `get`, `get_check_runs`, `get_comments` — the
   approval-comment read — `get_reviews` — the approval-review read — and
   `get_review_comments` for inline diff threads).
@@ -68,7 +69,8 @@ On each invocation, reconstruct the phase from a **small** read:
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
   ID, spec PR#, impl PR#, branch, worktree path, current phase, the last action
-  taken, the **spec-review round count** (see the convergence budget below), and any
+  taken, the **spec-review round count** (see the convergence budget below), the
+  **PR-feedback round count** (`prFeedbackRounds` — see the cap below), and any
   **in-flight or settled claim** (`settling: <claim> · poc: in-flight | <verdict>` — see POC
   settlement below; a settled claim's evidence lives in the spec's §12, not here). A few
   lines. Update it at the end of every step. It is a cache of handles,
@@ -95,7 +97,7 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 | **NEEDS_SPEC** — no spec / not yet in spec review | Dispatch a sub-agent: *run `issue-spec <issue>`*. It researches, drafts **Part I ("The Case") and Part II ("The Build Plan")**, opens the spec PR **ready for review**, and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the spec PR to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. |
 | **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest as §13 notes, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review whose latest state is `APPROVED` on the current head, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical — *unless a POC settlement on a load-bearing claim is still in flight, in which case leave it open until the verdict lands* (see POC settlement below; this defers cleanup only, never implementation) — and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — apply the `spec approved` label as the mirror and proceed the same way. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
 | **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step via the **`issue-multi-pr` workflow** — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
-| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
+| **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
 
 ## The spec-review round budget (why AWAITING_SPEC_APPROVAL terminates)
@@ -143,6 +145,37 @@ and reaches the implementer; and implementation re-reviews the design against re
 
 The counter resets only if the *user* asks for a spec-level change after convergence — that
 starts a fresh direction question, not another polishing pass.
+
+## The PR-feedback round cap (why PR_FEEDBACK terminates)
+
+The spec side is bounded by the budget above. The **implementation** PR is the other
+unbounded loop, and the worse one: several reviewers comment on a diff, a worker fixes and
+replies, the fixes draw fresh comments, and every round looks individually reasonable. Round
+nine re-litigating round three is invisible from inside any single round.
+
+**Default cap: twelve auto-handled rounds** (`prFeedbackRounds` in the handle cache). The
+rule is canonical in [`orchestration.md`](../../../docs/contributing/orchestration.md) →
+"PR feedback: the round cap"; under `epic-lifecycle` the `epic-wake` workflow's
+`atPrFeedbackCap()` applies it as executable code. **Change that doc first, then both.**
+
+Count rounds the worker reports **spent** (`prFeedbackRoundsSpent`), not events dispatched —
+a batch of pure acknowledgements costs zero, an escalated blocker costs zero, an unreported
+round is charged one. Then:
+
+- **Rounds 1–11** — dispatch Step 10 on the event batch as normal.
+- **Round 12 returns** — **stop dispatching.** The worker has already posted its pause
+  comment on the PR (`issue-implement` 10.7). Surface the question to the user with the round
+  count, the open threads, and the worker's read on whether this is converging or looping.
+  Further PR events are recorded in the cache and **not acted on** — no fixes, no pushes. The
+  issue is parked: offer it no merge gate while it sits here.
+
+**The user's answer is the release.** Record it, carry it verbatim into the next dispatch's
+prompt (the escalating worker is gone — same handoff rule as any other blocker), and **reset
+`prFeedbackRounds` to zero**, which is what un-parks the issue. Nothing else clears it; an
+answer you never record leaves the issue parked and re-surfaced every wake.
+
+The cap gates **feedback handling only**. On a multi-PR issue the DAG keeps advancing — a
+ready slice, a rebase, the assembled goal — none of which is a feedback round.
 
 ## POC settlement (dispatch it, don't wait on it)
 
@@ -197,7 +230,8 @@ the epic objective gate already follows. Nothing else updates it now.
 only ever moves the issue *within spec review*; only the **impl** PR moves it to In
 Review / Done. Never let a spec PR's open/close/merge push the issue toward Done.
 
-Set the issue's status (Linear MCP `save_issue` with `stateId`, team `flow-state`
+Set the issue's status (`save_issue` with `stateId`, or `issueUpdate(input:{stateId:})`
+on the API — see CLAUDE.md → "Linear access"; team `flow-state`
 `1ec31154-539c-45d5-bee7-8d12f36357d6`) at each transition. IDs are inlined so no
 per-write lookup is needed:
 

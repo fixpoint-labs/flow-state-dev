@@ -7040,6 +7040,10 @@ check('INVARIANT: every field the epic wake parks on is documented as one the co
   // Set by the script (so the invariant fails if a field is renamed) and cleared only outside it.
   const parksOn = {
     blocker: /remove `blocker`, so the issue resumes/,
+    // The PR-feedback cap parks on a COUNTER rather than a text field, which makes it the easiest
+    // one to strand: there is nothing to delete, so a coordinator that records the human's answer
+    // and stops there leaves the row capped forever while believing it released it.
+    prFeedbackRounds: /set `prFeedbackRounds: 0`/,
     // `unsettled` is NOT here any more, and its removal is the point. Requiring the skill to say "drop the
     // matching entry" pinned the defect this invariant's own `answers` note describes: dropping the record
     // is the coordinator's only move when the answer has no field, and it loses the decision — the
@@ -7160,6 +7164,7 @@ check('INVARIANT: a parked row is never dispatched, whatever else is true', asyn
     ciFailed: [true, false],
     specReviewRounds: [0, 1, 2, 3],
     specLevelFound: [true, false],
+    prFeedbackRounds: [0, 11, 12],
     verdicts: [[], [{ claim: 'c', verdict: 'REFUTED' }]],
   })
 
@@ -7180,6 +7185,135 @@ check('INVARIANT: a parked row is never dispatched, whatever else is true', asyn
     }
   }
   assert.ok(space.length >= 500, `expected a real space, enumerated ${space.length}`)
+})
+
+check('the PR-feedback cap stops feedback rounds and nothing else', async () => {
+  // → orchestration.md § "PR feedback: the round cap". Three things have to hold together, and
+  // the third is the one a reasonable implementation gets wrong: capping the PHASE rather than
+  // the feedback dispatches strands a multi-PR issue's remaining slices for a reason that has
+  // nothing to do with the review loop.
+  const { atPrFeedbackCap, pendingAction, PR_FEEDBACK_CAP } = loadRules('epic-wake.js', [
+    'atPrFeedbackCap',
+    'PR_FEEDBACK_CAP',
+    'pendingAction',
+  ])
+
+  assert.equal(PR_FEEDBACK_CAP, 12, 'the cap is documented as twelve in orchestration.md')
+  assert.equal(atPrFeedbackCap(undefined), false, 'a row that has never been dispatched is not capped')
+  assert.equal(atPrFeedbackCap(PR_FEEDBACK_CAP - 1), false, 'the last allowed round must still run')
+  assert.equal(atPrFeedbackCap(PR_FEEDBACK_CAP), true)
+  assert.equal(atPrFeedbackCap(PR_FEEDBACK_CAP + 5), true, 'past the cap stays capped — the counter only resets')
+
+  // Every way a PR_FEEDBACK row can ask for a feedback round, refused at the cap and granted below it.
+  const triggers = [
+    { ciFailed: true },
+    { newPrEvents: true },
+    { newSpecReviewEvents: true },
+    { ciFailed: true, newPrEvents: true, newSpecReviewEvents: true },
+  ]
+  for (const trigger of triggers) {
+    const base = { id: 'FIX-2', phase: 'PR_FEEDBACK', latestActivityAt: 'now', ...trigger }
+    const below = pendingAction({ ...base, prFeedbackRounds: PR_FEEDBACK_CAP - 1 })
+    assert.equal(below && below.action, 'pr-feedback', `not dispatched below the cap: ${JSON.stringify(trigger)}`)
+    assert.equal(
+      pendingAction({ ...base, prFeedbackRounds: PR_FEEDBACK_CAP }),
+      null,
+      `feedback dispatched at the cap: ${JSON.stringify(trigger)}`,
+    )
+  }
+
+  // ...but the DAG is not feedback. A capped multi-PR row still builds its ready slices.
+  const dag = {
+    id: 'FIX-2',
+    phase: 'PR_FEEDBACK',
+    prFeedbackRounds: PR_FEEDBACK_CAP,
+    newPrEvents: true,
+    latestActivityAt: 'now',
+    multiPrPending: true,
+    subPrs: [{ id: 'a', dependsOn: [], status: 'pending' }],
+  }
+  const next = pendingAction(dag)
+  assert.equal(next && next.action, 'implement', 'the cap stalled a multi-PR DAG step, which is not a feedback round')
+})
+
+check('the PR-feedback counter charges rounds the way the cap needs', async () => {
+  // The counter IS the cap's mechanism — there is no separate flag — so each of these rules is
+  // load-bearing on its own. An unreported round charged zero makes the cap unreachable; an
+  // escalating worker charged one trips it a round early on a batch it never finished reading.
+  const { nextRow } = loadRules('epic-wake.js', [
+    'atReviewBudget',
+    'atPrFeedbackCap',
+    'pendingAction',
+    'CONSUMES_REVIEW_ACTIVITY',
+    'nextRow',
+  ])
+  const row = { id: 'FIX-2', phase: 'PR_FEEDBACK', prFeedbackRounds: 4 }
+  const ran = (worker, action = 'pr-feedback') => nextRow(row, { worker, action, landed: [], folded: false })
+  const done = (over = {}) => ({ issueId: 'FIX-2', phase: 'PR_FEEDBACK', ...over })
+
+  assert.equal(ran(done()).prFeedbackRounds, 5, 'an unreported round must be charged one, or the cap is unreachable')
+  assert.equal(ran(done({ prFeedbackRoundsSpent: 1 })).prFeedbackRounds, 5)
+  assert.equal(
+    ran(done({ prFeedbackRoundsSpent: 0 })).prFeedbackRounds,
+    4,
+    'a batch of pure acknowledgements says so explicitly and must be honoured',
+  )
+  assert.equal(
+    ran(done({ blocker: 'needs a call' })).prFeedbackRounds,
+    4,
+    'a worker that escalated did not finish the round — same rule as the cursor it also holds',
+  )
+  assert.equal(ran(done(), 'implement').prFeedbackRounds, 4, 'only a feedback dispatch is charged by default')
+  assert.equal(ran(undefined).prFeedbackRounds, 4, 'a dead worker mutates nothing beyond its cursor — the count is carried, not charged')
+
+  // The reset is the coordinator's, so nothing in the script may ever lower the count.
+  for (const spent of [undefined, 0, 1, 5]) {
+    const out = ran(done(spent === undefined ? {} : { prFeedbackRoundsSpent: spent }))
+    assert.ok(out.prFeedbackRounds >= row.prFeedbackRounds, `the script lowered the counter (spent=${spent})`)
+  }
+})
+
+check('a capped row is surfaced to the human and holds the epic open', async () => {
+  // The cap's blocker is DERIVED from the counter rather than stored, so this is what proves the
+  // question actually reaches the human — and that an epic cannot wrap over a review loop we
+  // stopped without an answer.
+  const { result: res } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 71, prFeedbackRounds: 12, newPrEvents: true })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': freshRow({ phase: 'PR_FEEDBACK', newPrEvents: true }) } }),
+  })
+
+  assert.equal(res.dispatched.length, 0, 'a capped row must dispatch no feedback worker')
+  const surfaced = res.blockers.find((b) => b.issueId === 'FIX-2')
+  assert.ok(surfaced, 'the cap was reached and nobody was told — a silent stop')
+  assert.match(surfaced.blocker, /PR-feedback cap reached/)
+  assert.match(surfaced.blocker, /12 rounds/, 'the human needs the count to decide')
+  assert.equal(res.mayWrap, false, 'the epic wrapped over an unanswered question')
+
+  // ...and the answer releases it: the coordinator resets the counter, and the row runs again.
+  const { result: resumed } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 71, prFeedbackRounds: 0, newPrEvents: true })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': freshRow({ phase: 'PR_FEEDBACK', newPrEvents: true }) } }),
+  })
+  assert.deepEqual(resumed.dispatched, ['pr-feedback:FIX-2'], 'resetting the counter must un-park the row')
+  assert.equal(resumed.blockers.length, 0)
+
+  // ...and work that no longer exists asks nothing. A cancelled row keeps its phase and its count,
+  // so without this the epic holds open on a question nobody can answer.
+  const { result: cancelled } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 71, prFeedbackRounds: 12 })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': freshRow({ phase: 'PR_FEEDBACK' }) },
+      linear: { 'FIX-2': { state: 'Canceled', blockedBy: [] } },
+    }),
+  })
+  assert.equal(cancelled.blockers.length, 0, 'a cancelled issue asked the human about work that no longer exists')
+  assert.equal(cancelled.mayWrap, true, 'the epic could not wrap over a cancelled capped row')
 })
 
 check('INVARIANT: an agent-reported id never decides which row a result lands on', async () => {

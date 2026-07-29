@@ -37,7 +37,7 @@ The target names one of three review objects. Resolve it first — the object an
 | `FIX-XXX` (Linear) | the **attached spec** — the *planned* approach, before/while it's built | the issue body | **forward estimate** — lines the spec would generate |
 | `<name>` (feature/area) | the current code implementing it | the issue/PR/wave it came from | current LOC of the isolated surface |
 
-- **`FIX-XXX`** → fetch the issue and its **attached spec document** via the Linear MCP tools. The issue body is the requirement; the spec is the approach under review. You're catching bloat *before it's written* — findings recommend cutting scope from the spec.
+- **`FIX-XXX`** → fetch the issue and its **attached spec document** from Linear (see CLAUDE.md → "Linear access" for the channel). The issue body is the requirement; the spec is the approach under review. You're catching bloat *before it's written* — findings recommend cutting scope from the spec.
 - **`<name>`** → use the `Explore` agent to **isolate the surface first** (which blocks/patterns/capabilities/files implement it), then review what's there. Pull the wave plan + journal under `docs/internal/waves/` or the originating PR for intent.
 
 For diff and feature targets, pull the **real line counts** before estimating. Every Δlines number is anchored to that real size (or, for a spec, a stated forward estimate) — report the size in the verdict.

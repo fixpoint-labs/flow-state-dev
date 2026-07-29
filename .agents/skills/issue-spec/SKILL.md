@@ -57,7 +57,7 @@ The steps run start to finish in one pass: pull and research the issue (Steps 1�
 
 ### Step 1: Pull the Linear Issue
 
-Use the Linear MCP tools to fetch the full issue:
+Fetch the full issue from Linear (see CLAUDE.md → "Linear access" for the channel):
 
 1. `get_issue` with `includeRelations: true` to get the issue details, description, labels, priority, and blocking/blocked-by relations
 2. Check for existing attached documents — read them with `get_document` if present
