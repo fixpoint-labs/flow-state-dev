@@ -189,7 +189,15 @@ function dedupeClaims(requests) {
  */
 function cursorUsable(row) {
   const hasActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
-  return !hasActivity || !!row.latestActivityAt
+  if (hasActivity && !row.latestActivityAt) return false
+  // A multi-PR row whose scan reported no per-handle state is an INCOMPLETE observation, not a row
+  // with nothing to report: the prompt asks for one entry per handle, so an omission means the scan
+  // didn't look. Letting it consume the batch loses a just-merged slice — the merge is never
+  // persisted while the feedback worker eats the activity that announced it, and the dependent slice
+  // or the assembled goal then parks with no further event coming. Requiring the field of every scan
+  // would burden single-PR rows with a meaningless `[]`; this fails closed only where it matters.
+  if (row.subPrs && row.subPrs.length && !(row.subPrStates && row.subPrStates.length)) return false
+  return true
 }
 
 /**
@@ -397,9 +405,12 @@ function nextRow(row, { worker, action, landed, folded }) {
     // field nobody meant to change. Structural edges come from the carried row; only observations
     // the worker actually reported are applied. A genuinely new slice is added as given.
     subPrs: worker.subPrs === undefined ? row.subPrs : mergeSubPrs(row.subPrs, worker.subPrs),
-    // Same rule, and for the same reason: the assemble state machine resumes from these handles
-    // across wakes, so clearing them restarts it — re-running the goal and filing a duplicate gap.
-    assembledGoal: worker.assembledGoal === undefined ? row.assembledGoal : worker.assembledGoal,
+    // Same rule as `subPrs`, and MERGED for the same reason: the schema permits a partial object, so a
+    // worker reporting only what it changed (`{ fixPr: 42 }`, `{ fixMerged: true }`) would otherwise
+    // drop the failure, the gap issue, the evidence and the blocker with it — and the next wake would
+    // re-run the goal before an unmerged repair, or restart the gap/repair cycle from scratch.
+    assembledGoal:
+      worker.assembledGoal === undefined ? row.assembledGoal : { ...(row.assembledGoal || {}), ...worker.assembledGoal },
     // Per-handle merge readiness was observed BEFORE this worker ran, and a worker pushes commits —
     // which invalidates an approval and re-runs checks. Surfacing the pre-worker observation would
     // tell the human to merge a head nobody has verified, so any worker that ran on this row voids
@@ -801,7 +812,8 @@ const PR_STATE_SCHEMA = {
     // needs the PR NUMBER of the slice that is green, and these rows have no single `implPr`.
     subPrStates: {
       type: 'array',
-      description: 'One entry per sub-PR handle given in the prompt. Required for a multi-PR row; omit for single-PR issues.',
+      description:
+        'One entry per sub-PR handle given in the prompt. Omit for a single-PR issue; on a multi-PR row it is MANDATORY — a scan that leaves it out is treated as an incomplete observation and consumes nothing.',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -1108,6 +1120,11 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // (The merged flags are folded into the durable `subPrs` / `assembledGoal` by foldMultiPrScan.)
     subPrStates: refreshedLive ? fresh.subPrStates || [] : [],
     repairReadyToMerge: refreshedLive ? !!fresh.repairReadyToMerge : false,
+    // A headless scan must not ERASE the last confirmed head. Spreading `fresh` persisted the null,
+    // and then a dead scout on the next wake read "no observed head" as compatible with any
+    // `approvedInSession` SHA — implementation dispatched without the approved head ever being
+    // confirmed current. The last thing we actually saw is better evidence than nothing.
+    headSha: (fresh && fresh.headSha) || row.headSha || null,
     linearState: li.state || row.linearState,
     linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
@@ -1528,6 +1545,11 @@ return {
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),
   blocked: plan.blocked.map((r) => ({ issueId: r.id, blockedBy: r.blockedBy })),
   held: plan.held.map((i) => i.row.id),
+  // Work deferred ONE wake for the fold that just ran. It is not waiting on an external event, so
+  // without this the coordinator ends its turn and the promised next wake depends on unrelated PR
+  // activity or the heartbeat — a wait with no path out, which is the thing the hold was not
+  // supposed to introduce. Non-empty means: run another wake NOW, against the folded objective.
+  heldForFold: plan.heldForFold.map((i) => ({ issueId: i.row.id, action: i.action })),
   verdicts: settled.filter(Boolean),
   settleRequests: [
     ...plan.queuedClaims,

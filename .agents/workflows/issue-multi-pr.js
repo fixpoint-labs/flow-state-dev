@@ -153,6 +153,12 @@ function readySet(nodes, cap) {
     const next = classify(node, byId)
     if (next) ready.push({ node, ...next })
   }
+  // A malformed plan fails the ENTIRE ready set, not just its own node. `byId` is the map every other
+  // node is classified against, so a bad row poisons its descendants: an invalid prerequisite
+  // persisted as `merged` reads as satisfied and its pending dependent is dispatched from
+  // origin/main in the very wake the plan is being reported as broken. Only a human can fix the plan,
+  // and nothing built in the meantime is trustworthy — so nothing is built.
+  if (invalid.length) return { ready: [], deferred: [], invalid }
   return { ready: ready.slice(0, cap), deferred: ready.slice(cap), invalid }
 }
 

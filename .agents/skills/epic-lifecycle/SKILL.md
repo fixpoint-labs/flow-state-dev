@@ -192,8 +192,15 @@ even if more are queued. State the chosen N and the cap to the user.
      dropping them from `args` is how the decision gets lost.
 
    It returns
-   `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, verdicts,
-   settleRequests, dispatched, deferred, converged }` — persist `epic` and `issues` verbatim.
+   `{ epicApproved, epic, epicFold, epicNotes, issues, gates, blockers, blocked, held, heldForFold,
+   unsettled, verdicts, settleRequests, dispatched, deferred, converged }` — persist `epic` and
+   `issues` verbatim.
+
+   **`heldForFold` non-empty means run another wake now, not end the turn.** Those rows were deferred
+   for exactly one wake because they author against an objective the fold was revising — and the fold
+   has now completed, so nothing external separates them from being dispatched. Ending the turn there
+   would make the "one wake" depend on unrelated PR activity or the heartbeat, which is the wait the
+   hold was not supposed to create.
 
    The workflow runs in the background: **end the turn** and continue at step 3 when its
    completion notification arrives.

@@ -1669,8 +1669,16 @@ check('clearing a row blocker also clears the nested repair blocker', async () =
     }),
     respond: epicResponder({
       // A pending event, so "no longer parked" is a real assertion rather than a row that had
-      // nothing to do anyway.
-      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new' } },
+      // nothing to do anyway — and per-handle state, because a multi-PR scan that omits it is an
+      // incomplete observation and deliberately consumes nothing.
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          newPrEvents: true,
+          latestActivityAt: 'new',
+          subPrStates: [{ id: 'a', merged: true, readyToMerge: false }],
+        },
+      },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
     }),
   })
@@ -2178,7 +2186,14 @@ check("a multi-PR row's PR feedback is handled before the DAG step", async () =>
       ],
     }),
     respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new' } },
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          newPrEvents: true,
+          latestActivityAt: 'new',
+          subPrStates: [{ id: 'a', merged: false, readyToMerge: false }],
+        },
+      },
       worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
     }),
   })
@@ -2327,6 +2342,103 @@ check('an in-session approval is refused when a live scan returns no head', asyn
     respond: epicResponder({ nulls: ['refresh:FIX-2'], worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } } }),
   })
   assert.deepEqual(workerLabels(dead.calls), ['implement:FIX-2'])
+})
+
+check('a multi-PR scan that omits per-handle state consumes nothing', async () => {
+  // The prompt asks for one entry per handle, so an omission means the scan didn't look. Consuming
+  // the batch anyway loses a just-merged slice: the merge is never persisted while the feedback
+  // worker eats the activity that announced it, and the dependent slice then parks with no event
+  // coming. A single-PR row is unaffected — requiring the field of every scan would be a tax.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false },
+          lastSeenActivityAt: 'old',
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      // Activity reported, per-handle state absent.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new' } },
+    }),
+  })
+  assert.deepEqual(labels(calls, 'pr-feedback:'), [], 'an incomplete observation does not consume the batch')
+  assert.equal(result.issues[0].lastSeenActivityAt, 'old', 'and the cursor holds so a later scan re-derives it')
+  assert.equal(result.issues[0].newPrEvents, true)
+
+  // A single-PR row with no sub-PRs is unaffected by the rule.
+  const single = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9, lastSeenActivityAt: 'old' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-3': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new', implPr: 9 } },
+      worker: { 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(single.calls), ['pr-feedback:FIX-3'])
+})
+
+check('a headless scan does not erase the last confirmed head', async () => {
+  // Persisting the null meant a dead scout on the NEXT wake read "no observed head" as compatible
+  // with any in-session approval — implementation dispatched without the approved head confirmed.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1', headSha: 'head2' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specApproved: false, specPr: 7, headSha: null } },
+    }),
+  })
+  assert.equal(first.result.issues[0].headSha, 'head2', 'the last thing actually observed survives')
+
+  // So a dead scout next wake still knows the approved SHA is stale.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...first.result.issues[0] }] }),
+    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+  })
+  assert.deepEqual(workerLabels(second.calls), [], 'a known-newer head still invalidates the approval')
+})
+
+check('a partial assembledGoal report merges into the carried state', async () => {
+  // The schema permits a partial object, so a worker reporting only `{ fixPr }` would otherwise drop
+  // the failure, the gap issue and the evidence — and the next wake would re-run the goal.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'stream closed early', evidence: 'ran it', fixIssue: 'FIX-50' },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', assembledGoal: { fixPr: 42 } } },
+    }),
+  })
+  const goal = result.issues[0].assembledGoal
+  assert.equal(goal.fixPr, 42, 'the reported field lands')
+  assert.equal(goal.failure, 'stream closed early', 'and the carried state it said nothing about survives')
+  assert.equal(goal.evidence, 'ran it')
+  assert.equal(goal.fixIssue, 'FIX-50')
+})
+
+check('fold-held work is returned so the coordinator re-enters instead of waiting', async () => {
+  // The hold defers work one wake, which is only true if something tells the coordinator to run
+  // another wake. Without this the turn ends and the next wake depends on unrelated PR activity —
+  // a wait with no path out, which is what the hold was not supposed to introduce.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 },
+      issues: [row('FIX-2')],
+    }),
+    respond: epicResponder({ epicReviewEvents: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.deepEqual(result.heldForFold, [{ issueId: 'FIX-2', action: 'spec' }])
 })
 
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
@@ -2620,8 +2732,8 @@ check('a duplicate sub-PR id is refused before anything is dispatched', async ()
   })
   assert.deepEqual(
     calls.map((c) => c.label),
-    ['build:b'],
-    'the duplicated node is refused; the sound one still builds',
+    [],
+    'a malformed plan builds NOTHING — `byId` is what every other node is classified against, so a bad row poisons its descendants',
   )
   assert.ok(result.invalid.some((i) => i.id === 'a' && i.duplicate))
   assert.match(logs.join('\n'), /a: appears MORE THAN ONCE in the plan/)
