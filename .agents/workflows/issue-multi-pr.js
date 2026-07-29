@@ -601,6 +601,7 @@ const built = await parallel(
         : item.action === 'rebase'
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged.\n` +
           `Fetch and check out ${item.node.branch} first — your worktree is fresh and starts on the lifecycle's checkout, NOT on this sub-PR. Rebasing whatever you inherited would move the wrong branch, and a reported success clears the stack marker so nothing retries it.\n` +
+          `Fetch ${item.base} explicitly as well, as a separate ref: the shared worktree's remote-tracking copy can predate the very merge that triggered this rebase, and rebasing onto a stale ref drops it while still reporting success — which clears the stack marker, so nothing retries it either.\n` +
           `Then rebase it onto fresh ${item.base} so its diff carries only its own slice, push, and report. Do not merge it.` +
           resolutionNote(item.node.id)
         : `Implement sub-PR ${item.node.id} of ${issueId} in your own worktree.\n` +

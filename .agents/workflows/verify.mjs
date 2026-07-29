@@ -3839,6 +3839,9 @@ check('a rebase is told to check out the branch it is rebasing', async () => {
   assert.ok(rebase)
   assert.match(rebase.prompt, /Fetch and check out fix\/b first/)
   assert.match(rebase.prompt, /NOT on this sub-PR/)
+  // The BASE needs its own fetch: the shared worktree's remote-tracking copy can predate the very merge
+  // that triggered the rebase, and rebasing onto a stale ref drops it while still reporting success.
+  assert.match(rebase.prompt, /Fetch origin\/main explicitly as well/)
 })
 
 check('unconsumable PR activity withholds every merge gate on the row', async () => {
@@ -4187,6 +4190,202 @@ check('late spec-PR feedback is routed instead of merged over', async () => {
   })
   assert.deepEqual(unreadable.result.gates.filter((g) => g.kind === 'merge'), [])
   assert.deepEqual(workerLabels(unreadable.calls), [], 'and nothing consumes what it cannot record')
+})
+
+check('a verdict parked behind a blocker does not spin the wake', async () => {
+  // `moreWorkNow` counted a verdict as work by inspecting state. `pendingAction` refuses to dispatch a
+  // parked row, so the immediate-continuation loop it asked for had no exit — a refresh every wake, forever,
+  // instead of ending the turn for the human answer the blocker is waiting on.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blocker: 'which shape?',
+          verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } } }),
+  })
+  assert.equal(result.moreWorkNow, false, 'a parked row is not runnable work')
+  assert.equal(result.issues[0].verdicts.length, 1, 'while the verdict itself is retained for after the answer')
+
+  // Unparked, the same verdict IS work.
+  const unparked = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } }, nulls: ['apply-verdict:FIX-2'] }),
+  })
+  assert.equal(unparked.result.moreWorkNow, true)
+})
+
+check('a handled CI failure does not ask for an immediate wake', async () => {
+  // `ciFailed` is scan-derived and NOT cleared when a worker handles it, so the returned row still reads as
+  // failing. Treating any dispatchable row as runnable work therefore asked for a wake every wake while CI
+  // was red — CI re-running is an external event, and waiting for it is the whole point.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(result.issues[0].ciFailed, true, 'the flag survives, as only a fresh scan can clear it')
+  assert.equal(result.moreWorkNow, false, 'so the turn ends and waits for the CI run')
+
+  // A returned DAG step that reported more work DOES ask, since nothing external gates it.
+  const dag = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'pending', dependsOn: [] }], multiPrPending: true })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: {
+        'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] },
+      },
+    }),
+  })
+  assert.equal(dag.result.moreWorkNow, true)
+})
+
+check('a cancelled row does not strand the epic short of wrap', async () => {
+  // Cancelled work carries verdict state nothing can ever apply: `pendingAction` treats it as gone, so no
+  // worker and no gate can clear it, and counting it as outstanding held the epic open permanently.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      return workerRes({ issueId: 'FIX-2' })
+    },
+  })
+  assert.equal(result.mayWrap, true, 'the epic can finish')
+  assert.equal(result.moreWorkNow, false, 'and nothing spins on it')
+})
+
+check('a carried epic verdict blocks wrap', async () => {
+  // An epic-level verdict has no issue row to land on, so if its fold loses the cap to a terminal row's
+  // worker the epic can look entirely finished while a cross-cutting decision is still unrecorded.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        name: 'thing',
+        branch: 'epic/thing',
+        prNumber: 100,
+        verdicts: [{ claim: 'one store per scope', verdict: 'CONFIRMED', evidence: 'ran it' }],
+      },
+      issues: [row('FIX-2', { phase: 'DONE', merged: true, implPr: 9 })],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      if (label === 'fold:epic') return null // the fold died, so the verdict is still carried
+      return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
+    },
+  })
+  assert.equal(result.epic.verdicts.length, 1, 'still owed')
+  assert.equal(result.mayWrap, false, 'so the epic surface stays open')
+})
+
+check('a fold the cap squeezed out asks for another wake', async () => {
+  // `foldEpicWanted && !plan.foldEpic` needs no external event — it lost a slot, nothing more.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      cap: 1,
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }] },
+      // A `pr-feedback` row, deliberately: a spec-authoring row would be HELD for the fold, and
+      // `heldForFold` already implies another wake — which masked whether the capped-out fold does.
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(result.moreWorkNow, true, 'the fold is runnable now, it just had no slot')
+  assert.deepEqual(result.deferred, [], 'and nothing else in the wake is asking for one')
+  assert.deepEqual(result.settleRequests, [])
+  assert.deepEqual(result.heldForFold, [])
+  assert.deepEqual(
+    result.issues.filter((r) => r.verdicts && r.verdicts.length).map((r) => r.id),
+    [],
+  )
+  assert.equal(result.dispatched.includes('fold:epic'), false, 'the fold did not run')
+})
+
+check('an unfolded verdict withholds every merge gate', async () => {
+  // Settle runs after Advance, so a REFUTED or INCONCLUSIVE verdict lands in the same wake a refresh may
+  // have marked the PR ready — merging then locks in an implementation the evidence just contradicted.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })],
+      settleRequests: [{ claim: 'SSE resumes', load: 'x', falsify: 'y', issueId: 'FIX-2' }],
+    }),
+    respond: epicResponder({
+      poc: { claim: 'SSE resumes', verdict: 'REFUTED', evidence: 'it does not' },
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true } },
+    }),
+  })
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'not merged on a refuted premise')
+  assert.equal(result.issues[0].verdicts.length, 1, 'the verdict is still owed a fold')
+})
+
+check('an approval batch with an unreadable cursor holds', async () => {
+  // This is the ONLY pass that reads spec-PR feedback, so dispatching with a cursor that cannot advance
+  // carried the batch once and then rediscovered it on every later timestamp-less scan.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc', newSpecReviewEvents: true, latestActivityAt: null },
+      },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'held until the scan can timestamp what it saw')
+
+  // With a timestamp the approval releases, carrying the batch as implementer notes.
+  const readable = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc', newSpecReviewEvents: true, latestActivityAt: 'new' },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(readable.calls), ['implement:FIX-2'])
+})
+
+check('a zero-round fold preserves the legacy epic authorization', async () => {
+  // The budget check normalizes `above_bar_found`; preserving only the camelCase field here persisted a
+  // resumed epic as unauthorized the moment any zero-round fold ran.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: {
+        issueId: 'FIX-1',
+        name: 'thing',
+        branch: 'epic/thing',
+        prNumber: 100,
+        epic_review_rounds: 2,
+        above_bar_found: true,
+        verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }],
+      },
+      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({
+      fold: { roundsSpent: 0, aboveBar: false, folded: 'recorded the settled claim', fanOut: [] },
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(result.epic.aboveBarFound, true, 'the authorization survives a fold that spent no round')
 })
 
 check('an epic with an unanswered question may not wrap', async () => {

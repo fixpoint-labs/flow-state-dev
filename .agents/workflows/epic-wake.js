@@ -137,7 +137,13 @@ function pendingAction(row) {
       // through (which is what the convergence rule does with remaining open threads anyway).
       if (row.specApproved) {
         return row.newSpecReviewEvents
-          ? { action: 'implement', why: 'spec approved on current head, with outstanding spec-PR feedback to carry as implementer notes' }
+          ? cursorUsable(row)
+            ? { action: 'implement', why: 'spec approved on current head, with outstanding spec-PR feedback to carry as implementer notes' }
+            : // The approval is real, but the batch riding with it cannot be recorded as handled — and this
+              // is the ONLY pass that reads spec-PR feedback, so dispatching would carry it once and then
+              // rediscover it on every later timestamp-less scan, re-handling and re-replying each time.
+              // The same hold the spec-review and CI paths already take.
+              null
           : { action: 'implement', why: 'spec approved on current head' }
       }
       if (row.newSpecReviewEvents) {
@@ -2257,6 +2263,11 @@ const gates = [
     // Keeping the handle but refusing the gate loses nothing — an orphaned PR still needs tracking — while
     // a merge gate on a row that is still AWAITING_SPEC_APPROVAL is incoherent whatever produced it.
     .filter((r) => POST_SPEC_PHASES.has(r.phase))
+    // ...and not while a VERDICT is still unfolded. Settle runs after Advance, so a POC returning REFUTED
+    // or INCONCLUSIVE lands in the same wake a refresh may have marked the PR ready — and merging then locks
+    // in an implementation whose load-bearing premise the evidence just contradicted, before any wake has
+    // folded it. One wake's delay against a merge nobody can take back.
+    .filter((r) => !(r.verdicts || []).length)
 
     .flatMap((r) => {
       const gates = []
@@ -2307,9 +2318,9 @@ const gates = [
     }),
 ]
 
-return {
-  epicApproved,
-  epic: {
+// Hoisted so the wrap predicate below reads the SAME epic state that goes out, rather than a second
+// copy of the conditions that would drift from it.
+const epicOut = {
     ...epic,
     // Advance the cursor only if the fold actually returned (or there was nothing new) — same
     // consumed-not-observed rule as the issue rows. The TIMESTAMP is the real cursor; the SHA
@@ -2347,7 +2358,12 @@ return {
     // it reports `false`, which would revoke a third round an earlier real round authorized. So
     // the fold's answer is authoritative only when it actually spent a round; a zero-round fold
     // (evidence exemption, or a batch of pure factual corrections) preserves the flag.
-    aboveBarFound: epicFold && (epicFold.roundsSpent || 0) > 0 ? !!epicFold.aboveBar : !!epic.aboveBarFound,
+    // `carriedFlag`, not `epic.aboveBarFound`: the budget check normalizes the legacy `above_bar_found`, and
+    // preserving only the camelCase field here persisted a resumed epic as UNAUTHORIZED the moment any
+    // zero-round fold ran — so the next wake declared convergence and skipped the permitted third round.
+    // Normalizing in one place and dropping it in the other is the same defect twice.
+    aboveBarFound:
+      epicFold && (epicFold.roundsSpent || 0) > 0 ? !!epicFold.aboveBar : carriedFlag(epic, 'aboveBarFound', 'above_bar_found'),
     converged: epicAtBudget,
     // An epic-level verdict clears only once a fold returned to record it; otherwise it is
     // carried so the next wake retries. A settlement targeting the epic has no issue row to
@@ -2365,18 +2381,26 @@ return {
     // Answers awaiting a fold. Cleared only once one RETURNED and applied them — a dead fold keeps
     // them, exactly as it keeps a verdict, so an infrastructure failure can't swallow a human decision.
     answers: epicFold ? [] : epicAnswersToFold || [],
-  },
+}
+
+// Hoisted for the same reason: `mayWrap` asks whether anything is still owed to the human, and the
+// surfaced list is the only honest answer to that.
+const epicBlockers = [
+    ...issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
+    ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}`, evidence: u.evidence, threads: u.threads })),
+    ...epicOpenQuestions.map((q) => ({ issueId: epic.issueId, blocker: `Epic-spec open question — needs a human: ${q}` })),
+]
+
+return {
+  epicApproved,
+  epic: epicOut,
   epicFold: epicFold ? { folded: epicFold.folded, fanOut: epicFold.fanOut || [] } : null,
   // Converged epic-PR feedback, read but not folded — the coordinator routes each note to the
   // issues it names as an implementer note. Empty/absent when nothing needed routing.
   epicNotes: epicNotes ? epicNotes.notes || [] : null,
   issues,
   gates,
-  blockers: [
-    ...issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
-    ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}`, evidence: u.evidence, threads: u.threads })),
-    ...epicOpenQuestions.map((q) => ({ issueId: epic.issueId, blocker: `Epic-spec open question — needs a human: ${q}` })),
-  ],
+  blockers: epicBlockers,
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),
@@ -2397,31 +2421,52 @@ return {
   dispatched: [...plan.advance.map((i) => `${i.action}:${i.row.id}`), ...(plan.foldEpic ? ['fold:epic'] : [])],
   deferred: plan.deferred.map((i) => i.row.id),
   converged: plan.converged.map((r) => r.id),
-  // ---- Two decisions the coordinator was restating in prose, and getting incomplete. ----------------
+  // ---- Two decisions the coordinator was restating in prose. ---------------------------------------
   //
-  // Both are derived here for the same reason everything else in this file is: a condition spelled out in
-  // a skill drifts from the state it is about. Each had already lost work — the continuation rule listed
-  // three sources and missed the fourth, and the wrap rule asked only "is every issue terminal".
+  // Both are DERIVED FROM `pendingAction`, deliberately, after a first version enumerated the state
+  // fields that imply work. That list was wrong in five separate ways in one round — it counted a verdict
+  // parked behind a blocker (which `pendingAction` refuses to dispatch, so the "run again now" loop had no
+  // exit), it counted a verdict on a CANCELLED row that nothing can ever apply (stranding the epic short
+  // of wrap forever), and it missed `multiPrPending` and a fold the cap squeezed out. Enumerating what
+  // implies work is the same drift the predicates exist to remove — one wake's dispatcher is the only
+  // thing that actually knows.
   //
-  // RUN ANOTHER WAKE NOW. Nothing in this list waits on an external event: a fold-held row, a
-  // cap-deferred row (a `NEEDS_SPEC` row has no PR, so it cannot generate the activity that would wake
-  // the session), a queued settlement claim, and — the one that was missing — a verdict that landed in
-  // the Settle phase, which runs AFTER Advance and so cannot be folded until another wake.
+  // RUN ANOTHER WAKE NOW: something is dispatchable with no external event. Either the planner has
+  // leftovers it could not fit, or a row's post-wake state is one `pendingAction` would act on — which
+  // covers a returned `multiPrPending` row, a landed verdict still owed a fold, and a Settle-phase verdict
+  // that Advance had already passed by. A parked or cancelled row yields null and so ends the turn.
   moreWorkNow:
     plan.heldForFold.length > 0 ||
     plan.deferred.length > 0 ||
     plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
-    settled.filter(Boolean).length > 0 ||
-    issues.some((r) => (r.verdicts || []).length),
-  // SAFE TO WRAP. Every issue terminal was necessary and nowhere near sufficient: wrap closes the epic
-  // surface and stops the wakes, so wrapping over an unanswered question destroys it. A late INCONCLUSIVE
-  // verdict on an already-merged issue is exactly that state — every row terminal, one open question.
+    (foldEpicWanted && !plan.foldEpic) ||
+    // A row that is dispatchable AND whose trigger needs no external event. `pendingAction` alone was too
+    // broad: `consumedFlags` clears the activity flags but not `ciFailed`, so a row whose CI failure this
+    // wake just handled comes back still-failing and read as runnable — an immediate wake, every wake,
+    // hammering the row while CI is red. CI re-running is an external event, and so is a new review.
+    //
+    // These three are not: DAG work the nested step reported, a verdict still owed a fold (Settle runs
+    // after Advance, so the planner never saw it), and a queued human answer. Pairing them with
+    // `pendingAction` is what keeps a parked or cancelled row out — that was the original defect.
+    issues.some(
+      (r) =>
+        (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null,
+    ),
+  // SAFE TO WRAP: every row is terminal, nothing is dispatchable, and no human decision is outstanding.
+  // The blockers list is the authority on the last of those, because it is exactly what gets surfaced —
+  // so "nothing left to show the human" and "safe to close the surface" cannot disagree. Cancelled rows
+  // need no exception here: they are dispatchable-null and carry no blocker, so their leftover verdict
+  // state, which nothing can apply, stops holding the epic open.
   mayWrap:
     issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
-    !issues.some((r) => r.blocker) &&
-    !issues.some((r) => (r.unsettled || []).length) &&
-    !issues.some((r) => (r.verdicts || []).length) &&
-    epicUnsettled.length === 0 &&
-    epicOpenQuestions.length === 0 &&
+    !issues.some((r) => pendingAction(r) !== null) &&
+    // Row-level unsettled evidence is a question owed to the human even where the blocker text has been
+    // cleared, and `pendingAction` is null for a terminal row carrying it. Scoped to LIVE rows: on
+    // cancelled work there is nothing left to apply a decision to, so counting it there is what stranded
+    // the epic short of wrap with no action able to release it.
+    !issues.some((r) => (r.unsettled || []).length && !CANCELLED_LINEAR.test((r.linearState || '').trim())) &&
+    epicBlockers.length === 0 &&
+    (epicOut.verdicts || []).length === 0 &&
+    (epicOut.answers || []).length === 0 &&
     plan.queuedClaims.length + unsettled.length + newRequests.length === 0,
 }
