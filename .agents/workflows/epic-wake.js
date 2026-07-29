@@ -1938,21 +1938,44 @@ if (routeConvergedEpicFeedback) {
 // multi-issue epic parks EVERY approved row from the first approval until the pass clears. Keying the hold
 // on "all specs approved" made it engage far too late — by then the first spec had been built for wakes,
 // which is exactly the order the gate exists to prevent.
-crossSpecHold = !args.crossSpecCleared && refreshed.length > 1
-// The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
-// open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
 // A row is settled enough to enter the pass three ways, and this has to be ONE predicate because the
 // gate's `issueIds` is the same question asked again. Filtering that list on `specApproved` alone omitted
 // exactly the rows the two other arms admit: a sibling already implementing or done normally has no
 // observable spec approval (its spec PR is closed), so a re-run triggered by a newly discovered child
 // reviewed the newcomer against nothing and reported coherence it never checked.
 const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal
-const crossSpecAskable = crossSpecHold && refreshed.every(crossSpecEligible)
+// Both conditions are derived from ONE definition of the set, because every version that defined them
+// separately disagreed about what the set was — and each disagreement was either a released gate or a
+// deadlock. Two exclusions, for two different reasons:
+//  - CANCELLED work: its spec is dead. Reviewing it manufactures conflicts with work nobody is doing.
+//  - BLOCKED work with no spec yet: `allocate` refuses to author it while a `blockedBy` is open, so it
+//    can never become eligible on its own. Waiting for it is not a wait — B blocked by A, A held for the
+//    pass, the pass waiting on B's spec is a closed loop that no event breaks. A blocked row that ALREADY
+//    has a spec is in the set as normal; the exclusion is about what can still arrive, not about who is
+//    admitted to work.
+const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').trim())
+const crossSpecSet = refreshed.filter((r) => crossSpecEligible(r) && !crossSpecCancelled(r))
+const crossSpecComing = refreshed.filter(
+  (r) => !crossSpecEligible(r) && !crossSpecCancelled(r) && !(r.blockedBy && r.blockedBy.length),
+)
+// The HOLD is the whole rule: `epic-lifecycle` runs one coherence pass "before any of them is built", so a
+// multi-issue epic parks EVERY approved row from the first approval until the pass clears. Keying the hold
+// on "all specs approved" made it engage far too late — by then the first spec had been built for wakes,
+// which is exactly the order the gate exists to prevent. What it takes is a SET: two specs that exist or
+// are still coming. One spec has nothing to be incoherent with, and holding for a pass that can never be
+// asked is the deadlock again by a different route.
+crossSpecHold = !args.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
+// The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
+// open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
+// No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
+// still coming the set holds at least two by construction. Adding it back would be a guard that cannot
+// fire, and the surfaced `issueIds` relies on that derivation rather than on a second test of it.
+const crossSpecAskable = crossSpecHold && crossSpecComing.length === 0
 if (crossSpecHold && refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))) {
   log(
     crossSpecAskable
-      ? `All ${refreshed.length} specs are open and individually approved — holding implementation until the cross-spec coherence pass clears. Surface it: the user approves running it.`
-      : `Holding approved specs: the cross-spec coherence pass has not cleared, and the set is checked before any of it is built. Not askable yet — some spec is still unapproved.`,
+      ? `All ${crossSpecSet.length} specs in the set are open and individually approved — holding implementation until the cross-spec coherence pass clears. Surface it: the user approves running it.`
+      : `Holding approved specs: the cross-spec coherence pass has not cleared, and the set is checked before any of it is built. Not askable yet — ${crossSpecComing.map((r) => r.id).join(', ')} ${crossSpecComing.length === 1 ? 'has' : 'have'} no approved spec.`,
   )
 }
 
@@ -2037,7 +2060,19 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
             ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close or delete the spec PR or its branch yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled.\n`
             : '') +
           (item.row.closedBlocker
-            ? `A PR on this issue was CLOSED WITHOUT MERGING — that is what the answer above is about. The handle is dead: do not try to push to it or reopen it. If the decision is to rebuild, open a NEW PR for that slice from fresh origin/main and report its handles; if the human reopened it themselves, the next scan will see it and there is nothing to do here.\n`
+            ? `A PR on this issue was CLOSED WITHOUT MERGING — that is what the answer above is about. The handle is dead: do not try to push to it or reopen it. If the decision is to rebuild, open a NEW PR for that slice from fresh origin/main and report its handles; if the human reopened it themselves, the next scan will see it and there is nothing to do here.\n` +
+              // The rebuild is the worker's to SET UP, because detection is all the script does (see the
+              // closed-handle block in `refresh`) and the table it serializes still carries the dead handle
+              // as `open`. Handed that verbatim, `issue-multi-pr` classifies the slice `resume` and tells
+              // its worker to update the existing PR — explicitly forbidding a replacement. So the two
+              // instructions in this prompt contradicted each other, and the reachable outcome was the
+              // worse one: the answer spent, nothing rebuilt, and the same question asked again next wake.
+              (item.row.subPrs && item.row.subPrs.length
+                ? `That rebuild is yours to set up. The table below still carries the dead handle as \`status: "open"\`, and the nested workflow reads that as a slice to RESUME — it would tell its worker to update the closed PR and forbid opening a replacement, so the decision would be spent with nothing rebuilt. Pass that slice to issue-multi-pr as \`status: "pending"\` with its dead \`pr\` and \`branch\` omitted, so it is built instead of resumed, and report the replacement's handles.\n` +
+                  (item.row.assembledGoal && item.row.assembledGoal.fixPr
+                    ? `If the dead handle is the assembled-goal repair PR #${item.row.assembledGoal.fixPr} rather than a slice, pass \`assembledGoal\` with \`fixPr: null\` instead: the gap issue stays as it is and the repair is re-opened against it. Left set, assembly reports AWAITING_FIX forever on a PR that can never merge.\n`
+                    : '')
+                : '')
             : '') +
           (item.action === 'pr-feedback' && item.row.newSpecReviewEvents
             ? `Some of this row's unhandled activity is on its SPEC PR ${item.row.specPr ? `#${item.row.specPr}` : '(retained or closed)'}, not on the implementation PR. Read it and carry it as implementer notes — do not spend a spec review round on it and do not reopen the spec. The spec is approved; this is late commentary that must not be lost, and this pass is the only one that sees it.\n`
@@ -2505,15 +2540,10 @@ return {
   blockers: epicBlockers,
   // The coordinator has to ASK before running the pass, so this is a gate like any other — without it the
   // hold above would be a silent stall rather than a question waiting on an answer.
-  // The SAME eligibility the ask was decided on — a narrower list here would hand the pass a subset of
-  // the set it was asked about and call the rest reviewed. Cancelled work is the one exclusion: its spec
-  // is dead, and `linearTerminal` alone would put it in front of the reviewer as a live conflict.
-  // `issues` rather than `refreshed` only to match the rest of this return; they are the same rows, and
-  // eligibility is monotone across the wake (an approval never un-approves, a phase never falls back
-  // across the gate), so the two lists cannot disagree.
-  ...(crossSpecAskable
-    ? { crossSpecGate: { issueIds: issues.filter((r) => crossSpecEligible(r) && !CANCELLED_LINEAR.test((r.linearState || '').trim())).map((r) => r.id) } }
-    : {}),
+  // The set the ask was decided on, verbatim — a list derived a second time here is a list that can
+  // disagree with the question, which is how the pass came to be handed a subset and told the rest was
+  // reviewed. Askable already guarantees this has at least two entries.
+  ...(crossSpecAskable ? { crossSpecGate: { issueIds: crossSpecSet.map((r) => r.id) } } : {}),
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),

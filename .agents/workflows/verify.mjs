@@ -249,10 +249,17 @@ function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents 
     }
     if (label === 'fold:epic') return { roundsSpent: 1, aboveBar: false, folded: 'tightened the objective', fanOut: [], ...fold }
     if (label === 'route:epic-notes') return { notes: [] }
-    // `linear` overrides a child's Linear state. Terminal and cancelled states are only ever OBSERVED
-    // here — the refresh scout's schema has no `linearState` — so a fixture that sets them on the row
-    // instead describes a response the real harness would reject.
-    if (label === 'linear:epic-children') return { issues: Object.keys(fresh).map((id) => ({ id, state: linear[id] || 'In Spec Review', blockedBy: [] })) }
+    // `linear` overrides a child's Linear state, as a bare state string or `{ state, blockedBy }`. Both
+    // are only ever OBSERVED here — the refresh scout's schema has neither field — so a fixture that sets
+    // them on the row instead describes a response the real harness would reject.
+    if (label === 'linear:epic-children') {
+      return {
+        issues: Object.keys(fresh).map((id) => {
+          const li = typeof linear[id] === 'string' ? { state: linear[id] } : linear[id] || {}
+          return { id, state: li.state || 'In Spec Review', blockedBy: li.blockedBy || [] }
+        }),
+      }
+    }
     if (label.startsWith('refresh:')) {
       const id = label.slice('refresh:'.length)
       // Via `freshRow`, not a second copy of the same defaults. Keeping two lists is what let them
@@ -727,6 +734,74 @@ check('GATE: implementation waits for the cross-spec coherence pass', async () =
   })
   assert.ok(withCancelled.result.crossSpecGate, 'a cancelled row does not block the ask either')
   assert.deepEqual(withCancelled.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3'])
+})
+
+check('a blocked sibling does not deadlock the cross-spec hold', async () => {
+  // B blocked by A is admitted to nothing — `allocate` refuses to author its spec while the relation is
+  // open — so a hold that waits for B's spec to be approved waits on an event that cannot happen, while A,
+  // the thing that would unblock B, is the row being held. A closed loop, and every wake re-derived it.
+  const approved = { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc' }
+  const pair = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-3', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': approved, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(pair.calls), ['implement:FIX-2'], 'the only spec that exists is not a set, so nothing is held for a pass')
+  assert.equal(pair.result.crossSpecGate, undefined, 'and no pass is asked for over one spec')
+
+  // Three rows: the blocked one is ignored by the hold, the unwritten one is not.
+  const withComing = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }),
+        row('FIX-3', { phase: 'NEEDS_SPEC' }),
+        row('FIX-4', { phase: 'NEEDS_SPEC' }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': approved, 'FIX-3': { phase: 'NEEDS_SPEC' }, 'FIX-4': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+      worker: { 'FIX-4': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 } },
+    }),
+  })
+  assert.ok(!workerLabels(withComing.calls).includes('implement:FIX-2'), 'a spec still being written is a set, so the hold engages')
+  assert.equal(withComing.result.crossSpecGate, undefined, 'not askable while it is unwritten')
+
+  // ...and once it is approved, the pass covers the two specs that exist — not the blocked row, which has none.
+  const ready = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }),
+        row('FIX-3', { phase: 'NEEDS_SPEC' }),
+        row('FIX-4', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': approved, 'FIX-3': { phase: 'NEEDS_SPEC' }, 'FIX-4': { ...approved, specPr: 9 } },
+      linear: { 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(ready.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-4'])
+
+  // OVER-CORRECTION: blocked is not invisible. A row blocked at IMPLEMENTATION already has an approved
+  // spec, and that spec is part of the set — dropping every blocked row would review the set without it and
+  // release the others against a conflict it holds.
+  const blockedButSpecced = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': approved, 'FIX-3': { ...approved, specPr: 9 } },
+      linear: { 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(blockedButSpecced.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3'])
+  assert.deepEqual(workerLabels(blockedButSpecced.calls), [], 'and both are held until the pass clears')
 })
 
 check('the cross-spec hold clears on a LANDED alignment, not a routed one', async () => {
@@ -5091,6 +5166,50 @@ check('an answered closed handle is named to the worker, not auto-rebuilt', asyn
   assert.match(dispatch.prompt, /CLOSED WITHOUT MERGING/, 'and the worker is told the handle is dead')
   assert.match(dispatch.prompt, /open a NEW PR for that slice/)
   assert.match(dispatch.prompt, /rebuild it/, 'alongside the human answer itself')
+  // ...and told HOW, because the same prompt orders it to advance the DAG with `issue-multi-pr`, and the
+  // table it serializes still carries the dead handle as `open` — which that workflow reads as a slice to
+  // RESUME, the one instruction that forbids the replacement this answer asked for. Two contradictory
+  // orders in one prompt, and the reachable outcome was the worse one: answer spent, nothing rebuilt, the
+  // same question asked again next wake.
+  assert.match(dispatch.prompt, /Pass that slice to issue-multi-pr as `status: "pending"`/)
+  assert.match(dispatch.prompt, /forbid opening a replacement/)
+  assert.match(dispatch.prompt, /with its dead `pr` and `branch` omitted/)
+
+  // The repair PR is the third dead handle and it needs a different move: it lives outside `subPrs`, so
+  // there is no slice to rebuild — clearing `fixPr` is what re-opens the repair against the gap already
+  // filed. Left set, assembly reports AWAITING_FIX forever on a PR that can never merge.
+  const deadRepair = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          closedBlocker: true,
+          blockerResolutions: [{ answer: 'rebuild the repair' }],
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { failure: 'boom', evidence: 'fsdev run: FAIL', fixIssue: 'FIX-99', fixReady: true, fixPr: 42 },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }], repairClosedUnmerged: true } },
+    }),
+  })
+  const repair = deadRepair.calls.find((c) => /^(implement|pr-feedback|apply-decision):/.test(c.label || ''))
+  assert.ok(repair, 'the answer about the repair handle reaches a worker')
+  assert.match(repair.prompt, /pass `assembledGoal` with `fixPr: null`/)
+
+  // OVER-CORRECTION: a single-PR row has no table to rewrite and never runs the nested workflow, so the
+  // hand-over instruction would be an order pointing at machinery that isn't in play.
+  const singlePr = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, closedBlocker: true, blockerResolutions: [{ answer: 'rebuild it' }] })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } } }),
+  })
+  const one = singlePr.calls.find((c) => /^(implement|pr-feedback|apply-decision):/.test(c.label || ''))
+  assert.ok(one, 'the answer reaches a worker here too')
+  assert.match(one.prompt, /CLOSED WITHOUT MERGING/)
+  assert.doesNotMatch(one.prompt, /Pass that slice to issue-multi-pr/)
 })
 
 check('a repair PR closed without merging parks the row too', async () => {
