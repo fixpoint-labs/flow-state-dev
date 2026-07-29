@@ -214,7 +214,12 @@ function pendingAction(row) {
 }
 
 /**
- * One claim argued on two issues is ONE settlement fanned to both.
+ * One claim argued on two issues is ONE settlement fanned to both — WHEN the two requests spell it the
+ * same way. The key normalizes case and whitespace and nothing more, so genuinely different wording
+ * produces two POCs and two evidence replies. Recorded rather than papered over: closing that gap needs a
+ * durable claim identity supplied by the requester, or a canonicalization pass, and neither is something a
+ * mechanical key can fake. The framings of requests that DO collide are merged (see below), so the one
+ * settlement they share tests every path it answers for.
  * → orchestration.md § "Settling a disputed claim" ("Bound the fan-out"). Keyed on normalized
  * claim text, because independent workers phrase the same claim slightly differently.
  */
@@ -1691,6 +1696,13 @@ const discovered = (linear && linear.issues ? linear.issues : [])
   .filter((li) => !TERMINAL_LINEAR.test((li.state || '').trim()))
   .map((li) => ({ id: li.id, phase: 'NEEDS_SPEC', specReviewRounds: 0, specLevelFound: false, discovered: true }))
 
+for (const row of rows) {
+  const li = linearById.get(row.id)
+  if (li && CANCELLED_LINEAR.test((li.state || '').trim()) && (row.blocker || (row.unsettled || []).length)) {
+    log(`${row.id} was cancelled with an open question ("${row.blocker || (row.unsettled || [])[0]?.claim}") — dropping it, since there is no longer any work to apply an answer to.`)
+  }
+}
+
 if (discovered.length) {
   log(`Discovered ${discovered.length} new sub-issue(s) under the epic: ${discovered.map((d) => d.id).join(', ')} — entering at NEEDS_SPEC.`)
 }
@@ -1759,6 +1771,15 @@ const refreshed = [...rows, ...discovered].map((row) => {
     headSha: (fresh && fresh.headSha) || row.headSha || null,
     linearState: li.state || row.linearState,
     linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+    // CANCELLED work carries no unanswered question. `pendingAction` already refuses to dispatch it, so a
+    // blocker left on the row could never be cleared by anything — and it kept the surfaced blockers list
+    // non-empty, which held the whole epic short of wrap while a human was asked to answer a question about
+    // work that no longer exists. Cleared here, in the one place cancellation is observed, so the blockers
+    // list and `mayWrap` cannot disagree about it. Logged below, never silent — the same rule cancelled
+    // verdicts already follow.
+    ...(linearById.has(row.id) && CANCELLED_LINEAR.test((li.state || '').trim()) && (row.blocker || (row.unsettled || []).length)
+      ? { blocker: null, blockerFor: null, unsettled: [] }
+      : {}),
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
@@ -1975,6 +1996,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
                   `Pass those through to issue-multi-pr as well — its build and fix workers are the ones that escalated, and they are freshly spawned with none of this context.\n`
                 : '') +
               `ALWAYS report multiPrPending — true if the DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step) so the next wake dispatches you again rather than waiting for an event that will never come, false once it has drained. If you did not run a DAG step this pass, echo the carried value above rather than answering false: guessing false strands slices that no external event will wake, and there is no other channel that can set it again.\n` +
+              `ONE exception, and it is the opposite failure: report multiPrPending FALSE when the workflow returns \`blockedGap\` after a recheck. That repair is waiting on an open Linear relation — an external event by definition — so reporting true asks for an immediate wake that rechecks an unchanged relation and burns a slot in the shared cap, every wake, until someone else moves it.\n` +
               // A malformed plan (duplicate id, dependency cycle, unknown dependency) dispatches
               // nothing and only a human can fix it, so it has to come back as a BLOCKER. Returned
               // as neither work nor blocker nor gate, the row simply sits in PR_FEEDBACK forever.

@@ -4249,6 +4249,73 @@ check('a handled CI failure does not ask for an immediate wake', async () => {
   assert.equal(dag.result.moreWorkNow, true)
 })
 
+check("a cancelled row's open question is dropped, out loud", async () => {
+  // `pendingAction` already refuses to dispatch cancelled work, so a blocker left on the row could never be
+  // cleared by anything — and it kept the surfaced blockers list non-empty, holding the whole epic short of
+  // wrap while a human was asked about work that no longer exists.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blocker: 'which shape?',
+          unsettled: [{ claim: 'SSE resumes', evidence: 'inconclusive', threads: null }],
+        }),
+      ],
+    }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      return workerRes({ issueId: 'FIX-2' })
+    },
+  })
+  assert.equal(result.issues[0].blocker, null, 'the question goes with the work')
+  assert.deepEqual(result.issues[0].unsettled, [])
+  assert.deepEqual(result.blockers, [], 'so nothing is surfaced about a cancelled issue')
+  assert.equal(result.mayWrap, true, 'and the epic can finish')
+  assert.ok(
+    (logs || []).some((l) => /cancelled with an open question/.test(l)),
+    'dropped out loud, never silently',
+  )
+
+  // A LIVE row keeps its blocker — that is what makes the above about cancellation.
+  const live = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blocker: 'which shape?' })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } } }),
+  })
+  assert.equal(live.result.issues[0].blocker, 'which shape?')
+  assert.equal(live.result.mayWrap, false)
+})
+
+check('an externally blocked repair gap is a wait, not internal work', async () => {
+  // A `blockedGap` recheck waits on an open Linear relation, which is external by definition. Reporting
+  // pending DAG work for it asked for an immediate wake that rechecks an unchanged relation and burns a
+  // slot in the shared cap, every wake, until someone else moves it.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'x', fixIssue: 'FIX-9', fixReady: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true } },
+    }),
+  })
+  const dispatch = calls.find((c) => (c.label || '').startsWith('implement:'))
+  assert.ok(dispatch)
+  assert.match(dispatch.prompt, /report multiPrPending FALSE when the workflow returns `blockedGap`/)
+  assert.match(dispatch.prompt, /burns a slot in the shared cap/)
+})
+
 check('a cancelled row does not strand the epic short of wrap', async () => {
   // Cancelled work carries verdict state nothing can ever apply: `pendingAction` treats it as gone, so no
   // worker and no gate can clear it, and counting it as outstanding held the epic open permanently.
