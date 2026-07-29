@@ -50,9 +50,42 @@ ends the turn:
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
 - **Event-driven, like the single-issue loop.** The coordinator is the event loop. It ends
-  its turn while issues are idle and re-enters on PR events or a scheduled check-in;
-  on re-entry it refreshes each row from Linear + PR state (cheap fetches) and acts
-  only where there's a pending action.
+  its turn while issues are idle and re-enters on PR events, a workflow completion, or a
+  scheduled check-in; on re-entry it refreshes each row from Linear + PR state (cheap
+  fetches) and acts only where there's a pending action.
+- **The fan-out is a script, not a procedure.** Refresh → advance → collect is pure
+  mechanism: an epic gate that holds every issue, a two-round review budget with one
+  conditional third round, a cap shared between workers and POCs, a claim dedupe. That runs
+  as the **`epic-wake` workflow** (`.agents/workflows/epic-wake.js`) so it can't drift wake
+  to wake. See [Each wake is a workflow](#each-wake-is-a-workflow-and-what-it-cant-do).
+
+## Each wake is a workflow (and what it can't do)
+
+The **`epic-wake`** workflow is this loop's steps 2–4. Everything it does is deterministic
+control flow the coordinator used to re-derive from prose every wake, so the rules now live
+as `if` statements with a verification harness
+(`node .agents/workflows/verify.mjs`) instead of as instructions to follow correctly.
+
+**The split is not a style choice — a workflow script structurally cannot wait.** It has no
+`AskUserQuestion`, it cannot receive a PR webhook, it cannot sleep or schedule, and it has no
+filesystem. So the division is fixed:
+
+| The `epic-wake` script owns | The coordinator (this session) owns |
+|---|---|
+| Scanning the epic PR for its objective sign-off, and returning early with **nothing dispatched** if it's unmet | **Surfacing every gate** to you (epic objective, per-issue spec approval, merge) |
+| Per-issue refresh via `scout` (Linear parent→children in one query; PR comments/reviews/checks/meta) | **Resolving the set** and confirming it with you (loop step 1) |
+| Deciding each issue's pending action, and the **review round budget** for issue specs *and* the epic PR | **`.orchestration/` reads and writes** — the script gets the table via `args`, returns the new one |
+| Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
+| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror**, and the `spec approved` / `epic approved` labels |
+| Routing a POC verdict to its issues the moment that POC finishes | **Ending the turn**, the heartbeat, and re-entry |
+
+**A workflow runs in the background**, so a wake is: call `epic-wake` → end the turn → the
+completion notification re-enters this loop with the updated table → surface gates, write the
+mirrors, re-subscribe → end the turn. The extra hop is cheap (the turn was ending anyway) and
+it is what makes the fan-out auditable in `/workflows` while it runs.
+
+**Never re-implement a rule the script owns.** If the budget or the cap needs to change, change
+`.agents/workflows/epic-wake.js` and its harness — not this file's prose.
 
 ## Sizing to the VM (read this before picking N)
 
@@ -61,6 +94,16 @@ checkout**. Full lifecycles also run installs/builds/tests. So keep concurrency
 modest — **~3–4 active issues** is a sane default; go higher only for light issues.
 If disk or memory gets tight, cap the number of *simultaneously implementing* issues
 even if more are queued. State the chosen N and the cap to the user.
+
+> **The workflow harness caps concurrency below that, and you should say so.** A workflow's
+> own limit is `min(16, cores − 2)` — **2** on a 4-vCPU box, under the 3–4 this section
+> recommends. Queued agents still all complete (nothing is dropped), so this is a latency
+> ceiling, not a correctness one: pass the cap you actually want as `args.cap` and let the
+> script's own accounting log what it deferred. If wall-clock matters more than determinism
+> for a given epic, dispatching the workers directly with the Agent tool (one message,
+> parallel calls) is still a legitimate fallback — you lose the encoded budget/cap/dedupe
+> rules, so prefer the workflow and accept the queueing. This ceiling has not been measured
+> against a real epic run yet; treat the number as read from the harness contract, not proven.
 
 > **Working memory is session-only — never commit it.** The epic board and the
 > per-issue handle caches live in the **gitignored `.orchestration/`** directory.
@@ -78,69 +121,52 @@ even if more are queued. State the chosen N and the cap to the user.
    name · `epic/<name>` branch · epic PR#), so it survives across wakes — the next refresh
    needs it to re-check the epic PR for its approving comment or review, keep the epic PR
    subscribed, and pass the branch/SHA to workers. Two more coordinator-owned fields live
-   here because nothing else can hold them across wakes: **`epic_review_rounds`** (the epic
-   PR's own review budget) and, at wrap, each pass's **disposition**
+   here because nothing else can hold them across wakes: the epic PR's own review budget
+   (**`reviewRounds`** + **`aboveBarFound`**, passed to and returned by each wake) and, at
+   wrap, each pass's **disposition**
    (`lessons: <PR#|skipped: why>` · `docs_polish: <PR#|skipped: why>`).
-2. **Refresh the table.** Fetch each issue's Linear state + PR status to derive its phase
-   (reuse each issue's `.orchestration/<ISSUE>.md` handle cache) — **including each open spec
-   PR's comments and reviews**: an **approving human comment or GitHub Review** on the spec PR (a
-   "approved" comment, or a Review whose **latest state is `APPROVED` on the current head**
-   — not any historical approval left stale by a later push or `CHANGES_REQUESTED` — from a
-   human, not a bot, not a bot-authored comment/review body, and for a review, not the PR's own
-   author; full rule in [`orchestration.md`](../../../docs/contributing/orchestration.md) →
-   Gates) signals moving to implementation. Fetch the **epic issue and its sub-issues in one
-   Linear query** (parent→children — the point of the parent model) rather than N independent
-   fetches, and check the epic PR for an **approving human comment or review**; resolve the epic
-   branch handle (branch + head SHA) **once here** and pass it to workers in step 3 so they don't
-   each re-fetch it. These read-only fetches — including scanning a PR's comments and reviews for
-   a human approval — are the mechanical tier: use the **`scout`** agent (Haiku), not a full
-   worker. Do **not** re-dispatch the worktree workers just to read state. When scout reports an
-   approving comment or review, **mirror it to the `spec approved` / `epic approved` label** so
-   the sign-off stays filterable (loop step 4/5). (Subscription happens once, in step 6,
-   after step 3/4 may have opened new PRs this turn — don't subscribe here, it's premature:
-   any PR a worker opens in step 3 doesn't exist yet at this point in the loop.)
-3. **Advance where there's a pending action.** For each issue that has a next bounded
-   action (needs spec, has unhandled PR events *within its spec-review budget*, spec just
-   approved, …) and is within the concurrency cap, dispatch an **`issue-worker`** — the
-   custom agent at `.claude/agents/issue-worker.md`, which declares `isolation: worktree`
-   (its own worktree/branch) and has no `AskUserQuestion` (it never prompts; it returns
-   blockers for the coordinator to surface). **Epic gate:** if the epic PR has **no approving
-   comment or review** (as re-derived by step 2's scan this wake — the gate is the fresh
-   evidence, not the `epic approved` label, which is only the mirror you write), hold every
-   sub-issue at NEEDS_SPEC — do **not** dispatch a worker to advance one. **Spec-review
-   budget:** an issue that has spent its two spec-review rounds **and whose last worker
-   reported `spec_level_found: no`** is *not* a pending action — log the event and leave it
-   awaiting the human gate. If the last worker reported `spec_level_found: yes`, the
-   **authorized third round** is still pending: dispatch it (once), and say in one line why
-   the extra round was spent. See [Spec review](#spec-review-converge-dont-grind). When you
-   do dispatch, pass the resolved
-   **epic handle** (branch + SHA) from step 2 so `issue-spec` can align without re-fetching:
+2. **Run the wake.** Dispatch the **`epic-wake` workflow** with the table from
+   `.orchestration/`. It does the refresh, the epic-gate check, the capped worker fan-out, the
+   review budgets, the claim dedupe and the verdict routing — see
+   [Each wake is a workflow](#each-wake-is-a-workflow-and-what-it-cant-do) for the split and
+   the reasons. Pass:
 
    ```
-   Agent tool (agentType: issue-worker):
-     description: "Advance <ISSUE>"
-     prompt: Advance <ISSUE> to its next external wait, in your worktree — a satisfied gate
-             is not a wait, so chain through it (a just-approved spec goes close-PR →
-             implement → open impl PR in this run). Return the compact status line, then exit.
+   Workflow tool:
+     name: epic-wake
+     args: {
+       epic:  { issueId, name, branch, headSha, prNumber, reviewRounds, aboveBarFound, lastSeenSha },
+       cap:   <the N you chose and stated>,
+       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdict } ],
+       settleRequests: [ { claim, load, falsify, threads, issueId } ]
+     }
    ```
 
-   Dispatch independent issues' workers **in parallel** (one message, multiple calls),
-   up to the cap. (Where the harness lacks custom agents, fall back to the Agent tool
-   with `isolation: worktree` and the same prompt.)
+   Everything in `args` comes straight out of `.orchestration/` — the script has no
+   filesystem, so **you are its memory**. The counters in particular (`specReviewRounds`,
+   `specLevelFound`, `epic.reviewRounds`) only survive across wakes because you carry them;
+   drop them and every budget silently resets to zero. It returns
+   `{ epicApproved, epic, epicFold, issues, gates, blockers, verdicts, settleRequests,
+   dispatched, deferred, converged }`.
 
-   **Also dispatch any `settle_requested` from the last round** — a `poc-agent` on the claim
-   slice, in parallel with everything else, counted against the same cap. See
-   [When a thread turns on a fact](#when-a-thread-turns-on-a-fact-dispatch-a-poc--dont-buy-another-round).
-   And **route any verdict that came back** by dispatching that issue's worker to apply it.
-4. **Collect compact status** and update the table. Never fold a worker's full output
-   in — one status line per issue. Then **write the Linear-status mirror** for any phase
-   transition this refresh surfaced (Linear auto-status is off; the mapping + state IDs
-   live in `issue-lifecycle` → "Linear status is a mirror you own"). Workers set the
-   mirror for transitions they effect (they opened the PR); the coordinator sets it inline for
-   the spec-approval-comment and merge transitions it detects — and, for a detected approval,
-   also applies the `spec approved` / `epic approved` label as the durable mirror. Idempotent —
-   skip if the issue is already in the target state (and the label already present).
-5. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
+   The workflow runs in the background: **end the turn** and continue at step 3 when its
+   completion notification arrives. If `epicApproved` is false it dispatched nothing by
+   design — the objective gate holds the whole set (step 4).
+3. **Write the mirrors.** Persist the returned `issues` table and `epic` to
+   `.orchestration/`, then **write the Linear-status mirror** for every phase transition the
+   wake surfaced (Linear auto-status is off; the mapping + state IDs live in `issue-lifecycle`
+   → "Linear status is a mirror you own"). Workers set the mirror for transitions they effect
+   (they opened the PR); you set it for the ones the wake *detected* — a spec/epic approval, a
+   merge — and for a detected approval also apply the `spec approved` / `epic approved` label
+   as the durable, filterable record. Idempotent: skip if the issue is already in the target
+   state and the label is already present. **The gate is the fresh approval the wake
+   re-derived, never the label** — the label can go stale behind a later push.
+
+   Route `epicFold.fanOut` if it came back non-empty: those are the issues an above-the-bar
+   epic-PR item touches, and they take it as implementer notes (not into their specs).
+   `blockers` are surfaced at step 4 only if they genuinely need a human call — see
+   [Gates & autonomy](#gates--autonomy).
+4. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
    releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
    for any issue **awaiting spec approval** (its spec PR is open, Part I + II), surface the
@@ -151,15 +177,18 @@ even if more are queued. State the chosen N and the cap to the user.
    numbered Decisions — and, for a converged spec, that remaining open threads are carried as
    implementer notes rather than blockers. **If a POC settlement is in flight on that issue,
    say so in one line** (the claim, and that the verdict will land on the PR) — approval isn't
-   blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The coordinator holds the *link*, not the spec text.
+   blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The
+   returned `gates` array carries this for you: each `spec-approval` entry names the PR and its
+   `settlingInFlight` claim, if any. The coordinator holds the *link*, not the spec text.
    The *other* issues keep moving. For any issue **ready to merge**, surface it and stop there
    (merge is the user's).
-6. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
+5. **End the turn.** **Subscribe to every currently-open PR named in the (now fully updated)
    table** — each issue's spec PR, each issue's impl PR#(s), and the epic PR —
-   unconditionally, every turn, not only when a PR first opens. Do this **here, after step 4**,
-   not in step 2: step 3 may have dispatched a worker that opened a brand-new PR this very
-   turn, and step 4 is where that PR# lands in the table — subscribing any earlier would miss
-   it, leaving it deaf to review/approval activity until the next heartbeat. `subscribe_pr_activity`
+   unconditionally, every turn, not only when a PR first opens. Do this **here, after the
+   wake's table has landed** — the workflow may have dispatched a worker that opened a
+   brand-new PR, and step 3 is where that PR# lands in the table; subscribing any earlier
+   would miss it, leaving it deaf to review/approval activity until the next heartbeat.
+   `subscribe_pr_activity`
    is idempotent, so re-subscribing to a PR already subscribed costs nothing; doing it
    unconditionally off the full table (not just "PRs that changed this turn") is what makes a
    lost subscription self-heal on the very next wake — a worker opened a PR and exited before
@@ -170,8 +199,8 @@ even if more are queued. State the chosen N and the cap to the user.
    sign-off gates now ride that stream** — both a comment and a review submission are
    delivered PR-activity events, so a spec- or epic-PR approval (either form) wakes the coordinator
    immediately (the reason the gates moved off labels, whose webhook never arrives). The
-   transitions webhooks *don't* cover — CI success and merge/close — are caught on the scout's
-   table refresh (step 2). Schedule one check-in
+   transitions webhooks *don't* cover — CI success and merge/close — are caught on the wake's
+   scout refresh (step 2). Schedule one check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. Move to EPIC_WRAP once every issue is merged, closed, or dropped.
 
@@ -198,25 +227,24 @@ is how an epic of five directionally-sound specs turns into fifty review rounds.
 The bar, the three dispositions, and the **two-round convergence budget** are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review: the bar
 and the convergence rule"; the per-issue mechanics live in `issue-lifecycle` → "The
-spec-review round budget". The coordinator's job is only this:
+spec-review round budget".
 
-- **Carry the round count in the table** (`spec-review rounds`, per issue) so the budget
-  survives across wakes. **Add only the rounds the worker reports it actually spent**
-  (`spec_review: <rounds spent>`), not one per event dispatched — a batch that was nothing but
-  factual corrections or broken references costs no round by rule, so charging it one would
-  burn the budget on typos and get later substantive feedback ignored.
-- **Stop dispatching rounds at the budget — unless a third is authorized.** A spec-PR review
-  event on an issue at budget whose last worker reported `spec_level_found: no` is **not** a
-  pending action for step 3 — log it and leave the issue awaiting its human gate. If the last
-  worker reported `spec_level_found: yes`, the conditional third round *is* authorized: run it
-  once and say why. Otherwise only a *human* event on that PR (an approval, or the user asking
-  for a change) reactivates it.
-- **Surface convergence as convergence.** When an issue converges, say so at step 5: the
-  spec is directionally settled, remaining threads are carried as implementer notes, and the
-  approval gate is the next move. Don't present it as "still in review".
-- **A bot `CHANGES_REQUESTED` holds nothing.** It doesn't trip the gate (only a human's
-  approval does) and doesn't extend the budget. Never re-request review from a bot.
+**The budget arithmetic is the `epic-wake` script's, not yours** — one `atReviewBudget()`
+covering issue specs and the epic PR alike, so the three things that make it misfire (counting
+events instead of reported rounds, swallowing the authorized third round, resetting on a wake)
+can't come back as a slip. Two jobs remain the coordinator's:
 
+- **Carry the counters** (`specReviewRounds` / `specLevelFound` per issue,
+  `epic.reviewRounds` / `epic.aboveBarFound` for the epic PR) in `.orchestration/` and pass
+  them in `args` every wake. The script has no memory; you are it. Drop them and every budget
+  silently restarts at zero.
+- **Surface convergence as convergence.** The wake returns `converged: [issueIds]`. Say at
+  step 4 that the spec is directionally settled, that remaining threads are carried as
+  implementer notes, and that the approval gate is the next move. Don't present it as "still
+  in review".
+
+**A bot `CHANGES_REQUESTED` holds nothing** — it doesn't trip the gate (only a human's
+approval does) and doesn't extend the budget. Never re-request review from a bot.
 Convergence is per issue and independent — issue B doesn't wait on issue A's spec.
 
 ### When a thread turns on a fact, dispatch a POC — don't buy another round
@@ -228,58 +256,47 @@ flip-flop. Once such a claim has been asserted and counter-asserted **twice**, i
 instead of argued — the trigger is that loop, not a single assertion, so expect this to fire on
 a minority of issues rather than routinely. The rules are canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Settling a disputed claim
-(POC settlement)"; the per-issue mechanics are in `issue-lifecycle` → "POC settlement". The
-coordinator's job is only this:
+(POC settlement)"; the per-issue mechanics are in `issue-lifecycle` → "POC settlement".
 
-- **Dispatch on request, no approval needed.** A worker returns `settle_requested: <claim
-  slice>` (it exits before a verdict could land); you dispatch the **`poc-agent`**
-  (`.claude/agents/poc-agent.md` — worktree, Sonnet, never prompts) alongside your issue
-  workers. Unlike a `fable-candidate` this needs **no user yes** — cheap enough to dispatch
-  without approval, not a ceremony like Fable. That's about *friction*, not frequency: the
-  loop trigger still governs how often it fires.
-- **It counts against the VM cap.** A POC is a full worktree — roughly an issue's worth of
-  load on a box sized for ~3–4. **Dedupe first, then queue**: one claim argued on two issues is
-  **one** settlement fanned to both, and at the cap a POC waits behind the issue workers rather
-  than starving them. A settlement that starts a wake later still beats two more review rounds.
-  Dispatching several at once means the trigger has slipped — that's the POC farm to avoid.
-- **Carry it in the table, never wait on it.** Add `settling` to the issue's row
-  (`<claim> · in-flight | <verdict>`). A POC never makes an *issue* pending — it makes a claim
-  pending, and **sibling issues are untouched**.
-- **Disclose in-flight settlements at step 5**, in one line, when you surface that spec for
-  approval.
-- **Route the verdict on the wake it returns** — dispatch that issue's worker to apply it per
-  `issue-spec` 6.5.3, then clear `settling` to the verdict. Note the two timing rules in
-  `issue-lifecycle` → "POC settlement": the spec PR stays **open** while a load-bearing
-  settlement is live, and a late `REFUTED` is folded like a challenger-surfaced blind spot.
-- **A cross-cutting claim is settled once for the epic.** Have `epic-agent` record the verdict
-  in the epic-spec's cross-cutting decisions so a third issue doesn't reopen it.
+**The dispatch mechanics are the `epic-wake` script's:** it dedupes the claims (one claim
+argued on two issues is **one** settlement, fanned to both), draws them from the same cap as
+the issue workers so they queue rather than starve one, dispatches the `poc-agent` in its own
+worktree, and routes each verdict to its issues the moment that POC finishes — no human yes
+needed, unlike a `fable-candidate`. It never makes an *issue* pending: a POC makes a *claim*
+pending, and sibling issues are untouched.
 
-**The epic PR gets the same treatment**, through the same request path: `epic-agent` returns
-`settle_requested` for a looping factual claim a cross-cutting decision rests on, and you
-dispatch the `poc-agent` — a fourth epic-review round is what that replaces. Hand the verdict
-back to `epic-agent` to fold and record in the epic-spec's cross-cutting decisions, so a
-sibling issue can't reopen the same claim.
+Three things remain the coordinator's:
+
+- **Carry `settleRequests` across wakes.** The wake returns the ones it queued plus any new
+  ones workers raised; pass them straight back in next wake's `args`.
+- **Disclose in-flight settlements at step 4** — the `gates` array's `settlingInFlight` field
+  is there for exactly this.
+- **Apply the two timing rules** in `issue-lifecycle` → "POC settlement": the spec PR stays
+  **open** while a load-bearing settlement is live, and a late `REFUTED` is folded like a
+  challenger-surfaced blind spot.
+
+**A cross-cutting claim is settled once for the epic** — have `epic-agent` record the verdict
+in the epic-spec's cross-cutting decisions so a third issue can't reopen it. The epic PR raises
+settlements through the same path (`epic-agent` returns `settle_requested`, the script
+dispatches), replacing what would have been a fourth epic-review round.
 
 ### The epic PR gets the same budget
 
 The epic-spec is a direction artifact too, so it is reviewed at the same altitude and
-**carries its own two-round budget** — without one, the epic PR is the single place this
-change's unbounded-review loop would survive, right at the top-level gate. The coordinator
-owns the epic PR (workers can't), so the counter is the coordinator's:
+**carries its own two-round budget** — without one, the epic PR is the single place an
+unbounded review loop would survive, right at the top-level gate.
 
-- Track `epic_review_rounds` in `.orchestration/epic.md`, alongside the epic handle, so it
-  survives wakes. `epic-agent` reports the rounds it spent and whether anything it folded was
-  above the bar (objective- or cross-cutting-decision-level).
-- **Re-dispatch `epic-agent` to fold epic-PR feedback only while the budget allows**, on the
-  same terms as an issue spec: add only rounds actually spent, a third round only when round
-  two found something above the bar, and never a round spent to satisfy a bot.
-- At budget, the epic-spec has **converged**: surface the objective for sign-off and stop
-  folding. Remaining epic-PR threads are carried the same way an issue spec carries its
-  §13 notes — routed to the relevant issues' implementer notes, not held against the gate.
-- **The objective gate is unaffected either way.** Only a human's approving comment or
-  review trips it; a bot review on the epic PR neither holds it nor buys another round. And
-  the epic's *direction* still flows continuously — the budget bounds the *folding*, not the
-  epic's ability to receive and route feedback.
+The `epic-wake` script applies **the same `atReviewBudget()`** to it that it applies to an
+issue spec, dispatches `epic-agent` to fold while the budget allows, and returns the updated
+`epic.reviewRounds` / `epic.aboveBarFound` for you to persist. At budget it stops folding, logs
+that the epic-spec converged, and sets `epic.converged` — remaining epic-PR threads are then
+carried the way an issue spec carries its §13 notes, routed to the relevant issues' implementer
+notes (`epicFold.fanOut`) rather than held against the gate.
+
+**The objective gate is unaffected either way.** Only a human's approving comment or review
+trips it; a bot review on the epic PR neither holds it nor buys another round. And the epic's
+*direction* still flows continuously — the budget bounds the *folding*, not the epic's ability
+to receive and route feedback.
 
 ## Epic setup (the coordination layer every run has)
 
@@ -304,22 +321,21 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   document), and returns the handles. The coordinator holds only handles (epic issue ID, name,
   branch, epic PR#), never the spec text.
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
-  **approving comment or review** sign-off and hold the epic's issues at NEEDS_SPEC until it
-  lands (loop step 3). It's the *only* epic-level gate — direction stays ungated. When an
+  **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
+  until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*
+  epic-level gate — direction stays ungated. When an
   approving human comment or review lands on the epic PR, **the coordinator writes both mirrors**
   — it applies the `epic approved` label (durable, filterable record) *and* moves the Epic
   *issue's* Linear state to reflect "objective approved" (the comment or review is the
   trigger; the label and Linear state are human-facing mirrors, and the coordinator owns keeping
   them in step so they don't drift).
-- **Own the subscription; fan feedback down.** Route epic PR review/human feedback **down**
-  to the aligned issue workers (sub-agents can't subscribe; the coordinator does, same as a
-  spec-PR event) — **when it's above the bar.** An epic comment that changes a cross-cutting
-  decision fans down; one about a single issue's internals goes to that issue's implementer
-  notes, not into its spec. When an epic comment is **heavy or its fan-out target is unclear**
-  ("which issues does this touch?"), offload the *read* to **`scout`** — it returns the target
-  issues; you route — rather than pulling the content into the coordinator's context. Then
-  re-dispatch `epic-agent` to **fold** the feedback into the epic-spec **and** refresh its
-  running index from the PR handles in your table — one update pass, not a separate mode.
+- **Own the subscription; fan feedback down.** Only the coordinator can subscribe to the epic
+  PR (sub-agents can't), so epic-PR feedback arrives here. The **folding** is the wake's:
+  it dispatches `epic-agent` to triage against the bar, fold above-the-bar items into the
+  epic-spec, refresh the running index from your table's PR handles (one update pass, not a
+  separate mode), and return `fanOut` — the issues an above-the-bar item touches. You route
+  those as **implementer notes**; a comment about a single issue's internals never goes into
+  that issue's spec. Nothing here pulls epic-comment *content* into the coordinator's context.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.
@@ -414,12 +430,13 @@ Once both hold:
    asking someone to decide a question a run answers is the waste this exists to remove. Then
    align every affected spec to the verdict.
 
-   **Dedupe and cap before dispatching.** Several conflicts often reduce to *one* claim — settle
-   it once and fan the verdict out. Expect zero or one settlement per review; if the report
-   hands you three, batch them behind the issue workers rather than dispatching a fleet into a
-   VM sized for ~3–4 (each POC is a full worktree). Cross-spec is the weakest firing bar in the
-   system — two specs disagreeing is cheaper to trigger than a two-round review loop — so the
-   coordinator is where that gets bounded.
+   **Route them through the wake, don't hand-dispatch.** Add each `poc-candidate` to
+   `settleRequests` and let the next `epic-wake` run it: that gets the dedupe (several conflicts
+   often reduce to *one* claim, settled once and fanned out) and the cap accounting for free.
+   Expect zero or one settlement per review; a report handing you three means the trigger has
+   slipped — cross-spec is the weakest firing bar in the system, since two specs disagreeing is
+   cheaper to trigger than a two-round review loop, so this is where a POC fleet would come from
+   if anywhere.
 3. **Walk you through the remaining decisions.** For each conflict the report marks *decision-needed*,
    surface it with the trade-off (`AskUserQuestion`) — the coordinator owns all user interaction;
    the review sub-agent never prompts. Conflicts the docs already settle are applied without
@@ -492,11 +509,14 @@ step. So:
 
 - The coordinator's context is the status table + the epic record. Nothing else persists
   across wakes. Workers are the token sink, and they're isolated and discarded.
-- Depth stays within Claude Code's 5-level cap: coordinator (main) → worktree worker
-  running issue-lifecycle (1) → the phase skill it dispatches, e.g. issue-implement
-  (2) → that skill's implementer / `review` sub-agents (3) → review lenses (4).
-  Comfortable. If you ever approach the cap, have the worker run the phase skill
-  in-context rather than dispatching a further sub-agent.
+- **Depth is the one thing the workflow could cost us, and it is unverified.** The chain is
+  coordinator (main) → `epic-wake`'s worktree worker running issue-lifecycle (1) → the phase
+  skill it dispatches, e.g. issue-implement (2) → that skill's implementer / `review`
+  sub-agents (3) → review lenses (4), against Claude Code's **5-level cap**. That fits *if*
+  the workflow itself doesn't consume a level — which has not been measured. If a run dies on
+  depth, the documented mitigation applies one level earlier than before: have the worker run
+  its phase skill **in-context** instead of dispatching a further sub-agent. Confirm this on
+  the first real epic run and record what you find here.
 - Never read specs/diffs at the coordinator level. Handles and status only.
 
 ## Boundaries

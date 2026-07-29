@@ -35,6 +35,19 @@ parallelism is a property of an epic, not a mode of its own.
   - `scout` (Haiku) — read-only status/handle fetches.
   - `spec-implementer` (Sonnet) — implements one decided task.
   - `issue-manager` (Sonnet) — files discovered work into Linear.
+- **Workflow scripts** — the parts of a lifecycle that are pure mechanism, as deterministic
+  control flow instead of prose a coordinator re-derives each wake. Both live in
+  `.agents/workflows/` and share one verification harness (`node .agents/workflows/verify.mjs`,
+  stubbed hooks, no agents spawned):
+  - `epic-wake` — one epic-lifecycle wake: the objective gate, per-issue refresh, the capped
+    worker fan-out, the review budgets, claim dedupe, verdict routing.
+  - `issue-multi-pr` — one step of a multi-PR issue's DAG: ready set, base selection, rebase
+    after a dependency merges, and the assembled end-to-end goal.
+
+  **A script cannot wait, prompt, subscribe, or touch the filesystem.** So every *gate*, every
+  PR subscription, the `.orchestration/` store, and turn-ending stay with the coordinator; the
+  scripts get state via `args` and return it. That boundary is what decides which half of a
+  lifecycle is prose and which half is code — see `epic-lifecycle` → "Each wake is a workflow".
 
 ```mermaid
 flowchart TD
@@ -323,6 +336,17 @@ Two mechanics the budget depends on, or it misfires:
   swallow the very round this rule authorizes. Gate the stop on that flag, not on the count
   alone.
 
+Both are failure modes of a *coordinator following a procedure*, which is why under
+`epic-lifecycle` they are no longer a procedure: `epic-wake`'s `atReviewBudget()` is the
+executable form of this rule, asserted by the workflow harness (including that a fourth round
+is refused after a third, and that a zero-round batch consumes no budget). A **third mechanic**
+only code reliably gets right joins them there — **the counters have to survive the wake.**
+The script has no memory, so the coordinator carries `specReviewRounds` / `specLevelFound` in
+`.orchestration/` and passes them back in every time; drop them and the budget silently
+restarts at zero, which reads exactly like a spec that never converges. Standalone
+`issue-lifecycle` still applies all three as written above — **this section stays canonical for
+both**, so change it here first, then both implementations.
+
 **The budget applies to the epic PR too**, on the same terms — the epic-spec is a direction
 artifact reviewed at the same altitude, and it's the one surface where an unbounded review
 loop would otherwise survive, sitting directly on the top-level gate. The coordinator holds
@@ -374,8 +398,11 @@ So the discipline is ours, not theirs:
 - **`issue-spec`** Step 6 (reviewer contract in the PR description) and Step 6.5 (the
   triage loop that applies the bar and the budget).
 - **`issue-lifecycle`** / **`epic-lifecycle`** — the round counters live in the handle cache
-  (`spec_review_rounds` per issue; `epic_review_rounds` for the epic PR); the coordinator
-  declares convergence and surfaces the gate.
+  (`specReviewRounds` + `specLevelFound` per issue; `reviewRounds` + `aboveBarFound` for the
+  epic PR); the coordinator declares convergence and surfaces the gate.
+- **`.agents/workflows/epic-wake.js`** — `atReviewBudget()`, the executable copy of the
+  convergence rule, applied to issue specs and the epic PR alike. Its harness
+  (`.agents/workflows/verify.mjs`) is where the rule's edge cases are pinned down.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
 
@@ -487,6 +514,12 @@ places is **one** settlement, fanned to both), and queue rather than exceed the 
 cap — a settlement that starts a wake later still beats two more rounds of argument. If you
 find yourself dispatching more than one or two at once, the trigger has slipped from "a loop
 formed" to "someone asserted something"; that's the POC farm this section exists to prevent.
+
+Under `epic-lifecycle` the bound is mechanical rather than remembered: `epic-wake` normalizes
+and dedupes the claim set, draws settlements from the same cap as the issue workers *after*
+them (so a POC queues instead of starving one), and routes each verdict to every issue the
+claim was argued on as soon as that POC returns. What stays judgment is the **trigger** — the
+loop has to have formed — and the cap is no defence against a trigger that fires too easily.
 
 Non-blocking is load-bearing. While the POC runs: the triage round finishes, remaining
 feedback lands as notes, the spec converges on schedule, and the approval gate stays
@@ -666,6 +699,13 @@ lines of phase. Every heavy step (author a spec, implement, maintain the epic-sp
 in a **worker sub-agent** that does the work in its own context and returns ≤ a screen.
 State is re-derived from durable truth (Linear + PRs + the epic-spec doc), never replayed
 from transcript. Idle cost ≈ 0.
+
+Routing the fan-out through a **workflow script** doesn't change that budget — the script holds
+no context between wakes either, and its agents are the same isolated workers. It changes
+*where the routing decision lives*: in code with a harness rather than in the coordinator's
+prompt. The coordinator's own cost stays the table plus the epic record, and it now also stays
+the same size regardless of how many issues the wake touched, because the wake returns a
+fixed-shape table rather than N summaries to fold.
 
 Event routing follows the same discipline. The coordinator does **not** read event
 content: on a PR event it maps PR# → owning issue and dispatches that issue's worker,

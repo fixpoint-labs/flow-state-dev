@@ -153,6 +153,8 @@ docs/
 
 Development task skills live in `agents/skills/` — the harness-neutral home, since Claude is our main harness but not our only one. `.claude/skills` is a symlink to it so Claude Code's skill discovery keeps working; don't put files under `.claude/skills` directly. Use these when performing common development tasks:
 
+> **Workflow scripts** live alongside them in `.agents/workflows/` (with `.claude/workflows` symlinked the same way). They hold the parts of a lifecycle that are pure mechanism — budgets, caps, dedupe, DAG derivation — as deterministic control flow rather than prose a coordinator re-derives each wake. Two exist today: `epic-wake` (one epic-lifecycle wake) and `issue-multi-pr` (one step of a multi-PR DAG). Both are covered by `node .agents/workflows/verify.mjs`, which runs them with stubbed hooks and spawns no agents — **run it after editing either script.** A workflow script can't prompt, wait, subscribe, or read the filesystem, so gates and state stay with the calling skill; see `docs/contributing/orchestration.md` → "The pieces at a glance".
+
 ### Workflow skills
 
 

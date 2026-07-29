@@ -94,7 +94,7 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 |---|---|---|
 | **NEEDS_SPEC** — no spec / not yet in spec review | Dispatch a sub-agent: *run `issue-spec <issue>`*. It researches, drafts **Part I ("The Case") and Part II ("The Build Plan")**, opens the spec PR **ready for review**, and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the spec PR to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. |
 | **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest as §13 notes, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review whose latest state is `APPROVED` on the current head, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical — *unless a POC settlement on a load-bearing claim is still in flight, in which case leave it open until the verdict lands* (see POC settlement below; this defers cleanup only, never implementation) — and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — apply the `spec approved` label as the mirror and proceed the same way. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
-| **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
+| **NEEDS_IMPLEMENTATION** — spec approved | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step via the **`issue-multi-pr` workflow** — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR: dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
 
@@ -106,6 +106,13 @@ loop — and it's the loop that used to grind a directionally-correct spec throu
 rounds. So this phase is **budgeted, not open-ended.**
 
 **Default: two rounds.** Track the count in the handle cache (`spec_review_rounds`).
+
+> **Two implementations, one rule.** Running standalone, *you* apply the budget as written
+> below. Running under `epic-lifecycle`, the `epic-wake` workflow's `atReviewBudget()` applies
+> it — the same rule as executable code, covering issue specs and the epic PR alike. Both
+> derive from [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The
+> convergence rule", which stays canonical. **Change that doc first, then both.** A change to
+> one alone is the drift this note exists to catch.
 
 **Count rounds spent, not events dispatched.** The Step 6.5 sub-agent reports the rounds it
 actually spent, and **a batch that was only factual corrections or broken references costs
@@ -217,42 +224,56 @@ issues, Part II §8), the `NEEDS_IMPLEMENTATION` and `PR_FEEDBACK` phases genera
 from one PR to the plan. The single spec-approval up front covers the whole plan; you
 still stop before merge on each sub-PR.
 
-Each invocation advances the plan by **one bounded step**:
+Each invocation advances the plan by one bounded step, and **the step is a workflow**:
+`issue-multi-pr` (`.agents/workflows/issue-multi-pr.js`). The DAG's mechanics are pure
+procedure — which sub-PRs are ready, what base each one takes, which have been unstacked by a
+merge, and whether the assembled goal is still owed — so they live as code with a verification
+harness (`node .agents/workflows/verify.mjs`) rather than as prose to re-derive each wake.
 
-1. **Read** the plan (the §8 sub-PR table) and per-sub-PR status from the handle cache.
-2. **Independent ready** sub-PRs (no unmet `depends_on`, not yet built) → build in
-   **parallel**, each in its own worktree on branch `fix/<ISSUE>-<id>`: dispatch a
-   worktree-isolated worker (Agent tool `isolation: worktree`) that runs
-   `issue-implement` scoped to that sub-PR's deliverables — it implements the slice,
-   runs `review`, and opens the sub-PR. Same isolation `epic-lifecycle` uses across issues,
-   one level down. Cap parallelism to the VM (a few at a time).
-3. **Dependent ready** sub-PRs → branch off the dependency's branch so review can start
-   before the dep merges; rebase onto the dep when it merges. A dependency's **merge
-   event** re-enters the lifecycle and unblocks its dependents.
-4. Once **every** sub-PR in the plan is merged, run the spec's **end-to-end goal check on the
-   fully-assembled work** before marking the issue DONE. Each per-sub-PR `issue-implement` run
-   only proved its own slice (and any slice-level goal); the assembled goal is the proof no
-   single sub-PR could give, and the merge events are the only point it becomes runnable — so it
-   is required verification, not optional. Dispatch a bounded sub-agent to run it against the
-   merged result (a real model when the goal declares one; a model-free goal runs as-is) and
-   confirm PASS; **only then is the issue DONE.** If the spec's PR plan instead **designates a
-   specific integrating sub-PR to own the assembled goal**, that sub-PR's run proves it and this
-   step just confirms the verdict was recorded — don't double-run. If it fails, the issue isn't
-   done: file the gap (`issue-manager`) and open a **new fix PR** owned by the breaking slice —
-   the sub-PRs are already merged, so they can't be reopened (a merged PR's branch may be gone) —
-   and keep the issue out of DONE until that fix lands and the assembled goal re-passes.
+```
+Workflow tool:
+  name: issue-multi-pr
+  args: {
+    issueId: "<ISSUE>",
+    cap: <a few — one worktree per sub-PR>,
+    subPrs: [ { id, dependsOn: [], branch, pr, status, stackedOn } ],
+    assembledGoal: { passed, ownedBy }
+  }
+```
 
-**Handle-cache extension:** the `.orchestration/<ISSUE>.md` record adds one row per
-sub-PR — `id · depends_on · branch · PR# · status (pending / building / open / merged)`
-— alongside the issue-level fields. The coordinator holds only this table, never sub-PR
-content (same token discipline).
+What the script decides, so you don't:
+
+1. **Base selection.** A sub-PR whose deps are all **merged** builds on fresh `origin/main`;
+   one whose single dep is merely **open** *stacks on that dep's branch* so review can start
+   before the dep merges. Two open deps are waited on rather than stacked arbitrarily.
+2. **The rebase.** A stacked sub-PR whose deps have since merged comes off the stack onto
+   `origin/main` — otherwise it carries the dep's commits into its own diff.
+3. **The assembled goal.** Every sub-PR merged is necessary but **not sufficient**: each
+   `issue-implement` run only proved its own slice, and the merges are the first moment the
+   end-to-end goal is runnable. The script runs it on the real path before the issue can be
+   DONE; if the plan designated an integrating sub-PR to own it, the script confirms that
+   verdict instead of double-running. On FAIL it files the gap and opens a **new fix PR** owned
+   by the breaking slice — the sub-PRs are merged and can't be reopened — and keeps the issue
+   out of DONE until that lands.
+
+`subPrs` comes from the handle cache and goes back to it: the `.orchestration/<ISSUE>.md` record
+adds one row per sub-PR — `id · depends_on · branch · PR# · stackedOn · status (pending /
+building / open / merged)` — alongside the issue-level fields. You hold only this table, never
+sub-PR content (same token discipline). **You still own every merge gate**: a dependency's merge
+is an external event that re-enters this lifecycle, and the script never merges anything.
 
 **Optional team-backed burst.** When agent teams are enabled and the independent
 sub-PRs share interfaces that benefit from live coordination, the parallel build can
 run as a team (the DAG is the shared task board) instead of independent workers.
 Default is independent worktree workers — no team required.
 
-Single-PR issues are just a one-node plan: no change to their flow.
+**Single-PR issues are a one-node plan and don't use the workflow.** With no fan-out and no
+DAG there is nothing for it to decide, and a background workflow would add a hop for zero
+benefit — dispatch `issue-implement` directly, as the phase table says.
+
+And as the PR_FEEDBACK row states: after the **last** sub-PR merges the issue is **not** DONE.
+The script enforces that (a build wake never returns `done: true`), but the merge that makes
+the assembled goal runnable is *your* event to act on — re-enter and run the workflow again.
 
 ## Waking
 
