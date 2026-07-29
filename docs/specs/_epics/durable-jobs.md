@@ -219,10 +219,13 @@ parallel-at-scale fail without it* — the set is not uniformly strong:
 - **M3 (FIX-982) is the milestone Conductor M2 actually asks for.** "A claimer that runs a
   leased task outside the originating request" *is* the blocked capability, stated in those
   words. **No necessity doubt.**
-- **M4 (FIX-983) is the weakest member.** Its durable half may be as small as one predicate
-  helper, because **in-request blocking already ships** via `.waitForCondition`. Whether it
-  deserves a milestone at all turns on whether the disposition must survive the request —
-  **stated once in OQ-B**, which is also where the "collapse M4 into M3" option is recorded.
+- **M4 (FIX-983) is the weakest member — but no longer for the reason first given.** The earlier
+  claim that its durable half "may be as small as one predicate helper" is **withdrawn**:
+  `.waitForCondition` ships in-request blocking only, since it requires the *current* request's
+  response emitter, so it cannot receive a detached execution's completion. **Cross-request waiting
+  does not exist today**, so M4's durable half is new work rather than a helper. Whether it deserves
+  a milestone still turns on whether the disposition must survive the request — **stated once in
+  OQ-B**, along with the (now precondition-bearing) "collapse M4 into M3" option.
 - **M5 (FIX-984) is necessary but its *urgency* is overstated by the description**, which
   justifies it by the conductor board view not being live. A live board **view** is
   observability, not correctness — M2's parallel execution is *correct* without it, just opaque —
@@ -240,8 +243,18 @@ subsumes another.
 
 Not "durable jobs work." Specifically:
 
-1. **Ownership (unconditional). The check asserts *claim* exclusivity first — settlement second.**
-   Under contention over one resource-backed board:
+1. **Ownership — *conditional on C1*. The check asserts *claim* exclusivity first — settlement
+   second.**
+
+   > **The round-9 audit missed this item, and the miss is recorded rather than quietly fixed.**
+   > That pass made clause 1 conditional on C1 and **left this criterion unconditional** — so the
+   > permitted outcomes C1 names could never satisfy the documented definition of done. It is the
+   > identical defect the audit existed to sweep, one line away from where it swept. **An unmarked
+   > miss would make the whole pass less trustworthy than a marked one**, since the audit's value
+   > to a later reader rests on its having been exhaustive.
+
+   **Where the guarantee is fenced** (the store supports the conditional write, and the board is
+   not `factory`-backed), under contention over one resource-backed board:
 
    1. **Only one `claim()` succeeds — equivalently, only one worker starts.** This is the primary
       assertion, because **the claim is the exclusivity boundary.**
@@ -264,6 +277,16 @@ Not "durable jobs work." Specifically:
    > revisited the first half to make *claim* exclusivity assertable. **A criterion that cannot
    > fail when its guarantee breaks is the failure mode our own grounding names** — a test that
    > can't fail when the logic changes is wrong.
+
+   **Where the guarantee is *not* fenced, "done" is defined differently — no outcome is left
+   without a check.** C1 permits three such outcomes, and each gets its own definition of done
+   rather than inheriting one it cannot meet:
+
+   | Permitted outcome | What "done" means instead |
+   |---|---|
+   | **OQ-A refuses the conditional write** → guarantee is **topological** (queue dedup) | Assert that **exactly one execution can reach the board for a given task** — i.e. the dedup invariant at the queue, not exclusivity at the store. **And assert the escape hatches explicitly**: a `taskTools` call and a `reclaim` from outside the queue **must be shown either to be impossible by construction or to be fenced some other way.** Without that second half the check would certify a guarantee this document already shows is bypassed. |
+   | **Store lacks the verb** (e.g. filesystem) | Assert the durable board is **refused at construction**, loudly and by name — not that it is safe. A silent degrade fails this criterion. |
+   | **`factory`-backed board** | Assert it is **refused or explicitly unsupported** for detached jobs (Decision 2 → 2.b), unless it satisfied the advertisement contract there. |
 1b. **Cap admission (conditional on OQ-A — state which was chosen):**
 
    | If OQ-A chooses | The distinct-ID goal check asserts |
@@ -589,11 +612,55 @@ each.
 > forced to change, and reuse the scope-store precedent rather than inventing a parallel
 > mechanism. **The shape is FIX-981's to design** (see the open fork below).
 
-**Scope: every ownership-sensitive write, not claiming alone.** An earlier draft scoped this to
-`claim`, which left clause 1's *"a stale owner's settlement is rejected"* undelivered. `complete` /
-`fail` / `cancel` all route through `transitionRef` (`resource-backed.ts:176-213`), which evaluates
-FIX-951's guards **inside `ref.updateState`** — the same tier-1-only path as `claim`. **So 1a is
-the larger half of M1, not a narrow store change.**
+##### Scope — stated as a principle, because enumerating paths has failed three times
+
+> ### Every **ownership-sensitive write** must be fenced at the durable boundary — not only `claim` and settlement.
+>
+> An ownership-sensitive write is any write that can change, or can overwrite, the fields that
+> establish who owns a task — `attempts`, `status`, `leaseUntil`, `assignee` — **including a write
+> whose *intent* is some other field but which persists the whole task.**
+
+**Why a principle and not a longer list.** This axis has now been extended three times: round 3
+added settlement, round 8 added `taskTools`, round 10 added `patchRef`. **Enumerating paths and
+being wrong about the next one is the same over-reach as the mechanism claims, one axis over.** So
+the epic states the invariant, and **exhaustive enumeration of the paths that carry it is a required
+deliverable of FIX-981's spec**, done against the code by someone reading it.
+
+**Known instances — *known-so-far, explicitly not exhaustive*.** Counted while verifying `patchRef`,
+and the count is **higher than the four previously named**:
+
+| # | Path | Fenced by 1a as scoped? |
+|---|---|---|
+| 1 | `claim` → `updateState` | yes |
+| 2–4 | `complete` · `fail` (both branches) · `cancel` → `transitionRef` | yes |
+| 5–8 | **`block` · `unblock` · `awaitReview` · `resumeFromReview` → `transitionRef`** | **only if 1a is read as "all of `transitionRef`", not "claim + settlement"** — each mutates `status`, and `resumeFromReview`/`unblock` also clear or reset lease state. `unblock` is additionally **FIX-957's Decision 4 surface**. |
+| 9–13 | **`setAssignee` · `setPriority` · `addLabel` · `removeLabel` · `patchMetadata` → `patchRef`** | **NO — all five** |
+| 14 | `reclaim` → `updateState` | **FIX-978's**, per Decision 0 |
+| 15 | `addTask`/`addTasks` → `collection.create` | 1b's path, not ownership |
+
+**Verified — `patchRef` (`resource-backed.ts:215-239`) takes no guard parameter at all** and does
+`applyTransition(task, update, now())` inside `ref.updateState`, returning **the whole task**. So it
+reads the stale execution mirror and **rewrites every field**: a reclaimed attempt-1 worker calling
+any of those five overwrites attempt 2's `attempts` and `status`, undoing the ownership guarantee
+**even when claim and settlement are fenced.**
+
+**Two things that undercount if you only look at `assignTask`:**
+
+- **It is all five `patchRef` methods, not just `setAssignee`.** Intent is irrelevant — the write is
+  whole-task. `addLabel` matters most in practice: FIX-980's A1 identifies
+  `patterns/src/supervisor/blocks/label-failed-reviews.ts` as a **live** post-drain block that
+  labels terminal tasks, so it is a real caller on this path.
+- **Rows 5–8 sit in the ambiguity of the phrase "claim and settlement."** They are neither, and they
+  mutate `status`. Reading 1a as "route `transitionRef` through the fenced write" covers them;
+  reading it as "claim + settlement" does not. **1a means the former.**
+
+**Coordinate with FIX-976, do not collide.** FIX-976 (under FIX-980) is already *"`assignTask`
+silently rewrites a terminal task's assignee"* — **the same path from the honesty angle**, and
+FIX-980's A1 constrains any guard there to be **per-operation, never installed on the shared patch
+helper** (a blanket guard would break the live labelling block). **FIX-981 must align with A1 rather
+than install its own helper-level guard**, and whichever lands first must not leave one behind.
+
+**So 1a is the larger half of M1, not a narrow store change.**
 
 **Constraint — compose with FIX-951, never replace it.** `ifAllowed` / `expectAttempt` /
 `TransitionDeclined` / `shouldDeclineTransition` are the shipped, merged **in-request** half of
@@ -844,10 +911,28 @@ verify:**
 1. **`factory`-backed boards are out of scope for detached jobs by default.** Not "broken" — the
    framework cannot make a guarantee about a ref it cannot inspect, and pretending otherwise would
    be exactly the "reports a guarantee it does not have" defect this set exists to remove.
-2. **Supporting them requires the ref to *advertise* the conditional-write capability** rather than
-   the framework inferring it — the same capability-advertisement shape `DeltaStoreOps` already
-   uses. **Whether to offer that, and how a ref advertises, is FIX-981's design decision**, tied to
-   1a's open fork (a ref that cannot advertise cannot be fenced).
+2. **Supporting them requires advertising *two* things, not one — fencing capability is
+   insufficient on its own.** An earlier version of this remedy asked only for conditional-write
+   capability. **That does not carry the guarantee**, and the reason is the durability caveat stated
+   just above: a factory that returns a **fresh in-memory but fully CAS-capable** ref per execution
+   **satisfies a fencing advertisement completely**, while the detached executor resolves a
+   *different, empty* collection — and the task is stranded with every fence intact. Fencing answers
+   "can this write be made conditional"; it says nothing about "is this the same collection."
+
+   So a factory-backed board is supportable only if the ref advertises **both**:
+
+   | | Contract | Answers |
+   |---|---|---|
+   | **(a)** | **conditional-write capability** | can ownership writes be fenced? |
+   | **(b)** | **stable re-resolution / durability identity** | will a later, independent execution resolve *the same* durable collection? |
+
+   **(b) is the load-bearing one and it is new.** Without it the epic would be certifying a board it
+   cannot re-find. **Whether to offer this at all, and how a ref advertises either contract, is
+   FIX-981's design decision**, tied to 1a's open fork — a ref that cannot advertise cannot be
+   fenced, and one that cannot prove identity cannot be trusted to persist.
+
+   **Advertisement-for-fencing-alone is explicitly rejected.** If (b) is not offered, factory-backed
+   boards stay **unsupported for detached jobs** — which remains a perfectly defensible outcome.
 3. **Binding on FIX-981 and FIX-982: state explicitly which backings your guarantee covers.**
    Neither may silently treat `backing: "resource"` as a proxy for "durable", and a durable board
    arriving via `factory` must get a **named** outcome — supported-because-it-advertised, or
@@ -1086,17 +1171,29 @@ pairing. What is missing is only a **per-task** helper — no `waitForTask`, no 
 predicate factory — so a caller hand-writes `() => collection.get(id)?.status === "completed"`,
 and it works **only inside a sequencer step within the same request**.
 
-**So the real question, restated:** does the **detached/durable** case need a disposition that
-survives the request, and can any new wait API justify itself against `.waitForCondition` —
-most likely as a **per-task predicate helper** rather than a new mechanism? **This makes M4's
-"near-zero work" framing untenable as originally stated**, and it is a better question than the
-one it replaces. Routed as a **precondition to speccing FIX-983**.
+**But `.waitForCondition` cannot be the durable answer, and the "just a predicate helper" sizing is
+withdrawn.** It **requires and subscribes to the current request's `ResponseEmitter`** — the impl
+throws *"waitForCondition requires a response emitter on the context"* when `ctx.response` is
+undefined (`core/src/blocks/sequencer.ts:2083-2100`) — and it wakes on **that** request's item
+stream. So wrapping `collection.get(id)` in a predicate helper **cannot receive a completion
+performed by a later detached execution**: the write happens in an execution whose items this waiter
+never sees. In-request blocking ships; **cross-request blocking does not exist**, and a helper over
+`.waitForCondition` does not create it.
 
-> **Sharpened option for the gate — not decided here.** Cursor recommends deciding now that **M4
-> collapses into M3**. That is a scope call, so it is recorded rather than taken. **Tradeoff:**
-> collapsing removes a milestone whose in-request half already exists and whose durable half may
-> be one predicate helper — but it also buries the "does anything still await this task" question
-> inside the executor's design, where it is easy to answer implicitly and wrongly.
+**So the real question, restated:** does the detached/durable case need a disposition that survives
+the request — and **since no cross-request wait mechanism exists today, whatever answers it is new
+work, not a helper.** Routed as a **precondition to speccing FIX-983**.
+
+> **Sharpened option for the gate — not decided here, and now with a precondition attached.**
+> Collapsing **M4 into M3** is viable **only if M3 owns a persisted cross-request wait/resume
+> mechanism.** Otherwise **M4 is retained** — because the thing being collapsed away does not exist
+> to be inherited.
+>
+> This **narrows** the decision rather than widening it: the earlier framing ("M4's durable half may
+> be one predicate helper, so collapsing is nearly free") **was wrong**, and it was the main argument
+> for collapsing. The tradeoff that remains is real but different — collapsing puts "does anything
+> still await this task" inside the executor's design, where it is easy to answer implicitly and
+> wrongly.
 
 **OQ-C — What is M5's real necessity argument?**
 
