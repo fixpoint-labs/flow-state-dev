@@ -243,11 +243,23 @@ Workflow tool:
   }
 ```
 
-**A non-empty `deferred` means run another step now, not end the turn.** Those slices were pushed back
-by the cap, not by anything external: a `pending` slice has no PR, so it cannot generate the activity
-that would wake this session. With four independent slices and a cap of three, the fourth would sit
-until the heartbeat. Re-enter while `deferred` is non-empty — the same rule `epic-lifecycle` follows for
-its own cap-deferred rows. The cap bounds concurrency, not scheduling.
+**Re-invoke until the result names an external wait.** `deferred` is only one reason another step is
+runnable, and keying on it alone ended the turn after every internal assembly transition — a failed goal
+records its failure and the *next* action (file the gap) is immediately runnable, and since every slice PR
+has already merged there is no PR event left to wake the session. The repair then waited for the heartbeat,
+or indefinitely in an attended local run.
+
+The workflow already names its waits, so use those rather than re-deriving its state machine. Run another
+step unless the result carries one of:
+
+- `done: true` — the assembled goal passed with evidence; the issue is finished.
+- `awaitingFix` — a repair PR is open and a human has to merge it.
+- `blockedGap` — the filed gap is blocked by a Linear relation someone else must move.
+- `blocker` — a human decision is owed.
+
+Anything else, including a non-empty `deferred`, is work this workflow can do the moment you call it again.
+Cap-deferred slices are the clearest case: a `pending` slice has no PR, so nothing external will ever wake
+it. The cap bounds concurrency, not scheduling.
 
 **Persist `assembledGoal` verbatim, whole.** It is a state machine's state, not a handful of
 flags: `passed` · `evidence` · `failure` · `owningSubPr` · `fixIssue` · `fixReady` · `fixPr` ·

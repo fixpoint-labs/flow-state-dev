@@ -140,6 +140,10 @@ function classify(node, byId, answeredIds) {
  * exists — the DAG violated by the one input we can't trust.
  */
 function readySet(nodes, cap, answeredIds) {
+  // Slices whose last BUILD FAILED go to the back. The dispatch order is otherwise the table's order, which
+  // is stable — so under a cap smaller than the ready set the same failing node was selected every wake and
+  // independent slices never got a turn. It still retries, just after everything that has not failed yet.
+  nodes = [...nodes].sort((a, b) => (a.buildFailed ? 1 : 0) - (b.buildFailed ? 1 : 0))
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const ready = []
   const invalid = []
@@ -711,6 +715,11 @@ const subPrs = nodes.map((node) => {
     // build cleared the blocker while the caller consumed the one-shot answer, and the next build
     // retried the architectural fork blind. For an ordinary unblocked build `node.blocker` is already
     // null, so dropping the action distinction costs nothing and closes the sibling case with it.
+    // A build that FAILED is marked, so `readySet` puts it behind its siblings next wake. Restoring the
+    // prior status was right (it still needs building) but left it first in a stable order — under a cap
+    // smaller than the ready set, and especially `cap: 1`, the same failing node was picked every wake and
+    // independent slices never ran at all. Cleared the moment it succeeds.
+    buildFailed: r.status === 'failed' ? true : undefined,
     blocker: r.blocker || (r.status !== 'open' ? node.blocker || null : null),
     // EXPLICIT delivery acknowledgement. A resume works on an existing open PR, so a success is
     // `open → open` with no blocker — indistinguishable from a failure by status alone, which left the

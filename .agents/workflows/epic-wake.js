@@ -76,6 +76,20 @@ function atReviewBudget(spent = 0, aboveBarFound = false) {
  * The next bounded action for one issue, or null if it is genuinely waiting on something
  * external. `why` is for the log line — a dispatch the user can't explain is drift.
  */
+/**
+ * Is the epic's cross-spec coherence pass still owed?
+ *
+ * `epic-lifecycle` runs ONE coherence pass over the whole spec set before any of it is built — an epic's
+ * specs are authored in isolation, so each can be locally excellent while the set claims the same surface
+ * twice or contradicts itself. Moving the advance decision into this script left that gate behind entirely:
+ * every spec chained straight from approval into implementation, so conflicts were found (if at all) after
+ * the code existed, which is the expensive half of the order the gate exists to prevent.
+ *
+ * Set by the coordinator, which owns the gate: it needs the user's approval to run the pass at all, and only
+ * it can dispatch `cross-spec-review`. The script's job is to keep approved rows parked until it clears.
+ */
+let crossSpecHold = false
+
 function pendingAction(row) {
   // An issue with an open blocked-by relation is not admitted to the active set; it's tracked
   // until its blocker merges. → epic-lifecycle § Intake, and § Boundaries (sequence, don't
@@ -137,13 +151,17 @@ function pendingAction(row) {
       // through (which is what the convergence rule does with remaining open threads anyway).
       if (row.specApproved) {
         return row.newSpecReviewEvents
-          ? cursorUsable(row)
+          ? crossSpecHold
+            ? null
+            : cursorUsable(row)
             ? { action: 'implement', why: 'spec approved on current head, with outstanding spec-PR feedback to carry as implementer notes' }
             : // The approval is real, but the batch riding with it cannot be recorded as handled — and this
               // is the ONLY pass that reads spec-PR feedback, so dispatching would carry it once and then
               // rediscover it on every later timestamp-less scan, re-handling and re-replying each time.
               // The same hold the spec-review and CI paths already take.
               null
+          : crossSpecHold
+          ? null
           : { action: 'implement', why: 'spec approved on current head' }
       }
       if (row.newSpecReviewEvents) {
@@ -162,6 +180,7 @@ function pendingAction(row) {
       // implementation on a spec no human ever approved. This is the one gate that must never be
       // bypassable, so the phase is not allowed to be the thing that carries it.
       if (!row.specApproved) return null
+      if (crossSpecHold) return null
       return { action: 'implement', why: 'spec approved, implementation not started' }
 
     case 'PR_FEEDBACK':
@@ -1905,6 +1924,21 @@ if (routeConvergedEpicFeedback) {
   )
 }
 
+// The cross-spec gate, as state — computed from the REFRESHED rows, because `specApproved` is scan-derived
+// and never carried, so the incoming table cannot answer "is every spec approved". It is OWED once every
+// planned spec is open and individually approved and the pass has not cleared; the coordinator is the only
+// thing that can clear it, since running the pass needs the user's approval first.
+crossSpecHold =
+  !args.crossSpecCleared &&
+  refreshed.length > 1 &&
+  refreshed.every((r) => r.specApproved || POST_SPEC_PHASES.has(r.phase) || r.linearTerminal) &&
+  refreshed.some((r) => r.specApproved && !POST_SPEC_PHASES.has(r.phase))
+if (crossSpecHold) {
+  log(
+    `All ${refreshed.length} specs are open and individually approved, but the cross-spec coherence pass has not cleared — holding implementation. Aligning a good spec to an unvalidated one spreads the flaw, so the set is checked before any of it is built.`,
+  )
+}
+
 const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
 
 // No silent caps — say what was held back and why.
@@ -2452,6 +2486,9 @@ return {
   issues,
   gates,
   blockers: epicBlockers,
+  // The coordinator has to ASK before running the pass, so this is a gate like any other — without it the
+  // hold above would be a silent stall rather than a question waiting on an answer.
+  ...(crossSpecHold ? { crossSpecGate: { issueIds: issues.filter((r) => r.specApproved).map((r) => r.id) } } : {}),
   // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
   // what the POC found rather than just the claim text.
   unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),

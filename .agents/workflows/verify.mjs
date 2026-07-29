@@ -596,6 +596,105 @@ check('a present Linear row clears a resolved blocker', async () => {
   assert.deepEqual(workerLabels(calls), ['spec:FIX-2'])
 })
 
+check('GATE: implementation waits for the cross-spec coherence pass', async () => {
+  // An epic's specs are authored in isolation, so each can be locally excellent while the SET claims the
+  // same surface twice. `epic-lifecycle` runs one coherence pass before any of it is built — and moving the
+  // advance decision into this script left that gate behind entirely, so every spec chained from approval
+  // straight into implementation and conflicts surfaced only after the code existed.
+  const twoApproved = {
+    'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, headSha: 'abc' },
+    'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9, specApproved: true, headSha: 'abc' },
+  }
+  const held = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 })],
+    }),
+    respond: epicResponder({ fresh: twoApproved }),
+  })
+  assert.deepEqual(workerLabels(held.calls), [], 'nothing is built before the set has been checked')
+  assert.ok(held.result.crossSpecGate, 'and the pass is surfaced as a gate, since the user must approve running it')
+  assert.deepEqual(held.result.crossSpecGate.issueIds, ['FIX-2', 'FIX-3'])
+
+  // CLEARED: the same two rows implement.
+  const cleared = await run('epic-wake.js', {
+    args: epicArgs({
+      crossSpecCleared: true,
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 })],
+    }),
+    respond: epicResponder({ fresh: twoApproved, worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 }, 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 12 } } }),
+  })
+  assert.deepEqual(workerLabels(cleared.calls).sort(), ['implement:FIX-2', 'implement:FIX-3'])
+  assert.equal(cleared.result.crossSpecGate, undefined)
+
+  // A row already at NEEDS_IMPLEMENTATION is held by the same gate: it reaches implementation by a different
+  // branch, and guarding only the approval-chain path left that one open.
+  const notStarted = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'NEEDS_IMPLEMENTATION', specPr: 8 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 })],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 8, specApproved: true, headSha: 'abc' },
+        'FIX-3': twoApproved['FIX-3'],
+      },
+    }),
+  })
+  assert.deepEqual(workerLabels(notStarted.calls), [], 'neither branch to implementation is open while the set is unchecked')
+
+  // A SINGLE-issue epic has no set to check, so it is never held — the gate is about the set.
+  const lone = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': twoApproved['FIX-2'] },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 } },
+    }),
+  })
+  assert.deepEqual(workerLabels(lone.calls), ['implement:FIX-2'])
+
+  // Nor is an epic whose specs are not all approved yet — aligning a good spec to an unvalidated one
+  // spreads the flaw, which is why the pass waits for the whole set.
+  const partial = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }), row('FIX-3', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': twoApproved['FIX-2'], 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 }, 'FIX-3': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 9 } },
+    }),
+  })
+  assert.equal(partial.result.crossSpecGate, undefined, 'the set is not ready to be checked yet')
+  assert.ok(workerLabels(partial.calls).includes('implement:FIX-2'))
+})
+
+check('a failed build goes behind its siblings, not in front of them', async () => {
+  // Restoring the prior status was right — it still needs building — but left it first in a stable order, so
+  // under a cap smaller than the ready set the same failing node was picked every wake and independent
+  // slices never got a turn.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      cap: 1,
+      subPrs: [
+        { id: 'a', status: 'pending', dependsOn: [], buildFailed: true },
+        { id: 'b', status: 'pending', dependsOn: [] },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(
+    calls.filter((c) => /^build:/.test(c.label || '')).map((c) => c.label),
+    ['build:b'],
+    'the slice that has not failed yet gets the slot',
+  )
+
+  // And the failure mark is cleared by a success, so it is a rotation and not a demotion.
+  const { result } = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [{ id: 'a', status: 'pending', dependsOn: [], buildFailed: true }] }),
+    respond: multiResponder(),
+  })
+  assert.equal(result.subPrs[0].buildFailed, undefined)
+  assert.equal(result.subPrs[0].status, 'open')
+})
+
 check('a dead gate scout holds child work, and keeps the approval for persistence', async () => {
   // This check formerly asserted the OPPOSITE — that a durable approval releases work through a dead scan,
   // so infrastructure failure could not re-lock an epic. That was sound while the epic approval was a
