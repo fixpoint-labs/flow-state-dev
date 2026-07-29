@@ -130,44 +130,57 @@ two-round budget once, for all of them. So model it once. A "PR" is not an entit
 where an **Artifact** happens to be hosted.
 
 ```
-Epic ──< Issue ──< Artifact ──< Review (round n)
+Epic ──< Issue ──< Artifact ──< Review (round n, one per reviewer)
             │          └──< hostedAt: PR | Linear doc | file
-            └──< Dispatch (one agent run: vendor, skill, cost, outcome)
+            ├──< Dispatch (one agent run: vendor, skill, cost, outcome)
+            └──< Retrospective (conductor's own artifact, one per completed issue/epic)
 
-Guidance (collection)  ·  label + body, kind: objective | tenet | lesson
-   └─ injected as context into decisions; reacted to on change
+Guidance  ·  the repo's own philosophy / tenets / objectives documents
+   └─ read as context; NOT conductor's data, and not relocated (below)
 ```
 
 | Entity | What it is | Why it exists |
 |---|---|---|
-| **Project** | the repo conductor drives | scope root: config, connectors, process files |
+| **Project** | the repo conductor drives | scope root: config, connectors, phases |
 | **Epic** | a set of related issues + their shared direction | cross-cutting decisions need somewhere to live |
 | **Issue** | one unit of work; `type` is a routing key | the thing that moves through phases |
 | **Artifact** | a reviewable output of a phase | unifies spec review and code review |
-| **Review** | one round against an artifact | carries the round count the budget needs |
+| **Review** | one round against an artifact, by one reviewer | carries the round count the budget needs |
 | **Dispatch** | one agent run | observability and cost; "what actually ran" |
-| **Guidance** | a *collection* of `label + body` documents — objectives, tenets, lessons | they are reference material, not graph nodes (below) |
+| **Retrospective** | what a completed issue or epic taught, as a document | conductor's own work product; nothing else records it |
 
-### Guidance is documents, not entities
+### Guidance belongs to the repo, not to conductor
 
-Objectives, tenets, and lessons are the same shape (a label and a body) serving the same
-*function*: they get injected into a decision as context — exactly how the current system uses
-`philosophy.md`. That is reference material, not a graph node. An `Objective` entity would buy
-traversal nothing in v1 needs (tenet 3).
+The tempting move is a `.conductor/guidance/` directory conductor owns. It is wrong, and the
+reason is the same layering argument as everywhere else: **philosophy, tenets, and objectives
+are app-level facts.** Claude Code reads them today, the skills already map to them, and they
+matter whether or not conductor is running. Relocating them under `.conductor/` would make
+conductor's presence a precondition for the repo's own guidance — and would put one fact in two
+places the first time someone kept `docs/philosophy.md` too.
 
-So: **one collection** of `{ kind, label, body }`, `kind` a discriminator (`objective | tenet |
-lesson`) the way issue `type` is a routing key. **Filesystem-backed** under
-`.conductor/guidance/`, because layer 3 has to read it too (§6). Objectives ground priority by
-being *read* during prioritization, not by being joined to issues.
+So **conductor reads guidance where the repo already keeps it** (`docs/philosophy.md`,
+`docs/contributing/best-practices.md`, an objectives doc) and owns none of it. Config points at
+the paths; that is the whole integration. Three things fall out, all simplifications:
 
-**The promotion trigger, named so the call stays revisitable:** if we need real graph queries —
-every issue serving objective X, or which objectives have no work against them — that is when
-an entity and a link earn their place.
+- **No guidance directory, and no pointer block to maintain.** The vendor harness already reads
+  these files through its own entrypoint. There is nothing to generate and nothing to keep in
+  sync.
+- **They are documents, not one file per item.** A tenet list is bullets in a document — which is
+  what `philosophy.md` already is. A directory of one-objective files was over-granular.
+- **`guidance_changed` comes from reconciliation only.** Conductor never writes these files, so
+  `reactTo` would never fire on them anyway; the tick hashes them against last-observed (§6).
+  One mechanism instead of two.
 
-**Guidance changes are signals**, via `reactTo` on the collection (FIX-751 for state, FIX-843
-for content writes, both **Done** — buildable today). That makes the interesting behavior
-configurable rather than bespoke: *a new objective lands → re-examine every open PR and ask
-whether it changes the approach.*
+**Retrospectives are the exception, and they are conductor's.** A retrospective is a substantial
+per-issue document about how the work went — an internal artifact, not repo guidance. It lives
+under `.conductor/retrospectives/`. The loop runs *outward*: the retrospective phase writes the
+artifact, and `distill-lessons` reads across them and proposes the smallest edit to the repo's
+own guidance as an ordinary PR. Conductor produces the raw material; a human accepts what
+becomes doctrine.
+
+Objectives ground priority by being *read* during prioritization, not by being joined to issues.
+**If we ever need real graph queries** — every issue serving objective X, or which objectives
+have no work against them — that is when an entity and a link earn their place.
 
 ### Two routing details
 
@@ -376,39 +389,26 @@ ownership boundary between 1+2 and 3:
 ### The filesystem is the interop surface
 
 Anything *both* layers need must be readable by both, and layer 3 reads the repo, not an FSD
-store. So **guidance is filesystem-first**: `.conductor/guidance/**/*.md` are real files, picked
-up the way Claude Code already picks up `philosophy.md`. Metadata splits by audience —
-front-matter (`kind`, `label`) is shared and travels with the body; conductor's bookkeeping
-(when we last acted on an objective, which lessons were promoted) lives in a separate FSD-only
-resource keyed by file path, so the vendor can rewrite a document without clobbering our
-accounting.
+store. That is most of why guidance stays where the repo already keeps it (§4): both layers
+already read those files, so there is no interop problem to solve and no pointer block to
+generate. Conductor's phase brief names the paths relevant to *that* phase — a retrospective
+doesn't need every objective — which is scoping, not exposure.
 
-**External changes are a reconciliation problem, not a new mechanism.** A human or the vendor
-harness can edit a guidance file without conductor mediating the write, so `reactTo` never
-fires. That is the missed-webhook case in different clothes: each tick hashes the files against
-what was last observed and emits a synthesized `guidance_changed`. **Correctness needs no
-framework work** — the reconciler already has to exist.
+**Reading files conductor doesn't write is a reconciliation problem, not a new mechanism.** A
+human edits `philosophy.md`, or the vendor harness rewrites a doc mid-phase; `reactTo` never
+fires because conductor didn't mediate the write. That is the missed-webhook case in different
+clothes: each tick hashes the guidance paths against what was last observed and emits a
+synthesized `guidance_changed`. **Correctness needs no framework work** — the reconciler already
+has to exist.
 
 Framework work would buy **latency**. `defineExternalResourceCollection` (FIX-858, **Done**)
 models this shape but is missing a `contentUpdated` axis and any way for an app to *report* a
 change — filed as **FIX-979**. Conductor is its pressure test, not its dependent.
 
-### Getting guidance into the vendor harness
-
-Being a file in the repo isn't enough to be *found* — Claude Code reads `CLAUDE.md` and
-`.claude/skills`, Codex reads `AGENTS.md`, and neither knows `.conductor/guidance/` exists.
-Two mechanisms:
-
-- **Push, per dispatch (primary).** The phase brief carries the relevant guidance as file
-  references, scoped to the phase — precise, vendor-agnostic, and the only path that can be
-  scoped at all.
-- **Ambient pointer, per repo (safety net).** A generated, delimited block in `CLAUDE.md` /
-  `AGENTS.md` saying where guidance lives, refreshed on `guidance_changed`. This covers a human
-  driving the harness directly.
-
-**A pointer, never a copy.** Inlining guidance into `CLAUDE.md` would put one fact in two places
-with no authority rule — §10/D1's mistake at file altitude, with a stale copy as the failure
-mode.
+The one thing conductor keeps is its **own bookkeeping** — when it last acted on an objective,
+which retrospectives have been distilled — in an FSD resource keyed by file path. Deliberately
+not in the documents: the repo's guidance shouldn't carry conductor's accounting, and a human
+rewriting a doc shouldn't be able to clobber it.
 
 ### Who owns the git worktree
 
@@ -510,7 +510,7 @@ flowchart TB
   LED -.->|outbound projection · optional| LIN[(Linear)]
   LIN -.->|inbound signal · opt-in| RD
 
-  GUID[("guidance collection<br/>objectives · tenets · lessons")] -->|reactTo · guidance_changed| TICK
+  GUID[("repo guidance<br/>philosophy · tenets · objectives<br/>app-owned, read-only")] -->|hash diff · guidance_changed| TICK
   GUID -.->|injected as context| EX
   BOARD --> SURF[surfaces<br/>CLI board · devtool module · chat]
 
@@ -549,8 +549,8 @@ flowchart TD
   IROUND --> MGATE{{"HUMAN GATE<br/>merge (never automatic)"}}
   MGATE -->|not ready| IROUND
   MGATE -->|merged| GOAL["goal check on the real path<br/>(multi-PR: after the last one)"]
-  GOAL --> RETRO["ISSUE · RETROSPECTIVE<br/>emits a Lesson"]
-  RETRO --> GD[("guidance collection")]
+  GOAL --> RETRO["ISSUE · RETROSPECTIVE<br/>writes .conductor/retrospectives/"]
+  RETRO --> GD[("repo guidance<br/>via distill-lessons PR")]
   GD -.->|"guidance_changed"| REEX["configured reaction:<br/>re-examine open PRs"]
   REEX -.-> IROUND
   GOAL --> WRAP["EPIC · WRAP<br/>lessons + docs polish"]
@@ -815,13 +815,14 @@ a chat thread, and a classified question gets answered without advancing any gat
 ### M4 — Linear sync, guidance, and the loop that improves itself
 
 Linear sync as a projection (outbound blocks, plus optional inbound status signals — no new
-layer, per §9). The **guidance collection** (§4): objectives, tenets, and lessons as
-`label + body` documents injected into decisions, with `reactTo` on the collection so a
-guidance change is a signal. Retrospective phase writes lessons *into* that collection, and
-the `distill-lessons` pass proposes the smallest upstream fix to the process files.
+layer, per §9). **Guidance wiring** (§4): conductor reads the repo's own philosophy, tenets, and
+objectives as decision context, and the tick's hash diff turns an edit into `guidance_changed`.
+The RETROSPECTIVE phase writes its artifact under `.conductor/retrospectives/`, and
+`distill-lessons` reads across them to propose the smallest edit to *your* guidance as an
+ordinary PR — conductor produces the raw material, a human accepts what becomes doctrine.
 
-**Verify:** two goal checks. (1) A completed epic produces a lesson that lands as a concrete
-process-file change. (2) **Adding a new objective triggers a configured re-examination of
+**Verify:** two goal checks. (1) A completed epic produces a retrospective whose distillation
+lands as a concrete, reviewed change to the repo's guidance. (2) **Adding a new objective triggers a configured re-examination of
 every open PR** and reports which ones the new objective changes the approach for — the
 reactive path, proven on the real collection rather than asserted.
 
@@ -862,9 +863,10 @@ work.
    happens to produce an issue set? Leaning towards the latter — it needs no new machinery.
 2. **Retrospective altitude.** Per issue, per epic, or both? `distill-lessons` currently
    runs per-PR *and* periodically. Two altitudes may be right; two implementations are not.
-3. **Does guidance need lifecycle?** An objective can be achieved or abandoned; a lesson can
-   be promoted into a tenet or retired. If that needs real states, the guidance collection
-   grows a status field — but only once a behavior depends on it, not upfront.
+3. **Does guidance need lifecycle?** An objective can be achieved or abandoned. Since guidance
+   is now the repo's own documents, the answer is probably "that's the repo's problem, and a
+   heading" — but if a conductor behavior comes to depend on objective status, it needs somewhere
+   real to live.
 4. **Chat adapter specifics** (§7) — whether a GitHub thread comment arrives as `mention`,
    and how a PR thread's `sessionId` reconciles with conductor's per-issue session. Verify
    before M3.

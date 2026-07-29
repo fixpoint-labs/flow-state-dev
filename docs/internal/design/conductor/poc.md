@@ -17,6 +17,9 @@ defaults for everything it hasn't overridden.
 
 ```
 my-project/
+  docs/
+    philosophy.md              # your tenets — ALREADY YOURS. Conductor reads, never owns.
+    objectives.md              #   likewise. Claude Code reads these today.
   conductor.config.ts          # level 1–2: the only required file
   .conductor/
     phases/                    # every phase, built-in and yours, in one place
@@ -26,16 +29,20 @@ my-project/
       implement/instructions.md
       review/instructions.md
       retrospective/instructions.md
-      security/               #   a phase you added — same shape, no special case
+      security/                #   a phase you added — same shape, no special case
         instructions.md
         definition.ts
-    guidance/                  # the guidance collection's seed content
-      objectives/*.md          #   { kind: objective, label, body }
-      tenets/*.md              #   { kind: tenet, ... }  ← e.g. philosophy.md lives here
-      lessons/*.md             #   written by the retrospective phase
+    retrospectives/            # conductor's OWN artifacts — one per completed issue/epic
+      FIX-967.md
     blocks/                    # level 4: your own blocks
       security-review.ts
 ```
+
+**Note what is *not* here: a guidance directory.** Philosophy, tenets, and objectives are
+app-level facts that matter whether or not conductor is running, and the vendor harness already
+reads them. Conductor points at their paths and owns none of it (`conductor.md` §4). The only
+documents it owns are **retrospectives** — its own work product — and `distill-lessons` proposes
+edits to your guidance from them as an ordinary PR.
 
 **There is no separate "process" directory, because the process *is* the phases.** One
 directory, one shape: a phase is a folder with `instructions.md` and optionally a
@@ -56,30 +63,12 @@ should be a deliberate act rather than the starting state. Scaffolding every def
 would make every project a fork on day one.
 
 **Why files rather than an FSD store:** conductor delegates the work inside a phase to a vendor
-harness (Claude Code, Codex), and that harness reads *the repo* — not conductor's resources. So
-anything both layers need is a file. See `conductor.md` §6, "Three layers." Two
-consequences visible in the tree above: front-matter carries the metadata both layers read
-(`kind`, `label`), and conductor's own bookkeeping lives in a separate FSD-only resource keyed by
-file path, so the vendor harness can rewrite a document without clobbering our accounting.
-
-**Being a file isn't enough to be *found*.** Claude Code reads `CLAUDE.md` and `.claude/skills`;
-Codex reads `AGENTS.md`. Neither knows `.conductor/guidance/` exists. So exposure is two
-mechanisms (`conductor.md` §6, "Getting guidance into the vendor harness"): the **phase brief**
-carries the relevant guidance as file references per dispatch — precise and vendor-agnostic — and
-conductor maintains a **generated, marked block** in `CLAUDE.md` / `AGENTS.md` pointing at the
-directory, for when a human drives the harness directly. A **pointer, never a copy**: inlining
-guidance into `CLAUDE.md` would put one fact in two places with no authority rule, with a stale
-copy as the failure mode.
-
-```md
-<!-- CLAUDE.md — conductor rewrites only between these markers -->
-<!-- conductor:guidance:start -->
-## Project guidance (managed by conductor)
-
-Objectives and tenets live in `.conductor/guidance/`. Read the relevant ones before any
-design decision. Do not edit `lessons/` by hand — the retrospective phase writes them.
-<!-- conductor:guidance:end -->
-```
+harness, and that harness reads *the repo* — not conductor's resources (`conductor.md` §6). Since
+guidance already lives in the repo and the harness already reads it, there is nothing to expose:
+the phase brief just names the paths relevant to that phase, which is scoping, not plumbing.
+Conductor's own bookkeeping — when it last acted on an objective, which retrospectives have been
+distilled — stays in an FSD resource keyed by file path, so a human rewriting a doc can't clobber
+it.
 
 ---
 
@@ -141,15 +130,25 @@ Same file, more of it. Nothing structural: knobs on the defaults.
 
 ```ts
 // conductor.config.ts
-import { defineConductor, linearConnector } from "@flow-state-dev/conductor";
+import { defineConductor, githubConnector, linearConnector } from "@flow-state-dev/conductor";
 import { claudeCodeDispatcher, codexDispatcher } from "@flow-state-dev/conductor/dispatchers";
 
 export default defineConductor({
   // `repo`, GitHub auth, and the default branch are still inferred — override only
   // when inference can't be right (a fork targeting upstream, multiple remotes).
 
+  // Guidance is YOURS — conductor reads these paths and owns none of them.
+  guidance: ["docs/philosophy.md", "docs/objectives.md"],
+
   connectors: [
-    // GitHub is installed automatically; name it only to override something.
+    // GitHub is auto-installed with a discovered token. Name it to override auth,
+    // host, or identity — see "authenticating GitHub" below, which is not just
+    // plumbing: conductor's own comment-author identity is what lets it ignore
+    // its own comments (conductor.md §5).
+    githubConnector({
+      auth: { appId: process.env.GH_APP_ID!, privateKey: process.env.GH_APP_KEY! },
+      baseUrl: "https://ghe.internal/api/v3",   // Enterprise; omitted = github.com
+    }),
     // Optional. Outbound projection by default; inbound is explicitly opt-in,
     // and an inbound status change arrives as a SIGNAL, never a ledger write.
     linearConnector({
@@ -164,7 +163,23 @@ export default defineConductor({
   // this is the anti-lock-in claim made concrete.
   dispatcher: {
     default: claudeCodeDispatcher({ model: "claude-opus-5" }),
-    review: codexDispatcher(),                                  // second opinion from another vendor
+
+    // A slot takes a dispatcher OR a resolver, the same value-or-function shape
+    // `uses` already has. The resolver is PURE over the world snapshot — picking
+    // a harness is not a place to start doing I/O (conductor.md §5).
+    implement: ({ issue }) =>
+      issue.type === "Bug" || issue.size === "small"
+        ? claudeCodeDispatcher({ model: "claude-haiku-4-5-20251001" })
+        : claudeCodeDispatcher({ mode: "cloud", model: "claude-opus-5" }),
+
+    // A slot also takes an ARRAY — a panel. Each entry runs against the same
+    // artifact and produces its own Review, so lenses and vendors can differ.
+    review: [
+      claudeCodeDispatcher({ model: "claude-opus-5", lens: "correctness" }),
+      codexDispatcher({ lens: "security" }),
+      claudeCodeDispatcher({ model: "claude-haiku-4-5-20251001", lens: "docs" }),
+    ],
+
     retrospective: claudeCodeDispatcher({ model: "claude-haiku-4-5-20251001" }),
   },
 
@@ -202,10 +217,36 @@ export default defineConductor({
 });
 ```
 
-Three things worth noticing. `merge: "auto"` is **not a value the type accepts** — the safety
-property is in the type system, not in a doc. `dispatcher` keyed by phase is where vendor
-neutrality stops being a slogan: switching who reviews is one line. And every field here answers
-a question the environment *can't* — which is the test for whether a knob belongs at all.
+`merge: "auto"` is **not a value the type accepts** — the safety property lives in the type
+system, not in a doc. Every other field answers a question the environment *can't*, which is the
+test for whether a knob belongs at all. Three of them are worth expanding.
+
+**A dispatcher slot takes one, a function, or many.** All three are the same slot type, so
+nothing new is learned to use the richer forms:
+
+| Form | Use it when |
+|---|---|
+| `claudeCodeDispatcher({…})` | one harness for the phase, always |
+| `({ issue, artifact }) => Dispatcher` | the choice depends on the work — a small bug on a cheap model, a large refactor in the cloud |
+| `[a, b, c]` | several agents should run against the same artifact |
+
+The resolver is **pure over the world snapshot**, same rule as gates: picking a harness is not a
+place to start doing I/O, or the tick stops being cheap and deterministic. If the choice
+genuinely needs judgment ("is this refactor big?"), that is a layer-2 steward decision — it runs
+as a dispatched action and returns a signal, it does not run inside the resolver.
+
+**A reviewer panel produces one `Review` per reviewer per round**, which is why §4 says *"one
+round against an artifact, by one reviewer."* Three reviewers over two rounds is six `Review`
+records and **two** rounds — the convergence budget counts rounds, not reviews, or a panel would
+exhaust the budget on its first pass. Findings are aggregated before the revise dispatch, so the
+implementing agent gets one consolidated list rather than three conversations.
+
+**GitHub auth is discovered, not assumed.** `GITHUB_TOKEN` / `GH_TOKEN` covers local and Actions,
+which is why level 1 needs no connector line. Naming the connector overrides three things
+inference can't reach: a **GitHub App** installation (finer scopes, real rate limits), an
+**Enterprise base URL**, and **identity**. Identity is the one that isn't just plumbing — §5's
+rule that conductor ignores its own comments needs conductor to *have* a stable author identity,
+so a GitHub App is the recommended production setup rather than a nicety.
 
 ---
 
@@ -273,14 +314,12 @@ is saying which one a given phase means.
 Either way the process stays **customizable without a plugin API**, because a phase is a
 markdown file plus an optional ordinary FSD block.
 
-Guidance is the same idea, one directory over:
+Guidance is *not* the same idea, and the difference matters: it is **your** document, in your
+repo, that conductor happens to read. A heading, not a file:
 
 ```md
-<!-- .conductor/guidance/objectives/q3-reliability.md -->
----
-kind: objective
-label: Cut p99 latency on the read path
----
+<!-- docs/objectives.md — yours. Conductor reads it; Claude Code already does. -->
+## Cut p99 latency on the read path
 
 Reads above 400ms are the top support driver this quarter. Work that reduces read latency
 outranks work that adds surface. If a spec adds a synchronous hop to the read path, that is a
@@ -406,9 +445,10 @@ export default defineConductor({
 
 ### 4c. Your own signal and reaction
 
-The interesting extension point, and the one the guidance model unlocked. Reactions are
-`reactTo` on a resource collection — a framework primitive that already ships (FIX-751,
-FIX-843), so this is wiring, not new machinery.
+A reaction binds a signal to a block. Nothing new underneath: signals conductor writes itself
+ride `reactTo` (FIX-751/FIX-843, both shipped), and signals from files conductor *doesn't* write
+— guidance among them — come from the tick's hash diff (`conductor.md` §6). Either way the
+reaction is the same declaration.
 
 ```ts
 // conductor.config.ts (addition)
@@ -418,10 +458,11 @@ import { reExamineOpenPrs } from "@flow-state-dev/conductor/blocks";
 export default defineConductor({
   // …
   reactions: [
-    // A new objective lands → sweep every open PR and report which ones it
-    // changes the approach for. This is the worked example from conductor.md §4.
+    // You edit docs/objectives.md → the next tick notices → sweep every open PR
+    // and report which ones the new objective changes the approach for. The edit
+    // is an ordinary commit to your own doc; conductor just notices.
     onGuidanceChange({
-      kind: "objective",
+      path: "docs/objectives.md",
       run: reExamineOpenPrs({ report: "comment" }),
     }),
 
@@ -448,7 +489,8 @@ export default defineConductor({
 | **Blocks** | `conductorContext`, `reExamineOpenPrs`, GitHub PR ops, gate readers | your own, as ordinary FSD blocks |
 | **Dispatchers** | `claudeCodeDispatcher`, `codexDispatcher` | a dispatcher for any other agent — one interface |
 | **Connectors** | `githubConnector` (required), `linearConnector` (optional) | another connector if you need one — a v2 question |
-| **Signals** | the world set + `guidance_changed` + synthesized ones | your own, emitted by your blocks |
+| **Signals** | the world set + `guidance_changed` + synthesized ones (`conductor.md` §5) | your own, emitted by your blocks |
+| **Documents** | retrospectives, written by the RETROSPECTIVE phase | philosophy / tenets / objectives — **already yours**, conductor only reads them |
 | **Surfaces** | CLI board, devtool module, chat threads | nothing |
 
 ---
