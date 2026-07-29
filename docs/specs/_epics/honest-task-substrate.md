@@ -247,17 +247,20 @@ and it is the human's to make.
 - Satisfies FIX-976 and FIX-963 with one mechanism instead of two local patches.
 - Keeps every guard inside the atomic write, satisfying the constraint above and FIX-951's
   stated invariant.
-- **Possible bonus, and it needs checking before anyone relies on it:** the current signature
-  is `complete(id, output, options?): Promise<void>` — a return-type *widening* is not
-  structurally satisfied by a custom ref declared `Promise<void>`, whereas adding an optional
-  third *parameter* was. If that holds, Option A hands FIX-964 the compile-time signal it
-  asks for, using neither of the two mechanisms FIX-964 explicitly rejects (a
-  `__advisoryWrites` brand, an `fn.length >= 3` arity probe). **This is a plausible
-  interaction, not a verified one.** Falsified by: a minimal custom ref declared
-  `Promise<void>` typechecking clean against the widened interface. A single type test settles
-  it in minutes; do that rather than argue it in prose a second time.
+- **Partial bonus for FIX-964 — SETTLED by POC, see "Settled claims" below.** A return-type
+  widening *does* reject a legacy two-arg ref at compile time, using neither of the two
+  mechanisms FIX-964 explicitly rejects (a `__advisoryWrites` brand, an `fn.length >= 3` arity
+  probe). But it catches only half of what FIX-964 asks for: a ref that returns the new outcome
+  while still declaring **no `options` parameter** compiles clean, because dropping a parameter
+  stays assignable. **So Option A substantially helps FIX-964 and does not close it.** Whatever
+  FIX-964's spec ends up doing, it still owes a mechanism for the options-parameter gap. This
+  is a scope fact for FIX-964, not a reason to prefer or reject Option A.
 - Cost: a breaking change to a shipped public interface, across more methods than first
-  stated, plus one new guard on the patch surface.
+  stated, plus one new guard on the patch surface. **First-party blast radius is small and now
+  measured: 6 call sites in 3 files** — `resource-backed.ts:310,325`,
+  `sequencer-backed.ts:332,347`, and `task-tools-capability.ts:423,433` (the last pair in the
+  reverse direction, so the tool wrappers' return types open too). Zero new errors in
+  `patterns`, `workforce`, or any test file.
 
 #### Option B — keep the substrate silent; fix each caller at its own boundary
 
@@ -286,10 +289,16 @@ is precisely the racy pre-check. Option C is viable only if its assignment half 
 to an in-write guard, at which point it converges on Option A with a narrower return type.
 
 **What the human is being asked to decide:** whether the substrate's shipped write contract
-gains a return value (A, or C-upgraded), accepting a breaking interface change and a new
-guard on the patch path — or stays `void`, accepting that FIX-976's tools keep reporting
-`{ ok: true }` on writes that didn't happen. FIX-976, FIX-963 and FIX-964 should not have
-their specs finalized before this is answered.
+gains a return value (A, or C-upgraded), accepting a breaking interface change — measured at
+6 first-party sites in 3 files — and a new guard on the patch path; or stays `void`, accepting
+that FIX-976's tools keep reporting `{ ok: true }` on writes that didn't happen. FIX-976,
+FIX-963 and FIX-964 should not have their specs finalized before this is answered.
+
+One thing this decision does **not** settle, now that the type-widening claim is confirmed
+(§5): **no option here closes FIX-964 by itself.** Option A gets it a real compile-time signal
+but leaves the options-parameter gap open, so FIX-964 owes a mechanism of its own under any
+answer. Decide Decision 1 on the FIX-976 / FIX-963 merits; FIX-964's residue is its spec's
+problem, not a tiebreaker here.
 
 ### Decision 2 — Decision 1 gates the three issues that touch the shipped contract; the other two are free
 
@@ -391,12 +400,51 @@ shipped behavior — read what its cap counts and when it is evaluated, then dec
 FIX-948 is still a gap or is already covered. Routed as a **precondition to speccing
 FIX-948**, assigned to whoever picks it up. Not a human blocker.
 
-> **Two questions live in §2 rather than here, deliberately.** The Decision-1 fork (A / B /
-> C) and the unverified claim that return-type widening produces FIX-964's compile-time
-> signal were previously restated in this section verbatim. They are stated once, with their
-> options and their falsification, in §2 Decision 1 — where the reasoning they depend on
-> lives. Duplicating them here is how the two copies drift apart. The Decision-1 fork
-> **needs a human**; the type-widening claim needs a single type test, not a discussion.
+> **The Decision-1 fork lives in §2, not here, deliberately.** It was previously restated in
+> this section verbatim; it is now stated once, with its options and constraint, in §2
+> Decision 1 — where the reasoning it depends on lives. Duplicating it is how two copies drift
+> apart. It **needs a human**.
+
+---
+
+## 5. Settled claims (evidence on record)
+
+Claims this epic argued, then settled empirically. **Recorded so a later reviewer does not
+reopen them blind** — if you want to revisit one, falsify the evidence rather than restate the
+original doubt.
+
+### Does widening `complete`/`fail`'s return type give FIX-964 a compile-time signal? — **CONFIRMED, with two gaps**
+
+Settled by throwaway POC (round 1; the POC is reverted and nothing was committed). Bears on
+§2 Decision 1, Option A, and on **FIX-964's scope**.
+
+**Confirmed.** A legacy two-arg ref fails to typecheck against the widened interface, in all
+three declaration forms tried — annotated object literal, inline `TaskBoardCollectionFactory`
+arrow, and `class ... implements`:
+
+```
+error TS2322: Type '(id: string, output: Out) => Promise<void>' is not assignable to type
+  '(id, output, options?: TaskTransitionOptions) => Promise<TaskWriteOutcome>'.
+    Type 'void' is not assignable to type 'TaskWriteOutcome'.
+error TS2416: Property 'complete' in type 'LegacyCustomRef' is not assignable ...
+```
+
+Mechanism: return types are strictly covariant in TypeScript with no bivariance escape, and
+the `void`-return special case runs the opposite direction, so it does not apply here. The
+error fires at **implementation-declaration** time, not at the call site — a caller that awaits
+and discards the outcome produces no error. **The signal therefore does not depend on anyone
+consuming it**, which is what makes it usable as a guard-adoption signal at all.
+
+**Gap 1 — it does not force the guards to be honoured.** A ref that returns
+`Promise<{ outcome: "recorded" }>` but still declares only `(id, output)`, with **no `options`
+parameter**, compiles clean: fewer-parameter assignability is untouched by a return-type
+change. So the widening forces an author to *touch and think about* both methods; it does not
+force them to accept or honour `TaskTransitionOptions`. **FIX-964 is substantially helped and
+not closed** — its spec still owes a mechanism for the options-parameter gap.
+
+**Gap 2 — a cast bypasses it entirely.** `as unknown as TaskCollectionRef` defeats the check,
+and `packages/orchestration/test/flow-policy.test.ts:45` already does exactly that. Any
+FIX-964 claim of "custom refs now get a signal" states what it does about casts.
 
 ---
 
@@ -419,3 +467,12 @@ FIX-948**, assigned to whoever picks it up. Not a human blocker.
   `task-tools-capability.ts`, `resource-backed.ts` and `sequencer-backed.ts` rather than taken
   from the review on faith. Also settled: FIX-972 and FIX-962 are project siblings, not epic
   members, resolving the §1/§3 scope contradiction.
+- **Type-widening claim settled by POC** (same round; evidence, so it cost no extra round).
+  **CONFIRMED** that widening `complete`/`fail`'s return type rejects a legacy two-arg ref at
+  implementation-declaration time — but with two verified gaps: a ref that returns the new
+  outcome while declaring no `options` parameter still compiles, and a cast bypasses the check
+  outright. **This moved the design**: Option A's FIX-964 bonus is downgraded from "closes it"
+  to "substantially helps, leaves the options-parameter gap," so FIX-964's scope must cover
+  that residue under any answer to Decision 1, and Decision 1 should not be picked on
+  FIX-964's behalf. Full evidence in §5; blast radius of the widening measured at 6 sites in
+  3 files and recorded against Option A's cost.
