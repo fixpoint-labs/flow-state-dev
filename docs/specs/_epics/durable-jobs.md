@@ -354,17 +354,59 @@ store packages consume it as `import type { ResourceStateStore } from "@flow-sta
 So a **required** new method is a breaking change across a package boundary for any third-party
 adapter. An **optional** one is not.
 
-#### Option (a) — feasibility
+#### Option (a) — feasibility · **the filesystem adapter cannot do this today (corrected)**
 
-**Exactly four adapters** — the description's count is correct — at in-memory, filesystem,
-SQLite, and Postgres. **The decision-relevant finding: none of them is *incapable* of a
-conditional write.** SQLite and Postgres are transactional (SQLite's adapter header calls
-last-write-wins a deliberate current choice, not a limit); in-memory is a synchronous compare;
-filesystem is the one awkward case but has an atomic compare primitive already in use. **So the
-"if a backing cannot do CAS, that decides a lot" branch does not obtain** — filesystem is the
-cost centre, not a blocker.
+**Exactly four adapters** — the description's count is correct — in-memory, filesystem, SQLite,
+Postgres.
 
-**Two consequences that *are* epic-level:**
+> **⚠ This reverses a conclusion this document previously chose to keep.** An earlier draft said
+> *"none of them is incapable of a conditional write… filesystem is the cost centre, not a
+> blocker,"* reasoning that its atomic `link()`/`EEXIST` primitive made CAS buildable. **That was
+> wrong, and it is the fourth mechanism claim in this document to fail on contact with the code** —
+> a pattern worth carrying into FIX-981's spec, not just a correction to absorb. Having an atomic
+> *create-if-absent* primitive is not the same as having a cross-process protocol for a
+> *conditional update*.
+
+**Verified — the filesystem adapter's concurrency safety is per-handle and per-process by design,
+and its own docs say so:**
+
+- `stores/filesystem/shared.ts:247-273` — the write lock is an in-memory `Map` created **per store
+  handle**, and the comment is explicit: *"Per-id serialization so the read-check-write sequence
+  below is atomic **within one process**."*
+- `stores/filesystem/request-store.ts:86-91` — *"There is **NO inter-process locking** — running
+  multiple processes against the same `rootDir` for the same request is not a supported topology.
+  **Use SQLite or Postgres for any multi-process or production deployment.**"*
+- The `ResourceStateStore` filesystem adapter is weaker still: write-temp-then-`rename` with **no
+  lock at all** (`filesystem-resource-store.ts:376-382`). Atomic `rename` prevents **torn files**,
+  not **lost updates** — two handles can both pass the same read/version check and overwrite each
+  other.
+
+**Note the shape: per-handle safety degrading to nothing across handles is the *same bug* as this
+epic's central finding** — a third instance after `serializeResourceWrite` and the claim path. That
+recurrence is itself the argument for fixing it at the durable boundary rather than adding another
+local lock.
+
+**Consequence, stated honestly: (a)'s feasibility and cost are not settled until one of these is
+chosen** —
+
+| Option for filesystem | Cost |
+|---|---|
+| A **named cross-process locking / transaction protocol** | Real design work, and in tension with the adapter's documented positioning (it explicitly points multi-process users at SQLite/Postgres) |
+| **Exclude filesystem from durable boards** | No new protocol; durable boards require SQLite/Postgres |
+
+**This sharpens (a); it does not change its direction.** The recommended shape *already* refuses
+durable-board construction on an adapter lacking the verb, with a declared migration — **filesystem
+simply becomes the first concrete member of that excluded set instead of a hypothetical one.**
+Conditional writes remain addable, additively, reusing the precedent; what changes is that the
+guarantee is general across *supporting* adapters rather than all four.
+
+**One consequence the gate should price:** the filesystem store is positioned as the
+single-process/dev store (its own disclaimer sends production and multi-process users to SQLite or
+Postgres). If durable boards exclude it, **durable boards require SQLite or Postgres — including
+locally.** That is a developer-experience cost, not a correctness one, but it is a real one and it
+belongs in the gate's decision rather than in FIX-981's discovery.
+
+**Two further epic-level consequences:**
 
 - The **conformance suite** builds one store handle per test, so a contention case needs a
   "two handles, one backing" shape it does not have — and that shape is *meaningless* for
@@ -613,9 +655,11 @@ that is *the* normal way boards get mutated here; (b) cannot address the uncappe
 at all; and (b) needs M3's queue to deliver M1's guarantee.
 
 **What the gate is asked to accept:** surface area across six packages (additive at the type
-level); real work in the filesystem adapter; a conformance-suite shape change; a feature-detected
-capability with a construction-time failure mode for durable boards on unsupporting adapters; and
-a **declared adapter migration** rather than a free upgrade.
+level); a conformance-suite shape change; a feature-detected capability with a construction-time
+failure mode for durable boards on unsupporting adapters; a **declared adapter migration** rather
+than a free upgrade; and — newly concrete — **either a cross-process protocol for the filesystem
+adapter or its exclusion from durable boards**, which if excluded means **durable boards require
+SQLite or Postgres, including in local dev**.
 
 **If the gate refuses the store change**, the honest consequence is not (b) — it is that **M1 and
 M3 merge** and the epic's sequence is restated, because (b) can only be built where the queue is.
@@ -827,9 +871,16 @@ Nobody would write that down; it would simply appear.
 | Model | Notes |
 |---|---|
 | **Event-driven** (`task-change` → dispatch) | The eventual shape, but it *is* FIX-825 / Conductor M3, which §1 excludes. Not available to M3 without pulling that in. |
-| **Schedule tick** | A cron beat claims due work. **Precedent exists** — `ScheduleIndex.claimDue` is exactly this, atomic read-and-advance per beat (`packages/scheduled/src/scheduleIndex.ts:48-61`). Cheapest path that reuses shipped machinery. |
+| **Schedule tick** | **Not the cheap option it first appeared.** **FSD supplies no scheduler loop** — *"The host owns the actual scheduler… The framework does not run a cron daemon, retry queue, or scheduler loop"* (`docs/architecture/scheduled-actions.md:15-19`). So this needs an **externally configured scheduler** *plus* a **new mapping from each beat to pending board work**. |
+| **Native queue delivery** (`@flow-state-dev/bullmq`) | Shipped, and it **fires jobs itself with zero polling** — `createBullmqScheduleIndex.claimDue` returns `[]` precisely because BullMQ delivers natively (`packages/bullmq/src/schedule-index.ts:5,23,59`). Not free either: it brings the BullMQ package and its Redis infrastructure as a dependency. **M3 transport only** — the board stays the work registry. |
 | **Liveness-triggered** | Hook onto FIX-978's reclaim/sweeper pass. Couples M3's wake to FIX-978's cadence — acceptable, but it makes the dependency tighter than "consume the outcome". |
 | **Bounded poll** | Legitimate *if declared*: state the interval, the scan cost, and how it behaves with an idle board. Not legitimate as a silent default. |
+
+**Reuse `ScheduleIndex.claimDue`'s loop *shape*, never its contract.** It advances schedule-index
+rows under a documented **at-most-once** guarantee (`scheduled/src/scheduleIndex.ts:14-17`) — a
+dispatch that fails after its row advances is dropped. **This substrate is at-least-once with
+reclaim** (§1). The shapes rhyme; the delivery semantics are opposites, and they do not come along
+for free.
 
 **The point of this decision is not to pick — it is to forbid the accidental choice.** An executor
 whose wake source is an unstated poll is how a "durable job substrate" quietly becomes a busy
@@ -909,7 +960,7 @@ construction on an adapter lacking the verb).
 
 **OQ-B — Does the blocking/background disposition need to be *durable*? (premise corrected in round 1.)**
 
-**A `TaskHandle` cannot be awaited.** It is is
+**A `TaskHandle` cannot be awaited.** It is
 `Task<TInput, TOutput> & { items(): readonly OutputItem[] }`
 (`tasks/collection/types.ts:109-111`); `Task` is pure Zod-inferred data
 (`tasks/schema/task.ts:13-58`), `items()` is documented *"Sync, throw-free"* (`types.ts:96`), and
