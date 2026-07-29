@@ -101,7 +101,14 @@ export function unionAllowedTools(
   const out = new Set<string>();
   let anyDeclared = false;
   for (const entry of inline) {
-    const list = perSkillAllowed[entry.name];
+    // BP-031: a skill name is caller/authoring-supplied, so a plain `[]` lookup could
+    // resolve an inherited `Object.prototype` member (e.g. "constructor",
+    // whose `.length` is its arity, so it passes the guard below and then
+    // fails to iterate). Require an own property first, which makes such a
+    // name behave as "declares no allowed-tools" (FIX-972, same as FIX-943).
+    const list = Object.hasOwn(perSkillAllowed, entry.name)
+      ? perSkillAllowed[entry.name]
+      : undefined;
     if (list && list.length > 0) {
       anyDeclared = true;
       for (const t of list) out.add(t);

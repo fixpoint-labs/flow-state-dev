@@ -57,4 +57,27 @@ describe("unionAllowedTools", () => {
       unionAllowedTools(active, { foo: ["a", "b"], bar: ["b", "c"] }),
     ).toEqual(["a", "b", "c"]);
   });
+
+  // FIX-972: a skill name colliding with an `Object.prototype` member must not
+  // resolve to the inherited member. `perSkillAllowed["constructor"]` returned
+  // `Object` — truthy, and `.length > 0` because that is the constructor's
+  // *arity*, not a list length — so it passed the old guard and then threw
+  // `TypeError: list is not iterable`. The arity-0 members ("toString",
+  // "valueOf") only escaped that crash by accident; the table asserts all four
+  // behave identically, i.e. exactly like a skill declaring no `allowed-tools`.
+  // Same name table as the FIX-965 sibling in
+  // `workforce/test/materialize-agent.test.ts`.
+  it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+    "treats prototype-named skill %j as declaring no allowed-tools",
+    (protoName) => {
+      expect(unionAllowedTools([entry(protoName)], {})).toBeUndefined();
+      // A sibling that really declares tools still restricts — and the
+      // prototype-named skill contributes nothing to the union.
+      expect(
+        unionAllowedTools([entry(protoName), entry("foo")], {
+          foo: ["a"],
+        }),
+      ).toEqual(["a"]);
+    },
+  );
 });
