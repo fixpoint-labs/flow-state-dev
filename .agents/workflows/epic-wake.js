@@ -118,6 +118,10 @@ function pendingAction(row) {
           : { action: 'implement', why: 'spec approved on current head' }
       }
       if (row.newSpecReviewEvents) {
+        // The row-side twin of the epic's guard: activity with no timestamp cannot advance a cursor,
+        // so folding it spends a round on a batch the next wake rediscovers — repeatedly, until the
+        // budget converges on one batch. Withhold the work instead of consuming the budget with it.
+        if (!cursorUsable(row)) return null
         if (atReviewBudget(row.specReviewRounds, row.specLevelFound)) return null // converged
         return { action: 'spec-review', why: `review round ${(row.specReviewRounds || 0) + 1}` }
       }
@@ -127,7 +131,10 @@ function pendingAction(row) {
       return { action: 'implement', why: 'spec approved, implementation not started' }
 
     case 'PR_FEEDBACK':
-      if (row.newPrEvents || row.ciFailed) return { action: 'pr-feedback', why: 'unhandled PR activity' }
+      // Same guard: a CI failure needs no timestamp (it is not comment activity), but reported PR
+      // activity without one would be re-applied every wake.
+      if (row.ciFailed) return { action: 'pr-feedback', why: 'CI is failing' }
+      if (row.newPrEvents && cursorUsable(row)) return { action: 'pr-feedback', why: 'unhandled PR activity' }
       // A multi-PR row's DAG advances on merges and on its own deferred work, neither of which is
       // "PR activity". Without this the issue stalls the moment a merge unblocks its next slice.
       if (multiPrHasWork(row)) return { action: 'implement', why: 'multi-PR DAG has work: a ready slice, a deferred one, or the assembled goal' }
@@ -167,6 +174,20 @@ function dedupeClaims(requests) {
 }
 
 /**
+ * Can this row's cursor move past the activity it is reporting?
+ *
+ * A scan may report new activity and omit `latestActivityAt` — schema-valid, and useless: there is
+ * nothing to advance the cursor to. Dispatching anyway consumes the batch (a review round spent, or
+ * PR fixes applied) while the cursor stays put, so the next wake rediscovers exactly the same
+ * feedback and does it again. Withholding is the recoverable outcome: the flag stays live and the
+ * batch is genuinely re-derived once a scan reports a timestamp.
+ */
+function cursorUsable(row) {
+  const hasActivity = !!(row.newSpecReviewEvents || row.newPrEvents)
+  return !hasActivity || !!row.latestActivityAt
+}
+
+/**
  * A multi-PR row's phase is DERIVED, never taken from the scout.
  *
  * Two failures, in opposite directions, come from letting a scout name it. `DONE` is schema-valid,
@@ -197,6 +218,12 @@ function multiPrHasWork(row) {
   if (!row.subPrs || !row.subPrs.length) return false
   const goal = row.assembledGoal || {}
   if (goal.passed) return false
+  // The assemble phase's own WAITING states. Without these, a row whose repair PR is open reads as
+  // "all slices merged, goal not passed" and dispatches a worker every wake — which finds nothing to
+  // do (issue-multi-pr just reports AWAITING_FIX) and, worse, voids the merge readiness the repair
+  // PR's own gate depends on, so the human is never asked to merge the very thing it waits for.
+  if (goal.fixPr && !goal.fixMerged) return false
+  if (goal.fixBlocker) return false
   if (row.multiPrPending) return true
   if (row.subPrMergedThisWake) return true
   return row.subPrs.every((s) => s.status === 'merged')
@@ -316,11 +343,18 @@ function nextRow(row, { worker, action, landed, folded }) {
     // Same rule, and for the same reason: the assemble state machine resumes from these handles
     // across wakes, so clearing them restarts it — re-running the goal and filing a duplicate gap.
     assembledGoal: worker.assembledGoal === undefined ? row.assembledGoal : worker.assembledGoal,
-    // Only the worker that RAN THE DAG knows whether work remains that needs no external event, so
-    // only an `implement` dispatch may change this. A spec-review or verdict fold on the same row
-    // reports nothing about the DAG, and coercing that silence to false would strand cap-deferred
-    // slices: nothing external will ever wake them. It is cleared by the run that finds none left.
-    multiPrPending: action === 'implement' ? !!worker.multiPrPending : !!row.multiPrPending,
+    // Per-handle merge readiness was observed BEFORE this worker ran, and a worker pushes commits —
+    // which invalidates an approval and re-runs checks. Surfacing the pre-worker observation would
+    // tell the human to merge a head nobody has verified, so any worker that ran on this row voids
+    // it and the next wake's scan re-establishes it.
+    subPrStates: [],
+    repairReadyToMerge: false,
+    // Only a worker that ACTUALLY REPORTED this may change it — the same rule as `specLevelFound`,
+    // and for the same reason. Keying on the action instead had two holes: an `implement` worker that
+    // omitted the field cleared a carried `true`, stranding cap-deferred slices that no external
+    // event will ever wake; and a `pr-feedback` worker that did run the DAG and did report pending
+    // work was ignored. What matters is whether the answer was given, not which action asked.
+    multiPrPending: worker.multiPrPending === undefined ? !!row.multiPrPending : !!worker.multiPrPending,
     // Add only the rounds the worker reports SPENDING — never one per event dispatched.
     //
     // But a REVIEW worker that omits the count cannot be charged zero: the field is optional, so
@@ -487,6 +521,13 @@ function foldMultiPrScan(row, fresh) {
     out.subPrMergedThisWake = out.subPrs.some((s, i) => s.status === 'merged' && row.subPrs[i].status !== 'merged')
     const mismatched = row.subPrs.filter((s, i) => states[i] && states[i].id && states[i].id !== s.id)
     if (mismatched.length) out.subPrStateMismatch = mismatched.map((s) => s.id)
+  }
+  // A sub-PR's own `blocker` is the third copy of the same human decision (row, assembledGoal, and
+  // here), and `classify()` refuses to dispatch a slice while it is set. The documented resolution
+  // path clears the row-level one, so a nested copy left behind parks that slice permanently. Same
+  // rule as `fixBlocker`: the row-level field is where the human is answered, and these follow it.
+  if (!row.blocker && (out.subPrs || row.subPrs || []).some((s) => s.blocker)) {
+    out.subPrs = (out.subPrs || row.subPrs).map((s) => (s.blocker ? { ...s, blocker: null } : s))
   }
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
@@ -674,10 +715,14 @@ const WORKER_SCHEMA = {
         required: ['id', 'status'],
         properties: {
           id: { type: 'string' },
-          status: { type: 'string' },
+          // Constrained for the same reason `phase` is: `issue-multi-pr`'s classify() handles exactly
+          // these, so a typo or a descriptive value like "done" is schema-valid, gets persisted, and
+          // then produces no build, rebase, merge or assemble action — the slice stalls silently.
+          status: { type: 'string', enum: ['pending', 'open', 'merged'] },
           pr: { type: ['number', 'null'] },
           branch: { type: ['string', 'null'] },
           stackedOn: { type: ['string', 'null'] },
+          blocker: { type: ['string', 'null'], description: 'This slice needs a human decision' },
         },
       },
     },

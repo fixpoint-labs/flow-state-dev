@@ -232,6 +232,7 @@ function epicResponder({ approved = true, epicReviewEvents = false, fresh = {}, 
         newPrEvents: false,
         readyToMerge: false,
         ciFailed: false,
+        latestActivityAt: 'new',
         ...(fresh[id] || {}),
       }
     }
@@ -254,6 +255,10 @@ const freshRow = (over = {}) => ({
   newPrEvents: false,
   readyToMerge: false,
   ciFailed: false,
+  // A scan that reports activity reports WHEN it happened — without it the cursor cannot advance and
+  // the wake deliberately withholds the work. Defaulting it here keeps that pathological combination
+  // something a check has to ask for (`latestActivityAt: null`) rather than get by omission.
+  latestActivityAt: 'new',
   ...over,
 })
 const workerRes = (over = {}) => ({ phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, ...over })
@@ -1729,7 +1734,17 @@ check('a worker reporting deferred DAG work is dispatched again next wake', asyn
     }),
   })
   assert.deepEqual(workerLabels(second.calls), ['implement:FIX-2'])
-  assert.equal(second.result.issues[0].multiPrPending, false, 'and the flag is one wake old, not durable')
+  assert.equal(second.result.issues[0].multiPrPending, true, "a worker that says nothing about the DAG doesn't clear it")
+
+  // Only an explicit answer clears it — the run that finds nothing left to do.
+  const third = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...second.result.issues[0] }] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false } },
+    }),
+  })
+  assert.equal(third.result.issues[0].multiPrPending, false)
 })
 
 check('a non-DAG worker on a multi-PR row cannot clear its pending work', async () => {
@@ -1759,7 +1774,9 @@ check('a non-DAG worker on a multi-PR row cannot clear its pending work', async 
 check('the worker is handed the assemble state, not just the sub-PR table', async () => {
   // It runs in an isolated worktree with no access to `.orchestration/`, so state it isn't given
   // does not exist for it: it would re-run the goal and file a second repair for a tracked gap.
-  const assembledGoal = { passed: false, failure: 'stream closed early', fixIssue: 'FIX-50', fixPr: 77 }
+  // The repair has MERGED, so the goal is re-armed and there is real work. (An unmerged `fixPr` is a
+  // wait on the human, and correctly dispatches nothing — which is what the sibling check covers.)
+  const assembledGoal = { passed: false, failure: 'stream closed early', fixIssue: 'FIX-50', fixPr: 77, fixMerged: true }
   const { calls } = await run('epic-wake.js', {
     args: epicArgs({
       issues: [
@@ -1860,6 +1877,69 @@ check('a headless live epic scan holds work even when the epic was already appro
   assert.match(logs.join('\n'), /no current head/)
 })
 
+check('clearing a row blocker also clears a nested sub-PR blocker', async () => {
+  // The third copy of the same human decision (row, assembledGoal, sub-PR). `classify()` refuses to
+  // dispatch a slice while its own blocker is set, and the documented resolution path clears only
+  // the row-level one — so a nested copy parks that slice permanently after the user has answered.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: null, // the coordinator recorded the human's answer
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' },
+            { id: 'b', status: 'pending', pr: null, branch: null, blocker: null },
+          ],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.equal(result.issues[0].subPrs.find((s) => s.id === 'a').blocker, null, 'the slice resumes')
+
+  // While the row blocker stands, the nested copy survives — it is the same unanswered decision.
+  const held = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: 'which shape?',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', blocker: 'which shape?' }],
+          assembledGoal: { passed: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
+  })
+  assert.equal(held.result.issues[0].subPrs[0].blocker, 'which shape?')
+})
+
+check('a repair PR awaiting its human merge dispatches nothing and keeps its gate', async () => {
+  // Both halves of the same mistake: treating AWAITING_FIX as "work" spends a worktree worker every
+  // wake to be told to wait, AND voids the merge readiness the repair PR's own gate depends on — so
+  // the human is never asked to merge the thing the DAG is waiting for.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true } } }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'waiting on a human merge is a wait, not work')
+  assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
+})
+
 check('a stacked sub-PR is not offered for merge before its rebase', async () => {
   // Its base is the prerequisite's branch, so merging lands it into that branch (or makes the
   // prerequisite's PR carry both slices) and pre-empts the rebase the DAG still has to schedule.
@@ -1889,6 +1969,61 @@ check('a stacked sub-PR is not offered for merge before its rebase', async () =>
     }),
   })
   assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }], 'only the unstacked slice is mergeable')
+})
+
+check('activity reported with no timestamp withholds the work rather than consuming it', async () => {
+  // Dispatching anyway consumes the batch (a round spent, or PR fixes applied) while the cursor
+  // stays put, so the next wake rediscovers exactly the same feedback and does it again.
+  for (const flag of ['newSpecReviewEvents', 'newPrEvents']) {
+    const phase = flag === 'newSpecReviewEvents' ? 'AWAITING_SPEC_APPROVAL' : 'PR_FEEDBACK'
+    const { result, calls } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase, specPr: 7, implPr: 9, lastSeenActivityAt: 'old' })] }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase, [flag]: true, specPr: 7, implPr: 9, latestActivityAt: null } },
+      }),
+    })
+    assert.deepEqual(workerLabels(calls), [], `${flag} with no timestamp must not dispatch`)
+    assert.equal(result.issues[0].lastSeenActivityAt, 'old')
+    assert.equal(result.issues[0][flag], true, 'the flag stays live so a later scan re-derives it')
+  }
+
+  // A CI failure is not comment activity and needs no timestamp — it must still be actionable.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', ciFailed: true, implPr: 9, latestActivityAt: null } } }),
+  })
+  assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-2'])
+})
+
+check('per-handle readiness observed before a worker ran is not offered for merge', async () => {
+  // A pr-feedback worker pushes commits, which invalidates the approval and re-runs the checks the
+  // observation was based on — surfacing it would tell the human to merge an unverified head.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false },
+          lastSeenActivityAt: 'old',
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      // Green at scan time, and the SAME batch carries review feedback the worker will act on.
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          newPrEvents: true,
+          latestActivityAt: 'new',
+          subPrStates: [{ id: 'a', merged: false, readyToMerge: true }],
+        },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.deepEqual(result.gates, [], 'the pre-worker observation is void once a worker has run')
+  assert.deepEqual(result.issues[0].subPrStates, [])
 })
 
 check('a review worker that escalates is not charged its round either', async () => {
@@ -2585,13 +2720,32 @@ check('INVARIANT: every phase a row can hold is one the state machine handles', 
     // At least one input in this phase must produce an action, or the phase is unreachable work.
     const anyAction = [
       { phase, specApproved: true },
-      { phase, newSpecReviewEvents: true },
-      { phase, newPrEvents: true },
+      { phase, newSpecReviewEvents: true, latestActivityAt: 'new' },
+      { phase, newPrEvents: true, latestActivityAt: 'new' },
+      { phase, ciFailed: true },
       { phase },
     ].some((r) => pendingAction(r))
     assert.ok(anyAction, `${phase} is in the schema enum but no input in it ever dispatches — a row that reaches it is stuck`)
   }
   assert.ok(LIFECYCLE_PHASES.length >= 5)
+
+  // The same rule for the OTHER field a state machine switches on. `subPrs[].status` is persisted by
+  // epic-wake and consumed by issue-multi-pr's classify(), so a free-form value there stalls a slice
+  // exactly as a free-form phase stalled a row — the class is "a persisted program counter is
+  // enum-constrained", not "the row's phase is". Review found this instance after the phase one.
+  const multiSrc = readFileSync(join(HERE, 'issue-multi-pr.js'), 'utf8')
+  const subPrStatus = /status: \{ type: 'string', enum: \[([^\]]*)\] \}/.exec(balancedFrom(src, src.indexOf('const WORKER_SCHEMA =')))
+  assert.ok(subPrStatus, "WORKER_SCHEMA's subPrs[].status is not enum-constrained — a typo would stall the slice silently")
+  const declared = subPrStatus[1].split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean)
+  // Every status the DAG's classify() actually branches on has to be declarable, and nothing else.
+  for (const st of ['pending', 'open', 'merged']) {
+    assert.ok(declared.includes(st), `classify() handles "${st}" but the schema cannot express it`)
+    assert.ok(
+      multiSrc.includes(`'${st}'`) || (st === 'merged' && multiSrc.includes('TERMINAL')),
+      `the schema declares "${st}" but issue-multi-pr never handles it`,
+    )
+  }
+  assert.equal(declared.length, 3, `unexpected sub-PR statuses declared: ${declared.join(', ')}`)
 })
 
 check('INVARIANT: every gating field is schema-required', async () => {
