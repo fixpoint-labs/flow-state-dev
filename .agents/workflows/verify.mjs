@@ -1465,6 +1465,161 @@ check("a multi-PR issue's refresh scout is given every sub-PR to read", async ()
   assert.match(refresh, /report activity, CI and merge state across ALL of them/)
 })
 
+check('a multi-PR row surfaces a merge gate per green sub-PR, with its own PR number', async () => {
+  // An aggregate `readyToMerge` is not actionable: these rows have no `implPr`, so one gate per row
+  // carried `pr: null` and the DAG stopped at its first merge-ready slice.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+            { id: 'c', status: 'merged', pr: 40, branch: 'fix/c' },
+          ],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: true },
+            { id: 'b', merged: false, readyToMerge: false },
+            { id: 'c', merged: true, readyToMerge: false },
+          ],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 41, subPr: 'a' }])
+  assert.ok(
+    result.gates.every((g) => g.pr),
+    'a merge gate with no PR number cannot be surfaced',
+  )
+})
+
+check('a merged sub-PR is folded into the durable table so the rebase gets scheduled', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+    }),
+  })
+  assert.equal(result.issues[0].subPrs[0].status, 'merged', 'issue-multi-pr schedules the dependent rebase off this')
+
+  // And a scan that says nothing about a sub-PR must never demote it — that would rebuild it.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...result.issues[0] }] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [] } } }),
+  })
+  assert.equal(second.result.issues[0].subPrs[0].status, 'merged')
+})
+
+check('a merged repair PR re-arms the assembled goal instead of waiting forever', async () => {
+  // The repair PR lives outside `subPrs`, so nothing else can ever set `fixMerged` — the DAG sits
+  // in AWAITING_FIX and never re-runs the goal it still has to prove.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'stream closed early', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairMerged: true } } }),
+  })
+  assert.equal(result.issues[0].assembledGoal.fixMerged, true)
+  assert.match(calls.find((c) => c.label === 'refresh:FIX-2').prompt, /REPAIR PR #77/)
+})
+
+check('an unmerged repair PR surfaces its own merge gate', async () => {
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixPr: 77, fixMerged: false },
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairReadyToMerge: true } } }),
+  })
+  assert.deepEqual(result.gates, [{ kind: 'merge', issueId: 'FIX-2', pr: 77, repair: true }])
+})
+
+check('clearing a row blocker also clears the nested repair blocker', async () => {
+  // `fixBlocker` is duplicated by design — it is issue-multi-pr's own durable field when that script
+  // runs standalone. Under an epic the row-level blocker is the single point of human resolution, so
+  // the nested copy is derived from it; otherwise it re-derives REPAIR_BLOCKED forever behind a field
+  // the documented resolution path never touches.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: null, // the coordinator recorded the human's answer
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixBlocker: 'which behaviour?' },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      // A pending event, so "no longer parked" is a real assertion rather than a row that had
+      // nothing to do anyway.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK' } },
+    }),
+  })
+  assert.equal(result.issues[0].assembledGoal.fixBlocker, null, 'the repair resumes')
+  assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-2'], 'and the row is no longer parked')
+
+  // While the row blocker STANDS, the nested copy must survive — it is the same decision.
+  const held = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: 'which behaviour?',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'f', fixIssue: 'FIX-50', fixBlocker: 'which behaviour?' },
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, latestActivityAt: 'new' } } }),
+  })
+  assert.equal(held.result.issues[0].assembledGoal.fixBlocker, 'which behaviour?')
+  assert.deepEqual(workerLabels(held.calls), [], 'and the row stays parked')
+})
+
+check('per-handle merge readiness never survives a wake as stale state', async () => {
+  // It is an observation, not durable state: carried forward it keeps surfacing a merge gate for a
+  // sub-PR the human already merged, or one a later push made unmergeable.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: true }] } },
+    }),
+  })
+  assert.equal(first.result.gates.length, 1)
+
+  // Next wake, the scout dies: no live observation, so no gate.
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...first.result.issues[0] }] }),
+    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+  })
+  assert.deepEqual(second.result.gates, [], 'a gate must rest on a live observation')
+})
+
 check('a terminal issue stops asking the human to approve its spec', async () => {
   const { result } = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),

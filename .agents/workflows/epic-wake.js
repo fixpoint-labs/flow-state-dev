@@ -370,6 +370,52 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
  * @param row    the carried row (`approvedInSession` is the coordinator's record)
  * @param fresh  this wake's scan for that row, `{}` when the scout died
  */
+/**
+ * Fold a multi-PR row's live scan back into its durable handles.
+ *
+ * Three things only the scan knows, and each is a stall if it never lands:
+ *
+ * - a sub-PR the human merged (`issue-multi-pr` schedules the dependent rebase off `status`);
+ * - the repair PR merging, which is the ONLY thing that re-arms the assembled goal — without it the
+ *   DAG sits in `AWAITING_FIX` for good, because nothing else can set `fixMerged`;
+ * - a resolved repair blocker. `fixBlocker` is duplicated by design (it is `issue-multi-pr`'s own
+ *   durable field when that script runs standalone, with no epic row to mirror), so under an epic
+ *   the row-level `blocker` is the single point of human resolution and the nested copy is DERIVED
+ *   from it. Left to the coordinator to clear both, the nested one re-derives `REPAIR_BLOCKED`
+ *   forever — a stall behind a field the documented resolution path never touches.
+ *
+ * @param row    the carried row
+ * @param fresh  this wake's scan, `{}` when the scout died (in which case nothing is folded)
+ */
+function foldMultiPrScan(row, fresh) {
+  const out = {}
+  const states = (fresh && fresh.subPrStates) || []
+  if (states.length && row.subPrs && row.subPrs.length) {
+    const byId = new Map(states.map((s) => [s.id, s]))
+    out.subPrs = row.subPrs.map((s) => {
+      const live = byId.get(s.id)
+      // Only ever ADVANCE a sub-PR to merged. A scan that omits an entry says nothing about it, and
+      // demoting an open sub-PR to pending would have the next wake rebuild it from scratch.
+      return live && live.merged && s.status !== 'merged' ? { ...s, status: 'merged' } : s
+    })
+  }
+  if (row.assembledGoal) {
+    const goal = { ...row.assembledGoal }
+    let changed = false
+    if (goal.fixPr && fresh && fresh.repairMerged && !goal.fixMerged) {
+      goal.fixMerged = true
+      changed = true
+    }
+    // The row-level blocker is authoritative: cleared there means the human answered.
+    if (goal.fixBlocker && !row.blocker) {
+      goal.fixBlocker = null
+      changed = true
+    }
+    if (changed) out.assembledGoal = goal
+  }
+  return out
+}
+
 function approvedInSessionFor(row, fresh) {
   const at = row.approvedInSession
   if (!at) return false
@@ -474,6 +520,27 @@ const PR_STATE_SCHEMA = {
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
     merged: { type: 'boolean' },
     readyToMerge: { type: 'boolean' },
+    // Per-handle state for a multi-PR row. One aggregate boolean is not actionable: a merge gate
+    // needs the PR NUMBER of the slice that is green, and these rows have no single `implPr`.
+    subPrStates: {
+      type: 'array',
+      description: 'One entry per sub-PR handle given in the prompt. Required for a multi-PR row; omit for single-PR issues.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'merged', 'readyToMerge'],
+        properties: {
+          id: { type: 'string' },
+          merged: { type: 'boolean' },
+          readyToMerge: { type: 'boolean' },
+          ciFailed: { type: 'boolean' },
+        },
+      },
+    },
+    // The assembled-goal repair PR, which lives outside `subPrs` and whose merge is the only thing
+    // that re-arms the end-to-end goal.
+    repairMerged: { type: 'boolean' },
+    repairReadyToMerge: { type: 'boolean' },
     // The advanced cursor, so the next wake can tell "already handled" from "new".
     latestActivityAt: {
       type: ['string', 'null'],
@@ -647,7 +714,18 @@ const [gate, linear, ...prStates] = await parallel([
           (row.subPrs && row.subPrs.length
             ? `This issue implements as a DAG of sub-PRs; there is no single impl PR. Treat these as its implementation PRs and report activity, CI and merge state across ALL of them: ${row.subPrs
                 .map((s) => `${s.id}=${s.pr ? `#${s.pr}` : 'not opened'}${s.status ? ` (${s.status})` : ''}`)
-                .join(', ')}.\n`
+                .join(', ')}.\n` +
+              // An AGGREGATE readyToMerge cannot be acted on: a merge gate needs a PR NUMBER, and
+              // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
+              // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
+              // stops at its first merge-ready slice.
+              `Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
+            : '') +
+          // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
+          // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
+          // forever because nothing else can ever set `fixMerged`.
+          (row.assembledGoal && row.assembledGoal.fixPr
+            ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it.\n`
             : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment or a current-head APPROVED review by a non-author human — a stale approval invalidated by a later push is NOT approval, and no bot review counts.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
@@ -729,6 +807,12 @@ const refreshed = [...rows, ...discovered].map((row) => {
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
     // Same rule: CI that recovered must stop looking like a failure, or pr-feedback re-dispatches forever.
     ciFailed: refreshedLive ? !!fresh.ciFailed : false,
+    // Same rule again for the per-handle readiness a multi-PR row's merge gates are built from.
+    // These are observations, never durable state: a carried `readyToMerge` would keep surfacing a
+    // merge gate for a sub-PR the human already merged, or for one a later push made unmergeable.
+    // (The merged flags are folded into the durable `subPrs` / `assembledGoal` by foldMultiPrScan.)
+    subPrStates: refreshedLive ? fresh.subPrStates || [] : [],
+    repairReadyToMerge: refreshedLive ? !!fresh.repairReadyToMerge : false,
     linearState: li.state || row.linearState,
     linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
@@ -740,6 +824,8 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: row.specReviewRounds || 0,
     specLevelFound: !!row.specLevelFound,
+    // A multi-PR row's live handles: merged sub-PRs, a merged repair, a resolved repair blocker.
+    ...foldMultiPrScan(row, fresh),
   }
 })
 
@@ -1001,7 +1087,28 @@ const gates = [
     settlingInFlight: contestedClaimFor(r.id),
   }))),
   // A child the human closed or dropped must not keep asking them to merge it.
-  ...issues.filter((r) => r.readyToMerge && !r.linearTerminal).map((r) => ({ kind: 'merge', issueId: r.id, pr: r.implPr })),
+  // A merge gate is only actionable with a PR NUMBER, so it is emitted per HANDLE, not per row.
+  // A multi-PR row has no `implPr` at all — one aggregate gate for it carried `pr: null`, which the
+  // coordinator cannot surface, so the DAG stopped at its first merge-ready slice.
+  ...issues
+    .filter((r) => !r.linearTerminal)
+    .flatMap((r) => {
+      const gates = []
+      // Single-PR: the row's own impl PR.
+      if (r.readyToMerge && r.implPr) gates.push({ kind: 'merge', issueId: r.id, pr: r.implPr })
+      // Multi-PR: each sub-PR the scan reported green, named so the human knows which slice.
+      for (const s of r.subPrs || []) {
+        const live = (r.subPrStates || []).find((x) => x.id === s.id)
+        if (live && live.readyToMerge && !live.merged && s.pr) {
+          gates.push({ kind: 'merge', issueId: r.id, pr: s.pr, subPr: s.id })
+        }
+      }
+      // And the assembled-goal repair PR, which is neither of those.
+      if (r.assembledGoal && r.assembledGoal.fixPr && !r.assembledGoal.fixMerged && r.repairReadyToMerge) {
+        gates.push({ kind: 'merge', issueId: r.id, pr: r.assembledGoal.fixPr, repair: true })
+      }
+      return gates
+    }),
 ]
 
 return {

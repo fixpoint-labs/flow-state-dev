@@ -175,7 +175,12 @@ even if more are queued. State the chosen N and the cap to the user.
      scout is given to read — drop them and every sub-PR's review, CI and merge event goes unseen.
      `assembledGoal` is the assemble phase's position in its own state machine (goal → gap → fix →
      re-verify); drop it and the machine restarts, re-running the goal and filing a duplicate gap
-     issue every wake. Carry both verbatim.
+     issue every wake. Carry both verbatim — including `assembledGoal.fixPr`, the repair PR, which
+     is **not** in `subPrs` and whose merge is the only thing that re-arms the goal.
+
+     These rows get **one merge gate per handle**, not one per issue: each `merge` entry names the
+     `pr` and, for a sub-PR, which `subPr` it is (or `repair: true` for the repair PR). An issue with
+     a DAG has no single impl PR, so "merge FIX-2" would not tell you what to merge.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
      decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
      `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every
