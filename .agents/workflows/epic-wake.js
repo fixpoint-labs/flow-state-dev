@@ -1039,7 +1039,7 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
  * @param row    the carried row
  * @param fresh  this wake's scan, `{}` when the scout died (in which case nothing is folded)
  */
-function foldMultiPrScan(row, fresh) {
+function foldMultiPrScan(row, fresh, refreshedLive) {
   const out = {}
   // Bound by ATTRIBUTABILITY, not completeness — the weaker of `subPrScanBinding`'s two questions.
   // A partial scan's answered handles are still good data, and `cursorUsable` separately refuses to
@@ -1129,9 +1129,15 @@ function foldMultiPrScan(row, fresh) {
     // reporting the handle closed — so the advertised path parked the row forever. The tag is what lets
     // the next wake tell "the human reopened it" from "a worker escalated something".
     out.closedBlocker = true
-  } else if (row.closedBlocker && !closedHandles.length) {
+  } else if (row.closedBlocker && !closedHandles.length && refreshedLive && cursorUsable(row)) {
     // The handle is open again (or merged): the observation that produced this blocker is gone, so the
     // blocker goes with it. Same rule every other scan-derived field in this function follows.
+    //
+    // But only on a LIVE, COMPLETE scan. A dead scout leaves `fresh` empty and a partial multi-PR scan can
+    // omit the handle, and in both cases "no closed handle reported" is indistinguishable from "reopened" —
+    // so clearing on absence released the row on the strength of an observation nobody made, and dispatched
+    // work against a handle that is still dead. Absence of evidence is the one thing this file has learned
+    // never to read as evidence.
     out.blocker = null
     out.blockerFor = null
     out.closedBlocker = false
@@ -1763,7 +1769,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     blockerResolution: null,
     blockerResolutionFor: null,
     // A multi-PR row's live handles: merged sub-PRs, a merged repair, a resolved repair blocker.
-    ...foldMultiPrScan(row, fresh),
+    ...foldMultiPrScan(row, fresh, refreshedLive),
   }
 })
   // Derived AFTER the fold, because it reads the freshly-merged sub-PRs and the folded goal. A
@@ -2391,4 +2397,31 @@ return {
   dispatched: [...plan.advance.map((i) => `${i.action}:${i.row.id}`), ...(plan.foldEpic ? ['fold:epic'] : [])],
   deferred: plan.deferred.map((i) => i.row.id),
   converged: plan.converged.map((r) => r.id),
+  // ---- Two decisions the coordinator was restating in prose, and getting incomplete. ----------------
+  //
+  // Both are derived here for the same reason everything else in this file is: a condition spelled out in
+  // a skill drifts from the state it is about. Each had already lost work — the continuation rule listed
+  // three sources and missed the fourth, and the wrap rule asked only "is every issue terminal".
+  //
+  // RUN ANOTHER WAKE NOW. Nothing in this list waits on an external event: a fold-held row, a
+  // cap-deferred row (a `NEEDS_SPEC` row has no PR, so it cannot generate the activity that would wake
+  // the session), a queued settlement claim, and — the one that was missing — a verdict that landed in
+  // the Settle phase, which runs AFTER Advance and so cannot be folded until another wake.
+  moreWorkNow:
+    plan.heldForFold.length > 0 ||
+    plan.deferred.length > 0 ||
+    plan.queuedClaims.length + unsettled.length + newRequests.length > 0 ||
+    settled.filter(Boolean).length > 0 ||
+    issues.some((r) => (r.verdicts || []).length),
+  // SAFE TO WRAP. Every issue terminal was necessary and nowhere near sufficient: wrap closes the epic
+  // surface and stops the wakes, so wrapping over an unanswered question destroys it. A late INCONCLUSIVE
+  // verdict on an already-merged issue is exactly that state — every row terminal, one open question.
+  mayWrap:
+    issues.every((r) => r.linearTerminal || r.merged || r.phase === 'DONE') &&
+    !issues.some((r) => r.blocker) &&
+    !issues.some((r) => (r.unsettled || []).length) &&
+    !issues.some((r) => (r.verdicts || []).length) &&
+    epicUnsettled.length === 0 &&
+    epicOpenQuestions.length === 0 &&
+    plan.queuedClaims.length + unsettled.length + newRequests.length === 0,
 }

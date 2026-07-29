@@ -212,6 +212,11 @@ even if more are queued. State the chosen N and the cap to the user.
    unsettled, verdicts, settleRequests, dispatched, deferred, converged }` — persist `epic` and
    `issues` verbatim.
 
+   **`moreWorkNow: true` means run another wake now, not end the turn.** The wake computes it, so the list
+   of sources cannot drift out of this skill: fold-held rows, cap-deferred rows, queued settlement claims,
+   and verdicts that landed in the Settle phase — which runs after Advance, so a verdict it produces can
+   only be folded on a later wake. What follows is why each belongs, not a condition to re-derive.
+
    **`heldForFold` OR `deferred` non-empty means run another wake now, not end the turn.**
    `heldForFold` rows were deferred for exactly one wake because they author against an objective the
    fold was revising — and the fold has now completed, so nothing external separates them from being
@@ -338,7 +343,13 @@ even if more are queued. State the chosen N and the cap to the user.
    transitions webhooks *don't* cover — CI success and merge/close — are caught on the wake's
    scout refresh (step 2). Schedule one check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
-   on PR events or the check-in. Move to EPIC_WRAP once every issue is merged, closed, or dropped.
+   on PR events or the check-in. **Move to EPIC_WRAP only when the wake returns `mayWrap: true`.**
+
+   Do not re-derive that condition. "Every issue is merged, closed, or dropped" is necessary and not
+   sufficient: wrap closes the epic surface and stops the wakes, so wrapping over an unanswered question
+   destroys it — and a late POC returning INCONCLUSIVE on an already-merged issue is exactly that state,
+   every row terminal with one open question. `mayWrap` also requires no row blocker, no unsettled claim,
+   no unfolded verdict, and no queued settlement.
 
    **Both `subscribe_pr_activity` and `send_later` are cloud-only.** Neither works in a local
    Claude Code session — no reachable webhook endpoint, no server-side scheduler. Check

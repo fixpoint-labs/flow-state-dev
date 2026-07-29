@@ -4189,6 +4189,103 @@ check('late spec-PR feedback is routed instead of merged over', async () => {
   assert.deepEqual(workerLabels(unreadable.calls), [], 'and nothing consumes what it cannot record')
 })
 
+check('an epic with an unanswered question may not wrap', async () => {
+  // Wrap closes the epic surface and stops the wakes, so wrapping over an open question destroys it. Every
+  // row terminal was the whole condition, and a late INCONCLUSIVE verdict on an already-merged issue is
+  // exactly the state it misses: every row done, one question outstanding.
+  const doneRow = (over) => row('FIX-2', { phase: 'DONE', merged: true, implPr: 9, ...over })
+  const terminalRun = (over) =>
+    run('epic-wake.js', {
+      args: epicArgs({ issues: [doneRow(over)] }),
+      respond: (prompt, opts) => {
+        const label = opts.label || ''
+        if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+        if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
+        if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+        return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
+      },
+    })
+
+  // EACH condition on its own. Setting several at once lets any one of them cover for a missing check —
+  // the first version of this test set both a blocker and an unsettled record, and two separate mutations
+  // survived because the other field still failed the assertion.
+  const blockedOnly = await terminalRun({ blocker: 'POC returned INCONCLUSIVE — needs a human decision: SSE resumes' })
+  assert.equal(blockedOnly.result.mayWrap, false, 'an unanswered blocker outlives the work')
+  assert.ok(blockedOnly.result.blockers.some((b) => b.issueId === 'FIX-2'), 'and it is surfaced')
+
+  const unsettledOnly = await terminalRun({ unsettled: [{ claim: 'SSE resumes', evidence: 'inconclusive', threads: null }] })
+  assert.equal(unsettledOnly.result.mayWrap, false, 'an unsettled claim does too')
+
+  // A verdict on a terminal row is FOLDED in the same wake, so it is outstanding only when that folding
+  // worker died — which is exactly the state the wake must not wrap over.
+  const verdictUnfolded = await run('epic-wake.js', {
+    args: epicArgs({ issues: [doneRow({ verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })] }),
+    respond: (prompt, opts) => {
+      const label = opts.label || ''
+      if (label === 'gate:epic') return { approved: true, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
+      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      return null // the folding worker died, so the verdict is still owed
+    },
+  })
+  assert.equal(verdictUnfolded.result.mayWrap, false, 'a verdict nobody folded is still outstanding')
+
+  // ...and folded in the same wake, it is not outstanding at all — which is what makes the case above
+  // about the dead worker rather than about verdicts existing.
+  const verdictFolded = await terminalRun({ verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })
+  assert.equal(verdictFolded.result.mayWrap, true)
+
+  // Drained: every row terminal and nothing outstanding.
+  const clean = await terminalRun({})
+  assert.equal(clean.result.mayWrap, true)
+})
+
+check('a verdict landing after Advance asks for another wake now', async () => {
+  // Settle runs AFTER Advance, so a verdict it produces cannot be folded until a later wake. The
+  // continuation rule listed fold-held rows, cap-deferred rows and queued claims — and missed this, so the
+  // fold waited on the heartbeat and could lose the race to EPIC_WRAP on an already-merged issue.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
+      settleRequests: [{ claim: 'SSE resumes', load: 'x', falsify: 'y', issueId: 'FIX-2' }],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  assert.equal(result.verdicts.length, 1, 'the POC settled it this wake')
+  assert.equal(result.moreWorkNow, true, 'so another wake runs now rather than waiting for an event')
+
+  // A quiet wake asks for nothing.
+  const quiet = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  assert.equal(quiet.result.moreWorkNow, false)
+})
+
+check('a dead or partial scan cannot clear a closed-handle blocker', async () => {
+  // A dead scout leaves `fresh` empty and a partial multi-PR scan can omit the handle: in both cases "no
+  // closed handle reported" is indistinguishable from "reopened", so clearing on absence released the row
+  // on an observation nobody made and dispatched work against a handle that is still dead.
+  const carried = row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, closedBlocker: true, blocker: 'Closed without merging: impl PR #9. Needs a human decision' })
+
+  const deadScout = await run('epic-wake.js', {
+    args: epicArgs({ issues: [carried] }),
+    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+  })
+  assert.match(deadScout.result.issues[0].blocker || '', /Closed without merging/, 'a dead scout observed nothing')
+  assert.equal(deadScout.result.issues[0].closedBlocker, true)
+
+  // An affirmative live scan that no longer reports it closed DOES clear it.
+  const live = await run('epic-wake.js', {
+    args: epicArgs({ issues: [carried] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, ciFailed: true } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(live.result.issues[0].blocker, null, 'a live complete scan is an observation')
+})
+
 check('GATE: a scout cannot jump a row across the approval gate either', async () => {
   // The worker's report was guarded; the refresh is an INDEPENDENT producer of `phase`, and a scan claiming
   // PR_FEEDBACK with an impl handle on a row still awaiting approval walked straight past it.
