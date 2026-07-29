@@ -105,7 +105,9 @@ without limit. Dispatching a Step 6.5 round for every event that arrives is an u
 loop — and it's the loop that used to grind a directionally-correct spec through ten
 rounds. So this phase is **budgeted, not open-ended.**
 
-**Default: two rounds.** Track the count in the handle cache (`spec_review_rounds`).
+**Default: two rounds.** Track the count in the handle cache (`specReviewRounds`; the older
+`spec_review_rounds` spelling is still read, so an epic resumed from an earlier record keeps its spent
+budget instead of silently starting a fresh two).
 
 > **Two implementations, one rule.** Running standalone, *you* apply the budget as written
 > below. Running under `epic-lifecycle`, the `epic-wake` workflow's `atReviewBudget()` applies
@@ -291,8 +293,11 @@ What the script decides, so you don't:
    out of DONE until that lands.
 
 `subPrs` comes from the handle cache and goes back to it: the `.orchestration/<ISSUE>.md` record
-adds one row per sub-PR — `id · depends_on · branch · PR# · stackedOn · status (pending / open /
-merged)` — alongside the issue-level fields. There is deliberately no `building`: a wake is
+adds one row per sub-PR — `id · dependsOn · branch · PR# · stackedOn · status (pending / open /
+merged)` — alongside the issue-level fields. (`issue-multi-pr` also accepts the `depends_on` spelling
+the spec's PR-plan table uses, so a row copied straight out of the spec still carries its edges; write
+`dependsOn` in new records. Getting this wrong used to read as *no dependencies*, which builds a
+dependent onto `origin/main` beside the prerequisite it declared.) There is deliberately no `building`: a wake is
 synchronous, so a sub-PR either has a PR (`open`) or doesn't (`pending`), and a status the script
 can't act on is a node that waits forever. A table carried over from before this record shape
 normalizes `building` back to `pending` on the way in, so the build simply retries. You hold only

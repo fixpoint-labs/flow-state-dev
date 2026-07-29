@@ -179,6 +179,40 @@ function dedupeClaims(requests) {
 }
 
 /**
+ * Read a counter that has TWO documented spellings.
+ *
+ * The prose named these `spec_review_rounds` and `epic_review_rounds` long before this script existed
+ * (`issue-lifecycle` § the budget, `orchestration.md` § the epic fold, `epic-agent`'s own contract), and
+ * the script introduced camelCase without translating. An epic resumed from a cache written under the
+ * old names therefore reads its spent budget as zero and grants a fresh two rounds — silently
+ * restarting the convergence budget, which is the unbounded-review failure the budget exists to
+ * prevent. Dual-read rather than rename: the snake_case names are the established convention in the
+ * documents a human writes, and BP-030 asks the reader to tolerate the shape already persisted.
+ *
+ * @param row    the carried record
+ * @param camel  the name this script uses
+ * @param snake  the name the prose documents
+ */
+function carriedCount(row, camel, snake) {
+  const v = row[camel] === undefined ? row[snake] : row[camel]
+  return Number.isFinite(v) ? v : 0
+}
+
+/**
+ * A sub-PR row's dependency edges, under either documented spelling.
+ *
+ * `issue-spec`'s PR-plan table and `issue-lifecycle`'s cache row both say `depends_on`; `classify()`
+ * and `readySet()` read `dependsOn` and nothing converted between them. A coordinator following its
+ * own documented cache format hands over rows whose dependencies read as EMPTY — which
+ * `readySet` treats as "everything merged", so a dependent is built straight onto `origin/main`
+ * concurrently with the prerequisite it declared. The DAG violated by a spelling.
+ */
+function dependsOnOf(node) {
+  const edges = node.dependsOn === undefined ? node.depends_on : node.dependsOn
+  return Array.isArray(edges) ? edges : []
+}
+
+/**
  * The human decisions this row is carrying, as a LIST.
  *
  * A single slot loses answers, and the sibling-blocker queue guarantees it will. Two slices escalate
@@ -354,6 +388,23 @@ function mergeDerivedPhase(row) {
   return null
 }
 
+/**
+ * Did the assembled end-to-end goal actually PASS?
+ *
+ * `passed` alone is not the answer. The inner `GOAL_SCHEMA` requires `evidence` — the command run and
+ * what happened — precisely because a bare boolean is not a proof; but the outer `WORKER_SCHEMA`
+ * carries `assembledGoal` as a free-form object, so `{ passed: true }` is schema-valid at the epic
+ * boundary. Accepting it marks the issue DONE and mirrors it complete without the proof the whole
+ * assemble phase exists to produce.
+ *
+ * Treating it as NOT passed (rather than refusing to finish the row) is the recoverable direction:
+ * `multiPrHasWork` then still sees work and the next wake re-runs the goal. Refusing only the DONE
+ * transition would park the row forever, which is how an earlier fix here turned a bypass into a stall.
+ */
+function goalPassed(goal) {
+  return !!(goal && goal.passed && goal.evidence)
+}
+
 function multiPrPhase(row) {
   if (!row.subPrs || !row.subPrs.length) return null
   // BOTH conditions. Every sub-PR merged is necessary but not sufficient (the goal still has to be
@@ -362,7 +413,7 @@ function multiPrPhase(row) {
   // DAG dispatch, and let Linear and the epic wrap before those PRs merge. Same shape as the
   // single-PR rule, whose evidence is its own merge.
   const allMerged = row.subPrs.every((s) => s.status === 'merged')
-  return allMerged && (row.assembledGoal || {}).passed ? 'DONE' : 'PR_FEEDBACK'
+  return allMerged && goalPassed(row.assembledGoal) ? 'DONE' : 'PR_FEEDBACK'
 }
 
 /**
@@ -376,7 +427,9 @@ function multiPrPhase(row) {
 function multiPrHasWork(row) {
   if (!row.subPrs || !row.subPrs.length) return false
   const goal = row.assembledGoal || {}
-  if (goal.passed) return false
+  // Same predicate as the DONE derivation, so an evidence-free pass re-runs the goal instead of
+  // parking the row between the two rules.
+  if (goalPassed(goal)) return false
   // The assemble phase's own WAITING states. Without these, a row whose repair PR is open reads as
   // "all slices merged, goal not passed" and dispatches a worker every wake — which finds nothing to
   // do (issue-multi-pr just reports AWAITING_FIX) and, worse, voids the merge readiness the repair
@@ -584,6 +637,15 @@ function nextRow(row, { worker, action, landed, folded }) {
       // Which slice this answer will release. Without it, resolving one decision clears every nested
       // blocker, including a sibling's that nobody answered.
       next.blockerFor = nested.id
+    } else if (next.assembledGoal && next.assembledGoal.fixBlocker) {
+      // The THIRD copy, and it needs the lift for exactly the same reason the second one did. A repair
+      // worker escalates by setting `assembledGoal.fixBlocker`; the outer worker has no obligation to
+      // also set the top-level `blocker`, and this lift only looked at `subPrs[]`. So the decision was
+      // never surfaced — and the next refresh, reading an absent row blocker as "the human answered",
+      // cleared `fixBlocker` and let the repair proceed through a fork nobody decided. Deriving the row
+      // field from every nested copy is what makes the resolution rule safe to apply at all.
+      next.blocker = `repair: ${next.assembledGoal.fixBlocker}`
+      next.blockerFor = null
     }
   }
 
@@ -781,6 +843,11 @@ function foldMultiPrScan(row, fresh) {
     } else if (row.blockerFor) {
       out.blockerFor = null
     }
+    // NOTE — deliberately no re-lift of `assembledGoal.fixBlocker` here, unlike the nested sub-PR
+    // blockers above. `nextRow` lifts it the moment a worker reports it, so a row reaching this branch
+    // with a `fixBlocker` and no row blocker means the human just ANSWERED it. Re-lifting would restate
+    // the question being answered and park the row behind it forever — the clearing rule below is the
+    // correct reader of this state. (Tried the symmetric version; it deadlocked.)
   }
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
@@ -811,10 +878,21 @@ function foldMultiPrScan(row, fresh) {
  * @param reported the worker's rows
  */
 function mergeSubPrs(carried, reported) {
-  const byId = new Map((carried || []).map((s) => [s.id, s]))
+  // Normalized to ONE spelling on the way in, so no later reader has to know there are two. Absence
+  // stays absence — a slice with no declared edges gains no key it didn't have.
+  const norm = (n) => {
+    if (n.dependsOn === undefined && n.depends_on === undefined) return n
+    const { depends_on, ...rest } = n
+    return { ...rest, dependsOn: dependsOnOf(n) }
+  }
+  const byId = new Map((carried || []).map((s) => [s.id, norm(s)]))
   for (const r of reported) {
     const prev = byId.get(r.id)
-    byId.set(r.id, prev ? { ...prev, ...r, dependsOn: r.dependsOn === undefined ? prev.dependsOn : r.dependsOn } : r)
+    const reportedEdges = r.dependsOn !== undefined || r.depends_on !== undefined
+    const merged = { ...(prev || {}), ...norm(r) }
+    // Structural edges come from the carried row unless the worker actually reported them.
+    if (!reportedEdges && prev && prev.dependsOn !== undefined) merged.dependsOn = prev.dependsOn
+    byId.set(r.id, merged)
   }
   return [...byId.values()]
 }
@@ -921,7 +999,7 @@ const PR_STATE_SCHEMA = {
   additionalProperties: false,
   // `specApproved` is REQUIRED: it gates the one mandatory human approval, so an omission
   // must never let a previously-true value survive a push onto an unapproved head.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'ciFailed'],
+  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
@@ -1203,7 +1281,7 @@ if (scanned && !gate.headSha) {
 // set by a live scan with no head, cleared by any usable scan, and preserved (like the approval
 // itself) when there was no scan at all.
 const epicApproved = scanned ? gateUsable && !!gate.approved : !!epic.approved && !epic.headUnconfirmed
-const headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
+let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.headUnconfirmed && epic.approved) {
   log(
     `Epic gate scout died and the last live scan could not confirm the objective head — holding child work rather than releasing it against an unconfirmed approval.`,
@@ -1290,7 +1368,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // issue on a failed refresh or blocks it forever after its prerequisite merged.
     blockedBy: linearById.has(row.id) ? li.blockedBy || [] : row.blockedBy || [],
     // Counters are the coordinator's, never the scout's — they survive across wakes.
-    specReviewRounds: row.specReviewRounds || 0,
+    specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: !!row.specLevelFound,
     // Carried human decisions, as a list and aimed. Computed from the CARRIED row so an untargeted
     // answer can still be attributed to the slice the row surfaced — `foldMultiPrScan` below lifts the
@@ -1339,7 +1417,8 @@ const epicCursorMovable = !(newEpicReviewEvents && !(gate && gate.latestActivity
 if (!epicCursorMovable) {
   log('Epic gate reported new review activity with no timestamp — the cursor cannot advance past it, so it is left live to be re-derived rather than folded and lost.')
 }
-const epicAtBudget = atReviewBudget(epic.reviewRounds, epic.aboveBarFound)
+const epicReviewRounds = carriedCount(epic, 'reviewRounds', 'epic_review_rounds')
+const epicAtBudget = atReviewBudget(epicReviewRounds, epic.aboveBarFound)
 // A POC verdict on a cross-cutting claim is folded regardless of the budget — new evidence is
 // not another opinion (orchestration.md § "What it costs").
 const epicVerdictsToFold = epic.verdicts && epic.verdicts.length ? epic.verdicts : null
@@ -1521,6 +1600,26 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
     : Promise.resolve(null),
 ])
 
+// Did this wake's fold REVISE the objective? If so, the approval scanned at the top of this wake is
+// already stale: the fold pushes to the epic branch, which moves the head the approving review was on,
+// and the documented rule is that a push after approval re-opens the gate. The next wake's scan
+// re-locks correctly — but the gates emitted BELOW, in this wake, were computed from the pre-fold value,
+// so a child spec approval or a merge would be invited against an objective nobody has signed off. Those
+// approvals are durable (mirrored to a label), so accepting one releases implementation with no second
+// alignment gate — the exact defect already fixed for the unapproved case, in its other direction.
+//
+// `heldForFold` does not cover this: it defers WORK, and only when there is work to defer. A wake whose
+// children are all merely awaiting a human gate holds nothing and still emits those gates.
+const epicRevisedThisWake = !!(epicFold && (epicFold.folded || (epicFold.roundsSpent || 0) > 0))
+// The head recorded for the next wake is the one the gate scout saw, which the fold has now moved. Marking
+// it unconfirmed is what stops a dead scout on the next wake from reading the durable approval as good.
+if (epicRevisedThisWake) headUnconfirmed = true
+if (epicRevisedThisWake) {
+  log(
+    `The epic-spec was revised this wake, so its approval no longer sits on the current head — withholding child spec-approval and merge gates until the next wake re-scans the folded objective.`,
+  )
+}
+
 phase('Settle')
 
 const settled = await parallel(
@@ -1680,7 +1779,7 @@ const gates = [
   // releases implementation, so the human would be signing off an artifact whose open question is
   // unanswered and whose answer changes it. The question is surfaced in `blockers`; the gate appears
   // once it has been answered and folded, which is the only order that means anything.
-  ...(!epicApproved
+  ...(!epicApproved || epicRevisedThisWake
     ? []
     : issues
         .filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal && !awaitingHumanDecision(r))
@@ -1694,7 +1793,7 @@ const gates = [
   // A merge gate is only actionable with a PR NUMBER, so it is emitted per HANDLE, not per row.
   // A multi-PR row has no `implPr` at all — one aggregate gate for it carried `pr: null`, which the
   // coordinator cannot surface, so the DAG stopped at its first merge-ready slice.
-  ...issues
+  ...(epicRevisedThisWake ? [] : issues)
     // `pendingAction` parks a row carrying an unresolved decision or an open prerequisite, but the
     // merge gate is independent of it — so the human was still told to merge work whose blocker they
     // had not answered, or whose dependency had not landed. Parking has to mean parked everywhere.
@@ -1717,7 +1816,12 @@ const gates = [
         // offered for merge: its base is that branch, so merging lands it into the prerequisite (or
         // makes the prerequisite's PR carry both slices), destroying the isolation the DAG exists
         // for and pre-empting the rebase `classify` still has to schedule.
-        if (live && live.readyToMerge && !live.merged && s.pr && !s.stackedOn) {
+        // ...and not while a human decision for THIS slice is still waiting to be applied. The answer
+        // is delivered by a `resume` worker inside `issue-multi-pr`; until that has run, the PR is an
+        // implementation that ignores the decision the human was asked for, and merging it is worse
+        // than the stall clearing the blocker early was meant to fix.
+        const answerPending = (r.blockerResolutions || []).some((x) => !x.for || x.for === s.id)
+        if (live && live.readyToMerge && !live.merged && s.pr && !s.stackedOn && !answerPending) {
           gates.push({ kind: 'merge', issueId: r.id, pr: s.pr, subPr: s.id })
         }
       }
@@ -1763,7 +1867,7 @@ return {
         }
       : { lastSeenActivityAt: epic.lastSeenActivityAt || null, lastSeenSha: epic.lastSeenSha || null }),
     // Same rule as an issue's: add only the rounds the folder reports spending.
-    reviewRounds: (epic.reviewRounds || 0) + (epicFold ? epicFold.roundsSpent || 0 : 0),
+    reviewRounds: epicReviewRounds + (epicFold ? epicFold.roundsSpent || 0 : 0),
     // Same rule as a row's `specLevelFound`, keyed on the same question: was this dispatch a
     // review round? `aboveBar` is REQUIRED, so a verdict-only fold has to report something — and
     // it reports `false`, which would revoke a third round an earlier real round authorized. So

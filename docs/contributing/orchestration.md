@@ -375,7 +375,7 @@ both**, so change it here first, then both implementations.
 **The budget applies to the epic PR too**, on the same terms — the epic-spec is a direction
 artifact reviewed at the same altitude, and it's the one surface where an unbounded review
 loop would otherwise survive, sitting directly on the top-level gate. The coordinator holds
-that counter itself (`epic_review_rounds`), because `epic-agent` persists nothing between
+that counter itself (`reviewRounds`, historically `epic_review_rounds` — both are read), because `epic-agent` persists nothing between
 dispatches. Bounding the *folding* doesn't bound the epic's *direction*: feedback still flows
 in and gets routed continuously, and the objective gate still turns only on a human approval.
 

@@ -56,15 +56,33 @@ const TERMINAL = 'merged'
  * unnecessarily (waiting for the merge) or pollutes the diff (stacking on an already-merged
  * dep instead of rebasing onto main).
  */
-function classify(node, byId) {
+/**
+ * A node's dependency edges, under either documented spelling.
+ *
+ * `issue-spec`'s PR-plan table and `issue-lifecycle`'s cache row both write `depends_on`; this script
+ * read only `dependsOn` and nothing converted. A coordinator following its own documented cache format
+ * hands over rows whose edges read as EMPTY — which `readySet` treats as "all deps merged", so a
+ * dependent is built straight onto `origin/main` alongside the prerequisite it declared. Twin of
+ * `dependsOnOf` in epic-wake.js; a workflow script cannot import, so change them together.
+ */
+function dependsOnOf(node) {
+  const edges = node.dependsOn === undefined ? node.depends_on : node.dependsOn
+  return Array.isArray(edges) ? edges : []
+}
+
+/**
+ * @param answeredIds ids whose escalated decision the human has answered but no worker has applied yet
+ */
+function classify(node, byId, answeredIds) {
   // A sub-PR whose worker escalated a decision is WAITING ON A HUMAN, whatever its status says.
   // Re-dispatching would drop the executor back at the fork it was required to escalate. The
   // coordinator clears `blocker` when it records the answer. (Same rule as epic-wake's rows.)
-  if (node.blocker) return null
+  // ...unless it has been answered, in which case the answer needs DELIVERING (below).
+  if (node.blocker && !(answeredIds && answeredIds.has(node.id))) return null
 
   // Every declared dep is guaranteed resolvable here — readySet() rejects a node with a
   // missing one rather than letting it through (see `invalid` there).
-  const deps = (node.dependsOn || []).map((id) => byId.get(id))
+  const deps = dependsOnOf(node).map((id) => byId.get(id))
   const allMerged = deps.every((d) => d.status === TERMINAL)
   const allAtLeastOpen = deps.every((d) => d.status === TERMINAL || d.status === 'open')
 
@@ -89,6 +107,17 @@ function classify(node, byId) {
     return null
   }
 
+  // An OPEN slice whose escalated decision has just been answered needs a worker to APPLY it.
+  //
+  // Clearing the blocker was not enough and was worse than the stall it replaced: `classify` has no
+  // action for an ordinary open node, so nothing consumed the answer — while the slice, now reading as
+  // unblocked, became eligible for a merge gate. The human would be invited to merge an implementation
+  // that ignores the decision they were asked for. A stall is recoverable; merging the wrong thing is
+  // not. So the answer itself is the action, on the slice's existing PR and base.
+  if (node.status === 'open' && answeredIds && answeredIds.has(node.id)) {
+    return { action: 'resume', base: node.stackedOn || 'origin/main' }
+  }
+
   // A stacked sub-PR whose deps have all merged now belongs on main.
   if (node.status === 'open' && node.stackedOn && allMerged) {
     return { action: 'rebase', base: 'origin/main' }
@@ -105,7 +134,7 @@ function classify(node, byId) {
  * "everything merged" and builds a dependent straight onto origin/main before its prerequisite
  * exists — the DAG violated by the one input we can't trust.
  */
-function readySet(nodes, cap) {
+function readySet(nodes, cap, answeredIds) {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const ready = []
   const invalid = []
@@ -131,7 +160,7 @@ function readySet(nodes, cap) {
       return
     }
     seen.set(id, 1)
-    for (const dep of (byId.get(id) || {}).dependsOn || []) if (byId.has(dep)) walk(dep, [...stack, id])
+    for (const dep of dependsOnOf(byId.get(id) || {})) if (byId.has(dep)) walk(dep, [...stack, id])
     seen.set(id, 2)
   }
   for (const n of nodes) walk(n.id, [])
@@ -145,12 +174,12 @@ function readySet(nodes, cap) {
       invalid.push({ node, missing: [], cycle: true })
       continue
     }
-    const missing = (node.dependsOn || []).filter((id) => !byId.has(id))
+    const missing = dependsOnOf(node).filter((id) => !byId.has(id))
     if (missing.length) {
       invalid.push({ node, missing })
       continue
     }
-    const next = classify(node, byId)
+    const next = classify(node, byId, answeredIds)
     if (next) ready.push({ node, ...next })
   }
   // A malformed plan fails the ENTIRE ready set, not just its own node. `byId` is the map every other
@@ -326,8 +355,13 @@ const resolutionNote = (nodeId) => {
 // invoked directly from `issue-lifecycle` there was no equivalent step, so a supplied resolution could
 // never reach a worker and the answered slice stayed blocked forever. Deriving the clearing from the
 // answer makes it caller-independent, and it is idempotent when the caller already did it.
-const answeredIds = new Set(resolutions.map((r) => r.for).filter(Boolean))
 const rowLevelAnswer = resolutions.some((r) => !r.for)
+// An untargeted answer belongs to whichever slice is blocked — the caller lifts one at a time, so there
+// is at most one. Resolved into concrete ids here so `classify` needs to know nothing about aiming.
+const answeredIds = new Set([
+  ...resolutions.map((r) => r.for).filter(Boolean),
+  ...(rowLevelAnswer ? (args.subPrs || []).filter((n) => n.blocker).map((n) => n.id) : []),
+])
 
 // Tolerate the status the previous, prose-driven path persisted. `issue-lifecycle` documents the
 // cached statuses as `building / open / merged`, but a wake is synchronous — a node either has a
@@ -339,7 +373,11 @@ const nodes = (args.subPrs || [])
   .map((n) => (n.status === 'building' ? { ...n, status: 'pending' } : n))
   // Clear the blocker each answer resolves (see above). A row-level answer with no slice named clears
   // whichever slice is blocked, matching how `epic-wake` lifts one nested blocker at a time.
-  .map((n) => (n.blocker && (answeredIds.has(n.id) || rowLevelAnswer) ? { ...n, blocker: null } : n))
+  // Only a PENDING slice is unblocked by the answer alone — its build has not happened, so the build
+  // IS the delivery. An OPEN slice keeps its blocker until a `resume` worker has applied the decision
+  // (see classify): clearing it here made the slice read as unblocked with the answer unapplied, so it
+  // became merge-gate eligible and the human was asked to merge an implementation that ignores it.
+  .map((n) => (n.blocker && n.status === 'pending' && (answeredIds.has(n.id) || rowLevelAnswer) ? { ...n, blocker: null } : n))
 for (const n of args.subPrs || []) {
   if (n.status === 'building') log(`${n.id}: carried status "building" is not a state a wake can resume — retrying the build.`)
 }
@@ -499,7 +537,7 @@ if (state === 'NEEDS_FIX') {
 // ---- Otherwise: advance the DAG's ready set. -------------------------------------------
 phase('Build')
 
-const { ready, deferred, invalid } = readySet(nodes, cap)
+const { ready, deferred, invalid } = readySet(nodes, cap, answeredIds)
 
 for (const bad of invalid) {
   log(
@@ -524,7 +562,12 @@ if (deferred.length) {
 const built = await parallel(
   ready.map((item) => () =>
     agent(
-      item.action === 'rebase'
+      item.action === 'resume'
+        ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) stopped on a decision only a human could make, and it has now been ANSWERED.\n` +
+          `Apply the decision to that EXISTING PR: update the implementation, run \`review\`, push. Do not open a new PR and do not merge it. Report status: open.\n` +
+          `If the answer does not resolve the fork you actually hit, leave the PR as it is and report a new blocker naming precisely what is still open.` +
+          resolutionNote(item.node.id)
+        : item.action === 'rebase'
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged. Rebase it onto fresh ${item.base} so its diff carries only its own slice, push, and report. Do not merge it.` +
           resolutionNote(item.node.id)
         : `Implement sub-PR ${item.node.id} of ${issueId} in your own worktree.\n` +
@@ -568,7 +611,16 @@ const plannedById = new Map(ready.map((i) => [i.node.id, i]))
 
 const subPrs = nodes.map((node) => {
   const r = resultById.get(node.id)
-  if (!r) return node
+  if (!r) {
+    // A dead RESUME is worth naming: the caller consumes the resolution once it has dispatched, so the
+    // answer is spent while the node keeps its blocker. That re-surfaces the same question to the human
+    // rather than losing it — recoverable, but it costs them a second ask, so say why.
+    const planned = plannedById.get(node.id)
+    if (planned && planned.action === 'resume') {
+      log(`${node.id}: the worker that was to apply the human's decision did not return — the blocker stays set, so the decision will be asked for again.`)
+    }
+    return node
+  }
   const planned = plannedById.get(node.id)
   // Derive the stack marker from the base THIS SCRIPT chose, never from the worker echoing it
   // back: the field is optional, so a worker that omits it would silently clear the marker —
@@ -581,11 +633,14 @@ const subPrs = nodes.map((node) => {
   // dependency's commits forever.
   const rebasing = planned && planned.action === 'rebase'
   const rebased = rebasing && r.status === 'open'
+  // A resume works on an EXISTING open PR, so like a rebase it can only ever confirm `open` — never
+  // demote to `pending`, which the next wake would misread as "never built" and rebuild from scratch.
+  const resuming = planned && planned.action === 'resume'
 
   // "open" needs BOTH handles to be usable: without the PR the coordinator can't subscribe or
   // surface a merge gate, and without the branch a dependent would stack on `undefined`. Either
   // one missing makes it an incomplete build, so the next wake retries.
-  const openWithoutHandles = !rebasing && r.status === 'open' && (!(r.pr || node.pr) || !(r.branch || node.branch))
+  const openWithoutHandles = !rebasing && !resuming && r.status === 'open' && (!(r.pr || node.pr) || !(r.branch || node.branch))
   if (openWithoutHandles) {
     log(`${node.id}: reported open but returned no PR number or branch — treating as incomplete, will retry.`)
     return { ...node, blocker: r.blocker || null, summary: r.summary }
@@ -593,13 +648,14 @@ const subPrs = nodes.map((node) => {
 
   let stackedOn = node.stackedOn || null
   if (rebasing) stackedOn = rebased ? null : node.stackedOn || null
-  else if (planned) stackedOn = planned.base === 'origin/main' ? null : planned.base
+  // A resume does not move the base, so it must not touch the marker either.
+  else if (planned && !resuming) stackedOn = planned.base === 'origin/main' ? null : planned.base
 
   return {
     ...node,
     // A rebase can only ever confirm `open` — it must never demote an already-open sub-PR to
     // `pending`, which the next wake would misread as "never built" and rebuild from scratch.
-    status: rebasing ? node.status : r.status === 'failed' ? node.status : r.status,
+    status: rebasing || resuming ? node.status : r.status === 'failed' ? node.status : r.status,
     pr: r.pr === undefined || r.pr === null ? node.pr : r.pr,
     branch: r.branch || node.branch,
     stackedOn,

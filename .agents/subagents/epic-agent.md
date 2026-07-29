@@ -64,7 +64,7 @@ Take the single action the dispatch calls for:
   never rewrite the epic's prose around a line-level nit.
 
   **The epic PR carries its own two-round budget**, and the coordinator holds the counter
-  (`epic_review_rounds`) because you can't persist state across dispatches. So report your
+  (`reviewRounds`, historically `epic_review_rounds`) because you can't persist state across dispatches. So report your
   round accounting the same way `issue-worker` does: `epic_review: <rounds spent>` — **0** for
   a batch that was only factual corrections or broken references — and
   `above_bar_found: <yes/no/n-a>`, which is what authorizes a conditional third round. Report

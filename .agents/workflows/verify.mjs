@@ -179,14 +179,44 @@ const workerLabels = (calls) => calls.filter((c) => c.agentType === 'issue-worke
  * mode is a check that reports a defect in the part it can see rather than the part it can't.
  */
 function balancedFrom(src, from) {
-  const open = src.indexOf('{', from)
+  return balancedDelimited(src, from, '{', '}')
+}
+
+/**
+ * The declaration starting at `from`, matched to its closing delimiter.
+ *
+ * Brace-only matching swallowed a whole following declaration when the value was an ARRAY: with no `{`
+ * of its own, `const LIFECYCLE_PHASES = [...]` ran on to the next schema's braces, so evaluating the
+ * collected declarations hit the same name twice. Pick the delimiter the value actually opens with.
+ */
+function balancedDelimited(src, from, o, c) {
+  const open = src.indexOf(o, from)
   if (open < 0) return src.slice(from)
   let depth = 0
   for (let i = open; i < src.length; i++) {
-    if (src[i] === '{') depth++
-    else if (src[i] === '}' && --depth === 0) return src.slice(from, i + 1)
+    if (src[i] === o) depth++
+    else if (src[i] === c && --depth === 0) return src.slice(from, i + 1)
   }
   return src.slice(from)
+}
+
+/**
+ * The declaration at `from`, bounded correctly whatever shape its value is.
+ *
+ * A scalar (`const REVIEW_BUDGET = 2`) opens no delimiter at all, so searching forward for the next
+ * `{`/`[` ran past the statement and swallowed the following declaration whole — which then declared
+ * that name twice when the collected text was evaluated. So: look at what the value actually starts
+ * with, and fall back to the end of the line.
+ */
+function balancedDecl(src, from) {
+  const eq = src.indexOf('=', from)
+  if (eq < 0) return src.slice(from)
+  let i = eq + 1
+  while (i < src.length && (src[i] === ' ' || src[i] === '\t')) i++
+  if (src[i] === '{') return balancedDelimited(src, from, '{', '}')
+  if (src[i] === '[') return balancedDelimited(src, from, '[', ']')
+  const nl = src.indexOf('\n', i)
+  return nl < 0 ? src.slice(from) : src.slice(from, nl)
 }
 
 function loadRules(name, names) {
@@ -231,6 +261,7 @@ function epicResponder({ approved = true, gateHeadSha = 'abc', epicReviewEvents 
         newSpecReviewEvents: false,
         newPrEvents: false,
         readyToMerge: false,
+        merged: false,
         ciFailed: false,
         latestActivityAt: 'new',
         ...(fresh[id] || {}),
@@ -254,6 +285,7 @@ const freshRow = (over = {}) => ({
   newSpecReviewEvents: false,
   newPrEvents: false,
   readyToMerge: false,
+  merged: false,
   ciFailed: false,
   // A scan that reports activity reports WHEN it happened — without it the cursor cannot advance and
   // the wake deliberately withholds the work. Defaulting it here keeps that pathological combination
@@ -3351,6 +3383,242 @@ const multiResponder =
     return { id, status: 'open', pr: 1, branch: `fix/FIX-9-${id}`, ...(build[id] || {}) }
   }
 
+check('an answered blocker on an already-OPEN slice gets a worker to apply it', async () => {
+  // Clearing the blocker was not enough, and was worse than the stall it replaced: `classify` has no
+  // action for an ordinary open node, so nothing consumed the answer — while the slice, now reading as
+  // unblocked, became eligible for a merge gate. The human would be asked to merge an implementation
+  // that ignores the decision they were asked for. A stall is recoverable; that is not.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which shape?' }],
+      blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+    }),
+    respond: multiResponder(),
+  })
+  const resume = calls.find((c) => c.label === 'resume:a')
+  assert.ok(resume, 'an open slice with an answered decision is dispatched, not left silently unblocked')
+  assert.match(resume.prompt, /Apply the decision to that EXISTING PR/)
+  assert.match(resume.prompt, /Do not open a new PR and do not merge it/)
+  assert.match(resume.prompt, /key on tenant \+ scope/)
+
+  // And without an answer it stays parked — otherwise the case above proves nothing.
+  const parked = await run('issue-multi-pr.js', {
+    args: multiArgs({ subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', dependsOn: [], blocker: 'which shape?' }] }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(parked.calls.filter((c) => /^(resume|build|rebase):/.test(c.label || '')), [])
+})
+
+check('an unapplied decision withholds that slice\'s merge gate', async () => {
+  // The other half of the same defect: until the resume worker has run, the PR is an implementation
+  // that ignores the decision. `readyToMerge` on it is true and says nothing about that.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
+            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
+          ],
+          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: true },
+            { id: 'b', merged: false, readyToMerge: true },
+          ],
+        },
+      },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true } },
+    }),
+  })
+  assert.deepEqual(
+    result.gates.filter((g) => g.kind === 'merge').map((g) => g.subPr),
+    ['b'],
+    "the slice whose decision is unapplied is not offered; its sibling still is",
+  )
+})
+
+check('a repair blocker is lifted to the row so the resolution rule cannot erase it', async () => {
+  // The THIRD copy of the same decision. A repair worker escalates via `assembledGoal.fixBlocker`; the
+  // outer worker has no obligation to also set the top-level `blocker`, and the lift only read
+  // `subPrs[]`. So the decision was never surfaced — and the next refresh, reading an absent row blocker
+  // as "the human answered", cleared `fixBlocker` and let the repair run through an unanswered fork.
+  const escalated = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: false, failure: 'disagree on the cache key', evidence: 'ran it' },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      // The worker reports the repair escalation and NOTHING at the row level — schema-valid.
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: false,
+          assembledGoal: { fixBlocker: 'which shape should the key take?' },
+        },
+      },
+    }),
+  })
+  const escalatedRow = escalated.result.issues[0]
+  assert.match(escalatedRow.blocker || '', /which shape should the key take\?/, 'the escalation is surfaced')
+  assert.ok(
+    escalated.result.blockers.some((b) => /which shape should the key take\?/.test(b.blocker)),
+    'and reaches the human',
+  )
+
+  // Next wake, unanswered: the row blocker is set, so nothing clears the nested copy.
+  const stillOpen = await run('epic-wake.js', {
+    args: epicArgs({ issues: [{ ...escalatedRow }] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } } }),
+  })
+  assert.equal(stillOpen.result.issues[0].assembledGoal.fixBlocker, 'which shape should the key take?')
+  assert.deepEqual(workerLabels(stillOpen.calls), [], 'and the row stays parked')
+})
+
+check('an assembled goal that passed without evidence is not DONE, and re-runs', async () => {
+  // The inner GOAL_SCHEMA requires `evidence` because a bare boolean is not a proof, but the outer
+  // WORKER_SCHEMA carries `assembledGoal` as a free-form object — so `{ passed: true }` is schema-valid
+  // at the epic boundary and marked the issue complete without the proof the phase exists to produce.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: true },
+          multiPrPending: false,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: false } },
+    }),
+  })
+  assert.equal(result.issues[0].phase, 'PR_FEEDBACK', 'a pass with no evidence does not finish the issue')
+  // ...and it is treated as NOT RUN rather than refused, so the goal is re-run instead of the row
+  // parking between the two rules — which is how an earlier fix here turned a bypass into a stall.
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'the goal is re-run')
+
+  const withEvidence = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }],
+          assembledGoal: { passed: true, evidence: 'fsdev run: PASS' },
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
+    }),
+  })
+  assert.equal(withEvidence.result.issues[0].phase, 'DONE')
+})
+
+check('a fold that revised the objective withholds this wake\'s child gates', async () => {
+  // The gate is scanned before the fold pushes, so the approval this wake emitted gates from is already
+  // stale — a push after approval re-opens the gate, and the fold IS a push. `heldForFold` does not
+  // cover it: that defers WORK, and a wake whose children are all merely awaiting a human gate holds
+  // nothing and still emits those gates. A child spec approval is durable, so accepting one releases
+  // implementation against an objective nobody signed off.
+  const { result, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' },
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 }),
+        row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9 }),
+      ],
+    }),
+    respond: epicResponder({
+      epicReviewEvents: true,
+      fold: { roundsSpent: 1, aboveBar: true, folded: 'narrowed the objective', fanOut: [] },
+      fresh: {
+        'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 },
+        'FIX-3': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true },
+      },
+    }),
+  })
+  assert.deepEqual(
+    result.gates.filter((g) => g.kind !== 'epic-objective'),
+    [],
+    'no child spec-approval or merge gate is emitted against a pre-fold approval',
+  )
+  assert.equal(result.epic.headUnconfirmed, true, 'and the moved head is marked so the next wake re-scans it')
+  assert.match(logs.join('\n'), /withholding child spec-approval and merge gates/)
+
+  // A fold that spent nothing and changed nothing does not withhold — otherwise a quiet wake would
+  // stall every gate in the epic.
+  const noChange = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'e' }] },
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
+    }),
+    respond: epicResponder({
+      fold: { roundsSpent: 0, aboveBar: false, folded: '', fanOut: [] },
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } },
+    }),
+  })
+  assert.deepEqual(noChange.result.gates.filter((g) => g.kind === 'spec-approval').map((g) => g.pr), [8])
+})
+
+check('the documented snake_case cache fields are read, not silently ignored', async () => {
+  // Three fields the prose has always spelled with underscores, which the scripts introduced camelCase
+  // for without converting. A coordinator following its own documented cache format is the caller here.
+  // `depends_on` is the dangerous one: read as empty, `readySet` treats the node as having all deps
+  // merged and builds a dependent straight onto origin/main beside its unmerged prerequisite.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'pending' },
+        { id: 'b', status: 'pending', depends_on: ['a'] },
+      ],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(
+    calls.filter((c) => (c.label || '').startsWith('build:')).map((c) => c.label),
+    ['build:a'],
+    'the dependent is held back by an edge spelled the documented way',
+  )
+
+  // And the review budget counters, whose loss silently grants a fresh two rounds — the unbounded
+  // review sequence the budget exists to prevent. Both are at budget under their documented names.
+  const resumed = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, epic_review_rounds: 2, aboveBarFound: false, lastSeenActivityAt: 'old' },
+      // Built without `row()` on purpose: its camelCase default would sit alongside the legacy key, and
+      // an explicit camel value rightly wins — so the fixture would not be a legacy row at all.
+      issues: [{ id: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, spec_review_rounds: 2, specLevelFound: false }],
+    }),
+    respond: epicResponder({
+      epicReviewEvents: true,
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, newSpecReviewEvents: true, latestActivityAt: 'new' } },
+    }),
+  })
+  assert.deepEqual(workerLabels(resumed.calls), [], 'a converged spec spends no further round')
+  assert.deepEqual(labels(resumed.calls, 'fold:epic'), [], 'nor does a converged epic')
+  assert.deepEqual(resumed.result.converged, ['FIX-2'])
+  // The carried count survives under the name the script uses, so the next wake needs no translation.
+  assert.equal(resumed.result.issues[0].specReviewRounds, 2)
+  assert.equal(resumed.result.epic.reviewRounds, 2)
+})
+
 check('an independent sub-PR builds on fresh origin/main', async () => {
   const { calls } = await run('issue-multi-pr.js', {
     args: multiArgs({ subPrs: [node('a')] }),
@@ -3994,6 +4262,30 @@ check('INVARIANT: every phase a row can hold is one the state machine handles', 
   assert.equal(declared.length, 3, `unexpected sub-PR statuses declared: ${declared.join(', ')}`)
 })
 
+/**
+ * Every top-level SCREAMING_CASE const in a workflow script, evaluated as real values.
+ *
+ * The schemas reference each other (`settleRequested: SETTLE_REQUESTED_SCHEMA`) and the shared phase
+ * enum, so they can only be read together. Evaluating them beats string-matching their `required` lists:
+ * a text search across a whole schema cannot tell the top-level scope from a nested item scope, which is
+ * exactly how a field required only inside `subPrStates.items` read as required at the top level.
+ */
+function loadSchemas(file) {
+  const src = readFileSync(join(HERE, file), 'utf8')
+  const names = []
+  const decls = []
+  const seen = new Set()
+  for (const m of src.matchAll(/^const ([A-Z][A-Z0-9_]*) =/gm)) {
+    // A name can appear twice in a script that declares a local shadow; keep the first, since the
+    // schemas are declared once at the top level and a duplicate `const` would not evaluate.
+    if (seen.has(m[1])) continue
+    seen.add(m[1])
+    decls.push(balancedDecl(src, m.index))
+    names.push(m[1])
+  }
+  return new Function(`${decls.join('\n')}\nreturn { ${names.join(', ')} }`)()
+}
+
 check('INVARIANT: every gating field is schema-required', async () => {
   // Four separate defects across two rounds were the SAME shape: an optional schema boolean whose
   // omission got defaulted the permissive way — `specApproved` (implement on an unapproved head),
@@ -4003,7 +4295,10 @@ check('INVARIANT: every gating field is schema-required', async () => {
   const gating = {
     'epic-wake.js': {
       GATE_SCHEMA: ['approved', 'newReviewEvents'],
-      PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge'],
+      // `merged` joined this list once completion was derived from it in both directions: optional, a
+      // scan could report DONE and omit it, and the corrected demotion then had no action and no gate,
+      // parking the row for good.
+      PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will
@@ -4027,21 +4322,32 @@ check('INVARIANT: every gating field is schema-required', async () => {
     },
   }
   for (const [file, schemas] of Object.entries(gating)) {
-    const src = readFileSync(join(HERE, file), 'utf8')
+    const loaded = loadSchemas(file)
     for (const [schema, fields] of Object.entries(schemas)) {
-      const at = src.indexOf(`const ${schema} =`)
-      assert.ok(at > 0, `${file}: ${schema} not found`)
-      const body = balancedFrom(src, at)
-      const requiredLists = [...body.matchAll(/required: \[([^\]]*)\]/g)].map((m) => m[1])
-      assert.ok(requiredLists.length, `${file}: ${schema} declares no required list`)
-      // Any of them: a gating field may live in a nested item schema (LINEAR_SCHEMA's `blockedBy`),
-      // and checking only the outermost list is how that one stayed optional.
-      const requiredAnywhere = requiredLists.join(' ')
+      // EVALUATED, not string-matched. Joining every `required` list in a schema and asking whether the
+      // name appears anywhere was too loose in a way that produced a false PASS: `merged` is required
+      // inside `subPrStates.items`, so dropping it from the TOP-LEVEL required list still satisfied the
+      // text search, and the mutation that reintroduced the parking defect went unnoticed. The rule is
+      // per-scope — every object declaring the field as a property must require it there.
+      const literal = loaded[schema]
+      assert.ok(literal, `${file}: ${schema} not found`)
+      const scopes = []
+      const walk = (node) => {
+        if (!node || typeof node !== 'object') return
+        if (node.properties) scopes.push(node)
+        for (const v of Object.values(node)) if (v && typeof v === 'object') walk(v)
+      }
+      walk(literal)
+      assert.ok(scopes.length, `${file}: ${schema} declares no properties`)
       for (const f of fields) {
-        assert.ok(
-          requiredAnywhere.includes(`'${f}'`),
-          `${file}: ${schema}.${f} is branched on but not required — an omission would default it silently`,
-        )
+        const declaring = scopes.filter((sc) => Object.prototype.hasOwnProperty.call(sc.properties, f))
+        assert.ok(declaring.length, `${file}: ${schema} no longer declares ${f} — update this invariant`)
+        for (const sc of declaring) {
+          assert.ok(
+            (sc.required || []).includes(f),
+            `${file}: ${schema}.${f} is branched on but not required in the scope that declares it — an omission would default it silently`,
+          )
+        }
       }
     }
   }
