@@ -473,6 +473,15 @@ Each layer is additive and none is a fork: level 4 still runs the level-1 defaul
 everything it doesn't override. [`conductor/poc.md`](conductor/poc.md) walks all four with
 real file shapes.
 
+**Level 1 is `defineConductor()` with no arguments.** The repo, the GitHub credentials, the
+default branch, and which vendor harness to dispatch to are all *discovered* — conductor is
+running inside a git checkout with a remote and an installed CLI, so asking for any of it would
+be redundant. The rule that keeps the config surface honest: **a field earns its place only if
+it encodes an intent the environment cannot reveal** (how many issues at once, which vendor
+reviews, what the budget is). A required field that could have been read from the environment is
+not just a redundant knob — it is a second place for one fact to live, which is §8/D1's mistake
+at config altitude.
+
 ## 7. What we already have (the reason this isn't a multi-month project)
 
 | Conductor needs | Already shipped |

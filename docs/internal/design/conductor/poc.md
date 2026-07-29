@@ -49,19 +49,32 @@ file path, so the vendor harness can rewrite a document without clobbering our a
 
 ## Level 1 — out of the box
 
-One file. Everything else is defaults.
+One file, and it is nearly empty — because everything in it can be discovered.
 
 ```ts
 // conductor.config.ts
-import { defineConductor, githubConnector } from "@flow-state-dev/conductor";
-import { claudeCodeDispatcher } from "@flow-state-dev/conductor/dispatchers";
+import { defineConductor } from "@flow-state-dev/conductor";
 
-export default defineConductor({
-  repo: "my-org/my-project",
-  connectors: [githubConnector({ token: process.env.GITHUB_TOKEN! })],
-  dispatcher: claudeCodeDispatcher(),
-});
+export default defineConductor();
 ```
+
+That's the honest level 1. Nothing above is a placeholder for values you'd fill in later:
+
+| Not configured | Discovered from |
+|---|---|
+| the repo | `git remote get-url origin` in the repo conductor is running inside — it's sitting in a git checkout, so asking is redundant |
+| GitHub auth | `GITHUB_TOKEN` / `GH_TOKEN`, the convention `gh` already uses |
+| the dispatcher | the vendor harness that's actually installed (the `claude` CLI, then `codex`); a clear error if none resolves, not a silent default |
+| the default branch | the remote's HEAD |
+
+**Discover, don't ask.** A required config field that could have been read from the
+environment is a knob that shouldn't exist (tenet 3), and it's worse than a no-op: it's a
+second place for the same fact to live, which is the D1 mistake at config altitude. Every knob
+in level 2 exists because it encodes an *intent* the environment cannot reveal — how many
+issues to run at once, which vendor reviews, what the budget is.
+
+Explicit values stay available for the cases inference genuinely can't cover: a fork where the
+PRs should target upstream, several remotes, or one conductor driving a repo it isn't inside.
 
 That gets the whole default process from `conductor.md` §6: epic framing → objective gate →
 per-issue spec → spec gate → implementation → PR feedback → merge gate → retrospective. Three
@@ -75,7 +88,8 @@ pnpm conductor tick          # fire a tick by hand (the CLI trigger)
 ```
 
 **GitHub is the one connector that isn't optional** — it holds the artifacts and the gates
-(§8/D1). Linear is absent here and everything works.
+(§8/D1) — but "not optional" means auto-installed, not hand-declared. Linear is absent here and
+everything works.
 
 ---
 
@@ -85,15 +99,15 @@ Same file, more of it. Nothing structural: knobs on the defaults.
 
 ```ts
 // conductor.config.ts
-import { defineConductor, githubConnector, linearConnector } from "@flow-state-dev/conductor";
+import { defineConductor, linearConnector } from "@flow-state-dev/conductor";
 import { claudeCodeDispatcher, codexDispatcher } from "@flow-state-dev/conductor/dispatchers";
 
 export default defineConductor({
-  repo: "my-org/my-project",
+  // `repo`, GitHub auth, and the default branch are still inferred — override only
+  // when inference can't be right (a fork targeting upstream, multiple remotes).
 
   connectors: [
-    githubConnector({ token: process.env.GITHUB_TOKEN! }),
-
+    // GitHub is installed automatically; name it only to override something.
     // Optional. Outbound projection by default; inbound is explicitly opt-in,
     // and an inbound status change arrives as a SIGNAL, never a ledger write.
     linearConnector({
@@ -136,9 +150,10 @@ export default defineConductor({
 });
 ```
 
-Two things worth noticing. `merge: "auto"` is **not a value the type accepts** — the safety
-property is in the type system, not in a doc. And `dispatcher` keyed by phase is where vendor
-neutrality stops being a slogan: switching who reviews is one line.
+Three things worth noticing. `merge: "auto"` is **not a value the type accepts** — the safety
+property is in the type system, not in a doc. `dispatcher` keyed by phase is where vendor
+neutrality stops being a slogan: switching who reviews is one line. And every field here answers
+a question the environment *can't* — which is the test for whether a knob belongs at all.
 
 ---
 
