@@ -140,7 +140,7 @@ even if more are queued. State the chosen N and the cap to the user.
                 verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
-                   lastSeenActivityAt, lastSeenSha, blocker, blockerResolution,
+                   lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
                    approvedInSession, subPrs, assembledGoal, unsettled, blockerFor,
                    multiPrPending } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
@@ -256,18 +256,29 @@ even if more are queued. State the chosen N and the cap to the user.
    that escalated a decision is waiting on *you*, not on an event. Once you've answered (in-session
    or on the PR), do two things in the same breath:
 
-   - write the human's decision into **`blockerResolution`** on the row, in enough words that
-     someone who wasn't there could act on it (the option chosen, and why if the why constrains the
-     work);
+   - **append** `{ for, answer }` to **`blockerResolutions`** on the row — never overwrite it. `answer`
+     in enough words that someone who wasn't there could act on it (the option chosen, and why if the
+     why constrains the work); `for` naming the sub-PR if the blocker was prefixed with one
+     (`a: which shape?` → `for: "a"`), otherwise omitted. It is a **list** because two slices can
+     escalate in the same wake and only one gets lifted onto the row at a time: answering the first
+     parks the row behind the second, so that answer has to survive un-dispatched until the second is
+     answered too. A single slot loses it, and the slice resumes and re-asks;
    - remove `blocker`, so the issue resumes.
 
    Both, because the next worker is a **fresh sub-agent in a fresh worktree** — it never saw the
    escalation and cannot read this session. Clearing `blocker` alone releases it to walk back to the
    identical architectural fork, where it must either escalate again (the same question, forever) or
-   invent the answer the gate existed to supply. The wake hands `blockerResolution` to that worker's
-   prompt and clears it once a dispatch has carried it, so it is a one-shot handoff, not durable
-   state; leave `blocker` set and the issue never moves at all. `blockers` are surfaced at step 4 —
+   invent the answer the gate existed to supply. The wake hands the whole list to that worker's prompt
+   (and forwards it into `issue-multi-pr` for a multi-PR row, whose build and fix workers are the ones
+   that escalated), then clears it once a dispatch has carried it — a one-shot handoff, not durable
+   state. Leave `blocker` set and the issue never moves at all. `blockers` are surfaced at step 4 —
    see [Gates & autonomy](#gates--autonomy).
+
+   **A row parked on an unresolved `blocker` is offered no gate at all** — not spec approval, not
+   merge. That is deliberate: the answer changes the artifact, so approving the spec or merging the
+   work first signs off something the decision is about to alter. The question itself still appears in
+   `blockers` every wake, so nothing is hidden; the gate returns once you have answered and the wake
+   has dispatched the answer.
 
    A `blocker` reading **"POC returned INCONCLUSIVE"** is the same contract from a different
    source: the evidence run couldn't settle the claim, so `orchestration.md` hands it back to the

@@ -383,5 +383,9 @@ cloud vs. local" for how to detect the environment and the full fallback design.
   never saw the question. Surfacing the blocker and then dispatching as if nothing happened sends it
   back to the same architectural fork, where it can only escalate again or guess. Put the human's
   decision in the prompt verbatim — the option chosen, and the why if the why constrains the work.
-  (Under `epic-lifecycle` the same handoff is the row's `blockerResolution` field, which `epic-wake`
-  hands to the next dispatch and clears once carried.)
+  For a **multi-PR** issue, pass it to `issue-multi-pr` as `blockerResolutions: [{ for, answer }]` —
+  `for` naming the slice that escalated. That is also what **clears** the slice's cached `blocker` (or
+  `assembledGoal.fixBlocker`): the answer is the unblocking signal, so you don't clear it yourself, and
+  a slice whose answer you never pass stays parked no matter what else you update.
+  (Under `epic-lifecycle` the same handoff is the row's `blockerResolutions` list, which `epic-wake`
+  hands to the next dispatch, forwards into `issue-multi-pr`, and clears once carried.)

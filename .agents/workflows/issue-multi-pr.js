@@ -292,18 +292,6 @@ const FIX_SCHEMA = {
 // ---------------------------------------------------------------------------
 
 const issueId = args.issueId
-// Tolerate the status the previous, prose-driven path persisted. `issue-lifecycle` documents the
-// cached statuses as `building / open / merged`, but a wake is synchronous — a node either has a
-// PR (`open`) or does not (`pending`) — so `classify()` only knows the latter pair. A carried
-// `building` node therefore matched no branch, produced no action, and logged as "waiting" on
-// every wake with no external event able to move it: a permanent stall. It normalizes to
-// `pending`, which retries the build; a build that never returned left no PR to lose. (BP-030.)
-const nodes = (args.subPrs || []).map((n) => (n.status === 'building' ? { ...n, status: 'pending' } : n))
-for (const n of args.subPrs || []) {
-  if (n.status === 'building') log(`${n.id}: carried status "building" is not a state a wake can resume — retrying the build.`)
-}
-const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
-const goal = args.assembledGoal || {}
 // The human's answer to a decision a slice escalated, forwarded by the caller.
 //
 // This DAG's workers are the ones that hit the fork — the escalation came from a build or fix worker,
@@ -311,18 +299,59 @@ const goal = args.assembledGoal || {}
 // that resumes is freshly spawned, never saw the question, and can only escalate it again or guess.
 // Same channel as `epic-wake`'s `blockerResolution`, one hop further down. Consumed by the caller
 // (which clears its copy once it has dispatched), so this script only reads it.
-const blockerResolution = args.blockerResolution || null
-// Prefixed by `epic-wake`'s lift as `<sub-pr id>: <question>`, so the answer can be pointed at the
-// slice it belongs to rather than broadcast to every worker in the ready set.
-const resolutionFor = args.blockerResolutionFor || null
-const resolutionNote = (nodeId) =>
-  blockerResolution && (!resolutionFor || resolutionFor === nodeId)
-    ? `\nA decision this slice escalated has been ANSWERED by the human: ${blockerResolution}\nImplement it as given — do not re-derive the choice and do not escalate the same fork again. If it does not answer the fork you actually hit, report a new blocker naming precisely what is still open.\n`
-    : ''
-if (blockerResolution) {
-  log(`Carrying a human decision into ${resolutionFor ? `sub-PR ${resolutionFor}` : 'this issue\'s workers'}: ${blockerResolution}`)
+// A LIST, because two slices can escalate in one wake and a single slot silently drops one of the
+// answers — see `normalizeResolutions` in epic-wake.js for the sequence that guarantees it.
+const resolutions = [
+  ...(args.blockerResolutions || []).filter((r) => r && r.answer).map((r) => ({ for: r.for || null, answer: r.answer })),
+  // BP-030: the single-slot shape, tolerated on the way in.
+  ...(args.blockerResolution ? [{ for: args.blockerResolutionFor || null, answer: args.blockerResolution }] : []),
+]
+/** Answers aimed at this node (or at the issue as a whole). */
+const resolutionsFor = (nodeId) => resolutions.filter((r) => !r.for || r.for === nodeId)
+const resolutionNote = (nodeId) => {
+  const mine = resolutionsFor(nodeId)
+  if (!mine.length) return ''
+  return (
+    `\n${mine.length === 1 ? 'A decision' : `${mine.length} decisions`} this slice escalated ${mine.length === 1 ? 'has' : 'have'} been ANSWERED by the human:\n` +
+    mine.map((r) => `  - ${r.answer}`).join('\n') +
+    `\nImplement as given — do not re-derive the choice and do not escalate the same fork again. If one does not answer the fork you actually hit, report a new blocker naming precisely what is still open.\n`
+  )
 }
 
+// AN ANSWER IS WHAT CLEARS THE BLOCKER IT ANSWERS, here rather than only in the caller.
+//
+// `classify()` refuses to dispatch a node whose `blocker` is set and `assembleState()` returns
+// REPAIR_BLOCKED on `goal.fixBlocker` — both correct, and both unreachable-past for a standalone
+// caller. `epic-wake` clears the nested copies in its refresh, so under an epic the forwarding worked;
+// invoked directly from `issue-lifecycle` there was no equivalent step, so a supplied resolution could
+// never reach a worker and the answered slice stayed blocked forever. Deriving the clearing from the
+// answer makes it caller-independent, and it is idempotent when the caller already did it.
+const answeredIds = new Set(resolutions.map((r) => r.for).filter(Boolean))
+const rowLevelAnswer = resolutions.some((r) => !r.for)
+
+// Tolerate the status the previous, prose-driven path persisted. `issue-lifecycle` documents the
+// cached statuses as `building / open / merged`, but a wake is synchronous — a node either has a
+// PR (`open`) or does not (`pending`) — so `classify()` only knows the latter pair. A carried
+// `building` node therefore matched no branch, produced no action, and logged as "waiting" on
+// every wake with no external event able to move it: a permanent stall. It normalizes to
+// `pending`, which retries the build; a build that never returned left no PR to lose. (BP-030.)
+const nodes = (args.subPrs || [])
+  .map((n) => (n.status === 'building' ? { ...n, status: 'pending' } : n))
+  // Clear the blocker each answer resolves (see above). A row-level answer with no slice named clears
+  // whichever slice is blocked, matching how `epic-wake` lifts one nested blocker at a time.
+  .map((n) => (n.blocker && (answeredIds.has(n.id) || rowLevelAnswer) ? { ...n, blocker: null } : n))
+for (const n of args.subPrs || []) {
+  if (n.status === 'building') log(`${n.id}: carried status "building" is not a state a wake can resume — retrying the build.`)
+}
+const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
+const goal = { ...(args.assembledGoal || {}) }
+
+// The repair blocker is the third copy of the same decision (row, sub-PR, goal), and it gets the same
+// treatment: answered means cleared, so REPAIR_BLOCKED is not a state a standalone caller can't leave.
+if (goal.fixBlocker && (rowLevelAnswer || answeredIds.has(goal.owningSubPr))) {
+  log(`Repair blocker for ${issueId} was answered by the human — clearing it so the repair can proceed.`)
+  delete goal.fixBlocker
+}
 // ---- Assemble: one state, one action per wake. -----------------------------------------
 const state = assembleState(nodes, goal)
 

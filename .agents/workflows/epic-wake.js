@@ -179,6 +179,55 @@ function dedupeClaims(requests) {
 }
 
 /**
+ * The human decisions this row is carrying, as a LIST.
+ *
+ * A single slot loses answers, and the sibling-blocker queue guarantees it will. Two slices escalate
+ * in one wake; the row surfaces A, the human answers it, and the refresh clears A's nested blocker and
+ * lifts B in the same pass — which parks the row, so A's answer is never dispatched. The human then
+ * answers B, the coordinator writes into the one field, and A's decision is gone: its slice resumes
+ * with nothing and re-escalates the identical fork. Exactly the reasoning `verdicts` already carries
+ * ("two distinct claims on one issue can settle in the same wake, and a single-slot field would drop
+ * one") — the lesson was in this file and I added the field without applying it.
+ *
+ * @returns `[{ for, answer }]`, each aimed at the slice that asked (null = the row itself)
+ */
+function normalizeResolutions(row) {
+  const raw = []
+  for (const r of row.blockerResolutions || []) if (r && r.answer) raw.push({ for: r.for || null, answer: r.answer })
+  // BP-030: tolerate the single-slot shape a coordinator may already have persisted mid-epic.
+  if (row.blockerResolution) raw.push({ for: row.blockerResolutionFor || null, answer: row.blockerResolution })
+  const seen = new Set()
+  const out = []
+  for (const r of raw) {
+    // An untargeted answer belongs to the slice the row most recently surfaced. Read from the CARRIED
+    // row, before the fold lifts the next sibling over `blockerFor` — after that, the aim is lost.
+    const target = r.for || row.blockerFor || null
+    const key = `${target || "-"} :: ${r.answer}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ for: target, answer: r.answer })
+  }
+  return out
+}
+
+/**
+ * Is this row waiting on a human decision?
+ *
+ * One predicate, because every consumer has to agree. `pendingAction` parks on it, and each GATE has
+ * to withhold on it too — a merge gate did (after review found it) and the spec-approval gate did not,
+ * so the coordinator invited a human to approve a spec whose open architectural question was still
+ * unanswered, and approval releases implementation. Approving an artifact we know is unfinished is the
+ * gate granting itself.
+ *
+ * `blockedBy` is deliberately NOT part of this. An open prerequisite is a sequencing constraint that
+ * does not change what the spec says, so approving early is harmless and saves a later wait; it still
+ * withholds the MERGE gate, where landing order is the whole point.
+ */
+function awaitingHumanDecision(row) {
+  return !!row.blocker
+}
+
+/**
  * Bind a scan's per-handle sub-PR states to the handles that were REQUESTED.
  *
  * One function, because two callers have to agree about it: `cursorUsable` decides whether the scan
@@ -514,6 +563,7 @@ function nextRow(row, { worker, action, landed, folded }) {
     // state: left set, every later worker on this row would be told an already-implemented decision
     // was fresh. A worker that DIED never reaches `nextRow`, so a failed dispatch leaves the
     // resolution intact for the retry — the same rule as the cursor.
+    blockerResolutions: [],
     blockerResolution: null,
     blockerResolutionFor: null,
     ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
@@ -732,12 +782,6 @@ function foldMultiPrScan(row, fresh) {
       out.blockerFor = null
     }
   }
-  // Which slice a pending resolution answers, kept for the dispatch. The lift prefixes the id into
-  // `blocker` (`a: which shape?`), and `blockerFor` records it — but the clearing below nulls that
-  // marker in the same pass, so by dispatch time the row would no longer know which of its slices the
-  // human answered, and the resolution would be broadcast to every worker in the ready set. Derived
-  // here rather than asked of the coordinator: it already exists, one hop earlier.
-  if (row.blockerResolution && row.blockerFor) out.blockerResolutionFor = row.blockerFor
   if (row.assembledGoal) {
     const goal = { ...row.assembledGoal }
     let changed = false
@@ -1248,6 +1292,12 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: row.specReviewRounds || 0,
     specLevelFound: !!row.specLevelFound,
+    // Carried human decisions, as a list and aimed. Computed from the CARRIED row so an untargeted
+    // answer can still be attributed to the slice the row surfaced — `foldMultiPrScan` below lifts the
+    // next sibling over `blockerFor`, and after that the aim is unrecoverable.
+    blockerResolutions: normalizeResolutions(row),
+    blockerResolution: null,
+    blockerResolutionFor: null,
     // A multi-PR row's live handles: merged sub-PRs, a merged repair, a resolved repair blocker.
     ...foldMultiPrScan(row, fresh),
   }
@@ -1385,8 +1435,10 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           // gone and you are a fresh agent in a fresh worktree: without this you reach the identical
           // fork, and your only options are to escalate the same question again or to invent the
           // answer the gate existed to supply.
-          (item.row.blockerResolution
-            ? `A decision this issue escalated has been ANSWERED by the human: ${item.row.blockerResolution}\nThat is a decision, not a suggestion — implement it as given rather than re-deriving the choice, and do not escalate the same fork again. If it turns out not to answer the fork you actually hit, say so as a new \`blocker\` naming precisely what is still open.\n`
+          (item.row.blockerResolutions && item.row.blockerResolutions.length
+            ? `${item.row.blockerResolutions.length === 1 ? 'A decision' : `${item.row.blockerResolutions.length} decisions`} this issue escalated ${item.row.blockerResolutions.length === 1 ? 'has' : 'have'} been ANSWERED by the human:\n` +
+              item.row.blockerResolutions.map((r) => `  - ${r.for ? `[${r.for}] ` : ''}${r.answer}`).join('\n') +
+              `\nThose are decisions, not suggestions — implement them as given rather than re-deriving the choice, and do not escalate the same forks again. A \`[slice]\` prefix names which sub-PR the answer belongs to. If one turns out not to answer the fork you actually hit, say so as a new \`blocker\` naming precisely what is still open.\n`
             : '') +
           (item.action === 'implement' && settlingClaimFor(item.row.id)
             ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close or delete the spec PR or its branch yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled.\n`
@@ -1416,8 +1468,8 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // args — telling YOU the decision and stopping there leaves the freshly-spawned build or
               // fix worker at the same fork, able only to escalate again or guess. One hop short is the
               // same defect as no channel at all.
-              (item.row.blockerResolution
-                ? `  blockerResolution: ${JSON.stringify(item.row.blockerResolution)}${item.row.blockerResolutionFor ? `\n  blockerResolutionFor: ${JSON.stringify(item.row.blockerResolutionFor)}` : ''}\n` +
+              (item.row.blockerResolutions && item.row.blockerResolutions.length
+                ? `  blockerResolutions: ${JSON.stringify(item.row.blockerResolutions)}\n` +
                   `Pass those through to issue-multi-pr as well — its build and fix workers are the ones that escalated, and they are freshly spawned with none of this context.\n`
                 : '') +
               `ALWAYS report multiPrPending — true if the DAG still has work that needs no external event (a ready or cap-deferred sub-PR, or an assemble step) so the next wake dispatches you again rather than waiting for an event that will never come, false once it has drained. If you did not run a DAG step this pass, echo the carried value above rather than answering false: guessing false strands slices that no external event will wake, and there is no other channel that can set it again.\n` +
@@ -1621,13 +1673,23 @@ const gates = [
   // the coordinator cannot act on is a trap, not information.
   // Same terminal exclusion as the merge gate below: a child the human closed or dropped whose
   // spec PR is still open must not keep asking them to approve a spec for removed work.
-  // `pendingAction` already parks the row, but this filter is independent of it.
-  ...(!epicApproved ? [] : issues.filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal).map((r) => ({
-    kind: 'spec-approval',
-    issueId: r.id,
-    pr: r.specPr,
-    settlingInFlight: contestedClaimFor(r.id),
-  }))),
+  //
+  // And the same `awaitingHumanDecision` withholding. This filter was independent of parking — a note
+  // in this comment said so without drawing the conclusion — so a spec-review worker that escalated an
+  // architectural fork parked the row and the coordinator still invited approval of that spec. Approval
+  // releases implementation, so the human would be signing off an artifact whose open question is
+  // unanswered and whose answer changes it. The question is surfaced in `blockers`; the gate appears
+  // once it has been answered and folded, which is the only order that means anything.
+  ...(!epicApproved
+    ? []
+    : issues
+        .filter((r) => r.phase === 'AWAITING_SPEC_APPROVAL' && !r.specApproved && !r.linearTerminal && !awaitingHumanDecision(r))
+        .map((r) => ({
+          kind: 'spec-approval',
+          issueId: r.id,
+          pr: r.specPr,
+          settlingInFlight: contestedClaimFor(r.id),
+        }))),
   // A child the human closed or dropped must not keep asking them to merge it.
   // A merge gate is only actionable with a PR NUMBER, so it is emitted per HANDLE, not per row.
   // A multi-PR row has no `implPr` at all — one aggregate gate for it carried `pr: null`, which the
@@ -1636,7 +1698,7 @@ const gates = [
     // `pendingAction` parks a row carrying an unresolved decision or an open prerequisite, but the
     // merge gate is independent of it — so the human was still told to merge work whose blocker they
     // had not answered, or whose dependency had not landed. Parking has to mean parked everywhere.
-    .filter((r) => !r.linearTerminal && !r.blocker && !(r.blockedBy && r.blockedBy.length))
+    .filter((r) => !r.linearTerminal && !awaitingHumanDecision(r) && !(r.blockedBy && r.blockedBy.length))
     .flatMap((r) => {
       const gates = []
       // Single-PR: the row's own impl PR.

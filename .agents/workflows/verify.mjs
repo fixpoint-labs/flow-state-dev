@@ -2263,6 +2263,208 @@ check('a parked row is never offered for merge', async () => {
   }
 })
 
+check("an answered sibling's decision is not lost when the next blocker is lifted", async () => {
+  // The sibling QUEUE guarantees this: answering A clears A's nested blocker and lifts B in the same
+  // pass, which parks the row — so A's answer is never dispatched. A single-slot resolution field is
+  // then overwritten when the human answers B, and A's slice resumes with nothing and re-escalates the
+  // identical fork. Same reasoning `verdicts` already carries; the lesson was in the file when the
+  // field was added as a single slot.
+  const answeredA = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          blocker: null, // A answered
+          blockerFor: 'a',
+          blockerResolutions: [{ for: null, answer: 'A: use the store adapter' }],
+          subPrs: [
+            { id: 'a', status: 'pending', blocker: 'which shape?' },
+            { id: 'b', status: 'pending', blocker: 'which owner?' },
+          ],
+          assembledGoal: { passed: false },
+          multiPrPending: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: false },
+            { id: 'b', merged: false, readyToMerge: false },
+          ],
+        },
+      },
+    }),
+  })
+  const rowA = answeredA.result.issues[0]
+  assert.equal(rowA.blocker, 'b: which owner?', "B is lifted, so the row parks and A's dispatch waits")
+  assert.deepEqual(workerLabels(answeredA.calls), [], 'parked')
+  assert.deepEqual(
+    rowA.blockerResolutions,
+    [{ for: 'a', answer: 'A: use the store adapter' }],
+    "A's answer survives the park, aimed at A by the marker that was current when it was given",
+  )
+
+  // The human now answers B. Both answers have to be there — this is where the single slot dropped A.
+  const answeredB = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [{ ...rowA, blocker: null, blockerResolutions: [...rowA.blockerResolutions, { for: 'b', answer: 'B: Bob owns it' }] }],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          subPrStates: [
+            { id: 'a', merged: false, readyToMerge: false },
+            { id: 'b', merged: false, readyToMerge: false },
+          ],
+        },
+      },
+    }),
+  })
+  const prompt = answeredB.calls.find((c) => c.label === 'implement:FIX-2').prompt
+  assert.match(prompt, /\[a\] A: use the store adapter/, "A's decision reaches the dispatch it was waiting for")
+  assert.match(prompt, /\[b\] B: Bob owns it/)
+  assert.deepEqual(answeredB.result.issues[0].blockerResolutions, [], 'and both are consumed together')
+})
+
+check('a row parked on an unanswered decision is not offered for spec approval', async () => {
+  // Merge gates learned this ("parking has to mean parked everywhere") and the spec-approval gate did
+  // not — its comment even noted the filter was independent of parking without drawing the conclusion.
+  // A spec-review worker that escalates an architectural fork parks the row; inviting approval anyway
+  // asks the human to sign off an artifact whose open question is unanswered, and approval is what
+  // releases implementation.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, blocker: 'one store or two?' })],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  assert.deepEqual(
+    result.gates.filter((g) => g.kind === 'spec-approval'),
+    [],
+    'no approval is invited while the decision that stopped the review is open',
+  )
+  assert.ok(
+    result.blockers.some((b) => b.blocker === 'one store or two?'),
+    'the question itself is still surfaced — withholding the gate must not hide the ask',
+  )
+
+  // Answered: the gate appears, which is what makes withholding a sequencing rule and not a dead end.
+  const answered = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  assert.deepEqual(answered.result.gates.filter((g) => g.kind === 'spec-approval').map((g) => g.pr), [8])
+})
+
+check('a standalone multi-PR caller can unblock a slice with an answer alone', async () => {
+  // Under an epic, `epic-wake`'s refresh clears the nested blocker before dispatch, so the forwarding
+  // worked. Called directly from `issue-lifecycle` there is no equivalent step — `classify()` returns
+  // null for a node with `blocker` set and `assembleState()` returns REPAIR_BLOCKED on `fixBlocker`, so
+  // a supplied answer could never reach a worker and the slice stayed blocked forever. The ANSWER is
+  // what clears the blocker it answers, in the script, so both callers get the same behaviour.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: {
+      issueId: 'FIX-2',
+      subPrs: [{ id: 'a', status: 'pending', dependsOn: [], blocker: 'which shape?' }],
+      blockerResolutions: [{ for: 'a', answer: 'use the store adapter' }],
+    },
+    respond: multiResponder({}),
+  })
+  assert.deepEqual(
+    calls.filter((c) => (c.label || '').startsWith('build:')).map((c) => c.label),
+    ['build:a'],
+    'the answered slice is dispatched rather than parked',
+  )
+  assert.match(calls.find((c) => c.label === 'build:a').prompt, /ANSWERED by the human/)
+
+  // Without the answer it stays parked — otherwise the check above proves nothing.
+  const stillBlocked = await run('issue-multi-pr.js', {
+    args: { issueId: 'FIX-2', subPrs: [{ id: 'a', status: 'pending', dependsOn: [], blocker: 'which shape?' }] },
+    respond: multiResponder({}),
+  })
+  assert.deepEqual(stillBlocked.calls.filter((c) => (c.label || '').startsWith('build:')), [])
+
+  // The REPAIR blocker is the third copy of the same decision and needs the same treatment: without it
+  // `assembleState` returns REPAIR_BLOCKED forever, so an answered repair never runs standalone.
+  const repairArgs = (over = {}) => ({
+    issueId: 'FIX-2',
+    subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a', dependsOn: [] }],
+    assembledGoal: {
+      passed: false,
+      failure: 'the two slices disagree on the cache key',
+      evidence: 'ran it',
+      fixIssue: 'FIX-9',
+      owningSubPr: 'a',
+      fixBlocker: 'which shape?',
+    },
+    ...over,
+  })
+  const repairBlocked = await run('issue-multi-pr.js', { args: repairArgs(), respond: multiResponder({}) })
+  assert.deepEqual(
+    repairBlocked.calls.filter((c) => (c.label || '').startsWith('assembled-fix')),
+    [],
+    'REPAIR_BLOCKED dispatches nothing, as it should',
+  )
+
+  const repairAnswered = await run('issue-multi-pr.js', {
+    args: repairArgs({ blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }] }),
+    respond: multiResponder({}),
+  })
+  assert.deepEqual(
+    repairAnswered.calls.filter((c) => (c.label || '').startsWith('assembled-fix')).map((c) => c.label),
+    ['assembled-fix:FIX-2'],
+    'the answered repair proceeds',
+  )
+  assert.match(repairAnswered.calls.find((c) => c.label === 'assembled-fix:FIX-2').prompt, /key on tenant \+ scope/)
+  assert.match(repairAnswered.logs.join('\n'), /Repair blocker for FIX-2 was answered/)
+})
+
+check('INVARIANT: every gate withholds on an unanswered human decision', async () => {
+  // Two gate kinds diverged once already: the merge gate got the rule and the spec-approval gate kept
+  // its own filter. Naming the call sites is what let that happen, so this asserts the SHAPE — every
+  // gate a parked row could produce must be absent — for any row state that parks.
+  for (const park of [{ blocker: 'which behaviour?' }, { blocker: 'POC returned INCONCLUSIVE — needs a human decision: x' }]) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({
+        issues: [
+          row('FIX-2', {
+            phase: 'AWAITING_SPEC_APPROVAL',
+            specPr: 8,
+            implPr: 9,
+            subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+            assembledGoal: { passed: false, fixPr: 77, fixMerged: false },
+            ...park,
+          }),
+        ],
+      }),
+      respond: epicResponder({
+        fresh: {
+          'FIX-2': {
+            phase: 'AWAITING_SPEC_APPROVAL',
+            specPr: 8,
+            implPr: 9,
+            readyToMerge: true,
+            repairMerged: false,
+            repairReadyToMerge: true,
+            subPrStates: [{ id: 'a', merged: false, readyToMerge: true }],
+          },
+        },
+      }),
+    })
+    // Every gate kind this row could otherwise emit: spec-approval, its own merge, a sub-PR merge, the
+    // repair merge. A parked row emits none of them.
+    assert.deepEqual(
+      result.gates.filter((g) => g.issueId === 'FIX-2'),
+      [],
+      `a row parked by ${JSON.stringify(park)} must emit no gate of any kind`,
+    )
+  }
+})
+
 check('an unanswered sibling blocker survives its neighbour being resolved', async () => {
   // Two sub-PR workers can escalate different decisions in one wake; the row surfaces the first.
   // Clearing all of them on that one answer lets the sibling's slice resume on a decision nobody made.
@@ -2476,7 +2678,7 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
           phase: 'NEEDS_IMPLEMENTATION',
           specApproved: true,
           blocker: null, // answered
-          blockerResolution: 'use the store adapter, not a bespoke cache',
+          blockerResolutions: [{ for: null, answer: 'use the store adapter, not a bespoke cache' }],
         }),
       ],
     }),
@@ -2487,8 +2689,8 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
   })
   const prompt = first.calls.find((c) => c.label === 'implement:FIX-2').prompt
   assert.match(prompt, /use the store adapter, not a bespoke cache/, 'the decision travels with the dispatch')
-  assert.match(prompt, /do not escalate the same fork again/)
-  assert.equal(first.result.issues[0].blockerResolution, null, 'and is consumed, so a later worker is not told it is fresh')
+  assert.match(prompt, /do not escalate the same forks again/)
+  assert.deepEqual(first.result.issues[0].blockerResolutions, [], 'and is consumed, so a later worker is not told it is fresh')
 
   // A dispatch that DIED consumed nothing, so the answer survives for the retry — the same rule the
   // cursor gets. Otherwise an infrastructure failure silently discards the human's decision.
@@ -2498,7 +2700,7 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
         row('FIX-2', {
           phase: 'NEEDS_IMPLEMENTATION',
           specApproved: true,
-          blockerResolution: 'use the store adapter, not a bespoke cache',
+          blockerResolutions: [{ for: null, answer: 'use the store adapter, not a bespoke cache' }],
         }),
       ],
     }),
@@ -2507,9 +2709,9 @@ check("a resolved blocker's answer reaches the next worker, exactly once", async
       nulls: ['implement:FIX-2'],
     }),
   })
-  assert.equal(
-    died.result.issues[0].blockerResolution,
-    'use the store adapter, not a bespoke cache',
+  assert.deepEqual(
+    died.result.issues[0].blockerResolutions,
+    [{ for: null, answer: 'use the store adapter, not a bespoke cache' }],
     'a dead worker consumes nothing',
   )
 })
@@ -2532,7 +2734,7 @@ check("a multi-PR row's blocker answer is forwarded to the nested DAG workers", 
           multiPrPending: true,
           blocker: null, // answered
           blockerFor: 'a',
-          blockerResolution: 'use the store adapter, not a bespoke cache',
+          blockerResolutions: [{ for: 'a', answer: 'use the store adapter, not a bespoke cache' }],
         }),
       ],
     }),
@@ -2550,8 +2752,7 @@ check("a multi-PR row's blocker answer is forwarded to the nested DAG workers", 
   })
   const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
   assert.match(prompt, /Pass those through to issue-multi-pr/, 'the worker is told to forward it, not just told the answer')
-  assert.match(prompt, /blockerResolution: "use the store adapter, not a bespoke cache"/, 'in the args block, as a value it can pass')
-  assert.match(prompt, /blockerResolutionFor: "a"/, 'aimed at the slice that escalated, not broadcast to the ready set')
+  assert.match(prompt, /blockerResolutions: \[\{"for":"a","answer":"use the store adapter, not a bespoke cache"\}\]/, 'in the args block, aimed at the slice that escalated')
 })
 
 check('a nested DAG worker is given the answer, aimed at the slice that asked', async () => {
@@ -2565,15 +2766,15 @@ check('a nested DAG worker is given the answer, aimed at the slice that asked', 
         { id: 'a', status: 'pending', dependsOn: [] },
         { id: 'b', status: 'pending', dependsOn: [] },
       ],
-      blockerResolution: 'use the store adapter, not a bespoke cache',
-      blockerResolutionFor: 'a',
+      blockerResolutions: [{ for: 'a', answer: 'use the store adapter, not a bespoke cache' }],
     },
     respond: multiResponder({}),
   })
   const forA = calls.find((c) => c.label === 'build:a').prompt
   const forB = calls.find((c) => c.label === 'build:b').prompt
-  assert.match(forA, /has been ANSWERED by the human: use the store adapter/)
+  assert.match(forA, /has been ANSWERED by the human:\n {2}- use the store adapter/)
   assert.match(forA, /do not escalate the same fork again/)
+  assert.equal(calls.filter((c) => c.label === 'build:a').length, 1)
   assert.doesNotMatch(forB, /ANSWERED by the human/, "a sibling slice is not handed another slice's decision")
 })
 
@@ -3871,7 +4072,7 @@ check('INVARIANT: every field the epic wake parks on is documented as one the co
   // and `blockerResolution` is the same shape: without it the human's answer to an escalation reaches
   // nobody and the replacement worker re-escalates the identical fork forever.
   const readsButCannotWrite = {
-    blockerResolution: /write the human's decision into \*\*`blockerResolution`\*\*/,
+    blockerResolutions: /\*\*append\*\* `\{ for, answer \}` to \*\*`blockerResolutions`\*\*/,
     approvedInSession: /record the \*\*head SHA they approved\*\* in this field/,
     // The epic-altitude twin, and the one that proves the invariant needed to exist: `openQuestions`
     // and `unsettled` were both durable, re-surfaced questions whose ANSWER had no field at all, so the
