@@ -163,11 +163,29 @@ a batch of pure acknowledgements costs zero, an escalated blocker costs zero, an
 round is charged one. Then:
 
 - **Rounds 1–11** — dispatch Step 10 on the event batch as normal.
-- **Round 12 returns** — **stop dispatching.** The worker has already posted its pause
-  comment on the PR (`issue-implement` 10.7). Surface the question to the user with the round
-  count, the open threads, and the worker's read on whether this is converging or looping.
-  Further PR events are recorded in the cache and **not acted on** — no fixes, no pushes. The
-  issue is parked: offer it no merge gate while it sits here.
+- **Round 12 returns** — **stop dispatching.** The worker posted its pause comment on the PR
+  during that round (see the dispatch contract below). Surface the question to the user with
+  the round count, the open threads, and the worker's read on whether this is converging or
+  looping. Further PR events are recorded in the cache and **not acted on** — no fixes, no
+  pushes. The issue is parked: offer it no merge gate while it sits here.
+
+**Every feedback dispatch carries the count** — the counter is *yours*, and the worker is a
+**fresh sub-agent that cannot read this cache**. Tell it, in the prompt, every time:
+
+- **`prFeedbackRounds` so far and the cap** (`n of 12 auto-handled rounds`), and
+- **report `prFeedbackRoundsSpent`**: `1` for a normal pass, `0` for a batch that turned out
+  to be only acknowledgements and process chatter.
+- **On the last allowed round** (the count is 11), additionally: *if* this batch turns out to
+  be a real round, it is the twelfth — finish it, then post the pause comment per
+  `issue-implement` 10.7 and return the converging-or-looping read. If it turns out to be
+  acknowledgements only, report `0` and post **no** pause comment; no round was spent and the
+  loop continues.
+
+Skip this and the cap degrades in both directions at once: an unprompted worker omits the
+count, so every acknowledgement batch is charged one, and the batch that reaches twelve parks
+the issue with **no** pause comment on the PR and no assessment to give the user — the two
+things the cap exists to produce. (`epic-wake` builds exactly this into the `pr-feedback`
+prompt; standalone, it is yours to build.)
 
 **The user's answer is the release.** Record it, carry it verbatim into the next dispatch's
 prompt (the escalating worker is gone — same handoff rule as any other blocker), and **reset

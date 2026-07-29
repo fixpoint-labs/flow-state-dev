@@ -484,6 +484,16 @@ corrections does. A worker that escalated a blocker mid-round didn't finish it a
 nothing. A round that reports no count is charged one — an unreported round must not be
 free, or the cap is unreachable and the loop it exists to catch runs forever.
 
+**The counter is the coordinator's; the count has to travel to the worker.** Every round runs
+in a *fresh* sub-agent that cannot read the coordinator's cache, so each feedback dispatch
+must carry the running count, the cap, and — on the last allowed round — the instruction to
+post the pause comment if the batch turns out to be a real round. Leave it out and the cap
+fails in both directions from the same omission: an unprompted worker reports no count, so
+every acknowledgement batch is charged one, and the round that reaches the cap parks the issue
+with no pause comment on the PR and no assessment for the human. Both implementations owe this
+— `epic-wake` builds it into the `pr-feedback` prompt; standalone `issue-lifecycle` builds it
+into its dispatch.
+
 **What the cap does not gate.** Only feedback handling. On a multi-PR issue the DAG still
 advances — building the next ready slice, rebasing an unstacked one, running the assembled
 goal — because none of that is a feedback round, and parking it would stall the issue for a

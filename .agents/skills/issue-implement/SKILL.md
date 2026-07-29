@@ -303,8 +303,8 @@ Once the PR is open, this skill owns it until it merges. Whenever the skill is r
 
 **The loop is capped at twelve rounds.** One pass over the outstanding batch is one round. At the twelfth, stop auto-handling feedback and ask the human — the full rule, and why the number is what it is, is in [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR feedback: the round cap" (canonical). Two things are this skill's:
 
-- **Report the round you spent.** Under a coordinator, return `prFeedbackRoundsSpent` — `1` for a normal pass, `0` for a batch that was nothing but acknowledgements and process chatter (no code comment, nothing to fix or answer). Standalone, keep the count in the handle cache yourself. If you escalate a blocker mid-round you didn't finish it: report `0`.
-- **Check the cap at 10.7**, before deciding to continue.
+- **Report the round you spent.** Under a coordinator (`issue-lifecycle` standalone, or `epic-wake` under an epic) the count lives in *its* cache, not yours — you are a fresh sub-agent each round, so the prompt tells you the running count and you return `prFeedbackRoundsSpent`: `1` for a normal pass, `0` for a batch that was nothing but acknowledgements and process chatter (no code comment, nothing to fix or answer). If you escalate a blocker mid-round you didn't finish it: report `0`. **Invoked directly** — no coordinator — you own the count across your own re-invocations.
+- **Check the cap at 10.7**, before deciding to continue — against the count the prompt gave you, or your own if you're running uncoordinated. If you weren't told a count and aren't tracking one, say so in your return rather than assuming you're at zero: an uncounted loop is the thing the cap exists to catch.
 
 #### 10.1: Enumerate every comment and review on the PR
 
