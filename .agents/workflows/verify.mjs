@@ -3670,6 +3670,7 @@ check('a resume that reports failure keeps its blocker', async () => {
   })
   assert.equal(result.subPrs[0].blocker, 'which shape?', 'a failed delivery is not a delivery')
   assert.equal(result.subPrs[0].status, 'open', 'and it does not demote the PR either')
+  assert.equal(result.subPrs[0].answerApplied, undefined, 'and it does not claim the answer landed')
 
   // A successful resume spends it, which is what makes the above about failure and not about resumes.
   const ok = await run('issue-multi-pr.js', {
@@ -3680,6 +3681,7 @@ check('a resume that reports failure keeps its blocker', async () => {
     respond: multiResponder(),
   })
   assert.equal(ok.result.subPrs[0].blocker, null)
+  assert.equal(ok.result.subPrs[0].answerApplied, true, 'a success says so explicitly, which is what the caller spends')
 })
 
 check('a dependent never stacks on a dependency whose decision is unsettled', async () => {
@@ -4187,196 +4189,168 @@ check('late spec-PR feedback is routed instead of merged over', async () => {
   assert.deepEqual(workerLabels(unreadable.calls), [], 'and nothing consumes what it cannot record')
 })
 
-check('an answered closed sub-PR is rebuilt, not resumed', async () => {
-  // Its PR is closed, so the generic `resume` would point a worker at a dead handle and tell it not to
-  // open a replacement — the one instruction that cannot satisfy the decision. Reset to pending with the
-  // handles dropped, the next wake builds it, which is the recovery the blocker actually offers.
+check('GATE: a scout cannot jump a row across the approval gate either', async () => {
+  // The worker's report was guarded; the refresh is an INDEPENDENT producer of `phase`, and a scan claiming
+  // PR_FEEDBACK with an impl handle on a row still awaiting approval walked straight past it.
+  for (const from of ['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL']) {
+    const { result } = await run('epic-wake.js', {
+      args: epicArgs({ issues: [row('FIX-2', { phase: from, specPr: from === 'NEEDS_SPEC' ? null : 8 })] }),
+      respond: epicResponder({
+        fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true, specApproved: false } },
+        worker: { 'FIX-2': { phase: from, specPr: from === 'NEEDS_SPEC' ? null : 8 } },
+      }),
+    })
+    assert.equal(result.issues[0].phase, from, `a scan cannot move ${from} past the gate`)
+    assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'and no merge gate follows')
+  }
+
+  // With the approval observed, the same scan is believed.
+  const approved = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specApproved: true, headSha: 'abc' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+    }),
+  })
+  assert.equal(approved.result.issues[0].phase, 'PR_FEEDBACK')
+})
+
+check('a successful resume spends the answer, a failed one does not', async () => {
+  // A resume works on an existing open PR, so success is `open → open` with no blocker — indistinguishable
+  // from failure by status alone. Guessing success dropped the answer; guessing failure re-dispatched the
+  // same resume every wake while the merge gate stayed withheld, so the slice could neither finish nor stop.
+  const args = epicArgs({
+    issues: [
+      row('FIX-2', {
+        phase: 'PR_FEEDBACK',
+        blockerFor: 'a',
+        blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
+        subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
+        multiPrPending: true,
+      }),
+    ],
+  })
+  const fresh = { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } }
+
+  const applied = await run('epic-wake.js', {
+    args,
+    respond: epicResponder({
+      fresh,
+      worker: {
+        'FIX-2': {
+          phase: 'PR_FEEDBACK',
+          multiPrPending: false,
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a', answerApplied: true }],
+        },
+      },
+    }),
+  })
+  assert.deepEqual(applied.result.issues[0].blockerResolutions, [], 'the nested workflow said it landed')
+
+  const notApplied = await run('epic-wake.js', {
+    args,
+    respond: epicResponder({
+      fresh,
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] } },
+    }),
+  })
+  assert.deepEqual(
+    notApplied.result.issues[0].blockerResolutions,
+    [{ for: 'a', answer: 'key on tenant + scope' }],
+    'and without that acknowledgement it waits, rather than being guessed either way',
+  )
+})
+
+check('the epic legacy third-round flag is dual-read', async () => {
+  // The epic counter was dual-read while the flag AUTHORIZING its third round was not, so an epic resumed
+  // from the previous instructions read two rounds with no authorization and skipped an allowed round.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, epic_review_rounds: 2, above_bar_found: true },
+      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({ epicReviewEvents: true, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
+  })
+  assert.ok(
+    calls.some((c) => c.label === 'fold:epic'),
+    'the authorized third epic round is dispatched',
+  )
+})
+
+check('a CI failure also waits on unreadable SPEC activity', async () => {
+  // The guard named only impl-PR activity. Once late spec-PR activity routed through the same worker and the
+  // same shared cursor, an unreadable spec batch was re-delivered every wake alongside the CI work.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, specPr: 8, ciFailed: true, newSpecReviewEvents: true, latestActivityAt: null },
+      },
+    }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'not dispatched while the spec batch cannot be recorded')
+})
+
+check('an untargeted answer reaches only the slice that asked', async () => {
+  // A legacy single-slot answer carries no target. Treating it as "for the issue" handed it to every ready
+  // node, so an unrelated pending slice was told to implement another slice's architectural decision.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [
+        { id: 'a', status: 'pending', dependsOn: [], blocker: 'which shape?' },
+        { id: 'b', status: 'pending', dependsOn: [] },
+      ],
+      blockerResolution: 'key on tenant + scope',
+    }),
+    respond: multiResponder(),
+  })
+  const forA = calls.find((c) => c.label === 'build:a')
+  const forB = calls.find((c) => c.label === 'build:b')
+  assert.ok(forA && forB, 'both slices are dispatched')
+  assert.match(forA.prompt, /key on tenant \+ scope/, 'the blocked slice gets the answer')
+  assert.doesNotMatch(forB.prompt, /key on tenant \+ scope/, 'the unrelated slice does not')
+})
+
+check('an answered closed handle is named to the worker, not auto-rebuilt', async () => {
+  // The automatic rebuild is GONE. Resetting the slice, marking the dead handle, and refusing the worker's
+  // echo of it needed a distinction the merge boundary does not have — the handle you were given versus the
+  // handle you just created — and each guard for one broke the other. Detection stands (the row no longer
+  // idles silently); recovery is the human's, carried out by a worker that is told which handle is dead.
   const { result, calls } = await run('epic-wake.js', {
     args: epicArgs({
       issues: [
         row('FIX-2', {
           phase: 'PR_FEEDBACK',
+          closedBlocker: true,
           blockerResolutions: [{ for: 'a', answer: 'rebuild it' }],
-          subPrs: [
-            { id: 'a', status: 'open', pr: 41, branch: 'fix/a', stackedOn: 'fix/b' },
-            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
-          ],
+          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
           multiPrPending: true,
         }),
       ],
     }),
     respond: epicResponder({
-      fresh: {
-        'FIX-2': {
-          phase: 'PR_FEEDBACK',
-          subPrStates: [
-            { id: 'a', merged: false, readyToMerge: false, closedUnmerged: true },
-            { id: 'b', merged: false, readyToMerge: false },
-          ],
-        },
-      },
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false, closedUnmerged: true }] } },
       worker: {
         'FIX-2': {
           phase: 'PR_FEEDBACK',
           multiPrPending: true,
-          subPrs: [
-            { id: 'a', status: 'open', pr: 41, branch: 'fix/a' },
-            { id: 'b', status: 'open', pr: 42, branch: 'fix/b' },
-          ],
+          // The rebuild opened a REPLACEMENT PR. Nothing may discard it — the previous dead-handle guard
+          // did exactly that, orphaning the new PR and rebuilding the slice again every wake.
+          subPrs: [{ id: 'a', status: 'open', pr: 55, branch: 'fix/a-rebuild' }],
         },
       },
     }),
   })
   const a = result.issues[0].subPrs.find((sp) => sp.id === 'a')
-  assert.equal(a.status, 'pending', 'reset for the rebuild')
+  assert.equal(a.pr, 55, 'the replacement handle is persisted')
+  assert.equal(a.branch, 'fix/a-rebuild')
+  assert.equal(a.status, 'open')
 
-  assert.equal(result.issues[0].closedSlices, undefined, 'and the transient marker is not persisted')
-  assert.equal(a.pr, null, 'and the dead handle is dropped')
-  assert.equal(a.branch, null)
-  assert.equal(a.stackedOn, null, 'a rebuild takes a fresh base, so the old stack marker goes too')
-
-  // Reset BEFORE dispatch, so the worker is handed the rebuild rather than a dead `open` handle it would
-  // classify as a resume and then be forbidden from replacing — a wasted wake.
   const dispatch = calls.find((c) => (c.label || '').startsWith('implement:'))
-  assert.ok(dispatch, 'the row was dispatched')
-  assert.doesNotMatch(dispatch.prompt, /"pr":41/, 'the dead handle is not in the table the worker receives')
-  assert.match(dispatch.prompt, /"id":"a","status":"pending"/, 'it is handed the rebuild')
-
-  // The sibling with a live PR is untouched.
-  const b = result.issues[0].subPrs.find((sp) => sp.id === 'b')
-  assert.equal(b.status, 'open')
-  assert.equal(b.pr, 42)
-
-  // With NO answer yet, the slice keeps its handles — it is parked on the blocker, and discarding a PR
-  // before the human has chosen would destroy the very thing they might tell you to reopen.
-  const unanswered = await run('epic-wake.js', {
-    args: epicArgs({
-      issues: [row('FIX-2', { phase: 'PR_FEEDBACK', subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] })],
-    }),
-    respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false, closedUnmerged: true }] } },
-    }),
-  })
-  const held = unanswered.result.issues[0].subPrs[0]
-  assert.equal(held.status, 'open', 'nothing is reset until the decision arrives')
-  assert.equal(held.pr, 41)
-  assert.match(unanswered.result.issues[0].blocker || '', /Closed without merging/)
-})
-
-check('an applied decision stops being advertised as unsettled', async () => {
-  // Carried unconditionally, the top-level `unsettled` output kept advertising an already-decided claim on
-  // every later wake, so both the orchestration state and the user-facing disclosure were permanently stale.
-  const args = epicArgs({
-    issues: [
-      row('FIX-2', {
-        phase: 'AWAITING_SPEC_APPROVAL',
-        specPr: 8,
-        unsettled: [{ claim: 'SSE resumes after a redeploy', evidence: 'inconclusive under load', threads: null }],
-        blockerResolutions: [{ for: null, answer: 'assume it does not; buffer client-side' }],
-      }),
-    ],
-  })
-  const fresh = { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } }
-
-  const { result, calls } = await run('epic-wake.js', {
-    args,
-    respond: epicResponder({ fresh, worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
-  })
-  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-2'])
-  assert.deepEqual(result.issues[0].unsettled || [], [], 'the record goes with the answer that settled it')
-  assert.deepEqual(result.unsettled || [], [], 'and the disclosure stops naming it')
-
-  // A DEAD worker applied nothing, so the record stands — otherwise the claim would vanish unanswered.
-  const died = await run('epic-wake.js', { args, respond: epicResponder({ fresh, nulls: ['apply-decision:FIX-2'] }) })
-  assert.deepEqual(
-    (died.result.issues[0].unsettled || []).map((u) => u.claim),
-    ['SSE resumes after a redeploy'],
-  )
-})
-
-check('a closed-handle blocker can actually be answered', async () => {
-  // A closed PR stays closed, so every later scan reports it again. Recreating the blocker on the next
-  // refresh parked the row before the human's reopen/reimplement/drop answer could reach a worker — the
-  // blocker was unresolvable by construction, which is worse than the idling it replaced.
-  const { calls, result } = await run('epic-wake.js', {
-    args: epicArgs({
-      issues: [
-        row('FIX-2', {
-          phase: 'PR_FEEDBACK',
-          implPr: 9,
-          blockerResolutions: [{ for: null, answer: 'reopen it — the close was accidental' }],
-        }),
-      ],
-    }),
-    respond: epicResponder({
-      // Still closed, because it is still closed.
-      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } },
-      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
-    }),
-  })
-  assert.deepEqual(workerLabels(calls), ['apply-decision:FIX-2'], 'the answer reaches a worker')
-  assert.match(calls.find((c) => c.label === 'apply-decision:FIX-2').prompt, /reopen it/)
-  assert.equal(result.issues[0].blocker, null, 'and it is not immediately re-blocked')
-
-  // With no answer queued it still parks — the guard is about the pending answer, not about the report.
-  const unanswered = await run('epic-wake.js', {
-    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
-    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9, closedUnmerged: true } } }),
-  })
-  assert.match(unanswered.result.issues[0].blocker || '', /Closed without merging/)
-})
-
-check('an answer survives a resume that failed on an already-open slice', async () => {
-  // The epic refresh clears an answered slice's nested blocker before dispatch, so a resume coming back
-  // `failed` leaves the slice `open` with nothing to preserve — each layer expected the other to hold the
-  // blocker, and the answer was dropped with the PR unchanged and merge-eligible.
-  const { result } = await run('epic-wake.js', {
-    args: epicArgs({
-      issues: [
-        row('FIX-2', {
-          phase: 'PR_FEEDBACK',
-          blockerFor: 'a',
-          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
-          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
-          multiPrPending: true,
-        }),
-      ],
-    }),
-    respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: false, readyToMerge: false }] } },
-      // The resume failed: the slice comes back open, unchanged, with no blocker of its own.
-      worker: {
-        'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }] },
-      },
-    }),
-  })
-  assert.deepEqual(
-    result.issues[0].blockerResolutions,
-    [{ for: 'a', answer: 'key on tenant + scope' }],
-    'retained until the slice merges, because nothing here proves it was applied',
-  )
-
-  // A MERGED slice proves it: the decision went in with the code.
-  const landed = await run('epic-wake.js', {
-    args: epicArgs({
-      issues: [
-        row('FIX-2', {
-          phase: 'PR_FEEDBACK',
-          blockerFor: 'a',
-          blockerResolutions: [{ for: 'a', answer: 'key on tenant + scope' }],
-          subPrs: [{ id: 'a', status: 'open', pr: 41, branch: 'fix/a' }],
-          multiPrPending: true,
-        }),
-      ],
-    }),
-    respond: epicResponder({
-      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', subPrStates: [{ id: 'a', merged: true, readyToMerge: false }] } },
-      worker: {
-        'FIX-2': { phase: 'PR_FEEDBACK', multiPrPending: true, subPrs: [{ id: 'a', status: 'merged', pr: 41, branch: 'fix/a' }] },
-      },
-    }),
-  })
-  assert.deepEqual(landed.result.issues[0].blockerResolutions, [], 'spent once the slice merged')
+  assert.ok(dispatch, 'the answer reaches a worker')
+  assert.match(dispatch.prompt, /CLOSED WITHOUT MERGING/, 'and the worker is told the handle is dead')
+  assert.match(dispatch.prompt, /open a NEW PR for that slice/)
+  assert.match(dispatch.prompt, /rebuild it/, 'alongside the human answer itself')
 })
 
 check('a repair PR closed without merging parks the row too', async () => {
@@ -6129,12 +6103,25 @@ check('INVARIANT: every field the epic wake parks on is documented as one the co
   // Set by the script (so the invariant fails if a field is renamed) and cleared only outside it.
   const parksOn = {
     blocker: /remove `blocker`, so the issue resumes/,
-    unsettled: /drop the matching `epic\.unsettled` entry/,
+    // `unsettled` is NOT here any more, and its removal is the point. Requiring the skill to say "drop the
+    // matching entry" pinned the defect this invariant's own `answers` note describes: dropping the record
+    // is the coordinator's only move when the answer has no field, and it loses the decision — the
+    // epic-spec and every child aligned to it never receive it. The answer goes to `epic.answers`, the
+    // entry stays, and the SCRIPT retires it once the fold consumes that answer. Asserted below as a
+    // script behaviour, which is where it now lives.
   }
   for (const [field, clearedBy] of Object.entries(parksOn)) {
     assert.ok(src.includes(field), `${field} is no longer set by the script — update this invariant`)
     assert.ok(clearedBy.test(skill), `the script parks on \`${field}\` but the skill never tells the coordinator to clear it`)
   }
+
+  // `unsettled` retires inside the script, keyed on the answer being consumed — so it is bounded without
+  // the coordinator deleting anything. If this filter goes, the claim is advertised forever.
+  assert.match(
+    src,
+    /epic\.unsettled \|\| \[\]\)\]\.filter\(\(u\) => !answeredThisWake\.has\(u\.claim\)\)/,
+    'the script must retire an epic unsettled record once its answer is folded',
+  )
 
   // The MIRROR, and the defect class this file has hit most: a channel wired at one end only. A field
   // the script READS but cannot itself write is dead surface unless the skill tells the coordinator to

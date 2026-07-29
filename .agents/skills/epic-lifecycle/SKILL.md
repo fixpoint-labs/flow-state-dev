@@ -293,9 +293,15 @@ even if more are queued. State the chosen N and the cap to the user.
 
    A `blocker` reading **"POC returned INCONCLUSIVE"** is the same contract from a different
    source: the evidence run couldn't settle the claim, so `orchestration.md` hands it back to the
-   human. Put the question to the user with what the POC *did* find, then clear the field (for a
-   cross-cutting claim, drop the matching `epic.unsettled` entry instead — the row-level field
-   isn't where it lives). Until you do, that issue is parked.
+   human. Put the question to the user with what the POC *did* find, then clear the field. Until you do,
+   that issue is parked.
+
+   For a **cross-cutting** claim, do NOT simply drop the `epic.unsettled` entry: that is the only durable
+   record of the question, and deleting it without a fold means the epic-spec and every child aligned to it
+   never receive the decision. Append the answer to `epic.answers` as `{ question, answer }` — the same
+   contract every other epic-level answer uses — and leave the `unsettled` entry in place. `epic-agent`
+   folds it into the epic-spec and the entry retires with the fold, which is what makes the record and the
+   decision move together.
 4. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
    releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:

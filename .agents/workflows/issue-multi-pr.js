@@ -345,8 +345,20 @@ const resolutions = [
   // BP-030: the single-slot shape, tolerated on the way in.
   ...(args.blockerResolution ? [{ for: args.blockerResolutionFor || null, answer: args.blockerResolution }] : []),
 ]
-/** Answers aimed at this node (or at the issue as a whole). */
-const resolutionsFor = (nodeId) => resolutions.filter((r) => !r.for || r.for === nodeId)
+/**
+ * The single slice an UNTARGETED answer belongs to, if that is unambiguous.
+ *
+ * A legacy single-slot `blockerResolution` carries no target. Treating it as "aimed at the issue" handed it
+ * to every ready node, so an unrelated pending slice dispatched in the same wake was told to implement
+ * another slice's architectural decision as given — contaminating a PR the decision had nothing to do with.
+ * Exactly one slice is blocked in that situation, and it is the one that asked.
+ */
+const blockedNodeIds = (args.subPrs || []).filter((n) => n.blocker).map((n) => n.id)
+const untargetedOwner = blockedNodeIds.length === 1 ? blockedNodeIds[0] : null
+
+/** Answers aimed at this node — by name, or as the sole blocked slice an untargeted answer must belong to. */
+const resolutionsFor = (nodeId) =>
+  resolutions.filter((r) => (r.for ? r.for === nodeId : untargetedOwner ? untargetedOwner === nodeId : true))
 const resolutionNote = (nodeId) => {
   const mine = resolutionsFor(nodeId)
   if (!mine.length) return ''
@@ -699,6 +711,12 @@ const subPrs = nodes.map((node) => {
     // retried the architectural fork blind. For an ordinary unblocked build `node.blocker` is already
     // null, so dropping the action distinction costs nothing and closes the sibling case with it.
     blocker: r.blocker || (r.status !== 'open' ? node.blocker || null : null),
+    // EXPLICIT delivery acknowledgement. A resume works on an existing open PR, so a success is
+    // `open → open` with no blocker — indistinguishable from a failure by status alone, which left the
+    // caller either dropping the answer (if it assumed success) or re-dispatching the same resume forever
+    // while the merge gate stayed withheld (if it assumed failure). Neither guess is recoverable; saying so
+    // is. Only a resume sets it, and only when it actually landed.
+    ...(resuming && r.status === 'open' && !r.blocker ? { answerApplied: true } : {}),
     summary: r.summary,
   }
 })
