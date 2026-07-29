@@ -119,7 +119,8 @@ function:
   inferred was missed.** A signal is not necessarily live: comparing conductor's observed
   copy against fresh world state yields **synthesized** signals for events that never
   arrived — a `pr_opened` conductor never saw, backdated so the driver can process it
-  before the comment that revealed the gap (§7/D1).
+  before the comment that revealed the gap (§7/D1). Signals are not only external:
+  `guidance_changed` fires when an objective, tenet, or lesson is added or edited (below).
 
 **Change 2 — one review cycle, parameterized.** `drafted → in_review → revised →
 in_review → approved` is the *same* cycle for a spec, an implementation, an epic-spec,
@@ -128,22 +129,47 @@ and its two-round budget once, for all of them. So model it once. A "PR" is not 
 entity — it is where an **Artifact** happens to be hosted.
 
 ```
-Objective ──< Epic ──< Issue ──< Artifact ──< Review (round n)
-                          │           └──< hostedAt: PR | Linear doc | file
-                          ├──< Dispatch (one agent run: vendor, skill, cost, outcome)
-                          └──< Lesson
+Epic ──< Issue ──< Artifact ──< Review (round n)
+            │          └──< hostedAt: PR | Linear doc | file
+            └──< Dispatch (one agent run: vendor, skill, cost, outcome)
+
+Guidance (collection)  ·  label + body, kind: objective | tenet | lesson
+   └─ injected as context into decisions; reacted to on change
 ```
 
 | Entity | What it is | Why it exists |
 |---|---|---|
 | **Project** | the repo conductor drives | scope root: config, connectors, process files |
-| **Objective** | a product goal | grounds priority; answers "should this be next?" |
 | **Epic** | a set of related issues + their shared direction | cross-cutting decisions need somewhere to live |
 | **Issue** | one unit of work; `type` is a routing key | the thing that moves through phases |
 | **Artifact** | a reviewable output of a phase | unifies spec review and code review |
 | **Review** | one round against an artifact | carries the round count the budget needs |
 | **Dispatch** | one agent run | observability and cost; "what actually ran" |
-| **Lesson** | a retrospective finding | the input to the self-improving loop |
+| **Guidance** | a *collection* of `label + body` documents — objectives, tenets, lessons | they are reference material, not graph nodes (below) |
+
+**Change 3 — objectives, tenets, and lessons are guidance documents, not entities.** All
+three are the same shape (a label and a body) and serve the same *function*: they get
+injected into a decision as context. That is exactly how the current Claude Code system
+already uses `philosophy.md` — a reference document consulted when making a design call, not
+a record something joins to. An `Objective` entity would buy graph traversal that nothing in
+v1 needs, so it doesn't earn its place (tenet 3).
+
+So: **one resource collection** whose instances carry `{ kind, label, body }`, with `kind` a
+discriminator (`objective | tenet | lesson`) in the same way issue `type` is a routing key.
+Objectives ground priority by being *read* during prioritization, not by being joined to
+issues.
+
+**The promotion trigger, named so the call stays revisitable:** if we need real graph
+queries — every issue serving objective X, or which objectives have no work against them —
+that is when a first-class entity and a link earn their place. Not before, and not
+speculatively.
+
+**Guidance changes are signals.** Because guidance lives in a collection, `reactTo` fires on
+a change to it (FIX-751 for state, **FIX-843 for content writes** — both **Done**, so this
+is buildable today, not a framework gap). That makes the interesting behavior configurable
+rather than bespoke: *a new objective lands → re-examine every open PR and ask whether the
+new objective changes the approach.* A guidance change is just another signal class the
+driver plans against, which is why separating signal from phase and gate paid off here.
 
 **Issue `type` is a routing key, not a state machine.** `Feature | Improvement | Bug |
 Spike | Prototype | Refactor` selects the discipline (`tdd` vs `diagnose`) and the
@@ -228,7 +254,7 @@ This is the honest dependency list, and FIX-939 already names all of it:
 | **Progress decoupled from `ctx.emit`** — session-scoped resource + task-level observability | A detached task can't stream through the originating request's emitter. FIX-939 calls this its hardest change and a breaking one for existing sidechain callers. | a live board view |
 | **Lease heartbeat + automated reclaim sweeper** — `reclaim()` exists but no drain or dispatcher ever calls it | A crashed worker's issue has to return to the queue without a human intervening. | M2's crash-recovery criterion |
 | **Blocking / background flag on tasks** — no such distinction today | Conductor needs both "await this" and "let it run." | M2 |
-| **Task events as dispatch triggers**, not just a UI notification channel (FIX-825, and FIX-751 / FIX-843 for reactive blocks) | The board should *drive* work, not only display it. | M3 |
+| **Task events as dispatch triggers**, not just a UI notification channel (FIX-825) | The board should *drive* work, not only display it. Note `reactTo` already covers *resource* changes (FIX-751/FIX-843, Done) — the gap is specifically **task** events. | M3 |
 
 **Sequencing — this does not block the fast path.** M0 and M1 ship **before** FIX-939: one
 issue, a per-tick drain, phase work in-request. That is what the POC did and it worked
@@ -247,6 +273,7 @@ these five gaps, in this order, and its priority raised to match.
 | The durable work record per issue, dependency-gated, leased, CAS-claimed, retried | `taskBoard` + resource-backed `TaskCollection` (`@flow-state-dev/orchestration`) — durable across turns today |
 | A cross-turn human gate on a work unit | task status `awaiting_review` + `blockTask` on a resource-backed board |
 | Per-task observability | `TaskHandle.items()` + `task-change` events |
+| React to a guidance document being added or edited | `reactTo` on a resource collection — state (FIX-751) **and content writes** (FIX-843), both Done |
 | Off-request execution machinery to build the FIX-939 executor on | `enqueueAction({…, sessionId })` + `jobId` dedup; `@flow-state-dev/bullmq` for durable / separated workers |
 | Short-lived human input gate | `ctx.suspend()` + suspension records (FIX-811) |
 | GitHub events waking the right session | webhook transport, `flow.webhooks` + `sessionId(event)` (FIX-439) |
@@ -419,14 +446,17 @@ supervisable from Slack rather than only from a terminal.
 reconcile re-derives the whole board from the world, and an issue can be driven and
 questioned from a chat thread.
 
-### M4 — Linear sync, objectives, and the loop that improves itself
+### M4 — Linear sync, guidance, and the loop that improves itself
 
-Linear sync as a projection (outbound blocks, plus optional inbound status signals —
-no new layer, per §6), objectives grounding priority, retrospective phase emitting
-lessons, and the `distill-lessons` pass proposing the smallest upstream fix to the
-process files.
-**Verify:** a completed epic produces a lesson that lands as a concrete process-file
-change.
+Linear sync as a projection (outbound blocks, plus optional inbound status signals — no new
+layer, per §6). The **guidance collection** (§4): objectives, tenets, and lessons as
+`label + body` documents injected into decisions, with `reactTo` on the collection so a
+guidance change is a signal. Retrospective phase writes lessons *into* that collection, and
+the `distill-lessons` pass proposes the smallest upstream fix to the process files.
+**Verify:** two goal checks. (1) A completed epic produces a lesson that lands as a concrete
+process-file change. (2) **Adding a new objective triggers a configured re-examination of
+every open PR** and reports which ones the new objective changes the approach for — the
+reactive path, proven on the real collection rather than asserted.
 
 **M1 is the fast path.** M0+M1 are the milestone worth committing to; M2–M4 are ordered
 but re-decidable once we've lived on M1.
@@ -437,9 +467,13 @@ but re-decidable once we've lived on M1.
 M0 and M1 clear it; M2 onward does not. §5 lists the five gaps it has to close, in the
 order conductor needs them. Related and worth reading alongside it: FIX-930 (delegation
 substrate, designing a detach-ready task contract), FIX-957 (letting a delegation board ask
-for the durable flavor), FIX-958 (what board durability actually is today), FIX-825 /
-FIX-751 / FIX-843 (task events as dispatch triggers), and FIX-922 (what task-board +
-delegation + goalSeekLoop already subsume — worth answering before conductor adds anything).
+for the durable flavor), FIX-958 (what board durability actually is today), FIX-825 (task
+events as dispatch triggers — the one still open), and FIX-922 (what task-board + delegation
++ goalSeekLoop already subsume — worth answering before conductor adds anything).
+
+**Already shipped, so not a dependency:** `reactTo` on resource and collection changes
+(FIX-751) including **content** writes (FIX-843) — both Done. The guidance-change reactions
+in §4 and M4 build on these as-is.
 
 **Explicitly not in v1:** cloud hosting (local first; the store swap is the only
 difference), codebase-awareness / structural index (FIX-820's other half), auto-merge in
@@ -454,8 +488,11 @@ orchestration for non-development work.
    Leaning towards the latter — it needs no new machinery.
 2. **Retrospective altitude.** Per issue, per epic, or both? `distill-lessons` currently
    runs per-PR *and* periodically. Two altitudes may be right; two implementations are not.
-3. **Public name** (D2).
-4. **Where the process files live** so they are editable per project but versioned with
+3. **Does guidance need lifecycle?** An objective can be achieved or abandoned; a lesson can
+   be promoted into a tenet or retired. If that turns out to need real states, the guidance
+   collection grows a status field — but only once a behavior depends on it, not upfront.
+4. **Public name** (D2).
+5. **Where the process files live** so they are editable per project but versioned with
    the repo — `.conductor/` alongside `.agents/skills/`, or inside it?
 
 ## 10. Immediate next step
