@@ -75,13 +75,15 @@ function classify(node, byId) {
     // been cut before the merged one landed, so building on it would omit declared
     // prerequisite code (C needs merged A + open B, and B's branch predates A). Waiting costs
     // a wake; building against an incomplete base costs a wrong implementation.
-    // Both handles, not just the status: an `open` dep with no branch yields `base: undefined`, and
+    // Both handles, not just the status. Without a BRANCH an `open` dep yields `base: undefined`, and
     // the build prompt then tells its worker to base the slice on nothing — it would start from the
     // inherited checkout or some other unintended ref instead of its prerequisite. Waiting costs a
     // wake; building on an unknown base costs a wrong implementation, the same trade the mixed-deps
-    // rule above makes.
+    // rule above makes. Without a PR NUMBER it has no subscribable or mergeable handle, so it can
+    // never merge — and `classify` only rebases a stacked dependent once its deps have merged, so
+    // stacking on it strands both slices with no remaining action at all.
     const openDeps = deps.filter((d) => d.status === 'open')
-    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1 && openDeps[0].branch) {
+    if (allAtLeastOpen && deps.length === 1 && openDeps.length === 1 && openDeps[0].branch && openDeps[0].pr) {
       return { action: 'build', base: openDeps[0].branch }
     }
     return null
@@ -354,7 +356,7 @@ if (state === 'NEEDS_GOAL') {
   const verdict = await agent(
     confirmRecorded
       ? `Sub-PR ${goal.ownedBy} of ${issueId} was designated to own the assembled end-to-end goal. Confirm its run was recorded and PASSED — read the verdict, do not re-run the goal. Report passed accordingly.`
-      : `Every sub-PR of ${issueId} has merged. Run the spec's end-to-end goal against the fully-assembled result on the REAL path. Use a real model if the goal declares one; a model-free goal runs as-is. A cost-based skip is not an acceptable outcome — run it. Report PASS/FAIL with the command and what it proved, and name the sub-PR that broke it if it failed.`,
+      : `Every sub-PR of ${issueId} has merged. FIRST fetch and check out fresh origin/main in your worktree — the checkout you inherit may predate some of those merges, and a goal run against a tree missing a merged slice records a verdict about code that does not exist. THEN run the spec's end-to-end goal against the fully-assembled result on the REAL path. Use a real model if the goal declares one; a model-free goal runs as-is. A cost-based skip is not an acceptable outcome — run it. Report PASS/FAIL with the command and what it proved, and name the sub-PR that broke it if it failed.`,
     { label: `assembled-goal:${issueId}`, phase: 'Assemble', schema: GOAL_SCHEMA, agentType: 'issue-worker', isolation: 'worktree' },
   )
 

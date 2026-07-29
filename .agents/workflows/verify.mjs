@@ -1057,6 +1057,35 @@ check('the epic fold queues behind issue workers at the cap', async () => {
   assert.match(logs.join('\n'), /epic-spec fold queued behind the issue workers/)
 })
 
+check('the fold takes a slot inside the cap, never a slot beyond it', async () => {
+  // The cap is documented as shared across issue workers, folds and settlements, and an epic-agent
+  // fold is a full worktree like any other — reserving its slot has to displace an advance.
+  const { calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      cap: 2,
+      epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 },
+      issues: [
+        row('FIX-2'), // a spec — held for the fold
+        row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 9 }),
+        row('FIX-4', { phase: 'PR_FEEDBACK', implPr: 10 }),
+      ],
+    }),
+    respond: epicResponder({
+      epicReviewEvents: true,
+      fresh: {
+        'FIX-2': { phase: 'NEEDS_SPEC' },
+        'FIX-3': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 },
+        'FIX-4': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 10 },
+      },
+    }),
+  })
+  const jobs = workerLabels(calls).length + labels(calls, 'fold:epic').length
+  assert.equal(jobs, 2, `cap 2 must mean 2 jobs, ran ${jobs}`)
+  assert.deepEqual(labels(calls, 'fold:epic'), ['fold:epic'], 'the fold gets its reserved slot')
+  assert.equal(workerLabels(calls).length, 1, 'and one advance is displaced to make room')
+  assert.match(logs.join('\n'), /Cap 2 reached — deferring/)
+})
+
 check('work that authors against the objective is held for one wake while it folds', async () => {
   // A spec or an implementation written against an objective this wake is revising starts from
   // direction that is about to change. Held ONE wake, not re-gated — the approval stays intact.
@@ -1167,6 +1196,34 @@ check('an INCONCLUSIVE issue verdict becomes a durable human decision, not a fol
   })
   assert.deepEqual(workerLabels(second.calls), [], 'a row awaiting a human decision dispatches nothing')
   assert.match(second.result.issues[0].blocker, /needs a human decision/, 'and the decision survives the wake')
+})
+
+check('an INCONCLUSIVE issue verdict keeps its evidence for the human', async () => {
+  // The blocker text carries the claim; the coordinator is told to put the question WITH what the POC
+  // found, and the threads are where the answer gets posted. Both have to survive the fold.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 7,
+          verdicts: [{ claim: 'does X stream?', verdict: 'INCONCLUSIVE', evidence: 'ran it twice, non-deterministic', threads: 't7' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+      worker: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 } },
+    }),
+  })
+  const rec = (result.issues[0].unsettled || [])[0]
+  assert.ok(rec, 'a structured record survives, not just the blocker text')
+  assert.equal(rec.evidence, 'ran it twice, non-deterministic')
+  assert.equal(rec.threads, 't7')
+  assert.ok(
+    result.unsettled.some((u) => u.issueId === 'FIX-2' && u.unsettled[0].evidence === 'ran it twice, non-deterministic'),
+    'and it is surfaced to the coordinator',
+  )
 })
 
 check('an INCONCLUSIVE epic verdict stops re-triggering the fold and stays surfaced', async () => {
@@ -2439,8 +2496,11 @@ check('an owned assembled goal is re-run, not confirmed, once its repair merges'
       (opts.label || '').startsWith('assembled-goal:') ? { passed: true, evidence: 'ran it on the repaired result' } : {},
   })
   const prompt = calls.find((c) => (c.label || '').startsWith('assembled-goal:')).prompt
-  assert.match(prompt, /Run the spec's end-to-end goal against the fully-assembled result/)
+  assert.match(prompt, /run the spec's end-to-end goal against the fully-assembled result/)
   assert.doesNotMatch(prompt, /do not re-run the goal/)
+  // A goal is only proof if it ran against the MERGED tree — the inherited checkout may predate the
+  // very merges the goal exists to verify, so a verdict from it describes code that doesn't exist.
+  assert.match(prompt, /FIRST fetch and check out fresh origin\/main/)
   assert.match(logs.join('\n'), /not confirming a's pre-repair verdict/)
 
   // Before any repair, the shortcut is still correct.
@@ -2490,6 +2550,19 @@ check('a build result echoing another sub-PR id is discarded, not applied to it'
   assert.equal(b.status, 'pending', 'a discarded result leaves the node to retry, not half-applied')
   assert.equal(b.pr, null)
   assert.match(logs.join('\n'), /b: worker reported id a — discarding the result/)
+})
+
+check('an open dependency with no PR number is waited on, never used as a base', async () => {
+  // A branch is enough to build ON, but with no PR the prerequisite can never be reviewed or merged
+  // — and `classify` only rebases a stacked dependent once its deps have MERGED, so stacking on it
+  // strands both slices with no remaining action at all.
+  const { calls } = await run('issue-multi-pr.js', {
+    args: multiArgs({
+      subPrs: [node('a', { status: 'open', pr: null, branch: 'fix/a' }), node('b', { dependsOn: ['a'] })],
+    }),
+    respond: multiResponder(),
+  })
+  assert.deepEqual(calls.map((c) => c.label), [], 'a dependency with no mergeable handle is not a base')
 })
 
 check('an open dependency with no branch is waited on, never used as a base', async () => {

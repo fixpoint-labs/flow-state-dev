@@ -304,6 +304,15 @@ function nextRow(row, { worker, action, landed, folded }) {
   const unsettledBlocker = unsettled.length
     ? `POC returned INCONCLUSIVE — needs a human decision: ${unsettled.map((v) => v.claim).join(' · ')}`
     : null
+  // The blocker text alone loses what the POC actually found. The coordinator is told to put the
+  // question to the user WITH that evidence, and the thread handles are where the answer gets posted,
+  // so the structured record is kept alongside — the same `unsettled` shape the epic path carries.
+  const unsettledRecords = [
+    ...(row.unsettled || []),
+    ...unsettled
+      .filter((v) => !(row.unsettled || []).some((u) => u.claim === v.claim))
+      .map((v) => ({ claim: v.claim, evidence: v.evidence || null, threads: v.threads || null })),
+  ]
 
   // The cursor moves only when this wake consumed that activity — which takes BOTH a worker that
   // returned AND an action that actually reads review events. `apply-verdict` outranks
@@ -335,7 +344,7 @@ function nextRow(row, { worker, action, landed, folded }) {
   // round twice, or applying the same fixes twice.
   const consumedFlags = consumed && hadNewActivity ? { newSpecReviewEvents: false, newPrEvents: false } : {}
 
-  if (!worker) return { ...row, ...cursor, verdicts }
+  if (!worker) return { ...row, ...cursor, verdicts, ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}) }
 
   // See `specReviewRounds` below: a review round that reports no count is charged one, because
   // charging zero makes the budget unreachable.
@@ -403,6 +412,7 @@ function nextRow(row, { worker, action, landed, folded }) {
           : !!worker.specLevelFound,
     readyToMerge: !!worker.readyToMerge,
     blocker: worker.blocker || unsettledBlocker || null,
+    ...(unsettledRecords.length ? { unsettled: unsettledRecords } : {}),
     status: worker.status,
     verdicts,
   }
@@ -495,12 +505,17 @@ function allocate(rows, claims, cap, foldEpicWanted, epicApproved) {
   }
 
   const held = epicApproved ? [] : actionable
-  const advance = epicApproved ? actionable.slice(0, cap) : []
-  const deferred = epicApproved ? actionable.slice(cap) : []
-
   // Priority inverts while a fold is pending: the fold is what the held work is waiting for, so
-  // starving it behind other dispatches would defer that work for nothing.
-  const foldEpic = foldEpicWanted && (heldForFold.length > 0 || advance.length < cap)
+  // starving it behind other dispatches would defer that work for nothing. It takes a slot INSIDE
+  // the cap by displacing one advance, never by exceeding it — the cap is documented as shared
+  // across issue workers, folds and settlements, and an epic-agent fold is a full worktree like
+  // any other. The displaced advance is deferred, which the log already reports.
+  const foldReservesSlot = foldEpicWanted && heldForFold.length > 0
+  const advanceCap = foldReservesSlot ? Math.max(0, cap - 1) : cap
+  const advance = epicApproved ? actionable.slice(0, advanceCap) : []
+  const deferred = epicApproved ? actionable.slice(advanceCap) : []
+
+  const foldEpic = foldEpicWanted && (foldReservesSlot || advance.length < cap)
   const settle = claims.slice(0, Math.max(0, cap - advance.length - (foldEpic ? 1 : 0)))
   const queuedClaims = claims.slice(settle.length)
 
@@ -1441,8 +1456,11 @@ return {
   gates,
   blockers: [
     ...issues.filter((r) => r.blocker).map((r) => ({ issueId: r.id, blocker: r.blocker })),
-    ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}` })),
+    ...epicUnsettled.map((u) => ({ issueId: epic.issueId, blocker: `POC returned INCONCLUSIVE — needs a human decision: ${u.claim}`, evidence: u.evidence, threads: u.threads })),
   ],
+  // The evidence behind every row-level INCONCLUSIVE, so the coordinator can put the question with
+  // what the POC found rather than just the claim text.
+  unsettled: issues.filter((r) => (r.unsettled || []).length).map((r) => ({ issueId: r.id, unsettled: r.unsettled })),
   blocked: plan.blocked.map((r) => ({ issueId: r.id, blockedBy: r.blockedBy })),
   held: plan.held.map((i) => i.row.id),
   verdicts: settled.filter(Boolean),

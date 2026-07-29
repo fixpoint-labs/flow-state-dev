@@ -140,7 +140,7 @@ even if more are queued. State the chosen N and the cap to the user.
        cap:   <the N you chose and stated>,
        issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, approvedInSession,
-                   subPrs, assembledGoal } ],
+                   subPrs, assembledGoal, unsettled, blockerFor } ],
        settleRequests: [ { claim, load, falsify, threads, issueId } ]
      }
    ```
@@ -181,6 +181,10 @@ even if more are queued. State the chosen N and the cap to the user.
      These rows get **one merge gate per handle**, not one per issue: each `merge` entry names the
      `pr` and, for a sub-PR, which `subPr` it is (or `repair: true` for the repair PR). An issue with
      a DAG has no single impl PR, so "merge FIX-2" would not tell you what to merge.
+   - **`issues[].unsettled`** — the same thing at issue level: the claim, the evidence the POC *did*
+     produce, and the thread to reply on. The row's `blocker` carries the question; this carries what
+     to show the user when you ask it, and where their answer gets posted. Drop it and you can only
+     relay the claim text. Cleared with the row's `blocker`, in the same breath.
    - **`epic.unsettled`** — cross-cutting claims a POC came back `INCONCLUSIVE` on. These are
      decisions **you owe the user**, not work in flight, so they deliberately do *not* sit in
      `epic.verdicts` (a verdict no fold can consume would spend an `epic-agent` worktree every
