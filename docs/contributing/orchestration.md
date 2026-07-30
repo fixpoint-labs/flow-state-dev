@@ -167,16 +167,12 @@ creates the epic issue and parents the set's issues under it (via the `epic-agen
 one-parent rule** — an issue that already has a functional parent is linked with
 `relates-to` and flagged, never silently detached.
 
-**Contents:**
-
-1. **Purpose & objective** — abstract: *why* this body of work, *what outcome*. The
-   **holistic necessity check** (the `issue-spec` Step 3.5 lens at epic altitude):
-   each issue can earn its place while the whole set overbuilds. This is the gated
-   sign-off surface (see Gates).
-2. **Themes & long-horizon direction** — cross-cutting decisions above any one issue
-   (shared surface, naming, sequencing, shared contracts).
-3. **Running index** — the durable audit log of every issue PR under the epic.
-4. **Open cross-cutting questions** — raised by review or by issues commenting upward.
+**Contents and shape:
+[`epic-spec-template.md`](epic-spec-template.md)** — the four sections (purpose &
+objective · themes & long-horizon direction · running index · open cross-cutting
+questions), each with a worked example, plus the reviewer contract the epic PR
+description leads with. Read the template; it is the single source of truth for what
+each section owes its reader, exactly as `spec-template.md` is for an issue spec.
 
 **Conventions:**
 
@@ -199,6 +195,69 @@ one-parent rule** — an issue that already has a functional parent is linked wi
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
   the issues under it, not to the epic-spec.
 
+## Which issues get a spec (the two routes)
+
+Not every issue is specced. There are **two routes into implementation**, and an issue's
+route decides whether it has a spec-approval gate at all.
+
+| Route | Taken by | Artifact before code | Gate before code |
+|---|---|---|---|
+| **Spec route** (default) | Feature · Enhancement · Improvement — anything whose *approach* is a decision | A spec (`spec-template.md`), reviewed as its own PR | Spec approval |
+| **Direct route** | **Bug** | None. The Linear issue is the contract | **None** — the implementation PR is where the fix is reviewed |
+
+**Why a bug skips it.** The hard part of a bug is the *diagnosis*, and diagnosis happens
+in code — `diagnose` builds a feedback loop and reproduces the failure before anything is
+changed. A spec written before that loop exists is a guess at a cause nobody has
+confirmed; a spec written after it describes a fix that is already understood. Either way
+it's a document round-trip that buys no decision, in front of a change that is usually
+small and local. So the fix goes straight to a PR and gets reviewed where it can actually
+be judged: against the diff, next to the regression test that proves it.
+
+**The trade, stated plainly.** A bug's first human look is the diff, so a wrong approach
+costs a code review instead of a doc edit. That's acceptable *because* bug fixes are
+small and localized — and the escape hatches below are what keep the ones that aren't out
+of this route.
+
+**Three things send a bug back to the spec route. Who decides each is part of the rule** —
+they become visible at different moments, so a reader who sees only one list will think the
+others are missing:
+
+1. **A spec PR already exists** — *the router decides.* Someone specced it deliberately;
+   honour that rather than stranding a reviewed document and implementing past its live
+   approval gate. Re-derived on every refresh. **The worker re-checks it too**, with one
+   cheap `gh pr list`, because a row discovered mid-wake was never PR-scanned: its spec
+   handle is *unknown*, not known-absent, and the worker is the thing that would otherwise
+   write the code.
+2. **No reproduction, or an ambiguous symptom** — *the worker decides,* before it builds.
+   There's nothing to diagnose against, so working out *what is even happening* is real
+   research. The spec for a bug is worth writing then, and what it carries is the
+   reproduction shape and the regression seam.
+3. **It isn't really a bug** — *the worker decides,* before it builds. The "fix" is a new
+   capability, or it changes a contract other code depends on. Promote it — a feature must
+   not reach `main` through the one route with no gate in front of it. A *routing* call,
+   not a reaction to the fix turning out to be interesting.
+
+**Relabelling after the fix is built does not re-gate it.** A bug relabelled Feature while
+its PR is open re-routes to `spec`, but no spec is written and no approval is demanded: the
+code exists and is under review, so a spec after the fact settles nothing the PR review
+doesn't. What the row must not do is get pulled into the **cross-spec coherence pass** as a
+member with no spec document — it is excluded there for the same reason a bug is.
+
+**Mid-diagnosis, a design decision does *not* send it back.** Once the repro exists and
+the cause is understood, a fix that turns on a judgment call — two defensible places to
+put the guard, a behavior change users could notice — is **implemented on best judgment
+and surfaced on the PR**, with the alternative named. It does not stall waiting for an
+answer and it does not detour into a spec. That is the whole point of "debate the fix in
+the implementation PR": the reviewer is looking at the real code, which is a better place
+to settle it than a document would have been. Escalate instead of deciding only when the
+choice is genuinely not the implementer's to make (it reverses a shipped contract, or it
+is the epic's to settle) — the ordinary blocker path, not a route change.
+
+**The route is derived, never stored as an opinion.** It comes from the Linear category
+label on every refresh, so relabelling an issue re-routes it. When the category can't be
+read, the route defaults to **spec** — failing closed keeps the gate, and the cost of
+being wrong in that direction is one unnecessary document rather than ungated code.
+
 ## Gates (three native GitHub signals)
 
 Coherence and sign-off run on signals the coordinator can read on any wake, not on
@@ -207,11 +266,14 @@ out-of-band chat approval:
 | Gate | Signal | Meaning | Blocks |
 |---|---|---|---|
 | **Spec approval** | an approving comment or GitHub Review from a human on the spec PR | The full spec (Part I + Part II) is directionally signed off | implementing that issue |
-| **Epic objective** | an approving comment or GitHub Review from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold at NEEDS_SPEC) |
+| **Epic objective** | an approving comment or GitHub Review from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
 
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
 feedback, upward comments) flows continuously and never blocks. The spec-approval gate is
-per issue.
+per issue, and **only spec-route issues have one**: a bug has no spec PR, so its single
+human gate is the merge (see "Which issues get a spec"). The epic-objective gate still
+holds it — a bug under an unapproved epic waits like everything else, it just waits at
+implementation instead of at spec.
 
 **Both gates sign off a *direction*, not a finished design.** What each gate does and does
 not certify is the subject of the next section; read it before treating an open review
@@ -277,12 +339,14 @@ flowchart LR
     EO{{epic approved?}}
   end
   subgraph Issue[Per issue]
-    NS[NEEDS_SPEC] --> SPEC[spec PR: Case + Build Plan]
+    RT{category?}
+    RT -->|feature/enhancement| NS[NEEDS_SPEC] --> SPEC[spec PR: Case + Build Plan]
     SPEC -->|spec approved| IMPL[implement]
+    RT -->|bug: no spec| IMPL
     IMPL --> FB[PR feedback] --> MERGE([human merges])
   end
-  EO -->|approved: release ramp| NS
-  EO -.->|pending: hold| NS
+  EO -->|approved: release ramp| RT
+  EO -.->|pending: hold| RT
 ```
 
 For a **single-PR** issue the goal is proven at implementation completion (before the PR opens),
@@ -323,6 +387,7 @@ altitude: *does acting on this change the approach?* Then pick exactly one dispo
 |---|---|---|
 | **Fold in** — spec-level | The approach is wrong, won't work, or solves the wrong problem · a Part I Decision is wrong or missing · a constraint the design didn't account for invalidates it · scope is wrong (a deliverable that shouldn't ship, or a missing one) · the spec contradicts itself | Re-draft the affected sections (anti-addenda rule), mirror repo doc ↔ Linear, reply on the thread |
 | **Note for the implementer** *(the default)* | Anything below that line: naming, file layout, local structure, which helper, error-message wording, a micro-optimization, a test-name preference, "have you considered X *here*", a detail Part II deliberately left open | Record **verbatim** under the spec's *Review notes for the implementer* section, reply once saying it's left for implementation, move on. **Do not rewrite the design prose around it.** |
+| **Drop, specifically for the solution sketch** | A spec may carry rough illustrative code showing the *shape* of the proposed solution (`spec-template.md` §7). Feedback that it lacks error handling, has loose types, misses edge cases, misnames things, or wouldn't compile | Reply once: the sketch is illustrative and deliberately incomplete. **Never** fold, and don't even carry it as a §13 note — a note implies the implementer should weigh it, and there is nothing to weigh about code that isn't shipping. Only feedback on the sketch's *direction* (wrong layer, wrong composition, won't work at all) is real, and that is ordinary **Fold in** |
 | **Drop** | Already answered in the spec · out of the issue's scope · a preference with no defect behind it · a factual error about the codebase | Reply once with the pointer or the correction. No spec edit, no note. |
 
 **The default disposition is Note, and the burden of proof is on folding.** If you can't
