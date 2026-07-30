@@ -345,16 +345,18 @@ const enqueue = handler({
 });
 ```
 
-The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover). Because the default backing is request-scoped, a sibling or outer step can add tasks *before* `board.drain` runs, and the board picks them up on its first pass.
+The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover).
 
-Each sugar call re-resolves the collection so reads always reflect the latest state. That's cheap for the request and sequencer backings. A durable (resource-backed) board pays a round trip per call, so when you need several reads in a row with no writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
+A sibling or outer step can add tasks before `board.drain` runs, and the board picks them up on its first pass. It can also add them *while* the board is draining: an idle worker takes the new task promptly rather than waiting out its poll interval. Both work on all three backings, as long as the add and the drain happen in the same request.
+
+Each sugar call re-resolves the collection, so reads always reflect the latest state. That costs something per call on every backing. When you need several reads in a row with no writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
 
 ## Collection backing
 
 A board stores its tasks in one of three places. You choose once; nothing downstream restates it.
 
-- **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
-- **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you.
+- **Request (default)** — tasks live on `ctx.request` and survive every block boundary in the request, including re-entry across an outer loop (Plan and Execute replans this way) and adds from sibling steps before or during the drain. Omit `collection` entirely, or pass `{ collectionId }` to name it (the id defaults to the board name).
+- **Durable (resource-backed)** — tasks outlive the request. Declare the collection with `defineTaskCollection` and pass it as `collection`; the board registers and resolves it for you. Don't count on a running request seeing a write made by another request; a later request reads it.
 - **Sequencer** — tasks live on the board's own sequencer state, which lasts one `board.drain` invocation. Opt in with `{ backing: "sequencer", collectionId }`. Calling the board twice gives two independent collections.
 
 ```ts

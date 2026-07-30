@@ -199,11 +199,8 @@ in the state, not in a running process.
 
 ### Handles inside one request share a task set
 
-Reads through a resource handle are synchronous, which means the handle has to
-keep its own record of which tasks exist rather than querying the store on every
-`list()`. Every handle resolved over the same collection **inside one request**
-shares that record, so an add through one handle is visible through all of them,
-right away.
+Every handle resolved over the same collection **inside one request** sees the
+same tasks. An add through one handle is visible through all of them, right away.
 
 ```ts
 // Block A resolves a handle and adds two tasks.
@@ -219,24 +216,19 @@ a.list(); // → [t1, t2, t3]  — same request, so a sees b's add
 b.list(); // → [t1, t2, t3]
 ```
 
-That's what makes a mid-drain add work: a worker resolves its handle when it
-goes idle and holds it while it waits, so a sibling's add has to reach that
-handle to wake it.
+That's what makes a mid-drain add work. A sibling or outer step can add a task
+while the board is draining, and an idle worker takes it promptly instead of
+waiting out its poll interval.
 
-Two boundaries are worth knowing:
+A running request can't rely on seeing a write made by another request, so don't
+build on it. A later request reads it, and adding before or after a drain works
+normally.
 
-- **A different request does not share the record**, and resolving again will not
-  bridge them. A request reads durable state into memory when it starts, so a
-  drain already under way never sees another request's write, no matter how many
-  times it resolves the collection. A *future* request reads it. Sequential
-  access across requests is the normal case and works exactly this way.
-- **Removals reconcile when you resolve, not continuously.** A task collection
-  has no `delete`, but the resource collection underneath it does, and a
-  capacity limit can evict one. Removals made *by your own request* do reach a
-  later resolution, because they go through the same in-memory state the reads
-  do. A handle you are already holding keeps reporting a removed task until
-  something resolves the collection again, which reconciles the shared record in
-  both directions.
+Removals reconcile when you resolve. A task collection has no `delete`, but the
+resource collection underneath it does, and a capacity limit can evict one. A
+removal made by your own request stops being reported from the next resolution
+onward. A handle you are already holding keeps reporting that task until it
+resolves again.
 
 ## What a board is not
 
