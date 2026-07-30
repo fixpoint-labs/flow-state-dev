@@ -225,16 +225,18 @@ handle to wake it.
 
 Two boundaries are worth knowing:
 
-- **A different request does not share the record.** Each request builds its own,
-  so a request writing while another request's drain is already waiting is
-  invisible to it. That drain sees the write the next time it resolves the
-  collection. Sequential access across requests is the normal case and works: a
-  fresh resolve reads what was stored.
+- **A different request does not share the record**, and resolving again will not
+  bridge them. A request reads durable state into memory when it starts, so a
+  drain already under way never sees another request's write, no matter how many
+  times it resolves the collection. A *future* request reads it. Sequential
+  access across requests is the normal case and works exactly this way.
 - **Removals reconcile when you resolve, not continuously.** A task collection
   has no `delete`, but the resource collection underneath it does, and a
-  capacity limit can evict one. A handle you are *already* holding keeps
-  reporting a task that was removed elsewhere until something resolves the
-  collection again, which reconciles the shared record in both directions.
+  capacity limit can evict one. Removals made *by your own request* do reach a
+  later resolution, because they go through the same in-memory state the reads
+  do. A handle you are already holding keeps reporting a removed task until
+  something resolves the collection again, which reconciles the shared record in
+  both directions.
 
 ## What a board is not
 

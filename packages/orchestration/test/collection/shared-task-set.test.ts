@@ -199,6 +199,53 @@ describe("resource-backed task set: two resolutions in one request", () => {
     expect(refB.count()).toBe(2);
   });
 
+  it("keeps a same-id task recreated while a concurrent resolution was reading the store", async () => {
+    // The third direction, and the one that catches a key-based cleanup. A task
+    // is removed and then recreated under the SAME id while a resolution's
+    // `list()` snapshot is outstanding. The id is in the pre-read set and absent
+    // from the snapshot, so a cleanup that asks "is this key still known?" would
+    // delete the replacement the store actually holds. The question that has to
+    // be asked is "is this still the exact ref I decided to retire?".
+    const backing = createFakeResourceCollection();
+    const refA = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    await refA.addTask({ id: "recycled", goal: "first" });
+
+    // Removed underneath the record: the store drops it, the record still
+    // holds the ref from before.
+    await backing.delete("recycled");
+
+    const realList = backing.list.bind(backing);
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    backing.list = async (prefix?: string) => {
+      const snapshot = await realList(prefix); // taken WITHOUT "recycled"
+      await held;
+      return snapshot;
+    };
+
+    const pendingRefB = createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    await Promise.resolve();
+    backing.list = realList;
+    // Recreated under the same id while that snapshot is outstanding.
+    await refA.addTask({ id: "recycled", goal: "second" });
+    release();
+    const refB = await pendingRefB;
+
+    expect(refA.get("recycled")?.goal).toBe("second");
+    expect(refB.get("recycled")?.goal).toBe("second");
+    expect(refA.count()).toBe(1);
+  });
+
   it("does not lose an entry when two resolutions add concurrently", async () => {
     const backing = createFakeResourceCollection();
     const refA = await createResourceBackedTaskCollection({

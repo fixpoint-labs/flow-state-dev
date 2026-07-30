@@ -47,19 +47,26 @@
  * The boundary is the request, and it is a boundary, not a deferral: a
  * concurrently running separate action resolves its own resource
  * collection in its own execution context, so its writes are invisible to
- * an already-waiting drain here. The durable backing has no cross-process
- * concurrency control to build that on (blind puts, last-write-wins).
- * Sequential access across requests is unaffected — a fresh resolution
- * hydrates from persisted state.
+ * an already-waiting drain here. **Re-resolving does not bridge that.**
+ * `collection.list()` enumerates the execution context's own in-memory
+ * resource state, eagerly loaded when the request started
+ * (`createExecutionContext.ts` — "all reads during execution use the
+ * in-memory cache"), and nothing re-reads the durable store mid-request. So
+ * a running request never sees another request's write however often it
+ * resolves; a *later* request does. The durable backing has no
+ * cross-process concurrency control to build anything stronger on (blind
+ * puts, last-write-wins).
  *
  * Removals reconcile at resolution, not continuously. `TaskCollectionRef`
  * has no `delete`, but the underlying resource collection does, and a
  * capacity eviction removes an instance the same way — so every resolution
- * both adopts what the store now holds and drops what it no longer holds
- * (`reconcileTaskSet`). A ref that is *already* held when something else
- * removes a task keeps seeing it until the next resolution reconciles the
- * shared record; that was equally true of the per-ref mirror this replaces,
- * which never re-read the store at all after construction.
+ * both adopts what that in-memory state holds and drops what it no longer
+ * holds (`reconcileTaskSet`). This works within the request precisely
+ * because the request's own writes and deletes go through the same state the
+ * reads do. A ref that is *already* held when something else removes a task
+ * keeps seeing it until the next resolution reconciles the shared record;
+ * that was equally true of the per-ref mirror this replaces, which never
+ * re-read anything at all after construction.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -191,16 +198,24 @@ function sharedTaskSet(
  *   "removed" would delete exactly the mid-flight adds this record exists to
  *   keep — the case the durable-wake scenario turns on.
  *
- * The discriminator is *when* the record learned about an id. Only ids the
- * record already held **before** the store was asked can be judged by that
- * answer; anything that appears during the await is newer than the snapshot
- * and is left alone.
+ * - **Keying the cleanup on the id loses a same-id replacement.** A task can be
+ *   removed and then recreated under the same id while the read is outstanding.
+ *   The id is in the pre-read set and absent from the snapshot, so a cleanup
+ *   asking "is this key still known?" deletes the replacement the store now
+ *   holds, and every ref reports it missing until something resolves again.
+ *
+ * So the cleanup retires a specific **ref**, not an id: each entry captured
+ * before the read is dropped only if the record still points at that exact
+ * object. An entry that changed identity during the await — a replacement — or
+ * an id that appeared during it is newer than the snapshot and cannot be judged
+ * by it, so it stays.
  */
 async function reconcileTaskSet(
   mirror: Map<string, ResourceRef<JsonObject>>,
   collection: ResourceCollectionRef<JsonObject>
 ): Promise<void> {
-  const knownBeforeRead = new Set(mirror.keys());
+  // The exact entries this pass is allowed to retire, captured before the read.
+  const retirable = new Map(mirror);
   const listed = await collection.list();
 
   const stored = new Set<string>();
@@ -210,8 +225,10 @@ async function reconcileTaskSet(
     mirror.set(id, ref);
   }
 
-  for (const id of knownBeforeRead) {
-    if (!stored.has(id)) mirror.delete(id);
+  for (const [id, refBeforeRead] of retirable) {
+    if (stored.has(id)) continue;
+    // Identity, not key presence: only retire the object we decided to retire.
+    if (mirror.get(id) === refBeforeRead) mirror.delete(id);
   }
 }
 

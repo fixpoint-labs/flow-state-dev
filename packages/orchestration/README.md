@@ -55,15 +55,16 @@ over the same resource collection inside a request shares one record of which ta
 exist, so a task added through any of them is immediately visible through all of
 them — including a ref a task-board worker resolved before it went idle. A
 *concurrently running separate request* is a different execution context with its
-own record, so its writes are not visible to a resolution already in flight here;
-lifting that would need cross-process concurrency control the resource store does
-not have. Sequential access across requests is unaffected: a fresh resolution
-hydrates from persisted state.
+own record, so its writes are not visible to a request that is already running —
+and resolving again does not bridge that, because a request reads durable state
+into memory when it starts. A *later* request reads the write. Lifting the
+boundary would need cross-process concurrency control the resource store does not
+have.
 
-Each resolution reconciles the record against the store in both directions, so a
-task removed underneath it (an explicit `delete` on the resource collection, or a
-capacity eviction) stops being reported. A ref you are already holding keeps
-reporting such a task until the next resolution reconciles.
+Each resolution reconciles the record against that in-memory state in both
+directions, so a task the running request removed (an explicit `delete` on the
+resource collection, or a capacity eviction) stops being reported. A ref you are
+already holding keeps reporting such a task until the next resolution reconciles.
 
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
