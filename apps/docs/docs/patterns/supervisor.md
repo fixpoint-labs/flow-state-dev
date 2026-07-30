@@ -12,7 +12,7 @@ Use it when:
 - Each task needs its own review — a worker output should be approved or revised before it counts as done
 - You want a retry budget that triggers on review rejection (not just on worker exceptions)
 
-If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent execution. If tasks need strict dependency ordering, use [Plan and Execute](./plan-and-execute). The supervisor honours `deps` between tasks (dependent tasks wait until their prerequisites complete) but executes independent tasks concurrently within the worker pool.
+If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent execution. If tasks need strict dependency ordering, use [Plan and Execute](./plan-and-execute). The supervisor honors `deps` between tasks (dependent tasks wait until their prerequisites complete) but executes independent tasks concurrently within the worker pool.
 
 ## Block composition
 
