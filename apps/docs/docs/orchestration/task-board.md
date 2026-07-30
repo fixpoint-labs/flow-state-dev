@@ -331,9 +331,9 @@ const enqueue = handler({
 });
 ```
 
-The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover). Because the default backing is request-scoped, a sibling or outer step can add tasks *before* `board.drain` runs — the board picks them up on its first pass.
+The accessor has `addTask`, `addTasks`, `getTask`, `listTasks`, `countTasks`, and `tasks()` (the full `TaskCollectionRef` when you need a method the sugar doesn't cover). A sibling or outer step can add tasks *before* `board.drain` runs and the board picks them up on its first pass. It can also add them *while* the board is draining, as long as both run in the same request: an idle worker notices the new task and picks it up without waiting for its poll interval.
 
-Each sugar call re-resolves the collection so reads always reflect the latest state. That's cheap for the request and sequencer backings. For a durable (resource-backed) board it re-hydrates on every call, so when you need several reads in a row without writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
+Each sugar call re-resolves the collection so reads always reflect the latest state. That's cheap for the request and sequencer backings. A durable (resource-backed) board re-reads its stored tasks on each resolve, so when you need several reads in a row without writes between them, grab the ref once with `const tasks = await ctx.cap.<name>.tasks()` and read from it.
 
 ## Collection backing
 
@@ -378,6 +378,8 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 ```
 
 `id` names the collection (it forms the resource pattern and the board's `collectionId`), `scope` sets its lifetime, and `stateSchema` types each task's `input` payload — the rest of the task envelope is validated for you. The board installs the collection on both its own drain and `board.capability`, so a sibling action that lists `board.capability` in `uses` reads and writes the same durable tasks.
+
+One boundary is worth knowing about. A sibling that adds a task *while the board is draining* is seen right away when it runs in the same request as the drain. A separate request that writes to the same durable collection at the same moment is not: a drain already waiting will only see those tasks the next time it resolves the collection. Writing before or after a drain works either way, since a fresh resolve reads what was stored.
 
 ## See also
 

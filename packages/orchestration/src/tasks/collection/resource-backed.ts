@@ -36,10 +36,21 @@
  * snapshot of their data. Tasks created via `addTask`/`addTasks` are
  * inserted into the mirror as they are created.
  *
- * Caveat: tasks created in the underlying collection by *other* blocks
- * after construction will not appear in this ref's sync view (accepted
- * tradeoff — the sync surface is a hydrated snapshot of ids, not a live
- * view of external inserts).
+ * Freshness boundary (FIX-990). The mirror is **shared by every
+ * `TaskCollectionRef` resolved over the same resource-collection
+ * instance**, so within one request every resolution reads one task set:
+ * a task added through any of them is immediately visible to all of them,
+ * synchronously. That is what a task-board worker parked in
+ * `.waitForCondition` depends on — it caches the ref it resolved on
+ * entering the wait, and a sibling's mid-wait add has to reach it.
+ *
+ * The boundary is the request, and it is a boundary, not a deferral: a
+ * concurrently running separate action resolves its own resource
+ * collection in its own execution context, so its writes are invisible to
+ * an already-waiting drain here. The durable backing has no cross-process
+ * concurrency control to build that on (blind puts, last-write-wins).
+ * Sequential access across requests is unaffected — a fresh resolution
+ * hydrates from persisted state.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -116,6 +127,40 @@ function readTaskState<TInput, TOutput>(
 }
 
 /**
+ * Per-resource-collection task-set record, module-scoped (FIX-990). See the
+ * file header for the freshness contract this implements.
+ *
+ * Keyed on the `ResourceCollectionRef` **instance**, never on the
+ * `collectionId` string. The resource registry builds one collection handle
+ * per execution context per scope instance and hands the same object back on
+ * every `resolveResourceCollection` call, so instance identity buys
+ * per-request and per-scope-instance isolation for free — two sessions,
+ * users, or orgs holding a same-named board get separate records. A string
+ * key would merge them. Same keying as `skills/seeding.ts` and
+ * `skills/internal/delegation-memo.ts`.
+ *
+ * A `WeakMap` because the record's lifetime is the collection handle's: when
+ * the execution context is collected, so is the record. Nothing to clear on
+ * teardown, and a drain that errors leaves behind only refs to tasks that do
+ * exist — a retry within the same request reads them and is correct to.
+ */
+const taskSets = new WeakMap<
+  ResourceCollectionRef<JsonObject>,
+  Map<string, ResourceRef<JsonObject>>
+>();
+
+/** Get (or create) the task-set record shared across resolutions of `collection`. */
+function sharedTaskSet(
+  collection: ResourceCollectionRef<JsonObject>
+): Map<string, ResourceRef<JsonObject>> {
+  const existing = taskSets.get(collection);
+  if (existing !== undefined) return existing;
+  const created = new Map<string, ResourceRef<JsonObject>>();
+  taskSets.set(collection, created);
+  return created;
+}
+
+/**
  * Create a `TaskCollectionRef` backed by a parameterized resource
  * collection. Async because it awaits one `collection.list()` to hydrate
  * the sync mirror (see file header). All other reads are synchronous.
@@ -130,15 +175,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     options.getItems,
   );
 
-  // Sync mirror of resource refs keyed by task id. Hydrated once at
-  // construction (the only async step); reads go through each ref's live
-  // `.state` getter, so the mirror reflects the latest committed state for
-  // every task it knows about. New tasks added via addTask/addTasks are
-  // inserted here. Tasks created in the underlying collection by *other*
-  // blocks after construction will not appear (accepted tradeoff: the
-  // sync TaskCollectionRef surface is a hydrated snapshot of ids, not a
-  // live view of external inserts).
-  const mirror = new Map<string, ResourceRef<JsonObject>>();
+  // Sync mirror of resource refs keyed by task id — shared with every other
+  // resolution over this same resource collection (see `taskSets`). Reads go
+  // through each ref's live `.state` getter, so the mirror reflects the
+  // latest committed state for every task it knows about, and sharing the
+  // record extends that to every task any sibling resolution *creates*.
+  //
+  // Construction still hydrates (the only async step), merging rather than
+  // replacing: a task written straight to the underlying resource collection
+  // by something that never held a TaskCollectionRef is still picked up here,
+  // and a concurrent resolution's insert is never dropped.
+  const mirror = sharedTaskSet(options.collection);
   for (const ref of await options.collection.list()) {
     mirror.set(readTaskState(ref).id, ref);
   }

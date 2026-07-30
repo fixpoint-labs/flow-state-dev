@@ -693,11 +693,20 @@ export function taskBoard<
     // Per-worker mutable cell holding the resolved collection ref. The
     // `.waitForCondition` predicate signature is `(items) => boolean`
     // and does not receive a ctx, so we capture the ref via a leading
-    // `.tap` step the first time this worker runs. Resolving once per
-    // worker is fine: the collection factory is idempotent (same
-    // collectionId → same ref) and avoids re-doing the lookup every
-    // iteration. Predicate reads from `cell.collection!` — guaranteed
-    // populated because the tap runs before the wait.
+    // `.tap` step the first time this worker runs. Predicate reads from
+    // `cell.collection!` — guaranteed populated because the tap runs
+    // before the wait.
+    //
+    // Resolving once per worker is safe because every resolution inside
+    // one request reads one task set, so a task added through any other
+    // resolution is visible through this cached ref too. That was not true
+    // before FIX-990: the durable backing gave each resolution a private
+    // view of which tasks existed, and this comment claimed an idempotence
+    // the code did not have — a sibling's mid-wait add stayed invisible to
+    // a parked worker, which both defeated the event-driven wake and let a
+    // board retire with work outstanding. The shared record is what makes
+    // the cache correct; see `tasks/collection/resource-backed.ts` for the
+    // contract and its same-request boundary.
     const cell: {
       collection?: TaskCollectionRef;
       wakeFilter?: (item: OutputItem) => boolean;

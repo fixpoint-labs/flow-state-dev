@@ -50,6 +50,16 @@ is the common case), or resource-collection (outlives the request: a user's queu
 org work pool — declare one with `defineTaskCollection`). Every mutation emits a
 `task-change` component item.
 
+**Freshness on the resource backing is scoped to one request.** Every ref resolved
+over the same resource collection inside a request shares one record of which tasks
+exist, so a task added through any of them is immediately visible through all of
+them — including a ref a task-board worker resolved before it went idle. A
+*concurrently running separate request* is a different execution context with its
+own record, so its writes are not visible to a resolution already in flight here;
+lifting that would need cross-process concurrency control the resource store does
+not have. Sequential access across requests is unaffected: a fresh resolution
+hydrates from persisted state.
+
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no

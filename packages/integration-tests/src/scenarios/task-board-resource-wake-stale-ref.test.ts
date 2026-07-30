@@ -1,44 +1,32 @@
 /**
- * FIX-990 — a resource-backed task board's `.waitForCondition` wake predicate
- * reads a ref that is resolved ONCE per drain invocation (`makeWorker`'s
- * leading `.tap`, cached in `cell.collection` —
- * `packages/orchestration/src/task-board/index.ts:692-753`) and reused for
- * every subsequent predicate evaluation, on the stated assumption that "the
- * collection factory is idempotent (same collectionId -> same ref)".
+ * FIX-990 — a resource-backed task board wakes promptly when a task is added
+ * through a separately resolved ref while a worker is mid-wait.
  *
- * That assumption does not hold for a resource-backed (durable)
- * `TaskCollectionRef`: `createResourceBackedTaskCollection` hydrates a
- * brand-new sync mirror via one `await collection.list()` PER CALL, and its
- * own file header documents the tradeoff — "tasks created in the underlying
- * collection by *other* blocks after construction will not appear in this
- * ref's sync view." `claimStep` and `checkBoard` each re-resolve the
- * collection fresh on every call and are unaffected (proven already by
- * `packages/orchestration/test/task-board/task-board.test.ts`'s "re-resolves
- * per call" case) — only the wait predicate's cached `cell.collection` is
- * stale.
+ * The board's `.waitForCondition` wake predicate reads a ref resolved ONCE per
+ * drain invocation (`makeWorker`'s leading `.tap`, cached in `cell.collection`
+ * — `packages/orchestration/src/task-board/index.ts`) and reused for every
+ * subsequent evaluation, on the stated assumption that resolving the
+ * collection twice yields the same view of which tasks exist.
  *
- * Net effect: on a resource-backed board, a task added through a genuinely
- * separate resolution (the documented `board.capability` sibling pattern)
- * while a worker is mid-wait is NOT claimed promptly. The wake's `wakeOn`
- * filter still fires (the task-change item is real), but the predicate it
- * re-evaluates reads the stale mirror and stays false, so `.waitForCondition`
- * only ever resolves via its TIMEOUT. The "event-driven wake" the pattern is
- * documented to provide is defeated for exactly the case the file's own
- * caveat describes — it doesn't just make the read *late*, it makes the
- * event-driven path a no-op and the board falls back to its full poll
- * interval every time.
+ * That assumption did not hold for a resource-backed (durable)
+ * `TaskCollectionRef`: `createResourceBackedTaskCollection` hydrated a
+ * brand-new private sync mirror per call, so a task added through any other
+ * resolution stayed invisible to a parked worker. The wake's `wakeOn` filter
+ * still fired (the task-change item was real), but the predicate it
+ * re-evaluated read the stale mirror and stayed false, so
+ * `.waitForCondition` only ever resolved via its TIMEOUT — the event-driven
+ * wake the pattern advertises was a no-op for this case and the board fell
+ * back to its full poll interval every time. `claimStep` and `checkBoard`
+ * re-resolve fresh on every call and were never affected.
  *
- * Lives here rather than only in `packages/orchestration` because the
- * escape depends on genuine concurrent `.stepAll` interleaving between the
- * drain and a sibling's separate resolution — composition
- * `packages/orchestration/test/task-board/` does not exercise. That file's
- * "re-resolves per call" case proves `claimStep`/`checkBoard` are fine in
- * isolation; this scenario proves the wait predicate isn't, under real
- * concurrency.
+ * A durable collection's task set is now shared across every resolution taken
+ * inside one request, so the cached ref sees a sibling's add synchronously.
  *
- * The CONTROL case proves the delay is specific to the resource-backed
- * mirror, not the sibling-add pattern itself: the identical race on a
- * request-backed board wakes in single-digit milliseconds.
+ * Lives here rather than only in `packages/orchestration` because it exercises
+ * genuine concurrent `.stepAll` interleaving between the drain and a sibling's
+ * separate resolution. The CONTROL case pins that the two boards behave the
+ * same way: the identical race on a request-backed board has always woken in
+ * single-digit milliseconds, and the durable board now matches it.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
@@ -131,8 +119,8 @@ function buildFlow(backing: "resource" | "request") {
   return { flow, processed, addedAt };
 }
 
-describe("task-board: resource-backed wait predicate reads a stale ref mirror", () => {
-  it("a task added via a separately-resolved ref is claimed only after the full poll timeout, not promptly", async () => {
+describe("task-board: resource-backed wait predicate reads a shared task set", () => {
+  it("a task added via a separately-resolved ref is claimed promptly, not at the poll timeout", async () => {
     const { flow, processed, addedAt } = buildFlow("resource");
 
     const result = await testFlow({
@@ -178,19 +166,26 @@ describe("task-board: resource-backed wait predicate reads a stale ref mirror", 
     // modes named rather than left implicit:
     //   - false failure: a contended CI runner could pause the process
     //     after `addedAt` long enough to push even a CORRECT wake over the
-    //     control's threshold below.
-    //   - false pass (the more serious one): once FIX-990 is fixed, some
-    //     OTHER unrelated latency could keep this above its own threshold,
-    //     so this test stays green when it should start failing. There is
-    //     no mechanism-level backstop against that here.
+    //     threshold below.
+    //   - false pass (the more serious one): some OTHER unrelated latency
+    //     could keep the wake fast enough to stay green even if the shared
+    //     task set regressed.
     //
-    // KNOWN DEFECT (FIX-990): this assertion characterizes the bug, not the
-    // desired behavior — it will FAIL once FIX-990's fix lands and needs
-    // inverting (to `toBeLessThan`) at that point. Don't "fix" this test by
-    // itself if it starts failing; that's the signal the defect is closed.
-    // If the direction changes, keep this comment's description of what
-    // will change in sync with it.
-    expect(addToCompletionMs).toBeGreaterThan(TIMEOUT_MS * 0.6);
+    // CORROBORATING EVIDENCE ONLY (FIX-990). Because of that second mode
+    // this assertion is never the proof that the fix works. The primary,
+    // mechanism-level guards carry no timing at all and live in
+    // `packages/orchestration/test/collection/shared-task-set.test.ts`
+    // (two resolutions agree) and
+    // `packages/orchestration/test/task-board/durable-board-freshness.test.ts`
+    // (the drain stays alive with work outstanding, and the worker's claim
+    // attempts stay far below its iteration budget). If this file goes red,
+    // read those first: they discriminate a real regression from a slow
+    // runner, which this one cannot.
+    //
+    // Held at the CONTROL's own threshold below, so the durable board is
+    // measured against the request-backed board rather than against a
+    // number picked for it.
+    expect(addToCompletionMs).toBeLessThan(TIMEOUT_MS * 0.5);
   });
 
   it("CONTROL: the identical sibling-add pattern on a request-backed board wakes promptly", async () => {

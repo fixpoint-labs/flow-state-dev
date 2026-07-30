@@ -167,7 +167,14 @@ const board = taskBoard({
 
 The board registers the collection on both its drain and `board.capability`, so a
 sibling action that lists `board.capability` in `uses` reads and writes the same
-durable tasks. Two things to keep in mind:
+durable tasks. Three things to keep in mind:
+
+- **Mid-drain adds are seen within one request.** A sibling step that adds a task
+  while the board is draining reaches an idle worker immediately, provided both are
+  in the same request. A *separate* request writing to the same collection at the
+  same time is not visible to a drain that is already waiting; it will be picked up
+  the next time the collection is resolved. Adding before or after a drain works in
+  either case.
 
 - **The scope lives on the collection, not the board.** `session` / `user` / `org`
   is set once on `defineTaskCollection`; the board just points at it.

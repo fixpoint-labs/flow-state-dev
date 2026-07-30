@@ -44,7 +44,7 @@ import {
   taskBoardWorkerStateSchema,
   type CheckBoardOutput,
 } from "../schemas";
-import { hasClaimableTask, inFlightCount } from "../shared";
+import { boardQuiescence } from "../quiescence";
 
 export interface CheckBoardOptions {
   name: string;
@@ -73,33 +73,15 @@ export function createCheckBoard(options: CheckBoardOptions) {
       const collection = await collectionFactory(ctx);
       const claimed = ctx.sequencer!.state.lastClaimed;
 
-      if (onIdle === "complete") {
-        if (inFlightCount(collection) === 0) {
-          return { shouldContinue: false, reason: "drained" };
-        }
-        return { shouldContinue: true, reason: claimed ? "claimed" : "idle" };
-      }
-
-      if (onIdle === "complete-or-blocked") {
-        // Drained dominates: every task reached a terminal status.
-        if (inFlightCount(collection) === 0) {
-          return { shouldContinue: false, reason: "drained" };
-        }
-        // No worker is producing state changes AND no `pending` task
-        // has all deps `completed`, so the dispatcher cannot claim
-        // anything. Continuing would spin at idle-poll forever.
-        if (
-          collection.count({ status: ["in_progress", "awaiting_review"] }) === 0 &&
-          !hasClaimableTask(collection)
-        ) {
-          return { shouldContinue: false, reason: "blocked" };
-        }
-        return { shouldContinue: true, reason: claimed ? "claimed" : "idle" };
-      }
-
-      // onIdle === "wait"
-      if (shouldExit?.(collection) === true) {
-        return { shouldContinue: false, reason: "exit" };
+      // One classifier, shared with the worker's idle-wait predicate
+      // (FIX-990). Each terminal verdict is this block's exit `reason`
+      // verbatim, so the mapping carries no second opinion of its own.
+      const verdict = boardQuiescence(collection, {
+        onIdle,
+        ...(shouldExit !== undefined ? { shouldExit } : {}),
+      });
+      if (verdict !== "continue") {
+        return { shouldContinue: false, reason: verdict };
       }
       return { shouldContinue: true, reason: claimed ? "claimed" : "idle" };
     },
