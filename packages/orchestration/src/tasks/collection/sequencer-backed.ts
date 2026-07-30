@@ -16,8 +16,12 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed } from "../schema/task-status";
-import type { TaskCollectionRef, TaskTransitionOptions } from "./types";
+import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
+import type {
+  TaskCollectionRef,
+  TaskTransitionOptions,
+  TaskWriteOutcome,
+} from "./types";
 import {
   applyClaimToTask,
   applyTransition,
@@ -27,7 +31,7 @@ import {
   defaultEligibility,
   defaultOrder,
   listTasks,
-  shouldDeclineTransition,
+  transitionDeclineReason,
   shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -182,12 +186,18 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   }
 
   /**
-   * Run one lifecycle transition inside the CAS.
+   * Run one lifecycle transition inside the CAS, returning what it did
+   * (FIX-976).
    *
    * `guards` makes the write advisory (FIX-951): evaluated against the
    * freshest committed task from inside the mutator, so the decision is
    * race-free rather than a caller-side pre-check. A declined write returns
-   * `undefined` from the mutator, which patches nothing and emits nothing.
+   * `undefined` from the mutator, which patches nothing and emits nothing —
+   * and the reason travels out on the verdict.
+   *
+   * Both `captured` and `declined` are reset on every mutator entry: `casWrite`
+   * may replay this closure with a fresher tasks map, and the verdict must
+   * describe the winning attempt, not an earlier one.
    */
   async function transitionTo(
     id: string,
@@ -195,43 +205,69 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions
-  ): Promise<void> {
+  ): Promise<TaskWriteOutcome> {
     let captured:
       | { task: Task<TInput, TOutput>; prevStatus: TaskStatus }
       | undefined;
+    let declined: TaskWriteOutcome | undefined;
 
     await casWrite((tasks) => {
       const task = ownTask(tasks, id);
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
-      if (shouldDeclineTransition(task as Task, targetStatus, guards)) {
+      const reason = transitionDeclineReason(task as Task, targetStatus, guards);
+      if (reason !== undefined) {
         captured = undefined;
+        declined = { outcome: "declined", reason, status: task.status };
         return undefined;
       }
+      declined = undefined;
       assertTransitionAllowed(task.status, targetStatus, id);
       const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
       captured = { task: next, prevStatus: task.status };
       return { ...tasks, [id]: next };
     });
 
-    if (captured !== undefined) {
-      emit(kind, captured.task, captured.prevStatus);
-    }
+    if (declined !== undefined) return declined;
+    if (captured === undefined) return { outcome: "unchanged" };
+    emit(kind, captured.task, captured.prevStatus);
+    return { outcome: "recorded" };
   }
 
+  /**
+   * Patch a task's fields inside the CAS, returning what it did (FIX-976).
+   *
+   * `declineOnTerminal` is the **assignment-only** terminal guard (epic
+   * constraint A1). It is keyed by operation and passed by `setAssignee` alone —
+   * the four sibling patch methods pass nothing and keep writing to terminal
+   * tasks, which two first-party blocks depend on (the supervisor's
+   * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
+   * this helper-wide would break both.
+   *
+   * Evaluated against the freshest committed task from inside the mutator, so
+   * the decision is race-free rather than a caller-side pre-check.
+   */
   async function patchOne(
     id: string,
     kind: TaskChangeKind,
-    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined
-  ): Promise<void> {
+    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
+    options?: { declineOnTerminal?: boolean }
+  ): Promise<TaskWriteOutcome> {
     let captured: Task<TInput, TOutput> | undefined;
+    let declined: TaskWriteOutcome | undefined;
 
     await casWrite((tasks) => {
       const task = ownTask(tasks, id);
       if (task === undefined) {
         throw new Error(`[tasks] task "${id}" not found`);
       }
+      if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
+        captured = undefined;
+        declined = { outcome: "declined", reason: "terminal", status: task.status };
+        return undefined;
+      }
+      declined = undefined;
       const update = patch(task);
       if (update === undefined) {
         captured = undefined;
@@ -242,9 +278,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       return { ...tasks, [id]: next };
     });
 
-    if (captured !== undefined) {
-      emit(kind, captured);
-    }
+    if (declined !== undefined) return declined;
+    if (captured === undefined) return { outcome: "unchanged" };
+    emit(kind, captured);
+    return { outcome: "recorded" };
   }
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
@@ -330,7 +367,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async complete(id, output, options) {
-      await transitionTo(
+      return transitionTo(
         id,
         "completed",
         "completed",
@@ -359,7 +396,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       // exactly that shape, and passes any test that never sets `maxAttempts`.
       const current = ownTask(readTasks(), id);
       if (current !== undefined && shouldRetryOnFail(current)) {
-        await transitionTo(
+        return transitionTo(
           id,
           "pending",
           "retried",
@@ -370,9 +407,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           }),
           options
         );
-        return;
       }
-      await transitionTo(
+      return transitionTo(
         id,
         "errored",
         "errored",
@@ -411,7 +447,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async cancel(id, reason) {
-      await transitionTo(
+      // The decline is now REPORTED (FIX-976) — behaviour is unchanged, but the
+      // caller learns the cancel did nothing instead of reading silence as
+      // success. Substrate write-backs discard this and stay silent.
+      return transitionTo(
         id,
         "cancelled",
         "cancelled",
@@ -468,19 +507,24 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async setAssignee(id, assignee) {
-      await patchOne(id, "assignee_changed", (task) =>
-        task.assignee === assignee ? undefined : { assignee }
+      // The one guarded patch operation (FIX-976 / A1): reassigning a finished
+      // task is refused, because its work will never run again.
+      return patchOne(
+        id,
+        "assignee_changed",
+        (task) => (task.assignee === assignee ? undefined : { assignee }),
+        { declineOnTerminal: true }
       );
     },
 
     async setPriority(id, priority) {
-      await patchOne(id, "priority_changed", (task) =>
+      return patchOne(id, "priority_changed", (task) =>
         task.priority === priority ? undefined : { priority }
       );
     },
 
     async addLabel(id, label) {
-      await patchOne(id, "label_changed", (task) => {
+      return patchOne(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (labels.includes(label)) return undefined;
         return { labels: [...labels, label] };
@@ -488,7 +532,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async removeLabel(id, label) {
-      await patchOne(id, "label_changed", (task) => {
+      return patchOne(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (!labels.includes(label)) return undefined;
         return { labels: labels.filter((l) => l !== label) };
@@ -496,7 +540,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async patchMetadata(id, patch) {
-      await patchOne(id, "metadata_changed", (task) => {
+      return patchOne(id, "metadata_changed", (task) => {
         const merged = { ...(task.metadata ?? {}), ...patch };
         return { metadata: merged };
       });

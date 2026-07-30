@@ -11,7 +11,12 @@ import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import { isTerminalStatus, isTransitionAllowed } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
-import type { ClaimOptions, TaskHandle, TaskTransitionOptions } from "./types";
+import type {
+  ClaimOptions,
+  TaskHandle,
+  TaskTransitionOptions,
+  TaskWriteDeclineReason,
+} from "./types";
 
 let idCounter = 0;
 function generateTaskId(): string {
@@ -109,7 +114,8 @@ function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
 }
 
 /**
- * Decide whether an advisory write-back should decline (FIX-951).
+ * Decide whether an advisory write-back should decline, and say **why**
+ * (FIX-951; reason reporting added by FIX-976).
  *
  * Called from inside each backing's transition wrapper — i.e. inside the
  * atomic write — so the status it reads is authoritative and no caller has
@@ -117,31 +123,41 @@ function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
  * because the two backings carry separately maintained copies of the
  * wrapper itself, and the *rules* must not drift between them.
  *
- * Returns `true` to no-op the write. A `false` return says nothing about
- * legality: the wrapper still runs `assertTransitionAllowed`, so a caller
- * that passed no guards (or only `expectAttempt`) keeps today's throwing
- * contract.
+ * Returns the reason to no-op the write, or `undefined` to proceed. Which
+ * calls decline is **unchanged** from FIX-951 — the return type carries the
+ * condition that fired so the wrapper can report it without re-deriving the
+ * state machine after the fact.
+ *
+ * The evaluation order *is* the documented precedence (`terminal` →
+ * `disallowed` → `lost-claim`, see `TaskWriteDeclineReason`), which is the
+ * order this predicate already evaluated in.
+ *
+ * `undefined` says nothing about legality: the wrapper still runs
+ * `assertTransitionAllowed`, so a caller that passed no guards (or only
+ * `expectAttempt`) keeps today's throwing contract.
+ *
+ * This is the **transition** hook. The assignment terminal guard is a separate
+ * patch-hook on the patch helper (FIX-976 / epic constraint A1) and deliberately
+ * not a fourth arm here: `setAssignee` never travels this path.
  */
-export function shouldDeclineTransition(
+export function transitionDeclineReason(
   task: Task,
   targetStatus: TaskStatus,
   options: TaskTransitionOptions | undefined
-): boolean {
-  if (options === undefined) return false;
+): TaskWriteDeclineReason | undefined {
+  if (options === undefined) return undefined;
   // Two arms, both load-bearing. `isTransitionAllowed` treats same-status as
   // allowed, so the disallowed arm does not subsume the terminal one:
   // `cancelled → cancelled` is legal *and* terminal, and letting it through
   // would clobber the reason and timestamp of the settlement already recorded.
-  if (
-    options.ifAllowed === true &&
-    (isTerminalStatus(task.status) || !isTransitionAllowed(task.status, targetStatus))
-  ) {
-    return true;
+  if (options.ifAllowed === true) {
+    if (isTerminalStatus(task.status)) return "terminal";
+    if (!isTransitionAllowed(task.status, targetStatus)) return "disallowed";
   }
   if (options.expectAttempt !== undefined && !attemptOwnsTask(task, options.expectAttempt)) {
-    return true;
+    return "lost-claim";
   }
-  return false;
+  return undefined;
 }
 
 /**

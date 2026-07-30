@@ -53,10 +53,25 @@ org work pool — declare one with `defineTaskCollection`). Every mutation emits
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no
-longer holds the claim. Both are evaluated inside the atomic write, and a declined
-write is a silent no-op. Omit the argument — as every caller in this repo outside
+longer holds the claim. Both are evaluated inside the atomic write. A declined
+write is still skipped and still never throws; the call reports it on the returned
+`TaskWriteOutcome`. Omit the argument — as every caller in this repo outside
 the substrate's own containment write-backs does — and both methods throw on an
 illegal transition exactly as before.
+
+`complete`, `fail`, `cancel` and the five field mutators return a `TaskWriteOutcome`:
+`recorded` (a field changed), `unchanged` (the desired state already held, nothing
+written), or `declined` with a `reason` (`terminal` / `disallowed` / `lost-claim`,
+resolved in that precedence order) and the `status` observed inside the write. The
+verdict is produced inside the atomic mutation, so it cannot race the write it
+describes. Discarding it is supported and behaves exactly as before, which is what
+keeps the containment write-backs silent — reporting a decline and acting on one
+are separate.
+
+`setAssignee` is the one field mutator that refuses anything: it declines on a
+terminal task, because the work will never run again. `setPriority`, `addLabel`,
+`removeLabel`, and `patchMetadata` deliberately still write to a terminal task, so a
+post-drain failure audit can label what went wrong.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
@@ -221,9 +236,17 @@ propagating.
 
 The one exception is a call that asked for it. `complete` and `fail` accept the
 advisory options described under [TaskCollection](#taskcollection) above, and a
-refused transition on such a call is a silent no-op rather than a throw — so it
-never reaches this `catch` and never becomes a tool result either. It stays
-opt-in per call precisely so the default above keeps holding.
+refused transition on such a call is a returned `declined` verdict rather than a
+throw — so it never reaches this `catch`. It stays opt-in per call precisely so
+the default above keeps holding.
+
+At the delegation `taskTools` boundary a `declined` verdict **does** become a tool
+result: `assignTask`, `cancelTask`, and an `updateTask` carrying an assignee answer
+`{ ok: false, error: "terminal_task_write_declined: …" }` on a finished task rather
+than reporting a success that did not happen. `ok: true` from those tools means "the
+backing reported no decline", not "the write happened" — for the two built-in
+backings those coincide, but a custom ref that reports nothing is carried past
+rather than having a verdict synthesized for it.
 
 ```ts
 // "research-lead" declares agents: → delegation installs automatically.
