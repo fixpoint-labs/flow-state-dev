@@ -54,6 +54,14 @@ The caller gives you a surface brief. It should carry only:
 A brief carrying rationale, before/after framing, or a defect description is a contaminated brief.
 Use the surface facts in it and drop the rest. Never quote a brief; verify against the code.
 
+**On a cleanup pass**, the brief is a different shape: existing pages plus `docs-editor` findings, and
+sometimes contradictions the editor flagged but couldn't settle. Same discipline applies, with one
+addition — **a suggested rewrite is a suggestion about prose, not a verified claim about behavior.**
+The editor works from the pages and the public surface, so its proposed wording can carry forward an
+error that was already on the page. Verify each replacement claim against the code before you write
+it, and resolve the flagged contradictions first: a reader who follows a wrong contract writes broken
+code, which outranks every prose finding in the list.
+
 ## What you do
 
 1. **Verify the brief against the public surface.** Read the exported signatures and the tests. If
@@ -80,9 +88,16 @@ Use the surface facts in it and drop the rest. Never quote a brief; verify again
 
 ## Verify (BP-003)
 
-- **`pnpm --filter @flow-state-dev/docs build`** when you touched `apps/docs/`. Docusaurus throws on
-  broken doc routes, but only *warns* on broken raw Markdown links, so a green exit is not
-  sufficient: scan the output and treat every broken-link warning as a must-fix.
+- **`pnpm --filter @flow-state-dev/docs build`** when you touched `apps/docs/`, and run it as your
+  **very last action** — after every edit, including a one-word frontmatter change. A build that ran
+  before a later edit is not evidence about the state you're shipping, and reporting it as one is
+  reporting a result you didn't get.
+- Docusaurus throws on broken doc routes but only *warns* on broken raw Markdown links, so a green
+  exit is not sufficient: scan the output and treat every broken-link warning as a must-fix. If
+  warnings were already there on pages you didn't touch, say so and name them rather than calling
+  the build clean.
+- **Frontmatter is YAML.** An unquoted `:` in a `title` or `description` is a parse error that aborts
+  the whole site build, not just that page. Quote any value containing a colon.
 - Re-read each page you changed start to finish, as a reader who arrived on it from a search result.
 - Confirm every code example would actually compile against the signatures you read.
 
