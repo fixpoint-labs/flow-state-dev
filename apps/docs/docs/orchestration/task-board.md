@@ -152,12 +152,13 @@ Most boards leave `onIdle` alone. Override when:
 `"complete-or-blocked"` ends the drain when pending tasks can no longer run, but it leaves those tasks `pending`. To fold them into a terminal status, `.tap()` the `createCascadeSkipDependents` building block after `board.drain`:
 
 ```ts
+import { sequencer } from "@flow-state-dev/core";
 import { taskBoard, createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 
 const board = taskBoard({ name: "research", collection: { collectionId: "research" }, workers });
 const cascadeSkip = createCascadeSkipDependents({ name: "research" });
 
-sequencer({ name: "research" })
+sequencer({ name: "research-run" })
   .step(board.drain)
   .tap(cascadeSkip); // transitively cancels pendings whose deps errored
 ```
@@ -172,7 +173,7 @@ The dispatcher decides which `pending` task gets claimed next. No dispatcher cla
 - `"fifo"` — the same ordering. The name reads better for a flat fan-out with no deps.
 - `"priority"` — highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
 
-Those three strings are the names `dispatcher` accepts. `@flow-state-dev/orchestration` exports five dispatcher instances, and `dispatcher` also takes any `TaskDispatcher` directly, so you can pass `classifierDispatcher(...)` or `eventDispatcher(...)` (both factories, which is why they have no string name) or one of your own. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow Policy](./flow-policy) for dispatcher caching, the observation ledger, and `priorWork` shaping.
+Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance, and `@flow-state-dev/orchestration` exports five: the three above plus `classifierDispatcher` and `eventDispatcher`, which are factories that need config and so have no string name. Pass one of those, or your own, in place of the string. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow Policy](./flow-policy) for dispatcher caching, the observation ledger, and `priorWork` shaping.
 
 Dependency cycles are not rejected at add time. Avoiding them is the caller's responsibility when you build the `deps` graph passed to `addTask`/`addTasks` or `initialTasks`. A board that declares a `deps` cycle still runs, but those tasks never become claimable: the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
 
@@ -200,7 +201,7 @@ const board = taskBoard({
 });
 ```
 
-Assignee resolution follows one rule. A matched assignee runs on its own worker. An unmatched or omitted assignee falls to `defaultWorker` if one is configured. With no `defaultWorker`, it fails per `onError`.
+Assignee resolution: a matched assignee runs on its own worker; an unmatched or omitted assignee falls to `defaultWorker` if one is configured; with no `defaultWorker`, the task fails per `onError`.
 
 ```ts
 const board = taskBoard({
@@ -215,7 +216,7 @@ const board = taskBoard({
 
 There is no `defaultWorker` unless you pass one. The skills delegation surface always passes one, which is how every delegation board gets an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in.
 
-On a delegation board the check happens earlier. When the skill declares agents, `addTask` with an assignee that isn't one of them returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than landing on the default worker. That check needs a roster to check against. A delegation board with no declared agents has none, and so does any `taskBoard` you wire yourself, so there every assignee is accepted and an unmatched one takes the fallback path above.
+A delegation board catches a bad assignee earlier than that. When the skill declares agents, `addTask` with an assignee that isn't one of them returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. The check needs a roster to check against. A delegation board with no declared agents has no roster, and neither does a `taskBoard` you wire yourself, so on those boards every assignee is accepted and an unmatched one takes the fallback path above.
 
 ## Concurrency and error handling
 
@@ -226,9 +227,9 @@ On a delegation board the check happens earlier. When the skill declares agents,
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 
-The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and reaches exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
+The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
 
-Watch the shape where a task keeps returning to `pending`. `maxAttempts` bounds retries on its own, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `resumeFromReview`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. `maxIterations` is what ends it, and it counts per worker, so a board at `concurrency: 4` can spend four times that many iterations first.
+A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `resumeFromReview`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. `maxIterations` is what ends it, and it counts per worker, so a board at `concurrency: 4` can spend four times that many iterations first.
 
 ## Bounding how much work a board takes on
 
@@ -252,7 +253,7 @@ Neither bound is a stored counter. Both are computed when a task is created, fro
 
 `backing: "sequencer"` names the shape of the state reference the tasks are stored in, not the kind of block it hangs off. Any block that holds its own state can supply one, and only a sequencer block checkpoints. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
 
-A delegation board is where those two come apart. It uses the sequencer backing, but its tasks live on the coordinator generator's own state rather than a sequencer's, so it does not checkpoint and its tasks and counts start from zero after a resume.
+A delegation board is where the two come apart: it uses the sequencer backing, but its tasks live on the coordinator generator's own state rather than a sequencer's. It does not checkpoint, so its tasks and counts start from zero after a resume.
 
 ### One writer, or hand every writer the bounds
 
@@ -284,7 +285,7 @@ Pass the capability when you want replanned tasks to respect the board's bounds.
 
 ### Where the bounds apply
 
-The bounds belong to the collection, so the board applies them only to a collection it builds itself: the request default and the sequencer opt-in below. Per the previous section, they also reach only writers that go through the board's own reference. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing; that collection carries whatever bounds it was built with and stays the sole authority. Passing the cap options alongside a supplied `collection` throws at `taskBoard()` construction, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead. Here that is a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
+The bounds belong to the collection, so the board applies them only to a collection it builds itself: the request default and the sequencer opt-in. Per the previous section, they also reach only writers that go through the board's own reference. If you **supply** a collection (a `defineTaskCollection`, or a factory), the board applies nothing and checks nothing; that collection carries whatever bounds it was built with and stays the sole authority. Passing the cap options alongside a supplied `collection` throws at `taskBoard()` construction, because a board cannot retrofit limits onto a collection it did not construct. Configure them where the collection is created instead. Here that is a block running *inside* the sequencer that owns the tasks slot, so `ctx.sequencer` is that container:
 
 ```ts
 const tasks = await getOrCreateTaskCollection({
@@ -302,7 +303,7 @@ The cap options exist on the sequencer and request backing specs only. Passing `
 
 ### If the defaults are too low for your board
 
-A board that needs to create more than 500 tasks in a run, or hold more than 100 pending at once, is refused at those points. Raise the bound, or turn it off in place with `null`:
+A board that needs to create more than 500 tasks in a run, or hold more than 100 `pending` at once, is refused the task that crosses the line. Raise the bound, or turn it off with `null`:
 
 ```ts
 // Raise it.

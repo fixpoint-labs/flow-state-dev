@@ -47,11 +47,7 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 
 ### The status state machine
 
-A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. An illegal transition throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
-
-That is what you get driving a collection from your own code. A model driving a board through the delegation task tools sees something different: those tools catch this one error and return `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current status and the calls available from it, so a refused change reads like every other bad tool call. See [Delegation](../skills/delegation.md) for the coordinator's view.
-
-`complete` and `fail` also take an option that makes one write *advisory*, so a refused transition does nothing instead of throwing. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
+A task moves through a fixed set of statuses, and the substrate enforces the transitions.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -68,6 +64,12 @@ pending ─┬─→ in_progress ─┬─→ completed
 ```
 
 `completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is always permitted, so repeat writes are idempotent rather than refused.
+
+Anything not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
+
+That is what you get driving a collection from your own code. A model driving a board through the delegation task tools sees something different: those tools catch this one error and return `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current status and the calls available from it, so a refused change reads like every other bad tool call. See [Delegation](../skills/delegation.md) for the coordinator's view.
+
+`complete` and `fail` also take an option that makes one write *advisory*, so a refused transition does nothing instead of throwing. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
 
 The status helpers are exported so you can reason about transitions without hardcoding the table:
 
@@ -117,7 +119,7 @@ await tasks.complete(task.id, output, {
 
 `ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
 
-Both guards are evaluated as part of the write they guard, so the task cannot change between the check and the write. Only those two outcomes go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
+Both guards are evaluated as part of the write they guard, so the task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
 
 A declined write returns normally and reports nothing, not even which guard fired. If you need to know whether it landed, re-read the task with `get(id)`.
 
@@ -197,9 +199,9 @@ A dispatcher decides which ready task gets claimed next. Five ship with the pack
 |------------|-------|-------------|
 | `fifoDispatcher` | Earliest `createdAt` eligible task | Pending, all `deps` completed. |
 | `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Pending, all `deps` completed. |
-| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Pending, deps satisfied. Unset priority reads as 0. |
-| `classifierDispatcher({ classify })` | The id your `classify` callback returns | Ready set handed to an LLM, which picks one or backs off. |
-| `eventDispatcher({ topicFor, topic })` | First pending task whose topic matches | Pending, deps satisfied, `topicFor(task) === topic`. |
+| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Pending, all `deps` completed. Unset priority reads as 0. |
+| `classifierDispatcher({ classify })` | The id your `classify` callback returns, or nothing when it returns `null` | Pending, all `deps` completed, then narrowed to the id you chose. |
+| `eventDispatcher({ topicFor, topic })` | First matching task in `createdAt` order | Pending, all `deps` completed, `topicFor(task) === topic`. |
 
 `fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
 

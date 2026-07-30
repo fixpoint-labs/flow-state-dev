@@ -33,13 +33,22 @@ A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
-         │                 ├─→ errored
-         │                 ├─→ awaiting_review ─┬─→ pending  (resumeFromReview)
-         │                                       └─→ cancelled
-         │                 └─→ pending          (reclaim — stale lease)
-         ├─→ blocked ─→ pending  (unblock)
+         │                ├─→ errored
+         │                ├─→ pending           (reclaim, after a stale lease)
+         │                ├─→ cancelled
+         │                └─→ awaiting_review ─┬─→ completed
+         │                                     ├─→ errored
+         │                                     ├─→ pending    (resumeFromReview)
+         │                                     └─→ cancelled
+         ├─→ blocked ─┬─→ pending               (unblock)
+         │            └─→ cancelled
          └─→ cancelled
 ```
+
+`completed`, `errored`, and `cancelled` are terminal. A move to the status a task
+already holds is permitted, so repeat writes are idempotent. Anything else throws
+an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and writes
+nothing.
 
 ### TaskCollection
 
@@ -54,9 +63,9 @@ org work pool — declare one with `defineTaskCollection`). Every mutation emits
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no
 longer holds the claim. Both are evaluated inside the atomic write, and a declined
-write is a silent no-op. Omit the argument — as every caller in this repo outside
-the substrate's own containment write-backs does — and both methods throw on an
-illegal transition exactly as before.
+write is a silent no-op that reports nothing, so re-read the task with `get(id)` if
+you need to know whether it landed. Omit the argument and both methods throw on an
+illegal transition.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
@@ -68,10 +77,12 @@ await collection.addTask({ goal: "draft the post", deps: ["research"] });
 
 ### Dispatchers
 
-`fifoDispatcher`, `topologicalDispatcher` (default — respects `deps`),
-`priorityDispatcher`, `classifierDispatcher({ classify })`, and
-`eventDispatcher({ topicFor })`. All delegate to `collection.claim`, so CAS retry
-and lease stamping run uniformly.
+`fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
+`classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor })`. None of
+them claims a task whose `deps` aren't all `completed` — that eligibility rule lives
+on `collection.claim` — so they differ only in ordering. `fifoDispatcher` and
+`topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
+highest `priority` first, ties on `createdAt`.
 
 ## Task board
 
@@ -80,7 +91,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, hasIdlessInitialTasks }`.
+`{ drain, collectionId, capability, backing, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
@@ -94,10 +105,9 @@ terminal, never refunded). Both take a positive integer or `null` (explicitly
 unbounded); omission reapplies the default. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
 both is a construction error, so configure caps on `getOrCreateTaskCollection`'s
-sequencer/request backing instead. Existing declarative boards inherit the
-defaults. Per-task retries are set via `maxAttempts` on each task (`TaskInit`),
-not on the board. See the
-[Task Board guide](https://flow-state.dev/docs/orchestration/task-board).
+sequencer/request backing instead. Per-task retries are set via `maxAttempts` on
+each task (`TaskInit`), not on the board. See the
+[Task board guide](https://flow-state.dev/docs/orchestration/task-board).
 
 ### goalSeekLoop
 
