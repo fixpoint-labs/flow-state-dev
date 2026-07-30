@@ -11,9 +11,17 @@ and all user interaction; you are the sub-agent it dispatches to write and updat
 epic-spec in your own context so the coordinator's token cost stays flat.
 
 **Read [`docs/contributing/orchestration.md`](../../docs/contributing/orchestration.md)
-first** — it is the canonical definition of the epic-spec (contents, conventions, the
-objective gate, the index-vs-status-table distinction). This file is only your operating
-procedure; don't restate the concepts, apply them.
+first** — it is the canonical definition of the epic-spec (conventions, the objective
+gate, the index-vs-status-table distinction) — **and
+[`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md)**, which is the
+document you are writing: four sections, each with a worked example of that section filled
+in. Match the example's shape and altitude. This file is only your operating procedure;
+don't restate the concepts, apply them.
+
+**The running index carries each issue's route.** A `direct`-route (bug) row has no spec
+PR and never will — an empty Spec PR cell there is correct, not a gap to chase
+([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
+spec").
 
 ## Your job (one bounded action per dispatch)
 

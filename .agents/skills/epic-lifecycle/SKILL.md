@@ -34,7 +34,7 @@ ends the turn:
 | Phase | What happens | Ends when |
 |---|---|---|
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
-| **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold at NEEDS_SPEC. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
+| **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
 | **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Each** wrap pass is either surfaced as a draft PR **or explicitly skipped** — both passes have documented skip conditions (no rework worth measuring · no docs touched), so "skipped, and why" is a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
@@ -44,8 +44,8 @@ ends the turn:
   `isolation: worktree`, so it lives on its own branch in its own git worktree.
   Parallel commits/pushes never collide — the whole reason worktrees exist here.
 - **Thin coordinator, isolated workers.** The coordinator holds only a compact **status
-  table** — one row per issue: `issue · phase · spec PR# · impl PR# · spec-review rounds ·
-  settling · gate-pending? · worktree`. It never holds a worker's context. Each worker advances its
+  table** — one row per issue: `issue · route · phase · spec PR# · impl PR# · spec-review
+  rounds · settling · gate-pending? · worktree`. It never holds a worker's context. Each worker advances its
   issue by **one bounded step** (via `issue-lifecycle`) in its own context and returns
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
@@ -139,7 +139,7 @@ even if more are queued. State the chosen N and the cap to the user.
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
                 verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
-       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound,
+       issues: [ { id, route, phase, specPr, implPr, specReviewRounds, specLevelFound,
                    prFeedbackRounds, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
                    approvedInSession, subPrs, assembledGoal, unsettled, blockerFor,
@@ -152,8 +152,18 @@ even if more are queued. State the chosen N and the cap to the user.
    filesystem, so **you are its memory**. Four groups of fields are load-bearing for exactly
    that reason, and each fails in its own way if you drop it:
 
+   - **`issues[].route`** (`spec | direct`) — which route the issue takes into
+     implementation ([`orchestration.md`](../../../docs/contributing/orchestration.md) →
+     "Which issues get a spec"). The wake re-derives it from the Linear category each
+     refresh and hands it back, so persisting it verbatim is all you owe; what you must
+     not do is invent one. A **bug** is `direct`: it never enters NEEDS_SPEC, never opens
+     a spec PR, and is **never offered a spec-approval gate** — its only gate is merge.
+     The default when nothing is known is `spec`, which fails closed (an unnecessary
+     document beats ungated code).
    - **The counters** (`specReviewRounds`, `specLevelFound`, `epic.reviewRounds`,
      `epic.aboveBarFound`) — drop them and every review budget silently restarts at zero.
+     A `direct` row spends none of them; a bug row whose spec-review counter is climbing
+     is a routing bug, not a chatty reviewer.
    - **The activity cursors** (`issues[].lastSeenActivityAt` / `lastSeenSha`, and
      `epic.lastSeenActivityAt` / `lastSeenSha`) — these are how a scout tells new feedback from
      feedback already handled. Carry a stale one and the *same* review comment reads as new
@@ -476,8 +486,10 @@ The set belongs to one body of work with **cross-cutting concerns** — shared s
 naming, sequencing, common direction — so the epic-spec exists to keep those decisions out
 of a vacuum. **The epic-spec, its conventions, the objective gate, and the index-vs-table
 distinction are defined in
-[`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)** — read
-it; below is only the coordinator's *operating procedure*.
+[`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)**, and
+its sections and shape in
+[`epic-spec-template.md`](../../../docs/contributing/epic-spec-template.md) (each one a
+worked example) — read those; below is only the coordinator's *operating procedure*.
 
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
@@ -553,9 +565,12 @@ Then decide whether it joins the epic:
 
 - **Belongs under the epic and unblocked** (nothing it's blocked-by is still open/in-progress
   — the wake enforces this from Linear each refresh and reports anything blocked in `blocked`)
-  → it *may be added to the active set*, up to the concurrency cap, entering at NEEDS_SPEC.
-  It still hits its own **spec-approval gate** before any implementation — so this
-  starts a *spec*, not unreviewed code. Surface each addition to the user. **Pass the epic
+  → it *may be added to the active set*, up to the concurrency cap, entering at its
+  route's entry phase — NEEDS_SPEC for a feature, NEEDS_IMPLEMENTATION for a bug. A
+  feature still hits its own **spec-approval gate** before any implementation, so what
+  this starts is a *spec*, not unreviewed code; a discovered **bug** goes straight to a
+  fix and its PR, which is the point of the direct route and the thing to be deliberate
+  about — surface each addition to the user, and say which route it took. **Pass the epic
   issue ID to `issue-manager`** so the new issue is **parented under the epic** (subject to
   the same one-parent safety check) — otherwise it won't show under the epic in Linear and
   `issue-spec` won't discover the epic via `issue.parent`.
@@ -581,6 +596,12 @@ Because the epic-spec already coordinates the set up front, this pass narrows to
 **conformance check** — do the issue specs adhere to the epic's objective, themes, and
 decisions, and what did the epic *not* settle? (`cross-spec-review` handles that narrowing
 itself; you just dispatch it.)
+
+**It is a pass over specs, so `direct`-route (bug) rows are not in it.** They have no
+spec to be incoherent with, they are not waited for before the pass can be asked, and they
+are never held by it — a bug keeps implementing while the epic's features wait on their
+coherence check. The wake computes the set on that basis; an epic of nothing but bugs
+never asks for the pass at all, which is correct.
 
 **The gate — never align to an unvalidated spec.** Cross-aligning specs only helps if each
 is already sound; aligning a good spec to a still-wrong one spreads the flaw. So this pass
@@ -659,8 +680,10 @@ step. So:
   it genuinely needs a human call (a decision the spec doesn't settle) — with the specific
   question, not a vague "should I continue?". A prerequisite that simply needs to land is
   tracked and ordered by the coordinator, never a reason to idle.
-- **Spec-approval gate is per issue.** Approvals are independent — issue B isn't blocked by
-  issue A's pending spec.
+- **Spec-approval gate is per issue, and only on the spec route.** Approvals are
+  independent — issue B isn't blocked by issue A's pending spec, and a **bug** has no such
+  gate at all. Never manufacture one: asking the user to approve a spec for an issue that
+  will never have a spec parks the row on an answer nobody can give.
 - **Spec review converges; it doesn't wait for silence.** A spec that has spent its round
   budget goes to the gate. Open review threads are not an external signal to wait on — the
   spec PR is never merged, so they gate nothing.

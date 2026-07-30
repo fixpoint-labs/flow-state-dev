@@ -190,13 +190,13 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
 | `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `issue-implement` |
 | `polish-docs`             | The docs editor — a corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges docs for readability and navigation (unafraid to rewrite/move); run standalone on a section or the whole site, and auto-dispatched at epic wrap as a draft docs-cleanup PR |
-| `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); every phase runs in a fresh bounded sub-agent so token cost stays small |
+| `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); a **bug skips the spec** and enters at implementation, with its PR as the review surface; every phase runs in a fresh bounded sub-agent so token cost stays small |
 | `epic-lifecycle`          | Drive ONE epic (a set of related issues under a shared objective) end-to-end: epic-spec → objective gate → each sub-issue's `issue-lifecycle` in parallel, each in its own git worktree/branch → epic wrap (lessons + docs polish). Holds only a compact status table. Parallel issue work always runs under an epic |
 | `settle-claim`            | Settle ONE disputed factual claim ("does X actually work that way?") with a quick throwaway POC — a goal-shaped check run on the real path — returning CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Fires when a review **loops** on the same behavioral claim (asserted and counter-asserted twice), not on a single assertion; non-blocking, costs no review rounds, opens a PR only if it found something worth a human's eyes |
 | `cross-spec-review`       | Review an epic's SET of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the coordinator |
 | `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local epic/issue lifecycle's webhook stand-in |
 
-> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
+> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), **which issues get a spec at all** (features do; bugs go straight to the fix), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
 
 
 ### Development skills
@@ -258,6 +258,10 @@ pnpm --filter @thought-fabric/core typecheck  # Typecheck thought-fabric
 
 ## Writing Style (site content)
 
+The full standard is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md) — read it before writing any user-facing prose. It carries the **outsider rule** (docs describe what the thing does, never how it was built, what it used to do, or what bug prompted it), the two sentence tests, and the tells table. The summary below is the voice half of it.
+
+**Don't write user-facing prose yourself while holding a spec or a diff.** Dispatch the `docs-writer` agent, then `docs-editor`. Context leaks even when you know the rules — that's what the isolation is for.
+
 When writing blog posts, landing copy, or any prose for `apps/docs`, use this voice:
 
 - **Audience is engineers.** No marketing speak. Write like you're explaining something to a peer, not selling to a buyer.
@@ -313,7 +317,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
-- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds.
+- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a tracked unit of intent — a spec for a feature, the issue itself for a bug) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds.
 
 **Document new and changed user-facing functionality** (always)
 

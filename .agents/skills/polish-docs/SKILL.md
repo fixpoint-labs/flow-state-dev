@@ -34,12 +34,14 @@ that reads nicely but is false. Elegant and wrong is worse than crammed and righ
 
 ## Grounding (your yardstick)
 
-Read first: the **"Writing Style (site content)"** section of `CLAUDE.md` (the voice contract —
-engineer audience, short varied sentences, minimal em-dashes, no AI cadence, warm not cold,
-sidebar labels never repeat the category, current model names in examples) and the reference
-example it names, `apps/docs/blog/2026-03-06-philosophy.md`. Also skim `add-docs-page`'s
-"Core Principle" — docs are for an engineer who knows TS/React but has never seen FSD. Those are
-the standards you edit *toward*; don't restate them here, apply them.
+Read first: [`docs/contributing/user-docs.md`](../../../docs/contributing/user-docs.md) — the
+standard for all user-facing prose, carrying the outsider rule, the two sentence tests, the tells
+table, and the voice contract. Its reference example is `apps/docs/blog/2026-03-06-philosophy.md`.
+That is the standard you edit *toward*; don't restate it here, apply it.
+
+The tells table is the most useful thing you have on a corpus pass. Leaked implementation context
+accumulates page by page, one PR at a time, and nobody reading a single diff ever sees the pile.
+You do.
 
 ## Scope
 
@@ -47,7 +49,10 @@ Resolve what to polish, from the argument:
 
 - **A change / branch / epic** (the epic-wrap case): the union of docs the batch touched, plus
   the pages that *should* have changed with them but didn't (a new capability documented in its
-  own page but never linked from the overview it belongs under).
+  own page but never linked from the overview it belongs under). **Resolve this from the docs paths
+  in the diff, not from the specs or the implementation diff.** You need to know *which pages* the
+  batch touched; reading *why* it touched them loads exactly the rationale you're here to remove,
+  and you'd carry it into the rewrite.
 - **A section** (`guides`, `orchestration`, `fundamentals`, …): that slice end to end.
 - **Empty**: the whole site — a periodic deep clean.
 
@@ -77,6 +82,10 @@ Run these as lenses over the scope. They compound; do them together, not as sepa
    link to their definitive home; overviews link down to their children and vice versa.
 
 ## Verify (BP-003)
+
+Run **`docs-editor`** over the pages you rewrote before opening the PR. You have been editing for a
+while by then and your ear has adjusted; the editor arrives cold and reads the result as a reader
+would. Treat its findings as must-fix and its suspected inaccuracies as things to verify or flag.
 
 Restructuring breaks links and moves anchors — prove it didn't:
 

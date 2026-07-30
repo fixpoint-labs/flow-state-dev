@@ -73,8 +73,13 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
-import { assertTransitionAllowed } from "../schema/task-status";
-import type { TaskCollectionRef, TaskTransitionOptions } from "./types";
+import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
+import type {
+  TaskCollectionRef,
+  TaskTransitionOptions,
+  TaskWriteDeclineReason,
+  TaskWriteOutcome,
+} from "./types";
 import {
   applyClaimToTask,
   applyTransition,
@@ -84,17 +89,19 @@ import {
   defaultEligibility,
   defaultOrder,
   listTasks,
-  shouldDeclineTransition,
+  transitionDeclineReason,
   shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
 /**
- * Module-private signal that an advisory write declined (FIX-951).
+ * Module-private signal that a write declined (FIX-951; extended to the patch
+ * path and given a reason by FIX-976).
  *
  * Thrown from inside `updateState`'s updater and caught around the call.
  * Never crosses this module's boundary, and never reaches a user: the only
- * `updateState` it is thrown from is the one that catches it.
+ * `updateState` it is thrown from is the one that catches it. The catch turns it
+ * into a `declined` verdict, which is a value — nothing propagates.
  *
  * Why a throw rather than returning `current`. Returning the state unchanged
  * is not a no-op on this backing — `updateState` calls
@@ -106,11 +113,20 @@ import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
  * the notify while the write chain's tail swallows the rejection, so the next
  * writer to this key is unaffected. That makes the abort atomic — no pre-read,
  * no window — and leaves both backings silent on a declined write.
+ *
+ * Both write paths use this same mechanism: the transition wrapper for an
+ * advisory `ifAllowed` / `expectAttempt` decline, and the patch helper for the
+ * assignment terminal guard.
  */
-class TransitionDeclined extends Error {
-  constructor() {
-    super("[tasks] advisory transition declined");
-    this.name = "TransitionDeclined";
+class WriteDeclined extends Error {
+  readonly reason: TaskWriteDeclineReason;
+  readonly status: TaskStatus;
+
+  constructor(reason: TaskWriteDeclineReason, status: TaskStatus) {
+    super(`[tasks] write declined (${reason})`);
+    this.name = "WriteDeclined";
+    this.reason = reason;
+    this.status = status;
   }
 }
 
@@ -326,13 +342,15 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   }
 
   /**
-   * Run one lifecycle transition inside the resource's serialized write.
+   * Run one lifecycle transition inside the resource's serialized write,
+   * returning what it did (FIX-976).
    *
    * `guards` makes the write advisory (FIX-951): evaluated against the
    * freshest state from inside the updater, so the decision is race-free
    * rather than a caller-side pre-check. A declined write aborts the whole
-   * write via `TransitionDeclined` — see that type for why returning
-   * `current` would not be silent here.
+   * write via `WriteDeclined` — see that type for why returning
+   * `current` would not be silent here — and the catch turns it into the
+   * `declined` verdict.
    */
   async function transitionRef(
     id: string,
@@ -340,7 +358,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions
-  ): Promise<void> {
+  ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
@@ -352,8 +370,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     try {
       await ref.updateState((current) => {
         const task = current as unknown as Task<TInput, TOutput>;
-        if (shouldDeclineTransition(task as Task, targetStatus, guards)) {
-          throw new TransitionDeclined();
+        const reason = transitionDeclineReason(task as Task, targetStatus, guards);
+        if (reason !== undefined) {
+          throw new WriteDeclined(reason, task.status);
         }
         assertTransitionAllowed(task.status, targetStatus, id);
         prevStatus = task.status;
@@ -364,20 +383,39 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     } catch (err) {
       // Only the decline is absorbed. A store failure, CAS exhaustion, or an
       // illegal transition the caller did not opt out of still propagates.
-      if (!(err instanceof TransitionDeclined)) throw err;
-      return;
+      if (!(err instanceof WriteDeclined)) throw err;
+      return { outcome: "declined", reason: err.reason, status: err.status };
     }
 
-    if (nextTask !== undefined) {
-      emit(kind, nextTask, prevStatus);
-    }
+    // The updater always runs, so `nextTask` is set on every non-declined path.
+    // Reporting `unchanged` rather than `recorded` on the residual keeps the
+    // verdict from claiming a write this function did not observe.
+    if (nextTask === undefined) return { outcome: "unchanged" };
+    emit(kind, nextTask, prevStatus);
+    return { outcome: "recorded" };
   }
 
+  /**
+   * Patch a task's fields inside the resource's serialized write, returning what
+   * it did (FIX-976).
+   *
+   * `declineOnTerminal` is the **assignment-only** terminal guard (epic
+   * constraint A1). It is keyed by operation and passed by `setAssignee` alone —
+   * the four sibling patch methods pass nothing and keep writing to terminal
+   * tasks, which two first-party blocks depend on (the supervisor's
+   * failure-category audit and `cascadeSkipDependents`' `skipped` label). Making
+   * this helper-wide would break both.
+   *
+   * The decline throws `WriteDeclined` out of the updater rather than returning
+   * `current`, for the reason documented on that class: on this backing
+   * returning `current` still persists and still notifies.
+   */
   async function patchRef(
     id: string,
     kind: TaskChangeKind,
-    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined
-  ): Promise<void> {
+    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
+    options?: { declineOnTerminal?: boolean }
+  ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
       throw new Error(`[tasks] task "${id}" not found`);
@@ -385,18 +423,31 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
     let nextTask: Task<TInput, TOutput> | undefined;
 
-    await ref.updateState((current) => {
-      const task = current as unknown as Task<TInput, TOutput>;
-      const update = patch(task);
-      if (update === undefined) return current;
-      const next = applyTransition(task, update, now());
-      nextTask = next;
-      return next as unknown as JsonObject;
-    });
-
-    if (nextTask !== undefined) {
-      emit(kind, nextTask);
+    try {
+      await ref.updateState((current) => {
+        const task = current as unknown as Task<TInput, TOutput>;
+        if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
+          throw new WriteDeclined("terminal", task.status);
+        }
+        const update = patch(task);
+        if (update === undefined) return current;
+        const next = applyTransition(task, update, now());
+        nextTask = next;
+        return next as unknown as JsonObject;
+      });
+    } catch (err) {
+      if (!(err instanceof WriteDeclined)) throw err;
+      return { outcome: "declined", reason: err.reason, status: err.status };
     }
+
+    // The idempotent case returns `current` from the updater, so this backing
+    // still persists and still emits a `resource_change`. `unchanged` is a
+    // TASK-level verdict — no task field written, no `task-change` item — and
+    // deliberately says nothing about the store's own notification, which is
+    // unchanged from before FIX-976.
+    if (nextTask === undefined) return { outcome: "unchanged" };
+    emit(kind, nextTask);
+    return { outcome: "recorded" };
   }
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
@@ -469,7 +520,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async complete(id, output, options) {
-      await transitionRef(
+      return transitionRef(
         id,
         "completed",
         "completed",
@@ -497,7 +548,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
         if (shouldRetryOnFail(current as Task)) {
-          await transitionRef(
+          return transitionRef(
             id,
             "pending",
             "retried",
@@ -508,10 +559,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             }),
             options
           );
-          return;
         }
       }
-      await transitionRef(
+      return transitionRef(
         id,
         "errored",
         "errored",
@@ -550,7 +600,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async cancel(id, reason) {
-      await transitionRef(
+      // The decline is now REPORTED (FIX-976) — behaviour is unchanged, but the
+      // caller learns the cancel did nothing instead of reading silence as
+      // success. Substrate write-backs discard this and stay silent.
+      return transitionRef(
         id,
         "cancelled",
         "cancelled",
@@ -611,19 +664,24 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setAssignee(id, assignee) {
-      await patchRef(id, "assignee_changed", (task) =>
-        task.assignee === assignee ? undefined : { assignee }
+      // The one guarded patch operation (FIX-976 / A1): reassigning a finished
+      // task is refused, because its work will never run again.
+      return patchRef(
+        id,
+        "assignee_changed",
+        (task) => (task.assignee === assignee ? undefined : { assignee }),
+        { declineOnTerminal: true }
       );
     },
 
     async setPriority(id, priority) {
-      await patchRef(id, "priority_changed", (task) =>
+      return patchRef(id, "priority_changed", (task) =>
         task.priority === priority ? undefined : { priority }
       );
     },
 
     async addLabel(id, label) {
-      await patchRef(id, "label_changed", (task) => {
+      return patchRef(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (labels.includes(label)) return undefined;
         return { labels: [...labels, label] };
@@ -631,7 +689,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async removeLabel(id, label) {
-      await patchRef(id, "label_changed", (task) => {
+      return patchRef(id, "label_changed", (task) => {
         const labels = task.labels ?? [];
         if (!labels.includes(label)) return undefined;
         return { labels: labels.filter((l) => l !== label) };
@@ -639,7 +697,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async patchMetadata(id, patch) {
-      await patchRef(id, "metadata_changed", (task) => {
+      return patchRef(id, "metadata_changed", (task) => {
         const merged = { ...(task.metadata ?? {}), ...patch };
         return { metadata: merged };
       });

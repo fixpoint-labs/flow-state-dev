@@ -8,7 +8,7 @@ You are an implementation agent. Given a Linear issue ID, your job is to pull th
 
 ## Core Principles
 
-**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The spec says *how* — it is authored at `docs/specs/<ISSUE-ID>.md` on the spec PR branch (`spec/<ISSUE-ID>`, PR titled `spec(<ISSUE-ID>)`) and mirrored to the attached Linear document. The spec PR is a review vehicle, not a merge target: it exists to collect feedback, and this skill closes it unmerged at Step 3 — so the spec file is NOT on main. The two copies should be in sync but may have drifted, and the spec PR may carry review comments never folded into either copy — Step 1 reconciles all of this before any code is written. **While the spec PR is open, the GitHub PR copy is the authoritative reference** — it is where review feedback and iteration land, so it is the one to trust and mirror onto Linear; the Linear document is only the source when there is no open spec PR to read from. When issue and spec conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2).
+**The spec is the source of truth, not the issue description.** The issue description says *what* and *why*. The spec says *how* — it is authored at `docs/specs/<ISSUE-ID>.md` on the spec PR branch (`spec/<ISSUE-ID>`, PR titled `spec(<ISSUE-ID>)`) and mirrored to the attached Linear document. The spec PR is a review vehicle, not a merge target: it exists to collect feedback, and this skill closes it unmerged at Step 3 — so the spec file is NOT on main. The two copies should be in sync but may have drifted, and the spec PR may carry review comments never folded into either copy — Step 1 reconciles all of this before any code is written. **While the spec PR is open, the GitHub PR copy is the authoritative reference** — it is where review feedback and iteration land, so it is the one to trust and mirror onto Linear; the Linear document is only the source when there is no open spec PR to read from. When issue and spec conflict on implementation details, the spec wins. If no spec exists, behavior depends on category (see Step 2) — and for a **bug** that is the normal state, not a gap: bugs take the direct route and are reviewed on their implementation PR ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a spec").
 
 **Bugs and features follow different disciplines.** Step 4 reads the Linear category label and routes:
 
@@ -34,6 +34,7 @@ Fetch everything about the issue:
 1. `get_issue` with `includeRelations: true` — get the full issue: description, labels, priority, relations
 2. `list_comments` — read any discussion or decisions
 3. **Read the spec — from both homes, plus the spec-PR review.** The spec lives in two places that should match but may not: the spec PR branch and the Linear document.
+   **For a direct-route bug, do sub-item 1 only, then skip the rest of this item.** Locating the spec PR is the cheap lookup Step 2.1 requires — a bug that turns out to have one is on the spec route and gated, so this is the one thing you must not skip. If that lookup comes back empty (the normal case), there is no spec document to read or reconcile: the Linear issue, its comments, and the reproduction are the contract, and `diagnose` produces the rest. Don't treat the absence as a readiness problem.
    1. **Locate the spec PR**: `gh pr list --search "spec({ISSUE-ID}) in:title" --state all --json number,state,headRefName,url`. It may be open (normal) or already closed (a prior run got past Step 3).
    2. **Read the repo copy** from the PR head, using the `headRefName` returned by the previous step (git refs are case-sensitive — don't retype the branch name): `git fetch origin {headRefName} && git show FETCH_HEAD:docs/specs/{ISSUE-ID}.md`. If the branch is gone (PR closed with branch deleted), fetch `pull/{N}/head` instead and read from `FETCH_HEAD` the same way.
    3. **Read the Linear copy** with `get_document` (titled `{ISSUE-ID}: ... — Implementation Spec`).
@@ -55,8 +56,14 @@ If $ARGUMENTS doesn't look like a Linear issue ID, search with `list_issues` usi
 
 Before starting work, check:
 
-1. **Spec exists?**
-   - **Issue labeled "Bug" with a clear reproduction** → proceed without a full spec. Bugs follow `diagnose`, which requires a feedback loop before any code change — that's the implementer's first job, not the spec author's. If the issue body lacks a reproduction or is ambiguous, still consider running `/issue-spec` (specs aren't only for features) — the spec for a bug captures the reproduction shape and the regression-test seam.
+1. **Spec exists?** The routing rule is canonical in [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a spec".
+   - **Issue labeled "Bug"** → **a bug takes the direct route: proceed without a spec, and don't ask for one.** This is the norm, not an exception you're granting. Bugs follow `diagnose`, which builds a feedback loop and reproduces the failure before any code changes — that *is* the analysis a spec would have guessed at, and it happens here. The fix is reviewed on its PR.
+     - **Three things override the Bug label. One is already true or not before you look, and two are yours to decide** — the split matters because you can only act on the ones you can see:
+       1. **A spec PR already exists** (the router's call, but *verify it yourself*). Run the one cheap lookup — `gh pr list --search "spec({ISSUE-ID}) in:title" --state open` — **before** declaring the issue direct. If a spec PR is open, this issue is on the spec route after all: it has a live approval gate, and implementing past it is the one thing the route must never do. Under a lifecycle, return `specRequired: existing spec PR #N awaiting approval` and stop; standalone, wait for the approval. Don't skip this because the label says Bug — a coordinator that discovered the issue mid-wake may not have known the spec PR existed.
+       2. **No reproduction and an ambiguous symptom** — there's nothing to diagnose against, so working out what is even happening is real research.
+       3. **It isn't really a bug** — the fix is a new capability or changes a contract other code depends on, which must not reach `main` through the one route with no gate.
+     - For 2 and 3, decide *before* you start building. Standalone, say so and offer `/issue-spec {ID}`. Under a lifecycle, return `specRequired` with the reason and stop; the coordinator re-routes the issue.
+     - **A design decision found mid-diagnosis is not one of those cases.** Once you have the repro and the cause, a fix that turns on a judgment call — two defensible places for the guard, a behavior change users could notice — is **implemented on best judgment and surfaced on the PR** with the alternative named (Step 9's Key Decisions, and a comment on the thread if it's contested). Don't stall, and don't detour into a spec. Escalate as an ordinary blocker only when the call genuinely isn't yours: it reverses a shipped contract, or it belongs to the epic.
    - **Issue labeled "Feature" / "Enhancement" / "Improvement" with no spec** → tell the user: *"This issue has no spec attached. Should I proceed based on the description alone, or create a spec first with `/issue-spec {ID}`?"* For non-trivial feature work, no-spec is usually a mistake.
    - **Either category with a one-screen agent-brief** (per `docs/contributing/agent-brief-template.md`) → proceed; that brief is the contract.
 
@@ -157,7 +164,7 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
 10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
-12. Skip to Step 6 (Review)
+12. Skip to Step 5C (Document the change), then Step 6 (Review)
 
 **For features/enhancements (`tdd` discipline):**
 
@@ -171,7 +178,7 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 8. **Run the goal check** if the spec's Testing Strategy names one (real model, real path — see `tdd` → "Two kinds of test"). Green specs are mocked; they don't prove the goal. This is required verification. For a **model-backed** goal, running it spends real API credits, which is the point, so don't defer or push back on cost grounds; the inference credential is normally in the env (e.g. `AI_GATEWAY_API_KEY`), so attempt the run rather than assume it's absent. (A model-free goal — `Model: n/a` — just runs its real path, no credential.) Full guidance: `goals/README.md` → Running. Run `fsdev run` against a real model or `pnpm tsx goals/<describe>/<it>/run.mts` and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
    - **UI-layer changes** (item renderers, streaming display, the DevTool embed, prompt input): the goal check above runs *below* the UI. If the change touches the browser-rendered surface, decide per `apps/docs/docs/testing/end-to-end-tests.md` whether to add/update a kitchen-sink Playwright scenario; otherwise note why browser verification isn't needed.
 9. Commit with a conventional commit message referencing the issue ID
-10. Skip to Step 6 (Review)
+10. Skip to Step 5C (Document the change), then Step 6 (Review)
 
 ### Step 5B: Complex Implementation (Sub-agent Team)
 
@@ -232,6 +239,53 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 - **Prove the goal on the assembled work** (real model, real path — see `tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; this step proves the whole achieves the outcome. Same required-goal rule as step 5A.8 (real API credits by design — don't skip on cost; the credential is normally in the env, so attempt the run), applied here to the **assembled** work after integration rather than per-task. Confirm PASS before moving to review and record the command and verdict.
   - **Feature/Enhancement:** run the goal check the spec names. If the spec documented that no goal check applies, skip and note the documented justification.
   - **Bug** (complex bugs route through 5B, not 5A): if the original symptom was user-visible, re-run the **original repro through the real path** (`fsdev run` against a real model) on the assembled fix and confirm it's gone — this is the bug's goal verdict Step 6 expects. For a pure type/unit regression, note "N/A — type/unit-only" with the regression test as the proof.
+
+### Step 5C: Document the change (both paths)
+
+Runs after 5A or 5B, before review. Applies whenever the change touched anything a user of the
+framework can observe — a public API, a returned shape, a tool result, a documented contract.
+
+**You do not write the user-facing prose. Dispatch `docs-writer`, then `docs-editor`.** By this point
+you are holding the spec, the diff, the review argument, and the defect, and that context leaks into
+published pages in a predictable way — before/after framing, design defense, the bug report retold as
+docs. Knowing the rules doesn't prevent it; not having the context does. The standard both agents
+work to is [`docs/contributing/user-docs.md`](../../../docs/contributing/user-docs.md).
+
+1. **Write the surface brief.** This is your only job here, and the brief is deliberately
+   shape-constrained so it can't carry narrative:
+
+   - **Surface** — the symbols a user touches, with signatures.
+   - **Behavior** — what a caller sees, including failure results and their exact shapes.
+   - **Limits** — what it won't do, where a reader would assume otherwise.
+   - **Targets** — pages and READMEs that state the affected contract today.
+
+   No *why*, no before/after, no defect description, no alternatives considered. If a fact only
+   matters because of what the code used to do, it does not go in the brief.
+
+2. **Dispatch `docs-writer`** with the brief. It verifies against the public API and the tests, and
+   reports what it wrote, plus anything it left out for lack of an observable surface.
+
+3. **Dispatch `docs-editor`** on the result. Send its findings back to the same writer and re-check.
+   **Three rounds**, then bring it to the user rather than looping — prose that hasn't converged by
+   then usually means the brief was wrong, not the writing.
+
+4. **Reconcile the writer's report.** Two returns are yours to act on, not the writer's: a fact where
+   **the code contradicted your brief** (check whether the brief or the code is wrong — this
+   sometimes surfaces a real bug), and a behavior it **couldn't find an observable surface for**
+   (either it isn't user-facing, or it isn't reachable and that's a gap).
+
+5. **Re-run this step whenever observable behavior changes again.** Step 5C runs before review, so
+   anything that moves the public surface afterwards — a Step 6 review finding, a Step 8 change
+   request, a Step 10 PR-feedback round — leaves the pages describing a surface that no longer
+   exists. Rebuild the brief for what changed and dispatch the pair again. It is a small,
+   well-scoped pass, not a repeat of the whole step: the brief covers the delta, not the feature.
+   **Never hand-patch the published prose to save the round trip** — that is the leak arriving by
+   the back door, at the point in the process where your head is fullest of the review argument.
+
+Architecture docs (`docs/architecture/`), `docs/internal/*`, the changeset, and the PR body are
+**yours**, not the writer's. Those are for framework developers and reviewers, where the rationale,
+the tradeoffs, and the defect belong. The split is the point: write the internal record fully, and
+keep it out of `apps/docs/`.
 
 ### Step 6: Comprehensive Review
 
@@ -410,7 +464,9 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 2. **Declining** — the concrete reason no change is being made (a spec/BP/scope citation), per the non-actionable path.
 3. **Escalated** — a comment that needs a decision you can't make (a spec-level call, a scope question only the maintainer can settle): reply saying you've surfaced it and are holding on that thread, rather than leaving it silent. Under a coordinator, also return it as a blocker so the coordinator surfaces it — but the thread still gets the reply.
 
-**Reconcile the prose with the diff.** Before closing a round that changed behavior, re-read the PR body, the changeset, and any docs the change touches against the *current* diff — not the plan — and correct every sentence that now misstates it. The body was written at Step 9; this loop has been changing the code ever since, and a claim written before the last commit is the one that ships wrong.
+**Reconcile the prose with the diff.** Before closing a round that changed behavior, re-read the PR body, the changeset, and the architecture docs the change touches against the *current* diff — not the plan — and correct every sentence that now misstates it. The body was written at Step 9; this loop has been changing the code ever since, and a claim written before the last commit is the one that ships wrong.
+
+**User-facing pages are the exception: don't correct those yourself.** `apps/docs/` and package README API sections go back through **Step 5C** — rebuild the brief for what this round changed and dispatch `docs-writer` + `docs-editor` again. Editing them by hand here is how the review argument reaches published prose, and this is the moment you are least able to tell that it has.
 
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 

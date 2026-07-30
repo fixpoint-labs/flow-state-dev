@@ -12,9 +12,9 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-02-15 (updated 2026-06-28: spec-driven)
 - Scope: Process — scoping and tracking a change.
 - Rule:
-  - Every implementation change maps to a spec linked to its Linear issue (full `docs/specs/*` spec per BP-037 for non-trivial work).
+  - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a full `docs/specs/*` spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
   - Each spec carries explicit deliverables and verification steps.
-  - Spec-lite is allowed for small, local work: a one-screen agent brief on the issue, or — for a clear-repro bug — its reproduction + regression seam, instead of a full spec doc (see `issue-implement`, `adhoc-quick-fix`).
+  - Between the two: small, local work can use a one-screen agent brief on the issue (`agent-brief-template.md`) instead of a full spec doc. A bug returns to the spec route on the three overrides in [`../orchestration.md`](../orchestration.md) → "Which issues get a spec" — don't re-enumerate them here, since a count that drifts from the router's reads as a contradiction.
 - Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement.
 
 ### BP-004: Public boundary first
@@ -71,7 +71,8 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-06-29 (updated 2026-07-28: review bar + convergence budget)
 - Scope: Process — spec authoring (`issue-spec`).
 - Rule:
-  - Write each spec to `docs/specs/<ISSUE-ID>.md` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written.
+  - Write each spec to `docs/specs/<ISSUE-ID>.md` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written. Applies to issues **on the spec route** — a bug has no spec and no spec PR by design (BP-002).
+  - Follow [`../spec-template.md`](../spec-template.md), whose every section is a worked example of that section filled in. An epic's coordination artifact follows [`../epic-spec-template.md`](../epic-spec-template.md) the same way.
   - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
   - The spec PR is never merged: `issue-implement` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
 - Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
