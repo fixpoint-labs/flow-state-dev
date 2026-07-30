@@ -160,8 +160,10 @@ ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource r
 3. **(Conditional — C3.) Redelivery, not merely reclamation.** A stranded claim returns to the
    queue with no human intervening — via FIX-978's mechanism — **and a worker actually starts on it
    again, with no manual dispatch.** Asserting only the status flip tests FIX-978's write and
-   nothing about this substrate's liveness. See Decision 6: the reclamation path has no initiating
-   request, so request creation alone does not wake it.
+   nothing about this substrate's liveness. **A pending task with no live initiating request has no
+   wake source, and FIX-978 closes none of the three ways one arises** — including the admission
+   window, which is unconditional rather than C3-conditional because no lease ever existed to
+   reclaim. See Decision 6.
 4. **A detached task's progress is readable from a durable surface**, not from a `transient: true`
    trace item and not from the originating request's emitter. Satisfied by reading the background
    request's persisted items (`RequestStore.getEvents(requestId, fromSequence)`, `subscribeEvents`).
@@ -699,10 +701,21 @@ Under Decision 0, most of "name your wake model" collapses: **the wake is reques
 initiating request creates a background sibling, and that request runs the task. No scheduler, no
 board-to-queue producer, no polling loop.
 
-**One path does not collapse, and criterion 3 depends on it.** A task returned to `pending` by
-FIX-978's reclamation has no initiating request to create the sibling. So redelivery still needs a
-named wake source, and the default in that vacuum is store polling chosen by omission — nobody would
-write that down; it would simply appear.
+**One path does not collapse, and clause 3 depends on it: a pending task with no *live* initiating
+request has no wake source.** Three ways in, and FIX-978 closes none of them:
+
+| How a task gets there | Why FIX-978 does not help |
+|---|---|
+| FIX-978's own reclamation returned it to `pending` | Reclamation is what put it there; nothing then creates a request. |
+| **The admission window** — the foreground request persisted the task, then crashed or lost the process before the sibling request was durably created | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
+| The sibling request was **rejected** at dispatch | Same end state, via N1's arbiter policy. |
+
+The task write and the sibling request creation are non-atomic, so the middle row is a dual-write
+window, not a rare crash artifact — the same hazard the BullMQ option carries below. **Binding on
+FIX-982: name a mechanism that makes a pending task reachable without a live initiating request, and
+state its cost** — outbox, reconciliation pass, or a pending-task wake source; this epic does not
+choose. Without one the unconditional "no way to strand it" half is not delivered, and the default in
+that vacuum is store polling chosen by omission.
 
 **Binding on FIX-982: name the reclamation wake explicitly and state its cost.** Two live candidates:
 *liveness-triggered*, hooking onto FIX-978's reclaim/sweeper pass, which is already walking exactly
@@ -780,6 +793,17 @@ rather than erroring. A shipped consumer depends on it for exactly this purpose:
 uses `backing: "request"` (`:51`), so it is **not** broken today; what it proves is that harvesting a
 task's outputs via `items()` is load-bearing in shipped code, so the contract matters. FIX-991 also
 owns the board-scoped lifetime bound (Decision 5, rule 11).
+
+**But that principle is not implementable behind today's accessor, and FIX-991 must choose a shape.**
+`items()` is documented **live** — *"re-reads the response item log on every call"* — and **"Sync,
+throw-free"** (`tasks/collection/types.ts:92-110`), typed `items(): readonly OutputItem[]` (`:109`),
+while `RequestStore` reads are async and request A's mirror does not observe request B's writes
+(Decision 2). Attribution is *not* the problem — it already travels. The gap is the accessor shape,
+and the candidates are a **versioned async API** beside the sync one (every existing caller,
+`synthesize.ts` included, must be shown to survive) or an **eagerly refreshed board-owned
+projection** keeping `items()` sync by loading cross-request items at board hydration (no signature
+change, but "live" weakens to as-of-hydration and that must be declared). **Criterion 4b stays
+unconditional** — this constrains how it is met, not whether.
 
 **Set-level verdict: the substrate set does not overbuild, and the model made it leaner.** The four
 surviving substrate surfaces are distinct — claim/CAS, dispatch seam, cross-request waiting, item
