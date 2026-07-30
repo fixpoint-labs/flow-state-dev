@@ -62,9 +62,10 @@ changes a field emits a `task-change` component item.
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no
-longer holds the claim. Both are evaluated inside the atomic write. A declined write
-is skipped and never throws; the call reports it on the returned `TaskWriteOutcome`.
-Omit the argument and both methods throw on an illegal transition.
+longer holds the claim. A guard cannot be raced: the task cannot change between the
+check and the write. A declined write is skipped and never throws; the call reports
+it on the returned `TaskWriteOutcome`. Omit the argument and both methods throw on
+an illegal transition.
 
 `complete`, `fail`, `cancel` and the five field mutators resolve to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
@@ -95,7 +96,7 @@ await collection.addTask({ goal: "draft the post", deps: ["research"] });
 ### Dispatchers
 
 `fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
-`classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor })`. None of
+`classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. None of
 them claims a task whose `deps` aren't all `completed` — that eligibility rule lives
 on `collection.claim` — so they differ only in ordering. `fifoDispatcher` and
 `topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
@@ -109,7 +110,10 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 
 `taskBoard({ name, collection, workers, ... })` returns
 `{ drain, collectionId, capability, backing, hasIdlessInitialTasks, caps }`.
-Mount `board.drain` in a sequencer. `workers` is a single uniform worker or a
+Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
+`initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
+why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
+single uniform worker or a
 `{ [assignee]: block }` registry; each task's `assignee` routes it. Config:
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched),
@@ -137,9 +141,8 @@ board's drain in an outer, judge-gated loop: seed → drain → judge → (repla
 repeat → finalize. The `judge` returns a three-way `Verdict`
 (`done`/`continue`/`replan`); `maxIterations` is a mandatory finite backstop, and
 the loop lands with a typed `goal-seek-loop-termination` item rather than hanging.
-It generalizes the `taskLoopBack` helper into a real primitive; the board must be
-request- or resource-backed. `parallelTasks` and `planAndExecute` are expressed on
-it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
+The board must be request- or resource-backed. `parallelTasks` and `planAndExecute`
+are expressed on it. See the [GoalSeekLoop guide](https://flow-state.dev/docs/orchestration/goal-seek-loop).
 
 ## Skills and delegation
 
@@ -168,12 +171,11 @@ teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or refer
 from the registry (`agent-ref`). Every delegation board also gets an on-demand
 **default worker**: it materializes on demand and runs any task whose assignee is
 unset, so a task with no named agent still runs — and an empty roster still
-delegates. Assignment is checked against the declared roster as the task is
-created: `addTask` (and `assignTask`/`updateTask`) reject an assignee that names
-no declared agent, returning the available agents so the caller can correct it,
-instead of letting a mistyped name fall through to the default worker at drain
-time. A board with no declared agents has no roster to check and accepts any
-assignee. Binding the skill installs a private
+delegates. Every tool that writes an `assignee` checks it: `addTask`, `assignTask`,
+and `updateTask` reject a name that isn't one of the declared agents, returning the
+available agents so the caller can correct it, instead of letting a mistyped name
+fall through to the default worker at drain time. A board with no declared agents
+has no roster to check and accepts any assignee. Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 `listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
@@ -197,9 +199,8 @@ refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 > `taskBoard` builds itself — not the capability surface on its own. Wiring the
 > exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
 > generator's own-state board through a bare, **uncapped** collection: `addTask`
-> there is unbounded. That is deliberate — a hand-wired capability has no
-> construction site to take cap options from — but do not read "delegation is
-> capped" as "`taskTools` is capped". For a bounded board on that path, build the
+> there is unbounded. So do not read "delegation is capped" as "`taskTools` is
+> capped". For a bounded board on that path, build the
 > collection yourself with
 > `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
 > resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
@@ -249,8 +250,7 @@ propagating.
 The one exception is a call that asked for it. `complete` and `fail` accept the
 advisory options described under [TaskCollection](#taskcollection) above, and a
 refused transition on such a call is a returned `declined` verdict rather than a
-throw — so it never reaches this `catch`. It stays opt-in per call precisely so
-the default above keeps holding.
+throw, so it never reaches this `catch`.
 
 At the delegation `taskTools` boundary a `declined` verdict **does** become a tool
 result: `assignTask`, `cancelTask`, and an `updateTask` carrying an assignee answer
@@ -266,8 +266,8 @@ generator({ uses: [skills.with({ active: ["research-lead"] })] });
 ```
 
 An inline agent may set `context-supply: conversation` to inherit the parent
-conversation up to the point it is dispatched (fork-like), bounded to the last
-several turns by default (a turn count, not a token budget), while its own steps
+conversation up to the point it is dispatched (fork-like), bounded to the last 8
+whole turns (a turn count, not a token budget), while its own steps
 stay out of the host's history (output keeps `history: false`). Omitting the
 field is the default: the agent is isolated and sees only its task input — there
 is no `isolated` value to set. It applies to `prompt` / `prompt-ref` agents;
