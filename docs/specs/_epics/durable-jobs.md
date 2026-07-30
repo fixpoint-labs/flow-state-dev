@@ -16,70 +16,83 @@ We want a unit of work — authoring a spec, implementing a PR — to keep runni
 that started it has returned. Today it can't: a task's life is pinned to the execution that
 created it.
 
-**A detached task is a sibling request in the same session.** That is the decided shape. We are
-not building a job runner; the pieces already ship:
+**A detached task runs in a Workstream — a sub-session dedicated to one body of work.** That is the
+decided shape. We are not building a job runner; the pieces already ship:
 
 - The **task board** is the durable ledger of what work exists, and it is already cross-request.
-- A **session** already groups many requests as one ongoing operation.
+- A **session** already groups many requests as one ongoing operation, and already isolates their
+  history from every other session.
 - A **request** is already the framework's unit of out-of-request execution.
   `@flow-state-dev/bullmq` runs one in another process today, from a serializable envelope, with
   sequence-number stream resume (`bullmq/src/worker.ts:81-95`).
-- Requests are turn-based **by convention, not by necessity** — nothing serializes a session's
-  requests by default (`transports/concurrency/arbiter.ts:89`).
 
-So background work is **several requests running at once in one session**, where each background
-unit of work is a request tagged as background and associated to a task:
+A **Workstream** is a session carrying a `parentSessionId` and a `topic`. It holds one ongoing body
+of work — one Linear issue, one investigation — and accumulates its own turns as that work
+progresses. The session that spawned it coordinates; the Workstream does the work. Follow-up needs
+no new concept: it is simply another request into the same Workstream.
+
+> **Terminology.** A **background request** throughout this document is the request executing inside
+> a Workstream. The term is unchanged from earlier drafts; what changed is *where* it runs. Anywhere
+> the text says a background request is a sibling in the parent's session, that statement is
+> superseded by this section.
 
 ```mermaid
 sequenceDiagram
   actor U as User
-  participant FG as Foreground request<br/>source = user
+  participant C as Coordinator session S<br/>flow = coordinator
   participant B as Task board<br/>resource-backed
-  participant BG as Background request<br/>source = taskboard
-  participant BG2 as Sibling background request
+  participant W as Workstream S/FIX-981<br/>flow = worker
+  participant W2 as Workstream S/FIX-982<br/>flow = worker
 
-  U->>FG: sends a turn
-  FG->>B: addTask
-  FG->>BG: spawn sibling request in the same session<br/>metadata carries taskId, title, background
-  Note over FG,BG: one sessionId, two requests.<br/>FG returns without waiting.
-  BG->>B: claim taskId — the M1 conditional write
-  B-->>BG: claimed, attempts = 1
-  BG2->>B: claim taskId — concurrent
-  B--xBG2: refused on version conflict<br/>TODAY BOTH SUCCEED — section 8
-  BG->>BG: stream items, each stamped with taskId
-  BG->>B: complete taskId with expectAttempt
-  U->>FG: cancel
-  FG->>B: cancel taskId
-  B->>BG: interrupt the in-flight request<br/>MECHANISM DOES NOT SHIP — Decision 5
+  U->>C: sends a turn
+  C->>B: addTask topic FIX-981
+  C->>W: spawn — get-or-create by parentSessionId, flowKind, topic
+  Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.
+  W->>B: claim taskId — the M1 conditional write
+  B-->>W: claimed, attempts = 1
+  C->>B: addTask topic FIX-982
+  C->>W2: spawn — different topic, different Workstream
+  W->>W: stream items, each stamped with taskId
+  C->>W: follow-up work on FIX-981<br/>routes to the SAME Workstream
+  W->>B: complete taskId with expectAttempt
+  U->>C: cancel
+  C->>B: cancel taskId
+  B->>W: interrupt the in-flight request<br/>MECHANISM DOES NOT SHIP — Decision 5
 ```
 
-Two things the diagram cannot show, and both are binding: the background flag and task id travel
-as request **metadata**, which is caller-controllable and therefore display-only, while the
-`user` / `taskboard` distinction rides the trusted transport `source` field (rule 9); and the read
-model a UI needs already exists — `RequestStore.list({ sessionId, … })`
-(`engine/src/stores/types.ts:283`, `:110-147`).
+Two things the diagram cannot show, and both are binding: a Workstream may run a **different flow**
+than its parent, so the routing key is `(parentSessionId, flowKind, topic)` and not topic alone —
+`SessionRecord.flowKind` binds a session to a flow at creation, so keying on topic alone can return
+a Workstream whose flow lacks the action being dispatched; and the read model a UI needs already
+exists — `RequestStore.list({ sessionId, … })` (`engine/src/stores/types.ts:283`, `:110-147`).
 
-> **The consequence of "same session" that must be designed for, not discovered: background requests
-> poison conversation history.** History is loaded by `stores.request.list({ sessionId, tenantId,
-> status: "completed", limit: historyWindowTurns, orderBy: "startedAtMs", withItems: true })`
-> (`engine/src/context/createExecutionContext.ts:519-537`) — session, tenant and status only, **no
-> foreground/background dimension**, and `withItems: true` because *"`items` reconstruct cross-turn
-> history."* The query excludes *in-flight* siblings via `status: "completed"`, but a **completed**
-> background task is indistinguishable from a user turn — so every finished detached task counts as a
-> conversational turn, N of them evict the real turns from the window, and worker messages and tool
-> output become LLM history for the user's next message. **A client-side background flag cannot fix
-> this**: the filter runs server-side in the store query. Requirement: a history policy derived from
-> the trusted `source` (rule 9), or a grouping key. Named here, designed by S1.
+> **Why a sub-session and not a sibling request in the same session.** The alternative — a request
+> tagged `background`, running beside the user's turns — was built and measured (§8), and rejected.
+> Cross-turn history is loaded by `stores.request.list({ sessionId, tenantId, status: "completed",
+> limit: historyWindowTurns, orderBy: "startedAtMs", withItems: true })`
+> (`engine/src/context/createExecutionContext.ts:519-537`) — session, tenant and status only, with
+> **no foreground/background dimension**. A *completed* background request is therefore
+> indistinguishable from a user turn, and no field on `RequestListOptions` (`flowKind`, `sessionId`,
+> `tenantId`, `status`, `limit`, `orderBy`, `withItems`) can separate them. The window also counts
+> **requests, not tokens**: 50 background turns evict the user's own turn from a 50-turn window
+> entirely. Separating them would mean a new filter dimension implemented across all four store
+> adapters — and thereafter a filter every future reader of history must remember to apply.
+> **A Workstream needs none of it.** A distinct session id is excluded by the `sessionId` filter that
+> already exists and is already correct in every adapter. The isolation becomes a boundary that
+> cannot be forgotten rather than a filter that must be remembered.
 
-**What that leaves as real work.** Two things, and they are the epic:
+**What that leaves as real work.** Three things, and they are the epic:
 
-1. **Claim safety** (M1). Two sibling requests in one session are two executions with two
-   resource registries, so they race the same task row. Turn-based requests make that race rare;
-   parallel background requests make it the default. This is the one thing the model does not
-   dissolve — it makes it necessary.
-2. **The seam** (M3). Nothing running inside a request can currently start a sibling request.
-   Every caller of `host.dispatch` / `runAction` is a transport adapter or an HTTP route. The
-   missing piece is an in-request handle to a shipped mechanism, not a new executor.
+1. **Claim safety** (M1). Two executions are two resource registries, so they race the same task
+   row. This is the one thing the model does not dissolve — it makes it necessary.
+2. **The seam** (M3), now measured rather than assumed. A block already has `ctx.stores` and its own
+   `ctx.flow` (40 ctx keys, §8). What it lacks is exactly two things: a registry to resolve
+   *another* flow by kind, and an executor to invoke. That is an injection, not a new mechanism.
+3. **A create-if-absent primitive** (new, and a prerequisite). Workstream routing is get-or-create,
+   and the store layer cannot express it: `ExpectedVersion = number | "any"` has no "must not exist"
+   value, and `casWriteToMap` treats a missing record and a version-0 record identically. `set` is an
+   upsert; there is no insert. Both keying schemes race, and a composite session id does **not**
+   rescue it — the second create silently clobbers the first (§8).
 
 Everything else in the original decomposition shrinks or dissolves — §5.
 
@@ -168,8 +181,7 @@ ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource r
    no guarantee for it. If both are deferred, this criterion reduces to criterion 1 alone.
 
 2. **A task continues to execute after the request that created it has ended**, in a background
-   sibling request in the same session, and the thing running it is not the originating request's
-   drain.
+   request inside a Workstream, and the thing running it is not the originating request's drain.
 3. **(Conditional — C3.) Redelivery, not merely reclamation.** A stranded claim returns to the
    queue with no human intervening — via FIX-978's mechanism — **and a worker actually starts on it
    again, with no manual dispatch.** Asserting only the status flip tests FIX-978's write and
@@ -257,11 +269,12 @@ Collected here so no issue has to hunt for them. Each is argued where it is deci
 
 ## 4. Cross-cutting decisions
 
-### Decision 0 — a detached task is a sibling request in the same session
+### Decision 0 — a detached task runs in a Workstream, a sub-session dedicated to one body of work
 
 **DECIDED by the repo owner.** The shape is §1. What follows is the verification, because three of
 this epic's worst defects were load-bearing premise errors and this premise carries the
-restructure.
+restructure. Unlike earlier rounds, this one was **executed rather than read** — three POCs on the
+real path, §8.
 
 **Confirmed against the tree:**
 
@@ -270,31 +283,45 @@ restructure.
 | A request can be created against a **caller-chosen session id** | `runAction.ts:518` (`requestId`), `:642-658` (session binding); `InboundRequestEnvelope.sessionId` is documented *"Existing session, or undefined for a new session"* |
 | Fire-and-forget is a supported shape | `InboundRequestEnvelope.responseEmitter?: ResponseEmitter \| null` — *"other adapters may pass `null` for fire-and-forget"* |
 | A request already executes **out of request, in another process**, and resumes its stream | `bullmq/src/worker.ts:81-95` calls `runAction` from the envelope with `sessionId`, `requestId`, `source`, `metadata`, `startSequenceNumber` |
-| Concurrent requests in one session are permitted **by default** | arbiter default is `{ policy: "allow", key: "session" }` (`arbiter.ts:89`); `allow` is a passthrough (`:155-157`) |
-| A session's requests are **listable** today | `RequestStore.list({ sessionId, tenantId, status, orderBy })` (`stores/types.ts:283`, `:110-147`); each `RequestRecord` carries `source`, `metadata`, `status`, `startedAtMs` (`:48-85`) |
+| **A Workstream's history is isolated with no new query surface** | Proven end-to-end: parent session sees only its own action, the Workstream only its own (§8). The existing `sessionId` filter does all the work |
+| **A Workstream may run a different flow than its parent** | Proven end-to-end with two separately defined flows (§8). Flow-based resource isolation is **opt-in**: `toIsolationFlow` defaults `isolateUserState`/`isolateOrgState` to `false` (`resources/internal.ts:264-269`), and `resolveResourceScopeId` returns the bare `identityId` unless isolated (`stores/scope-keys.ts:154-160`) — so user/org resources are shared across flows by default, and `flowIsolation` can lock an individual resource (`:140-147`) |
+| **Reuse accumulates** | A second task on the same topic routes to the same Workstream and appends to its history while the parent is untouched (§8) |
 
-**Refuted — the one gap, and it is the whole of M3's remaining work:**
+**Refuted — and narrower than previously stated.** The earlier claim was that nothing inside a
+request can reach the machinery at all. A runtime probe of the execution context (40 keys, §8)
+shows otherwise:
 
-> **Nothing running inside a request can start a sibling request.** Every caller of
-> `host.dispatch` / `runAction` is a transport adapter or an HTTP route — chat-sdk event handlers
-> (`chat-sdk/src/event-handlers.ts:393`), the MCP adapter
+> A block **already has `ctx.stores`** and **already has its own `ctx.flow`**. It lacks exactly two
+> things: a registry to resolve **another** flow by kind, and an executor to invoke
+> (`runAction`/`dispatch` are absent). Every actual `runAction` call site remains a transport
+> adapter or route — chat-sdk event handlers (`chat-sdk/src/event-handlers.ts:393`), the MCP adapter
 > (`mcp/src/createMcpTransportAdapter.ts:410`), scheduled routes (`scheduled/src/routes.ts:205`),
-> action routes (`routes/action-routes.ts:167`), the BullMQ worker, the CLI. No block, capability,
-> tool, or `ctx` member exposes either.
+> action routes (`routes/action-routes.ts:167`), the BullMQ worker, the CLI — but the gap is an
+> injection over two missing pieces, not store plumbing.
 
 Two structural facts follow, and they constrain FIX-982:
 
 - **The seam lives in `engine`; the board lives in `orchestration`, which has
   `@flow-state-dev/engine` as a *devDependency only*** (`packages/orchestration/package.json`). The
-  board cannot reach the seam by import even in principle. Spawning a sibling request must arrive
-  as a capability injected onto the execution context — a `core` type implemented by `engine` —
-  which keeps the package boundary intact.
+  board cannot reach the seam by import even in principle. Spawning must arrive as a capability
+  injected onto the execution context — a `core` type implemented by `engine` — which keeps the
+  package boundary intact.
 - **The two existing in-request background primitives are not this.** `.work` /
-  `_requestBackgroundSignal` stays inside one request (`core/src/types/block.ts:517`, `:633`), and
-  reactive dispatch runs blocks inline in the mutating turn (`context/reactive-dispatch.ts:1-16`).
+  `_requestBackgroundSignal` stays inside one request and its pool is drained before terminal status
+  (`core/src/types/block.ts:517`, `:633`; `execution/request-work-pool.ts:4`), and reactive dispatch
+  runs blocks inline in the mutating turn via `executeBlock` (`context/reactive-dispatch.ts:1-16`).
+  Both are intra-request concurrency; neither detaches.
 
 **So the premise holds: the mechanism ships, and what is missing is an in-request handle to it.**
-That is much smaller than "design an out-of-request executor," which is why §5 shrinks.
+The POC dispatches into a Workstream from *outside* the request, standing in for that handle — which
+is what makes the remaining risk precise. Everything downstream of the spawn is demonstrated; the
+spawn itself is the one unbuilt piece.
+
+**One recorded constraint, not a defect.** Workstream get-or-create races if two coordinators target
+one topic concurrently (§8 measures duplicate Workstreams). The repo owner's decision is that **the
+parent session agent is the sole coordinator**, which removes the race by construction. It is
+recorded here because it is an assumption a future multi-coordinator flow would silently violate,
+and because the underlying store gap (no create-if-absent) is real regardless — §1, item 3.
 
 ### Decision 1 — M2 stays with FIX-980; this epic consumes reclamation
 
@@ -348,9 +375,11 @@ writers in one execution serialize correctly; two writers in two executions shar
 `pending`, and both write `in_progress`. `claim` inherits this because its whole guard runs inside
 `candidateRef.updateState` (`resource-backed.ts:270-308`).
 
-**Under Decision 0 this stops being an edge case.** Two sibling requests in one session are two
-`runAction` calls, hence two execution contexts and two resource registries. Turn-based requests
-made the race rare; parallel background requests make it the default path.
+**Under Decision 0 this stops being an edge case.** A coordinator and its Workstreams are separate
+`runAction` calls, hence separate execution contexts and separate resource registries, and they
+share one board. Turn-based requests made the race rare; parallel Workstreams make it the default
+path. **Session isolation does not help here** — the board is a resource, not history, so moving
+execution into a sub-session changes who reads the conversation, not who writes the task row.
 
 Three code comments assert the opposite and must be corrected by whoever lands FIX-981:
 `task-board/blocks/claim-task.ts:12-14` (*"The substrate's CAS retry inside `collection.claim`
@@ -741,7 +770,7 @@ request has no wake source.** Two ways in, and FIX-978 closes neither:
 | How a task gets there | Why FIX-978 does not help |
 |---|---|
 | FIX-978's own reclamation returned it to `pending` | Reclamation is what put it there; nothing then creates a request. |
-| **The admission window** — the task was persisted, and the sibling request never was: the foreground request crashed in the gap, **or the dispatch was rejected at the concurrency gate** | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
+| **The admission window** — the task was persisted, and the Workstream's request never was: the coordinating request crashed in the gap, **or the dispatch was rejected at the concurrency gate** | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
 
 **The window is not crash-only — N1's `concurrency: "reject"` triggers it deterministically.** The
 envelope is assembled at `createInboundTransportHost.ts:129-142`; the gate at `:157` for `reject`
@@ -803,26 +832,50 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 |---|---|---|---|
 | **M1** — cross-execution claim safety | FIX-981 | **Unchanged, and more necessary.** | Large |
 | **M2** — reclamation joined to liveness | *(none — FIX-978, under FIX-980)* | Consumed, not built. | — |
-| **M3** — the background request seam | FIX-982 | **Reframed and narrowed:** expose the shipped dispatch seam in-request, carry the task metadata, target a drain-only action, interrupt on task cancellation. | Medium |
+| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed twice:** inject a capability over the two measured missing pieces — resolve another flow by kind, and invoke it — plus routing by `(parentSessionId, flowKind, topic)` and interrupt on task cancellation. | Medium |
 | **M4** — blocking / background disposition | FIX-983 | **Halved.** Disposition is request metadata; cross-request *waiting* survives. | Small |
 | **M5** — progress across the request boundary | FIX-984 | **Mostly dissolved.** | ~none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's residue. | Medium |
+| **(new prerequisite)** — create-if-absent at the store boundary | *(unfiled — §6)* | **Blocks Workstream routing.** `set` is an upsert; `ExpectedVersion` cannot say "must not exist". | Small |
 
-**Execution sequence: FIX-981 → (FIX-978, elsewhere) → FIX-982 → FIX-991, then FIX-983.** FIX-991 is
-in the sequence because unconditional criterion 4b depends on it.
+**Execution sequence: create-if-absent → FIX-981 → (FIX-978, elsewhere) → FIX-982 → FIX-991, then
+FIX-983.** FIX-991 is in the sequence because unconditional criterion 4b depends on it.
+Create-if-absent leads because Workstream get-or-create is the routing primitive M3's seam
+dispatches through, and it is shared store surface (`ExpectedVersion`) that FIX-992 is concurrently
+building on — so the two must agree on the sentinel rather than discover each other later.
 
-**M1 / FIX-981 — survives unchanged; the one thing this model does not dissolve.** Two sibling
-requests in one session are two `runAction` calls, hence two execution contexts and two resource
-registries, so they still race the same task row. The measured lost update (`attempts` 1 → 0, §8) is
-about concurrent writes, not about who executes — relocating execution into a sibling request does
-not touch it. Without M1, two conductor executions can both claim one issue and both run a
+**The new prerequisite — create-if-absent.** `ExpectedVersion = number | "any"` (`stores/types.ts:166`)
+documents `"any"` as what creates use, i.e. an unconditional write, and `casWriteToMap` computes
+`current?.version ?? 0` — so a **missing** record and a record **at version 0** are
+indistinguishable. Two creates at `expectedVersion: 0` both succeed and the second clobbers the
+first (measured, §8). This is not specific to Workstreams; it is a hole under every create in the
+system. Recommended shape: extend `ExpectedVersion` to `number | "any" | "absent"`, which maps onto
+`INSERT … ON CONFLICT DO NOTHING` in sqlite/postgres and `current === undefined` in memory. It needs
+its own issue — folding it into FIX-982 would repeat the unindexed-prerequisite pattern this epic
+has already hit twice (FIX-991's execution sequence, S1–S4's placement).
+
+**M1 / FIX-981 — survives unchanged; the one thing this model does not dissolve.** Two concurrent
+executions are two `runAction` calls, hence two execution contexts and two resource registries, so
+they still race the same task row. The measured lost update (`attempts` 1 → 0, §8) is about
+concurrent writes, not about who executes — relocating execution into a Workstream does not touch
+it, because the board is shared state and session isolation only partitions history.
+Without M1, two conductor executions can both claim one issue and both run a
 spec-authoring agent on it: duplicate model spend and duplicate PRs, a worse failure than the hang it
 replaces. **OQ-A remains open and remains the objective gate.**
 
 **M3 / FIX-982 — reframed; the coordinate problem dissolves** (Decision 5). What remains is genuinely
-M3's: the in-request seam as an injected capability (Decision 0), the metadata, the drain-only-action
-constraint, and cancellation, which does not ship. Decision 6's wake model collapses except on the
-reclamation path.
+M3's: the spawn seam as an injected capability (Decision 0), Workstream routing, and cancellation,
+which does not ship. Decision 6's wake model collapses except on the reclamation path.
+
+The seam is now **measured rather than estimated**. A runtime probe of the execution context (§8)
+shows a block already holds `ctx.stores` and its own `ctx.flow`; only flow-resolution-by-kind and an
+executor are absent. So FIX-982's surface is roughly `ctx.spawn(flowKind, action, input, { topic })`
+over those two pieces — and everything downstream of it (cross-flow execution, history isolation,
+topic reuse) is already demonstrated on the real path. **The drain-only-action constraint hardens
+here rather than dissolving**: an action dispatched into a Workstream must be resolvable on the
+*target* flow, and `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves
+`flow.actions[actionName]` — so a Workstream action that is meant to be internal-only has no private
+coordinate to arrive through. Cross-flow dispatch makes that gap load-bearing rather than latent.
 
 **M4 / FIX-983 — halves.** Disposition becomes request metadata rather than a mechanism. The
 *waiting* half survives: `.waitForCondition` throws *"waitForCondition requires a response emitter on
@@ -1004,16 +1057,19 @@ own it, and most likely the description is stale. *OQ-D-ii:* this lives in `engi
 `orchestration`, so its plausible answers differ — FIX-981, a new engine-side issue, or explicitly out
 of scope. **FIX-981 must not start cap work until these are answered.**
 
-### Newly exposed by the restructure — not open questions, but not yet owned
+### Newly exposed — not open questions, but not yet owned
 
-Each is a consequence of running two requests at once in one session that no existing issue covers.
+**Two of these dissolved when the model moved from sibling requests to Workstreams**, and are kept
+with their resolution recorded rather than deleted, so a later reader does not re-derive them.
 
 | | Finding | Should land with |
 |---|---|---|
-| **N1** | **A session-keyed concurrency policy rejects or queues a background sibling.** The arbiter's default key is `"session"`, so a flow or action declaring `concurrency: "reject"` rejects the background request outright, and `"queue"` puts it FIFO behind the foreground request, bounded by a 30s wait budget (`arbiter.ts:89-94`, `:38`). With `queue`, a foreground request waiting on a background task whose request is queued behind it is a self-deadlock. **`reject` is also the deterministic trigger for Decision 6's admission window** — the task is written, the dispatch throws at the gate, and nothing is persisted to recover from. FIX-982 must state how a background dispatch interacts with the arbiter. | FIX-982 |
-| **N2** | **`latestRequestId` is single-valued and written unconditionally.** `runAction` sets `{ ...session, latestRequestId: requestId }` with `"any"` (`runAction.ts:642-658`), so a background sibling can steal the session's auto-resume pointer from the foreground turn — last writer wins. | new issue (candidate; not filed) |
-| **N3** | **`ActiveRequestRegistry` has no per-session query** — only `listAll` / `listStale` / `get` (`stores/types.ts:471-489`). The durable read model covers the UI, but "what background work is live in this session" either filters `listAll` globally (against BP-033) or needs a new query. | FIX-982 |
+| **N1** | **DISSOLVED as a self-collision.** The arbiter's default key is `"session"` (`arbiter.ts:89-94`), so a Workstream — a distinct session — never contends with its parent, and the foreground-waiting-on-queued-background self-deadlock cannot arise. What survives is narrower and is a *choice*, not a hazard: concurrent requests **within one Workstream** default to `policy: "allow"`, which interleaves them. Continuation semantics almost certainly want `"queue"` (FIFO — one lane per Workstream). FIX-982 must state which it sets and why. | FIX-982 |
+| **N2** | **DISSOLVED.** `latestRequestId` is a per-session field (`runAction.ts:642-658`), and a Workstream has its own, so it cannot steal the parent's auto-resume pointer. No issue needed; the previously proposed candidate should not be filed. | — |
+| **N3** | **Reframed.** `ActiveRequestRegistry` still has no per-session query (`stores/types.ts:471-489`), but the question is now "what Workstreams are live under this session," which a `parentSessionId` filter answers at the session store rather than by filtering `listAll` globally (BP-033). | FIX-982 |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
+| **N5** | **NEW — no create-if-absent primitive.** `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. Workstream get-or-create is therefore unsafe, and a composite session id does not rescue it (§8). Recommended shape and reasoning in §5. | **new issue — must be filed** |
+| **N6** | **NEW — a Workstream action must be publicly resolvable on its target flow.** `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves `flow.actions[actionName]`, so an action intended as internal-only has no private coordinate to be dispatched through. Latent under same-session siblings; load-bearing once dispatch crosses flows. | FIX-982 |
 
 
 
@@ -1158,6 +1214,36 @@ deliberately idempotent so multiple calls can share one store registry
 (`testing/src/test-utilities/testFlow.ts:80-82`) — which *is* the two-executions-over-one-board
 setup. The gap is "resource-backed + two concurrent executions": an extension, plus 1b's distinct-ID
 contention test.
+
+### Workstream evidence — re-runnable, and committed alongside this spec
+
+The model in §1 and Decision 0 was **executed, not read**. Unlike the harness above, these live in
+the tree, so the mistake that section opens with is not repeated:
+
+| POC | Establishes |
+|---|---|
+| `packages/engine/test/spike-background-isolation.test.ts` | Why a sub-session rather than a background sibling |
+| `packages/engine/test/poc-workstream-routing.test.ts` | `(parentSessionId, topic)` routing, and the create race |
+| `packages/engine/test/poc-workstream-execution.test.ts` | Cross-flow Workstreams on the real `runAction` path |
+
+Run: `npx vitest run test/spike-background-isolation.test.ts test/poc-workstream-routing.test.ts
+test/poc-workstream-execution.test.ts` from `packages/engine` (build `contracts` then `core` first —
+`core/src/items/types.ts` is a re-export shim). 15 tests, all passing.
+
+| Finding | Measurement |
+|---|---|
+| A completed background sibling is indistinguishable from a user turn | Returned by the verbatim `createExecutionContext.ts:526-536` query; survives every filter `RequestListOptions` exposes |
+| The history window counts requests, not tokens | `window=50 returned=50 oldest-user-turn-present=false` — 50 background turns evict the user's own turn entirely |
+| A Workstream is isolated with no new query surface | Parent sees `["plan"]`, Workstream sees `["execute"]`, on real `runAction` executions across two flows |
+| Topic reuse accumulates in place | A second task on one topic yields `["execute","execute"]` in the same Workstream; the parent still sees `["plan"]` |
+| Concurrent get-or-create duplicates | `distinct ids=true workstreams-for-FIX-981=2` — two Workstreams for one topic, thereafter diverging silently |
+| A composite session id does **not** prevent it | `first.ok=true second.ok=true` — the second create clobbers the first; `set` is an upsert |
+| The spawn gap is two pieces, not store plumbing | 40 ctx keys; `stores=true flow=true runAction=false dispatch=false` |
+
+**What they do not establish.** The dispatch in the execution POC is performed **outside** the
+request, standing in for the capability FIX-982 will build. Everything downstream of the spawn is
+demonstrated; the spawn itself is not. That is the honest boundary of this evidence, and it is
+exactly the shape of M3's remaining work.
 
 ---
 
