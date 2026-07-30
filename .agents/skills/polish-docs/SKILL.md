@@ -49,7 +49,10 @@ Resolve what to polish, from the argument:
 
 - **A change / branch / epic** (the epic-wrap case): the union of docs the batch touched, plus
   the pages that *should* have changed with them but didn't (a new capability documented in its
-  own page but never linked from the overview it belongs under).
+  own page but never linked from the overview it belongs under). **Resolve this from the docs paths
+  in the diff, not from the specs or the implementation diff.** You need to know *which pages* the
+  batch touched; reading *why* it touched them loads exactly the rationale you're here to remove,
+  and you'd carry it into the rewrite.
 - **A section** (`guides`, `orchestration`, `fundamentals`, …): that slice end to end.
 - **Empty**: the whole site — a periodic deep clean.
 
