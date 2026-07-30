@@ -36,8 +36,10 @@ the one before it:
 
    **A third part, cap admission, is *conditional* and may not be delivered at all.** It is
    **not** promised by this clause. What the epic delivers depends on **OQ-A** (which guarantee)
-   and **OQ-D** (whether cap work lives here at all — it may be FIX-957's). **If OQ-A selects
-   narrowed-but-unbounded overshoot, or OQ-D defers the work, this epic makes no cap guarantee** —
+   and **OQ-D-i / OQ-D-ii** (whether either cap contract lives here at all). **There are two
+   independent cap contracts** — task ceilings and the `maxInstances` registry race — and **each may
+   independently be narrowed-but-unbounded, or not delivered at all**, so this clause promises
+   neither —
    see the table below and Decision 1 → 1b. Stated this way so the objective cannot be approved
    against a promise its selected implementation will not keep.
 
@@ -71,7 +73,14 @@ the output of the whole-§1 audit against OQ-A/B/C/D**; anything not listed here
 | | Clause / criterion | Conditional on | If the permitted outcome is taken |
 |---|---|---|---|
 | **C1** | clause 1 ownership · criterion 1 | **OQ-A** (whether the store change is adopted) · the adapter · the backing | Ownership holds only on a board the framework can actually fence: **(i)** if the gate **refuses** the conditional write, the guarantee falls to queue-level dedup, which this document shows is **bypassed by `taskTools` and `reclaim`** — so it is *not* delivered generally; **(ii)** on a store without the verb (e.g. **filesystem**, Decision 1 → feasibility) the durable board is refused rather than guaranteed; **(iii)** a **`factory`**-backed board is unverifiable and out of scope by default (Decision 2 → 2.b). |
-| **C1b** | clause 1 cap · criterion 1b | **OQ-A** (which guarantee) · **OQ-D** (whether cap work is here at all) | May be **narrowed-but-unbounded overshoot**, or **no cap guarantee at all**. Already conditional above. |
+| **C1b-i** | clause 1 cap · criterion 1b-i — **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`) | **OQ-A** (which guarantee) · **OQ-D-i** (owner) | May be **narrowed-but-unbounded overshoot**, or **not delivered at all**. **On resource-backed boards neither ceiling is enforced today** — `task-caps.ts:52-65` states this outright. |
+| **C1b-ii** | clause 1 cap · criterion 1b-ii — **the `maxInstances` registry race** | **OQ-A** (which guarantee) · **OQ-D-ii** (owner) | May be **narrowed-but-unbounded overshoot**, or **not delivered at all**. This is the contract §5 measured (**8 rows against `maxInstances: 4`**). |
+
+> **C1b-i and C1b-ii are independent — neither implies the other.** Two ceilings in two files with
+> two enforcement points: task ceilings are the task layer's
+> (`orchestration/src/tasks/collection/task-caps.ts`), `maxInstances` is the resource registry's
+> (`engine/src/context/resource-registry.ts:989-1003`). **Fixing one leaves the other unsafe**, so
+> they are conditioned separately rather than as one bundled cap outcome.
 | **C2** | clause 2 progress · criterion 4 | **OQ-C** | If M5 narrows to **liveness-only**, there is no persisted *progress* surface — only an alive/dead signal. Clause 2 and criterion 4 are then **not** delivered, and the epic should not claim them. |
 | **C3** | clause 3 non-stranding · criterion 3 | **FIX-978** (external — not an OQ) | This epic **consumes** reclamation and does not build it (Decision 0). If FIX-978 does not land, work can still strand and this half is undelivered. Recorded because a reader would otherwise read it as this epic's promise. |
 
@@ -291,16 +300,36 @@ Not "durable jobs work." Specifically:
    | **OQ-A refuses the conditional write** → guarantee is **topological** (queue dedup) | Assert that **exactly one execution can reach the board for a given task** — i.e. the dedup invariant at the queue, not exclusivity at the store. **And assert the escape hatches explicitly**: a `taskTools` call and a `reclaim` from outside the queue **must be shown either to be impossible by construction or to be fenced some other way.** Without that second half the check would certify a guarantee this document already shows is bypassed. |
    | **Store lacks the verb** (e.g. filesystem) | Assert the durable board is **refused at construction**, loudly and by name — not that it is safe. A silent degrade fails this criterion. |
    | **`factory`-backed board** | Assert it is **refused or explicitly unsupported** for detached jobs (Decision 2 → 2.b), unless it satisfied the advertisement contract there. |
-1b. **Cap admission (conditional on OQ-A — state which was chosen):**
+1b. **Cap admission — *two* independent contracts, each with its own outcome, owner and check.**
+   Verified separate in code, so they are asserted separately (C1b-i / C1b-ii):
 
-   | If OQ-A chooses | The distinct-ID goal check asserts |
+   | | Contract | Enforced where | Today |
+   |---|---|---|---|
+   | **1b-i** | **task ceilings** — `maxTotalTasks` / `maxEnqueuedTasks` | task layer, `tasks/collection/task-caps.ts` | **Neither is enforced on a resource-backed board** (`:52-65`) |
+   | **1b-ii** | **the `maxInstances` registry race** | resource registry, `resource-registry.ts:989-1003` | Enforced, but from the per-execution cache — **§5 measured 8 rows against a limit of 4** |
+
+   **Each gets the OQ-A-conditional check separately**, and "explicitly scoped out" is a legitimate
+   outcome for either:
+
+   | If OQ-A chooses | The contention check asserts (per contract) |
    |---|---|
-   | **Exact arbitration** | final row count **never exceeds** the cap — available only once a mechanism enforcing a hard maximum is named |
+   | **Exact arbitration** | final count **never exceeds** that contract's ceiling — available only once a mechanism enforcing a hard maximum is named |
    | **Narrowed, unbounded overshoot** | that the window narrowed; it **cannot** assert a maximum, because the mechanism enforces none |
+   | **Scoped out** | state which contract was scoped out, and that the epic claims **no** guarantee for it |
 
-   Under the second, the check must *not* assert "never exceeds" nor "exceeds by at most N" — a
-   correct implementation would fail either. **If 1b is deferred entirely (see OQ-D), this
-   criterion is relaxed to criterion 1 alone** and the epic claims no cap guarantee at all.
+   > **Why the split, and why it matters to the reader:** `maxInstances` is *"a CAPACITY limit and
+   > NOT a lifetime ceiling, so it does not substitute for `maxTotalTasks`"* — and the registry
+   > *"counts instances and has no notion of a task's status"* (`task-caps.ts:52-65`), so it
+   > **structurally cannot express** `maxEnqueuedTasks`. **Neither contract implies the other:**
+   > FIX-957's task-cap work can land with the `maxInstances` race intact, and fixing that race can
+   > leave the pending/lifetime ceilings unsafe. Asserting one check for "the cap" would certify
+   > whichever half happened to be built.
+
+   Under "narrowed, unbounded" the check must *not* assert "never exceeds" nor "exceeds by at most
+   N" — a correct implementation would fail either. **Each contract is relaxed away independently:**
+   if **OQ-D-i** defers the task ceilings, 1b-i drops; if **OQ-D-ii** scopes out the `maxInstances`
+   race, 1b-ii drops. **If both are deferred, this criterion reduces to criterion 1 alone** and the
+   epic claims no cap guarantee at all — but deferring one does **not** relax the other.
 2. A leased task continues to execute after the request that created it has ended, and the
    thing running it is not the originating request's drain.
 3. **(Conditional — C3.) Redelivery, not merely reclamation.** A stranded claim returns to the
@@ -790,10 +819,11 @@ gap is invisible until two workers race across a reclaim.
 
 ##### 1b — cap admission · **constraint only; this epic names no mechanism**
 
-> ### ⛔ FIX-981's spec must **not** include 1b implementation until **OQ-D** is decided.
+> ### ⛔ FIX-981's spec must **not** include 1b implementation until **OQ-D-i / OQ-D-ii** are decided — separately, per contract.
 >
 > FIX-981 is the only active issue, so an implementer reading this section will otherwise assume
-> cap work is in scope. **It may already be FIX-957's** (OQ-D). Build 1a; leave 1b's mechanism
+> cap work is in scope. **The task ceilings may already be FIX-957's** (OQ-D-i), and the
+> `maxInstances` race may not belong here at all (OQ-D-ii). Build 1a; leave 1b's mechanism
 > unbuilt and its decision cited. **If 1b is deferred, §1's completion criterion 1b is relaxed
 > away** and the epic claims no cap guarantee. This is precisely the "built twice" failure OQ-D
 > exists to prevent.
@@ -826,7 +856,8 @@ above.
 > *"the overshoot grows with the number of concurrent writers rather than staying within a few
 > tasks."* The re-read shrinks the window, not the admitter count.
 >
-> **Consequence: OQ-D's "inherit FIX-957's answer" is now conditional on FIX-957's bound being
+> **Consequence — this bears on OQ-D-ii (the registry race), not on OQ-D-i (the task ceilings).**
+> **"Inherit FIX-957's answer" is conditional on FIX-957's bound being
 > real.** If it is not, neither issue has a bounded-cap mechanism and the gate is choosing between
 > exact arbitration and an honest unbounded statement. **Raised for the owner to route to FIX-957;
 > not edited here.**
@@ -1384,7 +1415,7 @@ that need two mechanisms. **Evidence and pricing are in §2 Decision 1 — not r
 | | Recommendation | If the gate refuses it |
 |---|---|---|
 | **1a — ownership** (one current owner; stale settlement rejected) | **Yes — (a), additively**, reusing the existing scope-store precedent rather than a parallel mechanism, and covering **claim *and* settlement**. **The shape is not decided here** — resource state has no version to gate on, so it is FIX-981's first design fork | **M1 merges into M3** — (b)'s dedup can only live where the queue is. Not a smaller epic; a resequenced one. |
-| **1b — cap admission** | **No mechanism recommended.** The constraint: name one that enforces a hard maximum on concurrent admitters, or state honestly that overshoot is *narrowed but unbounded*. **Conditional on OQ-D and on FIX-957's claimed bound being real** — 1b's cross-issue finding argues it is not | §1's criterion 1b is relaxed away and the epic claims **no** cap guarantee |
+| **1b — cap admission** (**two contracts**: task ceilings · the `maxInstances` race) | **No mechanism recommended for either.** The constraint: name one that enforces a hard maximum on concurrent admitters, or state honestly that overshoot is *narrowed but unbounded*. **Answer per contract** — **OQ-D-i** owns the task ceilings, **OQ-D-ii** the registry race; the "bound may not be real" finding applies to **OQ-D-ii only** | The relevant half of criterion 1b is relaxed away and the epic claims **no** guarantee for that contract |
 
 Also for the gate: the recommended path is **not** free — optional verbs preserve source but not
 behavioral compatibility, so it carries a **declared adapter migration** (durable boards refuse
@@ -1481,18 +1512,38 @@ surface delivers.
 > the conductor board view wants. Per the correction above, the liveness half also depends on
 > FIX-978 rather than standing alone.
 
-**OQ-D — Who owns cap enforcement on the durable backing: FIX-957 or FIX-981?** FIX-957's spec
-PR [#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954) carries it as its **own
-Decision 3, already decided**; this epic's description lists the same work as having moved here.
-**Both cannot own it, and building it twice is the specific failure FIX-957's focus practice 1
-warns about.** Most likely the description is stale. **FIX-981 must not start cap work until this
-is answered.** See §2 Decision 3 → 2.a. **Needs a human.**
+**OQ-D — cap enforcement: *two* questions, not one.** An earlier version asked a single question
+about "cap enforcement on the durable backing." **That was malformed** — there are two independent
+contracts in two files with two enforcement points (criterion 1b, C1b-i/ii), and bundling them would
+have asked the gate to settle both with one answer. Each is answerable on its own, and **"scoped
+out" is a legitimate answer to either**:
 
-**And the question is now larger than ownership.** 1b's cross-issue finding argues FIX-957's chosen
-mechanism **does not deliver the bound its spec claims**. So OQ-D is no longer only "who builds it"
-but **"does either issue have a cap mechanism at all"** — if the bound is not real, the gate is
-choosing between *exact arbitration* (needs a mechanism nobody has named) and an *honest unbounded
-statement*. **Route the finding to FIX-957's owner alongside this question.**
+**OQ-D-i — who owns the *task ceilings* (`maxTotalTasks` / `maxEnqueuedTasks`)?** FIX-957's spec
+PR [#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954) carries this as its **own
+Decision 3, already decided**; this epic's description lists the same work as having moved here.
+**Both cannot own it, and building it twice is the specific failure FIX-957's focus practice 1 warns
+about.** Most likely the description is stale. See §2 Decision 3 → 2.a. **Needs a human.**
+**FIX-981 must not start task-ceiling work until this is answered.**
+
+**OQ-D-ii — who owns the `maxInstances` registry race, and is it in scope here at all?** This is the
+resource-registry ceiling **§5 measured (8 rows against a limit of 4)**. It is **not** FIX-957's
+Decision 3 — that decision is about the task layer — and it lives in `engine`, not `orchestration`.
+So the plausible answers differ from OQ-D-i's: FIX-981, a new engine-side issue, or explicitly out of
+scope. **Needs a human.**
+
+> **Why they cannot share one answer — verified.** `maxInstances` is *"a CAPACITY limit and NOT a
+> lifetime ceiling, so it does not substitute for `maxTotalTasks`"*, and the registry *"counts
+> instances and has no notion of a task's status"* (`tasks/collection/task-caps.ts:52-65`) — so it
+> **structurally cannot express `maxEnqueuedTasks`.** **FIX-957's task-cap work can land with the
+> `maxInstances` race intact, and fixing that race can leave the pending/lifetime ceilings unsafe.**
+
+**The standing cross-issue finding applies to OQ-D-ii only.** 1b's note that *"FIX-957's chosen
+mechanism does not deliver the bound its spec claims"* is about the **authoritative-re-read /
+registry-race** contract. **Do not read it as covering the task-ceiling contract**, which is a
+different mechanism in a different file and is not impugned by it. For OQ-D-ii specifically, the gate
+is therefore choosing between *exact arbitration* (needs a mechanism nobody has named) and an *honest
+unbounded statement*. **Route that finding to FIX-957's owner alongside OQ-D-i, but scoped as
+above.**
 
 ---
 
@@ -1572,7 +1623,8 @@ reading cost.
   state has no version to gate on**, recorded as FIX-981's first design fork). **Decision 1 now
   states direction and constraints only, with mechanism explicitly delegated to FIX-981.**
 
-- **Open at the gate:** OQ-A (two-part), OQ-B, OQ-C, OQ-D, plus the sharpened scope options
+- **Open at the gate:** OQ-A (two-part), OQ-B, OQ-C, OQ-D (**two-part** — task ceilings vs the
+  `maxInstances` race), plus the sharpened scope options
   recorded for the user rather than adopted — including the **leaner-epic default** (collapse
   M4 into M3, narrow M5, split 1b out), which this document's own necessity check arguably implies
   but does not decide.
