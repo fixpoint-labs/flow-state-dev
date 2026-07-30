@@ -165,17 +165,17 @@ Two things land on the generator when an agent-declaring skill is active: the to
 
 **`taskTools` — the planning ledger.** Eight tools let the generator plan and steer multi-step work on its private board.
 
-How they report a problem is uniform across the eight. Each returns `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct. That covers a missing board (`no_delegation_board`), an unknown id (`task_not_found`), an assignee who isn't on the roster, a creation bound, and a status change the task's current status doesn't permit. The last of those is covered in full below. `cancelTask` against a task that already finished isn't a failure at all: it's a no-op that answers `{ ok: true }`.
+How they report a problem is uniform across the eight. Each returns `{ ok: true }` or `{ ok: false, error }`, so a bad call is a tool result the generator can read and correct. That covers a missing board (`no_delegation_board`), an unknown id (`task_not_found`), an assignee who isn't on the roster, a creation bound, a status change the task's current status doesn't permit, and a write to a task that has already finished. The last two are covered in full below.
 
 | Tool | Input | What it does |
 |------|-------|--------------|
 | `addTask` | `goal`, plus optional `assignee`, `deps`, `input`, `priority`, `metadata` | Creates a task and returns its id. `assignee` is an agent key — leave it unset to run on the default worker. `deps` are task ids that must complete first. `input` is a structured payload handed to the worker. |
-| `assignTask` | `taskId`, `assignee` | Reassigns an existing task to a different worker. |
+| `assignTask` | `taskId`, `assignee` | Reassigns an existing task to a different worker. Refused on a task that already finished. |
 | `completeTask` | `taskId`, `output` | Marks a task complete and records its output. |
 | `failTask` | `taskId`, `error` | Marks a task failed with an error message. Its dependents stay `pending` — nothing cascades. |
 | `blockTask` | `taskId`, optional `reason` | Marks a task as waiting on an external condition. The board stops treating it as runnable, so `runBoard` reports `blocked`. **One-way** — no task tool moves it back (see below). |
-| `cancelTask` | `taskId`, optional `reason` | Cancels a task. Terminal — use it when the work is no longer needed. |
-| `updateTask` | `taskId`, `patch` | Patches mutable fields: `priority`, `metadata`, `assignee`, `addLabel`, `removeLabel`. All optional; a patch that omits `assignee` skips the roster check. |
+| `cancelTask` | `taskId`, optional `reason` | Cancels a task. Terminal — use it when the work is no longer needed. Refused on a task that already finished. |
+| `updateTask` | `taskId`, `patch` | Patches mutable fields: `priority`, `metadata`, `assignee`, `addLabel`, `removeLabel`. All optional; a patch that omits `assignee` skips the roster check. A patch carrying `assignee` is refused on a task that already finished, and then nothing is written; one that doesn't still applies. |
 | `listTasks` | optional `status`, optional `assignee` | Reads the board back, filtered. `status` is one of `pending`, `in_progress`, `awaiting_review`, `completed`, `errored`, `cancelled`, `blocked`. |
 
 Most skills only need `addTask` and `runBoard`. The rest matter when the coordinator has to steer a board mid-flight — cancelling a plan that turned out to be wrong, or reading back what settled.
@@ -212,7 +212,23 @@ completeTask({ taskId: "t_3", output: "…" })
 
 Those are the calls this surface can make from that status, not every transition the substrate permits. The distinction matters: a `pending` task can legally reach `in_progress`, but no task tool moves it there, so listing it would point the model at an operation it doesn't have. A task already in a terminal status (`completed`, `errored`, `cancelled`) gets told that instead, with a suggestion to add a new task, because nothing will move it again.
 
-Only a refused transition softens this way. Storage failures, concurrent-write conflicts, and ordinary bugs still throw. That line is deliberate — a real fault that came back as a polite `{ ok: false }` would read to the model as its own mistake, and it would narrate past a broken board. Driving a `TaskCollection` directly from your own code gets the throw in every case, including this one; see [the status state machine](../orchestration/task-substrate.md#the-status-state-machine).
+A write to a finished task reads the same way, and that covers `assignTask`, `cancelTask`, and an `updateTask` carrying an assignee — not just the tools that change a status:
+
+```
+assignTask({ taskId: "t_7", assignee: "backup-researcher" })
+→ { ok: false,
+    taskId: "t_7",
+    error: 'terminal_task_write_declined: task "t_7" is errored, which is
+            terminal. Its assignee will not change. Add a new task instead.' }
+```
+
+The clause names what the call you made would not have changed — the assignee here, the status for `cancelTask` — so a coordinator is told about the operation it actually attempted. The refused write leaves the task exactly as it was, and for `updateTask` that means the whole patch: the assignee is written first, so a refusal means the priority, metadata, and labels in the same patch never ran either.
+
+This matters more than the wording suggests. The moment a coordinator most needs the truth is right after a worker failed, when it is deciding whether to retry, reassign, or give up. A `{ ok: true }` there would have it narrate "I've reassigned that to the backup researcher" and move on, with a hole in the plan it has no way to notice.
+
+Labels, priority, and metadata are still writable on a finished task, deliberately. Recording *why* a task failed after it failed is a normal thing to do.
+
+Only a refused transition or a refused write softens this way. Storage failures, concurrent-write conflicts, and ordinary bugs still throw. That line is deliberate — a real fault that came back as a polite `{ ok: false }` would read to the model as its own mistake, and it would narrate past a broken board. Driving a `TaskCollection` directly from your own code gets the throw in every case, including this one; see [the status state machine](../orchestration/task-substrate.md#the-status-state-machine).
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent — independent tasks in parallel, dependency-gated tasks once their deps complete — and the settled board comes back with each task's output. Task ids are generated and the drain claims pending tasks only, so plan-then-run again on the same board just executes the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.
 

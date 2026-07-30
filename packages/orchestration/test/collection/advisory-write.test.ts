@@ -1,14 +1,20 @@
 /**
- * Advisory write-back guards on `complete` / `fail` (FIX-951).
+ * Advisory write-back guards on `complete` / `fail` (FIX-951), and the write
+ * verdict every guarded path now reports (FIX-976).
  *
  * The substrate's own write-backs opt into `{ ifAllowed, expectAttempt }` so
  * a result that arrives after its task was settled by someone else is
  * dropped instead of throwing. The throw is what used to escape the task
  * board's per-worker rescue and abandon every sibling task on the board.
  *
+ * FIX-976 keeps every one of those behaviours and adds a return value saying
+ * what happened, so a caller that *wants* to know no longer has to re-read the
+ * task and infer. The write-backs still discard it, which is what preserves the
+ * containment property: **reporting a decline and acting on one are separate.**
+ *
  * Parameterized over both backings, because they carry separately maintained
- * copies of the transition wrapper — a fix applied to one and not the other
- * is the failure mode this suite exists to catch.
+ * copies of the transition wrapper AND of the patch helper — a fix applied to
+ * one and not the other is the failure mode this suite exists to catch.
  *
  * The guards answer different questions and are tested separately.
  * `ifAllowed` asks whether the state machine will take the move.
@@ -21,7 +27,10 @@ import {
   createResourceBackedTaskCollection,
   type TaskCollectionRef,
   type TaskChangeEvent,
+  type TaskStatus,
 } from "../../src/tasks";
+import { transitionDeclineReason } from "../../src/tasks/collection/internal";
+import type { Task } from "../../src/tasks";
 import {
   createCapturedChanges,
   createFakeResourceCollection,
@@ -78,6 +87,80 @@ function resourceBacking(): BackingFactory {
 
 const ADVISORY = { ifAllowed: true } as const;
 
+// ---------------------------------------------------------------------------
+// The decline predicate's reason encoding (FIX-976, step 1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tested directly, not only through the backings, because the *precedence* is
+ * the contract and only two of the three reasons are reachable through a
+ * verdict-returning method: `cancel`'s target is legal from every non-terminal
+ * status, so `disallowed` and `lost-claim` come from `complete`/`fail`. Pinning
+ * the predicate here keeps all three reasons and their order asserted
+ * regardless of which methods are widened.
+ */
+describe("transitionDeclineReason — which condition fired", () => {
+  const task = (status: TaskStatus, attempts = 1): Task =>
+    ({
+      id: "t",
+      goal: "t",
+      status,
+      attempts,
+      createdAt: 0,
+      updatedAt: 0,
+    }) as Task;
+
+  it("returns undefined with no options, so an unguarded caller still throws downstream", () => {
+    expect(transitionDeclineReason(task("pending"), "errored", undefined)).toBeUndefined();
+  });
+
+  it("reports terminal for a settled task", () => {
+    for (const status of ["completed", "errored", "cancelled"] as const) {
+      expect(transitionDeclineReason(task(status), "cancelled", ADVISORY)).toBe("terminal");
+    }
+  });
+
+  it("reports disallowed for a NONTERMINAL illegal move", () => {
+    // The reason a two-reason contract could not describe this surface: these
+    // declines are live today and are not about terminality at all.
+    expect(transitionDeclineReason(task("pending"), "errored", ADVISORY)).toBe("disallowed");
+    expect(transitionDeclineReason(task("blocked"), "errored", ADVISORY)).toBe("disallowed");
+  });
+
+  it("reports lost-claim when the attempt no longer owns the task", () => {
+    // Legal transition, matching counter, but the task is back to `pending` —
+    // ownership is the counter AND the status.
+    expect(
+      transitionDeclineReason(task("pending"), "completed", { expectAttempt: 1 }),
+    ).toBe("lost-claim");
+  });
+
+  it("reports terminal when terminal AND disallowed both hold — fixed precedence", () => {
+    // `completed → errored` is both. Leaving the order undefined is what lets
+    // two implementers emit two different messages for one refusal.
+    expect(transitionDeclineReason(task("completed"), "errored", ADVISORY)).toBe("terminal");
+  });
+
+  it("reports terminal ahead of lost-claim when both guards would fire", () => {
+    // attempts 2 vs expectAttempt 1, on a settled task.
+    expect(
+      transitionDeclineReason(task("completed", 2), "completed", {
+        ...ADVISORY,
+        expectAttempt: 1,
+      }),
+    ).toBe("terminal");
+  });
+
+  it("permits the write when neither guard fires", () => {
+    expect(
+      transitionDeclineReason(task("in_progress"), "completed", {
+        ...ADVISORY,
+        expectAttempt: 1,
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe.each([
   ["sequencer-backed", sequencerBacking()],
   ["resource-backed", resourceBacking()],
@@ -129,9 +212,11 @@ describe.each([
       await collection.cancel("t", "coordinator changed its mind");
       events.length = 0;
 
+      // Resolves rather than throwing — that is the FIX-951 contract. What it
+      // resolves TO is the FIX-976 verdict; either way nothing is thrown.
       await expect(
         collection.fail("t", "worker blew up", ADVISORY)
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ outcome: "declined" });
 
       const task = collection.get("t");
       expect(task?.status).toBe("cancelled");
@@ -169,7 +254,7 @@ describe.each([
 
       await expect(
         collection.fail("t", "worker blew up", ADVISORY)
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ outcome: "declined" });
 
       const task = collection.get("t");
       expect(task?.status).toBe("cancelled");
@@ -377,6 +462,266 @@ describe.each([
       await collection.cancel("t", "user cancelled");
       expect(collection.get("t")?.status).toBe("cancelled");
       expect(events.at(-1)?.kind).toBe("cancelled");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // The write verdict (FIX-976)
+  // -------------------------------------------------------------------------
+
+  /** Settle `t` into each terminal status, from a fresh task each time. */
+  async function settledInto(status: "completed" | "errored" | "cancelled") {
+    if (status === "cancelled") {
+      await collection.addTask({ id: "t", goal: "t" });
+      await collection.cancel("t", "no longer needed");
+      return;
+    }
+    await claimed({ id: "t" });
+    if (status === "completed") await collection.complete("t", "done");
+    else await collection.fail("t", "blew up");
+  }
+
+  describe("cancel reports what it did", () => {
+    it("declines with reason terminal on a settled task, writing nothing", async () => {
+      // The lie this issue is about: today this call answers `{ ok: true }` at
+      // the tool boundary having written nothing at all.
+      await claimed({ id: "t" });
+      await collection.complete("t", "worker output");
+      const before = JSON.stringify(collection.get("t"));
+      events.length = 0;
+
+      const outcome = await collection.cancel("t", "coordinator changed its mind");
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "terminal",
+        status: "completed",
+      });
+      // Byte-identical, not just same-status: the decline must not touch
+      // `updatedAt`, `error`, or `completedAt` either.
+      expect(JSON.stringify(collection.get("t"))).toBe(before);
+      expect(events).toHaveLength(0);
+    });
+
+    it("reports terminal, not disallowed, when both conditions hold", async () => {
+      // `completed → cancelled` is terminal AND disallowed. Precedence is fixed
+      // so two callers cannot render two messages for one refusal.
+      await settledInto("completed");
+      const outcome = await collection.cancel("t", "too late");
+      expect(outcome).toMatchObject({ outcome: "declined", reason: "terminal" });
+    });
+
+    it("reports recorded on a live task", async () => {
+      await collection.addTask({ id: "t", goal: "t" });
+      const outcome = await collection.cancel("t", "user cancelled");
+      expect(outcome).toEqual({ outcome: "recorded" });
+      expect(events.at(-1)?.kind).toBe("cancelled");
+    });
+  });
+
+  describe("setAssignee — the one guarded patch operation", () => {
+    it.each(["completed", "errored", "cancelled"] as const)(
+      "declines on a %s task and leaves the assignee unwritten",
+      async (status) => {
+        await settledInto(status);
+        expect(collection.get("t")?.assignee).toBeUndefined();
+        events.length = 0;
+
+        const outcome = await collection.setAssignee("t", "backup-researcher");
+
+        expect(outcome).toEqual({ outcome: "declined", reason: "terminal", status });
+        expect(collection.get("t")?.assignee).toBeUndefined();
+        expect(events).toHaveLength(0);
+      },
+    );
+
+    it("records the write on a live task and emits a change item", async () => {
+      await collection.addTask({ id: "t", goal: "t" });
+      events.length = 0;
+
+      const outcome = await collection.setAssignee("t", "researcher");
+
+      expect(outcome).toEqual({ outcome: "recorded" });
+      expect(collection.get("t")?.assignee).toBe("researcher");
+      expect(events.at(-1)?.kind).toBe("assignee_changed");
+    });
+
+    it("reports unchanged when the assignee already matches, emitting no task-change", async () => {
+      // The variant that cannot be dropped: reporting this as `recorded` would
+      // claim a write that did not happen, which is this issue's own defect.
+      //
+      // Deliberately asserts on `task-change` items ONLY. The resource backing
+      // still runs `updateState` for the no-op and still emits a
+      // `resource_change`; that is documented, preserved behaviour, and a test
+      // asserting its absence would pin a wish rather than the contract.
+      await collection.addTask({ id: "t", goal: "t", assignee: "researcher" });
+      const before = JSON.stringify(collection.get("t"));
+      events.length = 0;
+
+      const outcome = await collection.setAssignee("t", "researcher");
+
+      expect(outcome).toEqual({ outcome: "unchanged" });
+      expect(JSON.stringify(collection.get("t"))).toBe(before);
+      expect(events).toHaveLength(0);
+    });
+  });
+
+  /**
+   * The A1 regression bar. The guard is per-operation, never on the shared patch
+   * helper — a helper-wide guard would pass every `setAssignee` case above and
+   * silently break the supervisor's failure-category audit and
+   * `cascadeSkipDependents`' `skipped` label, both of which write to tasks that
+   * are unambiguously terminal.
+   */
+  describe("the four sibling patch methods stay writable on a terminal task", () => {
+    it.each(["completed", "errored", "cancelled"] as const)(
+      "addLabel records on a %s task and writes the label",
+      async (status) => {
+        await settledInto(status);
+        events.length = 0;
+
+        const outcome = await collection.addLabel("t", "worker-error");
+
+        expect(outcome).toEqual({ outcome: "recorded" });
+        expect(collection.get("t")?.labels).toEqual(["worker-error"]);
+        expect(events.at(-1)?.kind).toBe("label_changed");
+      },
+    );
+
+    it("removeLabel records on a terminal task", async () => {
+      await collection.addTask({ id: "t", goal: "t", labels: ["stale"] });
+      await collection.cancel("t", "dropped");
+
+      const outcome = await collection.removeLabel("t", "stale");
+
+      expect(outcome).toEqual({ outcome: "recorded" });
+      expect(collection.get("t")?.labels).toEqual([]);
+    });
+
+    it("setPriority records on a terminal task", async () => {
+      await settledInto("errored");
+
+      const outcome = await collection.setPriority("t", 9);
+
+      expect(outcome).toEqual({ outcome: "recorded" });
+      expect(collection.get("t")?.priority).toBe(9);
+    });
+
+    it("patchMetadata records on a terminal task", async () => {
+      await settledInto("completed");
+
+      const outcome = await collection.patchMetadata("t", { audited: true });
+
+      expect(outcome).toEqual({ outcome: "recorded" });
+      expect(collection.get("t")?.metadata).toEqual({ audited: true });
+    });
+
+    it("reports unchanged for an idempotent sibling write", async () => {
+      await collection.addTask({ id: "t", goal: "t", labels: ["dup"], priority: 3 });
+      expect(await collection.addLabel("t", "dup")).toEqual({ outcome: "unchanged" });
+      expect(await collection.removeLabel("t", "absent")).toEqual({ outcome: "unchanged" });
+      expect(await collection.setPriority("t", 3)).toEqual({ outcome: "unchanged" });
+    });
+
+    it("still throws on a missing task — a decline is not a blanket suppressor", async () => {
+      await expect(collection.setAssignee("nope", "w")).rejects.toThrow(/not found/);
+      await expect(collection.addLabel("nope", "l")).rejects.toThrow(/not found/);
+    });
+  });
+
+  /**
+   * `complete` / `fail` report their advisory decline too. FIX-976 never calls
+   * these — its tools reach `setAssignee` and `cancel` — so this is the
+   * epic-coherence half. It is also the only place `disallowed` and `lost-claim`
+   * become observable through a public method, since `cancelled` is a legal
+   * target from every non-terminal status.
+   *
+   * The decline itself stays SILENT: nothing written, no change item. Only the
+   * return value is new.
+   */
+  describe("complete / fail report their advisory decline", () => {
+    it("declines a complete onto a settled task with reason terminal, still silently", async () => {
+      await claimed({ id: "t" });
+      await collection.cancel("t", "coordinator changed its mind");
+      events.length = 0;
+
+      const outcome = await collection.complete("t", "worker finished anyway", ADVISORY);
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "terminal",
+        status: "cancelled",
+      });
+      expect(collection.get("t")?.output).toBeUndefined();
+      expect(events).toHaveLength(0);
+    });
+
+    it("declines a fail from pending with reason disallowed, not terminal", async () => {
+      // The nonterminal illegal move. Reported as `disallowed` because it is not
+      // about terminality at all — mis-attributing it would have a tool tell a
+      // coordinator its live task is finished.
+      await claimed({ id: "p" });
+      await collection.reclaim(Number.MAX_SAFE_INTEGER); // lease expiry → pending
+      expect(collection.get("p")?.status).toBe("pending");
+
+      const outcome = await collection.fail("p", "stale worker", ADVISORY);
+
+      expect(outcome).toEqual({ outcome: "declined", reason: "disallowed", status: "pending" });
+      expect(collection.get("p")?.status).toBe("pending");
+    });
+
+    it("declines a fail from blocked with reason disallowed", async () => {
+      await collection.addTask({ id: "b", goal: "b" });
+      await collection.block("b", "waiting on a human");
+
+      const outcome = await collection.fail("b", "stale worker", ADVISORY);
+
+      expect(outcome).toEqual({ outcome: "declined", reason: "disallowed", status: "blocked" });
+    });
+
+    it("declines a stale write with reason lost-claim on a legal transition", async () => {
+      // `in_progress → completed` is perfectly legal, so `ifAllowed` waves it
+      // through and only `expectAttempt` stops it. The reason has to say so, or a
+      // caller reads "terminal" about a task that is actively running.
+      const a = await claimed({ id: "t" });
+      await collection.reclaim(Number.MAX_SAFE_INTEGER);
+      await collection.claim("worker-2", { eligibility: (t) => t.id === "t" });
+      events.length = 0;
+
+      const outcome = await collection.complete("t", "stale output", {
+        ...ADVISORY,
+        expectAttempt: a.attempts,
+      });
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "lost-claim",
+        status: "in_progress",
+      });
+      expect(events).toHaveLength(0);
+    });
+
+    it("reports recorded on the normal path, from both fail branches", async () => {
+      await claimed({ id: "hard" });
+      expect(await collection.fail("hard", "no budget", ADVISORY)).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("hard")?.status).toBe("errored");
+
+      // The retry branch reports too — it is a different `transitionTo` call, and
+      // threading the verdict into only the hard-fail branch would pass every
+      // case that never sets `maxAttempts`.
+      await claimed({ id: "soft", maxAttempts: 3 });
+      expect(await collection.fail("soft", "flaky", ADVISORY)).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("soft")?.status).toBe("pending");
+      expect(collection.get("soft")?.feedback).toBe("flaky");
+    });
+
+    it("reports recorded from complete on a live task", async () => {
+      await claimed({ id: "t" });
+      expect(await collection.complete("t", "ok", ADVISORY)).toEqual({ outcome: "recorded" });
     });
   });
 });

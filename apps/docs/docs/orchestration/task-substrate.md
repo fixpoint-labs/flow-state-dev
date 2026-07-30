@@ -121,8 +121,6 @@ await tasks.complete(task.id, output, {
 
 Both guards are evaluated as part of the write they guard, so the task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
 
-A declined write returns normally and reports nothing, not even which guard fired. If you need to know whether it landed, re-read the task with `get(id)`.
-
 Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim (its messages, tool calls, sources, reasoning), so an aggregator such as a synthesizer or reviewer can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
 
 Here's a handler that seeds two tasks with a dependency between them and dispatches the one that's ready:
