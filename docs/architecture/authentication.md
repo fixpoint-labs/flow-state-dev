@@ -68,6 +68,15 @@ Steps 2–5 run inside `host.resolvePrincipal`. Adapters never implement auth
 themselves — they always call `host.resolvePrincipal` and the host applies
 the per-flow routing transparently.
 
+Step 6 is the whole trust boundary: the envelope's `userId` and `orgId` are
+the resolved principal's, and nothing downstream re-reads the request body
+for either. A caller-supplied `body.orgId` therefore cannot displace a
+verified one (BP-031). Unauthenticated apps are unaffected — the default
+`defaultBodyUserIdPrincipalResolver` reads `body.orgId` itself, so it still
+reaches the envelope, by way of the resolver that is allowed to trust it. A
+custom resolver that wants the same behavior reads the parsed body from
+`context.envelope.metadata.body`.
+
 ## `requireUser: false` semantics
 
 A flow that opts out of user identity must not declare any user-scope

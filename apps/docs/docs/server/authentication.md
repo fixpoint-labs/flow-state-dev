@@ -38,6 +38,12 @@ is internally consistent with the rest of the runtime. Two checks:
   incompatible `user.stateSchema` (or `org.stateSchema`) shapes,
   `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup.
   See [Cross-flow schema compatibility](#cross-flow-schema-compatibility).
+- **Identity source.** The `userId` and `orgId` an action runs under come
+  from the resolver. Posting an `orgId` in the request body does not change
+  which org the action runs in. If you want a caller to be able to name its
+  own org, read it inside the resolver, where you can check it against the
+  credential you just verified. The resolver is given the parsed body as
+  `metadata.body` for exactly this.
 
 The framework does not — and cannot — verify that `userId: A` actually
 belongs to whoever sent the request. That's the credential your middleware
