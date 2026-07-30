@@ -1110,6 +1110,31 @@ export async function createExecutionContext<
     user: new Set<string>(),
     org: new Set<string>()
   };
+  // Keys this request deleted. A bulk prefix load merges the store snapshot
+  // *under* the cache, and a deleted key is absent from the cache rather than
+  // present-and-empty — so without this the snapshot's pre-delete row wins and
+  // the key comes back. State and content are deleted through separate calls
+  // and tracked separately: a content delete must not suppress a live state row.
+  // Like `missingResourceKeys` these need no invalidation on re-create, because
+  // the cache is spread last and so always wins over the snapshot.
+  const deletedStateKeys: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  const deletedContentKeys: Record<ContentScopeType, Set<string>> = {
+    session: new Set<string>(),
+    user: new Set<string>(),
+    org: new Set<string>()
+  };
+  const withoutDeleted = <T>(snapshot: Record<string, T>, deleted: Set<string>): Record<string, T> => {
+    if (deleted.size === 0) return snapshot;
+    const kept: Record<string, T> = {};
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (!deleted.has(key)) kept[key] = value;
+    }
+    return kept;
+  };
   // A cache miss is *authoritative* (no store read needed) when the key falls
   // under a prefix already bulk-loaded via `getByPrefix` — the whole prefix is
   // materialized, so an absent key is definitively absent. Prefixes end in `/`
@@ -1215,8 +1240,11 @@ export async function createExecutionContext<
           ]);
           durationMs = Date.now() - started;
           fetched = true;
-          stateRef.current = { ...state, ...stateRef.current };
-          contentRef.current = { ...content, ...contentRef.current };
+          stateRef.current = { ...withoutDeleted(state, deletedStateKeys[scope]), ...stateRef.current };
+          contentRef.current = {
+            ...withoutDeleted(content, deletedContentKeys[scope]),
+            ...contentRef.current
+          };
           loadedCollectionPrefixes[scope].add(keyPrefix);
         });
         return { fetched, durationMs };
@@ -1415,6 +1443,7 @@ export async function createExecutionContext<
         if (scopeId === undefined || !(key in stateRef.current)) return;
         await stores.resourceState.delete(scope, scopeId, key);
         delete stateRef.current[key];
+        deletedStateKeys[scope].add(key);
       },
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
@@ -1429,6 +1458,7 @@ export async function createExecutionContext<
         if (scopeId === undefined || !(key in contentRef.current)) return;
         await stores.content.delete(scope, scopeId, key);
         delete contentRef.current[key];
+        deletedContentKeys[scope].add(key);
       }
     };
   };

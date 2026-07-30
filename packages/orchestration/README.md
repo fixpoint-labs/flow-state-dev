@@ -59,6 +59,17 @@ is the common case), or resource-collection (outlives the request: a user's queu
 org work pool — declare one with `defineTaskCollection`). Every mutation that
 changes a field emits a `task-change` component item.
 
+**Freshness is scoped to one request.** Every ref resolved over the same collection
+inside a request sees the same tasks, so a task added through any of them is
+immediately visible through all of them — including a ref a task-board worker
+resolved before it went idle. On the resource backing, don't rely on a running
+request seeing a write made by another request. A *later* request reads it.
+
+Removals reconcile when you resolve. A task the running request removed (an explicit
+`delete` on the resource collection, or a capacity eviction) stops being reported
+from the next resolution onward. A ref you are already holding keeps reporting such
+a task until it resolves again.
+
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no

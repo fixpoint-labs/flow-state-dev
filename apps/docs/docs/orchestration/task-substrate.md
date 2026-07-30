@@ -227,6 +227,8 @@ Where a collection stores its tasks decides how long they live. `getOrCreateTask
 
 The sequencer backing is per-invocation because each sequencer call allocates a fresh state container. If you need the collection to survive across those calls but stay inside one request, use `request`. For anything that has to persist between requests, use `resource` with a session-, user-, or org-scoped resource collection.
 
+All three backings agree on freshness *within* a request: two resolutions of the same collection read the same tasks, so a task added through one is visible through the other right away. `resource` is the only backing where the question reaches past the request, and there the guarantee stops. A request already running can't rely on seeing a write made by another request. A later request reads it.
+
 ```ts
 // Durable, resource-backed queue that outlives the request.
 const collection = await getOrCreateTaskCollection({

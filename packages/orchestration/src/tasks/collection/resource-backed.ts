@@ -36,10 +36,41 @@
  * snapshot of their data. Tasks created via `addTask`/`addTasks` are
  * inserted into the mirror as they are created.
  *
- * Caveat: tasks created in the underlying collection by *other* blocks
- * after construction will not appear in this ref's sync view (accepted
- * tradeoff — the sync surface is a hydrated snapshot of ids, not a live
- * view of external inserts).
+ * Freshness boundary (FIX-990). The mirror is **shared by every
+ * `TaskCollectionRef` resolved over the same resource-collection
+ * instance**, so within one request every resolution reads one task set:
+ * a task added through any of them is immediately visible to all of them,
+ * synchronously. That is what a task-board worker parked in
+ * `.waitForCondition` depends on — it caches the ref it resolved on
+ * entering the wait, and a sibling's mid-wait add has to reach it.
+ *
+ * The boundary is the request, and it is a boundary, not a deferral: a
+ * concurrently running separate action resolves its own resource
+ * collection in its own execution context, so its writes are not something
+ * an already-waiting drain here can rely on seeing. A *later* request does.
+ * The durable backing has no cross-process concurrency control to build
+ * anything stronger on (blind puts, last-write-wins).
+ *
+ * Do not strengthen that into "a running request never sees another
+ * request's write, however often it resolves" — an earlier version of this
+ * header said exactly that and it is false. It holds for an eagerly loaded
+ * collection, whose state is read once when the request starts. A
+ * `prefetchMode: "lazy"` collection is loaded on first read instead, so the
+ * first `list()` per prefix is a store round-trip that imports whatever is
+ * committed at that moment, including another request's writes. What that
+ * read can no longer do is resurrect a key this request deleted
+ * (`createExecutionContext.ts` — the prefix merge skips deleted keys).
+ *
+ * Removals reconcile at resolution, not continuously. `TaskCollectionRef`
+ * has no `delete`, but the underlying resource collection does, and a
+ * capacity eviction removes an instance the same way — so every resolution
+ * both adopts what that in-memory state holds and drops what it no longer
+ * holds (`reconcileTaskSet`). This works within the request precisely
+ * because the request's own writes and deletes go through the same state the
+ * reads do. A ref that is *already* held when something else removes a task
+ * keeps seeing it until the next resolution reconciles the shared record;
+ * that was equally true of the per-ref mirror this replaces, which never
+ * re-read anything at all after construction.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -132,6 +163,153 @@ function readTaskState<TInput, TOutput>(
 }
 
 /**
+ * Per-resource-collection task-set record, module-scoped (FIX-990). See the
+ * file header for the freshness contract this implements.
+ *
+ * Keyed on the `ResourceCollectionRef` **instance**, never on the
+ * `collectionId` string. The resource registry builds one collection handle
+ * per execution context per scope instance and hands the same object back on
+ * every `resolveResourceCollection` call, so instance identity buys
+ * per-request and per-scope-instance isolation for free — two sessions,
+ * users, or orgs holding a same-named board get separate records. A string
+ * key would merge them. Same keying as `skills/seeding.ts` and
+ * `skills/internal/delegation-memo.ts`.
+ *
+ * A `WeakMap` because the record's lifetime is the collection handle's: when
+ * the execution context is collected, so is the record. Nothing to clear on
+ * teardown, and a drain that errors leaves behind only refs to tasks that do
+ * exist — a retry within the same request reads them and is correct to.
+ */
+const taskSets = new WeakMap<
+  ResourceCollectionRef<JsonObject>,
+  Map<string, ResourceRef<JsonObject>>
+>();
+
+/** Get (or create) the task-set record shared across resolutions of `collection`. */
+function sharedTaskSet(
+  collection: ResourceCollectionRef<JsonObject>
+): Map<string, ResourceRef<JsonObject>> {
+  const existing = taskSets.get(collection);
+  if (existing !== undefined) return existing;
+  const created = new Map<string, ResourceRef<JsonObject>>();
+  taskSets.set(collection, created);
+  return created;
+}
+
+/**
+ * Bring the shared record in line with the store: adopt every task the store
+ * lists, and drop every task the store no longer has.
+ *
+ * Both halves are load-bearing, and each naive version breaks the other:
+ *
+ * - **A plain merge leaks ghosts.** Another block can remove a task through the
+ *   underlying `ResourceCollectionRef` — an explicit `delete()`, or a capacity
+ *   eviction, which reaches the store through the same per-key delete and is
+ *   therefore indistinguishable here. Merge-only would keep the removed ref in
+ *   a record every later resolution reads, so `get`/`list` would report a task
+ *   that no longer exists and a mutation against it would fail or recreate it.
+ *   Before the record was shared this was safe only by accident: each
+ *   resolution built a private map, so a removed task was simply absent.
+ *
+ * - **A plain replace loses concurrent additions.** `collection.list()` is
+ *   awaited, and a sibling resolution can insert into the shared record while
+ *   that await is outstanding. Those ids are legitimately absent from a
+ *   snapshot taken before they existed, so treating "absent from the list" as
+ *   "removed" would delete exactly the mid-flight adds this record exists to
+ *   keep — the case the durable-wake scenario turns on.
+ *
+ * - **Keying the cleanup on the id loses a same-id replacement.** A task can be
+ *   removed and then recreated under the same id while the read is outstanding.
+ *   The id is in the pre-read set and absent from the snapshot, so a cleanup
+ *   asking "is this key still known?" deletes the replacement the store now
+ *   holds, and every ref reports it missing until something resolves again.
+ *
+ * So the cleanup retires a specific **ref**, not an id: each entry captured
+ * before the read is dropped only if the record still points at that exact
+ * object. An entry that changed identity during the await — a replacement — or
+ * an id that appeared during it is newer than the snapshot and cannot be judged
+ * by it, so it stays.
+ *
+ * ---
+ *
+ * **The read window, enumerated.** Three separate races were found here one at a
+ * time, each after the previous was fixed, so the cases are written out rather
+ * than left to be rediscovered. `collection.list()` is async: call it at T0, it
+ * materializes a ref array at T1, and this function's continuation runs at T2.
+ * Between T0 and T2 the underlying collection accepts inserts (`create`,
+ * `getOrCreate`, `upsert`), removals (`delete`, and capacity eviction as a side
+ * effect of `create`), and per-instance state writes. Membership is what has to
+ * reconcile; state rides live getters. For a task id X:
+ *
+ *  1. **Inserted before T1** — in the snapshot, so adopted. The ordinary case.
+ *  2. **Inserted after T1 through a task ref** — the record already holds it, and
+ *     it is absent from both the snapshot and `retirable`, so nothing touches it.
+ *  3. **Inserted after T1 straight onto the resource collection** — invisible to
+ *     this pass; the next resolution adopts it. A boundary, not a bug: the record
+ *     cannot know about a write nothing routed through it.
+ *  4. **Removed before T1, entry predates T0** — absent from the snapshot, in
+ *     `retirable`, identity intact, so retired.
+ *  5. **Removed before T1 and recreated after it** — absent from the snapshot and
+ *     in `retirable`, but the record now points at a different ref, so kept.
+ *  6. **Removed after T1** — the snapshot still carries a ref whose instance is
+ *     gone. Its `state` getter falls back to schema defaults, and a task envelope
+ *     cannot be defaulted (`id` and `goal` are required), so it reads `{}` with no
+ *     id. Adopting that would key the record on `undefined`. Skipped by the id
+ *     guard below; if the entry predated T0 it is then retired by rule 4, because
+ *     skipping the adopt leaves it out of `stored`.
+ *  7. **Removed and recreated after T1** — the snapshot's ref resolves against the
+ *     live instance again, so it carries an id and is adopted, and `stored` holds
+ *     it so rule 4 leaves it alone.
+ *  8. **State-only write (a lifecycle transition)** — membership unchanged, and
+ *     every entry reads through a live getter, so there is nothing to reconcile.
+ *  9. **A stored instance whose record carries no `id`** (hand-written or
+ *     corrupted data, not a race) — indistinguishable here from case 6, and the
+ *     same guard covers it. This is why the guard tests the id rather than trying
+ *     to detect whether the instance vanished.
+ * 10. **Two reconciliations overlapping** — each captures its own `retirable`
+ *     before its own read, and retiring is identity-gated, so neither can retire
+ *     what the other just adopted. The gate is safe because refs for one storage
+ *     key are interchangeable: each reads its state through a live getter over
+ *     the same execution-context state, so a slower pass overwriting a newer ref
+ *     for the same key loses nothing.
+ * 11. **The read itself mutating the cache** — the first nine cases all assume
+ *     `collection.list()` observes; for a `prefetchMode: "lazy"` collection it
+ *     also writes, bulk-loading the prefix into the execution context on first
+ *     call. That once let the pre-read store snapshot reinstate a key the
+ *     request had already deleted, producing exactly the ghost rule 4 exists to
+ *     prevent, by a route no rule here could see. Fixed underneath us: the
+ *     prefix merge now skips keys deleted this request
+ *     (`createExecutionContext.ts`). Listed because the enumeration claims to
+ *     cover the window, and a read that is not a pure read belongs in it.
+ */
+async function reconcileTaskSet(
+  mirror: Map<string, ResourceRef<JsonObject>>,
+  collection: ResourceCollectionRef<JsonObject>
+): Promise<void> {
+  // The exact entries this pass is allowed to retire, captured before the read.
+  const retirable = new Map(mirror);
+  const listed = await collection.list();
+
+  const stored = new Set<string>();
+  for (const ref of listed) {
+    const id = readTaskState(ref).id;
+    // Cases 6 and 9: no usable id means the instance went away mid-read, or the
+    // stored record is malformed. Either way there is nothing to key on, and
+    // adopting it would plant an unaddressable phantom in a record every handle
+    // reads. Leaving it out of `stored` also lets rule 4 retire a prior entry.
+    if (typeof id !== "string" || id.length === 0) continue;
+    stored.add(id);
+    mirror.set(id, ref);
+  }
+
+  for (const [id, refBeforeRead] of retirable) {
+    if (stored.has(id)) continue;
+    // Identity, not key presence: only retire the object we decided to retire.
+    if (mirror.get(id) === refBeforeRead) mirror.delete(id);
+  }
+}
+
+/**
  * Create a `TaskCollectionRef` backed by a parameterized resource
  * collection. Async because it awaits one `collection.list()` to hydrate
  * the sync mirror (see file header). All other reads are synchronous.
@@ -146,18 +324,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     options.getItems,
   );
 
-  // Sync mirror of resource refs keyed by task id. Hydrated once at
-  // construction (the only async step); reads go through each ref's live
-  // `.state` getter, so the mirror reflects the latest committed state for
-  // every task it knows about. New tasks added via addTask/addTasks are
-  // inserted here. Tasks created in the underlying collection by *other*
-  // blocks after construction will not appear (accepted tradeoff: the
-  // sync TaskCollectionRef surface is a hydrated snapshot of ids, not a
-  // live view of external inserts).
-  const mirror = new Map<string, ResourceRef<JsonObject>>();
-  for (const ref of await options.collection.list()) {
-    mirror.set(readTaskState(ref).id, ref);
-  }
+  // Sync mirror of resource refs keyed by task id — shared with every other
+  // resolution over this same resource collection (see `taskSets`). Reads go
+  // through each ref's live `.state` getter, so the mirror reflects the
+  // latest committed state for every task it knows about, and sharing the
+  // record extends that to every task any sibling resolution *creates*.
+  //
+  // Construction still hydrates (the only async step) and reconciles the
+  // record against the store in both directions — see `reconcileTaskSet` for
+  // why a plain merge and a plain replace are each wrong.
+  const mirror = sharedTaskSet(options.collection);
+  await reconcileTaskSet(mirror, options.collection);
 
   function emit(
     kind: TaskChangeKind,
