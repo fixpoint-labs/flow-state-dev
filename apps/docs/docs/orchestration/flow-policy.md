@@ -17,7 +17,7 @@ Plan-shaped patterns run a fan of workers against a shared goal. Each worker is 
 
 Worse, the second worker has no way to build on the first worker's reasoning. The dependency graph encodes ordering but not knowledge. If Task B is supposed to refine Task A's output, B needs to actually see what A produced and what A tried.
 
-One layer captures every tool call any worker makes during the run into an observation ledger, and lets you choose which of those observations to surface on the next worker's input. The other lets a tool block opt into result memoization, so identical calls within the run serve from cache. The two are independent.
+The board handles both halves. One layer captures every tool call any worker makes during the run into an observation ledger, and lets you choose which of those observations to surface on the next worker's input. The other lets a tool block opt into result memoization, so identical calls within the run serve from cache. The two are independent.
 
 ## How it works
 
@@ -44,7 +44,7 @@ interface TaskPriorWork {
 }
 ```
 
-Workers can consume `observations` directly, render them with `formatPriorWork(priorWork)`, or fall back to ignoring the slot entirely. The board never injects prior work into prompts on its own — surfacing it is the worker's call.
+Workers can consume `observations` directly, render them with `formatPriorWork(priorWork)`, or fall back to ignoring the slot entirely. The board never injects prior work into prompts on its own. Surfacing it is the worker's call.
 
 **Layer B — tool-result memoization.** A tool block opts in by declaring `cacheable` on its `BlockConfig`. When the board has caching enabled, identical calls within the configured scope serve from cache. The cached `tool_output` item carries `cached: true` and `cacheAgeMs`; cross-task hits also carry `sourceTask: { collectionId, taskId }` so the DevTool transcript can show where the original call happened.
 
@@ -164,8 +164,8 @@ import { flowPolicy, type TaskFlowPolicy } from "@flow-state-dev/orchestration";
 
 const policy: TaskFlowPolicy = flowPolicy.custom(({ task, ledger, collection }) => {
   // Surface observations from declared deps, but also include any
-  // errored observations from anywhere in the run — we want the
-  // next worker to know what failed.
+  // errored observations from anywhere in the run, so the next
+  // worker knows what failed.
   const fromDeps = task.deps !== undefined ? ledger.fromTasks(task.deps) : [];
   const errors = ledger.all().filter((o) => o.error !== undefined);
   const combined = [...fromDeps, ...errors];
@@ -189,7 +189,7 @@ const policy: TaskFlowPolicy = flowPolicy.custom(({ task, ledger, collection }) 
 }, "deps-plus-errors");
 ```
 
-The `ledger` argument is an `ObservationLedgerView` with helpers for the common selection shapes (`recent`, `fromTasks`, `fromAncestors`, `fromCompleted`, `bounded`). Use them when you can — they share the same token-bounding logic the built-in policies use.
+The `ledger` argument is an `ObservationLedgerView` with helpers for the common selection shapes (`recent`, `fromTasks`, `fromAncestors`, `fromCompleted`, `bounded`). They share the same token-bounding logic the built-in policies use.
 
 ## Observability
 
@@ -197,7 +197,7 @@ Both layers surface in the DevTool transcript without extra wiring.
 
 - Cached tool calls get a `cached` badge. Cross-task hits get a `sourceTask` tag pointing at the original task in the same board collection.
 - The `priorWork.meta` payload (policy name, selected count, available count, approximate token usage) is visible per dispatch, so you can see which observations were chosen and which were dropped.
-- Every tool call still emits its standard `tool_output` item — cache hits don't go silent. They surface as a normal item with `cached: true` on the data.
+- Every tool call still emits its standard `tool_output` item; cache hits don't go silent. They surface as a normal item with `cached: true` on the data.
 
 ## When to override the default
 

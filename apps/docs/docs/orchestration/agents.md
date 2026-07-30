@@ -79,8 +79,8 @@ agents:
       model: openai/gpt-5.4-mini
       tools: [search, fetch, readDocument]
 ---
-You are the research lead. Plan the work on your board — `addTask` one task per
-angle, each `assignee: "analyst"` — then call `runBoard` and synthesize the
+You are the research lead. Plan the work on your board: `addTask` one task per
+angle, each `assignee: "analyst"`. Then call `runBoard` and synthesize the
 settled tasks' output.
 ```
 
@@ -103,7 +103,7 @@ Mount `briefingBlock` in a sequencer or wire it as an action the same way you wo
 
 ## Structured output and capabilities
 
-A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Delegation agents stay `z.string()` regardless — the delegated agent's output is read off its completed task on the board, not returned inline to the coordinator.
+A standalone agent can return typed data instead of free text. Declare an `outputSchema` and the materialized generator emits that shape, subject to the same OpenAI-strict requirement as any generator output. Delegation agents stay `z.string()` regardless. A delegated agent's output is read off its completed task on the board, not returned inline to the coordinator.
 
 `usesCapabilities` accepts two forms in the same array: a string key resolved against the materialize-time capability catalog, or a capability reference used as-is. A reference can be configured with `.with({ ... })`, and the preset typing carries through, the same way `generator({ uses })` consumes capabilities.
 
@@ -132,7 +132,7 @@ const positionSizer = defineAgent({
 
 ## Personas
 
-A persona is the agent's identity, the system prompt. It can come from three sources.
+A persona is the agent's identity, the system prompt.
 
 | Form | Description |
 |------|-------------|
