@@ -60,6 +60,12 @@ Guides appear as a separate "Guides" nav item, not inside the Docs sidebar.
 
 If unsure which section, read the existing pages in candidate sections to find the best fit.
 
+**Who runs this.** This skill is the page *mechanics* — section choice, frontmatter, sidebar
+registration, cross-linking. The prose itself is the `docs-writer` agent's, and when a page is being
+added as part of a code change it must be, because whoever holds the spec and the diff leaks them
+into the writing. If you're the implementer, dispatch `docs-writer` (which follows this skill for
+placement) and then `docs-editor`, rather than writing the page here.
+
 ### Step 2: Read Reference Pages
 
 Read 1-2 existing pages from the target section to understand:
@@ -102,15 +108,15 @@ Follow this general structure (adapt as needed):
 
 6. **Related pages** — Link to related docs pages at the bottom. Use Docusaurus-style relative links: `[Sequencer DSL](../sequencers/dsl.md)`.
 
-#### Writing Style Rules (from CLAUDE.md)
+#### Writing Style Rules
 
-- **Audience is engineers.** No marketing speak.
-- **Short sentences. Varied rhythm.**
-- **Minimal em-dashes.** Prefer commas, periods, or restructured sentences.
-- **No AI cadence.** Avoid: "X isn't just Y — it's Z", escalating lists of three.
-- **Introduce concepts for newcomers.** When first mentioning something, briefly say what it does.
-- **Be direct about tradeoffs.** "This works for demos, not for production."
-- **Conclusions earn their place.** Don't end every section with a triumphant one-liner.
+The standard is [`docs/contributing/user-docs.md`](../../../docs/contributing/user-docs.md) — the
+outsider rule, the two sentence tests, the tells table, and the voice. Read it and apply it; it is
+not restated here, so there is one copy to keep current.
+
+The part most relevant to a new page: **write from the outside.** Describe what the thing does when
+you call it, never how it was built, what it used to do, or what prompted it. If a sentence would
+only make sense to someone who worked on the implementation, cut it.
 
 #### Code Examples
 
