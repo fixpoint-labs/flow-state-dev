@@ -267,6 +267,14 @@ work to is [`docs/contributing/user-docs.md`](../../../docs/contributing/user-do
    sometimes surfaces a real bug), and a behavior it **couldn't find an observable surface for**
    (either it isn't user-facing, or it isn't reachable and that's a gap).
 
+5. **Re-run this step whenever observable behavior changes again.** Step 5C runs before review, so
+   anything that moves the public surface afterwards — a Step 6 review finding, a Step 8 change
+   request, a Step 10 PR-feedback round — leaves the pages describing a surface that no longer
+   exists. Rebuild the brief for what changed and dispatch the pair again. It is a small,
+   well-scoped pass, not a repeat of the whole step: the brief covers the delta, not the feature.
+   **Never hand-patch the published prose to save the round trip** — that is the leak arriving by
+   the back door, at the point in the process where your head is fullest of the review argument.
+
 Architecture docs (`docs/architecture/`), `docs/internal/*`, the changeset, and the PR body are
 **yours**, not the writer's. Those are for framework developers and reviewers, where the rationale,
 the tradeoffs, and the defect belong. The split is the point: write the internal record fully, and
@@ -449,7 +457,9 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 2. **Declining** — the concrete reason no change is being made (a spec/BP/scope citation), per the non-actionable path.
 3. **Escalated** — a comment that needs a decision you can't make (a spec-level call, a scope question only the maintainer can settle): reply saying you've surfaced it and are holding on that thread, rather than leaving it silent. Under a coordinator, also return it as a blocker so the coordinator surfaces it — but the thread still gets the reply.
 
-**Reconcile the prose with the diff.** Before closing a round that changed behavior, re-read the PR body, the changeset, and any docs the change touches against the *current* diff — not the plan — and correct every sentence that now misstates it. The body was written at Step 9; this loop has been changing the code ever since, and a claim written before the last commit is the one that ships wrong.
+**Reconcile the prose with the diff.** Before closing a round that changed behavior, re-read the PR body, the changeset, and the architecture docs the change touches against the *current* diff — not the plan — and correct every sentence that now misstates it. The body was written at Step 9; this loop has been changing the code ever since, and a claim written before the last commit is the one that ships wrong.
+
+**User-facing pages are the exception: don't correct those yourself.** `apps/docs/` and package README API sections go back through **Step 5C** — rebuild the brief for what this round changed and dispatch `docs-writer` + `docs-editor` again. Editing them by hand here is how the review argument reaches published prose, and this is the moment you are least able to tell that it has.
 
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 
