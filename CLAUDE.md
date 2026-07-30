@@ -258,6 +258,10 @@ pnpm --filter @thought-fabric/core typecheck  # Typecheck thought-fabric
 
 ## Writing Style (site content)
 
+The full standard is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md) — read it before writing any user-facing prose. It carries the **outsider rule** (docs describe what the thing does, never how it was built, what it used to do, or what bug prompted it), the two sentence tests, and the tells table. The summary below is the voice half of it.
+
+**Don't write user-facing prose yourself while holding a spec or a diff.** Dispatch the `docs-writer` agent, then `docs-editor`. Context leaks even when you know the rules — that's what the isolation is for.
+
 When writing blog posts, landing copy, or any prose for `apps/docs`, use this voice:
 
 - **Audience is engineers.** No marketing speak. Write like you're explaining something to a peer, not selling to a buyer.

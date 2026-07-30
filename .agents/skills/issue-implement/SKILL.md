@@ -157,7 +157,7 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 9. Cleanup: grep `[DEBUG-` and remove all instrumentation. Delete throwaway harnesses.
 10. Run typechecks and tests: `pnpm --filter <affected-package> typecheck && pnpm --filter <affected-package> test`
 11. Commit with a conventional commit message referencing the issue ID. The commit message names which hypothesis turned out correct, so the next debugger learns.
-12. Skip to Step 6 (Review)
+12. Skip to Step 5C (Document the change), then Step 6 (Review)
 
 **For features/enhancements (`tdd` discipline):**
 
@@ -171,7 +171,7 @@ Follow the discipline picked at Step 4.1. As you work, at any boundary that resi
 8. **Run the goal check** if the spec's Testing Strategy names one (real model, real path — see `tdd` → "Two kinds of test"). Green specs are mocked; they don't prove the goal. This is required verification. For a **model-backed** goal, running it spends real API credits, which is the point, so don't defer or push back on cost grounds; the inference credential is normally in the env (e.g. `AI_GATEWAY_API_KEY`), so attempt the run rather than assume it's absent. (A model-free goal — `Model: n/a` — just runs its real path, no credential.) Full guidance: `goals/README.md` → Running. Run `fsdev run` against a real model or `pnpm tsx goals/<describe>/<it>/run.mts` and confirm PASS on the actual outcome. If it fails, the work isn't done — return to the loop. Record the command and verdict. If the spec documented that no goal check applies (docs/refactor/config work with no observable outcome), skip this and note the documented justification.
    - **UI-layer changes** (item renderers, streaming display, the DevTool embed, prompt input): the goal check above runs *below* the UI. If the change touches the browser-rendered surface, decide per `apps/docs/docs/testing/end-to-end-tests.md` whether to add/update a kitchen-sink Playwright scenario; otherwise note why browser verification isn't needed.
 9. Commit with a conventional commit message referencing the issue ID
-10. Skip to Step 6 (Review)
+10. Skip to Step 5C (Document the change), then Step 6 (Review)
 
 ### Step 5B: Complex Implementation (Sub-agent Team)
 
@@ -232,6 +232,45 @@ Repeat 5B.2–5B.3 for each task in order. After all tasks:
 - **Prove the goal on the assembled work** (real model, real path — see `tdd` → "Two kinds of test"). The per-task specs are mocked and only prove the pieces; this step proves the whole achieves the outcome. Same required-goal rule as step 5A.8 (real API credits by design — don't skip on cost; the credential is normally in the env, so attempt the run), applied here to the **assembled** work after integration rather than per-task. Confirm PASS before moving to review and record the command and verdict.
   - **Feature/Enhancement:** run the goal check the spec names. If the spec documented that no goal check applies, skip and note the documented justification.
   - **Bug** (complex bugs route through 5B, not 5A): if the original symptom was user-visible, re-run the **original repro through the real path** (`fsdev run` against a real model) on the assembled fix and confirm it's gone — this is the bug's goal verdict Step 6 expects. For a pure type/unit regression, note "N/A — type/unit-only" with the regression test as the proof.
+
+### Step 5C: Document the change (both paths)
+
+Runs after 5A or 5B, before review. Applies whenever the change touched anything a user of the
+framework can observe — a public API, a returned shape, a tool result, a documented contract.
+
+**You do not write the user-facing prose. Dispatch `docs-writer`, then `docs-editor`.** By this point
+you are holding the spec, the diff, the review argument, and the defect, and that context leaks into
+published pages in a predictable way — before/after framing, design defense, the bug report retold as
+docs. Knowing the rules doesn't prevent it; not having the context does. The standard both agents
+work to is [`docs/contributing/user-docs.md`](../../../docs/contributing/user-docs.md).
+
+1. **Write the surface brief.** This is your only job here, and the brief is deliberately
+   shape-constrained so it can't carry narrative:
+
+   - **Surface** — the symbols a user touches, with signatures.
+   - **Behavior** — what a caller sees, including failure results and their exact shapes.
+   - **Limits** — what it won't do, where a reader would assume otherwise.
+   - **Targets** — pages and READMEs that state the affected contract today.
+
+   No *why*, no before/after, no defect description, no alternatives considered. If a fact only
+   matters because of what the code used to do, it does not go in the brief.
+
+2. **Dispatch `docs-writer`** with the brief. It verifies against the public API and the tests, and
+   reports what it wrote, plus anything it left out for lack of an observable surface.
+
+3. **Dispatch `docs-editor`** on the result. Send its findings back to the same writer and re-check.
+   **Three rounds**, then bring it to the user rather than looping — prose that hasn't converged by
+   then usually means the brief was wrong, not the writing.
+
+4. **Reconcile the writer's report.** Two returns are yours to act on, not the writer's: a fact where
+   **the code contradicted your brief** (check whether the brief or the code is wrong — this
+   sometimes surfaces a real bug), and a behavior it **couldn't find an observable surface for**
+   (either it isn't user-facing, or it isn't reachable and that's a gap).
+
+Architecture docs (`docs/architecture/`), `docs/internal/*`, the changeset, and the PR body are
+**yours**, not the writer's. Those are for framework developers and reviewers, where the rationale,
+the tradeoffs, and the defect belong. The split is the point: write the internal record fully, and
+keep it out of `apps/docs/`.
 
 ### Step 6: Comprehensive Review
 

@@ -201,8 +201,10 @@ Update when a package's exported surface, behavior, or setup commands materially
 - Update `architecture-reference.md` when locked contracts change or new ones are established.
 - Update `development-setup.md` when monorepo tooling, build order, or development workflow changes.
 
-**User-facing docs** (`apps/docs/docs/`):
+**User-facing docs** (`apps/docs/`):
 Update when integration patterns change — server setup, React hooks usage, testing approach, or new concepts are introduced. These docs are for developers building apps WITH the framework.
+
+**Route this prose through the `docs-writer` agent, then `docs-editor`.** Don't write it inline while you're holding the spec and the diff: implementation rationale leaks into published pages in a predictable way (design defense, defect narrative, before/after framing), and knowing the rules doesn't prevent it. The writer runs in a fresh context on a surface brief — the symbols a user touches, what a caller sees including failures, and the limits — and derives the rest from the public API. The standard both agents work to is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md). The same applies to the API sections of `packages/*/README.md`.
 
 **Root files**:
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
