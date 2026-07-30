@@ -73,13 +73,14 @@ answering one question: **is this the right approach?**
   themselves are not).
 - Anything Part II left open on purpose — it is directional by design, and a gap at
   that altitude is intended, not an omission.
-- **The solution sketch, at the line level.** A spec may include rough illustrative code
-  to show the *shape* of the proposed solution. It is knowingly incomplete, may not
-  compile, and is not the code that will ship. **Review it for directional viability and
-  key design aspects only** — is this the right shape, in the right layer, composing the
-  right way? Do **not** report that it lacks error handling, has loose types, omits edge
-  cases, misnames things, or wouldn't build: all of that is true on purpose. A sketch that
-  has to survive line-level review stops being cheap, and then nobody writes one.
+- **The solution sketch, at the line level.** A spec may include a rough pseudocode sketch
+  showing the *shape* of the proposed solution. It is knowingly incomplete, is not real
+  code, and is not what will ship. **Review it for directional viability and key design
+  aspects only** — is this the right shape, in the right layer, composing the right way?
+  Do **not** report that it lacks error handling, omits edge cases, names things that
+  don't exist in the repo, or wouldn't build: all of that is true on purpose, and the
+  names are deliberately not real. A sketch that has to survive line-level review stops
+  being cheap, and then nobody writes one.
 
 **One request, if you are an automated reviewer:** the two lists above are the whole
 difference between a useful review of this document and a long one. Volume is not signal
@@ -89,6 +90,11 @@ Feedback in the second list is welcome and gets **recorded verbatim in §13** fo
 implementer to weigh against real code. It will not be argued with, and it will not be
 folded into the design prose — that would pretend the spec can settle something it
 can't. Please don't re-raise it: one mention is enough for it to land in §13.
+
+**The one exception is the sketch.** Line-level feedback on it is *dropped*, not recorded
+— there is nothing for an implementer to weigh about code that isn't shipping, and a §13
+note would imply otherwise. Sketch feedback that is about **direction** is not line-level
+and is treated like any other above-the-bar finding.
 
 ---
 
@@ -274,33 +280,43 @@ the design concretely before signing off on it, and the implementer starts from 
 rather than a blank file.
 
 **It is not the end state, and it does not have to run.** Quick and dirty is the point —
-skip error handling, skip types that don't carry meaning, leave `// …` where the detail is
-obvious. If it compiles, fine; nobody should spend time making it compile. Anything
-substantial goes as throwaway files on the **spec branch** (never merged) with a pointer
-from here, so it doesn't bloat the doc the implementer reads.
+skip error handling, skip types that don't carry meaning, leave `…` where the detail is
+obvious.
+
+**Write the inline one as pseudocode, not as almost-real code.** This is the rule that
+makes the rest work. A sketch in plausible-looking API names invites exactly the review it
+is trying to avoid: someone checks the names against the repo, finds they don't exist, and
+now you are debating a seam nobody proposed. Pseudocode can't be audited, so the shape is
+all that's left to react to — which is the whole point. Name the *roles* (`the stream
+seam`, `the persisted log`), not functions you think exist.
+
+**When you do want real code, put it on the spec branch.** Throwaway files on the
+never-merged spec branch are where a real prototype belongs — that's where the author gets
+to try the design and the implementer gets a starting point, without the doc carrying
+API-shaped claims. Point at it from here in one line.
 
 **Include one when** the composition is novel, the ergonomics only become visible in code,
 or two shapes are genuinely in contention and side-by-side settles it. **Skip it when** the
 change extends an existing pattern — pointing at the pattern is better than re-sketching it.
 
-> **Sketch — illustrative, not the contract. Review for shape, not for correctness.**
+> **Sketch — pseudocode. Illustrative, not the contract. React to the shape.**
 >
-> ```ts
-> // Roughly: one filter, applied where items are already serialized.
-> function streamItems(req, cursor /* ?: Cursor */) {
->   for await (const item of req.items()) {
->     if (cursor && item.sequence <= cursor.sequence) continue   // ← the whole feature
->     yield serialize(item)
->   }
-> }
-> // Route: cursor = query.starting_after ?? header["last-event-id"]  (decision 2)
-> // Completed request: same loop over the persisted log instead      (decision 3)
+> ```
+> at the stream seam, where items are already serialized:
+>
+>     for each item about to be written:
+>         if cursor is set and item's sequence <= cursor:   ← the whole feature
+>             skip it
+>         otherwise write it
+>
+> at the route:      cursor ← query param, else header      (decision 2)
+> completed request: same loop, reading the persisted log   (decision 3)
 > ```
 >
-> What this is asking a reviewer: *is a filter at the serialization seam the right place,
-> or does resume belong lower, in the store's iterator?* That question is the point. Whether
-> `cursor` should be a type or a number, whether the guard reads well, and whether this
-> snippet type-checks are **not** the point.
+> What this asks a reviewer: *is a filter at the serialization seam the right place, or
+> does resume belong lower, in the store's iterator?* That question is the point. It is
+> deliberately impossible to tell from this whether the field is called `sequence` or
+> `sequence_number` — that is the implementer's to look up, not the reviewer's to catch.
 
 *(If deciding between shapes needed a real experiment rather than a sketch, that's the
 [`prototype`](../../.agents/skills/prototype/SKILL.md) skill — throwaway code that answers

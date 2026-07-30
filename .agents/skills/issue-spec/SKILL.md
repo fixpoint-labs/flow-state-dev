@@ -293,13 +293,18 @@ Before drafting, check whether the research has surfaced a **design question tha
 - A UI choice for devtool / kitchen-sink / renderer changes where the answer needs to be seen, not described
 
 **Either way, consider a solution sketch** (`spec-template.md` §7). Where the solution's
-shape is easier to see than to describe, write rough illustrative code for it — quick and
-dirty, not the end state, no obligation to compile. It makes you confront the design
-concretely before asking anyone to sign off, it shows the reviewer a shape instead of
-making them reconstruct one, and it gives the implementer a starting point. Include one
-when the composition is novel or the ergonomics only show up in code; skip it when the
-change extends an existing pattern. Anything beyond a few lines goes as throwaway files on
-the spec branch, referenced from §7 — the spec PR is never merged, so it's free to carry.
+shape is easier to see than to describe, sketching it makes you confront the design
+concretely before asking anyone to sign off, shows the reviewer a shape instead of making
+them reconstruct one, and gives the implementer a starting point. Include one when the
+composition is novel or the ergonomics only show up in code; skip it when the change
+extends an existing pattern.
+
+**Write the sketch in the doc as pseudocode**, quick and dirty, not the end state. Name
+roles (`the stream seam`) rather than functions you think exist: almost-real code invites a
+reviewer to check the names against the repo, and then you are debating a seam nobody
+proposed. Real code belongs on the spec branch as throwaway files, referenced from §7 —
+the spec PR is never merged, so prototyping there is free and the doc carries no
+API-shaped claims.
 
 **Protect it in review, and expect to.** Automated reviewers will treat a sketch as code
 and report missing error handling, loose types and edge cases. The reviewer contract at the
