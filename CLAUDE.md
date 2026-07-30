@@ -128,7 +128,16 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/cli`               | Terminal interface (`fsdev`)                                            |
 | `@flow-state-dev/devtool`           | Pre-built DevTool assets for `fsdev dev`                                |
 | `@flow-state-dev/store-sqlite`      | SQLite-backed persistent store                                          |
+| `@flow-state-dev/store-postgres`    | PostgreSQL-backed persistent store                                      |
 | `@flow-state-dev/vercel`            | Vercel deployment adapter (SSE shaping, heartbeats, runtime config)     |
+| `@flow-state-dev/next`              | Next.js deployment adapter                                              |
+| `@flow-state-dev/node`              | Node HTTP host adapter — serve a long-lived FSD server in one call      |
+| `@flow-state-dev/bullmq`            | BullMQ host/runtime adapter — durable background jobs, native cron, full-flow worker dispatch |
+| `@flow-state-dev/mcp`               | MCP transport adapter                                                   |
+| `@flow-state-dev/chat-sdk`          | Chat SDK inbound transport                                              |
+| `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
+| `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
+| `@flow-state-dev/claude-code`       | Claude Code integration — dispatch cloud coding tasks via the local `claude` CLI |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
 | `@flow-state-dev/workforce`         | Agent registry, personas, and materialization (Layer 2 on orchestration) |
@@ -138,6 +147,8 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |
 | `apps/devtool`                      | DevTool source app (builds into `@flow-state-dev/devtool`)              |
 | `apps/docs`                         | Documentation site (Docusaurus)                                         |
+| `apps/kitchen-sink`                 | Canonical reference app (Next.js) — hosts every subsystem, where features get tested end-to-end |
+| `apps/pattern-benchmark`            | Cross-pattern benchmark suite over a fixed task suite + model           |
 
 
 ## Documentation Structure
