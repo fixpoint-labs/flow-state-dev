@@ -15,16 +15,12 @@ You'll be given a Linear issue ID (and possibly a note on its current phase). Ru
 something external** (a human gate not yet given, CI, a review, a dependency PR) — then stop:
 
 - **a bug (the `direct` route, and the dispatch says so)** → **no spec.** Go straight to
-  `issue-implement`: diagnose, fix, regression test, open the impl PR, stop. There is no
-  spec PR to close and no approval to wait for — the PR is where the fix gets reviewed
-  ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
-  spec"). Return `route: direct`.
-  **Two things send it back to the spec route, and only these**: the issue has **no
-  reproduction** and the symptom is ambiguous, or **it isn't really a bug** (the fix is a
-  new capability or a contract change). Decide that *before* you start building, return
-  `spec_required: <which, and why>` and stop — the coordinator re-routes the row. A design
-  **decision** you hit mid-diagnosis is NOT one of those: ship your best-judgment fix and
-  surface the decision on the PR with the alternative named. Don't stall and don't detour.
+  `issue-implement`: diagnose, fix, regression test, open the impl PR, stop. No spec PR to
+  close, no approval to wait for. Return `route: direct`. Your dispatch prompt carries the
+  overrides that send it back (and `issue-implement` Step 2.1 applies them, including the
+  spec-PR lookup you owe before building); the reasoning is in
+  [`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
+  spec". When one fires, return `spec_required: <which, and why>` instead of building.
 - needs a spec → run the issue-spec step, open the spec PR (ready for review), stop (now awaiting spec approval).
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what

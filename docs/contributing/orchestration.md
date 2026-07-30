@@ -218,17 +218,30 @@ costs a code review instead of a doc edit. That's acceptable *because* bug fixes
 small and localized — and the escape hatches below are what keep the ones that aren't out
 of this route.
 
-**Three things send a bug back to the spec route:**
+**Three things send a bug back to the spec route. Who decides each is part of the rule** —
+they become visible at different moments, so a reader who sees only one list will think the
+others are missing:
 
-1. **No reproduction, or an ambiguous symptom.** There's nothing to diagnose against, so
-   working out *what is even happening* is real research. The spec for a bug is worth
-   writing then, and what it carries is the reproduction shape and the regression seam.
-2. **It isn't really a bug.** The "fix" is a new capability, or it changes a contract
-   other code depends on. Promote it — a feature must not reach `main` through the one
-   route with no gate in front of it. This is a *routing* call, made before or early in
-   the work, not a reaction to the fix turning out to be interesting.
-3. **A spec PR already exists.** Someone specced it deliberately; honour that rather than
-   stranding a reviewed document.
+1. **A spec PR already exists** — *the router decides.* Someone specced it deliberately;
+   honour that rather than stranding a reviewed document and implementing past its live
+   approval gate. Re-derived on every refresh. **The worker re-checks it too**, with one
+   cheap `gh pr list`, because a row discovered mid-wake was never PR-scanned: its spec
+   handle is *unknown*, not known-absent, and the worker is the thing that would otherwise
+   write the code.
+2. **No reproduction, or an ambiguous symptom** — *the worker decides,* before it builds.
+   There's nothing to diagnose against, so working out *what is even happening* is real
+   research. The spec for a bug is worth writing then, and what it carries is the
+   reproduction shape and the regression seam.
+3. **It isn't really a bug** — *the worker decides,* before it builds. The "fix" is a new
+   capability, or it changes a contract other code depends on. Promote it — a feature must
+   not reach `main` through the one route with no gate in front of it. A *routing* call,
+   not a reaction to the fix turning out to be interesting.
+
+**Relabelling after the fix is built does not re-gate it.** A bug relabelled Feature while
+its PR is open re-routes to `spec`, but no spec is written and no approval is demanded: the
+code exists and is under review, so a spec after the fact settles nothing the PR review
+doesn't. What the row must not do is get pulled into the **cross-spec coherence pass** as a
+member with no spec document — it is excluded there for the same reason a bug is.
 
 **Mid-diagnosis, a design decision does *not* send it back.** Once the repro exists and
 the cause is understood, a fix that turns on a judgment call — two defensible places to

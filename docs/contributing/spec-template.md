@@ -29,9 +29,13 @@ Work that fits on one screen and needs no research uses
 [`agent-brief-template.md`](agent-brief-template.md) instead; that brief *is* the contract.
 
 **How to read the rest of this file.** Every section below is one line of instruction
-followed by a worked example. The examples are all the same imaginary issue — FIX-775,
-resuming an SSE stream after a disconnect — so the template reads end to end as a spec.
-Copy the shape, not the content.
+followed by a worked example. The examples are all the same issue — FIX-775, resuming an
+SSE stream after a disconnect — so the template reads end to end as a spec. **Copy the
+shape, not the content.** The issue itself is a fiction reconstructed after the fact:
+resume already ships (`docs/architecture/streaming.md` → "Resume Semantics"), which is why
+the API and cursor format in the examples are the real ones. Don't read it as a live
+proposal, and don't copy an API out of it without checking the code — the point of the
+example is what a section *looks like when it's done*, not what to build.
 
 ---
 
@@ -143,18 +147,17 @@ against the framework changes.
 > **Resuming from the client (no API change — the client does it):**
 >
 > ```ts
-> const session = useSession({ flow: "chat" })
+> const session = useSession(sessionId, { flowKind: "chat" })
 > // Connection drops at item 41. The client reconnects on its own and
-> // useSession's items array continues at 42 — no duplicates, no gap.
+> // session.items continues at 42 — no duplicates, no gap.
 > ```
 >
-> **Resuming by hand, against the HTTP surface:**
+> **Resuming by hand, against the stream endpoint:**
 >
-> ```ts
-> await fetch("/api/flow/chat/stream", {
->   headers: { "Last-Event-ID": "req_8f2:41" },
-> })
-> // → the SSE stream opens at sequence 42.
+> ```
+> Last-Event-ID: req_8f2:41
+> // or, equivalently
+> GET …/stream?starting_after=41
 > ```
 >
 > **What a stale cursor does (before / after):**

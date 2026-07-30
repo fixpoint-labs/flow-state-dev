@@ -93,9 +93,12 @@ are canonical in [`orchestration.md`](../../../docs/contributing/orchestration.m
 | Feature · Enhancement · Improvement | **spec** | `NEEDS_SPEC` | spec approval |
 | **Bug** | **direct** | `NEEDS_IMPLEMENTATION` | **none** — the impl PR is the review |
 
-Three things put a bug back on the spec route, and only these: **no reproduction** (there
-is nothing to diagnose against), **it isn't really a bug** (the fix is a feature or a
-contract change), or **a spec PR already exists**. Record the route in the handle cache
+Three things put a bug back on the spec route, and only these. **You decide one; the
+worker decides two** — the split matters because each is visible at a different moment:
+**a spec PR already exists** is yours, re-derived here every wake (and the worker
+re-checks it before building, since a row you discovered mid-wake may carry a spec handle
+you haven't scanned yet); **no reproduction** and **it isn't really a bug** are the
+worker's, decided before it writes any code and returned as `specRequired`. Record the route in the handle cache
 as `route: spec | direct`, and re-derive it from the label each wake — relabelling an
 issue re-routes it. **If you can't read the category, use `spec`**: failing closed costs
 one unnecessary document, failing open ships ungated code.

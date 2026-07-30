@@ -134,9 +134,16 @@ const BUG_CATEGORY = /^bugs?$/i
  * 2. **A worker promoted it** (`specRequired`) — it found no reproduction, or found the "bug" is
  *    really a feature. Sticky, because the label still says Bug and the next refresh would
  *    otherwise re-derive `direct` and undo the promotion every wake.
- * 3. **Nothing was observed.** A dead Linear scout, or a scan with no category, keeps the carried
- *    route and otherwise defaults to `spec`. Failing closed costs one unnecessary document;
- *    failing open ships code through the one route with no gate in front of it.
+ * 3. **The scout DIED.** No observation at all, so the carried route stands (defaulting to `spec`).
+ *    This is the only case that carries a route forward, and the distinction from case 4 is the
+ *    whole point: "we did not look" is not the same answer as "we looked and there is no label."
+ * 4. **Observed with NO category.** Fails closed to `spec` — never to the carried route. The scan
+ *    prompt asks for the label verbatim and `null` only when the issue genuinely carries none, so
+ *    a null is evidence the issue is uncategorized, not evidence it is still whatever it was.
+ *    Preserving `direct` here would leave a row ungated after its Bug label was *removed* — the
+ *    one mutation a human makes precisely to re-gate it — and it contradicts the contract that
+ *    every refresh re-routes from the current category. Failing closed costs one unnecessary
+ *    document; failing open ships code through the one route with no gate in front of it.
  *
  * @param row       the carried record (its `route` is the fallback, never the authority)
  * @param li        this wake's Linear read for the issue
@@ -148,7 +155,7 @@ function routeFor(row, li, observed, specPr) {
   if (row.specRequired) return 'spec'
   if (!observed) return row.route || 'spec'
   const category = ((li && li.category) || '').trim()
-  if (!category) return row.route || 'spec'
+  if (!category) return 'spec'
   return BUG_CATEGORY.test(category) ? 'direct' : 'spec'
 }
 
@@ -2178,11 +2185,24 @@ const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase)
 //    has a spec is in the set as normal; the exclusion is about what can still arrive, not about who is
 //    admitted to work.
 const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').trim())
-// A THIRD exclusion, and it has to apply to both halves: a DIRECT-route row has no spec. Left in
-// `crossSpecSet` it hands the reviewer a row with nothing to read and invites a conflict report
-// about a document that does not exist; left in `crossSpecComing` it is a spec that will never
-// arrive, so the pass is never askable and every feature in the epic is held behind a bug —
-// a deadlock, and the one this file has produced twice before by defining the two halves apart.
+// A THIRD exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
+// cross-reviewed. Left in `crossSpecSet` it hands the reviewer a row with nothing to read and
+// invites a conflict report about a document that does not exist; left in `crossSpecComing` it is
+// a spec that will never arrive, so the pass is never askable and every feature in the epic is
+// held behind it — a deadlock, and the one this file has produced twice before by defining the
+// two halves apart.
+//
+// Keyed on the ROUTE, and deliberately not on "does this row have a spec handle" — review
+// proposed widening it to `POST_SPEC_PHASES.has(phase) && !specPr`, to also catch a bug relabelled
+// Feature *after* its fix was built (it re-routes to `spec` but no spec was ever written, so it
+// joins the set as a phantom member). That widening is REFUSED because it collides with a stronger
+// invariant pinned one test over: a spec-route sibling that is already implementing has a CLOSED
+// spec PR and, in the shape that test fixes, no observable handle either — excluding it would hand
+// the reviewer a subset while reporting coherence over the whole set, which is the worse of the two
+// failures by a distance. Distinguishing the two states needs a durable "was ever direct" field,
+// and a relabel-mid-review is not worth one: the residual cost is a wasted read on a row with no
+// document, bounded and gating nothing.
+//
 // (`pendingAction` separately refuses to let `crossSpecHold` park a direct row, so a bug keeps
 // implementing while its sibling features wait on the pass. Both are needed: this keeps the bug
 // out of the question, that keeps the question from stopping the bug.)
@@ -2286,8 +2306,15 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           // table, so an unrouted bug worker looks for a spec, finds none, and reports the absence as a
           // readiness problem — the stall the direct route exists to remove.
           (isDirectRoute(item.row)
-            ? `ROUTE: direct (this is a BUG). There is NO spec, no spec PR and no spec-approval gate — do not look for one and do not treat its absence as a blocker. Diagnose, fix, regression-test, open the impl PR. Return route: direct.\n` +
-              `Only two things send it back: no reproduction with an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). Decide that BEFORE building and return specRequired: <which and why> instead. A design DECISION you hit mid-diagnosis is not one of those — ship your best-judgment fix and surface the decision on the PR with the alternative named.\n`
+            ? `ROUTE: direct (this is a BUG). No spec-approval gate applies — the impl PR is the review. Diagnose, fix, regression-test, open the impl PR. Return route: direct.\n` +
+              // The one lookup a direct worker still owes. The routing here is OPTIMISTIC about the
+              // absence of a spec: a row discovered this wake was not in the PR-state scout batch (that
+              // was built from the carried rows), so its spec handle is UNKNOWN rather than known-absent
+              // — and a Bug-labelled issue that already has a spec PR must stay gated. Rather than defer
+              // every discovered bug a wake, the check lands where the damage would be done: the worker
+              // is the only thing that writes code, and it is already in the repo with `gh` to hand.
+              `FIRST, confirm no spec PR exists for this issue (one cheap \`gh pr list --search "spec(<ISSUE>) in:title" --state open\`). If one does, STOP and return specRequired: existing spec PR #N is awaiting approval — the router did not know about it. Do not implement past an open spec gate.\n` +
+              `Otherwise the only two things that send it back are yours to decide BEFORE building: no reproduction with an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). Return specRequired: <which and why> instead of building. A design DECISION you hit mid-diagnosis is not one of those — ship your best-judgment fix and surface the decision on the PR with the alternative named.\n`
             : `ROUTE: spec (this issue's approach is gated on a human-approved spec).\n`) +
           (item.action === 'apply-verdict'
             ? // SETTLED ones only get the "record as resolved" instruction. An INCONCLUSIVE verdict resolves

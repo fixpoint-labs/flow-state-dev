@@ -1065,7 +1065,12 @@ check('ROUTE: a bug goes straight to implementation with no spec', async () => {
   // would otherwise look for a spec, fail to find one, and report the absence as a blocker.
   const dispatch = calls.find((c) => c.label === 'implement:FIX-2')
   assert.match(dispatch.prompt, /ROUTE: direct \(this is a BUG\)/)
-  assert.match(dispatch.prompt, /do not treat its absence as a blocker/)
+  // ...and it is told to run the one lookup that keeps a discovered-but-already-specced bug gated.
+  // A row discovered this wake was never in the PR-state scout batch, so the script's `specPr` is
+  // unknown rather than known-absent; the worker is the only thing that writes code, so the check
+  // lands there.
+  assert.match(dispatch.prompt, /confirm no spec PR exists/)
+  assert.match(dispatch.prompt, /Do not implement past an open spec gate/)
 })
 
 check('ROUTE: an unreadable category keeps the issue on the spec route', async () => {
@@ -1126,6 +1131,47 @@ check('ROUTE: a bug whose PR already exists is not rebuilt', async () => {
   })
   assert.equal(result.issues[0].phase, 'PR_FEEDBACK', 'the scan\'s report stands — there was no gate to jump')
   assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-9'], 'handle the PR, do not open a second one')
+})
+
+check('ROUTE: removing the Bug label re-gates the issue', async () => {
+  // Preserving the carried route on an observed-but-uncategorized row left a bug ungated after
+  // its Bug label was removed — which is the one mutation a human makes precisely to re-gate it.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-9', { route: 'direct', phase: 'NEEDS_IMPLEMENTATION' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-9': { phase: 'NEEDS_IMPLEMENTATION' } },
+      linear: { 'FIX-9': { state: 'Todo', category: null } }, // the label is gone
+    }),
+  })
+  assert.equal(result.issues[0].route, 'spec')
+  assert.deepEqual(workerLabels(calls), ['spec:FIX-9'], 'it needs a spec now, not an implementation')
+})
+
+check('ROUTE: relabelling a bug mid-review re-routes it but does not re-gate it', async () => {
+  // A spec-less bug relabelled Feature while its PR is open re-routes to `spec` — the label is
+  // always the authority — but nothing demands a spec after the fact. The code exists and is under
+  // review, so a spec written now settles nothing the PR review doesn't, and the row keeps its
+  // merge gate rather than being knocked back to NEEDS_SPEC.
+  //
+  // The known residual, accepted deliberately (see the cross-spec comment in epic-wake.js): the
+  // row is now a spec-route member with no spec document, so it counts toward the cross-spec set.
+  // That costs a wasted read, and closing it needs a durable "was ever direct" field that a
+  // relabel-mid-review does not earn.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-9', { route: 'direct', phase: 'PR_FEEDBACK', implPr: 44 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-9': { phase: 'PR_FEEDBACK', implPr: 44, readyToMerge: true } },
+      linear: { 'FIX-9': { state: 'In Review', category: 'Feature' } }, // relabelled
+    }),
+  })
+  const r9 = result.issues.find((r) => r.id === 'FIX-9')
+  assert.equal(r9.route, 'spec', 'the label is always the authority on the route')
+  assert.equal(r9.phase, 'PR_FEEDBACK', 'but the built work is not re-gated back to NEEDS_SPEC')
+  assert.deepEqual(
+    result.gates,
+    [{ kind: 'merge', issueId: 'FIX-9', pr: 44 }],
+    'it keeps the merge gate it already reached',
+  )
 })
 
 check('ROUTE: a promoted bug stays promoted across wakes', async () => {
@@ -1253,13 +1299,27 @@ check('INVARIANT: nothing routes an issue past the spec gate except an actual Bu
     const bugLabel = c.observed && /^bugs?$/i.test((c.category || '').trim())
     if (route === 'direct') {
       // Every clause that must be able to veto the label, checked from the outside.
-      assert.ok(bugLabel || c.carried === 'direct', `direct route with no bug label and no carried direct: ${JSON.stringify(c)}`)
+      // A CARRIED direct route survives only when nothing was observed — see the pair of
+      // assertions below, which are the whole difference between "we didn't look" and
+      // "we looked and there is no label".
+      assert.ok(bugLabel || (!c.observed && c.carried === 'direct'), `direct route with no bug label: ${JSON.stringify(c)}`)
       assert.equal(c.specPr, null, `an existing spec PR must keep the issue on the spec route: ${JSON.stringify(c)}`)
       assert.equal(c.specRequired, null, `a promotion must be sticky: ${JSON.stringify(c)}`)
     }
     // "Debug" and "" must not read as a bug — a substring or truthiness test would pass them.
-    if (!bugLabel && !c.specPr && !c.specRequired && c.carried !== 'direct') {
+    if (!bugLabel && !c.specPr && !c.specRequired && !(!c.observed && c.carried === 'direct')) {
       assert.equal(route, 'spec', `non-bug input routed direct: ${JSON.stringify(c)}`)
+    }
+    // The two halves of "observed" spelled out, because they are opposite answers to the same
+    // missing field and an implementation that conflates them is the failure Codex found:
+    // an OBSERVED row with no category fails CLOSED (its Bug label was removed — the very
+    // mutation a human makes to re-gate it), while an UNOBSERVED row (a dead scout) keeps what
+    // it had, since re-routing on an infrastructure failure would thrash a live row.
+    if (c.observed && !(c.category || '').trim() && !c.specPr && !c.specRequired) {
+      assert.equal(route, 'spec', `an observed row with no category must fail closed: ${JSON.stringify(c)}`)
+    }
+    if (!c.observed && !c.specPr && !c.specRequired) {
+      assert.equal(route, c.carried || 'spec', `a dead scan must preserve the carried route: ${JSON.stringify(c)}`)
     }
   }
 

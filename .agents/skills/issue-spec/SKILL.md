@@ -36,8 +36,12 @@ canonical in
 spec". Don't write a spec for a bug just because one was asked for; say what the routing
 rule says and let it go straight to the fix.
 
-**Two things do send a bug here**, and if you're specced onto one, shape the spec around
-them rather than producing a full feature-shaped document:
+**Three things send a bug here.** The first is the common one and needs no judgment from
+you: **a spec PR already exists** for the issue — someone specced it deliberately, so
+carry on and do the work (this is also how a Step 6.5 review round on an existing bug spec
+reaches you; refusing it there would stall the very row the coordinator is waiting to
+approve). The other two are judgment calls, and if you're specced onto one, shape the spec
+around it rather than producing a full feature-shaped document:
 
 - **No reproduction / an ambiguous symptom.** The research *is* working out what is
   happening. The valuable output is Part II §10: the reproduction shape and the seam the
@@ -89,11 +93,13 @@ Fetch the full issue from Linear (see CLAUDE.md → "Linear access" for the chan
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
 
-**Check the category label before anything else.** If it's **Bug**, stop and check it
-against the two exceptions in "Who gets a spec" above — no reproduction, or not really a
-bug. Neither applies? Say so in one line ("FIX-N is a bug with a clear repro — it takes
-the direct route; run `/issue-implement FIX-N`") and **do not write a spec**. Don't move
-its Linear state either: an issue parked in "In Spec Dev" for a spec nobody is writing is
+**Check the category label before anything else.** If it's **Bug**, check it against the
+three exceptions in "Who gets a spec" above. **An existing spec PR settles it — carry on**
+(that's the re-entry path for a review round on a bug's spec, and refusing it would strand
+the spec mid-review). Otherwise, if neither judgment call applies — no reproduction, or
+not really a bug — say so in one line ("FIX-N is a bug with a clear repro — it takes the
+direct route; run `/issue-implement FIX-N`") and **do not write a spec**. Don't move its
+Linear state either: an issue parked in "In Spec Dev" for a spec nobody is writing is
 worse than no signal.
 
 Once the issue is loaded, **move it to "In Spec Dev"** with `save_issue` (set `state` to the "In Spec Dev" workflow state for the issue's team). This signals to the team that spec authoring is in flight. If the issue is already in "In Spec Dev" or a later state, leave it. If the team has no "In Spec Dev" state, fall back to the closest equivalent (e.g., "In Progress") and note it in the publishing comment.

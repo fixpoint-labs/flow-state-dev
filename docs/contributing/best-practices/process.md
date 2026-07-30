@@ -14,7 +14,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Rule:
   - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a full `docs/specs/*` spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
   - Each spec carries explicit deliverables and verification steps.
-  - Between the two: small, local work can use a one-screen agent brief on the issue (`agent-brief-template.md`) instead of a full spec doc. And a bug returns to the spec route in two cases — no reproduction with an ambiguous symptom, or a "fix" that is really a new capability or a contract change.
+  - Between the two: small, local work can use a one-screen agent brief on the issue (`agent-brief-template.md`) instead of a full spec doc. A bug returns to the spec route on the three overrides in [`../orchestration.md`](../orchestration.md) → "Which issues get a spec" — don't re-enumerate them here, since a count that drifts from the router's reads as a contradiction.
 - Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement.
 
 ### BP-004: Public boundary first
