@@ -7,9 +7,9 @@ description: The Task record and storage-agnostic TaskCollection that the task b
 
 # Task substrate
 
-Every coordination pattern in flow-state-dev, the task board, the supervisor, plan-and-execute, comes down to the same idea: a list of work items that get claimed, run, and marked done. The task substrate is where that shared shape lives. It gives you two things: the `Task` record, and a `TaskCollection` that stores tasks and mutates them safely under concurrency. Everything above it, dispatchers, boards, patterns, reads and writes through this one API.
+Coordination patterns in flow-state-dev share one shape: a list of work items that get claimed, run, and marked done. The task substrate is where that shape lives. It gives you the `Task` record and a `TaskCollection` that stores tasks and mutates them safely under concurrency. Dispatchers, the task board, and the patterns above them (Supervisor, Plan and Execute) all read and write through this one API.
 
-Tasks are core, not a niche add-on. If you use a supervisor or a plan-and-execute pattern, you're using the task substrate underneath, whether you touch it directly or not. When you need a coordination shape none of the wrappers provide, this is the layer you drop to.
+Reach for it directly when you need a coordination shape none of the wrappers provide. Otherwise you're using it underneath one of them.
 
 Import it from `@flow-state-dev/orchestration`:
 
@@ -31,6 +31,8 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `deps` | `string[]?` | Ids that must reach `completed` before this task is eligible. |
 | `input` | `TInput?` | Typed payload handed to the worker. |
 | `output` | `TOutput?` | Typed result written by `complete`. |
+| `error` | `string?` | Message written by a hard `fail`. |
+| `feedback` | `string?` | Message written by a soft `fail` or a review, readable on the next attempt. |
 | `attempts` | `number` | How many times the task has been claimed. Starts at 0. |
 | `maxAttempts` | `number?` | Optional retry budget. Governs soft vs hard fail. |
 | `assignee` | `string?` | Worker key a board uses to route the task. |
@@ -38,28 +40,34 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `leaseUntil` | `number?` | Timestamp after which a stale claim can be reclaimed. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
+| `createdAt` / `updatedAt` | `number` | Epoch ms. |
+| `startedAt` / `completedAt` | `number?` | Epoch ms, stamped on first claim and on `complete`. |
 
 `input` and `output` validate as `unknown` on the schema. The runtime type `Task<TInput, TOutput>` narrows them at your call site, so a board over a typed collection surfaces real payload types at the worker boundary.
 
 ### The status state machine
 
-A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. Illegal transitions throw rather than silently writing a bad state, and the error is an `IllegalTaskTransitionError` carrying the task id and the refused move.
+A task moves through a fixed set of statuses, and the substrate enforces the transitions. You cannot drop a `completed` task back into `in_progress`. An illegal transition throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
 That is what you get driving a collection from your own code. A model driving a board through the delegation task tools sees something different: those tools catch this one error and return `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current status and the calls available from it, so a refused change reads like every other bad tool call. See [Delegation](../skills/delegation.md) for the coordinator's view.
 
-There is a third possibility, and you have to ask for it. `complete` and `fail` take an option that makes one particular write *advisory*, so a refused transition does nothing instead of throwing — for a caller recording a result that may simply no longer apply. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
+`complete` and `fail` also take an option that makes one write *advisory*, so a refused transition does nothing instead of throwing. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
-         │                 ├─→ errored
-         │                 ├─→ awaiting_review ─┬─→ pending  (resumeFromReview)
-         │                                       └─→ cancelled
-         │                 └─→ pending          (reclaim — stale lease)
-         ├─→ blocked ─→ pending  (unblock)
+         │                ├─→ errored
+         │                ├─→ pending           (reclaim, after a stale lease)
+         │                ├─→ cancelled
+         │                └─→ awaiting_review ─┬─→ completed
+         │                                     ├─→ errored
+         │                                     ├─→ pending    (resumeFromReview)
+         │                                     └─→ cancelled
+         ├─→ blocked ─┬─→ pending               (unblock)
+         │            └─→ cancelled
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is always permitted, so repeat writes are idempotent rather than refused.
 
 The status helpers are exported so you can reason about transitions without hardcoding the table:
 
@@ -83,7 +91,7 @@ Set `maxAttempts` and, while `attempts < maxAttempts`, a call to `fail` is a *so
 
 ## TaskCollection
 
-A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is CAS-safe (compare-and-set), so two workers claiming at the same moment never both win the same task. You get a `TaskCollectionRef` from `getOrCreateTaskCollection`, which needs the block context and a backing choice.
+A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is compare-and-set, so two workers claiming at the same moment never both win the same task. You get a `TaskCollectionRef` from `getOrCreateTaskCollection`, which needs the block context and a backing choice.
 
 The mutation surface:
 
@@ -92,9 +100,11 @@ The mutation surface:
 - **Mutate** — `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
 
+Nothing calls `reclaim` for you. If you want expired leases returned to `pending`, call it yourself from a block that runs alongside the work.
+
 #### Recording a result that may no longer apply
 
-`complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be rejected by the state machine or, worse, quietly overwrite work that belongs to someone else.
+`complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
 
 Passing the option makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
 
@@ -105,11 +115,13 @@ await tasks.complete(task.id, output, {
 });
 ```
 
-`ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a final status, so an incidental repeat write cannot clobber a settlement someone recorded deliberately. `expectAttempt` asks a different question: do I still hold this task? That one matters because a stale result is often a perfectly *legal* transition, and so invisible to the first check.
+`ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
 
-Two things to know. The checks happen inside the same atomic write that performs the transition, so there is no gap between checking and writing, and you never have to re-derive the state machine yourself. And only those two outcomes go quiet: a missing task, a store failure, or an ordinary bug still throws. Leave the argument off and both methods behave exactly as they always have.
+Both guards are evaluated as part of the write they guard, so the task cannot change between the check and the write. Only those two outcomes go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
 
-Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim, its messages, tool calls, sources, reasoning, so an aggregator (a synthesizer or reviewer) can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
+A declined write returns normally and reports nothing, not even which guard fired. If you need to know whether it landed, re-read the task with `get(id)`.
+
+Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim (its messages, tool calls, sources, reasoning), so an aggregator such as a synthesizer or reviewer can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
 
 Here's a handler that seeds two tasks with a dependency between them and dispatches the one that's ready:
 
@@ -173,21 +185,25 @@ const collection = await getOrCreateTaskCollection({
 });
 ```
 
-The sequencer backing expects the sequencer's state schema to hold a `Record<string, Task>` at its state key (default `"tasks"`). The resource backing hydrates a synchronous read-mirror at construction, which is why the factory is uniformly `async`, you `await` it regardless of backing.
+The sequencer backing expects the sequencer's state schema to hold a `Record<string, Task>` at its state key (default `"tasks"`).
+
+`getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous in all three cases.
 
 ## Dispatchers
 
-A dispatcher decides which ready task gets claimed next. All five built-ins delegate to `collection.claim`, so CAS retry and lease stamping run the same way no matter which one you pick. A dispatcher only chooses the eligibility predicate and the ordering.
+A dispatcher decides which ready task gets claimed next. Five ship with the package. Each one picks and claims in a single atomic step, so under contention exactly one worker wins the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
 
 | Dispatcher | Picks | Eligibility |
 |------------|-------|-------------|
-| `fifoDispatcher` | Earliest `createdAt` pending task | Any pending task. |
-| `topologicalDispatcher` (default) | Earliest pending task with deps satisfied | Pending, all `deps` completed. |
+| `fifoDispatcher` | Earliest `createdAt` eligible task | Pending, all `deps` completed. |
+| `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Pending, all `deps` completed. |
 | `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Pending, deps satisfied. Unset priority reads as 0. |
 | `classifierDispatcher({ classify })` | The id your `classify` callback returns | Ready set handed to an LLM, which picks one or backs off. |
 | `eventDispatcher({ topicFor, topic })` | First pending task whose topic matches | Pending, deps satisfied, `topicFor(task) === topic`. |
 
-The classifier and event dispatchers are factories because they take config. The classifier sees only the ready set (pending, deps satisfied), calls your callback to choose one id, then narrows the claim to that id, so if a parallel worker already took it, the CAS still arbitrates:
+`fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
+
+The classifier and event dispatchers are factories because they take config. The classifier sees only the ready set (pending, deps satisfied), calls your callback to choose one id, then narrows the claim to that id, so if a parallel worker already took it, the compare-and-set still arbitrates:
 
 ```ts
 import { classifierDispatcher } from "@flow-state-dev/orchestration";
@@ -203,13 +219,27 @@ const urgencyFirst = classifierDispatcher({
 
 ## task-change items
 
-Every mutation on a collection emits a `task-change` component item onto the stream, keyed by `${collectionId}/${taskId}` so the latest change per task replaces the previous one. The item carries the change kind (added, claimed, completed, retried, and so on), the task snapshot, and the previous status.
+Every mutation on a collection emits a `task-change` component item onto the stream, keyed by `${collectionId}/${taskId}` so the latest change per task replaces the previous one.
 
-This is how UIs stay in sync without polling. The `<Plan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from the stream. You don't wire this up; `getOrCreateTaskCollection` adapts the substrate's change callback to `ctx.emit.component` for you.
+```ts
+// data on a task-change component item
+{
+  collectionId: "research-plan",
+  taskId: "draft",
+  kind: "completed",         // added | claimed | completed | errored | retried |
+                             // blocked | unblocked | review_requested | resumed |
+                             // cancelled | label_changed | metadata_changed |
+                             // priority_changed | assignee_changed
+  task: { /* the whole Task, after the mutation */ },
+  prevStatus: "in_progress", // omitted when the mutation didn't change status
+}
+```
+
+UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from them. You don't wire any of it up: every collection `getOrCreateTaskCollection` hands you emits these items itself.
 
 ## Related pages
 
 - [Task board](./task-board.md) — the concurrent drain built on a TaskCollection.
 - [Flow policy](./flow-policy.md) — shaping the prior-work a worker sees.
 - [Orchestration overview](./overview.md) — how the substrate, board, and skills fit together.
-- [Flow-aware components](../ui/flow-aware-components.md) — rendering `task-change` items with `<Plan />`.
+- [Flow-aware components](../ui/flow-aware-components.md) — rendering `task-change` items with `<TaskPlan />`.

@@ -1,11 +1,13 @@
 ---
-sidebar_position: 4
+title: Flow policy
+sidebar_position: 5
 sidebar_label: "Flow policy"
+description: What a freshly dispatched task board worker knows about work that already happened in the same run, plus tool-result memoization across tasks.
 ---
 
 # Flow policy
 
-Flow policy controls what a freshly dispatched Task Board worker knows about work that already happened in the same run. It also enables tool-result memoization so identical tool calls across tasks don't pay the same cost twice.
+Flow policy controls what a freshly dispatched task board worker knows about work that already happened in the same run. It also enables tool-result memoization so identical tool calls across tasks don't pay the same cost twice.
 
 The flow-policy layer (observation ledger, `TaskFlowPolicy`, built-in policies) lives in `@flow-state-dev/orchestration`. The tool-cache primitive (`createToolCacheCapability`, in-memory store) lives in `@flow-state-dev/core`. Both are wired automatically by `taskBoard` (and by the patterns built on it) when you set the relevant config.
 
@@ -15,11 +17,9 @@ Plan-shaped patterns run a fan of workers against a shared goal. Each worker is 
 
 Worse, the second worker has no way to build on the first worker's reasoning. The dependency graph encodes ordering but not knowledge. If Task B is supposed to refine Task A's output, B needs to actually see what A produced and what A tried.
 
-Flow policy gives the board two knobs for this. One layer captures every tool call any worker makes during the run into an observation ledger and lets you choose which of those observations to surface on the next worker's input. The other layer lets a tool block opt into result memoization, so identical calls within the run serve from cache.
+One layer captures every tool call any worker makes during the run into an observation ledger, and lets you choose which of those observations to surface on the next worker's input. The other lets a tool block opt into result memoization, so identical calls within the run serve from cache. The two are independent.
 
 ## How it works
-
-There are two independent layers.
 
 **Layer A — observation ledger and flow policy.** The board maintains a per-run, in-memory ledger of every tool call made by any worker: tool name, arguments, result (or error), the task that made the call, whether it was a cache hit. Before each dispatch, the board asks the configured `TaskFlowPolicy` to pick a subset of those observations. The selection lands on the new worker's `TaskWorkerInput.priorWork` slot:
 
@@ -48,11 +48,11 @@ Workers can consume `observations` directly, render them with `formatPriorWork(p
 
 **Layer B — tool-result memoization.** A tool block opts in by declaring `cacheable` on its `BlockConfig`. When the board has caching enabled, identical calls within the configured scope serve from cache. The cached `tool_output` item carries `cached: true` and `cacheAgeMs`; cross-task hits also carry `sourceTask: { collectionId, taskId }` so the DevTool transcript can show where the original call happened.
 
-Identical in-flight calls within the same request coalesce into one execution. Errors are never cached.
+Identical in-flight calls within the same request coalesce into one execution.
 
 ## Built-in policies
 
-All policies live on the `flowPolicy` namespace exported from `@flow-state-dev/orchestration`. The default for every Task Board topology is `flowPolicy.declaredDepsOnly()`.
+All policies live on the `flowPolicy` namespace exported from `@flow-state-dev/orchestration`. The default for every task board topology is `flowPolicy.declaredDepsOnly()`.
 
 | Policy | What it selects |
 |---|---|
@@ -61,7 +61,7 @@ All policies live on the `flowPolicy` namespace exported from `@flow-state-dev/o
 | `flowPolicy.ancestors({ transitive })` | Like `declaredDepsOnly`, optionally walking the dep graph. |
 | `flowPolicy.recentTrajectory({ n, maxTokens? })` | The last N observations across all tasks, regardless of deps. |
 | `flowPolicy.allCompleted({ maxTokens? })` | Every observation from any currently-completed task. |
-| `flowPolicy.compact({ recentN, summarizer? })` | v1 stub: keeps the recent N verbatim. Future iteration routes older observations through a summarizer. |
+| `flowPolicy.compact({ recentN, summarizer? })` | Keeps the most recent N observations verbatim and drops the rest. `summarizer` is accepted but not used yet. |
 | `flowPolicy.custom(selectFn)` | Roll your own. |
 
 The common pick for plan-and-execute-shaped work is recent trajectory:
@@ -105,9 +105,8 @@ const board = taskBoard({
 
 Pattern defaults:
 
-- `planAndExecute` pins `flowPolicy.recentTrajectory({ n: 8 })`. Each step sees the last 8 tool observations across the run regardless of declared deps, which matches how the LLM-driven evaluator and replanner think about progress.
-- `supervisor` pins `flowPolicy.declaredDepsOnly()`. Each worker is reviewed independently; cross-task chatter would muddle the review surface.
-- Bare `taskBoard` defaults to `flowPolicy.declaredDepsOnly()` for every topology.
+- `planAndExecute` pins `flowPolicy.recentTrajectory({ n: 8 })`. Each step sees the last 8 tool observations across the run, regardless of declared deps.
+- `supervisor` pins `flowPolicy.declaredDepsOnly()`. Each worker sees only the observations from the tasks it declared as deps.
 
 ## Marking tools cacheable
 
@@ -142,7 +141,7 @@ type BlockCacheableConfig = {
 
 Scope choices:
 
-- `run` — entries live for the current Task Board run. Reset when the board's outer sequencer completes. This is the default and the safest choice for plan-shaped work.
+- `run` — entries live for the current task board run. Reset when the board's outer sequencer completes. This is the default and the safest choice for plan-shaped work.
 - `request` — entries live for the lifetime of the request. Useful when several sibling boards within one request might benefit from sharing.
 - `session` — entries persist across requests within the same session. Use sparingly; session lifetimes are long and stale entries get hard to reason about.
 
@@ -154,7 +153,7 @@ Errors are never cached. If `execute` throws, no entry is written and the next c
 - Its result depends on time, randomness, or external mutation not captured in `args`. A "get current price" tool will hand back stale prices.
 - The cost of being wrong is high. A cached result that's 30 seconds out of date is fine for a config lookup, not fine for a position size.
 
-Cross-task observation flow (Layer A) does not require cacheable tools to be useful — the ledger records every tool call regardless. Caching is a separate optimization.
+The ledger records every tool call whether or not the tool is cacheable. Layer A works without Layer B.
 
 ## Writing a custom policy
 
@@ -204,17 +203,17 @@ Both layers surface in the DevTool transcript without extra wiring.
 
 | Pattern shape | Recommended policy |
 |---|---|
-| Plan and Execute (default) | `flowPolicy.recentTrajectory({ n: 8 })` — already pinned |
-| Supervisor (default) | `flowPolicy.declaredDepsOnly()` — already pinned |
+| Plan and Execute (default) | `flowPolicy.recentTrajectory({ n: 8 })`, already pinned |
+| Supervisor (default) | `flowPolicy.declaredDepsOnly()`, already pinned |
 | Topological / dep-graph fan-out | `flowPolicy.declaredDepsOnly()` or `flowPolicy.ancestors({ transitive: true })` |
-| Independent fan-out, no deps | `flowPolicy.none()` — workers shouldn't see each other |
+| Independent fan-out, no deps | `flowPolicy.none()`, so workers don't see each other |
 | Long-running coordinator with evolving context | `flowPolicy.recentTrajectory({ n, maxTokens })` |
 | Anything where you want the new worker to see everything that's already done | `flowPolicy.allCompleted({ maxTokens })` |
 
-Override sparingly. The default is the default because it's the safe pick — surfacing too much prior work is its own problem (longer prompts, more interference between unrelated reasoning chains). Reach for a different policy when you have a concrete reason.
+Surfacing more prior work costs longer prompts and more interference between unrelated reasoning chains. Reach for a different policy when you have a concrete reason.
 
 ## See also
 
 - [Context supply](./context-supply) — the other input lever: what prior *conversation* a delegated agent inherits, versus flow policy's tool-call observations
 - [Plan and Execute](../patterns/plan-and-execute) — the default `recentTrajectory({ n: 8 })` pin lives here
-- [Supervisor](../patterns/supervisor) — defaults to `declaredDepsOnly` so each task's review stays focused
+- [Supervisor](../patterns/supervisor) — pins `declaredDepsOnly`

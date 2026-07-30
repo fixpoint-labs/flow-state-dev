@@ -1,17 +1,17 @@
 ---
 title: Agents
-sidebar_position: 5
+sidebar_position: 7
 sidebar_label: Agents
 description: Named, reusable participants composed of a persona, a model, and tools, registered once and referenced as delegation agents or composed as standalone blocks.
 ---
 
 # Agents
 
-An agent is a named, reusable participant you define once and use many times. It bundles three things: a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and a set of tools it may call. Once registered, you reference an agent by name from a skill's `agents:` map (as a delegation agent), or drop it into any flow action as a standalone block.
+An agent is a named, reusable participant you define once and use many times. It bundles a persona (the system-prompt identity that says who the agent is and how it behaves), a model, and the tools it may call. Once registered, you reference an agent by name from a skill's `agents:` map (as a delegation agent), or drop it into any flow action as a standalone block.
 
 The point is to stop copy-pasting the same prompt and tool list into every worker. You write the `research-analyst` once, then a supervisor skill, a plan-and-execute skill, and a one-off action can all point at it.
 
-Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are declared in `@flow-state-dev/core`, so other packages can accept an agent registry without depending on workforce.
+Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are declared in `@flow-state-dev/core`.
 
 ## defineAgent
 
@@ -22,7 +22,7 @@ Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are 
 | `name` | Stable identifier. This is the key `agent-ref` resolves against. |
 | `description` | Routing-facing summary shown in trace UI and the DevTool. Not the system prompt, and not the blurb a delegation roster shows — an `agent-ref` agent is listed to the coordinator by its reference name. |
 | `persona` | The system-prompt source. A string, an inline template, or a resource path. |
-| `model` | Model id. Falls back to the deps' default, then `intent/chat`. |
+| `model` | Model id. Falls back to the default model set where the agent is materialized (`workerModelId` on the skills library, `defaultModelId` on `agentBlock`), then `intent/chat`. |
 | `allowedTools` | Tool-catalog keys the agent may reference. |
 | `usesCapabilities` | Capabilities the agent composes, as string keys or capability refs. |
 | `outputSchema` | Structured output contract. Honored only for the standalone shape. |
@@ -50,9 +50,7 @@ export const agentRegistry = createAgentRegistry([techBriefer]);
 
 ## Registry and materialization
 
-An agent definition is inert on its own. Two steps turn it into something that runs.
-
-`createAgentRegistry` builds a catalog from an array of agents. It errors on a duplicate name, so the registry is a single source of truth. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a board seat in a delegation skill) or standalone (for a flow action).
+An agent definition is inert on its own. `createAgentRegistry` builds a catalog from an array of agents, and errors on a duplicate name. `materializeAgent` turns an agent into a runnable block, either worker-shaped (for a board seat in a delegation skill) or standalone (for a flow action).
 
 You rarely call `materializeAgent` by hand. You hand it to the skills library, which calls it when a skill's `agent-ref` entry resolves:
 
@@ -86,7 +84,7 @@ angle, each `assignee: "analyst"` — then call `runBoard` and synthesize the
 settled tasks' output.
 ```
 
-Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `itemVisibility`. The result is a deterministic, auditable tool surface per skill: you read the override block and know exactly what the agent can do.
+Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `visibility` (the frontmatter key for `itemVisibility`). Read the override block and you know exactly what the agent can do.
 
 There's no prompt or persona override. Changing an agent's persona is a change to the agent definition. If you need an ad-hoc prompt for one agent, use `prompt` or `prompt-ref` on the agent spec instead of `agent-ref`.
 
@@ -157,12 +155,10 @@ An agent then sources its persona by path (`persona: { path: "personas/portfolio
 
 ## Current limits
 
-Agents are a young primitive. A few things are declared but not yet wired, and it's worth knowing before you lean on them:
-
-- `usesSkills` is reserved. It's on the type, but nothing resolves it yet.
-- `contextMode: "fork"` is not honored. Only `"inline"` runs today; a `"fork"` value is accepted but treated as inline.
+- `usesSkills` is on the type, but nothing resolves it.
+- `contextMode` on an agent definition is not honored. A `"fork"` value is accepted and treated as inline. To have a delegated agent inherit the parent conversation, set `context-supply: conversation` on the skill's agent entry instead. That field works on `prompt` / `prompt-ref` entries; on an `agent-ref` entry it throws. See [Context supply](./context-supply.md).
 - Agents are registered statically at build time through `createAgentRegistry`. There's no runtime registration.
-- There's no cross-flow agent assignment and no Roles or Workstreams layer. An agent is referenced within a flow, by a skill or a standalone block, not assigned across flows.
+- An agent is referenced within a flow, by a skill or a standalone block. There's no cross-flow assignment.
 
 ## Related pages
 
