@@ -615,8 +615,9 @@ immediately but breaks `taskTools.completeTask` on durable boards until a token 
 needing a new invention: `DispatchEnvelope` requires `actionName: string` and `input: unknown` as
 non-optional fields (`transports/dispatcher.ts:16-26`) while a task stores only
 `assignee: z.string().optional()` (`tasks/schema/task.ts:41`), so a task cannot be dispatched from
-`assignee` alone — but **"enough to start a request" *is* that envelope.** Storing a requestId or an
-envelope on the task replaces inventing a coordinate.
+`assignee` alone — but **"enough to start a request" *is* that envelope.** Persisting the envelope on
+the task replaces inventing a coordinate. **A bare `requestId` does not**, and does not qualify — see
+the recoverability requirement in Decision 6.
 
 **Carry the bare identity fields, never a derived key.** `createExecutionContext` derives the storage
 key from `(sessionId, tenantId)`, so passing an already-derived key as `sessionId` either
@@ -734,20 +735,29 @@ initiating request creates a background sibling, and that request runs the task.
 board-to-queue producer, no polling loop.
 
 **One path does not collapse, and clause 3 depends on it: a pending task with no *live* initiating
-request has no wake source.** Three ways in, and FIX-978 closes none of them:
+request has no wake source.** Two ways in, and FIX-978 closes neither:
 
 | How a task gets there | Why FIX-978 does not help |
 |---|---|
 | FIX-978's own reclamation returned it to `pending` | Reclamation is what put it there; nothing then creates a request. |
-| **The admission window** — the foreground request persisted the task, then crashed or lost the process before the sibling request was durably created | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
-| The sibling request was **rejected** at dispatch | Same end state, via N1's arbiter policy. |
+| **The admission window** — the task was persisted, and the sibling request never was: the foreground request crashed in the gap, **or the dispatch was rejected at the concurrency gate** | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
 
-The task write and the sibling request creation are non-atomic, so the middle row is a dual-write
-window, not a rare crash artifact — the same hazard the BullMQ option carries below. **Binding on
-FIX-982: name a mechanism that makes a pending task reachable without a live initiating request, and
-state its cost** — outbox, reconciliation pass, or a pending-task wake source; this epic does not
-choose. Without one the unconditional "no way to strand it" half is not delivered, and the default in
-that vacuum is store polling chosen by omission.
+**The window is not crash-only — N1's `concurrency: "reject"` triggers it deterministically.** The
+envelope is assembled at `createInboundTransportHost.ts:129-142`; the gate at `:157` for `reject`
+*"synchronously claims the action's key and throws `ConcurrencyRejectedError` here… so a dropped
+caller never materializes a run"*; the first `stores.request.set` is not until `:251`. On rejection the
+envelope exists only in memory and is discarded — so stranding is a **predictable outcome of a
+supported configuration**, not an unlucky interleaving.
+
+**Two requirements, both FIX-982's.** (1) **The durable task or outbox row retains the complete
+re-dispatchable `DispatchEnvelope`** — `requestId`, `flowKind`, `actionName`, `input`, `userId`,
+`sessionId`, `orgId`, `tenantId`, `source`, `metadata`. **A bare `requestId` does not qualify**: it
+points at a record that will never be written, with no `actionName` and no `input` to re-dispatch
+from. A persistence requirement, not a new data model — the envelope already exists, already
+assembled before the gate. (2) **Name a mechanism that makes a pending task reachable without a live
+initiating request, and state its cost** — outbox, reconciliation pass, or a pending-task wake
+source; this epic does not choose. Without both, the unconditional "no way to strand it" half is not
+delivered.
 
 **Binding on FIX-982: name the reclamation wake explicitly and state its cost.** Two live candidates:
 *liveness-triggered*, hooking onto FIX-978's reclaim/sweeper pass, which is already walking exactly
@@ -971,7 +981,7 @@ Each is a consequence of running two requests at once in one session that no exi
 
 | | Finding | Should land with |
 |---|---|---|
-| **N1** | **A session-keyed concurrency policy rejects or queues a background sibling.** The arbiter's default key is `"session"`, so a flow or action declaring `concurrency: "reject"` rejects the background request outright, and `"queue"` puts it FIFO behind the foreground request, bounded by a 30s wait budget (`arbiter.ts:89-94`, `:38`). With `queue`, a foreground request waiting on a background task whose request is queued behind it is a self-deadlock. FIX-982 must state how a background dispatch interacts with the arbiter. | FIX-982 |
+| **N1** | **A session-keyed concurrency policy rejects or queues a background sibling.** The arbiter's default key is `"session"`, so a flow or action declaring `concurrency: "reject"` rejects the background request outright, and `"queue"` puts it FIFO behind the foreground request, bounded by a 30s wait budget (`arbiter.ts:89-94`, `:38`). With `queue`, a foreground request waiting on a background task whose request is queued behind it is a self-deadlock. **`reject` is also the deterministic trigger for Decision 6's admission window** — the task is written, the dispatch throws at the gate, and nothing is persisted to recover from. FIX-982 must state how a background dispatch interacts with the arbiter. | FIX-982 |
 | **N2** | **`latestRequestId` is single-valued and written unconditionally.** `runAction` sets `{ ...session, latestRequestId: requestId }` with `"any"` (`runAction.ts:642-658`), so a background sibling can steal the session's auto-resume pointer from the foreground turn — last writer wins. | new issue (candidate; not filed) |
 | **N3** | **`ActiveRequestRegistry` has no per-session query** — only `listAll` / `listStale` / `get` (`stores/types.ts:471-489`). The durable read model covers the UI, but "what background work is live in this session" either filters `listAll` globally (against BP-033) or needs a new query. | FIX-982 |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
@@ -1064,6 +1074,10 @@ top:
 | **S3** | `useSession` exposes the foreground/background split — plural requests, with a deliberate item-classification decision (no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. Carries the `latestRequest`-is-singular gap (N2's read-side twin). |
 | **S4** | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. |
 | **S5** | Document the surface: package READMEs for the public API + `apps/docs` concept and guide pages | `packages/*`, `apps/docs` | after S4 | **Polish**, but required by the "document new user-facing functionality" rule before the epic wraps. |
+
+**Already filed:** [FIX-996](https://linear.app/fixpoint-labs/issue/FIX-996) — in the DevTool,
+background requests are indistinguishable from conversational turns and have no link to their origin.
+Deliberately **unparented** pending the placement decision below; not touched here.
 
 > **This makes the epic bigger, not smaller, and the owner should see that trade.** The reframe
 > *removes* substrate work — M5 dissolves, M4 halves, M3 narrows from a subsystem to a seam — but it
