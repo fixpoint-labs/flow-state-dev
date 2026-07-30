@@ -46,16 +46,20 @@
  *
  * The boundary is the request, and it is a boundary, not a deferral: a
  * concurrently running separate action resolves its own resource
- * collection in its own execution context, so its writes are invisible to
- * an already-waiting drain here. **Re-resolving does not bridge that.**
- * `collection.list()` enumerates the execution context's own in-memory
- * resource state, eagerly loaded when the request started
- * (`createExecutionContext.ts` — "all reads during execution use the
- * in-memory cache"), and nothing re-reads the durable store mid-request. So
- * a running request never sees another request's write however often it
- * resolves; a *later* request does. The durable backing has no
- * cross-process concurrency control to build anything stronger on (blind
- * puts, last-write-wins).
+ * collection in its own execution context, so its writes are not something
+ * an already-waiting drain here can rely on seeing. A *later* request does.
+ * The durable backing has no cross-process concurrency control to build
+ * anything stronger on (blind puts, last-write-wins).
+ *
+ * Do not strengthen that into "a running request never sees another
+ * request's write, however often it resolves" — an earlier version of this
+ * header said exactly that and it is false. It holds for an eagerly loaded
+ * collection, whose state is read once when the request starts. A
+ * `prefetchMode: "lazy"` collection is loaded on first read instead, so the
+ * first `list()` per prefix is a store round-trip that imports whatever is
+ * committed at that moment, including another request's writes. What that
+ * read can no longer do is resurrect a key this request deleted
+ * (`createExecutionContext.ts` — the prefix merge skips deleted keys).
  *
  * Removals reconcile at resolution, not continuously. `TaskCollectionRef`
  * has no `delete`, but the underlying resource collection does, and a
@@ -263,8 +267,20 @@ function sharedTaskSet(
  *     same guard covers it. This is why the guard tests the id rather than trying
  *     to detect whether the instance vanished.
  * 10. **Two reconciliations overlapping** — each captures its own `retirable`
- *     before its own read, adopting is idempotent per key, and retiring is
- *     identity-gated, so neither can retire what the other just adopted.
+ *     before its own read, and retiring is identity-gated, so neither can retire
+ *     what the other just adopted. The gate is safe because refs for one storage
+ *     key are interchangeable: each reads its state through a live getter over
+ *     the same execution-context state, so a slower pass overwriting a newer ref
+ *     for the same key loses nothing.
+ * 11. **The read itself mutating the cache** — the first nine cases all assume
+ *     `collection.list()` observes; for a `prefetchMode: "lazy"` collection it
+ *     also writes, bulk-loading the prefix into the execution context on first
+ *     call. That once let the pre-read store snapshot reinstate a key the
+ *     request had already deleted, producing exactly the ghost rule 4 exists to
+ *     prevent, by a route no rule here could see. Fixed underneath us: the
+ *     prefix merge now skips keys deleted this request
+ *     (`createExecutionContext.ts`). Listed because the enumeration claims to
+ *     cover the window, and a read that is not a pure read belongs in it.
  */
 async function reconcileTaskSet(
   mirror: Map<string, ResourceRef<JsonObject>>,
