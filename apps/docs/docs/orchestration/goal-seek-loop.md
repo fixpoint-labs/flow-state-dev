@@ -57,7 +57,7 @@ const verdict = mapToVerdict(evaluatorOutput, {
 });
 ```
 
-An LLM judge can flap or hallucinate success, which makes it the weakest exit signal you can give the loop. A "board is empty" judge is nearly tautological as an outer judge, since the board's own drain already runs until nothing is left. The single-pass shape (one drain, then always `done`) is what `parallelTasks` uses.
+Which judge shape you pick decides how reliably the loop exits. An LLM asked "are we done?" can flap, or report success that isn't there, so it's the weakest exit signal you can give. A "board is empty" judge is close to tautological, since the drain already exits only when nothing more can run. A check over a concrete property of the settled tasks holds up better than either.
 
 ## A small example
 

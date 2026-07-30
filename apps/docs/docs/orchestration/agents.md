@@ -20,7 +20,7 @@ Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are 
 | Field | Meaning |
 |-------|---------|
 | `name` | Stable identifier. This is the key `agent-ref` resolves against. |
-| `description` | Routing-facing summary shown in trace UI and the DevTool. Not the system prompt, and not the blurb a delegation roster shows — an `agent-ref` agent is listed to the coordinator by its reference name. |
+| `description` | Required one-line summary of what the agent is for. A label on the definition: nothing reads it at runtime, and it is not the system prompt. |
 | `persona` | The system-prompt source. A string, an inline template, or a resource path. |
 | `model` | Model id. Falls back to the default model set where the agent is materialized (`workerModelId` on the skills library, `defaultModelId` on `agentBlock`), then `intent/chat`. |
 | `allowedTools` | Tool-catalog keys the agent may reference. |
@@ -83,6 +83,8 @@ You are the research lead. Plan the work on your board: `addTask` one task per
 angle, each `assignee: "analyst"`. Then call `runBoard` and synthesize the
 settled tasks' output.
 ```
+
+The coordinator picks assignees off a roster the skill builds from its `agents:` map: each agent key with a one-line purpose beside it. For an `agent-ref` entry that purpose is the referenced agent's name. For a `prompt` or `prompt-ref` entry it is the first line of the prompt, cut off past 80 characters. So an inline prompt's opening line doubles as routing copy: write it as a summary of what the agent does, not as a preamble.
 
 Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `visibility` (the frontmatter key for `itemVisibility`). Read the override block and you know exactly what the agent can do.
 

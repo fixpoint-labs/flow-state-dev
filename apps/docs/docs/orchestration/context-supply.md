@@ -11,9 +11,9 @@ When a skill hands work to one of its agents, that agent runs as its own generat
 
 Sometimes that's wrong. The agent needs to know what was already said, but you still don't want its step-by-step work piling up in the main agent's memory. Inherit everything up to now, do a pile of work, hand back only the answer. That's what people call "forking" a conversation, and forking here is one field on the agent you delegate to.
 
-Two levers decide what a delegated agent inherits: `itemVisibility` on the way out, context supply on the way in.
+`itemVisibility` controls what a delegated agent's work contributes on the way out. Context supply controls what it reads on the way in.
 
-## The two levers
+## The levers
 
 A skill delegates by declaring a team under `agents:` and commanding it through a task board. The skill's generator gets a small set of board tools: it plans work with `addTask` (naming an agent as the assignee) and runs the whole graph with `runBoard`. Each agent runs as a board worker with its own generator.
 
@@ -21,7 +21,7 @@ A skill delegates by declaring a team under `agents:` and commanding it through 
 
 **Context supply** is the input lever. It controls how much prior conversation the agent reads before it starts. That is the subject of this page.
 
-A third, related lever, [flow policy](./flow-policy), governs a different kind of input: the prior *tool-call observations* from other workers in the same run. Flow policy and context supply are orthogonal. One replays messages, the other replays tool results. An agent can use either, both, or neither.
+[Flow policy](./flow-policy) governs a different kind of input: the prior *tool-call observations* from other workers in the same run. Flow policy and context supply are orthogonal. One replays messages, the other replays tool results. An agent can use either, both, or neither.
 
 ## Fork-like: a conversation-supply agent
 
@@ -41,7 +41,7 @@ agents:
 
 The `summarizer` above is fork-like. It reads the conversation that already happened, produces a brief, and only that brief re-enters the host's history. Its own reasoning stays out, because output isolation (`itemVisibility.history: false`) is unchanged by the input lever. If you also mark that agent's output history-visible (`visibility: primary`, or `visibility: { client: true, history: true }`), its sub-work does re-enter the host's history and the isolation is gone.
 
-The inherited window is bounded by default. A conversation agent inherits the last several whole turns, not the entire session. The bound counts whole turns, not tokens, so a handful of very long turns can still be a lot of context. The bound is not configurable per agent.
+The inherited window is bounded by default. A conversation agent reads the last 8 whole turns, not the entire session, and that bound is not configurable per agent. It counts turns rather than tokens, so 8 very long turns can still be a lot of context.
 
 ### The low-level equivalent
 
@@ -50,13 +50,13 @@ The inherited window is bounded by default. A conversation agent inherits the la
 ```ts
 const forked = generator({
   model: "openai/gpt-5.4-mini",
-  history: { limit: { turns: 8 } },                  // inherit the last several turns
+  history: { limit: { turns: 8 } },                  // inherit the last 8 whole turns
   itemVisibility: { client: true, history: false },  // keep its own steps out of host history
   prompt: "Summarize the discussion into a short brief.",
 });
 ```
 
-`context-supply: conversation` produces this shape for a declared agent, including the bounded window. Reach for the field rather than the generator when the participant is authored as portable skill data instead of hand-written code.
+`context-supply: conversation` produces this shape for a declared agent, `turns: 8` included. Reach for the field rather than the generator when the participant is authored as portable skill data instead of hand-written code.
 
 ## When not to fork
 

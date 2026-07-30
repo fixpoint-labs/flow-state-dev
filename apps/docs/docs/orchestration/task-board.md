@@ -96,6 +96,8 @@ The final `task-board-meta` item carries a `terminationReason` field that tells 
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 
+A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
+
 ```ts
 // On the final task-board-meta item:
 {
@@ -173,7 +175,7 @@ The dispatcher decides which `pending` task gets claimed next. No dispatcher cla
 - `"fifo"` — the same ordering. The name reads better for a flat fan-out with no deps.
 - `"priority"` — highest-`priority` ready task first, ties break on earliest-added. An unset `priority` counts as 0.
 
-Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance, and `@flow-state-dev/orchestration` exports five: the three above plus `classifierDispatcher` and `eventDispatcher`, which are factories that need config and so have no string name. Pass one of those, or your own, in place of the string. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow Policy](./flow-policy) for dispatcher caching, the observation ledger, and `priorWork` shaping.
+Those three strings are the only names `dispatcher` accepts. It also takes any `TaskDispatcher` instance, and `@flow-state-dev/orchestration` exports five: the three above plus `classifierDispatcher` and `eventDispatcher`, which are factories that need config and so have no string name. Pass one of those, or your own, in place of the string. See [Task substrate → Dispatchers](./task-substrate.md#dispatchers) for what each one picks, and [Flow policy](./flow-policy) for the observation ledger, `priorWork` shaping, and tool-result caching.
 
 Dependency cycles are not rejected at add time. Avoiding them is the caller's responsibility when you build the `deps` graph passed to `addTask`/`addTasks` or `initialTasks`. A board that declares a `deps` cycle still runs, but those tasks never become claimable: the drain ends blocked (under `"complete-or-blocked"`) or idles until its iteration cap.
 
@@ -369,7 +371,7 @@ const board = taskBoard({
 
 For a custom or externally-managed store, pass a factory `(ctx) => TaskCollectionRef` as `collection`.
 
-If you write that ref by hand, `complete` and `fail` have to accept and honour the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown. A ref that ignores them throws instead, and that error fails the whole drain rather than the one task, leaving every task the board hadn't claimed yet unrun. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
+If you write that ref by hand, `complete` and `fail` have to accept and honor the optional `TaskTransitionOptions` third argument. TypeScript won't catch it if you don't: a two-argument `complete(id, output)` satisfies the interface structurally, and JavaScript drops the extra argument without a word. The board passes those options on every write-back, so a result landing on a task someone else already settled is declined rather than thrown. A ref that ignores them throws instead, and that error fails the whole drain rather than the one task, leaving every task the board hadn't claimed yet unrun. See [recording a result that may no longer apply](task-substrate.md#recording-a-result-that-may-no-longer-apply).
 
 ## Durable boards that survive across turns
 
@@ -399,5 +401,5 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 - [Parallel Tasks](../patterns/parallelTasks) — single-pass fan-out wrapper on top of the board.
 - [Supervisor](../patterns/supervisor) — per-task review wrapper.
 - [Plan and Execute](../patterns/plan-and-execute) — replan-loop wrapper.
-- [Flow Policy](./flow-policy) — dispatcher policy and `priorWork` shaping.
+- [Flow policy](./flow-policy) — the observation ledger, `priorWork` shaping, and tool-result caching.
 - [Patterns Overview](../patterns/overview) — when to use which pattern.

@@ -63,7 +63,7 @@ pending ─┬─→ in_progress ─┬─→ completed
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is always permitted, so repeat writes are idempotent rather than refused.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is always permitted, so repeat writes are idempotent rather than refused.
 
 Anything not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
@@ -121,7 +121,7 @@ await tasks.complete(task.id, output, {
 
 `ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
 
-Both guards are evaluated as part of the write they guard, so the task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
+The task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
 
 A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
 
