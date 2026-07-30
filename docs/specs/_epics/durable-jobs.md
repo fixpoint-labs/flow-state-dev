@@ -676,7 +676,7 @@ and the count is **higher than the four previously named**:
 |---|---|---|
 | 1 | `claim` → `updateState` | yes |
 | 2–4 | `complete` · `fail` (both branches) · `cancel` → `transitionRef` | yes |
-| 5–8 | **`block` · `unblock` · `awaitReview` · `resumeFromReview` → `transitionRef`** | **only if 1a is read as "all of `transitionRef`", not "claim + settlement"** — each mutates `status`, and `resumeFromReview`/`unblock` also clear or reset lease state. `unblock` is additionally **FIX-957's Decision 4 surface**. |
+| 5–8 | **`block` · `unblock` · `awaitReview` · `resumeFromReview` → `transitionRef`** | **No — and routing them through the conditional write does not fix them.** They accept **no ownership token at all** (`types.ts:177-180`), so see the sufficiency correction below. `unblock` is additionally **FIX-957's Decision 4 surface**. |
 | 9–13 | **`setAssignee` · `setPriority` · `addLabel` · `removeLabel` · `patchMetadata` → `patchRef`** | **NO — all five** |
 | 14 | `reclaim` → `updateState` | **FIX-978's**, per Decision 0 |
 | 15 | `addTask`/`addTasks` → `collection.create` | 1b's path, not ownership |
@@ -696,6 +696,31 @@ any of those five overwrites attempt 2's `attempts` and `status`, undoing the ow
 - **Rows 5–8 sit in the ambiguity of the phrase "claim and settlement."** They are neither, and they
   mutate `status`. Reading 1a as "route `transitionRef` through the fenced write" covers them;
   reading it as "claim + settlement" does not. **1a means the former.**
+
+##### A conditional write is **necessary but not sufficient**
+
+> ### Every **worker-callable** lifecycle transition additionally needs an **ownership guard**. Fencing the write is not enough on its own.
+
+**Why — verified.** `block`, `unblock`, `awaitReview`, `resumeFromReview` take **no options parameter
+at all** (`types.ts:177-180`), unlike `fail(id, error, options?)`; and `cancel(id, reason?)`
+(`types.ts:181`) **hard-codes `{ ifAllowed: true }`** at the call site
+(`resource-backed.ts:391-403`), so a caller cannot supply `expectAttempt` even in principle.
+`ifAllowed` only makes an **illegal** transition advisory — `attemptOwnsTask` is consulted **only
+when `expectAttempt` is supplied**, so these paths get no ownership check.
+
+**Consequence, and it is the `completeTask` mechanism again:** a `runWithCAS`-style conflict refresh
+re-reads attempt 2's row and then applies the stale caller's transition, which is **legal** from
+there (`pending → blocked`, `in_progress → cancelled`). **So CAS *enables* the write rather than
+preventing it** — a stale worker calling `taskTools.blockTask` or `cancelTask` still lands on the new
+owner's row. This is why the row above says routing them through the conditional write does not fix
+them, and it is stated as a **general sufficiency correction** rather than four more list entries.
+
+**The fork FIX-981 must resolve — not chosen here:**
+
+| | Option |
+|---|---|
+| **(i)** | **Add an ownership guard** to those APIs (an `options` parameter carrying `expectAttempt`, as `complete`/`fail` already have) |
+| **(ii)** | Make those paths **explicitly coordinator-only** — a real option, since a *worker* arguably has no business cancelling or blocking its own task |
 
 **Coordinate with FIX-976, do not collide.** FIX-976 (under FIX-980) is already *"`assignTask`
 silently rewrites a terminal task's assignee"* — **the same path from the honesty angle**, and
@@ -936,10 +961,29 @@ mismatch — the request record is deleted and **`items()` silently returns `[]`
 still alive and referenced.** Sharing ordinary request item storage is therefore insufficient on its
 own.
 
-**Binding: any issue that persists task items states how their lifetime relates to the board's.**
-**FIX-991** owns the mechanism and chooses between **pinning or copying the relevant items into
-storage with the board's lifetime**, or **explicitly bounding the cross-request contract to request
-retention and testing eviction.** **This document does not choose.**
+**Binding: any issue that persists task items states how their lifetime relates to the board's — and
+FIX-991 must pin or copy the relevant items into storage with the board's lifetime.**
+
+**This one is decided rather than left open, because the two candidate options are not equally
+compatible with the criteria.** An earlier version of this section recorded both; that was
+incoherent beside an unconditional criterion 4b, and it is the fifth instance of that class:
+
+- **Bounding the cross-request contract to *request* retention is rejected.** It would make a
+  user/org task's `items()` return `[]` once the emitting request is evicted — violating both this
+  lifetime invariant and **unconditional** criterion 4b, and **silently weakening a shipped contract
+  that `extract-window.test.ts:167` already pins.** Criterion 4b was made unconditional
+  *deliberately* so an OQ-C liveness-only outcome could not quietly drop it; conditioning it now to
+  accommodate a storage choice would undo that on purpose. And the failure mode is a silent `[]`
+  rather than an error — the exact shape this epic exists to remove.
+- **Pinning/copying for the board's lifetime is required.** It keeps 4b unconditional and the
+  `items()` contract intact. Its cost is storage, which is the right thing to trade against
+  correctness here.
+
+**If unbounded growth on a long-lived org board is the real concern — and it is a fair one — the
+answer is a *board-scoped* retention bound stated in the contract, not inheritance of the request's.**
+That stays inside the required option: bounded, but bounded at the board's granularity and declared,
+so `items()` never silently contradicts itself. **How to pin, copy, or bound at board granularity is
+FIX-991's mechanism.**
 
 ### Hazard — `taskTools` is the path guarantees escape through
 
