@@ -275,8 +275,17 @@ for scheduled and webhook callers), and `extractBearerToken` cover the
 most common verification patterns; hosts plug in their own for anything
 else.
 
+A configured resolver governs the flow's whole `/api/flows` surface, not only
+action calls: session CRUD, session state, resource content, request control,
+and the debug endpoints resolve a principal the same way, and additionally
+require that principal to own the session or request the URL addresses (`403`
+otherwise). Endpoints that span every flow (`GET /sessions`,
+`GET /active-requests`) resolve through the host-level fallback and scope their
+results to the caller.
+
 When no resolver is configured, a flow runs on the framework default that
-trusts a caller-supplied `body.userId` — unauthenticated. `isDefaultBodyUserIdPrincipalResolver(resolver)`
+trusts a caller-supplied `body.userId` — unauthenticated, management surface
+included. `isDefaultBodyUserIdPrincipalResolver(resolver)`
 reports whether a resolver is that default, via a globally-registered brand
 rather than function identity (so it holds across duplicate package instances,
 e.g. a config that resolves its own copy of the engine). Tooling uses it to

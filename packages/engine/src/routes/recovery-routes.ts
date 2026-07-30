@@ -3,7 +3,7 @@
  */
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import type { InboundTransportHost } from "../transports/types";
+import type { InboundTransportHost, ResolvedPrincipal } from "../transports/types";
 import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
@@ -18,6 +18,12 @@ type RecoveryRouteContext = {
   runtimeConfig: RuntimeConfig;
   /** Caller's tenant (FIX-682), extracted the same way as every other session-touching route. */
   tenantId?: string;
+  /**
+   * The authenticated caller, when route-level authentication is active
+   * (see `route-auth.ts`). Undefined for an app on the framework default
+   * resolver.
+   */
+  principal?: ResolvedPrincipal;
 };
 
 type ContinueRouteContext = RecoveryRouteContext & {
@@ -280,7 +286,13 @@ export async function handleListActiveRequests(
   _request: Request,
   ctx: RecoveryRouteContext
 ): Promise<Response> {
-  const entries = await ctx.stores.activeRequests.listAll();
+  const all = await ctx.stores.activeRequests.listAll();
+  // This listing spans every flow and user, so an authenticated caller sees
+  // only their own in-flight requests — otherwise it enumerates other users'
+  // request and session ids.
+  const callerId = ctx.principal?.userId;
+  const entries =
+    callerId === undefined ? all : all.filter((entry) => entry.userId === callerId);
   const now = Date.now();
 
   return jsonResponse(200, {

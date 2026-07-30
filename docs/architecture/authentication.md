@@ -77,6 +77,86 @@ reaches the envelope, by way of the resolver that is allowed to trust it. A
 custom resolver that wants the same behavior reads the parsed body from
 `context.envelope.metadata.body`.
 
+## Scope: the whole `/api/flows` surface
+
+Principal resolution is not action-only. The catch-all dispatcher runs a
+route-level guard (`routes/route-auth.ts`) before it dispatches, so session
+CRUD, session state, resource content, request control, and the debug
+endpoints are governed by the same `authentication` config the action route
+is. A flow that configures `resolvePrincipal` is protected across its whole
+surface, not on one route with an open management API beside it.
+
+The guard answers two questions per request:
+
+1. **Who is calling?** Through the same `host.resolvePrincipal` described
+   above, so a flow has exactly one authentication contract.
+2. **Do they own what they addressed?** The caller's `userId` must equal the
+   `userId` on the session or request record named in the path. A mismatch is
+   `403`. Authentication alone would only change *which* caller can read every
+   user's data.
+
+Route subjects, and the owner each is checked against:
+
+| Subject | Routes | Owner |
+| --- | --- | --- |
+| exempt | `list_flows`, `capabilities`, `execute_action` | — (the action route resolves its own principal) |
+| session | session CRUD/state/requests, all resource routes, retry, continue, debug | `session.userId` |
+| request | stream, abort, resume, status | `record.userId` |
+| flow | `create_session` | none yet — the caller becomes the owner |
+| user | `user_stream`, `check_interrupted_requests` | the `:userId` path segment |
+| host | `list_sessions`, `active_requests`, `transcribe` | none — the handler scopes results to the caller |
+
+`routeSubject` switches exhaustively over `ParsedFlowRoute["kind"]`, so adding
+a route without deciding how it is authorized is a compile error.
+
+### When the guard enforces
+
+Only when the effective resolver for the governing flow is not
+`defaultBodyUserIdPrincipalResolver`. An app on the framework default already
+trusts a caller-supplied `body.userId` on the action path; demanding a
+principal from its GETs would reject every one of them (no body to read a
+userId from) without protecting anything that was not already open. Those apps
+are covered by the loopback-bind rail in `@flow-state-dev/node`, which refuses
+to expose them on a network interface at all.
+
+The two halves are a pair: the rail says "configure a resolver before you
+expose this", and the guard is what makes configuring one protect the whole
+surface.
+
+### Two rules the guard depends on
+
+- **The governing flow comes from the stored record** (`session.flowKind`,
+  `record.flowKind`), never the `:flowKind` path segment. Otherwise naming a
+  flow with a permissive resolver would authenticate a request against a
+  record belonging to a strict one (BP-031).
+- **No body is parsed at this layer.** A body is a single-use stream the route
+  handler still needs, and deriving auth from caller-supplied body fields is
+  what BP-031 exists to prevent. Resolvers read the `Request` — headers,
+  cookies, URL.
+
+### Routes that span flows
+
+`list_sessions`, `active_requests`, and `transcribe` have no `:flowKind`, so
+they resolve through the host-level fallback. In a mixed app — per-flow
+resolvers configured, host-level fallback left at the default — there is no
+resolver to identify the caller with, and serving the listing anonymously
+would hand out the authenticated flow's sessions through the back door. The
+guard fails closed with a `401` naming the fix: configure a host-level
+`resolvePrincipal`.
+
+Listings scope to the caller rather than erroring: `list_sessions` forces its
+`userId` filter to the principal (the query param stays a convenience filter
+and can never widen the set), and `active_requests` filters to the principal's
+entries.
+
+### Session creation
+
+`create_session` takes `userId` and `orgId` from the resolved principal, not
+from the body, for the same reason the action route does (BP-031). The `orgId`
+half matters twice over: `validateDispatch` reads a stored session's `orgId`
+to satisfy a flow's `requiresOrg`, so a caller-supplied value would become an
+org binding the runtime later trusts.
+
 ## `requireUser: false` semantics
 
 A flow that opts out of user identity must not declare any user-scope

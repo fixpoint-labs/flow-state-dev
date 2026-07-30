@@ -4,6 +4,7 @@
 import type { JsonObject, RequestStatus } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
+import type { ResolvedPrincipal } from "../transports/types";
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
@@ -31,6 +32,12 @@ type SessionRouteContext = {
    * Undefined for single-tenant requests.
    */
   tenantId?: string;
+  /**
+   * The authenticated caller, when route-level authentication is active
+   * (see `route-auth.ts`). Undefined for an app on the framework default
+   * resolver, where these routes behave exactly as they always have.
+   */
+  principal?: ResolvedPrincipal;
 };
 
 export async function handleListSessions(
@@ -41,7 +48,11 @@ export async function handleListSessions(
   const url = new URL(request.url);
   const sessions = await ctx.stores.session.list({
     flowKind: getString(url.searchParams.get("flowKind")),
-    userId: getString(url.searchParams.get("userId")),
+    // An authenticated caller sees only their own sessions — the `userId`
+    // query param is a convenience filter, never a way to widen the result
+    // set past the principal. Without a principal (framework default
+    // resolver) the param is the only filter there is, unchanged.
+    userId: ctx.principal?.userId ?? getString(url.searchParams.get("userId")),
     // Always pass the tenant (present, possibly undefined) so listing isolates
     // to the calling tenant's sessions (FIX-682).
     tenantId: ctx.tenantId,
@@ -93,7 +104,12 @@ export async function handleCreateSession(
   }
 
   const body = await parseJsonBody(request);
-  const userId = getString(body.userId);
+  // Ownership comes from the resolved principal when one exists — never from
+  // `body.userId`, which the caller writes. The same rule the action path
+  // applies to `orgId` (BP-031): a verified identity is not displaceable by a
+  // request field. Apps on the framework default resolver have no principal,
+  // and `body.userId` remains the identity, as it is for their actions.
+  const userId = ctx.principal?.userId ?? getString(body.userId);
   if (userId === undefined) {
     return jsonResponse(400, {
       error: "Session creation requires non-empty userId"
@@ -142,7 +158,11 @@ export async function handleCreateSession(
     id: sessionKey,
     flowKind: flow.kind,
     userId,
-    orgId: getString(body.orgId),
+    // Same rule as `userId` above, and it matters more here: `validateDispatch`
+    // reads the stored session's `orgId` to satisfy a flow's `requiresOrg`, so
+    // a caller-supplied one would become an org binding the runtime later
+    // trusts. An authenticated caller gets the principal's org or none.
+    orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
     tenantId: ctx.tenantId,
     title: getString(body.title),
     description: getString(body.description),

@@ -51,6 +51,7 @@ import {
   handleGetResourceManifest
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
+import { authorizeManagementRoute } from "./route-auth";
 import {
   handleDebugListResources,
   handleDebugListSuspensions,
@@ -234,10 +235,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     defaultSseHeartbeatMs
   };
 
+  const hostResolver = options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver;
+
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
     stores,
-    resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
+    resolvePrincipal: hostResolver,
     runtimeConfig,
     dispatcher: options.dispatcher
   });
@@ -282,6 +285,21 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       // the same way action dispatch does. Undefined for single-tenant
       // requests; rejected (400) inside the try if it contains ":".
       const tenantId = extractTenantId(request, options.tenantIdHeader);
+
+      // Authenticate and authorize the management surface (sessions, state,
+      // resources, request control, debug) before dispatching. Action routes
+      // resolve their own principal inside `handleExecuteAction` and are
+      // exempt here; so are the public metadata routes. No-op for an app on
+      // the framework default resolver — see `route-auth.ts`.
+      const auth = await authorizeManagementRoute(request, route, {
+        registry: options.registry,
+        stores,
+        host,
+        hostResolver,
+        tenantId
+      });
+      if (auth.denied !== undefined) return auth.denied;
+      const principal = auth.principal;
 
       if (route.kind === "not_found") {
         return jsonResponse(404, { error: "Route not found" });
@@ -334,7 +352,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessions(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          principal
         });
       }
 
@@ -366,7 +385,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleCreateSession(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          principal
         });
       }
 
@@ -446,7 +466,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListActiveRequests(request, {
           registry: options.registry,
           stores,
-          runtimeConfig
+          runtimeConfig,
+          principal
         });
       }
 
