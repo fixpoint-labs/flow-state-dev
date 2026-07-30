@@ -87,8 +87,15 @@ export interface ClaimOptions {
  *
  * Both guards are evaluated **inside** the same atomic write that performs
  * the transition, so there is no window between checking and writing. Both
- * are advisory: when a guard rejects the write, the call is a silent no-op
- * and returns normally. Nothing reports which guard fired.
+ * are advisory in the sense that matters for containment: a rejected write
+ * is skipped and **never throws**, so a late worker cannot abandon its
+ * siblings by losing a race.
+ *
+ * It is *not* silent, and that is the FIX-976 change. The call returns a
+ * {@link TaskWriteOutcome}; a rejected write yields `outcome: "declined"`
+ * carrying `reason` — which guard fired — so a caller that wants to know can
+ * read it without re-reading the task. A caller that doesn't care may keep
+ * ignoring the return value, which is why this stayed source-compatible.
  *
  * The enumerated failure set is exactly that — a rejected transition and a
  * lost claim. **Everything else still throws**: a missing task, a store

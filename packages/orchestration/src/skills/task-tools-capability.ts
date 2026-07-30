@@ -220,34 +220,6 @@ function listCalls(names: string[]): string {
 }
 
 /**
- * Turn a refused transition into the recoverable result shape the rest of this
- * surface uses, naming the task's current status and the calls actually
- * available from it.
- *
- * **The recovery list is derived from tool-reachable actions, not from
- * `allowedTransitionsFrom`.** That helper answers a question about the
- * *collection*; the model is standing at the *tool* layer. It would advertise
- * `awaiting_review` and `in_progress`, which no task tool can reach, sending the
- * model at operations it cannot perform. Here each tool's own target is tested
- * instead.
- *
- * **No separate "exclude the rejected tool" step is needed.** The rejected
- * target is by definition not allowed from this status, so the
- * `isTransitionAllowed` test already drops any tool aiming there. That is also
- * why this needs no knowledge of which tool it serves — `withTask` receives an
- * opaque mutator and never learns.
- *
- * **There is no same-status filter, deliberately.** The rule is "would this call
- * succeed", not "does it change the status". A budgeted `failTask` on a
- * `pending` task targets `pending` yet still writes `feedback`, clears
- * `error`/`leaseUntil`, and emits a `retried` change; `blockTask` on an
- * already-`blocked` task updates the reason. Both are real work and stay listed.
- *
- * A non-terminal source always yields at least `cancelTask` (every non-terminal
- * status permits `cancelled`), so the action list is never empty — terminal
- * sources take the other branch rather than rendering an empty list.
- */
-/**
  * The one renderer for "this task is finished, so your write was refused"
  * (FIX-976, Decision 6).
  *
@@ -283,6 +255,34 @@ const STATUS_CLAUSE = "Its status will not change again.";
 /** The `clause` for a write that would have changed who the task is assigned to. */
 const ASSIGNEE_CLAUSE = "Its assignee will not change.";
 
+/**
+ * Turn a refused transition into the recoverable result shape the rest of this
+ * surface uses, naming the task's current status and the calls actually
+ * available from it.
+ *
+ * **The recovery list is derived from tool-reachable actions, not from
+ * `allowedTransitionsFrom`.** That helper answers a question about the
+ * *collection*; the model is standing at the *tool* layer. It would advertise
+ * `awaiting_review` and `in_progress`, which no task tool can reach, sending the
+ * model at operations it cannot perform. Here each tool's own target is tested
+ * instead.
+ *
+ * **No separate "exclude the rejected tool" step is needed.** The rejected
+ * target is by definition not allowed from this status, so the
+ * `isTransitionAllowed` test already drops any tool aiming there. That is also
+ * why this needs no knowledge of which tool it serves — `withTask` receives an
+ * opaque mutator and never learns.
+ *
+ * **There is no same-status filter, deliberately.** The rule is "would this call
+ * succeed", not "does it change the status". A budgeted `failTask` on a
+ * `pending` task targets `pending` yet still writes `feedback`, clears
+ * `error`/`leaseUntil`, and emits a `retried` change; `blockTask` on an
+ * already-`blocked` task updates the reason. Both are real work and stay listed.
+ *
+ * A non-terminal source always yields at least `cancelTask` (every non-terminal
+ * status permits `cancelled`), so the action list is never empty — terminal
+ * sources take the other branch rather than rendering an empty list.
+ */
 const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task | undefined) => {
   const subject = `illegal_status_transition: task "${err.taskId}" is ${err.from}`;
 
