@@ -1,10 +1,10 @@
 /**
- * A resource-backed task board's `.waitForCondition` wake predicate reads a
- * ref that is resolved ONCE per drain invocation (`makeWorker`'s leading
- * `.tap`, cached in `cell.collection` — `packages/orchestration/src/task-
- * board/index.ts:692-753`) and reused for every subsequent predicate
- * evaluation, on the stated assumption that "the collection factory is
- * idempotent (same collectionId -> same ref)".
+ * FIX-990 — a resource-backed task board's `.waitForCondition` wake predicate
+ * reads a ref that is resolved ONCE per drain invocation (`makeWorker`'s
+ * leading `.tap`, cached in `cell.collection` —
+ * `packages/orchestration/src/task-board/index.ts:692-753`) and reused for
+ * every subsequent predicate evaluation, on the stated assumption that "the
+ * collection factory is idempotent (same collectionId -> same ref)".
  *
  * That assumption does not hold for a resource-backed (durable)
  * `TaskCollectionRef`: `createResourceBackedTaskCollection` hydrates a
@@ -55,12 +55,12 @@ const IDLE_POLL_MS = 2;
 const TIMEOUT_MS = Math.max(IDLE_POLL_MS * 100, 50); // mirrors production's own formula
 
 function buildFlow(backing: "resource" | "request") {
-  const boardName = `fix978-wake-${backing}-board`;
-  const collectionId = `fix978-wake-${backing}`;
+  const boardName = `${backing}-wake-stale-ref-board`;
+  const collectionId = `${backing}-wake-stale-ref`;
 
   const processed: string[] = [];
   const worker = handler({
-    name: `fix978-wake-${backing}-worker`,
+    name: `${backing}-wake-stale-ref-worker`,
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.object({ ok: z.string() }),
     execute: async (input) => {
@@ -99,7 +99,7 @@ function buildFlow(backing: "resource" | "request") {
   // resolution. Raced against the drain via `.stepAll` so the add lands
   // WHILE the (already-started) worker is mid-wait, not before it.
   const seedAfterStart = handler({
-    name: `fix978-wake-${backing}-seed-after-start`,
+    name: `${backing}-wake-stale-ref-seed-after-start`,
     inputSchema: z.unknown(),
     uses: [board.capability],
     execute: async (_input, ctx) => {
@@ -116,11 +116,11 @@ function buildFlow(backing: "resource" | "request") {
   });
 
   const flow = defineFlow({
-    kind: `fix978-wake-${backing}`,
+    kind: `${backing}-wake-stale-ref`,
     actions: {
       run: {
         block: sequencer({
-          name: `fix978-wake-${backing}-root`,
+          name: `${backing}-wake-stale-ref-root`,
           inputSchema: z.unknown(),
           stateSchema: taskBoardStateSchema,
         }).stepAll([board.drain, seedAfterStart]),
@@ -152,16 +152,44 @@ describe("task-board: resource-backed wait predicate reads a stale ref mirror", 
     // proxy for it, not an exact one).
     const addToCompletionMs = Date.now() - addedAt.value!;
 
+    // Timing is a proxy here, not the mechanism itself, and that's a real
+    // weakness — checked for a stronger alternative and didn't find one
+    // reachable without touching production code:
+    //   - `.waitForCondition` DOES resolve with a `{ timedOut: boolean }`
+    //     that would settle this directly, but `makeWorker`'s idle-wait
+    //     composition (`.tap(...).waitForCondition(...).map(() => ({
+    //     claimed: false, ... }))`) erases it before the sequencer's own
+    //     trace is recorded, and inline sequencer steps (`.tap` /
+    //     `.waitForCondition` / `.map`) don't emit their own `block_trace`
+    //     items independently of the named block that composes them
+    //     (confirmed against `engine/src/execution/executeBlock.ts` and the
+    //     actual item stream) — so `timedOut` never reaches the outside.
+    //   - Counting claim attempts / checkBoard iterations doesn't
+    //     discriminate this scenario either: a correct wake and a fallback
+    //     to timeout both produce the exact same 2 claims / 2 checkBoard
+    //     calls here (claim-fails, wait, claim-succeeds) — only the WAIT's
+    //     internal resolution path differs, not anything externally
+    //     visible on the item stream. (That technique does work for a
+    //     genuine spin, where the iteration count itself is the tell — see
+    //     the FIX-978 settlement's C2/C4 — it just doesn't apply to a
+    //     single-event "did it wake or time out" question like this one.)
+    //
+    // So this stays a timing assertion, with both of its known failure
+    // modes named rather than left implicit:
+    //   - false failure: a contended CI runner could pause the process
+    //     after `addedAt` long enough to push even a CORRECT wake over the
+    //     control's threshold below.
+    //   - false pass (the more serious one): once FIX-990 is fixed, some
+    //     OTHER unrelated latency could keep this above its own threshold,
+    //     so this test stays green when it should start failing. There is
+    //     no mechanism-level backstop against that here.
+    //
     // KNOWN DEFECT (FIX-990): this assertion characterizes the bug, not the
     // desired behavior — it will FAIL once FIX-990's fix lands and needs
     // inverting (to `toBeLessThan`) at that point. Don't "fix" this test by
     // itself if it starts failing; that's the signal the defect is closed.
-    //
-    // A working event-driven wake would claim within a few ms of the add
-    // (see the CONTROL test below). If the wait predicate's cached ref is
-    // blind to the new task, the worker can only proceed once
-    // `.waitForCondition` resolves via ITS TIMEOUT, so the gap should sit
-    // close to a full `TIMEOUT_MS`.
+    // If the direction changes, keep this comment's description of what
+    // will change in sync with it.
     expect(addToCompletionMs).toBeGreaterThan(TIMEOUT_MS * 0.6);
   });
 
@@ -184,6 +212,8 @@ describe("task-board: resource-backed wait predicate reads a stale ref mirror", 
     const addToCompletionMs = Date.now() - addedAt.value!;
     // Request-backed: no separate mirror, `cell.collection` reads live state
     // directly — the wake should be prompt, well under the poll timeout.
+    // Same timing-as-proxy caveat as above applies (a contended CI runner
+    // could in principle push this over the bound on a correct wake).
     expect(addToCompletionMs).toBeLessThan(TIMEOUT_MS * 0.5);
   });
 });
