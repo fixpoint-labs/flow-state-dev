@@ -30,12 +30,16 @@ Work that fits on one screen and needs no research uses
 
 **How to read the rest of this file.** Every section below is one line of instruction
 followed by a worked example. The examples are all the same issue — FIX-775, resuming an
-SSE stream after a disconnect — so the template reads end to end as a spec. **Copy the
-shape, not the content.** The issue itself is a fiction reconstructed after the fact:
-resume already ships (`docs/architecture/streaming.md` → "Resume Semantics"), which is why
-the API and cursor format in the examples are the real ones. Don't read it as a live
-proposal, and don't copy an API out of it without checking the code — the point of the
-example is what a section *looks like when it's done*, not what to build.
+SSE stream after a disconnect — so the template reads end to end as a spec.
+
+**Copy the shape, not the content.** FIX-775 is a fiction, reconstructed after the fact:
+resume already ships (`docs/architecture/streaming.md` → "Resume Semantics"). The **public
+API and the cursor format in §5 are real**, because a usage example that doesn't compile
+teaches the wrong thing. Everything else the example names — internal helpers, module
+boundaries, removal steps — is **invented to make the sections read concretely**, and is not
+a claim about the codebase. Don't read any of it as a live proposal, and check the code
+before carrying a symbol out of it. What the example is for is showing what a section
+*looks like when it's done*.
 
 ---
 
@@ -144,15 +148,16 @@ small — a fuller worked example belongs in the spec PR (never merged), not the
 Skip entirely, with a one-line reason, only when nothing about how code is written
 against the framework changes.
 
-> **Resuming from the client (no API change — the client does it):**
+> **Reattaching from the client, on reload:**
 >
 > ```ts
-> const session = useSession(sessionId, { flowKind: "chat" })
-> // Connection drops at item 41. The client reconnects on its own and
-> // session.items continues at 42 — no duplicates, no gap.
+> const session = useSession(sessionId, { flowKind: "chat", autoResume: true })
+> // The tab reloads while a request is in flight. On mount the hook finds it,
+> // reattaches with the cursor it left off at, and session.items picks up at
+> // 42 rather than replaying from 1.
 > ```
 >
-> **Resuming by hand, against the stream endpoint:**
+> **Reattaching by hand, against the stream endpoint:**
 >
 > ```
 > Last-Event-ID: req_8f2:41
@@ -163,9 +168,9 @@ against the framework changes.
 > **What a stale cursor does (before / after):**
 >
 > ```
-> before  reconnect with any cursor → items 1..N replayed
-> after   reconnect with cursor 41  → items 42..N
->         reconnect with cursor 999 → 204, request already complete
+> before  reattach with any cursor → items 1..N replayed
+> after   reattach with cursor 41  → items 42..N
+>         reattach with cursor 999 → 200 with no events; the log is exhausted
 > ```
 
 ### 6. Decisions & rules — the sign-off surface
@@ -183,10 +188,10 @@ ramification. Part II must not introduce a decision that isn't here.
 >    *Locks in:* the format is now load-bearing for any client, ours or not. Changing
 >    it later is a breaking change to a string we don't validate.
 >
-> 3. **A reconnect to a completed request returns 204, not a replay.**
->    *Rejected:* replaying from the store so late clients still get the answer.
->    *Locks in:* resume is a *stream* feature, not a history feature. Fetching a
->    finished response stays the store's job, and we'll be asked for it eventually.
+> 3. **A reattach to a completed request replays from the persisted log and closes.**
+>    *Rejected:* a distinct "already finished" status code the client has to branch on.
+>    *Locks in:* one response shape for every reattach — a cursor past the end of the
+>    log is an ordinary empty replay, not an error, so the client needs no special case.
 >
 > 4. **No cursor means today's behavior, byte for byte.**
 >    *Rejected:* defaulting to resume-from-last-seen server-side.
@@ -237,8 +242,8 @@ Name the API surface at the level of *what it exposes*, not exact signatures.
 >
 > - **`@flow-state-dev/engine`** — the stream seam gains a resume cursor and filters
 >   on it. The route parses the header and hands it down; it makes no decisions.
-> - **`@flow-state-dev/client`** — its existing reconnect sends the last seen
->   sequence. No new public option.
+> - **`@flow-state-dev/client`** — the reattach path sends the last seen sequence.
+>   No new public option.
 > - **Untouched:** the execution engine, every block kind, the item taxonomy.
 >   Sequence numbers already exist (`docs/architecture/streaming.md`); this reads them.
 
@@ -252,10 +257,11 @@ Ordered, independently testable steps. For each: which modules to create / modif
 >    ignored rather than fatal. *Depends on:* nothing.
 > 2. **Filter at the seam.** Drop items at or below the cursor. *Test:* the three
 >    cases in §5 (fresh, mid-stream, stale). *Depends on:* 1.
-> 3. **Completed-request boundary.** 204 when the cursor names a finished request.
->    *Test:* reconnect after completion. *Depends on:* 2.
-> 4. **Client sends it.** Existing reconnect path attaches the cursor. *Test:*
->    end-to-end, connection killed mid-stream. *Depends on:* 3.
+> 3. **Completed-request boundary.** Replay from the persisted log above the cursor,
+>    then close. *Test:* reattach after completion, and with a cursor past the end.
+>    *Depends on:* 2.
+> 4. **Client sends it.** The reattach path attaches the cursor. *Test:*
+>    end-to-end, reload mid-request. *Depends on:* 3.
 > 5. **Remove** the client's `dedupeIncomingItems` helper and its tests — it exists
 >    only to paper over the duplicates this change eliminates.
 
@@ -263,10 +269,15 @@ Ordered, independently testable steps. For each: which modules to create / modif
 builds independents in parallel and sequences the rest; the DAG must be acyclic. Most
 issues are a single-node plan and skip this table. Its *shape* is a §6 decision.
 
+**FIX-775 is Medium, so it has no PR plan.** The table below is a *separate* illustration of
+what one looks like on a Large issue — it is not part of the worked example above. Don't paste
+it into a Medium spec: the lifecycle reads a declared plan as executable multi-PR routing, so
+an example plan left in a one-PR issue really does split it into two.
+
 | sub-PR | deliverables | depends_on |
 |---|---|---|
-| a | engine: cursor parsing + filter | — |
-| b | client: attach cursor on reconnect | a |
+| a | the engine-side half | — |
+| b | the client-side half | a |
 
 ### 9. Edge cases & error handling
 
@@ -279,7 +290,7 @@ A table, plus the error taxonomy (retryable vs. fatal). Walk the second-path che
 > | Malformed cursor | Ignore it, stream from the start. Not an error: it's caller-controllable input (BP-031) |
 > | Cursor from a different request | Ignore it. Cursors are request-scoped by construction |
 > | Cursor ahead of the stream | Nothing to send yet; hold the connection open |
-> | Request already completed | 204, no body |
+> | Request already completed | Replay whatever is above the cursor from the persisted log, then close. A cursor past the end is an empty replay, not an error |
 > | Reconnect during an in-flight tool call | Resume normally — the item is emitted when it completes, and its sequence is above the cursor |
 >
 > **Taxonomy:** every cursor problem is non-fatal and degrades to a full stream. The

@@ -20,7 +20,10 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   overrides that send it back (and `issue-implement` Step 2.1 applies them, including the
   spec-PR lookup you owe before building); the reasoning is in
   [`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
-  spec". When one fires, return `spec_required: <which, and why>` instead of building.
+  spec". When one fires, return **`specRequired`** (camelCase — it is a structured schema
+  field, not one of this file's status-line keys, and the wake reads only that spelling;
+  a snake_case one is dropped and the promotion silently reverts to `direct` on the next
+  refresh) with which override fired and why, instead of building.
 - needs a spec → run the issue-spec step, open the spec PR (ready for review), stop (now awaiting spec approval).
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
@@ -76,7 +79,7 @@ with sibling workers. Commit and push your branch; do not merge.
 ```
 issue: <ID>
 phase: <NEEDS_SPEC | AWAITING_SPEC_APPROVAL | NEEDS_IMPLEMENTATION | PR_FEEDBACK | DONE>
-route: <spec | direct>   spec_required: none | <why this bug needs a spec after all>
+route: <spec | direct>   specRequired: none | <why this bug needs a spec after all>
 spec_pr: <#/none>   impl_pr: <#/none>   branch: <name>
 gate_or_blocker: <none | awaiting-spec-approval | ready-to-merge | blocked: ...>
 spec_review: <rounds spent this dispatch> · spec_level_found: <yes/no/n-a>
