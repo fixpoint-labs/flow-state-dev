@@ -51,6 +51,15 @@
  * concurrency control to build that on (blind puts, last-write-wins).
  * Sequential access across requests is unaffected — a fresh resolution
  * hydrates from persisted state.
+ *
+ * Removals reconcile at resolution, not continuously. `TaskCollectionRef`
+ * has no `delete`, but the underlying resource collection does, and a
+ * capacity eviction removes an instance the same way — so every resolution
+ * both adopts what the store now holds and drops what it no longer holds
+ * (`reconcileTaskSet`). A ref that is *already* held when something else
+ * removes a task keeps seeing it until the next resolution reconciles the
+ * shared record; that was equally true of the per-ref mirror this replaces,
+ * which never re-read the store at all after construction.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -161,6 +170,52 @@ function sharedTaskSet(
 }
 
 /**
+ * Bring the shared record in line with the store: adopt every task the store
+ * lists, and drop every task the store no longer has.
+ *
+ * Both halves are load-bearing, and each naive version breaks the other:
+ *
+ * - **A plain merge leaks ghosts.** Another block can remove a task through the
+ *   underlying `ResourceCollectionRef` — an explicit `delete()`, or a capacity
+ *   eviction, which reaches the store through the same per-key delete and is
+ *   therefore indistinguishable here. Merge-only would keep the removed ref in
+ *   a record every later resolution reads, so `get`/`list` would report a task
+ *   that no longer exists and a mutation against it would fail or recreate it.
+ *   Before the record was shared this was safe only by accident: each
+ *   resolution built a private map, so a removed task was simply absent.
+ *
+ * - **A plain replace loses concurrent additions.** `collection.list()` is
+ *   awaited, and a sibling resolution can insert into the shared record while
+ *   that await is outstanding. Those ids are legitimately absent from a
+ *   snapshot taken before they existed, so treating "absent from the list" as
+ *   "removed" would delete exactly the mid-flight adds this record exists to
+ *   keep — the case the durable-wake scenario turns on.
+ *
+ * The discriminator is *when* the record learned about an id. Only ids the
+ * record already held **before** the store was asked can be judged by that
+ * answer; anything that appears during the await is newer than the snapshot
+ * and is left alone.
+ */
+async function reconcileTaskSet(
+  mirror: Map<string, ResourceRef<JsonObject>>,
+  collection: ResourceCollectionRef<JsonObject>
+): Promise<void> {
+  const knownBeforeRead = new Set(mirror.keys());
+  const listed = await collection.list();
+
+  const stored = new Set<string>();
+  for (const ref of listed) {
+    const id = readTaskState(ref).id;
+    stored.add(id);
+    mirror.set(id, ref);
+  }
+
+  for (const id of knownBeforeRead) {
+    if (!stored.has(id)) mirror.delete(id);
+  }
+}
+
+/**
  * Create a `TaskCollectionRef` backed by a parameterized resource
  * collection. Async because it awaits one `collection.list()` to hydrate
  * the sync mirror (see file header). All other reads are synchronous.
@@ -181,14 +236,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   // latest committed state for every task it knows about, and sharing the
   // record extends that to every task any sibling resolution *creates*.
   //
-  // Construction still hydrates (the only async step), merging rather than
-  // replacing: a task written straight to the underlying resource collection
-  // by something that never held a TaskCollectionRef is still picked up here,
-  // and a concurrent resolution's insert is never dropped.
+  // Construction still hydrates (the only async step) and reconciles the
+  // record against the store in both directions — see `reconcileTaskSet` for
+  // why a plain merge and a plain replace are each wrong.
   const mirror = sharedTaskSet(options.collection);
-  for (const ref of await options.collection.list()) {
-    mirror.set(readTaskState(ref).id, ref);
-  }
+  await reconcileTaskSet(mirror, options.collection);
 
   function emit(
     kind: TaskChangeKind,

@@ -167,14 +167,9 @@ const board = taskBoard({
 
 The board registers the collection on both its drain and `board.capability`, so a
 sibling action that lists `board.capability` in `uses` reads and writes the same
-durable tasks. Three things to keep in mind:
-
-- **Mid-drain adds are seen within one request.** A sibling step that adds a task
-  while the board is draining reaches an idle worker immediately, provided both are
-  in the same request. A *separate* request writing to the same collection at the
-  same time is not visible to a drain that is already waiting; it will be picked up
-  the next time the collection is resolved. Adding before or after a drain works in
-  either case.
+durable tasks — including while the board is mid-drain, covered in
+[Handles inside one request share a task set](#handles-inside-one-request-share-a-task-set)
+below. Two things to keep in mind:
 
 - **The scope lives on the collection, not the board.** `session` / `user` / `org`
   is set once on `defineTaskCollection`; the board just points at it.
@@ -202,14 +197,13 @@ does: when some request mounts a board over that collection and runs
 requests, drained by whatever request next runs the board." The durability is
 in the state, not in a running process.
 
-### A gotcha: a resource handle knows a fixed set of tasks
+### Handles inside one request share a task set
 
-To keep reads synchronous, `getOrCreateTaskCollection` takes a one-time snapshot
-of *which tasks exist* when you resolve the handle, then tracks that set. Reads
-through the handle stay live for those tasks — if a task's status changes, your
-`list()` sees the new status. And tasks *you* add through the handle join its
-set. But a task inserted through a **different** handle, after yours was
-resolved, won't appear in your `list()`.
+Reads through a resource handle are synchronous, which means the handle has to
+keep its own record of which tasks exist rather than querying the store on every
+`list()`. Every handle resolved over the same collection **inside one request**
+shares that record, so an add through one handle is visible through all of them,
+right away.
 
 ```ts
 // Block A resolves a handle and adds two tasks.
@@ -217,25 +211,36 @@ const a = await getOrCreateTaskCollection({ ctx, backing: "resource", collection
 await a.addTask({ id: "t1", goal: "…" });
 await a.addTask({ id: "t2", goal: "…" });
 
-// Block B, later, resolves its OWN handle and adds a third through it.
+// Block B, later in the same request, resolves its OWN handle and adds a third.
 const b = await getOrCreateTaskCollection({ ctx, backing: "resource", collectionId: "todos", collection: todoTasks });
 await b.addTask({ id: "t3", goal: "…" });
 
-a.list(); // → [t1, t2]      — a added these; it never learned about t3
-b.list(); // → [t1, t2, t3]  — b snapshotted [t1, t2] at resolve, then added t3 itself
+a.list(); // → [t1, t2, t3]  — same request, so a sees b's add
+b.list(); // → [t1, t2, t3]
 ```
 
-Within one request's "seed, then drain, then read", this never bites: the seed,
-the drain, and the reader run under the same flow and the drain adds tasks
-through its own handle. It matters when two independently-resolved handles are
-live at once, or across requests — resolve a **fresh** handle when you need to
-see additions made elsewhere.
+That's what makes a mid-drain add work: a worker resolves its handle when it
+goes idle and holds it while it waits, so a sibling's add has to reach that
+handle to wake it.
+
+Two boundaries are worth knowing:
+
+- **A different request does not share the record.** Each request builds its own,
+  so a request writing while another request's drain is already waiting is
+  invisible to it. That drain sees the write the next time it resolves the
+  collection. Sequential access across requests is the normal case and works: a
+  fresh resolve reads what was stored.
+- **Removals reconcile when you resolve, not continuously.** A task collection
+  has no `delete`, but the resource collection underneath it does, and a
+  capacity limit can evict one. A handle you are *already* holding keeps
+  reporting a task that was removed elsewhere until something resolves the
+  collection again, which reconciles the shared record in both directions.
 
 ## What a board is not
 
 A board is not a background job queue. The drain needs an active request to run
-in; there's no primitive that wakes a standing worker when a task is inserted
-from somewhere else, and the durable-work-pool case — a foreground request
+in; there's no primitive that wakes a standing worker when a task is inserted by
+*another request*, and the durable-work-pool case — a foreground request
 appending tasks while a separate background process drains the same board — is
 not supported today. If you need work to run outside the request that created
 it, dispatch a fresh flow run (see [Background jobs](./background-jobs-bullmq))

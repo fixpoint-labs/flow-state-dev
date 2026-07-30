@@ -17,6 +17,12 @@
  * it: the record hangs off the resource-collection instance (per request, per
  * scope instance), never off the `collectionId` string. Keyed on the string,
  * two tenants holding a same-named board would read one another's tasks.
+ *
+ * Two cases pull in opposite directions on purpose, because reconciling the
+ * record against the store has to satisfy both: a task removed underneath the
+ * record must disappear from it, while a task added *while* a sibling
+ * resolution is reading the store must survive. Merge-only fails the first;
+ * replace-wholesale fails the second.
  */
 import { describe, expect, it } from "vitest";
 import { createResourceBackedTaskCollection } from "../../src/tasks";
@@ -113,6 +119,84 @@ describe("resource-backed task set: two resolutions in one request", () => {
     expect(refTwo.count()).toBe(0);
     expect(refTwo.get("mine")).toBeUndefined();
     expect(refTwo.list()).toEqual([]);
+  });
+
+  it("drops a task removed through the underlying collection", async () => {
+    // `TaskCollectionRef` has no `delete`, but the resource collection under it
+    // does, and a capacity eviction removes an instance the same way — both
+    // land as "the store no longer lists this key". A shared record that only
+    // merged would keep serving the removed ref to every later resolution.
+    const backing = createFakeResourceCollection();
+    const refA = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    await refA.addTask({ id: "keep", goal: "keep" });
+    await refA.addTask({ id: "gone", goal: "gone" });
+
+    await backing.delete("gone");
+
+    const refB = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+
+    expect(refB.get("gone")).toBeUndefined();
+    expect(refB.list().map((t) => t.id)).toEqual(["keep"]);
+    expect(refB.count()).toBe(1);
+    // The record is shared, so the earlier ref stops reporting the ghost too.
+    expect(refA.get("gone")).toBeUndefined();
+    expect(refA.count()).toBe(1);
+  });
+
+  it("keeps a task added while a concurrent resolution was reading the store", async () => {
+    // The opposing direction to the case above, and why reconciliation cannot
+    // just replace the record: the add lands after `collection.list()` took its
+    // snapshot but before the hydration loop runs, so it is legitimately absent
+    // from that snapshot. Treating "absent" as "removed" would delete exactly
+    // the mid-flight add the shared record exists to keep.
+    const backing = createFakeResourceCollection();
+    const refA = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    await refA.addTask({ id: "early", goal: "early" });
+
+    // Gate `list` on `backing` ITSELF rather than on a wrapper object: the
+    // record is keyed on the collection instance, so a wrapper would get its
+    // own record and the two resolutions would never contend for one.
+    const realList = backing.list.bind(backing);
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    backing.list = async (prefix?: string) => {
+      const snapshot = await realList(prefix);
+      await held; // snapshot taken; now the add below lands "during" the read
+      return snapshot;
+    };
+
+    const pendingRefB = createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    // Let the gated list() take its snapshot and park on the barrier.
+    await Promise.resolve();
+    backing.list = realList; // the add's own reads must not block
+    await refA.addTask({ id: "during", goal: "during" });
+    release();
+    const refB = await pendingRefB;
+
+    // Both refs read the one shared record, so the mid-flight add has to be
+    // present through either of them.
+    expect(refA.get("during")?.goal).toBe("during");
+    expect(refA.list().map((t) => t.id).sort()).toEqual(["during", "early"]);
+    expect(refB.get("during")?.goal).toBe("during");
+    expect(refB.count()).toBe(2);
   });
 
   it("does not lose an entry when two resolutions add concurrently", async () => {

@@ -60,6 +60,11 @@ lifting that would need cross-process concurrency control the resource store doe
 not have. Sequential access across requests is unaffected: a fresh resolution
 hydrates from persisted state.
 
+Each resolution reconciles the record against the store in both directions, so a
+task removed underneath it (an explicit `delete` on the resource collection, or a
+capacity eviction) stops being reported. A ref you are already holding keeps
+reporting such a task until the next resolution reconciles.
+
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
 it or the task is already settled, `expectAttempt` skips it when the caller no

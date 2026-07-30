@@ -23,12 +23,15 @@
  * in for them.
  */
 import { describe, expect, it } from "vitest";
-import { handler, sequencer } from "@flow-state-dev/core";
+import { defineResourceCollection, handler, sequencer } from "@flow-state-dev/core";
+import type { JsonObject } from "@flow-state-dev/core";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   defineTaskCollection,
   fifoDispatcher,
+  getOrCreateTaskCollection,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -218,6 +221,65 @@ describe("taskBoard - durable board same-request freshness", () => {
 });
 
 describe("taskBoard - durable collection resolutions inside one request", () => {
+  it("drops a task the resource collection evicted for capacity", async () => {
+    // The eviction half of reconciliation, on the real registry rather than a
+    // fake. Reaching it needs a caller-supplied resource collection with an
+    // `eviction` policy: `defineTaskCollection` exposes `maxInstances` but not
+    // `eviction`, and the registry's default is to THROW at the cap, so a board
+    // declared the usual way can never evict. Where it can happen, eviction
+    // removes the instance through the same per-key delete an explicit
+    // `delete()` uses, so one reconciliation covers both.
+    const evicting = defineResourceCollection({
+      scope: "session",
+      pattern: "evicting/**",
+      stateSchema: z.record(z.unknown()),
+      maxInstances: 2,
+      eviction: "oldest",
+    });
+
+    const probe = handler({
+      name: "evicting-probe",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ ids: z.array(z.string()), firstGone: z.boolean() }),
+      resources: { evicting },
+      execute: async (_input, ctx) => {
+        const resolve = (): Promise<TaskCollectionRef> =>
+          getOrCreateTaskCollection({
+            ctx,
+            backing: "resource",
+            collectionId: "evicting",
+            collection: ctx.resources.evicting as ResourceCollectionRef<JsonObject>,
+          });
+
+        const refA = await resolve();
+        await refA.addTask({ id: "t1", goal: "t1" });
+        await refA.addTask({ id: "t2", goal: "t2" });
+        // Third create trips the cap and evicts the oldest instance.
+        await refA.addTask({ id: "t3", goal: "t3" });
+
+        // A later resolution reconciles the shared record against the store.
+        const refB = await resolve();
+        return {
+          ids: refB.list().map((t) => t.id).sort(),
+          firstGone: refB.get("t1") === undefined,
+        };
+      },
+    });
+
+    const result = await testBlock(
+      sequencer({ name: "evicting-wrapper" }).step(probe),
+      { input: undefined }
+    );
+
+    expect(result.error).toBeNull();
+    const output = result.output as { ids: string[]; firstGone: boolean };
+    // The store enforces the cap, so the record must match it rather than
+    // carrying a third, evicted entry.
+    expect(output.firstGone).toBe(true);
+    expect(output.ids).toEqual(["t2", "t3"]);
+  });
+
+
   it("shares one task set across two independently resolved refs", async () => {
     // The real-path counterpart to the unit-level mechanism test in
     // `test/collection/shared-task-set.test.ts`. That one proves the record is
