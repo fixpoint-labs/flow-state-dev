@@ -73,6 +73,17 @@ answering one question: **is this the right approach?**
   themselves are not).
 - Anything Part II left open on purpose — it is directional by design, and a gap at
   that altitude is intended, not an omission.
+- **The solution sketch, at the line level.** A spec may include rough illustrative code
+  to show the *shape* of the proposed solution. It is knowingly incomplete, may not
+  compile, and is not the code that will ship. **Review it for directional viability and
+  key design aspects only** — is this the right shape, in the right layer, composing the
+  right way? Do **not** report that it lacks error handling, has loose types, omits edge
+  cases, misnames things, or wouldn't build: all of that is true on purpose. A sketch that
+  has to survive line-level review stops being cheap, and then nobody writes one.
+
+**One request, if you are an automated reviewer:** the two lists above are the whole
+difference between a useful review of this document and a long one. Volume is not signal
+here — a single finding above the line is worth more than twenty below it.
 
 Feedback in the second list is welcome and gets **recorded verbatim in §13** for the
 implementer to weigh against real code. It will not be argued with, and it will not be
@@ -256,24 +267,65 @@ Name the API surface at the level of *what it exposes*, not exact signatures.
 > - **Untouched:** the execution engine, every block kind, the item taxonomy.
 >   Sequence numbers already exist (`docs/architecture/streaming.md`); this reads them.
 
+**Solution sketch — optional, and deliberately rough.** Where the shape of a solution is
+easier to *see* than to describe, include a quick sketch of it. Three things it buys: the
+reviewer sees the shape instead of reconstructing it from prose, the author has to confront
+the design concretely before signing off on it, and the implementer starts from something
+rather than a blank file.
+
+**It is not the end state, and it does not have to run.** Quick and dirty is the point —
+skip error handling, skip types that don't carry meaning, leave `// …` where the detail is
+obvious. If it compiles, fine; nobody should spend time making it compile. Anything
+substantial goes as throwaway files on the **spec branch** (never merged) with a pointer
+from here, so it doesn't bloat the doc the implementer reads.
+
+**Include one when** the composition is novel, the ergonomics only become visible in code,
+or two shapes are genuinely in contention and side-by-side settles it. **Skip it when** the
+change extends an existing pattern — pointing at the pattern is better than re-sketching it.
+
+> **Sketch — illustrative, not the contract. Review for shape, not for correctness.**
+>
+> ```ts
+> // Roughly: one filter, applied where items are already serialized.
+> function streamItems(req, cursor /* ?: Cursor */) {
+>   for await (const item of req.items()) {
+>     if (cursor && item.sequence <= cursor.sequence) continue   // ← the whole feature
+>     yield serialize(item)
+>   }
+> }
+> // Route: cursor = query.starting_after ?? header["last-event-id"]  (decision 2)
+> // Completed request: same loop over the persisted log instead      (decision 3)
+> ```
+>
+> What this is asking a reviewer: *is a filter at the serialization seam the right place,
+> or does resume belong lower, in the store's iterator?* That question is the point. Whether
+> `cursor` should be a type or a number, whether the guard reads well, and whether this
+> snippet type-checks are **not** the point.
+
+*(If deciding between shapes needed a real experiment rather than a sketch, that's the
+[`prototype`](../../.agents/skills/prototype/SKILL.md) skill — throwaway code that answers
+a question and is then deleted. A sketch distilled from one is a good sketch; the prototype
+itself still doesn't ship.)*
+
 ### 8. Implementation sequence
 
 Ordered, independently testable steps. For each: which modules to create / modify /
 **remove** (subtraction is part of the change — tenet 3), what to test, what it depends on.
 
-> 1. **Parse and thread the cursor.** Route reads **both** encodings from decision 2
->    (`Last-Event-ID` and `starting_after`, query param winning), hands one optional cursor
->    to the stream seam. Nothing filters yet. *Test:* each encoding alone, both together
->    (query wins), and a malformed value ignored rather than fatal. *Depends on:* nothing.
-> 2. **Filter at the seam.** Drop items at or below the cursor. *Test:* the three
->    cases in §5 (fresh, mid-stream, stale). *Depends on:* 1.
-> 3. **Completed-request boundary.** Replay from the persisted log above the cursor,
->    then close. *Test:* reattach after completion, and with a cursor past the end.
->    *Depends on:* 2.
-> 4. **Client sends it.** The reattach path attaches the cursor. *Test:*
->    end-to-end, reload mid-request. *Depends on:* 3.
-> 5. **Remove** the client's `dedupeIncomingItems` helper and its tests — it exists
->    only to paper over the duplicates this change eliminates.
+> 1. **Parse and thread the cursor** at the HTTP boundary, in both encodings decision 2
+>    names. Nothing filters yet. *Test:* each encoding, their precedence, and a malformed
+>    value. *Depends on:* nothing.
+> 2. **Filter at the seam.** *Test:* the §5 cases. *Depends on:* 1.
+> 3. **The completed-request boundary**, per decision 3. *Test:* reattach after completion,
+>    and with a cursor past the end. *Depends on:* 2.
+> 4. **Client sends it** on the reattach path. *Test:* end-to-end, reload mid-request.
+>    *Depends on:* 3.
+> 5. **Remove** the client-side dedupe helper and its tests — it exists only to paper over
+>    the duplicates this change eliminates.
+>
+> *(Each step cites the decision it implements rather than restating it. That's deliberate:
+> the contract lives in §6 alone, so a decision that changes in review changes in one place.
+> A sequence that re-states semantics is a second copy that silently goes stale.)*
 
 **PR plan (Large / multi-PR only).** Independent = no unmet `depends_on`. The lifecycle
 builds independents in parallel and sequences the rest; the DAG must be acyclic. Most
@@ -296,15 +348,18 @@ A table, plus the error taxonomy (retryable vs. fatal). Walk the second-path che
 
 > | Case | Expected |
 > |---|---|
-> | No cursor | Stream from the start — today's behavior exactly |
-> | Malformed cursor | Ignore it, stream from the start. Not an error: it's caller-controllable input (BP-031) |
-> | Cursor from a different request | Ignore it. Cursors are request-scoped by construction |
+> | Malformed cursor | Ignore it, stream from the start — caller-controllable input, so not an error (BP-031) |
+> | Cursor from a different request | Ignore it; cursors are request-scoped by construction |
 > | Cursor ahead of the stream | Nothing to send yet; hold the connection open |
-> | Request already completed | Replay whatever is above the cursor from the persisted log, then close. A cursor past the end is an empty replay, not an error |
-> | Reconnect during an in-flight tool call | Resume normally — the item is emitted when it completes, and its sequence is above the cursor |
+> | Reattach during an in-flight tool call | Normal — the item is emitted on completion, above the cursor |
 >
 > **Taxonomy:** every cursor problem is non-fatal and degrades to a full stream. The
 > only fatal path is an unreadable request id, which already 404s today.
+>
+> *(The rows are the cases §6 does **not** already answer — the odd, the hostile, the
+> boundary. "No cursor" and "request already completed" are decisions 4 and 3, so they
+> aren't repeated here. A table that re-derives the happy path from the decisions is
+> the copy that drifts.)*
 
 ### 10. Testing strategy
 
@@ -319,14 +374,20 @@ A table, plus the error taxonomy (retryable vs. fatal). Walk the second-path che
 > `goals/resume-after-disconnect/reconnect-midstream/run.mts`, real model.
 >
 > **CI specs** (the behaviours, not the test names):
-> - a reattach with a mid-stream cursor emits only items above it
-> - a reattach with no cursor emits every item
-> - a reattach after completion replays the items above the cursor, then closes — and
->   emits nothing only when the cursor is already past the end of the log
-> - delivered sequence numbers are strictly increasing across the reattach, with no
->   duplicates and no reset. **Not contiguous** — replay legitimately skips
->   non-replayable events, so gaps are correct and a contiguity assertion would either
->   fail a good stream or push the implementer to renumber stable cursors
+> - **one behaviour per decision in §6**, stated in observable terms — what a caller sees,
+>   not how it's computed
+> - **the second path** (BP-035): every case exercised on a *reattach*, not only on a first
+>   connection — that's the path this change adds and the one a naive suite misses
+> - **what must not change**: a caller that sends no cursor behaves byte for byte as today
+> - **the invariant that is easy to state wrongly**: delivered sequence numbers are strictly
+>   increasing, no duplicates, no reset — **not contiguous.** Replay legitimately omits
+>   non-replayable events, so gaps are correct; asserting contiguity would fail a good
+>   stream, or push the implementer to renumber cursors the whole feature depends on being
+>   stable
+>
+> *(Only the last one spells out a rule, and only because getting it backwards produces a
+> confidently wrong test. The rest name **which** behaviours to cover and let §6 say what
+> they are — one contract, one place.)*
 >
 > **Discipline:** `tdd`. The seam is the stream-serialization boundary in
 > `@flow-state-dev/engine` — reachable from a vitest spec with the mock context, so

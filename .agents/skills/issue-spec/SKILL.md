@@ -292,7 +292,25 @@ Before drafting, check whether the research has surfaced a **design question tha
 - A state model that "looks fine on paper" but you can't tell whether scope boundaries handle edge cases correctly
 - A UI choice for devtool / kitchen-sink / renderer changes where the answer needs to be seen, not described
 
-If yes, **stop drafting and run `prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
+**Either way, consider a solution sketch** (`spec-template.md` §7). Where the solution's
+shape is easier to see than to describe, write rough illustrative code for it — quick and
+dirty, not the end state, no obligation to compile. It makes you confront the design
+concretely before asking anyone to sign off, it shows the reviewer a shape instead of
+making them reconstruct one, and it gives the implementer a starting point. Include one
+when the composition is novel or the ergonomics only show up in code; skip it when the
+change extends an existing pattern. Anything beyond a few lines goes as throwaway files on
+the spec branch, referenced from §7 — the spec PR is never merged, so it's free to carry.
+
+**Protect it in review, and expect to.** Automated reviewers will treat a sketch as code
+and report missing error handling, loose types and edge cases. The reviewer contract at the
+top of the spec PR says the sketch is out of scope at the line level (Step 6), and at
+triage that feedback is a **Drop** — not even a §13 note, since there is nothing for the
+implementer to weigh about code that isn't shipping. Only a comment on the sketch's
+*direction* — wrong layer, wrong composition, won't work — is real, and that's an ordinary
+fold. See [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review".
+
+If a design question needs a real experiment rather than a sketch, **stop drafting and run
+`prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
 
 If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without a prototype.
 

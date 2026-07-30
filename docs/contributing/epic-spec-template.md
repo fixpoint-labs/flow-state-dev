@@ -79,9 +79,13 @@ visible. Say what the set is deliberately *not* doing.
 > down** to a default with no new options — if it grows a knob during
 > implementation, that's the signal it should have been dropped.
 >
-> **Not doing:** offline queueing, cross-request history, or any store-backed
-> replay. Every one of those turns a stream into a durable log, which is a
-> different product decision and belongs to its own epic.
+> **Not doing:** offline queueing, or any *new* durable history — serving a
+> response to a client that was never attached, or retaining anything past the
+> request's own lifetime. Both turn a stream into a product-level log, which is a
+> different decision and its own epic. (Replaying a request's *existing* persisted
+> log to a client reattaching to it is in scope — that's FIX-775's decision 3. An
+> epic non-goal that swallows a child's decision is how a cross-spec pass ends up
+> deleting work the set requires.)
 
 ## 2. Themes & long-horizon direction
 

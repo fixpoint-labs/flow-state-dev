@@ -2320,7 +2320,17 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               // is the only thing that writes code, and it is already in the repo with `gh` to hand.
               `FIRST, confirm no spec PR exists for this issue (one cheap \`gh pr list --search "spec(<ISSUE>) in:title" --state open\`). If one does, STOP and return specRequired: existing spec PR #N is awaiting approval — the router did not know about it. Do not implement past an open spec gate.\n` +
               `Otherwise the only two things that send it back are yours to decide BEFORE building: no reproduction with an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). Return specRequired: <which and why> instead of building. A design DECISION you hit mid-diagnosis is not one of those — ship your best-judgment fix and surface the decision on the PR with the alternative named.\n`
-            : `ROUTE: spec (this issue's approach is gated on a human-approved spec).\n`) +
+            : `ROUTE: spec (this issue's approach is gated on a human-approved spec).\n` +
+              // A PROMOTED row carries why it left the direct route, and the reason has to travel with
+              // it. `issue-spec` shapes a bug's spec differently per override (no-reproduction → the
+              // spec is mostly the repro shape and the regression seam; not-really-a-bug → an ordinary
+              // feature spec that says so up front). Sending only the generic line makes the fresh
+              // worker redo the diagnosis that produced the promotion — and it may well conclude the
+              // issue is a clear-repro bug and refuse the spec route, which cycles the row between
+              // promotion and reclassification forever. Same handoff rule as a blocker resolution.
+              (item.row.specRequired
+                ? `This bug was PROMOTED to the spec route by an earlier worker. Its reason, verbatim: "${item.row.specRequired}". Shape the spec around that override (see issue-spec → "Who gets a spec") and do not re-litigate the promotion.\n`
+                : '')) +
           (item.action === 'apply-verdict'
             ? // SETTLED ones only get the "record as resolved" instruction. An INCONCLUSIVE verdict resolves
               // nothing — `nextRow` turns it into a human decision AFTER this worker returns, so telling
