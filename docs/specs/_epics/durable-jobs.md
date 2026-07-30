@@ -30,14 +30,34 @@ not building a job runner; the pieces already ship:
 So background work is **several requests running at once in one session**, where each background
 unit of work is a request tagged as background and associated to a task:
 
-- A background request belongs to the **session**, not to the request that started it.
-- The initiating request steers it **through the task**: cancel the task, and the in-flight
-  request is interrupted.
-- Request metadata carries the task id and title plus a background flag; the trusted transport
-  `source` field carries `user` vs `taskboard`.
-- A UI lists a session's requests, sorts background from foreground, and renders the background
-  ones as tasks. `RequestStore.list({ sessionId, … })` already answers that query
-  (`engine/src/stores/types.ts:283`, `:110-147`).
+```mermaid
+sequenceDiagram
+  actor U as User
+  participant FG as Foreground request<br/>source = user
+  participant B as Task board<br/>resource-backed
+  participant BG as Background request<br/>source = taskboard
+  participant BG2 as Sibling background request
+
+  U->>FG: sends a turn
+  FG->>B: addTask
+  FG->>BG: spawn sibling request in the same session<br/>metadata carries taskId, title, background
+  Note over FG,BG: one sessionId, two requests.<br/>FG returns without waiting.
+  BG->>B: claim taskId — the M1 conditional write
+  B-->>BG: claimed, attempts = 1
+  BG2->>B: claim taskId — concurrent
+  B--xBG2: refused on version conflict<br/>TODAY BOTH SUCCEED — section 8
+  BG->>BG: stream items, each stamped with taskId
+  BG->>B: complete taskId with expectAttempt
+  U->>FG: cancel
+  FG->>B: cancel taskId
+  B->>BG: interrupt the in-flight request<br/>MECHANISM DOES NOT SHIP — Decision 5
+```
+
+Two things the diagram cannot show, and both are binding: the background flag and task id travel
+as request **metadata**, which is caller-controllable and therefore display-only, while the
+`user` / `taskboard` distinction rides the trusted transport `source` field (rule 9); and the read
+model a UI needs already exists — `RequestStore.list({ sessionId, … })`
+(`engine/src/stores/types.ts:283`, `:110-147`).
 
 **What that leaves as real work.** Two things, and they are the epic:
 
@@ -616,17 +636,13 @@ trivially stable. FIX-982 chooses how to constrain this; the constraint itself i
 
 #### Metadata, and what may be trusted
 
-Request metadata carries the task id, the task title, and a background flag. The trusted transport
-`source` field carries `user` vs `taskboard`; **`InboundSource` is an open string
-(`core/src/types/auth.ts:19`), so `taskboard` needs no type change.**
-
-> **Rule 9, with an in-repo precedent that settles it.** The runtime already relies on the
-> distinction. The concurrency arbiter's event check *"must gate on the trusted transport `source`
-> (set by the adapter, never the caller) AND the metadata coordinate … `metadata` alone is
-> caller-controllable over HTTP, so trusting it would let a caller spoof `metadata.webhook` to skip
-> a public action's reject/queue policy"* (`transports/concurrency/arbiter.ts` → `resolve`). **So
-> metadata is fine for display; it is not a trust boundary.** Nothing may route or authorize on a
-> caller-supplied background flag or task id (BP-031).
+**`InboundSource` is an open string (`core/src/types/auth.ts:19`), so `taskboard` needs no type
+change.** Rule 9 has an in-repo precedent that settles it: the concurrency arbiter's event check
+*"must gate on the trusted transport `source` (set by the adapter, never the caller) AND the metadata
+coordinate … `metadata` alone is caller-controllable over HTTP, so trusting it would let a caller
+spoof `metadata.webhook` to skip a public action's reject/queue policy"*
+(`transports/concurrency/arbiter.ts` → `resolve`). **Metadata is fine for display; it is not a trust
+boundary** (BP-031).
 
 #### Cancellation — the half of the model that does not ship
 
@@ -765,9 +781,91 @@ uses `backing: "request"` (`:51`), so it is **not** broken today; what it proves
 task's outputs via `items()` is load-bearing in shipped code, so the contract matters. FIX-991 also
 owns the board-scoped lifetime bound (Decision 5, rule 11).
 
-**Set-level verdict: the set does not overbuild, and the model made it leaner rather than larger.**
-The four surviving surfaces are distinct — claim/CAS, dispatch seam, cross-request waiting, item
-lifetime — and none subsumes another.
+**Set-level verdict: the substrate set does not overbuild, and the model made it leaner.** The four
+surviving substrate surfaces are distinct — claim/CAS, dispatch seam, cross-request waiting, item
+lifetime — and none subsumes another. But see the next subsection: leaner substrate is not a leaner
+epic.
+
+### The consumer surface — every issue here is substrate
+
+**Nothing in the current membership covers how a developer declares background work through the
+normal API, or how a client treats it differently.** Under requests-as-jobs that surface is where
+the value lands: "list a session's requests, sort background from foreground, render background as
+tasks" is the outcome, and no indexed issue owns any part of it. Recorded here because a substrate
+that no one can reach is not the objective.
+
+```mermaid
+flowchart TB
+  subgraph S["One session — one ongoing operation"]
+    FG["Foreground request<br/>source = user"]
+    BG1["Background request 1<br/>source = taskboard<br/>meta = taskId, title, background"]
+    BGN["Background request N<br/>source = taskboard"]
+  end
+  subgraph BD["Task board — resource-backed, scope session / user / org"]
+    T1[(task 1)]
+    TN[(task N)]
+  end
+  subgraph UI["Client"]
+    CONV["Conversation<br/>foreground items"]
+    TASKS["Task list<br/>background requests rendered as tasks"]
+  end
+  FG -->|addTask| T1
+  FG -->|addTask| TN
+  FG -.->|spawns sibling| BG1
+  FG -.->|spawns sibling| BGN
+  BG1 -->|claim + settle| T1
+  BGN -->|claim + settle| TN
+  FG --> CONV
+  BG1 --> TASKS
+  BGN --> TASKS
+```
+
+**What already exists, so the surface work is smaller than it looks.** Item-to-task attribution
+already travels across requests: attribution is by **execution scope**, stamped at emit time
+(`ctx._markTaskScope` → `OutputItem.taskId`), and *"a re-claim — a retry, or resuming after
+`awaiting_review` — runs in a fresh scope but marks the same task id, so all attempts union under
+that task"* (`docs/architecture/items.md` → Item windows). One shared algorithm
+(`attributeItemsToTasks` / `itemsForTask` / `extractTaskItems`) backs both the substrate and the UI
+and is exported from the browser-safe `@flow-state-dev/orchestration/tasks` subpath, so **the client
+needs no new attribution mechanism.** And `task-change` / `task-board-meta` are keyed, non-transient,
+client-visible snapshots that replay on reload (`items.md` → Transient × keyed matrix).
+
+**The classification decision, made deliberately rather than by accident.** Background-ness is a
+**request-level** property, not an item-level one: items carry `requestId` and `taskId`, and the
+background flag lives on the request's `metadata` / `source`. So **no new item type and no new
+visibility category is added** — the client splits at the request level and reuses `taskId`
+attribution inside it. The precedent for a deliberate side-channel is already there: `useSession`
+tracks `resource_change` notices *"independent of the `items` filter … so subscribers can react to
+in-flight resource mutations without setting `includeTransient: true`"*
+(`react/src/hooks/useSession.ts:140-147`, `:323-329`). Whatever background surface lands makes the
+same kind of explicit choice rather than inheriting the transient filter by omission.
+
+**The structural gap in `react`: `useSession` holds `latestRequest: SessionRequestSummary | null` —
+singular** (`useSession.ts:321`), and its `resourceChanges` array is per-request-scoped. The hook is
+built around one request per session, which is exactly the convention Decision 0 breaks.
+
+Surfaces to price, respecting the locked boundaries — `react` wraps `client` with no transport logic
+in `react`, and `engine` never depends on `client` or `react`:
+
+| Layer | What has to exist |
+|---|---|
+| **`engine`** | Request metadata + trusted `source` on the create/dispatch path and the HTTP action routes. Whether "a session's requests, filtered/sorted by background" is a new route or an extension of the existing session-requests route — `RequestStore.list` already supports `sessionId` / `status` / `orderBy`, so this is likely a route-level projection, not a store change. |
+| **`client`** | Declaring a background request, and enumerating a session's requests with their background disposition. Isomorphic, so it is the single place transport shape is decided. |
+| **`react`** | How `useSession` exposes the foreground/background split — plural requests, and a deliberate classification decision per the paragraph above. Wraps `client`; no transport logic. |
+| **`apps/kitchen-sink`** | The demo that proves it: a flow that launches background work, plus a UI that visually distinguishes foreground conversation from background tasks. |
+| **Docs** | `packages/*/README.md` for the new public API, plus `apps/docs` pages for the concept and guide. No issue IDs in anything under `apps/docs`. |
+
+**Verification path and pass criteria (BP-003), stated because "add a demo" is not evidence.**
+Evidence path: `apps/kitchen-sink` flow run via `fsdev run` for the flow half, and the kitchen-sink
+UI in a browser for the render half (the one case where a browser is the right check, per
+`AGENTS.md`). Pass criteria: (1) a foreground turn returns while its background work is still
+running; (2) `GET` the session's requests and see the background one with `source: taskboard` and its
+`taskId` in metadata; (3) the background request's items are retrievable by task id from a *different*
+request than the one that emitted them, including across a reclaim (criterion 4b); (4) cancelling the
+task terminates the background request, observably, not just flipping a flag; (5) the UI renders the
+background request as a task, distinct from the conversation.
+
+---
 
 ---
 
@@ -882,6 +980,8 @@ the index, and the execution sequence (§5) alike.
 The restructure changes what M3, M4 and M5 mean. **No Linear issue has been modified**; re-scoping
 gate-held issues is the owner's call.
 
+**Re-scoping existing issues:**
+
 | Issue | Proposed change |
 |---|---|
 | **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, constrain to a drain-only action, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4. |
@@ -889,6 +989,27 @@ gate-held issues is the owner's call.
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. |
 | *(new)* | **N2** — `latestRequestId` under concurrent siblings. Candidate for a new issue; not filed. |
+
+**New issues for the consumer surface** (§5 → "The consumer surface"). None filed. The first three
+are **prerequisites** — the kitchen-sink demo cannot exist without them; the last two are additive on
+top:
+
+| | Proposed issue | Packages | Sequence | Prerequisite or polish? |
+|---|---|---|---|---|
+| **S1** | Request metadata + trusted `source` on the create/dispatch path, and a session-requests read filtered/sorted by background disposition | `engine` | after FIX-982 | **Prerequisite.** Nothing above it can see a background request without this. |
+| **S2** | Declare a background request, and enumerate a session's requests with their background disposition | `client` | after S1 | **Prerequisite.** The isomorphic surface every consumer goes through. |
+| **S3** | `useSession` exposes the foreground/background split — plural requests, with a deliberate item-classification decision (no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. Carries the `latestRequest`-is-singular gap (N2's read-side twin). |
+| **S4** | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. |
+| **S5** | Document the surface: package READMEs for the public API + `apps/docs` concept and guide pages | `packages/*`, `apps/docs` | after S4 | **Polish**, but required by the "document new user-facing functionality" rule before the epic wraps. |
+
+> **This makes the epic bigger, not smaller, and the owner should see that trade.** The reframe
+> *removes* substrate work — M5 dissolves, M4 halves, M3 narrows from a subsystem to a seam — but it
+> *adds* five consumer-facing items across four packages, three of them prerequisites. Net: fewer hard
+> problems, more surface. The hard problems were the risky part (M1 is still `Large` and still gated),
+> so this is a favourable trade on risk and an unfavourable one on headcount-days. **It is not
+> recorded as decided** — the owner may equally choose to ship the substrate under this epic and put
+> S1–S5 in a follow-on epic, which would keep FIX-939 as-is and make the consumer surface its own
+> objective. Naming it here so the choice is explicit rather than discovered at wrap time.
 
 ---
 
