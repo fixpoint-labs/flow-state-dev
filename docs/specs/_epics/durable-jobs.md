@@ -59,6 +59,18 @@ as request **metadata**, which is caller-controllable and therefore display-only
 model a UI needs already exists — `RequestStore.list({ sessionId, … })`
 (`engine/src/stores/types.ts:283`, `:110-147`).
 
+> **The consequence of "same session" that must be designed for, not discovered: background requests
+> poison conversation history.** History is loaded by `stores.request.list({ sessionId, tenantId,
+> status: "completed", limit: historyWindowTurns, orderBy: "startedAtMs", withItems: true })`
+> (`engine/src/context/createExecutionContext.ts:519-537`) — session, tenant and status only, **no
+> foreground/background dimension**, and `withItems: true` because *"`items` reconstruct cross-turn
+> history."* The query excludes *in-flight* siblings via `status: "completed"`, but a **completed**
+> background task is indistinguishable from a user turn — so every finished detached task counts as a
+> conversational turn, N of them evict the real turns from the window, and worker messages and tool
+> output become LLM history for the user's next message. **A client-side background flag cannot fix
+> this**: the filter runs server-side in the store query. Requirement: a history policy derived from
+> the trusted `source` (rule 9), or a grouping key. Named here, designed by S1.
+
 **What that leaves as real work.** Two things, and they are the epic:
 
 1. **Claim safety** (M1). Two sibling requests in one session are two executions with two
@@ -166,7 +178,7 @@ ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource r
    reclaim. See Decision 6.
 4. **A detached task's progress is readable from a durable surface**, not from a `transient: true`
    trace item and not from the originating request's emitter. Satisfied by reading the background
-   request's persisted items (`RequestStore.getEvents(requestId, fromSequence)`, `subscribeEvents`).
+   request's persisted items (`RequestStore.getEvents(requestId, fromSequence)`, `subscribeToEvents`).
 4b. **A detached task's own emitted items are retrievable from every execution that emitted them —
    including across a reclaim/retry, not merely across one boundary. Unconditional.** This is the
    existing `TaskHandle.items()` contract, which is explicit: *"Retries do NOT reset the start; all
@@ -636,6 +648,26 @@ worker/drain-only action, never the producer action.** The clean shape is a dedi
 drain action with no producer steps to repeat — it trades generality for a coordinate that is
 trivially stable. FIX-982 chooses how to constrain this; the constraint itself is not optional.
 
+#### Two further constraints on the drain action
+
+**A request is not bound 1:1 to a task today.** `dispatcher.claim(collection, workerId(ctx), ctx)`
+takes **no task-id filter** (`task-board/blocks/claim-task.ts:55`) — the worker takes whatever the
+dispatcher selects — and the drain loops back:
+`.loopBack(claimStepName, { when: shouldContinue === true, maxIterations })` (`task-board/index.ts:777`).
+So a request spawned "for task A" may go on to execute B and C, breaking two things the model
+promises: cancelling task A would abort unrelated work, and `metadata.taskId` stops identifying what
+produced the items after the first iteration. **Requirement: a task-id-filtered single claim with no
+loop-back on the detached path** — or make the background request **board-level rather than
+task-level** and drop the per-task framing. FIX-982 chooses; both are coherent, but only the second
+survives without a claim-by-id.
+
+**A drain action in `flow.actions` is publicly addressable.** `resolveActionCore` branches on the
+`webhook` / `chat` / `scheduled` sources (`execution/resolve-action-core.ts:79`, `:91`, `:99`) and
+otherwise falls through to `flow.actions[actionName]` (`:107`), so any authenticated caller can POST
+the drain action over HTTP or MCP and start claiming board work. **Requirement: a source-gated
+binding or another private, re-resolvable coordinate** — those three branches are the shipped
+precedent for building one, so copy that shape rather than inventing another.
+
 #### Metadata, and what may be trusted
 
 **`InboundSource` is an open string (`core/src/types/auth.ts:19`), so `taskboard` needs no type
@@ -775,7 +807,7 @@ blocking ships; cross-request blocking does not exist, and a predicate helper ov
 `.waitForCondition` does not create it. FIX-983 is scoped to cross-request waiting.
 
 **M5 / FIX-984 — mostly dissolves.** A background request already has an item stream with
-sequence-number resume (`RequestStore.getEvents(requestId, fromSequence)`, `subscribeEvents`,
+sequence-number resume (`RequestStore.getEvents(requestId, fromSequence)`, `subscribeToEvents`,
 `startSequenceNumber` in `bullmq/src/worker.ts`), and the UI already renders requests. Persisted
 per-delta progress was the expensive part — one write per emitted item — and it is no longer needed.
 What remains is a *lifetime* question, not a progress one: Decision 5's constraint, FIX-991's
@@ -999,6 +1031,13 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 decomposition exposed, and **criterion 4b depends on it**, so it appears in the membership table,
 the index, and the execution sequence (§5) alike.
 
+**Coordinator obligation before the first post-approval wake:** `epic-wake` builds its `discovered`
+set from Linear children absent from the carried rows, filtered only by terminal state, and enters
+each at `NEEDS_SPEC` — so FIX-957 and FIX-825, both Backlog and both parented here but deliberately
+outside the active set, **would auto-start specs on the first wake after the objective gate passes.**
+That is coordinator wiring to fix, not a document defect; re-parenting or closing either issue is the
+owner's call and is not done here.
+
 ### Proposed issue-scope changes — awaiting the owner's approval, not applied
 
 The restructure changes what M3, M4 and M5 mean. **No Linear issue has been modified**; re-scoping
@@ -1020,7 +1059,7 @@ top:
 
 | | Proposed issue | Packages | Sequence | Prerequisite or polish? |
 |---|---|---|---|---|
-| **S1** | Request metadata + trusted `source` on the create/dispatch path, and a session-requests read filtered/sorted by background disposition | `engine` | after FIX-982 | **Prerequisite.** Nothing above it can see a background request without this. |
+| **S1** | Request metadata + trusted `source` on the create/dispatch path; a session-requests read filtered/sorted by background disposition; **and the conversation-history policy** — §1's history-poisoning finding, which is server-side in the store query and so cannot be fixed anywhere above this layer | `engine` | after FIX-982 | **Prerequisite, and the heaviest of the five.** Nothing above it can see a background request, and without the history policy the model actively regresses the foreground conversation. |
 | **S2** | Declare a background request, and enumerate a session's requests with their background disposition | `client` | after S1 | **Prerequisite.** The isomorphic surface every consumer goes through. |
 | **S3** | `useSession` exposes the foreground/background split — plural requests, with a deliberate item-classification decision (no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. Carries the `latestRequest`-is-singular gap (N2's read-side twin). |
 | **S4** | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. |
@@ -1087,7 +1126,7 @@ contention test.
 | **Two-tier dispatch**: in-process FIFO queue + CAS at the durable boundary | `engine/src/stores/scope-lock.ts:1-5` | **FIX-981** — the architecture being completed, and why coarse locks are rejected. |
 | **Request dispatch**: `DispatchEnvelope`, `FlowDispatcher`, `StreamBridge`, `host.dispatch` | `engine/src/transports/dispatcher.ts`, `transports/host/createInboundTransportHost.ts:122` | **FIX-982** — the seam to expose in-request, not to rebuild. Its spec states compose vs rebuild. |
 | **Out-of-request execution, shipped**: `createWorkerDispatcher` + the flow-run worker | `bullmq/src/dispatcher.ts`, `bullmq/src/worker.ts:81-95` | **FIX-982** — proof a request already executes elsewhere from a serializable envelope with sequence resume. |
-| **Per-session request read model**: `RequestStore.list({ sessionId, … })`, `getEvents`, `subscribeEvents` | `engine/src/stores/types.ts:283`, `:110-147`, `:345` | **FIX-982 / FIX-991** — the background-request progress and UI surface; no new one is needed. |
+| **Per-session request read model**: `RequestStore.list({ sessionId, … })`, `getEvents`, `subscribeToEvents` | `engine/src/stores/types.ts:283`, `:110-147`, `:345`, `:358-361` | **FIX-982 / FIX-991** — the background-request progress and UI surface; no new one is needed. |
 | **Liveness**: `LeaseStore` (4 adapters), `durability-sweeper`, interrupted-request detection | `engine/src/stores/{memory,filesystem}/lease-store.ts`, `store-{sqlite,postgres}/src/lease-store.ts`, `engine/src/durability/durability-sweeper.ts` | **FIX-978 / FIX-980** — align "gone vs slow" with these rather than inventing a parallel liveness notion. |
 | **Atomic claim-and-advance across executions**: `ScheduleIndex.claimDue` | `scheduled/src/scheduleIndex.ts:48-61` | **FIX-981** (shape precedent). Its contract is at-most-once; tasks want at-least-once. |
 | **Cap/claim analysis**: `task-caps.ts` + `resource-backed.ts` | `orchestration/src/tasks/collection/` | **FIX-981** — build on this analysis rather than restating it. FIX-957's spec has already moved much of it (OQ-D). |
