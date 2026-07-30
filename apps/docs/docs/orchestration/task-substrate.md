@@ -47,7 +47,7 @@ A task moves through a fixed set of statuses, and the substrate enforces the tra
 
 That is what you get driving a collection from your own code. A model driving a board through the delegation task tools sees something different: those tools catch this one error and return `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current status and the calls available from it, so a refused change reads like every other bad tool call. See [Delegation](../skills/delegation.md) for the coordinator's view.
 
-There is a third possibility, and you have to ask for it. `complete` and `fail` take an option that makes one particular write *advisory*, so a refused transition does nothing instead of throwing — for a caller recording a result that may simply no longer apply. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
+There is a third possibility, and you have to ask for it. `complete` and `fail` take an option that makes one particular write *advisory*, so a refused transition does nothing instead of throwing — for a caller recording a result that may simply no longer apply. The call still tells you it was refused; it just tells you with a return value instead of an exception. It is opt-in per call and off by default; see [recording a result that may no longer apply](#recording-a-result-that-may-no-longer-apply) below.
 
 ```
 pending ─┬─→ in_progress ─┬─→ completed
@@ -60,6 +60,8 @@ pending ─┬─→ in_progress ─┬─→ completed
 ```
 
 `completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of.
+
+Assignment is refused on a terminal task too, not just status changes. `setAssignee` on a finished task declines and says so, because the work will never run again and a new assignee could not act on it. The other four mutators — `setPriority`, `addLabel`, `removeLabel`, `patchMetadata` — deliberately still write to a terminal task. Tagging a failed task after the fact is a real thing people do: a post-drain audit labelling what went wrong needs the task to still be writable.
 
 The status helpers are exported so you can reason about transitions without hardcoding the table:
 
@@ -108,6 +110,27 @@ await tasks.complete(task.id, output, {
 `ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a final status, so an incidental repeat write cannot clobber a settlement someone recorded deliberately. `expectAttempt` asks a different question: do I still hold this task? That one matters because a stale result is often a perfectly *legal* transition, and so invisible to the first check.
 
 Two things to know. The checks happen inside the same atomic write that performs the transition, so there is no gap between checking and writing, and you never have to re-derive the state machine yourself. And only those two outcomes go quiet: a missing task, a store failure, or an ordinary bug still throws. Leave the argument off and both methods behave exactly as they always have.
+
+#### Finding out what a write did
+
+The write is still skipped when a guard rejects it, and the call now tells you it was. `complete`, `fail`, `cancel`, and the five field mutators return a small verdict:
+
+```ts
+const outcome = await tasks.cancel(id, "superseded");
+
+if (outcome.outcome === "declined") {
+  // outcome.reason is "terminal", "disallowed", or "lost-claim"
+  // outcome.status is the status the task was in when the write was refused
+}
+```
+
+Three answers. `recorded` means a field changed. `unchanged` means the desired state already held, so nothing was written — an idempotent `setAssignee` where the assignee already matches, for instance. `declined` means the write was refused, and carries why.
+
+A *declined* write is a value, not an error. Nothing throws, so a call you did not guard behaves exactly as before if you ignore the return — which is supported, and is what the substrate's own write-backs do. That is deliberate: reporting a refusal and acting on one are separate concerns, so a late worker result still lands quietly on a settled task without disturbing its siblings.
+
+The verdict is produced inside the same atomic write that made the decision, which is why you can trust it. Deriving the same answer yourself by re-reading the task afterwards would race the write you are asking about.
+
+One honest limit. If you supply your own `TaskCollectionRef` and its methods return nothing, the framework will not invent a verdict for you — a missing answer is treated as "nothing was determined", not as evidence the write happened.
 
 Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim, its messages, tool calls, sources, reasoning, so an aggregator (a synthesizer or reviewer) can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
 
