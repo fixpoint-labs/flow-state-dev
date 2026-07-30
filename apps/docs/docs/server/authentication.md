@@ -302,10 +302,13 @@ bind a non-loopback host until your flows have authentication configured. See
 [the CLI reference](/docs/api/cli).
 
 Flows are checked independently. On a server where one flow configures a
-resolver and another doesn't, the second flow's sessions stay open. The two
-endpoints that span every flow, `GET /api/flows/sessions` and `GET
-/api/flows/active-requests`, can't be served that way. They return `401` until
-you set a host-level `resolvePrincipal` they can identify the caller with.
+resolver and another doesn't, the second flow's sessions stay open.
+
+The two endpoints that span every flow, `GET /api/flows/sessions` and `GET
+/api/flows/active-requests`, need a host-level resolver to identify the caller.
+Without one they keep working, but they only return rows for the flows that
+have no resolver of their own. A flow that authenticates doesn't get its
+sessions listed to an anonymous caller.
 
 ### What the resolver sees
 

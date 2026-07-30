@@ -38,9 +38,13 @@ it has its whole surface covered.
 
 **Breaking for apps that configure `resolvePrincipal`** and read across users.
 A caller reaching another user's session through these routes now gets a `403`
-where it previously got the data. One case needs a code change: an app that
-configures per-flow resolvers but leaves the host-level fallback at the default
-gets a `401` from `GET /sessions` and `GET /active-requests`, which span every
-flow and have no flow-scoped resolver to identify the caller with. Pass a
-host-level `resolvePrincipal` to `createFlowState` / `createFlowApiRouter` to
-restore them.
+where it previously got the data.
+
+The two cross-flow endpoints (`GET /sessions`, `GET /active-requests`) have no
+flow-scoped resolver to identify a caller with. Given a host-level
+`resolvePrincipal` they scope to the caller; without one they keep serving, but
+only the flows that configure no resolver of their own. So a mixed app — say a
+browser-facing chat flow plus a cron-triggered digest that authenticates its
+scheduled transport — keeps its session list, and the digest's sessions are not
+in it. Pass a host-level `resolvePrincipal` to `createFlowState` /
+`createFlowApiRouter` to get the full, caller-scoped listing back.

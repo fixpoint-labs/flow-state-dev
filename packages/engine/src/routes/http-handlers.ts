@@ -300,6 +300,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       });
       if (auth.denied !== undefined) return auth.denied;
       const principal = auth.principal;
+      const anonymousFlowKinds = auth.anonymousFlowKinds;
 
       if (route.kind === "not_found") {
         return jsonResponse(404, { error: "Route not found" });
@@ -353,7 +354,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           tenantId,
-          principal
+          principal,
+          anonymousFlowKinds
         });
       }
 
@@ -467,7 +469,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           runtimeConfig,
-          principal
+          principal,
+          anonymousFlowKinds
         });
       }
 

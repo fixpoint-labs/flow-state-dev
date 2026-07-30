@@ -89,6 +89,26 @@ function buildRouter(flows: ReturnType<typeof secureFlow>[]) {
   return { router: createFlowApiRouter({ registry, stores }), stores };
 }
 
+/**
+ * Same verified-header identity as `secureFlow`, but installed as the
+ * host-level fallback. Cross-flow routes have no `:flowKind` to borrow a
+ * resolver from, so they need this one to identify a caller at all.
+ */
+function buildRouterWithHostResolver(flows: ReturnType<typeof secureFlow>[]) {
+  const registry = createFlowRegistry();
+  for (const flow of flows) registry.register(flow);
+  const stores = createInMemoryStores();
+  const router = createFlowApiRouter({
+    registry,
+    stores,
+    resolvePrincipal: (context) => {
+      const user = context.request?.headers.get("x-verified-user");
+      return user === null || user === undefined ? null : { userId: user };
+    }
+  });
+  return { router, stores };
+}
+
 async function seedSession(
   stores: StoreRegistry,
   init: { id: string; flowKind: string; userId: string }
@@ -109,7 +129,12 @@ async function seedSession(
 
 async function seedRequest(
   stores: StoreRegistry,
-  init: { id: string; flowKind: string; userId: string }
+  init: {
+    id: string;
+    flowKind: string;
+    userId: string;
+    status?: RequestRecord["status"];
+  }
 ): Promise<void> {
   const now = Date.now();
   const record: RequestRecord = {
@@ -118,7 +143,7 @@ async function seedRequest(
     actionName: "run",
     userId: init.userId,
     source: "http",
-    status: "in_progress",
+    status: init.status ?? "in_progress",
     startedAtMs: now,
     state: {},
     version: 0,
@@ -232,18 +257,7 @@ describe("management routes under a configured resolver", () => {
 
 describe("listings scoped to the caller", () => {
   it("returns only the caller's sessions instead of every session in the store", async () => {
-    const registry = createFlowRegistry();
-    registry.register(secureFlow());
-    const stores = createInMemoryStores();
-    // A host-level resolver, because this route spans flows and has no `:flowKind`.
-    const router = createFlowApiRouter({
-      registry,
-      stores,
-      resolvePrincipal: (context) => {
-        const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
-      }
-    });
+    const { router, stores } = buildRouterWithHostResolver([secureFlow()]);
     await seedSession(stores, { id: "s1", flowKind: "secure", userId: "alice" });
     await seedSession(stores, { id: "s2", flowKind: "secure", userId: "bob" });
 
@@ -257,17 +271,7 @@ describe("listings scoped to the caller", () => {
   });
 
   it("ignores a userId query param that asks for someone else's sessions", async () => {
-    const registry = createFlowRegistry();
-    registry.register(secureFlow());
-    const stores = createInMemoryStores();
-    const router = createFlowApiRouter({
-      registry,
-      stores,
-      resolvePrincipal: (context) => {
-        const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
-      }
-    });
+    const { router, stores } = buildRouterWithHostResolver([secureFlow()]);
     await seedSession(stores, { id: "s1", flowKind: "secure", userId: "alice" });
     await seedSession(stores, { id: "s2", flowKind: "secure", userId: "bob" });
 
@@ -282,19 +286,36 @@ describe("listings scoped to the caller", () => {
     expect(body.sessions.map((s) => s.id)).toEqual(["s1"]);
   });
 
-  it("refuses a cross-flow listing when only per-flow resolvers are configured", async () => {
-    // Mixed app: the flow authenticates, the host-level fallback is still the
-    // default. A cross-flow listing has no flow to borrow a resolver from, so
-    // serving it anonymously would hand out the secure flow's sessions through
-    // the back door. Fail closed and name the fix instead.
-    const { router, stores } = buildRouter([secureFlow()]);
-    await seedSession(stores, { id: "s1", flowKind: "secure", userId: "alice" });
+  it("withholds an authenticated flow's rows from an anonymous cross-flow listing", async () => {
+    // Mixed app: one flow authenticates, the host-level fallback is still the
+    // default, so there is no way to identify the caller. Serving the secure
+    // flow's sessions here would hand them out through the back door. Refusing
+    // the whole route instead would take the listing away from the open flow
+    // too, which is a working feature of that app.
+    const { router, stores } = buildRouter([secureFlow(), openFlow()]);
+    await seedSession(stores, { id: "s-secure", flowKind: "secure", userId: "alice" });
+    await seedSession(stores, { id: "s-open", flowKind: "open", userId: "alice" });
 
     const res = await call(router, "GET", ["sessions"]);
-    const body = (await res.json()) as { error: string };
+    const body = (await res.json()) as { sessions: { id: string }[] };
 
-    expect(res.status).toBe(401);
-    expect(body.error).toContain("resolvePrincipal");
+    expect(res.status).toBe(200);
+    expect(body.sessions.map((s) => s.id)).toEqual(["s-open"]);
+  });
+
+  it("keeps the cross-flow listing working when only a cron transport authenticates", async () => {
+    // The shape that broke the kitchen-sink app: a single background flow
+    // configures a resolver for its scheduled dispatch while every
+    // browser-facing flow stays open. One such flow must not take the session
+    // list away from the whole app.
+    const { router, stores } = buildRouter([openFlow("chat"), secureFlow("digest")]);
+    await seedSession(stores, { id: "s-chat", flowKind: "chat", userId: "alice" });
+
+    const res = await call(router, "GET", ["sessions"]);
+    const body = (await res.json()) as { sessions: { id: string }[] };
+
+    expect(res.status).toBe(200);
+    expect(body.sessions.map((s) => s.id)).toEqual(["s-chat"]);
   });
 });
 
@@ -401,18 +422,48 @@ describe("request-addressed routes", () => {
     expect(res.status).toBe(403);
   });
 
-  it("scopes the active-request listing to the caller", async () => {
-    const registry = createFlowRegistry();
-    registry.register(secureFlow());
-    const stores = createInMemoryStores();
-    const router = createFlowApiRouter({
-      registry,
-      stores,
-      resolvePrincipal: (context) => {
-        const user = context.request?.headers.get("x-verified-user");
-        return user === null || user === undefined ? null : { userId: user };
-      }
+  it("denies retrying another user's request named under a session the caller owns", async () => {
+    // `handleRetryRequest` validates tenant, status, flowKind and source, but
+    // never that the request belongs to the path's session. Authorizing retry
+    // on that session would let a caller pair a session they own with a
+    // requestId they do not, and retry accepts an `inputOverride` — so the
+    // subject has to be the request.
+    const { router, stores } = buildRouter([secureFlow()]);
+    await seedSession(stores, { id: "s-bob", flowKind: "secure", userId: "bob" });
+    await seedRequest(stores, {
+      id: "r-alice",
+      flowKind: "secure",
+      userId: "alice",
+      status: "failed"
     });
+
+    const res = await call(
+      router,
+      "POST",
+      ["secure", "sessions", "s-bob", "requests", "r-alice", "retry"],
+      { headers: { "x-verified-user": "bob" }, body: { inputOverride: { evil: true } } }
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it("denies continuing another user's request named under a session the caller owns", async () => {
+    const { router, stores } = buildRouter([secureFlow()]);
+    await seedSession(stores, { id: "s-bob", flowKind: "secure", userId: "bob" });
+    await seedRequest(stores, { id: "r-alice", flowKind: "secure", userId: "alice" });
+
+    const res = await call(
+      router,
+      "POST",
+      ["secure", "sessions", "s-bob", "requests", "r-alice", "continue"],
+      { headers: { "x-verified-user": "bob" }, body: {} }
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it("scopes the active-request listing to the caller", async () => {
+    const { router, stores } = buildRouterWithHostResolver([secureFlow()]);
     const now = Date.now();
     for (const [requestId, userId] of [
       ["r-alice", "alice"],

@@ -100,14 +100,22 @@ Route subjects, and the owner each is checked against:
 | Subject | Routes | Owner |
 | --- | --- | --- |
 | exempt | `list_flows`, `capabilities`, `execute_action` | — (the action route resolves its own principal) |
-| session | session CRUD/state/requests, all resource routes, retry, continue, debug | `session.userId` |
-| request | stream, abort, resume, status | `record.userId` |
+| session | session CRUD/state/requests, all resource routes, debug | `session.userId` |
+| request | stream, abort, resume, status, retry, continue | `record.userId` |
 | flow | `create_session` | none yet — the caller becomes the owner |
 | user | `user_stream`, `check_interrupted_requests` | the `:userId` path segment |
 | host | `list_sessions`, `active_requests`, `transcribe` | none — the handler scopes results to the caller |
 
 `routeSubject` switches exhaustively over `ParsedFlowRoute["kind"]`, so adding
 a route without deciding how it is authorized is a compile error.
+
+`retry_request` and `continue_request` carry both a `sessionId` and a
+`requestId`. The subject is the **request**: it is what they act on, and it
+names the owner. Authorizing on the path's session would let a caller pair a
+session they own with a `requestId` they do not — `handleRetryRequest` never
+checks that the two are related, and it accepts an `inputOverride`.
+`handleContinueRequest` does check, but an authorization model cannot rest on
+a linkage check that only one route of a pair performs.
 
 ### When the guard enforces
 
@@ -137,17 +145,24 @@ surface.
 ### Routes that span flows
 
 `list_sessions`, `active_requests`, and `transcribe` have no `:flowKind`, so
-they resolve through the host-level fallback. In a mixed app — per-flow
-resolvers configured, host-level fallback left at the default — there is no
-resolver to identify the caller with, and serving the listing anonymously
-would hand out the authenticated flow's sessions through the back door. The
-guard fails closed with a `401` naming the fix: configure a host-level
-`resolvePrincipal`.
+they resolve through the host-level fallback. With one configured, listings
+scope to the caller: `list_sessions` forces its `userId` filter to the
+principal (the query param stays a convenience filter and can never widen the
+set), and `active_requests` filters to the principal's entries.
 
-Listings scope to the caller rather than erroring: `list_sessions` forces its
-`userId` filter to the principal (the query param stays a convenience filter
-and can never widen the set), and `active_requests` filters to the principal's
-entries.
+In a **mixed app** — per-flow resolvers configured, host-level fallback left at
+the default — there is no resolver to identify the caller with. The guard
+withholds the rows of any flow that authenticates and serves the rest
+(`anonymousFlowKinds` on the result, filtered in the handler).
+
+It deliberately does *not* refuse the route. Refusing would take the listing
+away from every app with a single authenticated flow, including the flows that
+are open by design, and one background flow authenticating its scheduled
+transport is enough to trip it. The caller still sees exactly what it could
+see before, and nothing more. `list_sessions` filters after the store query, so
+a page can come back shorter than `limit`; the alternative is one query per
+allowed kind, which is not worth it for a path that exists only when a
+host-level `resolvePrincipal` is absent.
 
 ### Session creation
 

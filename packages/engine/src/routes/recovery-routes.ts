@@ -24,6 +24,12 @@ type RecoveryRouteContext = {
    * resolver.
    */
   principal?: ResolvedPrincipal;
+  /**
+   * For an anonymous cross-flow listing in a mixed app: the flow kinds that
+   * may be listed without a principal. Undefined means unrestricted. See
+   * `route-auth.ts`.
+   */
+  anonymousFlowKinds?: Set<string>;
 };
 
 type ContinueRouteContext = RecoveryRouteContext & {
@@ -289,10 +295,14 @@ export async function handleListActiveRequests(
   const all = await ctx.stores.activeRequests.listAll();
   // This listing spans every flow and user, so an authenticated caller sees
   // only their own in-flight requests — otherwise it enumerates other users'
-  // request and session ids.
+  // request and session ids. Reached anonymously in a mixed app, it withholds
+  // the entries of any flow that authenticates instead.
   const callerId = ctx.principal?.userId;
-  const entries =
-    callerId === undefined ? all : all.filter((entry) => entry.userId === callerId);
+  const allowed = ctx.anonymousFlowKinds;
+  const entries = all.filter((entry) => {
+    if (callerId !== undefined) return entry.userId === callerId;
+    return allowed === undefined || allowed.has(entry.flowKind);
+  });
   const now = Date.now();
 
   return jsonResponse(200, {

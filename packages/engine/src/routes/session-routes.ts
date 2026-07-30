@@ -38,6 +38,12 @@ type SessionRouteContext = {
    * resolver, where these routes behave exactly as they always have.
    */
   principal?: ResolvedPrincipal;
+  /**
+   * For an anonymous cross-flow listing in a mixed app: the flow kinds that
+   * may be listed without a principal. Undefined means unrestricted. See
+   * `route-auth.ts`.
+   */
+  anonymousFlowKinds?: Set<string>;
 };
 
 export async function handleListSessions(
@@ -60,9 +66,18 @@ export async function handleListSessions(
     offset: getPositiveInteger(url.searchParams.get("offset"))
   });
 
+  // Anonymous cross-flow listing in a mixed app: withhold rows belonging to a
+  // flow that authenticates. Filtered after the query, so a page can come back
+  // shorter than `limit` — the alternative is one query per allowed kind, which
+  // is not worth it for a path that only exists when a host-level
+  // `resolvePrincipal` is absent.
+  const allowed = ctx.anonymousFlowKinds;
+  const visible =
+    allowed === undefined ? sessions : sessions.filter((s) => allowed.has(s.flowKind));
+
   return jsonResponse(200, {
     // Surface bare session ids — the stored `id` is the namespaced storage key.
-    sessions: sessions.map((s) => ({
+    sessions: visible.map((s) => ({
       ...s,
       id: toBareSessionId(s.id, ctx.tenantId)
     }))

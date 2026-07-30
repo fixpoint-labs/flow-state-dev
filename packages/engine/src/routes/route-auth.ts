@@ -1,52 +1,15 @@
 /**
  * Route-level authentication and ownership authorization for the management
  * surface of `/api/flows` — session CRUD, session state, resource content,
- * request control, and the debug endpoints.
+ * request control, and the debug endpoints. Runs once per request, before the
+ * route dispatcher: it resolves a principal through `host.resolvePrincipal`
+ * and checks that the principal owns the record the URL addressed.
  *
- * Action execution authenticates inside `handleExecuteAction`, which is why it
- * was for a long time the only route that did. Every other route is addressed
- * by a `sessionId`, a `requestId`, or nothing at all, and used to reach the
- * stores with no caller identity involved: a flow could configure a JWT
- * resolver and still serve `GET /api/flows/sessions` — every session, every
- * user — to anyone who could reach the port.
- *
- * This guard closes that. It runs once per request, before the route
- * dispatcher, and answers two questions:
- *
- *   1. **Who is calling?** Resolved through the same `host.resolvePrincipal`
- *      the action path uses, so one flow has one authentication contract.
- *   2. **Do they own what they addressed?** The caller's `userId` must match
- *      the `userId` on the session or request record they named.
- *
- * ## When it enforces
- *
- * Only when the app has actually configured authentication — the effective
- * resolver for the governing flow is not `defaultBodyUserIdPrincipalResolver`.
- * An app still on the framework default is unchanged: it trusts a
- * caller-supplied `body.userId` on the action path already, so demanding a
- * principal on the management path would reject every GET (no body to read
- * a userId from) without protecting anything that wasn't already open. Those
- * apps are covered by the loopback-bind rail in `@flow-state-dev/node`, which
- * refuses to expose them on a network interface in the first place.
- *
- * The pairing is the point: the bind rail says "configure a resolver before you
- * expose this", and this guard makes configuring one protect the whole surface
- * rather than one route of it.
- *
- * ## Resolver selection is never caller-controlled
- *
- * The governing flow comes from the *stored record* (`session.flowKind`,
- * `record.flowKind`), never from the `:flowKind` path segment, which a caller
- * writes. Otherwise naming a flow with a permissive resolver would authenticate
- * a request against a record belonging to a strict one (BP-031).
- *
- * ## No body is parsed here
- *
- * Principal resolution at this layer sees the `Request` (headers, cookies, URL)
- * but no parsed body. Two reasons: a body is a single-use stream that the route
- * handler still needs to read, and deriving auth from caller-supplied body
- * fields is the thing BP-031 exists to prevent. Resolvers that authenticate
- * from a header or cookie — which is every real one — work unchanged.
+ * The contract — the route/subject/owner table, when enforcement is active,
+ * and how cross-flow listings behave in a mixed app — is
+ * `docs/architecture/authentication.md` → "Scope: the whole `/api/flows`
+ * surface". Read that first; the invariants that are easy to break while
+ * editing this file are noted inline below.
  */
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
@@ -57,6 +20,7 @@ import type {
 } from "../transports/types";
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
+import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
 import { jsonResponse, loadTenantSession } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -83,6 +47,17 @@ export type RouteAuthContext = {
 export type RouteAuthResult = {
   denied?: Response;
   principal?: ResolvedPrincipal;
+  /**
+   * Set only for a cross-flow listing reached without a principal, in an app
+   * where some flow authenticates and the host-level fallback does not: the
+   * flow kinds whose effective resolver is the framework default. The handler
+   * returns rows for these kinds and withholds the rest.
+   *
+   * An empty set means "withhold everything"; `undefined` means the listing is
+   * unrestricted (either nothing in the app authenticates, or a principal
+   * scoped it already).
+   */
+  anonymousFlowKinds?: Set<string>;
 };
 
 const ALLOWED: RouteAuthResult = {};
@@ -121,16 +96,11 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "execute_action":
       return { kind: "exempt" };
 
-    // Session-addressed. `retry_request` / `continue_request` also carry a
-    // `flowKind`, but the session record is the stronger subject: it names the
-    // owner and the trusted flow.
     case "get_session":
     case "delete_session":
     case "patch_session_metadata":
     case "list_session_requests":
     case "get_session_state":
-    case "retry_request":
-    case "continue_request":
     case "get_resource_content":
     case "get_collection_item_content":
     case "create_collection_item":
@@ -146,10 +116,19 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "debug_get_collection_item_content":
       return { kind: "session", sessionId: route.sessionId };
 
+    // Request-addressed. `retry_request` / `continue_request` also carry a
+    // `sessionId`, but the request record is the subject: it is what these
+    // routes act on, and it names the owner. Authorizing on the path's session
+    // instead would let a caller pair a session they own with a `requestId`
+    // they do not — `handleRetryRequest` never checks that the two are related
+    // (`handleContinueRequest` does, but relying on a linkage check that only
+    // one of the pair performs is not an authorization model).
     case "request_stream":
     case "abort_request":
     case "resume_suspension":
     case "request_status":
+    case "retry_request":
+    case "continue_request":
       return { kind: "request", requestId: route.requestId };
 
     case "create_session":
@@ -159,6 +138,10 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "check_interrupted_requests":
       return { kind: "user", userId: route.userId };
 
+    // Cross-flow. The two listings scope their rows to the caller in the
+    // handler; `transcribe` has no rows to scope — it is a stateless
+    // speech-to-text utility — so for it "host" means authentication only,
+    // held to the same bar as the listings rather than left open.
     case "list_sessions":
     case "active_requests":
     case "transcribe":
@@ -171,26 +154,27 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
   }
 }
 
-/**
- * The resolver that governs `flowKind`: the flow's own if it configures one,
- * otherwise the host-level fallback. Mirrors the precedence
- * `createInboundTransportHost` applies, so the guard's enforce/skip decision
- * can never disagree with the resolver the host actually calls.
- */
-function governingResolver(
-  ctx: RouteAuthContext,
-  flowKind: string | undefined
-): PrincipalResolver {
-  const flow = flowKind === undefined ? undefined : ctx.registry.get(flowKind);
-  return flow?.authentication?.resolvePrincipal ?? ctx.hostResolver;
+/** Whether `flow` configures a resolver that is not the framework default. */
+function flowAuthenticates(flow: {
+  authentication?: { resolvePrincipal?: PrincipalResolver };
+}): boolean {
+  const resolver = flow.authentication?.resolvePrincipal;
+  return resolver !== undefined && !isDefaultBodyUserIdPrincipalResolver(resolver);
 }
 
 /** Whether any registered flow configures a resolver that is not the framework default. */
 function anyFlowAuthenticates(ctx: RouteAuthContext): boolean {
-  return ctx.registry.list().some((flow) => {
-    const resolver = flow.authentication?.resolvePrincipal;
-    return resolver !== undefined && !isDefaultBodyUserIdPrincipalResolver(resolver);
-  });
+  return ctx.registry.list().some(flowAuthenticates);
+}
+
+/** The kinds of every registered flow that does NOT configure its own authentication. */
+function unauthenticatedFlowKinds(ctx: RouteAuthContext): Set<string> {
+  return new Set(
+    ctx.registry
+      .list()
+      .filter((flow) => !flowAuthenticates(flow))
+      .map((flow) => flow.kind)
+  );
 }
 
 /**
@@ -275,25 +259,21 @@ export async function authorizeManagementRoute(
       break;
   }
 
-  const resolver = governingResolver(ctx, flowKind);
+  const resolver = pickPrincipalResolver(ctx.registry, flowKind, ctx.hostResolver);
   if (isDefaultBodyUserIdPrincipalResolver(resolver)) {
-    // No authentication configured for this route's flow. A flow-scoped route
-    // is genuinely open in this app, so leave it alone. A route that spans
-    // every flow is different: when some other flow *is* authenticated, serving
-    // it anonymously would hand out that flow's sessions through the back door.
-    // Fail closed and name the fix.
-    if (flowKind === undefined && anyFlowAuthenticates(ctx)) {
-      return {
-        denied: jsonResponse(401, {
-          error:
-            `This endpoint spans every flow, and at least one registered flow configures ` +
-            `authentication.resolvePrincipal, so it cannot be served anonymously. Configure a ` +
-            `host-level resolvePrincipal (createFlowState / createFlowApiRouter) so the caller ` +
-            `can be identified and results scoped to them.`
-        })
-      };
-    }
-    return ALLOWED;
+    // No authentication governs this route. For a flow-scoped route that means
+    // the flow is genuinely open in this app, so leave it alone. A
+    // user-addressed route (`/users/:userId/...`) acts on one caller's own
+    // records rather than listing across flows, so it is left alone too.
+    if (subject.kind !== "host") return ALLOWED;
+
+    // A cross-flow listing is different: some other flow may authenticate, and
+    // serving its sessions here would hand them out through the back door.
+    // Withhold those rows rather than refusing the route — refusing would take
+    // the whole listing away from every app that has one authenticated flow
+    // (a cron-triggered digest is enough), including the flows that are open
+    // by design. The caller still gets everything they could already see.
+    return { anonymousFlowKinds: unauthenticatedFlowKinds(ctx) };
   }
 
   let principal: ResolvedPrincipal;
