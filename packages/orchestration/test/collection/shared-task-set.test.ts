@@ -246,6 +246,72 @@ describe("resource-backed task set: two resolutions in one request", () => {
     expect(refA.count()).toBe(1);
   });
 
+  it("does not adopt a ref whose instance vanished after the store was read", async () => {
+    // The adopt side of the same window. `collection.list()` hands back refs, and
+    // an instance can be deleted or evicted after that array exists but before
+    // the continuation walks it. Such a ref's live `state` getter falls back to
+    // the schema's defaults, and a task envelope cannot be defaulted (`id` and
+    // `goal` are required), so it reads as `{}` with no id. Adopting it would key
+    // the record on `undefined`: an entry no `get` can address, that `list()`
+    // renders as a malformed task and unfiltered `count()` still counts.
+    const backing = createFakeResourceCollection();
+    const refA = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    await refA.addTask({ id: "safe", goal: "safe" });
+    await refA.addTask({ id: "doomed", goal: "doomed" });
+
+    const realList = backing.list.bind(backing);
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    backing.list = async (prefix?: string) => {
+      const snapshot = await realList(prefix); // holds refs for BOTH tasks
+      await held;
+      return snapshot;
+    };
+
+    const pendingRefB = createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+    await Promise.resolve();
+    backing.list = realList;
+    // Removed after the ref array exists, before the continuation reads it.
+    await backing.delete("doomed");
+    release();
+    const refB = await pendingRefB;
+
+    expect(refB.list().map((t) => t.id)).toEqual(["safe"]);
+    expect(refB.count()).toBe(1);
+    expect(refA.count()).toBe(1);
+    // No phantom under a malformed key, through either handle.
+    expect(refB.list().every((t) => typeof t.id === "string")).toBe(true);
+    expect(refA.list().every((t) => typeof t.id === "string")).toBe(true);
+  });
+
+  it("ignores a stored instance that carries no task id", async () => {
+    // Not a race: an instance written straight onto the resource collection
+    // without a task envelope. It reaches the adopt loop the same way a
+    // vanished ref does — no id to key on — which is why the guard tests the id
+    // rather than trying to detect whether the instance is still there.
+    const backing = createFakeResourceCollection();
+    await backing.create("orphan", { goal: "no id here" });
+
+    const tasks = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: backing,
+      now: () => 1000,
+    });
+
+    expect(tasks.count()).toBe(0);
+    expect(tasks.list()).toEqual([]);
+  });
+
   it("does not lose an entry when two resolutions add concurrently", async () => {
     const backing = createFakeResourceCollection();
     const refA = await createResourceBackedTaskCollection({

@@ -209,6 +209,46 @@ function sharedTaskSet(
  * object. An entry that changed identity during the await — a replacement — or
  * an id that appeared during it is newer than the snapshot and cannot be judged
  * by it, so it stays.
+ *
+ * ---
+ *
+ * **The read window, enumerated.** Three separate races were found here one at a
+ * time, each after the previous was fixed, so the cases are written out rather
+ * than left to be rediscovered. `collection.list()` is async: call it at T0, it
+ * materializes a ref array at T1, and this function's continuation runs at T2.
+ * Between T0 and T2 the underlying collection accepts inserts (`create`,
+ * `getOrCreate`, `upsert`), removals (`delete`, and capacity eviction as a side
+ * effect of `create`), and per-instance state writes. Membership is what has to
+ * reconcile; state rides live getters. For a task id X:
+ *
+ *  1. **Inserted before T1** — in the snapshot, so adopted. The ordinary case.
+ *  2. **Inserted after T1 through a task ref** — the record already holds it, and
+ *     it is absent from both the snapshot and `retirable`, so nothing touches it.
+ *  3. **Inserted after T1 straight onto the resource collection** — invisible to
+ *     this pass; the next resolution adopts it. A boundary, not a bug: the record
+ *     cannot know about a write nothing routed through it.
+ *  4. **Removed before T1, entry predates T0** — absent from the snapshot, in
+ *     `retirable`, identity intact, so retired.
+ *  5. **Removed before T1 and recreated after it** — absent from the snapshot and
+ *     in `retirable`, but the record now points at a different ref, so kept.
+ *  6. **Removed after T1** — the snapshot still carries a ref whose instance is
+ *     gone. Its `state` getter falls back to schema defaults, and a task envelope
+ *     cannot be defaulted (`id` and `goal` are required), so it reads `{}` with no
+ *     id. Adopting that would key the record on `undefined`. Skipped by the id
+ *     guard below; if the entry predated T0 it is then retired by rule 4, because
+ *     skipping the adopt leaves it out of `stored`.
+ *  7. **Removed and recreated after T1** — the snapshot's ref resolves against the
+ *     live instance again, so it carries an id and is adopted, and `stored` holds
+ *     it so rule 4 leaves it alone.
+ *  8. **State-only write (a lifecycle transition)** — membership unchanged, and
+ *     every entry reads through a live getter, so there is nothing to reconcile.
+ *  9. **A stored instance whose record carries no `id`** (hand-written or
+ *     corrupted data, not a race) — indistinguishable here from case 6, and the
+ *     same guard covers it. This is why the guard tests the id rather than trying
+ *     to detect whether the instance vanished.
+ * 10. **Two reconciliations overlapping** — each captures its own `retirable`
+ *     before its own read, adopting is idempotent per key, and retiring is
+ *     identity-gated, so neither can retire what the other just adopted.
  */
 async function reconcileTaskSet(
   mirror: Map<string, ResourceRef<JsonObject>>,
@@ -221,6 +261,11 @@ async function reconcileTaskSet(
   const stored = new Set<string>();
   for (const ref of listed) {
     const id = readTaskState(ref).id;
+    // Cases 6 and 9: no usable id means the instance went away mid-read, or the
+    // stored record is malformed. Either way there is nothing to key on, and
+    // adopting it would plant an unaddressable phantom in a record every handle
+    // reads. Leaving it out of `stored` also lets rule 4 retire a prior entry.
+    if (typeof id !== "string" || id.length === 0) continue;
     stored.add(id);
     mirror.set(id, ref);
   }
