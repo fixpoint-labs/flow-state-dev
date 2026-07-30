@@ -84,7 +84,8 @@ model a UI needs already exists — `RequestStore.list({ sessionId, … })`
 Everything else in the original decomposition shrinks or dissolves — §5.
 
 **What gates the epic: OQ-A** — whether we give resource state a conditional write at the durable
-boundary. Nothing else is a gate. §6 has the list.
+boundary — and **OQ-E**, where the consumer surface (S1–S5) lives, because one of its items is a
+server-side correctness fix rather than additive polish. §6 has both.
 
 ---
 
@@ -749,15 +750,29 @@ caller never materializes a run"*; the first `stores.request.set` is not until `
 envelope exists only in memory and is discarded — so stranding is a **predictable outcome of a
 supported configuration**, not an unlucky interleaving.
 
-**Two requirements, both FIX-982's.** (1) **The durable task or outbox row retains the complete
-re-dispatchable `DispatchEnvelope`** — `requestId`, `flowKind`, `actionName`, `input`, `userId`,
-`sessionId`, `orgId`, `tenantId`, `source`, `metadata`. **A bare `requestId` does not qualify**: it
-points at a record that will never be written, with no `actionName` and no `input` to re-dispatch
-from. A persistence requirement, not a new data model — the envelope already exists, already
-assembled before the gate. (2) **Name a mechanism that makes a pending task reachable without a live
-initiating request, and state its cost** — outbox, reconciliation pass, or a pending-task wake
-source; this epic does not choose. Without both, the unconditional "no way to strand it" half is not
-delivered.
+**Two requirements, both FIX-982's.** (1) **The durable task or outbox row retains a re-dispatchable
+envelope *template*, and each attempt mints a fresh `requestId`** associated with the task. The
+template carries `flowKind`, `actionName`, `input`, `userId`, `sessionId`, `orgId`, `tenantId`,
+`source`, `metadata`. **A bare `requestId` does not qualify** — it points at a record that will never
+be written, with no `actionName` and no `input` to re-dispatch from — but **re-dispatching a stored
+envelope verbatim is equally wrong**, because the envelope carries `requestId` and reusing it
+destroys the prior attempt:
+
+| Store | Event persistence | Attempt 1's events once attempt 2 reuses the id |
+|---|---|---|
+| **SQLite** | `PRIMARY KEY (request_id, sequence_number)` (`store-sqlite/src/schema.ts:165-170`) + `INSERT OR REPLACE` (`request-store.ts:206`); traces the same via `ON CONFLICT … DO UPDATE` (`trace-store.ts:40-42`) | **destroyed** |
+| **Postgres** | same primary key (`store-postgres/src/schema.ts:186-191`) + `ON CONFLICT (request_id, sequence_number) DO UPDATE SET event_data = $3` (`request-store.ts:437-439`) | **destroyed** |
+| **Memory** | plain append — `existing.push(...events)`, no key (`engine/src/stores/memory/request-store.ts:96-103`) | **preserved** |
+
+A second attempt restarting its sequence numbers **upserts over attempt 1 with no conflict, no error
+and no trace** — so criterion 4b's cross-attempt union does not merely become hard to read (§5's
+accessor fork), **the data ceases to exist.** Note which stores: the two that destroy it are the
+production ones and the one that preserves it is the test one, so a suite on in-memory passes 4b while
+every real deployment fails it. **This also pushes on §5's accessor fork** — the union must span a
+*set* of attempt ids, favouring the board-owned projection over a synchronous accessor; still
+FIX-991's choice. (2) **Name a mechanism that makes a pending task reachable without a live initiating
+request, and state its cost** — outbox, reconciliation pass, or a pending-task wake source; this epic
+does not choose. Without both, the unconditional "no way to strand it" half is undelivered.
 
 **Binding on FIX-982: name the reclamation wake explicitly and state its cost.** Two live candidates:
 *liveness-triggered*, hooking onto FIX-978's reclaim/sweeper pass, which is already walking exactly
@@ -937,15 +952,29 @@ background request as a task, distinct from the conversation.
 
 ## 6. Open questions
 
-Four remain. **OQ-A is the objective gate.**
+Four remain, plus one placement decision that now blocks alongside them.
 
 | | Question | State |
 |---|---|---|
 | **OQ-A** | Does this epic change `ResourceStateStore`? | **OPEN — the gate.** A human decides. |
+| **OQ-E** | **Where do S1–S5 live** — filed and sequenced under FIX-939, or a follow-on epic? | **OPEN, and blocking.** See below. A human decides. |
 | **OQ-B** | Does the blocking/background disposition need to be durable? | **Answered by the owner's decision** (Decision 0): disposition is request metadata, not a durable task field. Cross-request *waiting* remains, as FIX-983's scope. |
 | **OQ-C** | What is M5's real necessity argument? | **Answered by the owner's decision** (Decision 0), narrowing: a background request already has a persisted item stream, so no new progress surface is needed. Residue is lifetime, not progress. |
 | **OQ-D-i** | Who owns the **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`)? | **OPEN.** A human decides. |
 | **OQ-D-ii** | Who owns the **`maxInstances` registry race**, and is it in scope here at all? | **OPEN.** A human decides. |
+
+**OQ-E is a blocking condition, not a note.** S1–S4 are called prerequisites in §5 while sitting
+outside the membership table and the execution sequence, so as written **every indexed issue can
+complete while S1's history policy is unbuilt and S4 — the epic's own BP-003 evidence path — has
+never run.** Explicitly: **this epic cannot wrap, and the objective gate is not fully answerable,
+until OQ-E is decided.** Either S1–S5 are filed and sequenced here, or they move to a follow-on epic
+**and the completion criteria are conditioned accordingly** — a criterion depending on unowned work is
+not a criterion. Nothing here picks; placement is the owner's call, open rather than overlooked.
+
+> **Third instance of one defect class: an unindexed dependency lets the epic satisfy its wrap
+> condition while an unconditional criterion goes unmet.** FIX-991 missing from the execution sequence
+> was the first two. The transferable lesson for the lessons pass: **"prerequisite" in prose has no
+> mechanical effect** — the membership table and the execution sequence are what the coordinator reads.
 
 **OQ-A, in two parts** — evidence and pricing are in Decision 2, not repeated:
 
@@ -1077,7 +1106,7 @@ top:
 
 **Already filed:** [FIX-996](https://linear.app/fixpoint-labs/issue/FIX-996) — in the DevTool,
 background requests are indistinguishable from conversational turns and have no link to their origin.
-Deliberately **unparented** pending the placement decision below; not touched here.
+Deliberately **unparented** pending OQ-E; not touched here.
 
 > **This makes the epic bigger, not smaller, and the owner should see that trade.** The reframe
 > *removes* substrate work — M5 dissolves, M4 halves, M3 narrows from a subsystem to a seam — but it
