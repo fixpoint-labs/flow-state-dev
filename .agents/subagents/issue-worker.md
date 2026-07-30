@@ -16,7 +16,7 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
 
 - **a bug (the `direct` route, and the dispatch says so)** → **no spec.** Go straight to
   `issue-implement`: diagnose, fix, regression test, open the impl PR, stop. No spec PR to
-  close, no approval to wait for. Return `route: direct`. Your dispatch prompt carries the
+  close, no approval to wait for. Your dispatch prompt carries the
   overrides that send it back (and `issue-implement` Step 2.1 applies them, including the
   spec-PR lookup you owe before building); the reasoning is in
   [`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a

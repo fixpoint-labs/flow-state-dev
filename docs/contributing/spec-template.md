@@ -261,9 +261,10 @@ Name the API surface at the level of *what it exposes*, not exact signatures.
 Ordered, independently testable steps. For each: which modules to create / modify /
 **remove** (subtraction is part of the change — tenet 3), what to test, what it depends on.
 
-> 1. **Parse and thread the cursor.** Route reads `Last-Event-ID`, hands an optional
->    cursor to the stream seam. Nothing filters yet. *Test:* a malformed header is
->    ignored rather than fatal. *Depends on:* nothing.
+> 1. **Parse and thread the cursor.** Route reads **both** encodings from decision 2
+>    (`Last-Event-ID` and `starting_after`, query param winning), hands one optional cursor
+>    to the stream seam. Nothing filters yet. *Test:* each encoding alone, both together
+>    (query wins), and a malformed value ignored rather than fatal. *Depends on:* nothing.
 > 2. **Filter at the seam.** Drop items at or below the cursor. *Test:* the three
 >    cases in §5 (fresh, mid-stream, stale). *Depends on:* 1.
 > 3. **Completed-request boundary.** Replay from the persisted log above the cursor,
@@ -318,10 +319,14 @@ A table, plus the error taxonomy (retryable vs. fatal). Walk the second-path che
 > `goals/resume-after-disconnect/reconnect-midstream/run.mts`, real model.
 >
 > **CI specs** (the behaviours, not the test names):
-> - a reconnect with a mid-stream cursor emits only items above it
-> - a reconnect with no cursor emits every item
-> - a reconnect after completion emits nothing and closes
-> - sequence numbers stay contiguous across the reconnect
+> - a reattach with a mid-stream cursor emits only items above it
+> - a reattach with no cursor emits every item
+> - a reattach after completion replays the items above the cursor, then closes — and
+>   emits nothing only when the cursor is already past the end of the log
+> - delivered sequence numbers are strictly increasing across the reattach, with no
+>   duplicates and no reset. **Not contiguous** — replay legitimately skips
+>   non-replayable events, so gaps are correct and a contiguity assertion would either
+>   fail a good stream or push the implementer to renumber stable cursors
 >
 > **Discipline:** `tdd`. The seam is the stream-serialization boundary in
 > `@flow-state-dev/engine` — reachable from a vitest spec with the mock context, so

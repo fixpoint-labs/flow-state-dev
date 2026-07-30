@@ -1308,6 +1308,14 @@ check('INVARIANT: worker-facing docs never name a field the result schema reject
       `${field} is a schema field (or not a field at all) — it must not appear as a status-line key`,
     )
   }
+  // ...and neither may the PROSE instruct a return of one. Scoping the previous version of this
+  // check to the return-format block missed a "Return `route: direct`" left in the body — which
+  // then sat two paragraphs above the sentence telling the worker NOT to report the route. A
+  // contradiction is worse than either instruction alone, since which one wins is a coin flip.
+  assert.ok(
+    !/[Rr]eturn\s+`?route:/.test(worker),
+    'no instruction anywhere may tell a worker to return `route` — the schema rejects it after the work is done',
+  )
 })
 
 check('INVARIANT: nothing routes an issue past the spec gate except an actual Bug label', async () => {
