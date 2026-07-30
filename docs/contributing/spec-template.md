@@ -33,13 +33,18 @@ followed by a worked example. The examples are all the same issue — FIX-775, r
 SSE stream after a disconnect — so the template reads end to end as a spec.
 
 **Copy the shape, not the content.** FIX-775 is a fiction, reconstructed after the fact:
-resume already ships (`docs/architecture/streaming.md` → "Resume Semantics"). The **public
-API and the cursor format in §5 are real**, because a usage example that doesn't compile
-teaches the wrong thing. Everything else the example names — internal helpers, module
-boundaries, removal steps — is **invented to make the sections read concretely**, and is not
-a claim about the codebase. Don't read any of it as a live proposal, and check the code
-before carrying a symbol out of it. What the example is for is showing what a section
-*looks like when it's done*.
+resume already ships in some form (`docs/architecture/streaming.md` → "Resume Semantics").
+
+Two things follow, and the second is the one that trips people up. The **API shapes** in §5
+are real, because a usage example that doesn't compile teaches the wrong thing. The
+**outcomes** it describes are *what the spec proposes*, not what the code does today — which
+is true of §5 in **every** spec, since a spec exists to describe behavior that isn't built
+yet. Don't read §5 anywhere as documentation, here or in a real spec, and don't verify it
+against `main`; verify it against the Decisions in §6.
+
+Everything else the example names — internal helpers, module boundaries, removal steps — is
+invented to make the sections read concretely. Check the code before carrying a symbol out
+of it. What the example is for is showing what a section *looks like when it's done*.
 
 ---
 
@@ -148,13 +153,13 @@ small — a fuller worked example belongs in the spec PR (never merged), not the
 Skip entirely, with a one-line reason, only when nothing about how code is written
 against the framework changes.
 
-> **Reattaching from the client, on reload:**
+> **Reattaching from the client, on reload** *(what this spec proposes — today the same
+> call reattaches with no cursor and replays from 1, which is the problem in §1):*
 >
 > ```ts
 > const session = useSession(sessionId, { flowKind: "chat", autoResume: true })
-> // The tab reloads while a request is in flight. On mount the hook finds it,
-> // reattaches with the cursor it left off at, and session.items picks up at
-> // 42 rather than replaying from 1.
+> // The tab reloads while a request is in flight. On mount the hook finds it and
+> // reattaches with the cursor it left off at, so session.items picks up at 42.
 > ```
 >
 > **Reattaching by hand, against the stream endpoint:**
@@ -183,10 +188,13 @@ ramification. Part II must not introduce a decision that isn't here.
 >    *Rejected:* client-side dedupe.
 >    *Locks in:* every transport we add later needs a monotonic per-request sequence.
 >
-> 2. **The cursor is `{requestId}:{sequence}`, carried on `Last-Event-ID`.**
->    *Rejected:* a bespoke `?resume=` query param.
->    *Locks in:* the format is now load-bearing for any client, ours or not. Changing
->    it later is a breaking change to a string we don't validate.
+> 2. **The cursor is `{requestId}:{sequence}`, accepted on `Last-Event-ID` and on a
+>    `starting_after` query param; the query param wins when both are sent.**
+>    *Rejected:* header only — an intermediary that strips `Last-Event-ID` would silently
+>    disable resume, which is worse than carrying two encodings of one value.
+>    *Locks in:* the format is load-bearing for any client, ours or not, and both entry
+>    points have to stay in step. Changing it later is a breaking change to a string we
+>    don't validate.
 >
 > 3. **A reattach to a completed request replays from the persisted log and closes.**
 >    *Rejected:* a distinct "already finished" status code the client has to branch on.
@@ -197,9 +205,10 @@ ramification. Part II must not introduce a decision that isn't here.
 >    *Rejected:* defaulting to resume-from-last-seen server-side.
 >    *Locks in:* the server holds no per-client state, so nothing to expire.
 >
-> **Non-goals** — cross-request resume (reconnecting after the original request ended),
-> and client-side reconnect *policy* (backoff, retry limits) — the client already has
-> both, and this spec changes neither.
+> **Non-goals** — serving a finished response to a client that was never attached (that's
+> a history read, and it stays the store's job), and client-side reconnect *policy*
+> (backoff, retry limits). Reattaching to a request that completed mid-flight *is* in
+> scope — see decision 3.
 >
 > **Size:** Medium (multi-file, one PR, ~250 LOC).
 

@@ -2306,7 +2306,12 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
           // table, so an unrouted bug worker looks for a spec, finds none, and reports the absence as a
           // readiness problem — the stall the direct route exists to remove.
           (isDirectRoute(item.row)
-            ? `ROUTE: direct (this is a BUG). No spec-approval gate applies — the impl PR is the review. Diagnose, fix, regression-test, open the impl PR. Return route: direct.\n` +
+            // Deliberately does NOT ask the worker to echo the route back. `WORKER_SCHEMA` is
+            // `additionalProperties: false` and declares no `route`, so a worker obeying such an
+            // instruction fails structured-result validation AFTER doing the implementation — losing
+            // the impl PR handle for work that actually happened. The coordinator derives the route
+            // from the Linear category every refresh anyway, so there is nothing to echo.
+            ? `ROUTE: direct (this is a BUG). No spec-approval gate applies — the impl PR is the review. Diagnose, fix, regression-test, open the impl PR.\n` +
               // The one lookup a direct worker still owes. The routing here is OPTIMISTIC about the
               // absence of a spec: a row discovered this wake was not in the PR-state scout batch (that
               // was built from the carried rows), so its spec handle is UNKNOWN rather than known-absent
@@ -2916,7 +2921,17 @@ return {
     issues.some(
       (r) =>
         (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null,
-    ),
+    ) ||
+    // A ROUTE PROMOTION is the fourth internal trigger. A direct worker that refused to build
+    // returns `specRequired` and leaves the row at NEEDS_SPEC — spec authoring is runnable
+    // immediately, and the row has no PR, so nothing external will ever wake it. Same reasoning as
+    // a cap-deferred NEEDS_SPEC row, which this list already covers.
+    //
+    // Keyed on the TRANSITION (set now, absent on the carried row), not on `specRequired` being
+    // present: the field is sticky by design, so testing presence would keep re-asserting
+    // "work now" for the rest of the row's life. `issues` is a 1:1 map of `refreshed`, so the
+    // index is the carried counterpart.
+    issues.some((r, i) => r.specRequired && !refreshed[i].specRequired && pendingAction(r) !== null),
   // SAFE TO WRAP: every row is terminal, nothing is dispatchable, and no human decision is outstanding.
   // The blockers list is the authority on the last of those, because it is exactly what gets surfaced —
   // so "nothing left to show the human" and "safe to close the surface" cannot disagree. Cancelled rows

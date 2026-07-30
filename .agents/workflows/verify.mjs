@@ -1071,6 +1071,10 @@ check('ROUTE: a bug goes straight to implementation with no spec', async () => {
   // lands there.
   assert.match(dispatch.prompt, /confirm no spec PR exists/)
   assert.match(dispatch.prompt, /Do not implement past an open spec gate/)
+  // ...and it must NOT ask the worker to report anything the schema can't carry. `WORKER_SCHEMA`
+  // is additionalProperties:false with no `route`, so a worker obeying such an instruction fails
+  // validation AFTER implementing — losing the impl PR handle for work that really happened.
+  assert.ok(!/[Rr]eturn route:/.test(dispatch.prompt), 'the prompt must not request a field the schema rejects')
 })
 
 check('ROUTE: an unreadable category keeps the issue on the spec route', async () => {
@@ -1187,6 +1191,11 @@ check('ROUTE: a promoted bug stays promoted across wakes', async () => {
     }),
   })
   assert.equal(first.result.issues[0].specRequired, 'no reproduction and the symptom is ambiguous')
+  // The promotion is INTERNAL work: the row is now at NEEDS_SPEC with no PR, so nothing external
+  // can ever wake it. Without this the coordinator ends its turn and the spec waits for a
+  // heartbeat — and the second `run()` below would mask exactly that, since it starts a wake the
+  // coordinator would not have known to start.
+  assert.equal(first.result.moreWorkNow, true, 'a promoted row must drain, not wait for the heartbeat')
 
   const second = await run('epic-wake.js', {
     args: epicArgs({ issues: [first.result.issues[0]] }),
@@ -1268,6 +1277,37 @@ check('ROUTE: the epic objective gate still holds a bug', async () => {
   assert.deepEqual(workerLabels(calls), [], 'no bug is built before the epic objective is signed off')
   assert.deepEqual(result.held, ['FIX-9'])
   assert.equal(result.issues[0].phase, 'NEEDS_IMPLEMENTATION', 'held at its own entry phase, not at NEEDS_SPEC')
+})
+
+check('INVARIANT: worker-facing docs never name a field the result schema rejects', async () => {
+  // Both round-3 defects were this one gap, two lines apart: the dispatch prompt asked for `route`
+  // (absent from WORKER_SCHEMA) and issue-worker.md documented `spec_required` / `specRequired:
+  // none`. `additionalProperties: false` means a worker that obeys either fails validation AFTER
+  // doing the work, and the `"none"` sentinel is worse — it validates, and then sticky-promotes
+  // every ordinary bug onto the spec route. Nothing connected the prose to the schema, so nothing
+  // caught it.
+  const src = readFileSync(join(HERE, 'epic-wake.js'), 'utf8')
+  const at = src.indexOf('const WORKER_SCHEMA =')
+  const body = src.slice(at, src.indexOf('const EPIC_FOLD_SCHEMA ='))
+  const declared = new Set([...body.matchAll(/^    ([a-zA-Z][a-zA-Z0-9]*):/gm)].map((m) => m[1]))
+  assert.ok(declared.has('specRequired'), 'the promotion field must be declared')
+  assert.ok(!declared.has('route'), 'the route is derived by the coordinator, never reported')
+
+  const worker = readFileSync(join(HERE, '..', 'subagents', 'issue-worker.md'), 'utf8')
+  assert.ok(!/spec_required/.test(worker), 'snake_case spelling is rejected by the schema')
+  assert.ok(
+    !/specRequired:\s*none/.test(worker),
+    '"none" is truthy — it validates and then promotes every direct bug onto the spec route',
+  )
+  // The status-line block must not offer a key for a field the schema owns, which is how the
+  // snake_case spelling got written in the first place.
+  const returnBlock = worker.slice(worker.indexOf('## Return format'))
+  for (const field of ['specRequired', 'route']) {
+    assert.ok(
+      !new RegExp(`^${field}:`, 'm').test(returnBlock),
+      `${field} is a schema field (or not a field at all) — it must not appear as a status-line key`,
+    )
+  }
 })
 
 check('INVARIANT: nothing routes an issue past the spec gate except an actual Bug label', async () => {

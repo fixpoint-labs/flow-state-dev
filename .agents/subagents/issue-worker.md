@@ -20,10 +20,13 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   overrides that send it back (and `issue-implement` Step 2.1 applies them, including the
   spec-PR lookup you owe before building); the reasoning is in
   [`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
-  spec". When one fires, return **`specRequired`** (camelCase — it is a structured schema
-  field, not one of this file's status-line keys, and the wake reads only that spelling;
-  a snake_case one is dropped and the promotion silently reverts to `direct` on the next
-  refresh) with which override fired and why, instead of building.
+  spec". When one fires, set the structured field **`specRequired`** to which override fired
+  and why, instead of building. Two things about that field, because both fail in ways you
+  won't see: it is camelCase (the schema declares no snake_case variant and rejects unknown
+  keys), and when **no** override fired you **omit it or send `null`** — never a placeholder
+  like `"none"`, which is truthy and sticky-promotes an ordinary bug onto the spec route.
+  Don't report the route back either; the coordinator derives it and the schema has no field
+  for it.
 - needs a spec → run the issue-spec step, open the spec PR (ready for review), stop (now awaiting spec approval).
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
@@ -76,10 +79,15 @@ with sibling workers. Commit and push your branch; do not merge.
 
 ## Return format
 
+The human-readable status line. **It is not the structured result** — under `epic-wake` your
+return is validated against a schema that rejects unknown keys, so schema fields
+(`specRequired`, `settleRequested`, the round counts) are set there, in their own camelCase
+spelling, and are deliberately absent from the snake_case sketch below. Don't invent a
+status-line key for one, and don't put a placeholder string where the schema wants `null`.
+
 ```
 issue: <ID>
 phase: <NEEDS_SPEC | AWAITING_SPEC_APPROVAL | NEEDS_IMPLEMENTATION | PR_FEEDBACK | DONE>
-route: <spec | direct>   specRequired: none | <why this bug needs a spec after all>
 spec_pr: <#/none>   impl_pr: <#/none>   branch: <name>
 gate_or_blocker: <none | awaiting-spec-approval | ready-to-merge | blocked: ...>
 spec_review: <rounds spent this dispatch> · spec_level_found: <yes/no/n-a>
