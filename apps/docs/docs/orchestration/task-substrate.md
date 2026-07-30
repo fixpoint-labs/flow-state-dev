@@ -63,7 +63,7 @@ pending ─┬─→ in_progress ─┬─→ completed
          └─→ cancelled
 ```
 
-`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is always permitted, so repeat writes are idempotent rather than refused.
+`completed`, `errored`, and `cancelled` are terminal. Once a task lands there it has no further transitions. A task that has reached any of the three is *settled*, the term the board and pattern pages use for a terminal task regardless of which status it landed on. `pending`, `in_progress`, `blocked`, and `awaiting_review` are live states a task can still move out of. A move to the status a task already holds is on the table, so a repeat write doesn't throw.
 
 Anything not on that diagram is refused. You cannot drop a `completed` task back into `in_progress`; the call throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and nothing is written.
 
@@ -106,24 +106,7 @@ Nothing calls `reclaim` for you. If you want expired leases returned to `pending
 
 `complete`, `fail`, `cancel`, and the five **Mutate** methods resolve to a verdict describing what the write did — see [what a write reports](#what-a-write-reports). `block`, `unblock`, `awaitReview`, and `resumeFromReview` resolve to nothing.
 
-#### Recording a result that may no longer apply
-
-`complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
-
-Passing the option makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
-
-```ts
-await tasks.complete(task.id, output, {
-  ifAllowed: true,              // skip if the state machine won't take it
-  expectAttempt: task.attempts, // skip if this is no longer my claim
-});
-```
-
-`ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
-
-The task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
-
-A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
+### Reading tasks back
 
 Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim (its messages, tool calls, sources, reasoning), so an aggregator such as a synthesizer or reviewer can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
 
@@ -167,7 +150,27 @@ export const seedResearchPlan = handler({
 });
 ```
 
-#### What a write reports
+### Recording a result that may no longer apply
+
+`complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
+
+Passing the option makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
+
+```ts
+await tasks.complete(task.id, output, {
+  ifAllowed: true,              // skip if the state machine won't take it
+  expectAttempt: task.attempts, // skip if this is no longer my claim
+});
+```
+
+`ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
+
+The task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
+
+A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
+
+
+### What a write reports
 
 `complete`, `fail`, `cancel`, `setAssignee`, `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` all resolve to the same shape, so one check reads the whole write surface:
 

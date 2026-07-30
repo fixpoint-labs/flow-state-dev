@@ -7,7 +7,7 @@ sidebar_label: Delegation
 
 A skill is usually just instructions: matched text spliced into the generator's system prompt. Sometimes one skill needs to hand pieces of its work to a small team, like a research lead that farms out subtopics or an analyst that fans out per-item lookups. That's delegation.
 
-A skill turns on delegation by declaring an `agents:` field in its frontmatter. An agent is a prompt-driven teammate: a persona defined right inside the skill, or one borrowed from a shared registry. When a bound skill declares agents, the skills library gives that generator a private task board, the `taskTools` for planning on it, and `runBoard`, a real drain over that board. The generator plans the work as tasks (this depends on that, these two can run at once) and runs the whole graph with one `runBoard` call. The board is how the work runs.
+A skill turns on delegation by declaring an `agents:` field in its frontmatter. An agent is a prompt-driven teammate: a persona defined right inside the skill, or one borrowed from a shared registry. When a bound skill declares agents, the skills library gives that generator a private task board, the `taskTools` for planning on it, and `runBoard`, which drains that board. The generator plans the work as tasks (this depends on that, these two can run at once) and runs the whole graph with one `runBoard` call. The board is how the work runs.
 
 There are no per-agent tools the generator calls directly. All delegated work goes on the board and runs when the board drains.
 
@@ -108,7 +108,7 @@ const skills = createSkillsLibrary({
 
 The bounds come from the code that *builds* the board's task collection. Binding a delegating skill does that for you, so those boards are bounded. Wiring the `taskTools` capability by hand (`uses: [taskTools]` on a generator, outside a skill binding) does not: it reaches the generator's own-state board through a plain collection with no bounds at all, and `addTask` there is unbounded.
 
-That same path has no roster to validate assignees against either, so the hand-wired capability has **neither** guard. Both come from the skills binding, which is what constructs the board and knows the declared agents. So "delegation is bounded and checks assignees" is not a claim about `taskTools` on its own. For a bound on that path, build the collection yourself and hand the capability a resolver for it.
+That same path has no roster to validate assignees against either, so the hand-wired capability has **neither** guard. Both come from the skills binding, which is what constructs the board and knows the declared agents. For a bound on that path, build the collection yourself and hand the capability a resolver for it.
 
 Each task tool executes as a *child* of the generator, so the generator's own state is `ctx.parent`. `ctx.sequencer` is the nearest enclosing sequencer, a different container that is often absent entirely. The resolver also has to name the same `stateKey` the board lives under, or it quietly reads and writes a different slot. Mirror the shipped `defaultOwnStateResolver`:
 
@@ -232,7 +232,7 @@ Only a refused transition or a refused write comes back as a result. Storage fai
 
 `addTask` writes a task; it does not execute anything by itself. Execution happens when the generator calls `runBoard`, which drains the runnable graph.
 
-`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `awaiting_review`, or `blocked`. It is a statement about outstanding work, not about failure. An errored dependency and a task marked with `blockTask` both produce it; terminal tasks do not, so a board whose only problem is one errored task still reports `drained`. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `cascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
+`runBoard` reports how the drain ended. `status: "drained"` means every task settled; `status: "blocked"` means at least one did not, counting any task left `pending`, `in_progress`, `awaiting_review`, or `blocked`. It is a statement about outstanding work, not about failure. An errored dependency and a task marked with `blockTask` both produce it; terminal tasks do not, so a board whose only problem is one errored task still reports `drained`. A dependency counts as satisfied only when it `completed`, so a dependent of an errored task stays `pending` rather than being skipped or failed; `createCascadeSkipDependents` is a `taskBoard` block the [supervisor](../patterns/supervisor) and [plan-and-execute](../patterns/plan-and-execute) patterns wire in, and it is not part of this drain. For how to tell the causes apart, see [When it goes wrong](/guides/agents-command-the-board#7-when-it-goes-wrong).
 
 ```ts
 const skills = createSkillsLibrary({ catalog, initialSkills });

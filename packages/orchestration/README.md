@@ -46,9 +46,9 @@ pending ─┬─→ in_progress ─┬─→ completed
 ```
 
 `completed`, `errored`, and `cancelled` are terminal. A move to the status a task
-already holds is permitted, so repeat writes are idempotent. Anything else throws
-an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and writes
-nothing.
+already holds is on the table, so a repeat write doesn't throw. Anything else
+throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
+writes nothing.
 
 ### TaskCollection
 
@@ -168,26 +168,32 @@ generator({
 A skill that declares an `agents:` field turns on **delegation** (or force it on
 with `delegation: true` even with no `agents:`). An agent is a prompt-driven
 teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
-from the registry (`agent-ref`). Every delegation board also gets an on-demand
-**default worker**: it materializes on demand and runs any task whose assignee is
-unset, so a task with no named agent still runs — and an empty roster still
-delegates. Every tool that writes an `assignee` checks it: `addTask`, `assignTask`,
+from the registry (`agent-ref`).
+
+Every delegation board also gets an on-demand **default worker**: it materializes on
+demand and runs any task whose assignee is unset, so a task with no named agent still
+runs, and an empty roster still delegates.
+
+Every tool that writes an `assignee` checks it: `addTask`, `assignTask`,
 and `updateTask` reject a name that isn't one of the declared agents, returning the
 available agents so the caller can correct it, instead of letting a mistyped name
 fall through to the default worker at drain time. A board with no declared agents
-has no roster to check and accepts any assignee. Binding the skill installs a private
+has no roster to check and accepts any assignee.
+
+Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,
 `assignTask`, `completeTask`, `failTask`, `blockTask`, `cancelTask`, `updateTask`,
 `listTasks`), `runBoard`, and a guidance context. The generator orchestrates by
 planning a graph with `addTask` (assignee, deps, structured input) and calling
-`runBoard` once — the board drains under concurrency with dependency gating and
+`runBoard` once: the board drains under concurrency with dependency gating and
 returns every task's output. There is no per-agent tool the generator calls
 directly; draining the board is the sole execution path. Agents materialize at
 runtime, so `agent-ref` agents resolve through the library's
 `agentRegistry`/`materializeAgent` options and runtime-activated skills contribute
 their tools too. With no delegation board resolvable, a stray `taskTools` call
-returns `{ ok: false, error: "no_delegation_board" }` rather than throwing. The
-board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
+returns `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+
+The board is bounded by default: `addTask` is refused past 100 tasks enqueued at once
 (`{ ok: false, error: "enqueued_task_cap_exceeded" }` — drain with `runBoard` to
 free slots, though tasks stranded behind a failed dep stay `pending` and hold
 theirs) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
@@ -199,8 +205,7 @@ refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
 > `taskBoard` builds itself — not the capability surface on its own. Wiring the
 > exported `taskTools` singleton by hand (`uses: [taskTools]`) resolves the host
 > generator's own-state board through a bare, **uncapped** collection: `addTask`
-> there is unbounded. So do not read "delegation is capped" as "`taskTools` is
-> capped". For a bounded board on that path, build the
+> there is unbounded. For a bounded board on that path, build the
 > collection yourself with
 > `getOrCreateTaskCollection({ …, maxTotalTasks, maxEnqueuedTasks })` and hand a
 > resolver for it to `createTaskToolsCapability(resolver)`. That resolver must
@@ -216,16 +221,17 @@ throw: `completeTask` on a task that was never started answers
 `{ ok: false, error: "illegal_status_transition: …" }`, naming the task's current
 status and the calls actually available from it. So the recoverable set across
 the eight tools is `no_delegation_board`, `task_not_found`, `unknown_assignee`,
-`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`, and
-`illegal_status_transition` — a coordinator rule like "when a tool returns
-`ok: false`, re-plan" covers all of them.
+`enqueued_task_cap_exceeded`, `total_task_cap_exceeded`,
+`illegal_status_transition`, and `terminal_task_write_declined` — a coordinator
+rule like "when a tool returns `ok: false`, re-plan" covers all of them.
 
 Match those by **prefix, not equality**. `no_delegation_board`, `task_not_found`,
 `enqueued_task_cap_exceeded`, and `total_task_cap_exceeded` are the whole `error`
-string, but `unknown_assignee` and `illegal_status_transition` are followed by
-`: ` and a sentence of guidance for the model, so `error === "illegal_status_transition"`
-never matches. Use `error.startsWith("illegal_status_transition")`. There is no
-separate structured `code` field today.
+string, but `unknown_assignee`, `illegal_status_transition`, and
+`terminal_task_write_declined` are followed by `: ` and a sentence of guidance for
+the model, so `error === "illegal_status_transition"` never matches. Use
+`error.startsWith("illegal_status_transition")`. There is no separate structured
+`code` field today.
 
 Only the *tool* boundary translates a refusal into a result. Driving a collection
 directly throws, and the error is an exported class you can catch:
