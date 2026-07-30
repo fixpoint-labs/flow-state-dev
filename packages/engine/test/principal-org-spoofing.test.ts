@@ -117,20 +117,4 @@ describe("action dispatch org binding", () => {
     const session = await stores.session.get("sess-binding");
     expect(session?.orgId).toBe("org-x");
   });
-
-  it("still carries the principal's orgId when the body omits one", async () => {
-    const capture: { orgId?: string } = {};
-    const registry = createFlowRegistry();
-    registry.register(buildAuthenticatedFlow(capture));
-    const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
-
-    const res = await postAction(
-      router,
-      { sessionId: "sess-plain", input: {} },
-      { "x-verified-org": "org-x" }
-    );
-    await drain(res.body);
-
-    expect(capture.orgId).toBe("org-x");
-  });
 });

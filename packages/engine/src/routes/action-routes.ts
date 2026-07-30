@@ -106,15 +106,10 @@ export async function handleExecuteAction(
     userId: principal.userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    // The resolved principal is the only source of org identity (BP-031). A
-    // caller-supplied `body.orgId` must not displace it: when a flow configures
-    // `authentication.resolvePrincipal`, that resolver is the security boundary,
-    // and a body override would run an authenticated org-x user's action against
-    // org-y's resources, state, and session binding. Unauthenticated apps lose
-    // nothing — `defaultBodyUserIdPrincipalResolver` reads `body.orgId` itself,
-    // so it still arrives here, just by way of the resolver that is allowed to
-    // trust it. A custom resolver that wants to honor the body can do the same:
-    // the parsed body is exposed to it as `metadata.body`.
+    // Org identity comes from the resolved principal only — never re-read
+    // `body.orgId` here, which would let a caller override a verified org
+    // (BP-031). Unauthenticated apps are unaffected: the default resolver
+    // reads `body.orgId` itself. See `docs/architecture/authentication.md`.
     orgId: principal.orgId,
     tenantId,
     metadata: {
