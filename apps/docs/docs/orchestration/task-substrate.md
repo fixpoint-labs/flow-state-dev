@@ -104,6 +104,8 @@ The mutation surface:
 
 Nothing calls `reclaim` for you. If you want expired leases returned to `pending`, call it yourself from a block that runs alongside the work.
 
+`complete`, `fail`, `cancel`, and the five **Mutate** methods resolve to a verdict describing what the write did — see [what a write reports](#what-a-write-reports). `block`, `unblock`, `awaitReview`, and `resumeFromReview` resolve to nothing.
+
 #### Recording a result that may no longer apply
 
 `complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
@@ -120,6 +122,8 @@ await tasks.complete(task.id, output, {
 `ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
 
 Both guards are evaluated as part of the write they guard, so the task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
+
+A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
 
 Reads return a `TaskHandle`, which is the `Task` plus an `items()` accessor. `items()` returns the stream items a worker emitted while it held the claim (its messages, tool calls, sources, reasoning), so an aggregator such as a synthesizer or reviewer can pick from a worker's natural output instead of relying only on `task.output`. The data fields on a handle are a snapshot; `items()` is live and re-reads on every call.
 
@@ -162,6 +166,51 @@ export const seedResearchPlan = handler({
   },
 });
 ```
+
+#### What a write reports
+
+`complete`, `fail`, `cancel`, `setAssignee`, `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` all resolve to the same shape, so one check reads the whole write surface:
+
+```ts
+type TaskWriteDeclineReason = "terminal" | "disallowed" | "lost-claim";
+
+type TaskWriteOutcome =
+  | { outcome: "recorded" }
+  | { outcome: "unchanged" }
+  | { outcome: "declined"; reason: TaskWriteDeclineReason; status: TaskStatus };
+```
+
+`recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
+
+- `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
+- `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
+- `lost-claim` — `expectAttempt` no longer holds. The task was reclaimed, re-queued, or blocked while you were working on it.
+
+When more than one condition applies, `reason` reports the first of those three that holds.
+
+A decline is a value, not an error. Nothing throws, nothing is written, and discarding the return value compiles:
+
+```ts
+// Ignoring the verdict is fine.
+await collection.complete("research", { summary: "…" }, { ifAllowed: true });
+
+// Or read it.
+const outcome = await collection.setAssignee("draft", "backup-writer");
+if (outcome.outcome === "declined") {
+  // { outcome: "declined", reason: "terminal", status: "errored" }
+  console.log(`draft is ${outcome.status}, so the assignee stands`);
+}
+```
+
+`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. `complete` and `fail` decline only when you pass the guards above; without them an illegal transition throws.
+
+`setAssignee` is the one field mutator that refuses anything — it declines on a terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to a terminal task, which is how a post-drain audit labels what went wrong, so those four answer only `recorded` or `unchanged`. `patchMetadata` merges the patch rather than comparing it, so it answers `recorded` even for a patch that changes nothing.
+
+`unchanged` is a statement about the task record: no field written, no `task-change` item. On a resource-backed collection the write reaches the resource either way, so a `resource_change` event can fire for a write that reported `unchanged`.
+
+A missing task throws on every one of these methods; those three reasons are the whole set of refusals.
+
+If you hand `taskBoard` a `TaskCollectionRef` of your own, callers see whatever your methods return. One whose methods resolve to nothing gives no verdict, and the framework won't invent one.
 
 ## The three backings
 
@@ -219,7 +268,7 @@ const urgencyFirst = classifierDispatcher({
 
 ## task-change items
 
-Every mutation on a collection emits a `task-change` component item onto the stream, keyed by `${collectionId}/${taskId}` so the latest change per task replaces the previous one.
+Every mutation that changes a field emits a `task-change` component item onto the stream, keyed by `${collectionId}/${taskId}` so the latest change per task replaces the previous one.
 
 ```ts
 // data on a task-change component item

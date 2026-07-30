@@ -56,8 +56,8 @@ nothing.
 three backings — request-state (the `taskBoard` default; survives block boundaries
 within a request), block-scoped state (per board invocation — `backing: "sequencer"`
 is the common case), or resource-collection (outlives the request: a user's queue, an
-org work pool — declare one with `defineTaskCollection`). Every mutation emits a
-`task-change` component item.
+org work pool — declare one with `defineTaskCollection`). Every mutation that
+changes a field emits a `task-change` component item.
 
 `complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
 a write-back advisory — `ifAllowed` skips the write when the state machine rejects
@@ -66,19 +66,23 @@ longer holds the claim. Both are evaluated inside the atomic write. A declined w
 is skipped and never throws; the call reports it on the returned `TaskWriteOutcome`.
 Omit the argument and both methods throw on an illegal transition.
 
-`complete`, `fail`, `cancel` and the five field mutators return a `TaskWriteOutcome`:
-`recorded` (a field changed), `unchanged` (the desired state already held, nothing
-written), or `declined` with a `reason` (`terminal` / `disallowed` / `lost-claim`,
-resolved in that precedence order) and the `status` observed inside the write. The
-verdict is produced inside the atomic mutation, so it cannot race the write it
-describes. Discarding it is supported and behaves exactly as before, which is what
-keeps the containment write-backs silent — reporting a decline and acting on one
-are separate.
+`complete`, `fail`, `cancel` and the five field mutators resolve to a
+`TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
+emitted), `unchanged` (the task already held the state asked for, nothing written),
+or `declined` with a `reason` (`terminal` / `disallowed` / `lost-claim`, resolved in
+that precedence order) and the `status` the task was in when the write was refused.
+A decline never throws, and discarding the return value is supported. `cancel` is
+advisory with no options to pass: cancelling a settled task declines with reason
+`terminal`.
 
-`setAssignee` is the one field mutator that refuses anything: it declines on a
-terminal task, because the work will never run again. `setPriority`, `addLabel`,
-`removeLabel`, and `patchMetadata` deliberately still write to a terminal task, so a
-post-drain failure audit can label what went wrong.
+`setAssignee` is the one field mutator that refuses anything — it declines on a
+terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
+a terminal task, so a post-drain failure audit can label what went wrong; those four
+answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
+so it answers `recorded` even for a no-op patch). `unchanged` is a statement about
+the task record — on a resource backing the write reaches the resource either way,
+so a `resource_change` can fire for an `unchanged` write. A missing task throws on
+all eight.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
