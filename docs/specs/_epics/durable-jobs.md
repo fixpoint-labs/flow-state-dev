@@ -66,6 +66,32 @@ than its parent, so the routing key is `(parentSessionId, flowKind, topic)` and 
 a Workstream whose flow lacks the action being dispatched; and the read model a UI needs already
 exists — `RequestStore.list({ sessionId, … })` (`engine/src/stores/types.ts:283`, `:110-147`).
 
+**Where the target flow and action are configured: on the board, not the task.** DECIDED by the repo
+owner. A task carries `{ topic, input }`; the **board** declares which flow and action its detached
+workers run. This is the same altitude the board already occupies — `drain` builds `makeWorker`
+around a worker body fixed at board construction (`task-board/index.ts:795-799`), so "what a worker
+does" is already a board-level fact, while per-task targeting would add an axis the board does not
+have.
+
+Three consequences, and the second is the reason to prefer it:
+
+- **The framework default is the parent's flow and the board's own drain action.** The detached path
+  is then the *same* path as today's synchronous drain, relocated into a Workstream: existing boards
+  gain detachment with no configuration, and nothing new executes.
+- **N6 moves from runtime to build time.** "The action must be resolvable on the target flow" is
+  checked once when the board is constructed, rather than failing per dispatch. An agent filing a
+  task supplies no routing at all and therefore cannot mis-route it — the flexibility's real cost was
+  a class of silent misdispatch, and this deletes the class rather than mitigating it.
+- **Per-task targeting stays available later, additively.** Board-level first is the reversible
+  order; per-task first and restricted later is breaking. **Recorded cost:** heterogeneous work on
+  one board (one issue needing implementation, another needing research) requires two boards, and
+  because dependencies are board-scoped this can fragment a dependency graph that wanted to be whole.
+  That is the signal to add the per-task override — not a reason to build it now.
+
+> **Small open item, deliberately not decided here.** Two boards under one session targeting the same
+> flow would collide on `(parentSessionId, flowKind, topic)`. Keying on board identity rather than
+> `flowKind` is the tighter choice; FIX-982 should pick one and say why.
+
 > **Why a sub-session and not a sibling request in the same session.** The alternative — a request
 > tagged `background`, running beside the user's turns — was built and measured (§8), and rejected.
 > Cross-turn history is loaded by `stores.request.list({ sessionId, tenantId, status: "completed",
@@ -869,13 +895,18 @@ which does not ship. Decision 6's wake model collapses except on the reclamation
 
 The seam is now **measured rather than estimated**. A runtime probe of the execution context (§8)
 shows a block already holds `ctx.stores` and its own `ctx.flow`; only flow-resolution-by-kind and an
-executor are absent. So FIX-982's surface is roughly `ctx.spawn(flowKind, action, input, { topic })`
-over those two pieces — and everything downstream of it (cross-flow execution, history isolation,
-topic reuse) is already demonstrated on the real path. **The drain-only-action constraint hardens
-here rather than dissolving**: an action dispatched into a Workstream must be resolvable on the
-*target* flow, and `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves
-`flow.actions[actionName]` — so a Workstream action that is meant to be internal-only has no private
-coordinate to arrive through. Cross-flow dispatch makes that gap load-bearing rather than latent.
+executor are absent. FIX-982 is the capability over those two pieces, and everything downstream of it
+— cross-flow execution, history isolation, topic reuse — is already demonstrated on the real path.
+
+Because the board supplies the target rather than the task (§1), the caller-facing surface is
+roughly `ctx.spawn({ topic, input })`, with `(flowKind, action)` resolved from board configuration
+and defaulting to the parent's flow and the board's own drain action. **That also settles the
+drain-only-action constraint rather than hardening it.** An action dispatched into a Workstream must
+be resolvable on the *target* flow — `resolve-action-core.ts` branches on webhook/chat/scheduled and
+otherwise resolves `flow.actions[actionName]`, so an internal-only action has no private coordinate
+to arrive through — but with the target fixed at board construction that is checked **once, at build
+time**, and a task author cannot violate it. The constraint returns to runtime only if per-task
+targeting is added later (N6).
 
 **M4 / FIX-983 — halves.** Disposition becomes request metadata rather than a mechanism. The
 *waiting* half survives: `.waitForCondition` throws *"waitForCondition requires a response emitter on
@@ -1069,7 +1100,7 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N3** | **Reframed.** `ActiveRequestRegistry` still has no per-session query (`stores/types.ts:471-489`), but the question is now "what Workstreams are live under this session," which a `parentSessionId` filter answers at the session store rather than by filtering `listAll` globally (BP-033). | FIX-982 |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
 | **N5** | **NEW — no create-if-absent primitive.** `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. Workstream get-or-create is therefore unsafe, and a composite session id does not rescue it (§8). Recommended shape and reasoning in §5. | **new issue — must be filed** |
-| **N6** | **NEW — a Workstream action must be publicly resolvable on its target flow.** `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves `flow.actions[actionName]`, so an action intended as internal-only has no private coordinate to be dispatched through. Latent under same-session siblings; load-bearing once dispatch crosses flows. | FIX-982 |
+| **N6** | **NEW, and downgraded by board-level dispatch config (§1).** A Workstream action must be publicly resolvable on its target flow: `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves `flow.actions[actionName]`, so an action intended as internal-only has no private coordinate to arrive through. Because the board declares the target rather than the task, this is a **build-time** constraint checked once at board construction, not a per-dispatch runtime failure. It returns as a runtime concern only if per-task targeting is added later. | FIX-982 |
 
 
 
