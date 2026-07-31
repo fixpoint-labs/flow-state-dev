@@ -4,7 +4,7 @@
  * Exercises the proposed sub-session model against the REAL in-memory stores:
  *
  *   - a sub-session carries `parentSessionId` + `topic`
- *   - tasks route to a workstream by (parentSessionId, topic), get-or-create
+ *   - tasks route to a workstream by (parentSessionId, flowKind, topic), get-or-create
  *   - lineage-derived affinity and key-based routing must converge on one session
  *
  * Specifically settles whether get-or-create is safe under concurrent dispatch.
@@ -20,11 +20,20 @@ type Workstream = SessionRecord & {
   topic?: string;
 };
 
-function makeSession(id: string, parentSessionId?: string, topic?: string): Workstream {
+/** Default flow for a Workstream in this POC; the parent uses `PARENT_FLOW`. */
+const WORKER_FLOW = "worker";
+const PARENT_FLOW = "epic";
+
+function makeSession(
+  id: string,
+  parentSessionId?: string,
+  topic?: string,
+  flowKind: string = WORKER_FLOW
+): Workstream {
   const ts = 1_000;
   return {
     id,
-    flowKind: "epic",
+    flowKind,
     userId: "u1",
     state: {},
     version: 0,
@@ -40,14 +49,22 @@ function makeSession(id: string, parentSessionId?: string, topic?: string): Work
  * `SessionListOptions` has no `parentSessionId` or `topic` filter today
  * (flowKind / userId / tenantId / limit only), so the lookup scans and filters
  * in memory. That scan is exactly the filter the adapters would need.
+ *
+ * Keyed on `(parentSessionId, flowKind, topic)` — `SessionRecord.flowKind` binds
+ * a session to a flow at creation, so topic alone can return a Workstream whose
+ * flow lacks the action being dispatched.
  */
 async function findWorkstream(
   store: InMemorySessionStore,
   parentSessionId: string,
+  flowKind: string,
   topic: string
 ): Promise<Workstream | undefined> {
   const all = (await store.list({})) as Workstream[];
-  return all.find((s) => s.parentSessionId === parentSessionId && s.topic === topic);
+  return all.find(
+    (s) =>
+      s.parentSessionId === parentSessionId && s.flowKind === flowKind && s.topic === topic
+  );
 }
 
 let seq = 0;
@@ -56,11 +73,12 @@ const nextId = () => `sess_generated_${++seq}`;
 async function getOrCreateWorkstream(
   store: InMemorySessionStore,
   parentSessionId: string,
-  topic: string
+  topic: string,
+  flowKind: string = WORKER_FLOW
 ): Promise<Workstream> {
-  const existing = await findWorkstream(store, parentSessionId, topic);
+  const existing = await findWorkstream(store, parentSessionId, flowKind, topic);
   if (existing !== undefined) return existing;
-  const created = makeSession(nextId(), parentSessionId, topic);
+  const created = makeSession(nextId(), parentSessionId, topic, flowKind);
   await store.set(created.id, created, "any");
   return created;
 }
@@ -82,10 +100,10 @@ function makeCompletedRequest(id: string, sessionId: string, startedAtMs: number
   } as RequestRecord;
 }
 
-describe("POC: workstream routing via (parentSessionId, topic)", () => {
+describe("POC: workstream routing via (parentSessionId, flowKind, topic)", () => {
   it("routes two independent callers to the SAME workstream", async () => {
     const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S"), "any");
+    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
 
     // Coordinator files work for FIX-981; later, a follow-up is filed for the
     // same issue from somewhere else entirely.
@@ -99,17 +117,38 @@ describe("POC: workstream routing via (parentSessionId, topic)", () => {
 
   it("keeps separate topics in separate workstreams", async () => {
     const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S"), "any");
+    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
 
     const a = await getOrCreateWorkstream(store, "S", "FIX-981");
     const b = await getOrCreateWorkstream(store, "S", "FIX-982");
     expect(a.id).not.toBe(b.id);
   });
 
+  it("flowKind is part of the key — one topic, two flows, two workstreams", async () => {
+    const store = new InMemorySessionStore();
+    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
+
+    // Same parent, same topic, different target flow. Keying on topic alone
+    // would return the researcher Workstream to an implementer dispatch, whose
+    // flow has no such action.
+    const research = await getOrCreateWorkstream(store, "S", "FIX-981", "researcher");
+    const implement = await getOrCreateWorkstream(store, "S", "FIX-981", "implementer");
+
+    expect(research.id).not.toBe(implement.id);
+    expect(research.flowKind).toBe("researcher");
+    expect(implement.flowKind).toBe("implementer");
+
+    // ...and each still round-trips to itself.
+    expect((await getOrCreateWorkstream(store, "S", "FIX-981", "researcher")).id).toBe(research.id);
+    expect((await getOrCreateWorkstream(store, "S", "FIX-981", "implementer")).id).toBe(
+      implement.id
+    );
+  });
+
   it("history stays isolated per workstream, parent untouched", async () => {
     const sessions = new InMemorySessionStore();
     const requests = new InMemoryRequestStore();
-    await sessions.set("S", makeSession("S"), "any");
+    await sessions.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
     const ws981 = await getOrCreateWorkstream(sessions, "S", "FIX-981");
     const ws982 = await getOrCreateWorkstream(sessions, "S", "FIX-982");
 
@@ -128,7 +167,7 @@ describe("POC: workstream routing via (parentSessionId, topic)", () => {
 
   it("the tree query works — children of S", async () => {
     const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S"), "any");
+    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
     await getOrCreateWorkstream(store, "S", "FIX-981");
     await getOrCreateWorkstream(store, "S", "FIX-982");
 
@@ -139,7 +178,7 @@ describe("POC: workstream routing via (parentSessionId, topic)", () => {
 
   it("RACE — concurrent get-or-create creates DUPLICATE workstreams", async () => {
     const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S"), "any");
+    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
 
     // Two coordinators independently decide FIX-981 needs work.
     const [a, b] = await Promise.all([

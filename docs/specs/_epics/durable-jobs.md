@@ -1254,7 +1254,7 @@ the tree, so the mistake that section opens with is not repeated:
 | POC | Establishes |
 |---|---|
 | `packages/engine/test/spike-background-isolation.test.ts` | Why a sub-session rather than a background sibling |
-| `packages/engine/test/poc-workstream-routing.test.ts` | `(parentSessionId, topic)` routing, and the create race |
+| `packages/engine/test/poc-workstream-routing.test.ts` | `(parentSessionId, flowKind, topic)` routing, and the create race |
 | `packages/engine/test/poc-workstream-execution.test.ts` | Cross-flow Workstreams on the real `runAction` path |
 
 Run: `npx vitest run test/spike-background-isolation.test.ts test/poc-workstream-routing.test.ts
