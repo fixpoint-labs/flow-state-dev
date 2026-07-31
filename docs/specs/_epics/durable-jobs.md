@@ -863,12 +863,24 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 | **M5** — progress across the request boundary | FIX-984 | **Mostly dissolved.** | ~none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's residue. | Medium |
 | **(new prerequisite)** — create-if-absent at the store boundary | *(unfiled — §6)* | **Blocks Workstream routing.** `set` is an upsert; `ExpectedVersion` cannot say "must not exist". | Small |
+| **(no milestone)** — declare a tool as a board participant | FIX-925 | **Moved in by the owner; spec already merged, implementation never built.** The registry's other end — see §7. | Medium |
 
 **Execution sequence: create-if-absent → FIX-981 → (FIX-978, elsewhere) → FIX-982 → FIX-991, then
-FIX-983.** FIX-991 is in the sequence because unconditional criterion 4b depends on it.
+FIX-983. FIX-925 runs independently of that chain** and may start any time after the gate.
+FIX-991 is in the sequence because unconditional criterion 4b depends on it.
 Create-if-absent leads because Workstream get-or-create is the routing primitive M3's seam
 dispatches through, and it is shared store surface (`ExpectedVersion`) that FIX-992 is concurrently
 building on — so the two must agree on the sentinel rather than discover each other later.
+
+**FIX-925 — independent, and it does not block M3.** The raw `taskBoard({ workers })` API already
+accepts tool-shaped workers directly, so the spawn seam can dispatch a deterministic participant
+without FIX-925; what FIX-925 adds is the *skill-authoring declaration* path (`tool:` on an `agents:`
+entry) that puts one into the registry from frontmatter. It carries two properties no other member
+has: **its spec is already written and merged** (`docs/specs/FIX-925.md`, PR #900), so it must not
+re-enter at `NEEDS_SPEC` (§7); and its own flagged follow-up — *runtime dep-output for tools*,
+scoped out of 925 as "a tool receives the input the coordinator fixes at plan time" — **is the same
+problem as FIX-991**, getting a completed task's output across a boundary. Whoever picks up either
+should check the other rather than solve it twice.
 
 **The new prerequisite — create-if-absent.** `ExpectedVersion = number | "any"` (`stores/types.ts:166`)
 documents `"any"` as what creates use, i.e. an unconditional write, and `casWriteToMap` computes
@@ -1146,23 +1158,44 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 
 | Set | Size | Members |
 |---|---|---|
-| **Sub-issues** — parented under FIX-939 | **7** | FIX-981, FIX-982, FIX-983, FIX-984, FIX-991, FIX-957, FIX-825 |
+| **Sub-issues** — parented under FIX-939 | **8** | FIX-981, FIX-982, FIX-983, FIX-984, FIX-991, FIX-925, FIX-957, FIX-825 |
 | **Active set** — once the gate passes | 1 | FIX-981 (M1) |
-| **Filed, held as blocked** | 4 | FIX-982, FIX-983, FIX-984, FIX-991 |
+| **Filed, held as blocked** | 5 | FIX-982, FIX-983, FIX-984, FIX-991, FIX-925 |
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 |
-| **Indexed rows** = sub-issues + external dependency | **8** | — |
+| **Indexed rows** = sub-issues + external dependency | **9** | — |
 
 **FIX-991 carries no milestone number** — it is not one of M1–M5 but a correctness gap the
 decomposition exposed, and **criterion 4b depends on it**, so it appears in the membership table,
 the index, and the execution sequence (§5) alike.
 
-**Coordinator obligation before the first post-approval wake:** `epic-wake` builds its `discovered`
-set from Linear children absent from the carried rows, filtered only by terminal state, and enters
-each at `NEEDS_SPEC` — so FIX-957 and FIX-825, both Backlog and both parented here but deliberately
-outside the active set, **would auto-start specs on the first wake after the objective gate passes.**
-That is coordinator wiring to fix, not a document defect; re-parenting or closing either issue is the
-owner's call and is not done here.
+**FIX-925 — moved here by the repo owner, and it already has a merged spec.** *Assign a task board
+task directly to a tool (dynamic tool-call tasks)* was **marked Done when its spec PR merged, not
+when it shipped** — `#900` added exactly one file, `docs/specs/FIX-925.md` (225 lines), and every
+seam that spec names is absent from the tree: `AgentSpec` has no `tool` field, the parser's
+`AGENT_RESOLUTION_FIELDS` is still `["prompt", "prompt-ref", "agent-ref"]`, `materializeWorker`
+still branches `agentRef → promptRef → prompt`, and `addToolTask` has zero hits repo-wide. It is now
+**Todo** under this epic.
+
+It belongs here because it is the *same seam from the other end*. FIX-925 gets a deterministic block
+**into** the board's worker registry — `TaskWorkerRegistry = Record<string, TaskWorker>`
+(`tasks/workers/types.ts:85`), which `taskBoard({ workers })` already accepts
+(`task-board/index.ts:288`) and the drain already routes by `task.assignee`. M3's spawn seam takes a
+block **out of** that same registry and runs it in a Workstream. One registry, two directions. That
+registry is also the answer to "where do a Workstream's blocks come from" — it already exists and
+needs no parallel mechanism.
+
+> **Two coordinator obligations before the first post-approval wake**, both from the same
+> `epic-wake` behaviour: it builds `discovered` from Linear children absent from the carried rows,
+> filtered only by terminal state, and enters each at `NEEDS_SPEC`.
+> 1. **FIX-957 and FIX-825** — Backlog, parented here, deliberately outside the active set — would
+>    auto-start specs.
+> 2. **FIX-925** — now non-terminal and parented here — would auto-start a spec **it already has**.
+>    `NEEDS_SPEC` is not merely wasteful for it, it is the wrong entry state; it should enter at the
+>    post-spec phase against the merged `docs/specs/FIX-925.md`.
+>
+> That is coordinator wiring to fix, not a document defect. Closing or re-parenting FIX-957/825 is
+> the owner's call and is not done here.
 
 ### Proposed issue-scope changes — awaiting the owner's approval, not applied
 
