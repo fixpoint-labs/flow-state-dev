@@ -1049,11 +1049,16 @@ supported configuration**, not an unlucky interleaving.
 
 **Two requirements, both FIX-982's.** (1) **The durable task or outbox row retains a re-dispatchable
 envelope *template*, and each attempt mints a fresh `requestId`** associated with the task. The
-template carries `flowKind`, `actionName`, `input`, `userId`, `sessionId`, `orgId`, `tenantId`,
-`source`, `metadata`. **A bare `requestId` does not qualify** — it points at a record that will never
-be written, with no `actionName` and no `input` to re-dispatch from — but **re-dispatching a stored
-envelope verbatim is equally wrong**, because the envelope carries `requestId` and reusing it
-destroys the prior attempt:
+template carries **routing and identity only**: `flowKind`, `actionName`, `userId`, `sessionId`,
+`orgId`, `tenantId`, `source`. **`input` is deliberately absent** — it is a claim-time artifact
+(`packWorkerInput` materializes dep outputs, `attempts`, `feedback` and `priorWork` *after* the
+claim), so a template carrying it re-dispatches a task with deps, or any retry, from stale or empty
+data. That is N25, and an earlier draft of this very list included `input`, which is the failure it
+warns about. The payload is built per attempt on the parent side and handed to the spawn; its
+JSON-safety is checked there, not here (N33). **A bare `requestId` does not qualify** either — it
+points at a record that will never be written, with no `actionName` to re-dispatch from — and
+**re-dispatching a stored envelope verbatim is equally wrong**, because the envelope carries
+`requestId` and reusing it destroys the prior attempt:
 
 | Store | Event persistence | Attempt 1's events once attempt 2 reuses the id |
 |---|---|---|
@@ -1595,9 +1600,16 @@ in-flight resource mutations without setting `includeTransient: true`"*
 (`react/src/hooks/useSession.ts:140-147`, `:323-329`). Whatever background surface lands makes the
 same kind of explicit choice rather than inheriting the transient filter by omission.
 
-**The structural gap in `react`: `useSession` holds `latestRequest: SessionRequestSummary | null` —
-singular** (`useSession.ts:321`), and its `resourceChanges` array is per-request-scoped. The hook is
-built around one request per session, which is exactly the convention Decision 0 breaks.
+**There is no structural `react` gap here, and an earlier draft claimed one.** `useSession` holds
+`latestRequest: SessionRequestSummary | null` (`useSession.ts:321`), but singular means *most
+recent*, not *only* — ordinary sessions already accumulate many requests and `listSessionRequests`
+is the client's enumeration (`client/src/session-client/sessions.ts:92,170`). Decision 0 breaks no
+convention here: a Workstream is a **separate session**, so it does not add requests to the parent's
+session at all. The claim survived from the pre-Workstream draft, where background work *was* a
+sibling request in the same session; under this model it is simply false, and leaving it in would
+inflate S3 into a multi-request React state redesign it does not need. **§7's S3 row is the correct
+one** — the `latestRequest`-is-singular gap dissolved with N2 and the model change. What S3 does need
+is unchanged and smaller: a parent's Workstreams exposed as a distinct axis from its own items.
 
 Surfaces to price, respecting the locked boundaries — `react` wraps `client` with no transport logic
 in `react`, and `engine` never depends on `client` or `react`:
@@ -1783,7 +1795,7 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 
 | Issue | M | Title (short) | Blocked by | Spec PR | Impl PR |
 |---|---|---|---|---|---|
-| **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 **+** create-if-absent (**unfiled**) **+** S1a (parent-session store filter, **unfiled**) | — | — |
+| **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 **+** create-if-absent (**unfiled**) **+** S1a (parent-session store filter, **unfiled**) **+** FIX-991a — the result-read surface (**split not yet filed**; without it FIX-982 ships settlement with no recoverable result, see the cycle note below) | — | — |
 | **FIX-983** | M4 | Tasks have no blocking/background disposition | FIX-982 | — | — |
 | **FIX-984** | M5 | A detached task can't stream progress — `ctx.emit` doesn't survive | FIX-982 | — | — |
 | **FIX-991** | — | `TaskHandle.items()` returns the wrong request's items once tasks execute out-of-request | **see the note — this row's direction is now wrong** | — | — |
