@@ -1051,6 +1051,19 @@ parent's task still has to be **settled**. Today the *pattern* settles it — th
 > handed to the spawn, per attempt. That is N25, and it makes the atomic-admission requirement
 > *smaller* rather than larger — the thing that must be atomic is the coordinate set, not the data.
 >
+> **Terminal is not the same as successful, and each terminal state maps to a different board
+> transition.** Observing that the Workstream's request ended says nothing about *which* transition
+> the parent owes the task. Success is `complete(taskId, output)`. **A throw or an abort is
+> `fail(id, error)`, which is not a synonym**: `fail` is what applies the retry budget — with
+> `maxAttempts` left it is a *soft* fail that returns the task to `pending`, captures the error on
+> `feedback`, and lets the next claim increment `attempts`; exhausted, it is a *hard* fail to
+> terminal `errored` (`tasks/collection/types.ts:160-176`). Skip it and a failed detached worker
+> leaves the task `in_progress` until reclamation, which restores it without ever consuming the
+> retry policy — a task that can be reclaimed indefinitely while its budget never moves.
+> Cancellation needs its own mapping again, distinct from both. **FIX-982 specifies the full map —
+> success, failure, abort, cancel — and fences each one** (Decision 4's attempt token), rather than
+> naming only the success path.
+>
 > **Settlement happens on the PARENT side, driven by the Workstream's request reaching a terminal
 > state** — not by the worker calling back into the parent's board. That needs the wake source
 > (N4 / Decision 6) and the task output crossing the request boundary (FIX-991), both already in
@@ -1729,10 +1742,10 @@ Deliberately **unparented** pending OQ-E; not touched here.
 > *removes* substrate work — M5 dissolves, M4 halves, M3 narrows from a subsystem to a seam — but it
 > *adds* five consumer-facing items across four packages, three of them prerequisites. Net: fewer hard
 > problems, more surface. The hard problems were the risky part (M1 is still `Large` and still gated),
-> so this is a favourable trade on risk and an unfavourable one on headcount-days. **It is not
-> recorded as decided** — the owner may equally choose to ship the substrate under this epic and put
-> S1–S5 in a follow-on epic, which would keep FIX-939 as-is and make the consumer surface its own
-> objective. Naming it here so the choice is explicit rather than discovered at wrap time.
+> so this is a favourable trade on risk and an unfavourable one on headcount-days. **The owner has since
+> decided it: S1–S5 live here** (OQ-E), so the trade above is the one taken rather than one of two
+> options. The follow-on-epic alternative is recorded only as the path not chosen — the membership
+> index and the execution sequence are authoritative, and S4 gates the wrap.
 
 ---
 
