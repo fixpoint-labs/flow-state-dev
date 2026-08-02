@@ -3,8 +3,9 @@
  *
  * Exercises the proposed sub-session model against the REAL in-memory stores:
  *
- *   - a sub-session carries `parentSessionId` + `topic`
- *   - tasks route to a workstream by (parentSessionId, flowKind, topic), get-or-create
+ *   - a sub-session carries `parentSessionId`, `boardId`, `assignee`, `topic`
+ *   - tasks route by (tenantId, parentSessionId, boardId, assignee, topic),
+ *     get-or-create
  *   - lineage-derived affinity and key-based routing must converge on one session
  *
  * Specifically settles whether get-or-create is safe under concurrent dispatch.
@@ -14,34 +15,68 @@ import { InMemorySessionStore } from "../src/stores/memory/session-store";
 import { InMemoryRequestStore } from "../src/stores/memory/request-store";
 import type { RequestRecord, SessionRecord } from "../src/stores/types";
 
-/** The two fields the design would add to SessionRecord. */
+/** The fields the design would add to SessionRecord. */
 type Workstream = SessionRecord & {
   parentSessionId?: string;
+  boardId?: string;
+  assignee?: string;
   topic?: string;
 };
 
-/** Default flow for a Workstream in this POC; the parent uses `PARENT_FLOW`. */
+/**
+ * `tenantId` leads the key. Session record ids are already tenant-namespaced and
+ * every history read exact-matches the tenant (FIX-682); a Workstream key that
+ * omits it would alias two tenants that reuse the same caller-chosen parent
+ * session id, board, assignee and topic — handing one tenant another's child
+ * session and history.
+ */
+const TENANT_A = "tenant_a";
+const TENANT_B = "tenant_b";
+const BOARD_A = "board_research";
+const BOARD_B = "board_delivery";
+
 const WORKER_FLOW = "worker";
 const PARENT_FLOW = "epic";
 
-function makeSession(
-  id: string,
-  parentSessionId?: string,
-  topic?: string,
-  flowKind: string = WORKER_FLOW
-): Workstream {
+type Key = {
+  tenantId: string;
+  parentSessionId: string;
+  boardId: string;
+  assignee: string;
+  topic: string;
+};
+
+function makeParent(id: string, tenantId: string): Workstream {
+  const ts = 1_000;
+  return {
+    id: `${tenantId}:${id}`,
+    flowKind: PARENT_FLOW,
+    userId: "u1",
+    tenantId,
+    state: {},
+    version: 0,
+    createdAt: ts,
+    updatedAt: ts,
+    journal: []
+  };
+}
+
+function makeWorkstream(id: string, k: Key): Workstream {
   const ts = 1_000;
   return {
     id,
-    flowKind,
+    flowKind: WORKER_FLOW,
     userId: "u1",
+    tenantId: k.tenantId,
     state: {},
     version: 0,
     createdAt: ts,
     updatedAt: ts,
     journal: [],
-    parentSessionId,
-    topic
+    parentSessionId: k.parentSessionId,
+    boardId: k.boardId,
+    assignee: k.assignee,
+    topic: k.topic
   };
 }
 
@@ -56,14 +91,17 @@ function makeSession(
  */
 async function findWorkstream(
   store: InMemorySessionStore,
-  parentSessionId: string,
-  flowKind: string,
-  topic: string
+  k: Key
 ): Promise<Workstream | undefined> {
-  const all = (await store.list({})) as Workstream[];
+  // Tenant filtering happens at the STORE, matching how every history read is
+  // scoped today — not as an in-memory afterthought.
+  const all = (await store.list({ tenantId: k.tenantId })) as Workstream[];
   return all.find(
     (s) =>
-      s.parentSessionId === parentSessionId && s.flowKind === flowKind && s.topic === topic
+      s.parentSessionId === k.parentSessionId &&
+      s.boardId === k.boardId &&
+      s.assignee === k.assignee &&
+      s.topic === k.topic
   );
 }
 
@@ -72,16 +110,24 @@ const nextId = () => `sess_generated_${++seq}`;
 
 async function getOrCreateWorkstream(
   store: InMemorySessionStore,
-  parentSessionId: string,
-  topic: string,
-  flowKind: string = WORKER_FLOW
+  k: Key
 ): Promise<Workstream> {
-  const existing = await findWorkstream(store, parentSessionId, flowKind, topic);
+  const existing = await findWorkstream(store, k);
   if (existing !== undefined) return existing;
-  const created = makeSession(nextId(), parentSessionId, topic, flowKind);
+  const created = makeWorkstream(nextId(), k);
   await store.set(created.id, created, "any");
   return created;
 }
+
+/** Convenience for the common single-tenant, single-board case. */
+const key = (over: Partial<Key> = {}): Key => ({
+  tenantId: TENANT_A,
+  parentSessionId: "S",
+  boardId: BOARD_A,
+  assignee: "implementer",
+  topic: "FIX-981",
+  ...over
+});
 
 function makeCompletedRequest(id: string, sessionId: string, startedAtMs: number): RequestRecord {
   return {
@@ -100,57 +146,67 @@ function makeCompletedRequest(id: string, sessionId: string, startedAtMs: number
   } as RequestRecord;
 }
 
-describe("POC: workstream routing via (parentSessionId, flowKind, topic)", () => {
-  it("routes two independent callers to the SAME workstream", async () => {
+describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assignee, topic)", () => {
+  async function freshStore() {
     const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
+    await store.set(`${TENANT_A}:S`, makeParent("S", TENANT_A), "any");
+    await store.set(`${TENANT_B}:S`, makeParent("S", TENANT_B), "any");
+    return store;
+  }
 
-    // Coordinator files work for FIX-981; later, a follow-up is filed for the
-    // same issue from somewhere else entirely.
-    const first = await getOrCreateWorkstream(store, "S", "FIX-981");
-    const second = await getOrCreateWorkstream(store, "S", "FIX-981");
-
+  it("routes two independent callers to the SAME workstream", async () => {
+    const store = await freshStore();
+    const first = await getOrCreateWorkstream(store, key());
+    const second = await getOrCreateWorkstream(store, key());
     expect(second.id).toBe(first.id);
-    const all = await store.list({});
-    expect(all.filter((s) => (s as Workstream).topic === "FIX-981")).toHaveLength(1);
   });
 
   it("keeps separate topics in separate workstreams", async () => {
-    const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
-
-    const a = await getOrCreateWorkstream(store, "S", "FIX-981");
-    const b = await getOrCreateWorkstream(store, "S", "FIX-982");
+    const store = await freshStore();
+    const a = await getOrCreateWorkstream(store, key({ topic: "FIX-981" }));
+    const b = await getOrCreateWorkstream(store, key({ topic: "FIX-982" }));
     expect(a.id).not.toBe(b.id);
   });
 
-  it("flowKind is part of the key — one topic, two flows, two workstreams", async () => {
-    const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
-
-    // Same parent, same topic, different target flow. Keying on topic alone
-    // would return the researcher Workstream to an implementer dispatch, whose
-    // flow has no such action.
-    const research = await getOrCreateWorkstream(store, "S", "FIX-981", "researcher");
-    const implement = await getOrCreateWorkstream(store, "S", "FIX-981", "implementer");
-
+  it("assignee is part of the key — one topic, two workers", async () => {
+    const store = await freshStore();
+    const research = await getOrCreateWorkstream(store, key({ assignee: "researcher" }));
+    const implement = await getOrCreateWorkstream(store, key({ assignee: "implementer" }));
     expect(research.id).not.toBe(implement.id);
-    expect(research.flowKind).toBe("researcher");
-    expect(implement.flowKind).toBe("implementer");
+    expect((await getOrCreateWorkstream(store, key({ assignee: "researcher" }))).id).toBe(research.id);
+  });
 
-    // ...and each still round-trips to itself.
-    expect((await getOrCreateWorkstream(store, "S", "FIX-981", "researcher")).id).toBe(research.id);
-    expect((await getOrCreateWorkstream(store, "S", "FIX-981", "implementer")).id).toBe(
-      implement.id
-    );
+  it("boardId is part of the key — two boards, same assignee and topic", async () => {
+    const store = await freshStore();
+    const a = await getOrCreateWorkstream(store, key({ boardId: BOARD_A }));
+    const b = await getOrCreateWorkstream(store, key({ boardId: BOARD_B }));
+    expect(a.id).not.toBe(b.id);
+  });
+
+  it("TENANT — two tenants reusing every other coordinate do NOT alias", async () => {
+    const store = await freshStore();
+    const a = await getOrCreateWorkstream(store, key({ tenantId: TENANT_A }));
+    const b = await getOrCreateWorkstream(store, key({ tenantId: TENANT_B }));
+
+    expect(a.id).not.toBe(b.id);
+    expect(a.tenantId).toBe(TENANT_A);
+    expect(b.tenantId).toBe(TENANT_B);
+
+    // Everything BUT the tenant is identical — the 4-part key would have aliased.
+    const fourPart = (w: Workstream) =>
+      `${w.parentSessionId}|${w.boardId}|${w.assignee}|${w.topic}`;
+    expect(fourPart(a)).toBe(fourPart(b));
+
+    // A tenant-scoped lookup never reaches across.
+    expect((await getOrCreateWorkstream(store, key({ tenantId: TENANT_A }))).id).toBe(a.id);
+    expect((await getOrCreateWorkstream(store, key({ tenantId: TENANT_B }))).id).toBe(b.id);
   });
 
   it("history stays isolated per workstream, parent untouched", async () => {
-    const sessions = new InMemorySessionStore();
+    const sessions = await freshStore();
     const requests = new InMemoryRequestStore();
-    await sessions.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
-    const ws981 = await getOrCreateWorkstream(sessions, "S", "FIX-981");
-    const ws982 = await getOrCreateWorkstream(sessions, "S", "FIX-982");
+    const ws981 = await getOrCreateWorkstream(sessions, key({ topic: "FIX-981" }));
+    const ws982 = await getOrCreateWorkstream(sessions, key({ topic: "FIX-982" }));
 
     await requests.set("r_parent", makeCompletedRequest("r_parent", "S", 1), "any");
     await requests.set("r_981_a", makeCompletedRequest("r_981_a", ws981.id, 2), "any");
@@ -165,28 +221,24 @@ describe("POC: workstream routing via (parentSessionId, flowKind, topic)", () =>
     expect((await load(ws982.id)).map((r) => r.id)).toEqual(["r_982_a"]);
   });
 
-  it("the tree query works — children of S", async () => {
-    const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
-    await getOrCreateWorkstream(store, "S", "FIX-981");
-    await getOrCreateWorkstream(store, "S", "FIX-982");
+  it("the tree query works — children of a parent, within one tenant", async () => {
+    const store = await freshStore();
+    await getOrCreateWorkstream(store, key({ topic: "FIX-981" }));
+    await getOrCreateWorkstream(store, key({ topic: "FIX-982" }));
+    await getOrCreateWorkstream(store, key({ tenantId: TENANT_B, topic: "FIX-999" }));
 
-    const all = (await store.list({})) as Workstream[];
-    const children = all.filter((s) => s.parentSessionId === "S");
+    const mine = (await store.list({ tenantId: TENANT_A })) as Workstream[];
+    const children = mine.filter((s) => s.parentSessionId === "S");
     expect(children.map((s) => s.topic).sort()).toEqual(["FIX-981", "FIX-982"]);
   });
 
   it("RACE — concurrent get-or-create creates DUPLICATE workstreams", async () => {
-    const store = new InMemorySessionStore();
-    await store.set("S", makeSession("S", undefined, undefined, PARENT_FLOW), "any");
-
-    // Two coordinators independently decide FIX-981 needs work.
+    const store = await freshStore();
     const [a, b] = await Promise.all([
-      getOrCreateWorkstream(store, "S", "FIX-981"),
-      getOrCreateWorkstream(store, "S", "FIX-981")
+      getOrCreateWorkstream(store, key()),
+      getOrCreateWorkstream(store, key())
     ]);
-
-    const all = (await store.list({})) as Workstream[];
+    const all = (await store.list({ tenantId: TENANT_A })) as Workstream[];
     const dupes = all.filter((s) => s.topic === "FIX-981");
 
     // eslint-disable-next-line no-console
@@ -200,15 +252,11 @@ describe("POC: workstream routing via (parentSessionId, flowKind, topic)", () =>
 
   it("RACE — a composite id does NOT save you: set() is an upsert, not an insert", async () => {
     const store = new InMemorySessionStore();
-
-    // Both callers derive the SAME id from (parent, topic), so a primary-key
-    // insert would collide. `expectedVersion: 0` is the strongest "I expect it
-    // to be new" the interface can express.
-    const id = "S:FIX-981";
-    const first = await store.set(id, makeSession(id, "S", "FIX-981"), 0);
+    const id = `${TENANT_A}:S:${BOARD_A}:implementer:FIX-981`;
+    const first = await store.set(id, makeWorkstream(id, key()), 0);
     const second = await store.set(
       id,
-      { ...makeSession(id, "S", "FIX-981"), title: "second writer" },
+      { ...makeWorkstream(id, key()), title: "second writer" },
       0
     );
 
@@ -219,9 +267,6 @@ describe("POC: workstream routing via (parentSessionId, flowKind, topic)", () =>
     );
 
     expect(first.ok).toBe(true);
-    // The second create SUCCEEDS and clobbers the first: casWriteToMap treats a
-    // missing record and a version-0 record identically (`current?.version ?? 0`),
-    // and ExpectedVersion has no "must not exist" sentinel.
     expect(second.ok).toBe(true);
     expect((await store.get(id))?.title).toBe("second writer");
   });

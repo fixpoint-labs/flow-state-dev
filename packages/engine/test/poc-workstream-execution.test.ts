@@ -31,11 +31,48 @@ type WorkstreamTask = {
   input: string;
 };
 
-/** Stands in for `TaskWorkerRegistry = Record<string, TaskWorker>`. */
 const BOARD_ID = "board_delivery";
-const registry: Record<string, { actionName: string }> = {
-  implementer: { actionName: "execute" }
+
+/**
+ * What actually gets persisted on the task/envelope: **strings only**, derived
+ * from the board binding at spawn time rather than chosen per task by an author.
+ *
+ * This is the reconciliation the design needs. The board's live registry is
+ * `TaskWorkerRegistry = Record<string, TaskWorker>` whose values are
+ * `BlockDefinition`s — closures, not serializable — while
+ * `InboundRequestEnvelope` carries `flowKind: string` and `action: string`
+ * (`transports/types.ts:71-72`) and cannot carry a block. So a detached request
+ * crossing BullMQ or surviving a restart cannot be handed the registry entry; it
+ * must re-resolve one from string coordinates. "The board configures
+ * disposition, not a target" governs AUTHORING; the envelope still needs a
+ * re-resolvable coordinate.
+ */
+type DispatchBinding = {
+  flowKind: string;
+  action: string;
+  boardId: string;
+  assignee: string;
 };
+
+/** Where a board's workers live — known statically from the flow definitions. */
+const BOARD_BINDINGS: Record<string, Record<string, DispatchBinding>> = {
+  [BOARD_ID]: {
+    implementer: {
+      flowKind: "worker",
+      action: "execute",
+      boardId: BOARD_ID,
+      assignee: "implementer"
+    }
+  }
+};
+
+function bindWorker(boardId: string, assignee: string): DispatchBinding {
+  const b = BOARD_BINDINGS[boardId]?.[assignee];
+  if (b === undefined) {
+    throw new Error(`unknown_assignee: "${assignee}" is not on board "${boardId}"`);
+  }
+  return b;
+}
 
 type Workstream = SessionRecord & {
   parentSessionId?: string;
@@ -83,6 +120,15 @@ const workerFlow = defineFlow({
   }
 })();
 
+/**
+ * Rebuilt from static flow definitions at process start. This is the
+ * re-resolution path: a restarted process has no live registry, only the
+ * definitions it can reconstruct plus the string coordinate on the envelope.
+ */
+function buildFlowRegistry(): Record<string, ReturnType<typeof defineFlow> extends never ? never : typeof workerFlow> {
+  return { worker: workerFlow, coordinator: coordinatorFlow as unknown as typeof workerFlow };
+}
+
 let seq = 0;
 
 /**
@@ -127,9 +173,16 @@ async function dispatchToWorkstream(
     await stores.session.set(workstreamId, record, "any");
   }
 
+  // Re-resolve from the persisted string coordinate through a registry rebuilt
+  // from static flow definitions — what a BullMQ worker or restarted process
+  // must do, since it cannot be handed the block.
+  const binding = bindWorker(task.boardId, task.assignee);
+  const flow = buildFlowRegistry()[binding.flowKind];
+  if (flow === undefined) throw new Error(`unresolvable flowKind: ${binding.flowKind}`);
+
   await runAction({
-    flow: workerFlow,
-    actionName: registry[task.assignee]!.actionName,
+    flow,
+    actionName: binding.action,
     input: task.input,
     userId: "u1",
     sessionId: workstreamId,
@@ -200,6 +253,32 @@ describe("POC v2: Workstream execution across flows", () => {
     expect(a).not.toBe(b);
     expect(await historyOf(stores, a)).toEqual(["execute"]);
     expect(await historyOf(stores, b)).toEqual(["execute"]);
+  });
+
+  it("BINDING — a detached request re-resolves its worker after a restart", async () => {
+    filed.length = 0;
+    const stores = createInMemoryStores();
+
+    await runAction({
+      flow: coordinatorFlow, actionName: "plan", input: "FIX-981",
+      userId: "u1", sessionId: "S", stores, runtimeConfig: {}
+    });
+    const task = filed[0]!;
+
+    // Everything the envelope persists is a string — nothing here is a block.
+    const binding = bindWorker(task.boardId, task.assignee);
+    expect(JSON.parse(JSON.stringify(binding))).toEqual(binding);
+    expect(Object.values(binding).every((v) => typeof v === "string")).toBe(true);
+
+    // Simulate a restart: throw away everything but the serialized task and
+    // binding, rebuild the flow registry from static definitions, resolve, run.
+    const revived = JSON.parse(JSON.stringify(task)) as typeof task;
+    const wsId = await dispatchToWorkstream(stores, "S", revived);
+    expect(await historyOf(stores, wsId)).toEqual(["execute"]);
+
+    // A binding that names nothing on the board fails loudly rather than
+    // silently running the wrong worker.
+    expect(() => bindWorker(task.boardId, "nobody")).toThrow(/unknown_assignee/);
   });
 
   it("PROBE — what a block can actually reach from ctx", async () => {

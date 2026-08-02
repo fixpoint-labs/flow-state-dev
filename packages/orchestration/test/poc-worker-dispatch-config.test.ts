@@ -115,6 +115,8 @@ let seq = 0;
 /** Two boards under one parent session, each declaring an `implement` worker. */
 const BOARD_A = "board_research";
 const BOARD_B = "board_delivery";
+/** Tenant leads the key — see poc-workstream-routing for the aliasing case. */
+const TENANT = "tenant_a";
 
 /**
  * Keyed `(parentSessionId, boardId, assignee, topic)`.
@@ -134,7 +136,7 @@ async function routeToWorkstream(
   assignee: string,
   topic: string
 ): Promise<Workstream> {
-  const all = (await stores.session.list({})) as Workstream[];
+  const all = (await stores.session.list({ tenantId: TENANT })) as Workstream[];
   const existing = all.find(
     (s) =>
       s.parentSessionId === parentSessionId &&
@@ -148,6 +150,7 @@ async function routeToWorkstream(
     id: `ws_${++seq}`,
     flowKind: "worker",
     userId: "u1",
+    tenantId: TENANT,
     state: {},
     version: 0,
     createdAt: ts,
