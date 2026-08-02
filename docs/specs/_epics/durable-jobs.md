@@ -287,13 +287,24 @@ Workstreams and, for a session-scoped board, erases the task ledger out from und
 Not auto-closing is a decision; not handling an explicit delete is a gap.
 
 **On configuration:** Every knob one might reach
-for already exists a level up: conversation inheritance is `contextSupply`; serialize-vs-interleave
-is the flow/action `concurrency` policy (default `allow`, and a continuation lane almost certainly
-wants `queue`); resource carry-over is the three-tier scope rule plus `isolateUserState` /
+for already exists a level up: conversation inheritance is `contextSupply`; **serialization does
+not** — see below; resource carry-over is the three-tier scope rule plus `isolateUserState` /
 `flowIsolation`; history depth is `flow.session?.historyWindow?.turns`. An earlier draft proposed a
 lifetime rule that closed a Workstream once its lineage had no open tasks. **Dropped** — parent
 sessions have exactly that same property and have never needed closing, and a later task landing on
 an existing topic is the intended behaviour rather than a resurrection to guard against.
+
+> **Serialization is the exception to "every knob exists a level up", and an earlier draft listed it
+> as if it did not.** It recommended the flow/action `concurrency` policy, *"and a continuation lane
+> almost certainly wants `queue`"*. That advice does not work on the path this epic keeps: the
+> concurrency arbiter runs for the **in-process dispatcher only** — with an external dispatcher the
+> host skips arbitration entirely and defers to the durable substrate
+> (`transports/concurrency/arbiter.ts:22-26`, `docs/architecture/inbound-transports.md:153`). So
+> setting `queue` on a detached Workstream's flow buys nothing and, worse, reads as a solution, so an
+> implementer who sets it stops looking. Two overlapping requests in one Workstream remain possible.
+> **Serialization must be enforced at the board**, which is what Decision 8 requires and what the
+> unresolved lane owner (N46) is for. Named here so the configuration summary does not quietly
+> contradict the decision that supersedes it.
 
 **What that leaves as real work.** Three things, and they are the epic:
 
@@ -939,10 +950,23 @@ dispatcher selects — and the drain loops back:
 `.loopBack(claimStepName, { when: shouldContinue === true, maxIterations })` (`task-board/index.ts:777`).
 So a request spawned "for task A" may go on to execute B and C, breaking two things the model
 promises: cancelling task A would abort unrelated work, and `metadata.taskId` stops identifying what
-produced the items after the first iteration. **Requirement: a task-id-filtered single claim with no
-loop-back on the detached path** — or make the background request **board-level rather than
-task-level** and drop the per-task framing. FIX-982 chooses; both are coherent, but only the second
-survives without a claim-by-id.
+produced the items after the first iteration.
+
+**The requirement this paragraph originally stated is now obsolete, and the ordering fix is what
+retired it.** It asked for *"a task-id-filtered single claim with no loop-back on the detached
+path"*, or a board-level drain instead. Under claim-before-spawn (N25, N30) **the detached action
+does not claim at all**: the parent claims the task, builds that attempt's payload with
+`packWorkerInput`, and hands it to the spawn. By the time the Workstream's request starts, the task
+is already `in_progress` with a lease, so a task-id-filtered claim would select **nothing** and the
+Workstream would run no work. The board-level-drain alternative fails for a different reason — it
+contradicts both the per-attempt handed payload and the per-task cancellation model.
+
+> **Requirement, restated: the detached action executes the payload it was handed and performs no
+> claim of its own.** It is a worker invocation, not a drain. This also disposes of the claim-by-id
+> gap rather than filling it — no claim on that path means no filter is needed — and keeps
+> `metadata.taskId` identifying exactly one task for the request's whole life, which is what
+> cancellation and item attribution both rely on. The loop-back (`task-board/index.ts:777`) belongs to
+> the in-process drain and must not be part of the detached action's shape.
 
 **A drain action in `flow.actions` is publicly addressable.** `resolveActionCore` branches on the
 `webhook` / `chat` / `scheduled` sources (`execution/resolve-action-core.ts:79`, `:91`, `:99`) and
@@ -1778,6 +1802,9 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N38** | **NEW — forking is optional, unreferenced by any completion criterion, and carries five sub-problems.** N17 (a cursor the caller cannot write), N19 + N32 (an awaited content snapshot whose retention contradicts the grounds COPY was rejected on), the cross-chain window budget, and N36 (batched read or accepted N+1) all exist **only** to serve parent-history inheritance — a read convenience, not a completion criterion. Decision 7's claim-time payload already carries context to the worker, parent-side and deliberately scoped. **Recommend deferring forking out of FIX-982 entirely**, which removes those five from the critical path; the required condition is that a detached participant declaring `contextSupply: "conversation"` (`core/src/types/skill.ts:92`) is **refused by name** rather than silently running with empty history. This is a scope decision for the owner, not FIX-982. | **owner** (then FIX-982) |
 | **N36** | **NEW — the chosen fork strategy has no batched read, so its cost is N+1 per child turn.** REFERENCE reads the cursor **by id** — required, since the list-then-discard alternative costs the parent's whole lifetime per turn (500 rows vs 3, §8) — but `RequestStore.get` takes one id (`stores/types.ts:275`) and `RequestListOptions` has no `ids` predicate (`:110-140`). Measured: a 40-id cursor is **41 store calls per turn**, and a depth-2 chain multiplies by level. §1 previously concluded REFERENCE "wins on every axis" on the strength of its 0 fork-time writes; that conclusion did not survive its own measurement. **FIX-982 either adds an `ids` predicate across the four adapters as a prerequisite, or states the N+1 and bounds cursor width.** Same class as create-if-absent and S1a: a store capability the model assumes and the surface does not have. | FIX-982 (+ a store seam, unfiled) |
 | **N31** | **NEW — "emit an item" does not by itself enable settlement.** The interim result rule says the worker's result must be durable, and FIX-991 retrieves `readonly OutputItem[]` — but `complete(taskId, output)` takes the collection's generic `TOutput`. A worker that emits progress items *and* result items gives the parent a list with no distinguished result and no decode rule, so after a restart the parent can retrieve everything and still not reconstruct the value `complete` needs. **FIX-982 defines a single result projection — a tagged result item, or a task-keyed shared resource as the recoverable path — plus the item-to-output contract.** Without it the interim rule is a durability guarantee with no reader. | FIX-982 + FIX-991 |
+| **N47** | **NEW — the detached action must not claim, and the stated requirement said it should.** §4 required *"a task-id-filtered single claim with no loop-back on the detached path"*, written before the claim moved ahead of the spawn. Under claim-before-spawn (N25, N30) the parent claims and hands over that attempt's payload, so the task is already `in_progress` with a lease when the Workstream starts — a task-id-filtered claim selects **nothing** and the Workstream runs no work. The board-level-drain alternative fails differently: it contradicts the per-attempt payload and per-task cancellation. **Restated: the detached action executes the handed payload and performs no claim.** This retires the claim-by-id gap rather than filling it, and keeps `metadata.taskId` single-valued for the request's life. | FIX-982 |
+| **N48** | **NEW — `concurrency: "queue"` cannot serialize a Workstream on the path this epic keeps.** §1's configuration summary recommended it for a continuation lane. The arbiter runs for the **in-process dispatcher only**; with an external dispatcher the host skips arbitration and defers to the durable substrate (`arbiter.ts:22-26`, `inbound-transports.md:153`). Setting it buys nothing *and* reads as a solution, so an implementer who sets it stops looking for the real one. Decision 8 already says serialization is a board-level rule; the summary contradicted it. Serialization needs the lane owner N46 records as missing. | FIX-982 |
+| **N49** | **NEW — S5 deferred all documentation past every API it documents, breaking the rule it invoked.** As scoped, package READMEs and `apps/docs` pages for the new `engine` / `client` / `react` surfaces landed in a trailing issue after S4, so each API could merge and release undocumented. The repo rule is same-change-set. **Per-API docs move into S1b, S2, S3 and FIX-982's definition of done; S5 keeps corpus-level work only** — navigation, the cross-package narrative, the spanning guide. Also removes the failure mode where a trailing docs issue is cut when the epic runs long. | **S1b / S2 / S3 / FIX-982**, then S5 |
 | **N45** | **NEW — the interim result rule offered an option that does not work on the path it exists for.** It named an emitted item as a settlement-recoverable surface because it is "already `taskId`-attributed". N24 measures the opposite: `_markTaskScope` has one call site inside the worker-body sequencer (`task-board/index.ts:682`), a top-level Workstream action never reaches it, and request metadata does not stamp `OutputItem.taskId`. A parent settling from items after a restart therefore reconstructs **nothing**, silently. The shared task-keyed resource option is unaffected. **If FIX-982 takes the item path, N24's attribution fix is a precondition of settlement, not a parallel task.** | FIX-982 + FIX-991 |
 | **N46** | **NEW — "exactly one primitive is missing" undercounts, and the same section proves it.** Decision 8 concluded that create-if-absent is the only gap. Within that section, N37's reconciler needs a **per-session liveness query** that `ActiveRequestRegistry` does not have (`stores/types.ts:471-489`), and the serialization rule needs a **durable, renewable, request-checkable lane owner** that neither `LeaseStore` (no renew, keyed on requestId) nor `SessionRecord` (caller-clobberable, N17) provides. Neither is a store verb, which is how both escaped the count. **Scoping M3 from the single-primitive claim releases it without the mechanisms its non-stranding and serialized-continuation objectives require.** Corrected in Decision 8 with both indexed. | FIX-982 |
 | **N43** | **NEW — two shipped admission paths bypass the board, so "the template is written at admission" is not enforceable where it matters.** `taskTools.addTask` resolves a bare `TaskCollectionRef` and calls `collection.addTask` directly (`skills/task-tools-capability.ts:365-389`), and `TaskBoardCapabilityAccessor.tasks()` hands the whole ref out as *"the escape hatch for the whole API"* (`task-board/capability.ts:151-152`). Neither receives the worker registry or dispatch binding a template is derived from, so a template minted in a board-level wrapper is missing from precisely the admissions an agent makes at runtime. Those rows are `pending`, leaseless and template-less — skipped by `reclaim` and unusable by N37's reconciler. **Converge every admission on one board-aware point, or prohibit the raw paths on a detached board and fail loudly.** Lazy derivation at reconcile time needs the registry the raw path never had. **Binding rule 5 already said this** — a guarantee not enforced on the `taskTools` path is not enforced — and requirement (2) had not been checked against it. | FIX-982 |
@@ -1971,7 +1998,7 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N45, N46, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Forty findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), one guarantee that two shipped admission paths bypass (N43), and two coordination mechanisms the 'primitives are there' count omitted (N46). It is still sized Medium; **the missing-mechanism count is now the argument for splitting it, not its finding count.**** |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N45, N46, N47, N48, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Forty-two findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), one guarantee that two shipped admission paths bypass (N43), and two coordination mechanisms the 'primitives are there' count omitted (N46). It is still sized Medium; **the missing-mechanism count is now the argument for splitting it, not its finding count.**** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. |
@@ -1988,7 +2015,19 @@ top:
 | **S2** | Declare detached work, and enumerate a session's **Workstreams** — then each Workstream's requests. Two hops, not one filtered list | `client` | after S1 | **Prerequisite.** The isomorphic surface every consumer goes through. |
 | **S3** | `useSession` exposes a parent's Workstreams as a distinct axis from its own items — a child session is not a filtered view of the parent, so this is a new read rather than a split of an existing one (still no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. The `latestRequest`-is-singular gap no longer applies here — N2 dissolved with the model change. |
 | **S4** | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. |
-| **S5** | Document the surface: package READMEs for the public API + `apps/docs` concept and guide pages | `packages/*`, `apps/docs` | after S4 | **Polish**, but required by the "document new user-facing functionality" rule before the epic wraps. |
+| **S5** | **Corpus polish only** — cross-page navigation, a coherent concept narrative across the new pages, and the epic-level guide that no single issue owns. **NOT the per-API documentation**, which ships with each API (see below). | `apps/docs` | after S4 | **Polish.** The always-document rule is satisfied issue-by-issue, not here. |
+
+> **Documentation ships with the API that introduces it, not in a trailing issue — and S5 as
+> originally scoped violated the rule it cited.** It collected "package READMEs for the public API +
+> `apps/docs` concept and guide pages" and sequenced them after S4, which means every new `engine`,
+> `client` and `react` surface could merge, and release, with no README entry and nothing user-facing
+> describing it. The repo rule is same-change-set: *"New/changed end-user functionality is documented
+> in the same change set: relevant `packages/*/README.md` for public API changes, and `apps/docs`
+> pages for concepts/guides/APIs end users reference."* **So each of S1b, S2, S3 and FIX-982 carries
+> its own README and docs updates as part of its definition of done**, and S5 keeps only what is
+> genuinely corpus-level: navigation, the cross-package narrative, and the guide that spans surfaces
+> no single issue owns. This also removes a real failure mode — a trailing docs issue is the one most
+> likely to be cut when an epic runs long, taking the whole surface's documentation with it.
 
 **Already filed:** [FIX-996](https://linear.app/fixpoint-labs/issue/FIX-996) — in the DevTool,
 background requests are indistinguishable from conversational turns and have no link to their origin.
