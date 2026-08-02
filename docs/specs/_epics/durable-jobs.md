@@ -1084,6 +1084,23 @@ recoverable. (3) **Name a mechanism that makes a pending task reachable without 
 request, and state its cost** — outbox, reconciliation pass, or a pending-task wake source; this epic
 does not choose. Without both, the unconditional "no way to strand it" half is undelivered.
 
+> **And requirement (2) is subject to rule 5, which this document states and had not applied here.**
+> "Written with admission" is only a guarantee if **every** admission path writes it, and two shipped
+> paths admit tasks without ever seeing the board: `taskTools.addTask` resolves a bare
+> `TaskCollectionRef` and calls `collection.addTask({goal, assignee, deps, priority, input,
+> metadata})` directly (`skills/task-tools-capability.ts:365-389`) — no registry, no dispatch
+> binding, nothing from which a template could be derived — and the board capability hands out
+> `tasks(): Promise<TaskCollectionRef>` as *"the escape hatch for the whole API"*
+> (`task-board/capability.ts:151-152`), after which any caller has the same unmediated `addTask`.
+> A template minted in a board-level wrapper is therefore absent from exactly the admissions an agent
+> makes at runtime, which is the normal case rather than an edge one. Those tasks are `pending`,
+> leaseless and template-less: invisible to `reclaim` (it skips non-`in_progress`) and useless to
+> N37's reconciler (nothing to re-dispatch from). **FIX-982 either converges every admission on one
+> board-aware point, or prohibits the raw paths on a detached board and fails loudly when they are
+> used.** A third option — deriving the template lazily at reconcile time — needs the registry the
+> raw path never had, so it is not free either. This is N43, and it is the same shape as Decision 4:
+> a guarantee enforced anywhere but the `taskTools` path is not enforced.
+
 **Binding on FIX-982: name the reclamation wake explicitly and state its cost.** Two live candidates:
 *liveness-triggered*, hooking onto FIX-978's reclaim/sweeper pass, which is already walking exactly
 these tasks — the natural fit, at the cost of coupling M3's wake to FIX-978's cadence; or a *bounded
@@ -1344,7 +1361,7 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 | **M5** — progress across the request boundary | FIX-984 | **Mostly dissolved.** | ~none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's residue. | Medium |
 | **(new prerequisite)** — create-if-absent at the store boundary | *(unfiled — §6)* | **Blocks Workstream routing.** `set` is an upsert; `ExpectedVersion` cannot say "must not exist". | Small |
-| **(no milestone)** — declare a tool as a board participant | FIX-925 | **Moved in by the owner; spec already merged, implementation never built.** The registry's other end — see §7. | Medium |
+| **(no milestone)** — declare a tool as a board participant | FIX-925 | **Moved in by the owner; spec written and reviewed but its PR is unmerged (§7), implementation never built.** The registry's other end — see §7. | Medium |
 
 **Execution sequence: create-if-absent + S1a (the parent-session store filter) → FIX-981 →
 (FIX-978, elsewhere) → FIX-991a (the result-read surface) → FIX-982 → FIX-991b (the accessor fix),
@@ -1377,8 +1394,9 @@ this epic has now hit three times.
 accepts tool-shaped workers directly, so the spawn seam can dispatch a deterministic participant
 without FIX-925; what FIX-925 adds is the *skill-authoring declaration* path (`tool:` on an `agents:`
 entry) that puts one into the registry from frontmatter. It carries two properties no other member
-has: **its spec is already written and merged** (`docs/specs/FIX-925.md`, PR #900), so it must not
-re-enter at `NEEDS_SPEC` (§7); and its own flagged follow-up — *runtime dep-output for tools*,
+has: **its spec is already written and reviewed** (`docs/specs/FIX-925.md`, PR #900) — **though not
+merged; it is on `origin/spec/FIX-925` only, see §7** — so it must not re-enter at `NEEDS_SPEC` (§7)
+but its spec PR must land before it starts; and its own flagged follow-up — *runtime dep-output for tools*,
 scoped out of 925 as "a tool receives the input the coordinator fixes at plan time" — **is the same
 problem as FIX-991**, getting a completed task's output across a boundary. Whoever picks up either
 should check the other rather than solve it twice.
@@ -1732,6 +1750,8 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N38** | **NEW — forking is optional, unreferenced by any completion criterion, and carries five sub-problems.** N17 (a cursor the caller cannot write), N19 + N32 (an awaited content snapshot whose retention contradicts the grounds COPY was rejected on), the cross-chain window budget, and N36 (batched read or accepted N+1) all exist **only** to serve parent-history inheritance — a read convenience, not a completion criterion. Decision 7's claim-time payload already carries context to the worker, parent-side and deliberately scoped. **Recommend deferring forking out of FIX-982 entirely**, which removes those five from the critical path; the required condition is that a detached participant declaring `contextSupply: "conversation"` (`core/src/types/skill.ts:92`) is **refused by name** rather than silently running with empty history. This is a scope decision for the owner, not FIX-982. | **owner** (then FIX-982) |
 | **N36** | **NEW — the chosen fork strategy has no batched read, so its cost is N+1 per child turn.** REFERENCE reads the cursor **by id** — required, since the list-then-discard alternative costs the parent's whole lifetime per turn (500 rows vs 3, §8) — but `RequestStore.get` takes one id (`stores/types.ts:275`) and `RequestListOptions` has no `ids` predicate (`:110-140`). Measured: a 40-id cursor is **41 store calls per turn**, and a depth-2 chain multiplies by level. §1 previously concluded REFERENCE "wins on every axis" on the strength of its 0 fork-time writes; that conclusion did not survive its own measurement. **FIX-982 either adds an `ids` predicate across the four adapters as a prerequisite, or states the N+1 and bounds cursor width.** Same class as create-if-absent and S1a: a store capability the model assumes and the surface does not have. | FIX-982 (+ a store seam, unfiled) |
 | **N31** | **NEW — "emit an item" does not by itself enable settlement.** The interim result rule says the worker's result must be durable, and FIX-991 retrieves `readonly OutputItem[]` — but `complete(taskId, output)` takes the collection's generic `TOutput`. A worker that emits progress items *and* result items gives the parent a list with no distinguished result and no decode rule, so after a restart the parent can retrieve everything and still not reconstruct the value `complete` needs. **FIX-982 defines a single result projection — a tagged result item, or a task-keyed shared resource as the recoverable path — plus the item-to-output contract.** Without it the interim rule is a durability guarantee with no reader. | FIX-982 + FIX-991 |
+| **N43** | **NEW — two shipped admission paths bypass the board, so "the template is written at admission" is not enforceable where it matters.** `taskTools.addTask` resolves a bare `TaskCollectionRef` and calls `collection.addTask` directly (`skills/task-tools-capability.ts:365-389`), and `TaskBoardCapabilityAccessor.tasks()` hands the whole ref out as *"the escape hatch for the whole API"* (`task-board/capability.ts:151-152`). Neither receives the worker registry or dispatch binding a template is derived from, so a template minted in a board-level wrapper is missing from precisely the admissions an agent makes at runtime. Those rows are `pending`, leaseless and template-less — skipped by `reclaim` and unusable by N37's reconciler. **Converge every admission on one board-aware point, or prohibit the raw paths on a detached board and fail loudly.** Lazy derivation at reconcile time needs the registry the raw path never had. **Binding rule 5 already said this** — a guarantee not enforced on the `taskTools` path is not enforced — and requirement (2) had not been checked against it. | FIX-982 |
+| **N44** | **NEW — `parentSessionId?: string` cannot express the three modes N16 requires.** After the default flips to top-level-only, an optional string gives two states (omitted, named parent) for three needs: top-level only, children of one parent, and **everything** — today's unrestricted `list()`, which admin/debug callers and FIX-982's own recovery scans still need. Shipping the optional string silently removes the all-sessions capability or reintroduces it as an undocumented sentinel. **Specify a tri-state**: a discriminated `parentage` option, or `includeChildren` alongside the id. Small now; a breaking store-contract change once four adapters have shipped the two-state shape. | **S1a** |
 | **N41** | **NEW — BullMQ's retry budget and the board's are two budgets on one task, and settlement reads the wrong one.** `attempts` defaults to **3** (`bullmq/src/retry.ts:12`), every attempt re-enters `runAction` under the **same `requestId`** (`worker.ts:78-86`; `:60-71` resumes sequence numbering precisely because of it), and only the **bridge terminal** is suppressed while retrying (`:108-143`) — the request *record* is written `failed` by the attempt that threw. A parent settling on "the Workstream's request reached a terminal state" therefore calls `fail()` after attempt one: it burns a board retry and re-pends (or hard-fails) the task while attempts two and three are still queued and may yet complete it. **Recommend `attempts: 1` for detached task dispatches** — the board already owns retries via `maxAttempts` and `fail`'s soft/hard split (`tasks/collection/types.ts:160-176`), and stacking transport retries under it multiplies the real attempt count and makes the task row's `attempts` a lie. The alternative is settling on a durable final-attempt signal, which **does not exist today**: `failed` is written identically on a retryable and a final attempt. | FIX-982 |
 | **N42** | **NEW — "the parent is the sole coordinator" does not remove the get-or-create race.** Decision 0's verification claimed it did, by construction. One logical coordinator is not one execution: request concurrency defaults to `allow` (`arbiter.ts:89-93`; `action.concurrency ?? flow.request?.concurrency ?? "allow"`, `types/flow.ts:260-264`), so two overlapping requests in one parent session — two tabs, a client retry, a re-dispatch — both run and both can target the same topic, which is exactly the duplicate-Workstream case §8 measured. The arbiter is in-process only (Decision 8), so it is not the fence here either. **Create-if-absent is load-bearing rather than belt-and-braces, and no issue may scope it out on the sole-coordinator assumption.** Corrected in Decision 0. | create-if-absent (N5a) + FIX-982 |
 | **N39** | **NEW — the canonical board example detaches work from a board that dies with the request.** §1's example omits `collection`, which selects the **request** backing — `taskBoard`'s documented default (`task-board/index.ts:205,219`), lifetime scoped to the request (`collection/get-or-create.ts:86-89`). Every guarantee in this epic assumes the task row outlives the admitting request: re-reading the template after a restart, parent-side settlement, reclamation, N37's lost-wake sweep. None of them have a row to read on a request-backed board, so a detached worker on one runs with nothing able to settle or observe it — and the failure only appears after the first restart. **Rule 15 added: a board with any detached worker must be constructed on a durable backing and a non-durable one refused at construction, by name.** Two-part check, because rule 8 already says `backing: "resource"` is not itself proof of durability — the store under it must have the verbs. The example now shows the collection. **This was the copy-paste path**, which is the worst place for it. | FIX-982 |
@@ -1779,8 +1799,20 @@ until then (`orchestration.md` → Gates). OQ-A still awaits that gate, so no li
 | **FIX-981** | M1 | Two executions over one durable board can both claim a task | — | — |
 | **FIX-925** | — | Declare a tool as a board participant (`tool:` on an `agents:` entry) | [#900](https://github.com/fixpoint-labs/flow-state-dev/pull/900) · merged | — |
 
-**FIX-925 enters this table post-spec, not at `NEEDS_SPEC`.** Its spec is already
-written, reviewed and merged (`docs/specs/FIX-925.md`, PR #900) — the Linear issue was marked Done
+> **CORRECTION — the spec is written and reviewed but NOT merged, and this document said it was.**
+> `docs/specs/FIX-925.md` does not exist on `origin/main` and does not exist in this branch's tree.
+> It lives on **`origin/spec/FIX-925` only** — five commits ending `cdfb83af`, unmerged. Verified by
+> listing `docs/specs/` on `origin/main` (FIX-895, 911, 918, 951, 954, 990, README — no 925) and by
+> `git log --all --diff-filter=A` for the path, which finds its creation solely on that branch.
+> **So "enters post-spec" is not currently actionable**: releasing FIX-925 at the gate would hand an
+> implementer a spec that is not on their branch and not on main. Either PR #900 merges first — the
+> smaller action, since the spec content exists and was reviewed — or FIX-925 stays at the spec gate.
+> The paragraph below describes the intent, which stands once the merge happens; the *state* it
+> asserts does not hold today. **Sixth instance of the class this epic keeps recording**, and the
+> first where the false claim is about an artifact's existence rather than an ordering.
+
+**FIX-925 enters this table post-spec, not at `NEEDS_SPEC`** — *once its spec is merged.* Its spec is
+written and reviewed (`docs/specs/FIX-925.md` on `spec/FIX-925`, PR #900) — the Linear issue was marked Done
 against that merge even though nothing was implemented (verified: `AgentSpec` has no `tool` field,
 `AGENT_RESOLUTION_FIELDS` is still three, `materializeWorker` has no tool branch), and the owner
 moved it back to Todo under this epic. A lifecycle that re-entered it at `NEEDS_SPEC` would rewrite
@@ -1830,7 +1862,7 @@ split ordering.
 | **Sub-issues** — parented under FIX-939 | **8** | FIX-981, FIX-982, FIX-983, FIX-984, FIX-991, FIX-925, FIX-957, FIX-825 |
 | **Active set** — once the gate passes | 2 | FIX-981 (M1), FIX-925 (independent) |
 | **Filed, held as blocked** | 4 | FIX-982, FIX-983, FIX-984, FIX-991 |
-| **Independent — startable at the gate alongside FIX-981** | 1 | FIX-925 (spec already merged; enters post-spec, §5) |
+| **Independent — startable at the gate alongside FIX-981** | 1 | FIX-925 (enters post-spec, §5 — **gated on PR #900 merging first; the spec is not on `main`**) |
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 |
 | **Unfiled — the consumer surface, in scope per OQ-E** | 6 | *S1a* store filter + adapters · *S1b* route & request metadata · *S2* `client` · *S3* `react` · *S4* kitchen-sink (**the epic's evidence path — gates the wrap**) · *S5* docs |
@@ -1871,9 +1903,10 @@ split ordering.
 decomposition exposed, and **criterion 4b depends on it**, so it appears in the membership table,
 the index, and the execution sequence (§5) alike.
 
-**FIX-925 — moved here by the repo owner, and it already has a merged spec.** *Assign a task board
-task directly to a tool (dynamic tool-call tasks)* was **marked Done when its spec PR merged, not
-when it shipped** — `#900` added exactly one file, `docs/specs/FIX-925.md` (225 lines), and every
+**FIX-925 — moved here by the repo owner, and its spec is written but unmerged.** *Assign a task board
+task directly to a tool (dynamic tool-call tasks)* was **marked Done on the strength of its spec PR,
+not because it shipped — and that PR has not landed either** (`origin/spec/FIX-925`, five commits,
+absent from `main`). `#900` adds exactly one file, `docs/specs/FIX-925.md` (225 lines), and every
 seam that spec names is absent from the tree: `AgentSpec` has no `tool` field, the parser's
 `AGENT_RESOLUTION_FIELDS` is still `["prompt", "prompt-ref", "agent-ref"]`, `materializeWorker`
 still branches `agentRef → promptRef → prompt`, and `addToolTask` has zero hits repo-wide. It is now
@@ -1894,7 +1927,7 @@ needs no parallel mechanism.
 >    auto-start specs.
 > 2. **FIX-925** — now non-terminal and parented here — would auto-start a spec **it already has**.
 >    `NEEDS_SPEC` is not merely wasteful for it, it is the wrong entry state; it should enter at the
->    post-spec phase against the merged `docs/specs/FIX-925.md`.
+>    post-spec phase against `docs/specs/FIX-925.md` — **once PR #900 merges; today that file is on `spec/FIX-925` only** (§7).
 >
 > That is coordinator wiring to fix, not a document defect. Closing or re-parenting FIX-957/825 is
 > the owner's call and is not done here.
@@ -1908,7 +1941,7 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Thirty-seven findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), and one double-counted retry budget (N41). It is still sized Medium; it should be split.** |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Thirty-eight findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), and one guarantee that two shipped admission paths bypass (N43). It is still sized Medium; it should be split.** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. |
@@ -1920,7 +1953,7 @@ top:
 
 | | Proposed issue | Packages | Sequence | Prerequisite or polish? |
 |---|---|---|---|---|
-| **S1a** | **The parent-session store filter.** `SessionListOptions` gains **`parentSessionId` only**, implemented across the four adapters, **and changes the DEFAULT, not only adds a filter (N16)** — an omitted filter is unrestricted today, so shipping the positive filter alone puts every Workstream into existing session pickers and recovery scans; top-level-only by default, with an explicit opt-in for listing children. **The `boardId` / `coordinate` / `topic` predicates are dropped**: get-or-create resolves by the *derived* session id (`SessionStore.get(ws_…)`, §1), so routing never lists by those fields, and no other consumer in this epic asks for them — four adapter implementations with no caller. Add them when something needs them. Note this filter enumerates children; it does **not** report liveness (N3) | `engine` | **before FIX-982** | **Prerequisite** — on N16/BP-030 grounds only. FIX-982 does not *read* through this filter; it needs the default fixed before it starts creating Workstreams that existing listings would otherwise show. |
+| **S1a** | **The parent-session store filter.** `SessionListOptions` gains **one parentage predicate**, implemented across the four adapters, **and changes the DEFAULT, not only adds a filter (N16)** — an omitted filter is unrestricted today, so shipping the positive filter alone puts every Workstream into existing session pickers and recovery scans; top-level-only by default, with an explicit opt-in for listing children. **It must be tri-state, not an optional string.** N16 needs three modes — top-level only (the new default), children of a named parent, and *everything* (today's unrestricted behaviour, which admin/debug and recovery callers still need) — and `parentSessionId?: string` expresses only two, so shipping that shape either drops the all-sessions capability or smuggles it back as an undocumented sentinel (`"*"`, `null`, empty string). Name the third state explicitly: a discriminated option (e.g. `parentage: "top-level" | "all" | {parentOf: string}`) or a separate `includeChildren` boolean alongside the id. **FIX-982's own recovery scans are in the "everything" mode**, so this is not a hypothetical caller. **The `boardId` / `coordinate` / `topic` predicates are dropped**: get-or-create resolves by the *derived* session id (`SessionStore.get(ws_…)`, §1), so routing never lists by those fields, and no other consumer in this epic asks for them — four adapter implementations with no caller. Add them when something needs them. Note this filter enumerates children; it does **not** report liveness (N3) | `engine` | **before FIX-982** | **Prerequisite** — on N16/BP-030 grounds only. FIX-982 does not *read* through this filter; it needs the default fixed before it starts creating Workstreams that existing listings would otherwise show. |
 | **S1b** | **The parent-to-child read surface.** The route over S1a's filter, and request metadata + trusted `source` on the create/dispatch path. **A separate issue from S1a, not a second phase of one** — S1a lands before FIX-982 and S1b after it, and an issue cannot stay open across another issue's whole lifecycle. Separate ids, separate PRs. **Lighter than an earlier draft:** the conversation-history policy S1 used to carry is no longer needed — isolation is structural under this model, not a filter (§1). | `engine` | after FIX-982 | **Prerequisite** for S2 upward. |
 | **S2** | Declare detached work, and enumerate a session's **Workstreams** — then each Workstream's requests. Two hops, not one filtered list | `client` | after S1 | **Prerequisite.** The isomorphic surface every consumer goes through. |
 | **S3** | `useSession` exposes a parent's Workstreams as a distinct axis from its own items — a child session is not a filtered view of the parent, so this is a new read rather than a split of an existing one (still no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. The `latestRequest`-is-singular gap no longer applies here — N2 dissolved with the model change. |
