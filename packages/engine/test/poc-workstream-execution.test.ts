@@ -205,9 +205,19 @@ async function dispatchToWorkstream(
   const flow = buildFlowRegistry()[binding.flowKind];
   if (flow === undefined) throw new Error(`unresolvable flowKind: ${binding.flowKind}`);
 
+  // The binding carries `action: string`, but `runAction` wants a key of this
+  // flow's actions. Narrowing it is a REQUIRED step, not ceremony: it is the
+  // point where a durable string coordinate re-enters the type system, and it
+  // is exactly what N9 says has no surface to derive from. A cast here would
+  // hide the one thing this POC exists to expose.
+  if (!(binding.action in flow.actions)) {
+    throw new Error(`unresolvable action: "${binding.action}" on flow "${binding.flowKind}"`);
+  }
+  const actionName = binding.action as keyof typeof flow.actions & string;
+
   await runAction({
     flow,
-    actionName: binding.action,
+    actionName,
     input: task.input,
     userId: "u1",
     sessionId: workstreamId,
