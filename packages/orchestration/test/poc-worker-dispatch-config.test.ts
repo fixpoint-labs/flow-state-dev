@@ -385,14 +385,32 @@ describe("POC: board worker config — disposition, not target", () => {
   });
 
   it("per-worker disposition overrides the board default", () => {
+    // The two values must DISAGREE, or the test cannot fail: with a detached
+    // board default and a detached worker entry, an implementation that
+    // preferred `config.dispatch` over the entry's would pass identically.
     const detachedByDefault: BoardConfig = {
-      ...board,
+      workers: {
+        summarize: summarizeBlock, // bare — inherits
+        implement: { worker: implementBlock, dispatch: { mode: "inline" } } // disagrees
+      },
       dispatch: { mode: "detached" }
     };
     // `summarize` is bare, so it inherits the board default...
     expect(resolveDispatch(detachedByDefault, "summarize").dispatch.mode).toBe("detached");
-    // ...while `implement` carries its own and keeps it.
-    expect(resolveDispatch(detachedByDefault, "implement").dispatch.mode).toBe("detached");
+    // ...while `implement` overrides it in the opposite direction and wins.
+    expect(resolveDispatch(detachedByDefault, "implement").dispatch.mode).toBe("inline");
+
+    // ...and the same in the other direction, so neither ordering is assumed:
+    // an inline board default with a detached worker entry.
+    const inlineByDefault: BoardConfig = {
+      workers: {
+        summarize: summarizeBlock,
+        implement: { worker: implementBlock, dispatch: { mode: "detached" } }
+      },
+      dispatch: { mode: "inline" }
+    };
+    expect(resolveDispatch(inlineByDefault, "summarize").dispatch.mode).toBe("inline");
+    expect(resolveDispatch(inlineByDefault, "implement").dispatch.mode).toBe("detached");
   });
 
   it("an unassigned task runs on the default worker", () => {

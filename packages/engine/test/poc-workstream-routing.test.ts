@@ -3,8 +3,8 @@
  *
  * Exercises the proposed sub-session model against the REAL in-memory stores:
  *
- *   - a sub-session carries `parentSessionId`, `boardId`, `assignee`, `topic`
- *   - tasks route by (tenantId, parentSessionId, boardId, assignee, topic),
+ *   - a sub-session carries `parentSessionId`, `boardId`, `coordinate`, `topic`
+ *   - tasks route by (tenantId, parentSessionId, boardId, coordinate, topic),
  *     get-or-create
  *   - lineage-derived affinity and key-based routing must converge on one session
  *
@@ -23,6 +23,9 @@ import type { RequestRecord, SessionRecord } from "../src/stores/types";
 type Workstream = SessionRecord & {
   parentSessionId?: string;
   boardId?: string;
+  /** `coordinateKey(...)` — the routing field. See `Coordinate` below. */
+  coordinate?: string;
+  /** Human-readable label; absent exactly when the coordinate is not an assignee. */
   assignee?: string;
   topic?: string;
 };
@@ -31,7 +34,7 @@ type Workstream = SessionRecord & {
  * `tenantId` leads the key. Session record ids are already tenant-namespaced and
  * every history read exact-matches the tenant (FIX-682); a Workstream key that
  * omits it would alias two tenants that reuse the same caller-chosen parent
- * session id, board, assignee and topic — handing one tenant another's child
+ * session id, board, coordinate and topic — handing one tenant another's child
  * session and history.
  */
 const TENANT_A = "tenant_a";
@@ -42,11 +45,29 @@ const BOARD_B = "board_delivery";
 const WORKER_FLOW = "worker";
 const PARENT_FLOW = "epic";
 
+/**
+ * The worker coordinate, tagged rather than a bare assignee string — two of the
+ * board's shipped routing cases have no assignee at all (a uniform worker, and
+ * the `defaultWorker` delegation floor), and a reserved string for them could
+ * collide with an authored assignee. Defined identically in
+ * `poc-worker-dispatch-config`, which is where it is resolved from the board;
+ * this POC is what it is keyed and DERIVED on, so the two must agree.
+ */
+type Coordinate =
+  | { kind: "assignee"; name: string }
+  | { kind: "uniform" }
+  | { kind: "floor" };
+
+const coordinateKey = (c: Coordinate) =>
+  c.kind === "assignee" ? `a:${c.name}` : c.kind === "uniform" ? "u" : "f";
+
+const assignee = (name: string): Coordinate => ({ kind: "assignee", name });
+
 type Key = {
   tenantId: string;
   parentSessionId: string;
   boardId: string;
-  assignee: string;
+  coordinate: Coordinate;
   topic: string;
 };
 
@@ -87,7 +108,10 @@ function makeWorkstream(publicId: string, k: Key): Workstream {
     journal: [],
     parentSessionId: k.parentSessionId,
     boardId: k.boardId,
-    assignee: k.assignee,
+    coordinate: coordinateKey(k.coordinate),
+    // Only when the task actually named one. A floor-routed or uniform-worker
+    // Workstream carries no assignee, because it was never given one.
+    ...(k.coordinate.kind === "assignee" ? { assignee: k.coordinate.name } : {}),
     topic: k.topic
   };
 }
@@ -112,7 +136,7 @@ async function findWorkstream(
     (s) =>
       s.parentSessionId === k.parentSessionId &&
       s.boardId === k.boardId &&
-      s.assignee === k.assignee &&
+      s.coordinate === coordinateKey(k.coordinate) &&
       s.topic === k.topic
   );
 }
@@ -140,13 +164,21 @@ const nextId = () => `sess_generated_${++seq}`;
  *
  * `encodeURIComponent` is what makes the encoding canonical — session ids
  * already carry a "must not contain `:` ambiguously" caveat
- * (`scope-keys.ts:69-71`), and a raw join would let `topic: "a:b"` and
- * `assignee: "a", topic: "b"` derive the same id. If FIX-982 finds the length
- * unacceptable for a key column, a hash over this same canonical encoding has
- * the identical collision properties and loses only debuggability.
+ * (`scope-keys.ts:69-71`), and a raw join lets a separator move between two
+ * fields: assignee `"a:b"` + topic `"c"` and assignee `"a"` + topic `"b:c"`
+ * produce one id (measured below). If FIX-982 finds the length unacceptable for
+ * a key column, a hash over this same canonical encoding has the identical
+ * collision properties and loses only debuggability.
+ *
+ * The coordinate is SERIALIZED before encoding. It is a tagged union, so
+ * passing it through `encodeURIComponent` directly yields
+ * `%5Bobject%20Object%5D` for every variant — every assignee, the uniform
+ * worker and the floor would derive one id and mix their histories.
  */
 const deriveWorkstreamId = (k: Key) =>
-  `ws_${[k.parentSessionId, k.boardId, k.assignee, k.topic].map(encodeURIComponent).join(":")}`;
+  `ws_${[k.parentSessionId, k.boardId, coordinateKey(k.coordinate), k.topic]
+    .map(encodeURIComponent)
+    .join(":")}`;
 
 /**
  * Mirrors `resolveSessionStorageKey` (`stores/scope-keys.ts:75-82`): the record
@@ -182,7 +214,7 @@ const key = (over: Partial<Key> = {}): Key => ({
   tenantId: TENANT_A,
   parentSessionId: "S",
   boardId: BOARD_A,
-  assignee: "implementer",
+  coordinate: assignee("implementer"),
   topic: "FIX-981",
   ...over
 });
@@ -220,7 +252,7 @@ function makeCompletedRequest(
   } as RequestRecord;
 }
 
-describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assignee, topic)", () => {
+describe("POC: workstream routing via (tenantId, parentSessionId, boardId, coordinate, topic)", () => {
   async function freshStore() {
     const store = new InMemorySessionStore();
     await store.set(`${TENANT_A}:S`, makeParent("S", TENANT_A), "any");
@@ -244,10 +276,12 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
 
   it("assignee is part of the key — one topic, two workers", async () => {
     const store = await freshStore();
-    const research = await getOrCreateWorkstream(store, key({ assignee: "researcher" }));
-    const implement = await getOrCreateWorkstream(store, key({ assignee: "implementer" }));
+    const research = await getOrCreateWorkstream(store, key({ coordinate: assignee("researcher") }));
+    const implement = await getOrCreateWorkstream(store, key({ coordinate: assignee("implementer") }));
     expect(research.id).not.toBe(implement.id);
-    expect((await getOrCreateWorkstream(store, key({ assignee: "researcher" }))).id).toBe(research.id);
+    expect(
+      (await getOrCreateWorkstream(store, key({ coordinate: assignee("researcher") }))).id
+    ).toBe(research.id);
   });
 
   it("boardId is part of the key — two boards, same assignee and topic", async () => {
@@ -268,7 +302,7 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
 
     // Everything BUT the tenant is identical — the 4-part key would have aliased.
     const fourPart = (w: Workstream) =>
-      `${w.parentSessionId}|${w.boardId}|${w.assignee}|${w.topic}`;
+      `${w.parentSessionId}|${w.boardId}|${w.coordinate}|${w.topic}`;
     expect(fourPart(a)).toBe(fourPart(b));
 
     // A tenant-scoped lookup never reaches across.
@@ -439,16 +473,47 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
   });
 
   it("DERIVATION — the encoding is canonical, so no two distinct keys collide", () => {
-    // A raw join would make these two keys — different assignee, different
-    // topic — derive the same id, silently merging two workers' Workstreams.
-    const split = deriveWorkstreamId(key({ assignee: "a", topic: "b" }));
-    const joined = deriveWorkstreamId(key({ assignee: "a:b", topic: "" }));
-    expect(split).not.toBe(joined);
+    // Establish the collision FIRST, against the raw join this rules out —
+    // otherwise the assertion below is green for no reason. A trailing empty
+    // field still contributes a separator, so `("a:b", "")` vs `("a", "b")`
+    // does NOT collide; the pair that does is one where the separator moves
+    // between two non-empty fields.
+    const rawJoin = (k: Key) =>
+      [k.parentSessionId, k.boardId, coordinateKey(k.coordinate), k.topic].join(":");
 
-    // ...and a separator inside a coordinate does not shift the field boundaries.
-    expect(deriveWorkstreamId(key({ topic: "FIX-981:v2" }))).not.toBe(
-      deriveWorkstreamId(key({ topic: "FIX-981", assignee: "implementer:v2" }))
-    );
+    const left = key({ coordinate: assignee("a:b"), topic: "c" });
+    const right = key({ coordinate: assignee("a"), topic: "b:c" });
+    expect(rawJoin(left)).toBe(rawJoin(right)); // the collision is real...
+
+    // eslint-disable-next-line no-console
+    console.log(`[poc] raw join collides on "${rawJoin(left)}"`);
+
+    // ...and per-field encoding is what separates them.
+    expect(deriveWorkstreamId(left)).not.toBe(deriveWorkstreamId(right));
+
+    // Same hazard one field over: a separator inside the board id.
+    const b1 = key({ boardId: "board:a", coordinate: assignee("b") });
+    const b2 = key({ boardId: "board", coordinate: assignee("a:b") });
+    expect(rawJoin(b1)).toBe(rawJoin(b2));
+    expect(deriveWorkstreamId(b1)).not.toBe(deriveWorkstreamId(b2));
+  });
+
+  it("DERIVATION — the uniform and floor coordinates derive distinct ids", async () => {
+    const store = await freshStore();
+    // Neither has an assignee. Keyed on a raw string they would both have to
+    // borrow a reserved name; a board legally declaring that name would then
+    // share their Workstream. The tagged form derives three distinct ids.
+    const asAssignee = key({ coordinate: assignee("u") });
+    const asUniform = key({ coordinate: { kind: "uniform" } });
+    const asFloor = key({ coordinate: { kind: "floor" } });
+
+    const ids = new Set([asAssignee, asUniform, asFloor].map(deriveWorkstreamId));
+    expect(ids.size).toBe(3);
+
+    // ...and the record for a coordinate with no assignee does not invent one.
+    const floorWs = await getOrCreateWorkstream(store, asFloor);
+    expect(floorWs.coordinate).toBe("f");
+    expect(floorWs.assignee).toBeUndefined();
   });
 
   it("RACE — a composite id does NOT save you: set() is an upsert, not an insert", async () => {

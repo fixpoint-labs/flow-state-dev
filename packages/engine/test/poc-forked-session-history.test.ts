@@ -25,15 +25,31 @@ import { InMemoryRequestStore } from "../src/stores/memory/request-store";
 import type { RequestRecord } from "../src/stores/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
+/**
+ * A tenant-less deployment — the single-tenant case, where records carry no
+ * tenant and the read exact-matches that. Named rather than inlined so the
+ * loaders' tenant argument reads as a decision at each call site.
+ */
+const NO_TENANT = undefined;
+/** A tenant-scoped deployment, for the fork case that a hard-coded read breaks. */
+const TENANT_A = "tenant_a";
+
 const HISTORY_WINDOW = 50;
 
-function turn(id: string, sessionId: string, startedAtMs: number, text: string): RequestRecord {
+function turn(
+  id: string,
+  sessionId: string,
+  startedAtMs: number,
+  text: string,
+  tenantId?: string
+): RequestRecord {
   return {
     id,
     flowKind: "chat",
     actionName: "send",
     userId: "u1",
     sessionId,
+    tenantId,
     status: "completed",
     startedAtMs,
     state: {},
@@ -46,11 +62,20 @@ function turn(id: string, sessionId: string, startedAtMs: number, text: string):
   } as RequestRecord;
 }
 
-/** Verbatim shape of the cross-turn history load (createExecutionContext.ts:526-536). */
-function loadOwn(store: InMemoryRequestStore, sessionId: string) {
+/**
+ * Verbatim shape of the cross-turn history load (createExecutionContext.ts:526-536).
+ *
+ * `tenantId` is a REQUIRED parameter, not a defaulted one. `matchesTenantFilter`
+ * treats a present-`undefined` as an exact filter (`scope-keys.ts:131`), so
+ * hard-coding it here would silently match only tenant-less records: a fork of
+ * a tenant-scoped parent would snapshot NOTHING at fork time and inherit no
+ * conversation, with no error anywhere. Production always threads
+ * `options.tenantId` through; so does this.
+ */
+function loadOwn(store: InMemoryRequestStore, sessionId: string, tenantId: string | undefined) {
   return store.list({
     sessionId,
-    tenantId: undefined,
+    tenantId,
     status: "completed",
     limit: HISTORY_WINDOW,
     orderBy: "startedAtMs",
@@ -59,10 +84,10 @@ function loadOwn(store: InMemoryRequestStore, sessionId: string) {
 }
 
 /** Unbounded read — an ancestor's contribution is bounded by its snapshot, not by N. */
-function loadAll(store: InMemoryRequestStore, sessionId: string) {
+function loadAll(store: InMemoryRequestStore, sessionId: string, tenantId: string | undefined) {
   return store.list({
     sessionId,
-    tenantId: undefined,
+    tenantId,
     status: "completed",
     orderBy: "startedAtMs",
     withItems: true
@@ -84,9 +109,10 @@ async function forkByCopy(
   store: InMemoryRequestStore,
   parentSessionId: string,
   forkSessionId: string,
-  atMs: number
+  atMs: number,
+  tenantId: string | undefined
 ): Promise<{ writes: number }> {
-  const parent = await loadOwn(store, parentSessionId);
+  const parent = await loadOwn(store, parentSessionId, tenantId);
   const prefix = parent.filter((r) => r.startedAtMs <= atMs);
   let writes = 0;
   for (const r of prefix) {
@@ -146,9 +172,10 @@ const hydrateForkRef = (ref: PersistedForkRef): ForkRef => ({
 /** Takes the cursor: what the parent had completed at the moment of the fork. */
 async function forkCursor(
   store: InMemoryRequestStore,
-  parentSessionId: string
+  parentSessionId: string,
+  tenantId: string | undefined
 ): Promise<ReadonlySet<string>> {
-  const completed = await loadOwn(store, parentSessionId);
+  const completed = await loadOwn(store, parentSessionId, tenantId);
   return new Set(completed.map((r) => r.id));
 }
 
@@ -160,7 +187,8 @@ async function forkCursor(
 async function loadForked(
   store: InMemoryRequestStore,
   sessionId: string,
-  forks: Record<string, ForkRef>
+  forks: Record<string, ForkRef>,
+  tenantId: string | undefined
 ): Promise<{ records: RequestRecord[]; reads: number }> {
   const out: RequestRecord[] = [];
   let reads = 0;
@@ -175,8 +203,8 @@ async function loadForked(
     // nothing. Fetch unbounded for an ancestor and filter to the snapshot.
     const own =
       visible === undefined
-        ? await loadOwn(store, cursor)
-        : (await loadAll(store, cursor)).filter((r) => visible!.has(r.id));
+        ? await loadOwn(store, cursor, tenantId)
+        : (await loadAll(store, cursor, tenantId)).filter((r) => visible!.has(r.id));
     reads++;
     out.push(...own);
     const ref: ForkRef | undefined = forks[cursor];
@@ -206,11 +234,11 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
 
   it("COPY — fork sees the prefix, and the fork point holds", async () => {
     const store = await seed();
-    const { writes } = await forkByCopy(store, "S", "W", 3);
+    const { writes } = await forkByCopy(store, "S", "W", 3, NO_TENANT);
     await parentContinues(store);
     await store.set("w1", turn("w1", "W", 10, "fork's own turn"), "any");
 
-    const fork = asc(await loadOwn(store, "W"));
+    const fork = asc(await loadOwn(store, "W", NO_TENANT));
     // eslint-disable-next-line no-console
     console.log(`[fork/copy] writes-at-fork=${writes} reads-at-load=1 window=${fork.length}`);
 
@@ -218,43 +246,43 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // Parent turns 4 and 5 happened AFTER the fork — invisible.
     expect(fork.some((id) => id.endsWith("p4") || id.endsWith("p5"))).toBe(false);
     // And the parent never sees the fork.
-    expect(asc(await loadOwn(store, "S"))).toEqual(["p1", "p2", "p3", "p4", "p5"]);
+    expect(asc(await loadOwn(store, "S", NO_TENANT))).toEqual(["p1", "p2", "p3", "p4", "p5"]);
   });
 
   it("REFERENCE — same visible history, no writes at fork", async () => {
     const store = await seed();
     const forks: Record<string, ForkRef> = {
-      W: { sessionId: "S", visible: await forkCursor(store, "S") }
+      W: { sessionId: "S", visible: await forkCursor(store, "S", NO_TENANT) }
     };
     await parentContinues(store);
     await store.set("w1", turn("w1", "W", 10, "fork's own turn"), "any");
 
-    const { records, reads } = await loadForked(store, "W", forks);
+    const { records, reads } = await loadForked(store, "W", forks, NO_TENANT);
     // eslint-disable-next-line no-console
     console.log(`[fork/ref] writes-at-fork=0 reads-at-load=${reads} window=${records.length}`);
 
     expect(asc(records)).toEqual(["p1", "p2", "p3", "w1"]);
-    expect(asc(await loadOwn(store, "S"))).toEqual(["p1", "p2", "p3", "p4", "p5"]);
+    expect(asc(await loadOwn(store, "S", NO_TENANT))).toEqual(["p1", "p2", "p3", "p4", "p5"]);
   });
 
   it("both strategies agree on what the fork can see", async () => {
     const copyStore = await seed();
-    await forkByCopy(copyStore, "S", "W", 3);
+    await forkByCopy(copyStore, "S", "W", 3, NO_TENANT);
     await parentContinues(copyStore);
     await copyStore.set("w1", turn("w1", "W", 10, "own"), "any");
 
     const refStore = await seed();
-    const cur = await forkCursor(refStore, "S");
+    const cur = await forkCursor(refStore, "S", NO_TENANT);
     await parentContinues(refStore);
     await refStore.set("w1", turn("w1", "W", 10, "own"), "any");
-    const { records } = await loadForked(refStore, "W", { W: { sessionId: "S", visible: cur } });
+    const { records } = await loadForked(refStore, "W", { W: { sessionId: "S", visible: cur } }, NO_TENANT);
 
     const textsOf = (rs: RequestRecord[]) =>
       [...rs]
         .sort((a, b) => a.startedAtMs - b.startedAtMs)
         .flatMap((r) => (r.items ?? []).map((i) => (i as unknown as { text: string }).text));
 
-    expect(textsOf(await loadOwn(copyStore, "W"))).toEqual(textsOf(records));
+    expect(textsOf(await loadOwn(copyStore, "W", NO_TENANT))).toEqual(textsOf(records));
   });
 
   it("COPY cost scales with parent history; REFERENCE cost is constant", async () => {
@@ -262,10 +290,10 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     for (let n = 1; n <= 40; n++) {
       await store.set(`p${n}`, turn(`p${n}`, "S", n, `t${n}`), "any");
     }
-    const { writes } = await forkByCopy(store, "S", "W", 40);
+    const { writes } = await forkByCopy(store, "S", "W", 40, NO_TENANT);
     const { reads } = await loadForked(store, "W2", {
-      W2: { sessionId: "S", visible: await forkCursor(store, "S") }
-    });
+      W2: { sessionId: "S", visible: await forkCursor(store, "S", NO_TENANT) }
+    }, NO_TENANT);
 
     // eslint-disable-next-line no-console
     console.log(`[fork/cost] 40-turn parent -> copy writes=${writes}, reference writes=0 reads=${reads}`);
@@ -285,7 +313,7 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
       W: { sessionId: "S", visible: new Set(["p1", "p2", "p3"]) },
       V: { sessionId: "W", visible: new Set(["w1", "w2"]) }
     };
-    const { records, reads } = await loadForked(store, "V", forks);
+    const { records, reads } = await loadForked(store, "V", forks, NO_TENANT);
 
     // eslint-disable-next-line no-console
     console.log(`[fork/chain] depth=2 reads=${reads} visible=${asc(records).join(",")}`);
@@ -301,25 +329,25 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // requests lazily after a request finishes. So this only happens when an
     // operator asked for it — which is what makes the direction matter.
     const refStore = await seed();
-    const refCursor = await forkCursor(refStore, "S");
+    const refCursor = await forkCursor(refStore, "S", NO_TENANT);
     await refStore.set("w1", turn("w1", "W", 10, "fork own"), "any");
     const before = await loadForked(refStore, "W", {
       W: { sessionId: "S", visible: refCursor }
-    });
+    }, NO_TENANT);
     expect(asc(before.records)).toEqual(["p1", "p2", "p3", "w1"]);
 
     await refStore.delete("p1");
     await refStore.delete("p2");
     const after = await loadForked(refStore, "W", {
       W: { sessionId: "S", visible: refCursor }
-    });
+    }, NO_TENANT);
 
     const copyStore = await seed();
-    await forkByCopy(copyStore, "S", "W", 3);
+    await forkByCopy(copyStore, "S", "W", 3, NO_TENANT);
     await copyStore.set("w1", turn("w1", "W", 10, "fork own"), "any");
     await copyStore.delete("p1");
     await copyStore.delete("p2");
-    const copyAfter = asc(await loadOwn(copyStore, "W"));
+    const copyAfter = asc(await loadOwn(copyStore, "W", NO_TENANT));
 
     // eslint-disable-next-line no-console
     console.log(
@@ -346,8 +374,8 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     }
 
     const { records } = await loadForked(store, "W", {
-      W: { sessionId: "S", visible: await forkCursor(store, "S") }
-    });
+      W: { sessionId: "S", visible: await forkCursor(store, "S", NO_TENANT) }
+    }, NO_TENANT);
     // eslint-disable-next-line no-console
     console.log(
       `[fork/window] limit=${HISTORY_WINDOW} per read, chain of 2 -> returned=${records.length}`
@@ -365,7 +393,7 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     for (const n of [1, 2, 3]) {
       await store.set(`p${n}`, turn(`p${n}`, "S", n, `pre-fork ${n}`), "any");
     }
-    const visible = await forkCursor(store, "S");
+    const visible = await forkCursor(store, "S", NO_TENANT);
 
     // The parent then produces a full window's worth of POST-fork turns. A
     // newest-N read would return only those, none of which are in the cursor.
@@ -374,7 +402,7 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     }
     await store.set("w1", turn("w1", "W", 500, "fork own"), "any");
 
-    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible } });
+    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible } }, NO_TENANT);
     const ids = asc(records);
     // eslint-disable-next-line no-console
     console.log(`[fork/window-prefix] parent post-fork=${HISTORY_WINDOW} fork sees=${ids.join(",")}`);
@@ -398,7 +426,7 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     const { records } = await loadForked(store, "V", {
       W: { sessionId: "S", visible: new Set(["p1", "p2", "p3"]) },
       V: { sessionId: "W", visible: new Set(["w1", "w2"]) }
-    });
+    }, NO_TENANT);
 
     expect(asc(records)).toEqual(["p1", "p2", "p3", "w1", "w2", "v1"]);
     // S's post-fork turns are invisible even though V forked much later.
@@ -417,14 +445,14 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
       status: "in_progress"
     } as RequestRecord, "any");
 
-    const visible = await forkCursor(store, "S"); // sees only p1
+    const visible = await forkCursor(store, "S", NO_TENANT); // sees only p1
     await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
 
     // It completes AFTER the fork. A timestamp cursor would now admit it,
     // because startedAtMs (2) <= the fork point (say 3). The snapshot does not.
     await store.set("p_slow", turn("p_slow", "S", 2, "completed after fork"), "any");
 
-    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible } });
+    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible } }, NO_TENANT);
     // eslint-disable-next-line no-console
     console.log(`[fork/cursor] after late completion, fork sees=${asc(records).join(",")}`);
 
@@ -432,14 +460,53 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     expect(asc(records)).not.toContain("p_slow");
 
     // The timestamp rule this replaces would have admitted it.
-    const byTimestamp = (await loadOwn(store, "S")).filter((r) => r.startedAtMs <= 3);
+    const byTimestamp = (await loadOwn(store, "S", NO_TENANT)).filter((r) => r.startedAtMs <= 3);
     expect(byTimestamp.map((r) => r.id).sort()).toEqual(["p1", "p_slow"]);
+  });
+
+  it("TENANT — a fork of a tenant-scoped parent inherits nothing unless the tenant is threaded", async () => {
+    const store = new InMemoryRequestStore();
+    for (const n of [1, 2, 3]) {
+      await store.set(`p${n}`, turn(`p${n}`, "S", n, `parent turn ${n}`, TENANT_A), "any");
+    }
+    await store.set("w1", turn("w1", "W", 10, "fork own", TENANT_A), "any");
+
+    // The bug, first. A read that hard-codes `tenantId: undefined` exact-matches
+    // only tenant-less records, so the cursor snapshots NOTHING — and nothing is
+    // a legal cursor, so no error is raised anywhere. The fork simply resumes
+    // with no memory of the conversation it was forked to continue.
+    const blindCursor = await forkCursor(store, "S", NO_TENANT);
+    const blind = await loadForked(store, "W", { W: { sessionId: "S", visible: blindCursor } }, NO_TENANT);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[fork/tenant] untenanted read -> cursor=${blindCursor.size} ids, fork sees=` +
+        `${asc(blind.records).join(",") || "(nothing)"}`
+    );
+    expect(blindCursor.size).toBe(0);
+    expect(asc(blind.records)).toEqual([]);
+
+    // Threaded through cursor creation AND every chain read, it works.
+    const cursor = await forkCursor(store, "S", TENANT_A);
+    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible: cursor } }, TENANT_A);
+    expect(asc(records)).toEqual(["p1", "p2", "p3", "w1"]);
+
+    // ...and it does not reach across tenants: another tenant reusing the same
+    // bare session id contributes nothing, which is the same exact-match rule
+    // read in the other direction.
+    await store.set("x1", turn("x1", "S", 4, "other tenant", "tenant_b"), "any");
+    const again = await loadForked(
+      store,
+      "W",
+      { W: { sessionId: "S", visible: await forkCursor(store, "S", TENANT_A) } },
+      TENANT_A
+    );
+    expect(asc(again.records)).toEqual(["p1", "p2", "p3", "w1"]);
   });
 
   it("PERSISTENCE — a raw Set cursor serializes to nothing and empties the fork", async () => {
     const store = await seed();
     await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
-    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S") };
+    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S", NO_TENANT) };
 
     // What a store adapter actually writes. No throw, no warning — the Set is
     // simply not a JSON value, so the cursor vanishes.
@@ -458,14 +525,14 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
       sessionId: naive.sessionId,
       visible: new Set(Array.isArray(naive.visible) ? (naive.visible as string[]) : [])
     };
-    const { records } = await loadForked(store, "W", { W: reloaded });
+    const { records } = await loadForked(store, "W", { W: reloaded }, NO_TENANT);
     expect(asc(records)).toEqual(["w1"]);
   });
 
   it("PERSISTENCE — the array form round-trips through JSON unchanged", async () => {
     const store = await seed();
     await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
-    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S") };
+    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S", NO_TENANT) };
 
     const stored = JSON.parse(JSON.stringify(persistForkRef(live))) as PersistedForkRef;
     // eslint-disable-next-line no-console
@@ -473,8 +540,8 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     expect(stored.visible).toEqual(["p1", "p2", "p3"]);
 
     // Same visible history before and after a trip through the store.
-    const fromLive = await loadForked(store, "W", { W: live });
-    const fromStored = await loadForked(store, "W", { W: hydrateForkRef(stored) });
+    const fromLive = await loadForked(store, "W", { W: live }, NO_TENANT);
+    const fromStored = await loadForked(store, "W", { W: hydrateForkRef(stored) }, NO_TENANT);
     expect(asc(fromStored.records)).toEqual(asc(fromLive.records));
     expect(asc(fromStored.records)).toEqual(["p1", "p2", "p3", "w1"]);
 
