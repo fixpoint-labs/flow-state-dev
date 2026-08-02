@@ -1059,6 +1059,58 @@ decision describes, but inside a Workstream those tools address the Workstream's
 the blast radius is that Workstream's tasks rather than the coordinator's. The ownership token is
 still required on whatever settles the *parent's* task.
 
+### Decision 8 — out-of-process stays in scope, kept lite: the board is the truth, the queue is a wake
+
+DECIDED by the repo owner: *"Out of process is in scope as of now but I'd like to find a solution
+that keeps this lite and simple. Sessions and task boards are already durable and we have BullMQ
+support so it seems like the primitives are already there."*
+
+**That reading is mostly right, and the shape it implies is the lighter one.** If the durable task
+row already carries the re-dispatchable template (§5's requirement (2)), then **the board is the
+source of truth and the queue is only a wake.** A lost, duplicated or late queue message costs a
+delay, not a stranded task, because the task is still `pending` on a durable board and the same
+reconciliation that FIX-978 already performs finds it. That inverts the usual queue-centric design —
+and it is why "lite" is achievable rather than a hope. It also softens two findings that only bite
+on a queue-as-truth model: **N14** (a binding that must survive a deploy) becomes "re-resolve from
+the task row", and **N9**'s serialization pressure lands on the task row rather than the envelope.
+
+**One primitive is genuinely missing, and exactly one.** Sessions are durable, boards are durable,
+BullMQ is wired. What is not there is **create-if-absent** (N5a) — `set` is an upsert, so Workstream
+get-or-create has no way to lose a race. It is sized Small and it is the first thing in the execution
+sequence. The rest of the "primitives are there" claim holds.
+
+**Serialization within a Workstream is a board-level rule, not a transport-level policy.** The
+concurrency arbiter enforces `policy` for the **in-process dispatcher only** — with an external
+dispatcher the host skips arbitration entirely and defers enforcement to the durable substrate
+(`transports/concurrency/arbiter.ts:22-26`, `docs/architecture/inbound-transports.md:153`). So
+setting `policy: "queue"` buys nothing on the path this decision keeps in scope, and N1's surviving
+half cannot be answered there. **Answer it at the board instead:** do not claim a task whose
+Workstream already has an in-flight request. That is a durable, fenced check on the surface FIX-981
+is already fencing, it works identically in and out of process, and it gives the one-lane-per-
+Workstream ordering continuation semantics want. FIX-982 states it as a claim rule or explains why
+serialization is not required.
+
+### The worker's result must land on a durable surface — cross-scope resource reads are deferred
+
+DECIDED by the repo owner, interim: *"The request needs to output what the parent needs, or they
+write to a user/org scoped resource for now is probably ok."*
+
+**This closes a hole in Decision 7.** Parent-side settlement needs the worker's result, and
+`RequestRecord` persists **status and items — not `ExecutionResult.output`**. A structured return
+value held only in memory is gone after a restart, so `collection.complete(taskId, output)` could not
+be reconstructed. The interim rule removes the dependency on that missing surface without adding one:
+
+> **A detached worker's result must be represented on a surface that survives a restart** — an
+> **emitted item** (durable, already `taskId`-attributed, and exactly what FIX-991's union retrieves),
+> or a **user/org-scoped resource** write. A bare return value is not durable and must not be what
+> parent-side settlement depends on. Inline workers are unaffected: their return value is passed by
+> reference and never round-trips.
+
+**And it defers the question underneath.** Whether a parent session may read a **sub-session-scoped**
+resource is now **OQ-F**, deliberately open: the interim path (item, or user/org scope) does not need
+it. It returns the moment a Workstream needs to expose something richer than its result — a working
+draft, a scratch artifact — to its parent without promoting it to user or org scope.
+
 ---
 
 ## 5. The milestones under this model
@@ -1076,9 +1128,11 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 | **(new prerequisite)** — create-if-absent at the store boundary | *(unfiled — §6)* | **Blocks Workstream routing.** `set` is an upsert; `ExpectedVersion` cannot say "must not exist". | Small |
 | **(no milestone)** — declare a tool as a board participant | FIX-925 | **Moved in by the owner; spec already merged, implementation never built.** The registry's other end — see §7. | Medium |
 
-**Execution sequence: create-if-absent + the parent-session store filter (S1's engine half) →
-FIX-981 → (FIX-978, elsewhere) → FIX-982 → FIX-991, then FIX-983. FIX-925 runs independently of that
-chain** and may start any time after the gate.
+**Execution sequence: create-if-absent + S1a (the parent-session store filter) → FIX-981 →
+(FIX-978, elsewhere) → FIX-982 → FIX-991, then FIX-983 → S1b → S2 → S3 → S4 → S5. FIX-925 runs
+independently of that chain** and may start any time after the gate.
+**S1–S5 are in the sequence because OQ-E put them in this epic**, and **S4 gates the wrap**: it is the
+epic's BP-003 evidence path, so "every issue merged" is not "the epic is done" until S4 has run.
 FIX-991 is in the sequence because unconditional criterion 4b depends on it.
 Create-if-absent leads because Workstream get-or-create is the routing primitive M3's seam
 dispatches through, and it is shared store surface (`ExpectedVersion`) that FIX-992 is concurrently
@@ -1347,19 +1401,29 @@ Four remain, plus one placement decision that now blocks alongside them.
 | | Question | State |
 |---|---|---|
 | **OQ-A** | Does this epic change `ResourceStateStore`? | **OPEN — the gate.** A human decides. |
-| **OQ-E** | **Where do S1–S5 live** — filed and sequenced under FIX-939, or a follow-on epic? | **OPEN, and blocking.** See below. A human decides. |
+| **OQ-E** | **Where do S1–S5 live** — filed and sequenced under FIX-939, or a follow-on epic? | **ANSWERED by the owner: here.** S1–S5 are filed and sequenced under FIX-939. S1 splits (S1a leads FIX-982, S1b follows); S4 is this epic's BP-003 evidence path and gates the wrap. |
 | **OQ-B** | Does the blocking/background disposition need to be durable? | **Answered by the owner's decision** (Decision 0): disposition is request metadata, not a durable task field. Cross-request *waiting* remains, as FIX-983's scope. |
 | **OQ-C** | What is M5's real necessity argument? | **Answered by the owner's decision** (Decision 0), narrowing: a background request already has a persisted item stream, so no new progress surface is needed. Residue is lifetime, not progress. |
-| **OQ-D-i** | Who owns the **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`)? | **OPEN.** A human decides. |
-| **OQ-D-ii** | Who owns the **`maxInstances` registry race**, and is it in scope here at all? | **OPEN.** A human decides. |
+| **OQ-D-i** | Who owns the **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`)? | **DEFERRED by the owner, with a condition** — see below. |
+| **OQ-D-ii** | Who owns the **`maxInstances` registry race**, and is it in scope here at all? | **DEFERRED by the owner, with a condition** — see below. |
+| **OQ-F** | **Can a parent session read a sub-session-scoped resource?** | **DEFERRED by the owner** (Decision 8). Not needed for the interim result path; revisit when a Workstream needs to expose more than its result. |
 
-**OQ-E is a blocking condition, not a note.** S1–S4 are called prerequisites in §5 while sitting
-outside the membership table and the execution sequence, so as written **every indexed issue can
-complete while S1's history policy is unbuilt and S4 — the epic's own BP-003 evidence path — has
-never run.** Explicitly: **this epic cannot wrap, and the objective gate is not fully answerable,
-until OQ-E is decided.** Either S1–S5 are filed and sequenced here, or they move to a follow-on epic
-**and the completion criteria are conditioned accordingly** — a criterion depending on unowned work is
-not a criterion. Nothing here picks; placement is the owner's call, open rather than overlooked.
+**OQ-D is deferred with a design condition, which is not the same as unanswered.** The owner's call:
+*"push these until later as long as we have confidence the design can accommodate them, but we need
+to keep them in mind so that it does."* So D-i and D-ii do not gate execution, **and no issue under
+this epic may foreclose them.** Concretely, FIX-981 and FIX-982 must not adopt a claim or admission
+design that makes a later hard ceiling — or a later fix to the `maxInstances` registry race —
+impossible to add without redoing them. Any spec that reaches an admission or capacity decision
+states, in a sentence, how the deferred ceilings would attach. A reviewer may reject a design that
+closes that door; they may not demand the ceiling be built.
+
+**OQ-E — ANSWERED: S1–S5 live here.** They were called prerequisites in §5 while sitting outside the
+membership table and the execution sequence, which meant every indexed issue could complete while
+S4 — the epic's own BP-003 evidence path — had never run. The owner's answer closes that: **S1–S5 are
+filed and sequenced under FIX-939**, so they are indexed rows with a place in the sequence rather than
+prose. S1a (the `SessionListOptions` fields and their adapters) leads FIX-982; S1b, S2, S3 follow it;
+S4 is the epic's evidence path and **gates the wrap**; S5 is the documentation pass. They still have
+to be filed — see the membership table's unfiled set.
 
 > **Third instance of one defect class: an unindexed dependency lets the epic satisfy its wrap
 > condition while an unconditional criterion goes unmet.** FIX-991 missing from the execution sequence
@@ -1401,7 +1465,7 @@ with their resolution recorded rather than deleted, so a later reader does not r
 
 | | Finding | Should land with |
 |---|---|---|
-| **N1** | **DISSOLVED as a self-collision.** The arbiter's default key is `"session"` (`arbiter.ts:89-94`), so a Workstream — a distinct session — never contends with its parent, and the foreground-waiting-on-queued-background self-deadlock cannot arise. What survives is narrower and is a *choice*, not a hazard: concurrent requests **within one Workstream** default to `policy: "allow"`, which interleaves them. Continuation semantics almost certainly want `"queue"` (FIFO — one lane per Workstream). FIX-982 must state which it sets and why. | FIX-982 |
+| **N1** | **DISSOLVED as a self-collision.** The arbiter's default key is `"session"` (`arbiter.ts:89-94`), so a Workstream — a distinct session — never contends with its parent, and the foreground-waiting-on-queued-background self-deadlock cannot arise. What survives is narrower and is a *choice*, not a hazard: concurrent requests **within one Workstream** default to `policy: "allow"`, which interleaves them. Continuation semantics want one lane per Workstream — but **`policy` cannot deliver it out of process**: the arbiter enforces the policy for the in-process dispatcher only, and with an external dispatcher the host skips arbitration entirely (`arbiter.ts:22-26`, `inbound-transports.md:153`). **Answered by Decision 8:** serialization is a board-level claim rule — do not claim a task whose Workstream has an in-flight request — not a transport policy. FIX-982 states it as a claim rule or explains why serialization is not required. | FIX-982 |
 | **N2** | **DISSOLVED.** `latestRequestId` is a per-session field (`runAction.ts:642-658`), and a Workstream has its own, so it cannot steal the parent's auto-resume pointer. No issue needed; the previously proposed candidate should not be filed. | — |
 | **N3** | **Reframed twice — and the second reframe was wrong.** A `parentSessionId` filter at the session store answers *"what Workstreams **exist** under this session"*, which is the enumeration half and is the right shape for it (BP-033, rather than filtering `listAll` globally). It does **not** answer *"which are **live**"*: a `SessionRecord` carries no active-request status, and Workstreams deliberately do not auto-close (§1), so every Workstream a parent ever spawned enumerates forever. `ActiveRequestRegistry` still has no per-session query (`stores/types.ts:471-489`), so the cancellation and reclamation paths need an **activity** query — per-parent, or a join against the enumeration — and FIX-982 must say which. Two queries, not one. | FIX-982 (+ the store filter, see the sequence) |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
@@ -1483,8 +1547,9 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 | **Independent — startable at the gate alongside FIX-981** | 1 | FIX-925 (spec already merged; enters post-spec, §5) |
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 |
+| **Unfiled — the consumer surface, in scope per OQ-E** | 5 | *S1* (splits: **S1a** the store filter + adapters, **S1b** route & request metadata) · *S2* `client` · *S3* `react` · *S4* kitchen-sink (**the epic's evidence path — gates the wrap**) · *S5* docs |
 | **Unfiled blockers** — must be filed before the gate releases execution | 2 | *create-if-absent* (N5a) · *S1a* — the parent-session store filter (N3, and get-or-create's own lookup) |
-| **Indexed rows** = sub-issues + external dependency + unfiled blockers | **11** | — |
+| **Indexed rows** = sub-issues + external dependency + unfiled blockers + S1–S5 | **16** | — |
 
 > **The create-if-absent blocker is indexed here deliberately, and it is still unfiled.** §5 names it
 > and puts it first in the execution sequence, but until this round it appeared in neither the
