@@ -117,9 +117,15 @@ async function loadCursorMembers(
   store: InMemoryRequestStore,
   sessionId: string,
   visible: ReadonlySet<string>,
-  tenantId: string | undefined
+  tenantId: string | undefined,
+  countCall: () => void = () => {}
 ): Promise<RequestRecord[]> {
-  const fetched = await Promise.all([...visible].map((id) => store.get(id)));
+  const fetched = await Promise.all(
+    [...visible].map((id) => {
+      countCall();
+      return store.get(id);
+    })
+  );
   return fetched.filter(
     (r): r is RequestRecord =>
       r !== undefined &&
@@ -235,6 +241,11 @@ async function loadForked(
   tenantId: string | undefined
 ): Promise<{ records: RequestRecord[]; reads: number }> {
   const out: RequestRecord[] = [];
+  // Counts STORE CALLS, not chain levels. An earlier draft incremented once per
+  // ancestor while `loadCursorMembers` issued one `get` per cursor member, so a
+  // 50-id cursor reported `reads=1`. There is no batch-by-id surface on any
+  // adapter today, so those N calls are real round trips — the by-id path
+  // trades unbounded ROWS for N CALLS, and both numbers belong in §8.
   let reads = 0;
   let cursor: string | undefined = sessionId;
   let visible: ReadonlySet<string> | undefined; // undefined = the fork's own session
@@ -248,9 +259,10 @@ async function loadForked(
     // that without the unbounded scan a list-then-discard read would cost.
     const own =
       visible === undefined
-        ? await loadOwn(store, cursor, tenantId)
-        : await loadCursorMembers(store, cursor, visible, tenantId);
-    reads++;
+        ? (reads++, await loadOwn(store, cursor, tenantId))
+        : await loadCursorMembers(store, cursor, visible, tenantId, () => {
+            reads++;
+          });
     out.push(...own);
     const ref: ForkRef | undefined = forks[cursor];
     if (ref === undefined) break;
@@ -343,7 +355,12 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // eslint-disable-next-line no-console
     console.log(`[fork/cost] 40-turn parent -> copy writes=${writes}, reference writes=0 reads=${reads}`);
     expect(writes).toBe(40);
-    expect(reads).toBe(2);
+    // 1 call for the fork's own turns + one `get` per cursor member. NOT 2:
+    // an earlier draft counted chain LEVELS and reported 2, which is how "the
+    // reference strategy's cost is constant" got into the record. It is not —
+    // it is O(cursor) store calls on EVERY child turn, against a one-time
+    // O(prefix) write for COPY.
+    expect(reads).toBe(41);
   });
 
   it("REFERENCE resolves a fork of a fork; COPY needs a re-copy per level", async () => {
@@ -365,7 +382,8 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
 
     // V sees S's prefix, W up to 12, its own — and NOT W's later turn.
     expect(asc(records)).toEqual(["p1", "p2", "p3", "w1", "w2", "v1"]);
-    expect(reads).toBe(3);
+    // 1 (own) + 3 (W's cursor) + 2 (V's cursor) = 6, not the 3 levels walked.
+    expect(reads).toBe(6);
   });
 
   it("RETENTION — COPY defeats the parent's policy; REFERENCE honors it", async () => {
