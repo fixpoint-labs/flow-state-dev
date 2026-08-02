@@ -54,8 +54,17 @@ type TaskWithTopic = TaskWorkerInput & { topic?: string };
  */
 type WorkerEntry = TaskWorker | { worker: TaskWorker; dispatch?: WorkerDispatch };
 
+/**
+ * The shipping shape is a UNION — `workers: TaskWorker | TaskWorkerRegistry`
+ * (`task-board/index.ts:288`). A single uniform worker has no assignee, so it
+ * has no natural key coordinate; it gets the reserved sentinel below, mirroring
+ * how `worker-step` already steers an absent assignee through a reserved
+ * fallback route.
+ */
+const UNIFORM_ASSIGNEE = "__uniform__";
+
 type BoardConfig = {
-  workers: Record<string, WorkerEntry>;
+  workers: WorkerEntry | Record<string, WorkerEntry>;
   /** Board-level default, itself defaulting to inline. */
   dispatch?: WorkerDispatch;
   /** Runs tasks with no `assignee` (the roster's "default worker"). */
@@ -72,22 +81,58 @@ function entryDispatch(entry: WorkerEntry): WorkerDispatch | undefined {
   return "worker" in entry ? entry.dispatch : undefined;
 }
 
-/** Per-worker overrides the board default; the board default overrides inline. */
+function isRegistry(w: BoardConfig["workers"]): w is Record<string, WorkerEntry> {
+  return !("execute" in (w as object)) && !("worker" in (w as object));
+}
+
+/**
+ * Per-worker overrides the board default; the board default overrides inline.
+ *
+ * Registry-miss handling matches the shipped router rather than inventing new
+ * behavior: `defaultWorker` is the **delegation floor** and runs any task whose
+ * assignee is *"unknown or absent"* (`task-board/index.ts:290-299`,
+ * `worker-step.ts:24-38`). Throwing on an unknown assignee — as an earlier draft
+ * did — would remove that floor for tasks admitted outside the roster-validated
+ * skills path.
+ */
 function resolveDispatch(config: BoardConfig, assignee?: string): {
   worker: TaskWorker;
   dispatch: WorkerDispatch;
+  /** The coordinate that goes in the Workstream key. */
+  coordinate: string;
 } {
-  const entry =
-    assignee === undefined ? config.defaultWorker : config.workers[assignee];
-  if (entry === undefined) {
-    throw new Error(
-      `unknown_assignee: "${assignee}" is not a participant on this board.`
-    );
+  // Uniform-worker board: every task runs the one worker, under the sentinel.
+  if (!isRegistry(config.workers)) {
+    const entry = config.workers;
+    return {
+      worker: entryWorker(entry),
+      dispatch: entryDispatch(entry) ?? config.dispatch ?? INLINE,
+      coordinate: UNIFORM_ASSIGNEE
+    };
   }
-  return {
-    worker: entryWorker(entry),
-    dispatch: entryDispatch(entry) ?? config.dispatch ?? INLINE
-  };
+
+  const hit = assignee === undefined ? undefined : config.workers[assignee];
+  if (hit !== undefined) {
+    return {
+      worker: entryWorker(hit),
+      dispatch: entryDispatch(hit) ?? config.dispatch ?? INLINE,
+      coordinate: assignee!
+    };
+  }
+
+  // Miss — unknown OR absent — routes to the delegation floor when present.
+  if (config.defaultWorker !== undefined) {
+    return {
+      worker: entryWorker(config.defaultWorker),
+      dispatch: entryDispatch(config.defaultWorker) ?? config.dispatch ?? INLINE,
+      // The floor's own coordinate, so its Workstream is not keyed under a name
+      // that resolves to a different worker.
+      coordinate: UNIFORM_ASSIGNEE
+    };
+  }
+  throw new Error(
+    `unknown_assignee: "${assignee}" is not a participant on this board.`
+  );
 }
 
 /**
@@ -221,8 +266,35 @@ describe("POC: board worker config — disposition, not target", () => {
     expect(dispatch).toEqual({ mode: "inline" });
   });
 
-  it("an unknown assignee fails loudly", () => {
-    expect(() => resolveDispatch(board, "nope")).toThrow(/unknown_assignee/);
+  it("an unknown assignee routes to the delegation floor, not an error", () => {
+    // Shipped behavior: defaultWorker runs any task whose assignee is "unknown
+    // or absent". An earlier draft threw here, which would have removed the
+    // floor for tasks admitted outside the roster-validated skills path.
+    const { worker, coordinate } = resolveDispatch(board, "nope");
+    expect(worker).toBe(summarizeBlock);
+    expect(coordinate).toBe(UNIFORM_ASSIGNEE);
+  });
+
+  it("without a defaultWorker, a registry miss still fails loudly", () => {
+    const noFloor: BoardConfig = { workers: { implement: implementBlock } };
+    expect(() => resolveDispatch(noFloor, "nope")).toThrow(/unknown_assignee/);
+    expect(() => resolveDispatch(noFloor, undefined)).toThrow(/unknown_assignee/);
+  });
+
+  it("a single uniform worker board is supported, and gets a stable coordinate", () => {
+    // `workers: TaskWorker | TaskWorkerRegistry` is the shipping union. A
+    // uniform worker has no assignee, so the key needs a reserved coordinate.
+    const uniform: BoardConfig = {
+      workers: { worker: implementBlock, dispatch: { mode: "detached" } }
+    };
+    const a = resolveDispatch(uniform, undefined);
+    const b = resolveDispatch(uniform, "anything");
+    expect(a.worker).toBe(implementBlock);
+    expect(a.dispatch.mode).toBe("detached");
+    // Every task on the board resolves to one coordinate, so they share a
+    // Workstream per topic rather than fragmenting by an assignee that is absent.
+    expect(a.coordinate).toBe(UNIFORM_ASSIGNEE);
+    expect(b.coordinate).toBe(UNIFORM_ASSIGNEE);
   });
 
   it("the SAME block runs inline or detached — disposition is orthogonal", () => {

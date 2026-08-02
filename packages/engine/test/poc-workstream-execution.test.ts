@@ -296,6 +296,13 @@ describe("POC v2: Workstream execution across flows", () => {
         `[poc2] stores=${has("stores")} sessionId=${has("sessionId")} ` +
         `flow=${has("flow")} runAction=${has("runAction")} dispatch=${has("dispatch")}`
     );
+    // The epic scopes M3 to exactly two missing capabilities using these four
+    // results, so assert each rather than only logging it — otherwise the POC
+    // stays green while the design premise silently goes stale.
+    expect(has("stores")).toBe(true);
+    expect(has("flow")).toBe(true);
+    expect(has("runAction")).toBe(false);
+    expect(has("dispatch")).toBe(false);
     expect(observedCtxKeys.length).toBeGreaterThan(0);
   });
 });

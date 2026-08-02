@@ -108,6 +108,16 @@ async function findWorkstream(
 let seq = 0;
 const nextId = () => `sess_generated_${++seq}`;
 
+/**
+ * Mirrors `resolveSessionStorageKey` (`stores/scope-keys.ts:75-82`): the record
+ * is PERSISTED under `${tenantId}:${sessionId}` while the Workstream's public id
+ * stays bare, which is the id a caller hands to `runAction`. Storing under the
+ * bare id — as an earlier draft did — means production lookups miss the record
+ * and silently create a second session with no Workstream metadata.
+ */
+const storageKey = (id: string, tenantId: string | undefined) =>
+  tenantId !== undefined && tenantId.length > 0 ? `${tenantId}:${id}` : id;
+
 async function getOrCreateWorkstream(
   store: InMemorySessionStore,
   k: Key
@@ -115,7 +125,7 @@ async function getOrCreateWorkstream(
   const existing = await findWorkstream(store, k);
   if (existing !== undefined) return existing;
   const created = makeWorkstream(nextId(), k);
-  await store.set(created.id, created, "any");
+  await store.set(storageKey(created.id, k.tenantId), created, "any");
   return created;
 }
 
@@ -202,6 +212,19 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
     expect((await getOrCreateWorkstream(store, key({ tenantId: TENANT_B }))).id).toBe(b.id);
   });
 
+  it("STORAGE KEY — the record persists namespaced, the public id stays bare", async () => {
+    const store = await freshStore();
+    const ws = await getOrCreateWorkstream(store, key());
+
+    // The id a caller hands to `runAction` is bare...
+    expect(ws.id.startsWith(`${TENANT_A}:`)).toBe(false);
+    // ...while the record lives under the tenant-namespaced key.
+    expect(await store.get(storageKey(ws.id, TENANT_A))).toBeDefined();
+    // A bare-id lookup misses — which in production would silently create a
+    // second session carrying none of the Workstream metadata.
+    expect(await store.get(ws.id)).toBeUndefined();
+  });
+
   it("history stays isolated per workstream, parent untouched", async () => {
     const sessions = await freshStore();
     const requests = new InMemoryRequestStore();
@@ -252,10 +275,11 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
 
   it("RACE — a composite id does NOT save you: set() is an upsert, not an insert", async () => {
     const store = new InMemorySessionStore();
-    const id = `${TENANT_A}:S:${BOARD_A}:implementer:FIX-981`;
-    const first = await store.set(id, makeWorkstream(id, key()), 0);
+    const id = `S:${BOARD_A}:implementer:FIX-981`;
+    const skey = storageKey(id, TENANT_A);
+    const first = await store.set(skey, makeWorkstream(id, key()), 0);
     const second = await store.set(
-      id,
+      skey,
       { ...makeWorkstream(id, key()), title: "second writer" },
       0
     );
@@ -268,6 +292,6 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
 
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
-    expect((await store.get(id))?.title).toBe("second writer");
+    expect((await store.get(storageKey(id, TENANT_A)))?.title).toBe("second writer");
   });
 });
