@@ -226,7 +226,13 @@ function resolveTopic(dispatch: WorkerDispatch, task: TaskWithTopic): string {
   if (dispatch.mode !== "detached") {
     throw new Error("resolveTopic called for an inline worker");
   }
-  return task.topic ?? task.taskId;
+  // `?? ` alone is wrong: `""` is not nullish, so a coordinator that emits an
+  // empty or whitespace-only topic — a normal LLM slip — would route EVERY such
+  // task on this board and worker into one Workstream, mixing unrelated
+  // histories. That is the opposite of "continuity is opted into". Treat blank
+  // as absent and fall back to the per-task id.
+  const named = task.topic?.trim();
+  return named !== undefined && named.length > 0 ? named : task.taskId;
 }
 
 // ─── Workstream routing, keyed on assignee (not flowKind) ────────────────────
@@ -575,6 +581,31 @@ describe("POC: board worker config — disposition, not target", () => {
     const wsA = await dispatchAndRoute(stores, bare, "S", BOARD_A, a);
     const wsB = await dispatchAndRoute(stores, bare, "S", BOARD_A, b);
     expect(wsA.id).not.toBe(wsB.id);
+  });
+
+  it("BLANK TOPIC — an empty or whitespace topic is absent, not a shared one", async () => {
+    const stores = createInMemoryStores();
+    const bare: BoardConfig = {
+      workers: { impl: { worker: implementBlock, dispatch: { mode: "detached" } } }
+    };
+    const { dispatch } = resolveDispatch(bare, "impl");
+
+    // Each of these is a coordinator emitting a topic field it did not really
+    // fill in. Under `?? ` they all collapse to one Workstream.
+    expect(resolveTopic(dispatch, taskInput("t1", "one", ""))).toBe("t1");
+    expect(resolveTopic(dispatch, taskInput("t2", "two", "   "))).toBe("t2");
+    expect(resolveTopic(dispatch, taskInput("t3", "three", "\n\t"))).toBe("t3");
+
+    const wsA = await dispatchAndRoute(stores, bare, "S", BOARD_A, taskInput("t1", "one", "", "impl"));
+    const wsB = await dispatchAndRoute(stores, bare, "S", BOARD_A, taskInput("t2", "two", "  ", "impl"));
+    expect(wsA.id).not.toBe(wsB.id);
+
+    // ...and a real topic still gives continuity, including one that merely has
+    // incidental whitespace around it.
+    const wsC = await dispatchAndRoute(stores, bare, "S", BOARD_A, taskInput("t3", "x", "FIX-981", "impl"));
+    const wsD = await dispatchAndRoute(stores, bare, "S", BOARD_A, taskInput("t4", "y", " FIX-981 ", "impl"));
+    expect(wsD.id).toBe(wsC.id);
+    expect(wsC.topic).toBe("FIX-981");
   });
 
   it("boardId is REQUIRED in the key — two boards, same assignee and topic", async () => {
