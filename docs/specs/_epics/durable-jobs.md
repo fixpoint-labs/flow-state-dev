@@ -48,13 +48,14 @@ sequenceDiagram
   C->>B: addTask assignee implementer, topic FIX-981
   C->>W: spawn — get-or-create by tenantId, parentSessionId, boardId, coordinate, topic
   Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.<br/>W may FORK S's history to a fork point.
-  W->>B: claim taskId — the M1 conditional write
-  B-->>W: claimed, attempts = 1
+  C->>B: claim taskId — the M1 conditional write<br/>PARENT side, rule 14
+  B-->>C: claimed, attempts = 1 — payload built here (N25)
   C->>B: addTask topic FIX-982
   C->>W2: spawn — different topic, different Workstream
-  W->>W: stream items, each stamped with taskId
+  W->>W: stream items, each stamped with taskId (N24 — needs scope marking)
   C->>W: follow-up work on FIX-981<br/>routes to the SAME Workstream
-  W->>B: complete taskId with expectAttempt
+  W-->>C: request terminal + durable result
+  C->>B: complete taskId with expectAttempt<br/>PARENT side — seam unresolved (N26)
   U->>C: cancel
   C->>B: cancel taskId
   B->>W: interrupt the in-flight request<br/>MECHANISM DOES NOT SHIP — Decision 5
@@ -1102,15 +1103,27 @@ Workstream both observe no in-flight request, then both CAS their own rows succe
 continuations interleave anyway. Per-task fencing cannot make a cross-task, cross-store liveness
 predicate atomic.
 
-**The lane needs its own durable, versioned record — and the cheapest candidate is one that already
-exists.** The Workstream *is* a `SessionRecord`, which already carries a `version` and already goes
-through a CAS'd `set`. Claiming the lane could be a version-gated write on the Workstream's own
-session record, so the loser gets a conflict rather than a stale read. That adds no new record type,
-which is what keeps it inside Decision 8's "lite". **Stated as the leading candidate, not as
-established** — nothing here has been measured, and this document has twice asserted a mechanism whose
-seam turned out to be missing. **FIX-982 either fences the lane on a durable per-Workstream record, or
-drops the serialized-continuation guarantee and says so in the criteria.** What it may not do is keep
-the guarantee on the strength of a liveness check.
+**The lane needs its own durable record, and the two obvious candidates both fail — the second one
+is a candidate this document proposed one revision ago and now retracts.**
+
+- **The Workstream's `SessionRecord`** carries a `version`, so a version-gated claim looks free.
+  It is not: three shipped writers persist the **whole record unconditionally** — `latestRequestId`
+  (`runAction.ts:645-656`), `ctx.session.setMetadata` (`createExecutionContext.ts:1882-1927`) and the
+  metadata PATCH route (`session-routes.ts:211-222`), all `set(..., "any")`. Any of them would erase a
+  lane field written by a CAS'd claim, from a stale in-memory copy. This is the same unconditional
+  write path N17 already documents; proposing the session record as a lock while N17 says the record
+  is caller-clobberable was incoherent, and that is on this document rather than on the reviewer.
+- **`LeaseStore`** is the right *shape* — `acquire` / `release` / `pruneExpired` with expiry — but its
+  key is a **`requestId`** (`stores/types.ts:668-687`). A Workstream lane is not a request. Making it
+  serve would mean generalizing the key to an arbitrary lock name, which is a small, contained change
+  and is the most promising route precisely because the semantics already exist.
+
+**So FIX-982 has three honest options, and must pick one in its spec:** generalize `LeaseStore`'s key
+to a named lock and fence the lane on it; add a dedicated per-Workstream lane record with a
+conditional write; or **drop the serialized-continuation guarantee** and say so in the criteria. What
+it may not do is keep the guarantee on the strength of a liveness check or an unfenced field. **Two
+candidate mechanisms have now been proposed here and withdrawn on inspection** — that is the signal
+this belongs in an issue spec with a POC behind it, not in an epic-level recommendation.
 
 ### The worker's result must land on a durable surface — cross-scope resource reads are deferred
 
@@ -1359,8 +1372,8 @@ flowchart TB
   FG -->|addTask assignee, topic| TN
   FG -.->|spawn — get-or-create| W1
   FG -.->|spawn — get-or-create| WN
-  R1 -->|claim + settle| T1
-  RN -->|claim + settle| TN
+  FG -->|claim + settle — PARENT side, rule 14| T1
+  FG -->|claim + settle — PARENT side, rule 14| TN
   FG --> CONV
   W1 -->|list children of parent,<br/>then that child's requests| TASKS
   WN --> TASKS
@@ -1509,6 +1522,8 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N12** | **NEW — the uniform-worker board and the delegation floor need coordinates.** `workers` is a union — `TaskWorker \| TaskWorkerRegistry` (`task-board/index.ts:288`) — and a uniform worker has no assignee; separately, `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or absent"* (`:290-299`, `worker-step.ts:24-38`). Both need a key coordinate, and detached mode must not convert a floor-routed task into an error. Resolved shape: a **tagged** coordinate, `{ kind: "assignee", name } \| { kind: "uniform" } \| { kind: "floor" }` — not a reserved string, which an authored assignee can legally collide with (§1). The floor is tagged distinctly from `uniform` even though the two cannot coexist on one board, so a Workstream record says whether it holds a declared participant's work or work whose assignee failed to resolve. Proven end to end in §8. | FIX-982 |
 | **N8** | **NEW — Workstream routing must be tenant-scoped.** A key without `tenantId` aliases two tenants that reuse the same caller-chosen parent session id, board, assignee and topic (§8), and the same applies to S1's parent-to-child read. Session ids are already tenant-namespaced and history reads already exact-match the tenant (FIX-682); the new paths must too. | FIX-982 + S1 |
 | **N9** | **NEW, and UNRESOLVED — there is no surface from which a binding can be derived.** Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings. But §1's board surface declares only `{ worker, dispatch }` — **no hosting coordinate** — and a `BlockDefinition` carries no back-reference to the action that hosts it, so the coordinate cannot be recovered from the value either (§8 asserts both). The POC's binding map is therefore *invented*: it proves that **given** a correct binding re-resolution works, not that one can be produced. FIX-982 must either grow the board surface an explicit per-worker hosting coordinate, or move workers to a registry addressable outside `flow.actions` — and a worker reachable only through a closure the definitions cannot reconstruct is not durably dispatchable at all. | FIX-982 | Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings, so a worker reachable only through a closure the flow definitions cannot reconstruct is not durably dispatchable. FIX-982 must reject that at build time or restrict the feature to in-process execution, and say which. | FIX-982 |
+| **N26** | **NEW — parent-side settlement names an operation with no addressable surface.** Decision 7 has the parent settle the task when the Workstream's request goes terminal. But **every** way to obtain a `TaskCollectionRef` requires a live `BlockContext` — all three variants of `GetOrCreateTaskCollectionOptions` take `ctx` (`tasks/collection/get-or-create.ts:68-104`), and the durable one additionally needs a `ResourceCollectionRef`. Once the initiating request has ended there is no observer holding either, so a wake and a durable result still leave the task `in_progress`. FIX-982 must define a re-resolvable settlement action (a real `(flowKind, action)` the wake can dispatch, which lands it back in N6's admission-gate problem) or a store-level board-mutation seam that does not need a block context. **Same class as N9, N18 and the `buildTaskTools` gap: a requirement naming an operation the codebase has no surface for.** | FIX-982 |
+| **N27** | **NEW — a deterministic Workstream id is squattable.** The id is `sha256` over the routing tuple, and session creation accepts **caller-chosen** ids. A same-tenant caller who knows or guesses the tuple — `parentSessionId` is theirs, `boardId` and `coordinate` are authored, `topic` is often an issue key — can create an ordinary session at the derived `ws_…` id *before* the task is admitted. The create-if-absent insert then conflicts permanently against a record that is not a Workstream, and nothing on a `SessionRecord` discriminates the two, so reconciliation cannot recover: the task never gets a request. Determinism bought race-safety (N5b) and sold predictability. Cheapest fix consistent with Decision 8: **reserve the `ws_` prefix from caller-supplied session ids** at the route and `runAction` boundary — no secret to manage. Alternatives: an HMAC derivation under a server-held key (unguessable, still deterministic, but adds key management), or a discriminator field plus a defined terminal recovery for an occupied key. | FIX-982 + create-if-absent (N5a) |
 | **N24** | **NEW — nothing marks the task scope on the detached path, so worker items are unattributed.** `_markTaskScope` has exactly one call site (`task-board/index.ts:682`, inside the worker-body sequencer). A registry worker run as a **top-level Workstream action** never reaches it, and `taskId` in request metadata does not stamp `OutputItem.taskId` — metadata is on the request, attribution is on the item. So `itemsForTask` / `attributeItemsToTasks` return nothing for a detached task: criterion 4b fails and the UI has no worker items to render. §5's "the client needs no new attribution mechanism" was true of the *algorithm* and false of the *stamping*. The spawn must mark the root execution scope, or FIX-991 must define an attribution that does not depend on scope marking. | FIX-982 + FIX-991 |
 | **N25** | **NEW — the worker payload is a claim-time artifact and cannot live in the admission template.** `packWorkerInput(claimed, collection)` runs after the claim (`dispatch-and-execute.ts:173`), materializing dep outputs from the live collection plus the claimed task's `attempts` and `feedback`; `priorWork` is a claim-time policy selection. A task with deps, or a retry after a soft failure, re-dispatched from an admission-time template gets stale or empty input — and Decision 7 forbids repairing it by reading the parent board. Split template from payload: coordinates + identity are written atomically at admission; the payload is built per attempt at claim time on the parent side. This **narrows** the atomic-write requirement rather than widening it. | FIX-982 |
 | **N22** | **NEW — the template's `input` and `metadata` are not validated as JSON-safe, so a task can be admitted and then be un-replayable.** The task schema takes both as bare `z.unknown()` / `z.record(z.unknown())` (`task-board/schemas.ts:127-130`), but every durable path the template crosses is JSON: the resource-backed board's state, the SQLite/Postgres `event_data` columns, and a BullMQ payload. A `Date` silently becomes a string, a `Map` or class instance becomes `{}`, a function is dropped, and a `BigInt` or a cycle **throws at serialize time** — after admission, which is the stranding shape again. In-request execution never notices, because the value is passed by reference and never round-tripped; detaching is what exposes it. FIX-982 must require detached `input`/`metadata` to pass a JSON-safe check (schema or round-trip) **before** the task is admitted, so the failure is a rejected `addTask` rather than a corrupted worker input or a task nothing can re-dispatch. | FIX-982 |
@@ -1649,7 +1664,7 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **Twenty-one findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three) and two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor). It is still sized Medium; it should be split.** |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **Twenty-three findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three) and two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor). It is still sized Medium; it should be split.** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. |
