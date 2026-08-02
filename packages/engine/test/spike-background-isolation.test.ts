@@ -112,13 +112,19 @@ describe("SPIKE: background work and cross-turn history", () => {
     const history = await loadForegroundHistory(store, "sess_1");
     const ids = history.map((r) => r.id);
 
-    expect(history).toHaveLength(HISTORY_WINDOW);
-    // Records what actually happened to the oldest real user turn.
     // eslint-disable-next-line no-console
     console.log(
       `[spike] window=${HISTORY_WINDOW} returned=${history.length} ` +
         `oldest-user-turn-present=${ids.includes("req_fg_oldest")}`
     );
+
+    expect(history).toHaveLength(HISTORY_WINDOW);
+    // The claim §8 cites is the EVICTION, so assert it rather than only logging
+    // it — otherwise a change to ordering or limit semantics could drop a
+    // background turn instead and this POC would still pass while the spec kept
+    // reporting the finding as established.
+    expect(ids).not.toContain("req_fg_oldest");
+    expect(ids.every((id) => id.startsWith("req_bg_"))).toBe(true);
   });
 
   it("MODEL B — a sub-session is excluded with zero query changes", async () => {

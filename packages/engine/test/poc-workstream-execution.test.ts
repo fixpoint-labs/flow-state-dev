@@ -18,15 +18,31 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "../src";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
-/** A task as the board would hold it: names its target, never a session id. */
+/**
+ * A task as the board holds it. It names an `assignee` and a `topic` — never a
+ * flow, an action, or a session id. §1 rejects storing a `(flowKind, action)`
+ * target because `TaskWorkerRegistry` already says what runs; the executor
+ * resolves the worker from the registry by `assignee`.
+ */
 type WorkstreamTask = {
+  boardId: string;
+  assignee: string;
   topic: string;
-  flowKind: string;
-  actionName: string;
   input: string;
 };
 
-type Workstream = SessionRecord & { parentSessionId?: string; topic?: string };
+/** Stands in for `TaskWorkerRegistry = Record<string, TaskWorker>`. */
+const BOARD_ID = "board_delivery";
+const registry: Record<string, { actionName: string }> = {
+  implementer: { actionName: "execute" }
+};
+
+type Workstream = SessionRecord & {
+  parentSessionId?: string;
+  boardId?: string;
+  assignee?: string;
+  topic?: string;
+};
 
 /** Intent recorded from inside a running request; drained outside it. */
 const filed: WorkstreamTask[] = [];
@@ -45,9 +61,9 @@ const coordinatorFlow = defineFlow({
           // A block can RECORD intent. It cannot dispatch: there is no
           // flow registry and no executor reachable from here.
           filed.push({
+            boardId: BOARD_ID,
+            assignee: "implementer",
             topic: String(input),
-            flowKind: "worker",
-            actionName: "execute",
             input: `work for ${String(input)}`
           });
           return `planned ${String(input)}`;
@@ -71,8 +87,9 @@ let seq = 0;
 
 /**
  * Stands in for the capability that does not exist today. Keyed on
- * (parent, flowKind, topic) — flowKind is part of identity because a
- * Workstream is bound to a flow at creation via `SessionRecord.flowKind`.
+ * (parentSessionId, boardId, assignee, topic). `boardId` is required because
+ * `assignee` is unique only WITHIN a registry; `flowKind` is not in the key at
+ * all — the flow follows from the resolved worker, it does not identify it.
  */
 async function dispatchToWorkstream(
   stores: StoreRegistry,
@@ -84,7 +101,8 @@ async function dispatchToWorkstream(
     (s) =>
       s.parentSessionId === parentSessionId &&
       s.topic === task.topic &&
-      s.flowKind === task.flowKind
+      s.boardId === task.boardId &&
+      s.assignee === task.assignee
   );
 
   let workstreamId: string;
@@ -94,7 +112,9 @@ async function dispatchToWorkstream(
     workstreamId = `ws_${++seq}`;
     const record: Workstream = {
       id: workstreamId,
-      flowKind: task.flowKind,
+      flowKind: "worker",
+      boardId: task.boardId,
+      assignee: task.assignee,
       userId: "u1",
       state: {},
       version: 0,
@@ -109,7 +129,7 @@ async function dispatchToWorkstream(
 
   await runAction({
     flow: workerFlow,
-    actionName: task.actionName,
+    actionName: registry[task.assignee]!.actionName,
     input: task.input,
     userId: "u1",
     sessionId: workstreamId,
@@ -172,10 +192,10 @@ describe("POC v2: Workstream execution across flows", () => {
     filed.length = 0;
     const stores = createInMemoryStores();
     const a = await dispatchToWorkstream(stores, "S", {
-      topic: "FIX-981", flowKind: "worker", actionName: "execute", input: "a"
+      boardId: BOARD_ID, assignee: "implementer", topic: "FIX-981", input: "a"
     });
     const b = await dispatchToWorkstream(stores, "S", {
-      topic: "FIX-982", flowKind: "worker", actionName: "execute", input: "b"
+      boardId: BOARD_ID, assignee: "implementer", topic: "FIX-982", input: "b"
     });
     expect(a).not.toBe(b);
     expect(await historyOf(stores, a)).toEqual(["execute"]);

@@ -92,12 +92,35 @@ async function forkByCopy(
 
 // ─── Strategy 2: REFERENCE ───────────────────────────────────────────────────
 
-type ForkRef = { sessionId: string; atMs: number };
+/**
+ * The fork point is an **immutable cursor** — the exact set of ancestor request
+ * ids visible at fork time — not a wall-clock timestamp.
+ *
+ * A timestamp does not hold. `atMs` is compared against a list already filtered
+ * to `status: "completed"`, so a parent request that STARTED before the fork but
+ * COMPLETED after it is absent at fork time and then appears on a later load,
+ * growing the fork's prefix after creation. A post-fork request sharing the
+ * fork's millisecond leaks the same way. Both violate the invariant.
+ *
+ * Snapshotting ids is exact and cheap (ids, not records), and it makes the chain
+ * walk simpler: each level's snapshot is precisely what that level could see, so
+ * no ceiling arithmetic is needed.
+ */
+type ForkRef = { sessionId: string; visible: ReadonlySet<string> };
+
+/** Takes the cursor: what the parent had completed at the moment of the fork. */
+async function forkCursor(
+  store: InMemoryRequestStore,
+  parentSessionId: string
+): Promise<ReadonlySet<string>> {
+  const completed = await loadOwn(store, parentSessionId);
+  return new Set(completed.map((r) => r.id));
+}
 
 /**
- * Unions the fork's own requests with the parent's up-to-fork-point prefix,
- * walking the chain so a fork-of-a-fork still resolves. This is the query
- * change the copy strategy avoids.
+ * Unions the fork's own requests with each ancestor's snapshot, walking the
+ * chain so a fork-of-a-fork still resolves. This is the query change the copy
+ * strategy avoids.
  */
 async function loadForked(
   store: InMemoryRequestStore,
@@ -107,15 +130,15 @@ async function loadForked(
   const out: RequestRecord[] = [];
   let reads = 0;
   let cursor: string | undefined = sessionId;
-  let ceiling = Number.POSITIVE_INFINITY;
+  let visible: ReadonlySet<string> | undefined; // undefined = the fork's own session
 
   while (cursor !== undefined) {
     const own = await loadOwn(store, cursor);
     reads++;
-    out.push(...own.filter((r) => r.startedAtMs <= ceiling));
+    out.push(...(visible === undefined ? own : own.filter((r) => visible!.has(r.id))));
     const ref: ForkRef | undefined = forks[cursor];
     if (ref === undefined) break;
-    ceiling = Math.min(ceiling, ref.atMs);
+    visible = ref.visible;
     cursor = ref.sessionId;
   }
   // Newest-first like the store, so callers sort ascending as today.
@@ -157,7 +180,9 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
 
   it("REFERENCE — same visible history, no writes at fork", async () => {
     const store = await seed();
-    const forks: Record<string, ForkRef> = { W: { sessionId: "S", atMs: 3 } };
+    const forks: Record<string, ForkRef> = {
+      W: { sessionId: "S", visible: await forkCursor(store, "S") }
+    };
     await parentContinues(store);
     await store.set("w1", turn("w1", "W", 10, "fork's own turn"), "any");
 
@@ -176,9 +201,10 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     await copyStore.set("w1", turn("w1", "W", 10, "own"), "any");
 
     const refStore = await seed();
+    const cur = await forkCursor(refStore, "S");
     await parentContinues(refStore);
     await refStore.set("w1", turn("w1", "W", 10, "own"), "any");
-    const { records } = await loadForked(refStore, "W", { W: { sessionId: "S", atMs: 3 } });
+    const { records } = await loadForked(refStore, "W", { W: { sessionId: "S", visible: cur } });
 
     const textsOf = (rs: RequestRecord[]) =>
       [...rs]
@@ -194,7 +220,9 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
       await store.set(`p${n}`, turn(`p${n}`, "S", n, `t${n}`), "any");
     }
     const { writes } = await forkByCopy(store, "S", "W", 40);
-    const { reads } = await loadForked(store, "W2", { W2: { sessionId: "S", atMs: 40 } });
+    const { reads } = await loadForked(store, "W2", {
+      W2: { sessionId: "S", visible: await forkCursor(store, "S") }
+    });
 
     // eslint-disable-next-line no-console
     console.log(`[fork/cost] 40-turn parent -> copy writes=${writes}, reference writes=0 reads=${reads}`);
@@ -211,8 +239,8 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     await store.set("v1", turn("v1", "V", 30, "V turn"), "any");
 
     const forks: Record<string, ForkRef> = {
-      W: { sessionId: "S", atMs: 3 },
-      V: { sessionId: "W", atMs: 12 }
+      W: { sessionId: "S", visible: new Set(["p1", "p2", "p3"]) },
+      V: { sessionId: "W", visible: new Set(["w1", "w2"]) }
     };
     const { records, reads } = await loadForked(store, "V", forks);
 
@@ -230,13 +258,18 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // requests lazily after a request finishes. So this only happens when an
     // operator asked for it — which is what makes the direction matter.
     const refStore = await seed();
+    const refCursor = await forkCursor(refStore, "S");
     await refStore.set("w1", turn("w1", "W", 10, "fork own"), "any");
-    const before = await loadForked(refStore, "W", { W: { sessionId: "S", atMs: 3 } });
+    const before = await loadForked(refStore, "W", {
+      W: { sessionId: "S", visible: refCursor }
+    });
     expect(asc(before.records)).toEqual(["p1", "p2", "p3", "w1"]);
 
     await refStore.delete("p1");
     await refStore.delete("p2");
-    const after = await loadForked(refStore, "W", { W: { sessionId: "S", atMs: 3 } });
+    const after = await loadForked(refStore, "W", {
+      W: { sessionId: "S", visible: refCursor }
+    });
 
     const copyStore = await seed();
     await forkByCopy(copyStore, "S", "W", 3);
@@ -269,7 +302,9 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
       await store.set(`w${n}`, turn(`w${n}`, "W", 100 + n, `w${n}`), "any");
     }
 
-    const { records } = await loadForked(store, "W", { W: { sessionId: "S", atMs: 40 } });
+    const { records } = await loadForked(store, "W", {
+      W: { sessionId: "S", visible: await forkCursor(store, "S") }
+    });
     // eslint-disable-next-line no-console
     console.log(
       `[fork/window] limit=${HISTORY_WINDOW} per read, chain of 2 -> returned=${records.length}`
@@ -291,20 +326,47 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     await store.set("w3", turn("w3", "W", 20, "W after V's fork point"), "any");
     await store.set("v1", turn("v1", "V", 30, "V own"), "any");
 
-    // V forks W at 9, but W itself only ever saw S up to 3. The walk must carry
-    // the tighter ceiling down to S rather than re-widening it to 9 — otherwise
-    // V would see parent turns W itself never had.
+    // V forks W later than W forked S. With snapshots this needs no ceiling
+    // arithmetic: W's own snapshot IS what W could see, so V inherits exactly
+    // that and cannot see parent turns W itself never had.
     const { records } = await loadForked(store, "V", {
-      W: { sessionId: "S", atMs: 3 },
-      V: { sessionId: "W", atMs: 9 }
+      W: { sessionId: "S", visible: new Set(["p1", "p2", "p3"]) },
+      V: { sessionId: "W", visible: new Set(["w1", "w2"]) }
     });
 
     expect(asc(records)).toEqual(["p1", "p2", "p3", "w1", "w2", "v1"]);
-    // S's post-fork turns are invisible even though V's own ceiling (9) is
-    // later than them — the ancestor's ceiling wins.
+    // S's post-fork turns are invisible even though V forked much later.
     expect(asc(records)).not.toContain("p4");
     expect(asc(records)).not.toContain("p5");
     // And W's post-fork turn is invisible to V.
     expect(asc(records)).not.toContain("w3");
+  });
+
+  it("CURSOR — an in-flight parent request that completes later never leaks in", async () => {
+    const store = new InMemoryRequestStore();
+    await store.set("p1", turn("p1", "S", 1, "done before fork"), "any");
+    // Started before the fork, still running at fork time.
+    await store.set("p_slow", {
+      ...turn("p_slow", "S", 2, "in flight at fork"),
+      status: "in_progress"
+    } as RequestRecord, "any");
+
+    const visible = await forkCursor(store, "S"); // sees only p1
+    await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
+
+    // It completes AFTER the fork. A timestamp cursor would now admit it,
+    // because startedAtMs (2) <= the fork point (say 3). The snapshot does not.
+    await store.set("p_slow", turn("p_slow", "S", 2, "completed after fork"), "any");
+
+    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible } });
+    // eslint-disable-next-line no-console
+    console.log(`[fork/cursor] after late completion, fork sees=${asc(records).join(",")}`);
+
+    expect(asc(records)).toEqual(["p1", "w1"]);
+    expect(asc(records)).not.toContain("p_slow");
+
+    // The timestamp rule this replaces would have admitted it.
+    const byTimestamp = (await loadOwn(store, "S")).filter((r) => r.startedAtMs <= 3);
+    expect(byTimestamp.map((r) => r.id).sort()).toEqual(["p1", "p_slow"]);
   });
 });

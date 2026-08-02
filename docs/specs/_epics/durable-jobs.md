@@ -146,7 +146,7 @@ history slot by hand; a fork gives it structurally.
 
 **Two implementations were built and measured (§8), and the reference form wins on every axis:**
 
-| | COPY — duplicate the prefix into the fork | REFERENCE — store `forkedFrom { sessionId, atMs }` and union at load |
+| | COPY — duplicate the prefix into the fork | REFERENCE — store `forkedFrom { sessionId, cursor }` and union at load |
 |---|---|---|
 | Fork cost, 40-turn parent | **40 writes** | **0 writes** (2 reads at load; 3 at depth 2) |
 | Request ids | must be **rewritten** — ids are primary keys, so copies are not the same records and provenance is lost without a back-reference | untouched |
@@ -154,9 +154,19 @@ history slot by hand; a fork gives it structurally.
 | Fork of a fork | re-copy per level | resolves by walking the chain |
 
 Both satisfy the correctness property, verified in both directions: **the fork point holds** — the
-parent's post-fork turns are invisible to the fork, the fork is never visible to the parent, and the
-walk carries the *tighter* ancestor ceiling down so a grandchild cannot see turns its own parent
+parent's post-fork turns are invisible to the fork, and the fork is never visible to the parent.
+A grandchild inherits exactly what its parent could see, so it cannot reach turns its own parent
 never had.
+
+> **The fork point must be an immutable cursor, not a wall-clock timestamp.** A `atMs` comparison
+> is applied to a list already filtered to `status: "completed"`, so a parent request that
+> *started* before the fork but *completed* after it is absent at fork time and then **appears on a
+> later load** — the fork's prefix grows after creation, which is precisely what the invariant
+> forbids. A post-fork request sharing the fork's millisecond leaks the same way. Snapshotting the
+> ancestor's visible request **ids** is exact, costs ids rather than records, and removes the
+> ceiling arithmetic from the chain walk: each level's snapshot *is* what that level could see.
+> Measured in §8 — under a timestamp rule the late-completing request is admitted; under the
+> cursor it never is.
 
 > **One implementation constraint the POC exposed, and it belongs to whoever builds this.** The
 > history window does **not** compose across a fork chain. Each read is bounded by
@@ -350,7 +360,8 @@ Collected here so no issue has to hunt for them. Each is argued where it is deci
    proxy for "durable" — `factory` is a second durable path. (Decision 3.)
 9. **`source` is transport-set; `metadata` is not trusted.** Nothing may route or authorize on
    caller-supplied request metadata. (Decision 5.)
-10. **A background request must target a drain-only action**, never the producer action. (Decision 5.)
+10. **A detached request runs a board-registry worker resolved by `assignee`** — never the producer
+    action, and never a `(flowKind, action)` target stored on the task. (Decision 5, as amended by §1.)
 11. **State how your persisted items' lifetime relates to the board's.** Item storage lifetime must
     not be shorter than the board's. (Decision 5.)
 12. **Name your persisted surface.** Any issue claiming it made progress or failure visible states
@@ -766,8 +777,10 @@ and the identity fields above.
 > track.
 
 Under requests-as-jobs this is no longer a footnote. "Start a request" is the whole mechanism, so
-*which action it targets* is the whole design. **Rule 10: a background request must target a
-worker/drain-only action, never the producer action.** The clean shape is a dedicated, re-enterable
+*what it runs* is the whole design. **Rule 10: a detached request runs a board-registry worker
+resolved by `assignee`, never the producer action.** §1 supersedes the framing below wherever it
+speaks of the task carrying a target: the registry supplies the worker, so there is no action for
+a task author to point wrongly. The clean shape is a dedicated, re-enterable
 drain action with no producer steps to repeat — it trades generality for a coordinate that is
 trivially stable. FIX-982 chooses how to constrain this; the constraint itself is not optional.
 
@@ -1303,11 +1316,11 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, constrain to a drain-only action, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4. |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7. |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. |
-| *(new)* | **N2** — `latestRequestId` under concurrent siblings. Candidate for a new issue; not filed. |
+| *(none)* | **N2 — RESOLVED, do not file.** `latestRequestId` is per-session, so a Workstream has its own and cannot steal the parent's auto-resume pointer. The earlier candidate is withdrawn; §6's findings table is authoritative. |
 
 **New issues for the consumer surface** (§5 → "The consumer surface"). None filed. The first three
 are **prerequisites** — the kitchen-sink demo cannot exist without them; the last two are additive on
@@ -1393,7 +1406,7 @@ Run the first four with `npx vitest run test/spike-background-isolation.test.ts
 test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
 test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
 `packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
-re-export shim). **32 tests, all passing.**
+re-export shim). **34 tests, all passing.**
 
 | Finding | Measurement |
 |---|---|
@@ -1405,7 +1418,8 @@ re-export shim). **32 tests, all passing.**
 | A composite session id does **not** prevent it | `first.ok=true second.ok=true` — the second create clobbers the first; `set` is an upsert |
 | The spawn gap is two pieces, not store plumbing | 40 ctx keys; `stores=true flow=true runAction=false dispatch=false` |
 | **Fork cost** | 40-turn parent → COPY `writes=40`, REFERENCE `writes=0 reads=2`; depth-2 chain `reads=3` |
-| **The fork point holds, both directions** | The parent's post-fork turns are invisible to the fork; the fork is never visible to the parent; a depth-2 walk carries the *tighter* ancestor ceiling down |
+| **The fork point holds, both directions** | The parent's post-fork turns are invisible to the fork; the fork is never visible to the parent; a depth-2 walk inherits exactly what the intermediate fork could see |
+| **A timestamp fork point does not hold; a cursor does** | A parent request that started before the fork and completed after it is admitted by `startedAtMs <= atMs` but excluded by the id snapshot — the fork's prefix would otherwise grow after creation |
 | **Retention direction reverses the intuition** | Parent pruned 2 → reference fork sees 2 (**policy honored**), copy fork sees 4 (**policy defeated** — data an operator asked to delete survives in a session the rule cannot reach) |
 | **The window does not compose across a fork chain** | `limit=50` per read, depth-2 chain → **returned=80** |
 | A bare worker value still means inline | Existing boards need no edit; the object form adds disposition at the same value position (BP-030) |
