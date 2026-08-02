@@ -45,9 +45,9 @@ sequenceDiagram
   participant W2 as Workstream S/FIX-982<br/>flow = worker
 
   U->>C: sends a turn
-  C->>B: addTask topic FIX-981
-  C->>W: spawn — get-or-create by parentSessionId, flowKind, topic
-  Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.
+  C->>B: addTask assignee implementer, topic FIX-981
+  C->>W: spawn — get-or-create by parentSessionId, assignee, topic
+  Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.<br/>W may FORK S's history to a fork point.
   W->>B: claim taskId — the M1 conditional write
   B-->>W: claimed, attempts = 1
   C->>B: addTask topic FIX-982
@@ -60,37 +60,56 @@ sequenceDiagram
   B->>W: interrupt the in-flight request<br/>MECHANISM DOES NOT SHIP — Decision 5
 ```
 
-Two things the diagram cannot show, and both are binding: a Workstream may run a **different flow**
-than its parent, so the routing key is `(parentSessionId, flowKind, topic)` and not topic alone —
-`SessionRecord.flowKind` binds a session to a flow at creation, so keying on topic alone can return
-a Workstream whose flow lacks the action being dispatched; and the read model a UI needs already
-exists — `RequestStore.list({ sessionId, … })` (`engine/src/stores/types.ts:283`, `:110-147`).
+Two things the diagram cannot show, and both are binding: the routing key is
+`(parentSessionId, assignee, topic)` — not topic alone, and **not `flowKind`** (see below); and the
+read model a UI needs already exists — `RequestStore.list({ sessionId, … })`
+(`engine/src/stores/types.ts:283`, `:110-147`).
 
-**Where the target flow and action are configured: on the board, not the task.** DECIDED by the repo
-owner. A task carries `{ topic, input }`; the **board** declares which flow and action its detached
-workers run. This is the same altitude the board already occupies — `drain` builds `makeWorker`
-around a worker body fixed at board construction (`task-board/index.ts:795-799`), so "what a worker
-does" is already a board-level fact, while per-task targeting would add an axis the board does not
-have.
+**The board configures disposition, not a target.** DECIDED by the repo owner. The board already
+declares *what* runs: `TaskWorkerRegistry = Record<string, TaskWorker>`
+(`tasks/workers/types.ts:85`), accepted by `taskBoard({ workers })` (`task-board/index.ts:288`) and
+routed by `task.assignee`. Naming a `(flowKind, action)` beside it would be a **second source of
+truth for one fact** — the shape §2 rules out. So the board gains exactly one thing: **where** a
+task runs.
 
-Three consequences, and the second is the reason to prefer it:
+```ts
+taskBoard({
+  workers: {
+    summarize: summarizeBlock,                     // bare value = inline, as today
+    implement: { worker: implementBlock, dispatch: { mode: "detached" } }
+  },
+  dispatch: { mode: "inline" }                     // board default; per-worker overrides
+})
+```
 
-- **The framework default is the parent's flow and the board's own drain action.** The detached path
-  is then the *same* path as today's synchronous drain, relocated into a Workstream: existing boards
-  gain detachment with no configuration, and nothing new executes.
-- **N6 moves from runtime to build time.** "The action must be resolvable on the target flow" is
-  checked once when the board is constructed, rather than failing per dispatch. An agent filing a
-  task supplies no routing at all and therefore cannot mis-route it — the flexibility's real cost was
-  a class of silent misdispatch, and this deletes the class rather than mitigating it.
-- **Per-task targeting stays available later, additively.** Board-level first is the reversible
-  order; per-task first and restricted later is breaking. **Recorded cost:** heterogeneous work on
-  one board (one issue needing implementation, another needing research) requires two boards, and
-  because dependencies are board-scoped this can fragment a dependency graph that wanted to be whole.
-  That is the signal to add the per-task override — not a reason to build it now.
+Three properties, measured (§8):
 
-> **Small open item, deliberately not decided here.** Two boards under one session targeting the same
-> flow would collide on `(parentSessionId, flowKind, topic)`. Keying on board identity rather than
-> `flowKind` is the tighter choice; FIX-982 should pick one and say why.
+- **Existing boards are untouched.** A bare `TaskWorker` value keeps meaning inline, so the change is
+  additive at the value position (BP-030 legacy shape). No board in the tree needs editing.
+- **Disposition is orthogonal to the worker.** The same block definition runs inline or detached with
+  no change to the block — which is what makes this a disposition rather than a target.
+- **The routing coordinate is `assignee`, and it is already authored and validated.** `checkAssignee`
+  rejects an unknown assignee against the declared `WorkerRoster`
+  (`skills/task-tools-capability.ts:131-170`), so a bad coordinate fails loudly at plan time instead
+  of silently minting a stray Workstream. It is also **board-scoped**, which closes an item an
+  earlier draft left open for FIX-982: two boards under one session can no longer collide.
+  `flowKind` would not do — and block identity is worse still, since `buildBlockInstanceId` is
+  `${requestId}:${path}:${attempt}` over positional paths (`contracts/src/block-instance-id.ts:50-75`),
+  so it is request-scoped and changes when a sequencer is reordered.
+
+**Topic is task data, not board config.** The two facts are known by different parties at different
+times: the *skill author* declares statically whether a participant detaches; the *coordinator* names
+per task which body of work it belongs to. So `addTask({ goal, assignee, topic })` carries it,
+alongside the `goal / assignee / deps / priority / input / metadata` it already takes. Absent a
+topic, it falls back to `taskId` — one Workstream per task, so **continuity is opted into, never
+accidental**. An earlier draft made topic a board-config *function*, which SKILL.md frontmatter
+cannot express; a YAML path mini-language is the scope creep FIX-925's own spec rejected for dep
+inputs.
+
+**Per-task targeting stays available later, additively.** Board-level first is the reversible order.
+*Recorded cost:* heterogeneous work on one board needs two boards, and because dependencies are
+board-scoped that can fragment a dependency graph that wanted to be whole. That is the signal to add
+a per-task override — not a reason to build one now.
 
 > **Why a sub-session and not a sibling request in the same session.** The alternative — a request
 > tagged `background`, running beside the user's turns — was built and measured (§8), and rejected.
@@ -106,6 +125,46 @@ Three consequences, and the second is the reason to prefer it:
 > **A Workstream needs none of it.** A distinct session id is excluded by the `sessionId` filter that
 > already exists and is already correct in every adapter. The isolation becomes a boundary that
 > cannot be forgotten rather than a filter that must be remembered.
+
+### Isolation is partial by design: forked Workstreams
+
+A Workstream isolates **writes** unconditionally — its turns never become the parent's history. It
+may, optionally, inherit the parent's history for **reads**, up to a **fork point**. That is the
+whole read/write split: `contextSupply: "conversation"` (`core/src/types/skill.ts:92`) already lets a
+worker see the delegating conversation, bounded, and *isolation is already its default* — the
+materializer states it outright: *"`"conversation"` is the only value; isolation is the default,
+expressed by omitting the field."* Forking is how that survives detachment. Without it, a detached
+worker declaring `contextSupply: "conversation"` would need the parent session id threaded into its
+history slot by hand; a fork gives it structurally.
+
+**Two implementations were built and measured (§8), and the reference form wins on every axis:**
+
+| | COPY — duplicate the prefix into the fork | REFERENCE — store `forkedFrom { sessionId, atMs }` and union at load |
+|---|---|---|
+| Fork cost, 40-turn parent | **40 writes** | **0 writes** (2 reads at load; 3 at depth 2) |
+| Request ids | must be **rewritten** — ids are primary keys, so copies are not the same records and provenance is lost without a back-reference | untouched |
+| Retention (opt-in; `resolveRetentionPolicy` returns `undefined` unless `maxItems`/`maxAge` is set) | **defeats the policy** — the duplicate lives where the parent's rule cannot reach, so data an operator asked to delete survives | **honors it** — the prefix stays in the parent and is pruned by the parent's rule |
+| Fork of a fork | re-copy per level | resolves by walking the chain |
+
+Both satisfy the correctness property, verified in both directions: **the fork point holds** — the
+parent's post-fork turns are invisible to the fork, the fork is never visible to the parent, and the
+walk carries the *tighter* ancestor ceiling down so a grandchild cannot see turns its own parent
+never had.
+
+> **One implementation constraint the POC exposed, and it belongs to whoever builds this.** The
+> history window does **not** compose across a fork chain. Each read is bounded by
+> `historyWindow.turns` (default 50), but the union is not — a depth-2 chain returned **80 turns**.
+> The window must be budgeted **across** the chain, not per read, or a forked Workstream hands the
+> generator more history than its flow allows.
+
+**Workstreams need no other configuration, and they do not auto-close.** Every knob one might reach
+for already exists a level up: conversation inheritance is `contextSupply`; serialize-vs-interleave
+is the flow/action `concurrency` policy (default `allow`, and a continuation lane almost certainly
+wants `queue`); resource carry-over is the three-tier scope rule plus `isolateUserState` /
+`flowIsolation`; history depth is `flow.session?.historyWindow?.turns`. An earlier draft proposed a
+lifetime rule that closed a Workstream once its lineage had no open tasks. **Dropped** — parent
+sessions have exactly that same property and have never needed closing, and a later task landing on
+an existing topic is the intended behaviour rather than a resurrection to guard against.
 
 **What that leaves as real work.** Three things, and they are the epic:
 
@@ -858,8 +917,8 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 |---|---|---|---|
 | **M1** — cross-execution claim safety | FIX-981 | **Unchanged, and more necessary.** | Large |
 | **M2** — reclamation joined to liveness | *(none — FIX-978, under FIX-980)* | Consumed, not built. | — |
-| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed twice:** inject a capability over the two measured missing pieces — resolve another flow by kind, and invoke it — plus routing by `(parentSessionId, flowKind, topic)` and interrupt on task cancellation. | Medium |
-| **M4** — blocking / background disposition | FIX-983 | **Halved.** Disposition is request metadata; cross-request *waiting* survives. | Small |
+| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the two measured missing pieces — resolve a worker and invoke it — plus routing by `(parentSessionId, assignee, topic)`, the fork decision, and interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. | Medium |
+| **M4** — blocking / background disposition | FIX-983 | **Halved, and the surviving half re-homed.** Disposition is board worker config (§1), so it lands with M3 rather than being its own mechanism. What remains under FIX-983 is cross-request *waiting* only. | Small |
 | **M5** — progress across the request boundary | FIX-984 | **Mostly dissolved.** | ~none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's residue. | Medium |
 | **(new prerequisite)** — create-if-absent at the store boundary | *(unfiled — §6)* | **Blocks Workstream routing.** `set` is an upsert; `ExpectedVersion` cannot say "must not exist". | Small |
@@ -910,15 +969,18 @@ shows a block already holds `ctx.stores` and its own `ctx.flow`; only flow-resol
 executor are absent. FIX-982 is the capability over those two pieces, and everything downstream of it
 — cross-flow execution, history isolation, topic reuse — is already demonstrated on the real path.
 
-Because the board supplies the target rather than the task (§1), the caller-facing surface is
-roughly `ctx.spawn({ topic, input })`, with `(flowKind, action)` resolved from board configuration
-and defaulting to the parent's flow and the board's own drain action. **That also settles the
-drain-only-action constraint rather than hardening it.** An action dispatched into a Workstream must
-be resolvable on the *target* flow — `resolve-action-core.ts` branches on webhook/chat/scheduled and
-otherwise resolves `flow.actions[actionName]`, so an internal-only action has no private coordinate
-to arrive through — but with the target fixed at board construction that is checked **once, at build
-time**, and a task author cannot violate it. The constraint returns to runtime only if per-task
+Because the board configures disposition rather than a target (§1), the caller-facing surface is
+roughly `ctx.spawn({ assignee, topic, input })` — the worker block comes from the registry entry the
+`assignee` already names, so nothing new has to be resolved by kind. **That also settles the
+drain-only-action constraint rather than hardening it.** What runs in the Workstream is a registry
+worker, not an arbitrary action on a foreign flow, so `resolve-action-core.ts`'s public-resolution
+path (webhook/chat/scheduled, else `flow.actions[actionName]`) is not the coordinate a spawn arrives
+through, and an internal-only worker needs no private one. The constraint returns only if per-task
 targeting is added later (N6).
+
+FIX-982 must also decide **whether the Workstream forks** (§1) and pick the fork strategy; the
+measured comparison is in §8 and points at the reference form. If it forks, the **window budget
+across the fork chain** is its problem to solve, not the fork's caller's.
 
 **M4 / FIX-983 — halves.** Disposition becomes request metadata rather than a mechanism. The
 *waiting* half survives: `.waitForCondition` throws *"waitForCondition requires a response emitter on
@@ -1112,7 +1174,8 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N3** | **Reframed.** `ActiveRequestRegistry` still has no per-session query (`stores/types.ts:471-489`), but the question is now "what Workstreams are live under this session," which a `parentSessionId` filter answers at the session store rather than by filtering `listAll` globally (BP-033). | FIX-982 |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
 | **N5** | **NEW — no create-if-absent primitive.** `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. Workstream get-or-create is therefore unsafe, and a composite session id does not rescue it (§8). Recommended shape and reasoning in §5. | **new issue — must be filed** |
-| **N6** | **NEW, and downgraded by board-level dispatch config (§1).** A Workstream action must be publicly resolvable on its target flow: `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves `flow.actions[actionName]`, so an action intended as internal-only has no private coordinate to arrive through. Because the board declares the target rather than the task, this is a **build-time** constraint checked once at board construction, not a per-dispatch runtime failure. It returns as a runtime concern only if per-task targeting is added later. | FIX-982 |
+| **N6** | **NEW, and largely dissolved by disposition-not-target (§1).** The concern was that a Workstream action must be publicly resolvable on its target flow — `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves `flow.actions[actionName]`, leaving an internal-only action no private coordinate to arrive through. Because a spawn runs a **registry worker named by `assignee`** rather than an arbitrary action on a foreign flow, that public-resolution path is not the coordinate it arrives through. Returns only if per-task targeting is added later. | FIX-982 |
+| **N7** | **NEW — the history window does not compose across a fork chain.** Each read is bounded by `historyWindow.turns`, but the union is not: a depth-2 chain returned 80 turns against a 50-turn window (§8). Whoever implements forking must budget the window across the chain rather than per read. | FIX-982 |
 
 
 
@@ -1287,12 +1350,16 @@ the tree, so the mistake that section opens with is not repeated:
 | POC | Establishes |
 |---|---|
 | `packages/engine/test/spike-background-isolation.test.ts` | Why a sub-session rather than a background sibling |
-| `packages/engine/test/poc-workstream-routing.test.ts` | `(parentSessionId, flowKind, topic)` routing, and the create race |
+| `packages/engine/test/poc-workstream-routing.test.ts` | Keyed get-or-create, and the create race |
 | `packages/engine/test/poc-workstream-execution.test.ts` | Cross-flow Workstreams on the real `runAction` path |
+| `packages/engine/test/poc-forked-session-history.test.ts` | Forked sessions — both strategies, and the fork point |
+| `packages/orchestration/test/poc-worker-dispatch-config.test.ts` | The board's worker config surface |
 
-Run: `npx vitest run test/spike-background-isolation.test.ts test/poc-workstream-routing.test.ts
-test/poc-workstream-execution.test.ts` from `packages/engine` (build `contracts` then `core` first —
-`core/src/items/types.ts` is a re-export shim). 15 tests, all passing.
+Run the first four with `npx vitest run test/spike-background-isolation.test.ts
+test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
+test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
+`packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
+re-export shim). **31 tests, all passing.**
 
 | Finding | Measurement |
 |---|---|
@@ -1303,6 +1370,13 @@ test/poc-workstream-execution.test.ts` from `packages/engine` (build `contracts`
 | Concurrent get-or-create duplicates | `distinct ids=true workstreams-for-FIX-981=2` — two Workstreams for one topic, thereafter diverging silently |
 | A composite session id does **not** prevent it | `first.ok=true second.ok=true` — the second create clobbers the first; `set` is an upsert |
 | The spawn gap is two pieces, not store plumbing | 40 ctx keys; `stores=true flow=true runAction=false dispatch=false` |
+| **Fork cost** | 40-turn parent → COPY `writes=40`, REFERENCE `writes=0 reads=2`; depth-2 chain `reads=3` |
+| **The fork point holds, both directions** | The parent's post-fork turns are invisible to the fork; the fork is never visible to the parent; a depth-2 walk carries the *tighter* ancestor ceiling down |
+| **Retention direction reverses the intuition** | Parent pruned 2 → reference fork sees 2 (**policy honored**), copy fork sees 4 (**policy defeated** — data an operator asked to delete survives in a session the rule cannot reach) |
+| **The window does not compose across a fork chain** | `limit=50` per read, depth-2 chain → **returned=80** |
+| A bare worker value still means inline | Existing boards need no edit; the object form adds disposition at the same value position (BP-030) |
+| Disposition is orthogonal to the worker | One block definition, two dispositions, asserted by identity — no change to the block |
+| Continuity is opted into | With no topic named, the topic falls back to `taskId`, so each task gets its own Workstream |
 
 **What they do not establish.** The dispatch in the execution POC is performed **outside** the
 request, standing in for the capability FIX-982 will build. Everything downstream of the spawn is

@@ -1,0 +1,267 @@
+/**
+ * POC (throwaway — FIX-939 design, not a shipping test).
+ *
+ * What the board's worker config looks like once disposition (WHERE a task
+ * runs) is board-level and the target (WHAT runs) stays the existing worker
+ * registry.
+ *
+ * The competing shape — the board declaring `(flowKind, action)` — is rejected
+ * here because the registry already says what runs; naming a flow and action
+ * beside it is a second source of truth for one fact.
+ *
+ * Settles four things about the surface:
+ *   1. a bare worker value still means inline (BP-030: old boards unchanged)
+ *   2. board default + per-worker override, and which wins
+ *   3. the SAME block runs inline or detached — disposition is orthogonal
+ *   4. topic derivation is what gives a Workstream continuity across tasks
+ *
+ * Execution itself is not re-proven here — poc-workstream-execution covers
+ * cross-flow dispatch on the real `runAction` path. This is the config layer.
+ */
+import { describe, expect, it } from "vitest";
+import { handler } from "@flow-state-dev/core";
+// `engine` is a devDependency of `orchestration`, so a test may reach for the
+// stores; `src` may not. That boundary is why this POC lives here and not in
+// `engine`, which would have to deep-import `orchestration/src` to see the
+// worker contract.
+import { createInMemoryStores, type SessionRecord, type StoreRegistry } from "@flow-state-dev/engine";
+import type { TaskWorker, TaskWorkerInput } from "../src/tasks/workers/types";
+
+// ─── The proposed config surface ─────────────────────────────────────────────
+
+/**
+ * WHERE a task runs. The only thing the board gains; WHAT runs is the registry.
+ *
+ * Deliberately a bare discriminant with no options. An earlier draft carried
+ * `topic: (input) => string` here, which SKILL.md frontmatter cannot express —
+ * it is declarative, and a YAML path mini-language was rejected as scope creep
+ * for the same reason FIX-925's spec rejected one for dep inputs. Topic is task
+ * data instead (below), which both surfaces can express.
+ */
+type WorkerDispatch = { mode: "inline" } | { mode: "detached" };
+
+/**
+ * The task field that decides which Workstream the work lands in. The *skill
+ * author* knows statically whether a participant detaches; the *coordinator*
+ * knows per task which body of work it belongs to. Different knowledge, held at
+ * different times, so it lives in different places.
+ */
+type TaskWithTopic = TaskWorkerInput & { topic?: string };
+
+/**
+ * Registry value. A bare `TaskWorker` is the shape that ships today and keeps
+ * meaning "inline"; the object form adds disposition without a second registry.
+ */
+type WorkerEntry = TaskWorker | { worker: TaskWorker; dispatch?: WorkerDispatch };
+
+type BoardConfig = {
+  workers: Record<string, WorkerEntry>;
+  /** Board-level default, itself defaulting to inline. */
+  dispatch?: WorkerDispatch;
+  /** Runs tasks with no `assignee` (the roster's "default worker"). */
+  defaultWorker?: WorkerEntry;
+};
+
+const INLINE: WorkerDispatch = { mode: "inline" };
+
+function entryWorker(entry: WorkerEntry): TaskWorker {
+  return "worker" in entry ? entry.worker : (entry as TaskWorker);
+}
+
+function entryDispatch(entry: WorkerEntry): WorkerDispatch | undefined {
+  return "worker" in entry ? entry.dispatch : undefined;
+}
+
+/** Per-worker overrides the board default; the board default overrides inline. */
+function resolveDispatch(config: BoardConfig, assignee?: string): {
+  worker: TaskWorker;
+  dispatch: WorkerDispatch;
+} {
+  const entry =
+    assignee === undefined ? config.defaultWorker : config.workers[assignee];
+  if (entry === undefined) {
+    throw new Error(
+      `unknown_assignee: "${assignee}" is not a participant on this board.`
+    );
+  }
+  return {
+    worker: entryWorker(entry),
+    dispatch: entryDispatch(entry) ?? config.dispatch ?? INLINE
+  };
+}
+
+/**
+ * Falls back to `taskId`, so a coordinator that names no topic gets one
+ * Workstream per task — continuity is opted into, never accidental.
+ */
+function resolveTopic(dispatch: WorkerDispatch, task: TaskWithTopic): string {
+  if (dispatch.mode !== "detached") {
+    throw new Error("resolveTopic called for an inline worker");
+  }
+  return task.topic ?? task.taskId;
+}
+
+// ─── Workstream routing, keyed on assignee (not flowKind) ────────────────────
+
+type Workstream = SessionRecord & {
+  parentSessionId?: string;
+  assignee?: string;
+  topic?: string;
+};
+
+let seq = 0;
+
+/**
+ * Keyed `(parentSessionId, assignee, topic)`. `assignee` rather than `flowKind`
+ * because it is authored, board-scoped, and already validated — so two boards
+ * under one session cannot collide, and a refactor cannot silently re-key a
+ * live Workstream.
+ */
+async function routeToWorkstream(
+  stores: StoreRegistry,
+  parentSessionId: string,
+  assignee: string,
+  topic: string
+): Promise<Workstream> {
+  const all = (await stores.session.list({})) as Workstream[];
+  const existing = all.find(
+    (s) =>
+      s.parentSessionId === parentSessionId &&
+      s.assignee === assignee &&
+      s.topic === topic
+  );
+  if (existing !== undefined) return existing;
+  const ts = 1_000;
+  const created: Workstream = {
+    id: `ws_${++seq}`,
+    flowKind: "worker",
+    userId: "u1",
+    state: {},
+    version: 0,
+    createdAt: ts,
+    updatedAt: ts,
+    journal: [],
+    parentSessionId,
+    assignee,
+    topic
+  };
+  await stores.session.set(created.id, created, "any");
+  return created;
+}
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
+const implementBlock: TaskWorker = handler({
+  name: "implement",
+  execute: (input: unknown) => `implemented ${(input as TaskWorkerInput).goal}`
+}) as unknown as TaskWorker;
+
+const summarizeBlock: TaskWorker = handler({
+  name: "summarize",
+  execute: (input: unknown) => `summarized ${(input as TaskWorkerInput).goal}`
+}) as unknown as TaskWorker;
+
+/** What the coordinator produces: `addTask({ goal, assignee, topic })`. */
+function taskInput(taskId: string, goal: string, topic?: string): TaskWithTopic {
+  return { taskId, goal, attempts: 0, ...(topic === undefined ? {} : { topic }) };
+}
+
+/** The surface a board author writes. */
+const board: BoardConfig = {
+  workers: {
+    // Bare block — the shape that ships today. Still inline.
+    summarize: summarizeBlock,
+
+    // Object form — same registry, plus disposition.
+    implement: {
+      worker: implementBlock,
+      dispatch: { mode: "detached" }
+    }
+  },
+  defaultWorker: summarizeBlock
+};
+
+describe("POC: board worker config — disposition, not target", () => {
+  it("a bare worker value still means inline (BP-030: old boards unchanged)", () => {
+    const { worker, dispatch } = resolveDispatch(board, "summarize");
+    expect(dispatch).toEqual({ mode: "inline" });
+    expect(worker).toBe(summarizeBlock);
+  });
+
+  it("per-worker disposition overrides the board default", () => {
+    const detachedByDefault: BoardConfig = {
+      ...board,
+      dispatch: { mode: "detached" }
+    };
+    // `summarize` is bare, so it inherits the board default...
+    expect(resolveDispatch(detachedByDefault, "summarize").dispatch.mode).toBe("detached");
+    // ...while `implement` carries its own and keeps it.
+    expect(resolveDispatch(detachedByDefault, "implement").dispatch.mode).toBe("detached");
+  });
+
+  it("an unassigned task runs on the default worker", () => {
+    const { worker, dispatch } = resolveDispatch(board, undefined);
+    expect(worker).toBe(summarizeBlock);
+    expect(dispatch).toEqual({ mode: "inline" });
+  });
+
+  it("an unknown assignee fails loudly", () => {
+    expect(() => resolveDispatch(board, "nope")).toThrow(/unknown_assignee/);
+  });
+
+  it("the SAME block runs inline or detached — disposition is orthogonal", () => {
+    const inlineBoard: BoardConfig = { workers: { impl: implementBlock } };
+    const detachedBoard: BoardConfig = {
+      workers: { impl: { worker: implementBlock, dispatch: { mode: "detached" } } }
+    };
+    // One block definition, two dispositions, no change to the block.
+    expect(resolveDispatch(inlineBoard, "impl").worker).toBe(
+      resolveDispatch(detachedBoard, "impl").worker
+    );
+    expect(resolveDispatch(inlineBoard, "impl").dispatch.mode).toBe("inline");
+    expect(resolveDispatch(detachedBoard, "impl").dispatch.mode).toBe("detached");
+  });
+
+  it("topic derivation gives continuity — two tasks, one issue, one Workstream", async () => {
+    const stores = createInMemoryStores();
+    const { dispatch } = resolveDispatch(board, "implement");
+
+    const a = taskInput("t1", "write the parser", "FIX-981");
+    const b = taskInput("t2", "fix the parser bug", "FIX-981");
+    const c = taskInput("t3", "unrelated work", "FIX-982");
+
+    const wsA = await routeToWorkstream(stores, "S", "implement", resolveTopic(dispatch, a));
+    const wsB = await routeToWorkstream(stores, "S", "implement", resolveTopic(dispatch, b));
+    const wsC = await routeToWorkstream(stores, "S", "implement", resolveTopic(dispatch, c));
+
+    expect(wsB.id).toBe(wsA.id); // same issue → same Workstream
+    expect(wsC.id).not.toBe(wsA.id); // different issue → its own
+    expect(wsA.topic).toBe("FIX-981");
+  });
+
+  it("with no topic named, each task gets its own Workstream — no accidental continuity", async () => {
+    const stores = createInMemoryStores();
+    const bare: BoardConfig = {
+      workers: { impl: { worker: implementBlock, dispatch: { mode: "detached" } } }
+    };
+    const { dispatch } = resolveDispatch(bare, "impl");
+
+    const a = taskInput("t1", "one");
+    const b = taskInput("t2", "two");
+    expect(resolveTopic(dispatch, a)).toBe("t1");
+
+    const wsA = await routeToWorkstream(stores, "S", "impl", resolveTopic(dispatch, a));
+    const wsB = await routeToWorkstream(stores, "S", "impl", resolveTopic(dispatch, b));
+    expect(wsA.id).not.toBe(wsB.id);
+  });
+
+  it("assignee is part of the key — two workers, one topic, two Workstreams", async () => {
+    const stores = createInMemoryStores();
+    const research = await routeToWorkstream(stores, "S", "research", "FIX-981");
+    const implement = await routeToWorkstream(stores, "S", "implement", "FIX-981");
+    expect(research.id).not.toBe(implement.id);
+
+    // ...and each round-trips to itself.
+    expect((await routeToWorkstream(stores, "S", "research", "FIX-981")).id).toBe(research.id);
+  });
+});
