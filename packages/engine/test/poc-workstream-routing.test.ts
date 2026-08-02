@@ -122,9 +122,13 @@ function makeWorkstream(publicId: string, k: Key): Workstream {
  * (flowKind / userId / tenantId / limit only), so the lookup scans and filters
  * in memory. That scan is exactly the filter the adapters would need.
  *
- * Keyed on `(parentSessionId, flowKind, topic)` — `SessionRecord.flowKind` binds
- * a session to a flow at creation, so topic alone can return a Workstream whose
- * flow lacks the action being dispatched.
+ * Keyed on `(parentSessionId, boardId, coordinate, topic)` within a tenant.
+ *
+ * `flowKind` is deliberately NOT in the key — a rename of the hosting flow must
+ * not orphan a live Workstream. The cost is N28: if a deployment rebinds the
+ * same `(board, coordinate)` to a different flow's action, this returns the
+ * existing Workstream whose `SessionRecord.flowKind` still names the old flow,
+ * because flow binds to a session at creation.
  */
 async function findWorkstream(
   store: InMemorySessionStore,

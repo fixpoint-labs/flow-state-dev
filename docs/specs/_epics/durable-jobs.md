@@ -46,10 +46,10 @@ sequenceDiagram
 
   U->>C: sends a turn
   C->>B: addTask assignee implementer, topic FIX-981
-  C->>W: spawn — get-or-create by tenantId, parentSessionId, boardId, coordinate, topic
-  Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.<br/>W may FORK S's history to a fork point.
   C->>B: claim taskId — the M1 conditional write<br/>PARENT side, rule 14
-  B-->>C: claimed, attempts = 1 — payload built here (N25)
+  B-->>C: claimed, attempts = 1 — payload built HERE (N25)
+  C->>W: spawn — get-or-create by tenantId, parentSessionId, boardId, coordinate, topic
+  Note over C,W: claim precedes spawn. S returns without waiting.<br/>W's turns never enter S's history.<br/>W may FORK S's history to a fork point.
   C->>B: addTask topic FIX-982
   C->>W2: spawn — different topic, different Workstream
   W->>W: stream items, each stamped with taskId (N24 — needs scope marking)
@@ -946,6 +946,13 @@ request has no wake source.** Two ways in, and FIX-978 closes neither:
 | FIX-978's own reclamation returned it to `pending` | Reclamation is what put it there; nothing then creates a request. |
 | **The admission window** — the task was persisted, and the Workstream's request never was: the coordinating request crashed in the gap, **or the dispatch was rejected at the concurrency gate** | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
 
+**Claim precedes spawn, and the ordering is load-bearing.** An earlier draft of §1's diagram spawned
+the Workstream first. That is wrong twice over: the claim *is* the exclusivity boundary, so spawning
+ahead of it lets two contenders both start work when only one will go on to claim; and the payload
+does not exist until after the claim (N25), so the early-spawned request has nothing correct to run
+on. Order is **addTask → claim (+ build payload) → spawn**. The crash-after-claim window is what
+reconciliation covers; it is not a reason to spawn early.
+
 **The window is not crash-only — N1's `concurrency: "reject"` triggers it deterministically.** The
 envelope is assembled at `createInboundTransportHost.ts:129-142`; the gate at `:157` for `reject`
 *"synchronously claims the action's key and throws `ConcurrencyRejectedError` here… so a dropped
@@ -1137,9 +1144,26 @@ be reconstructed. The interim rule removes the dependency on that missing surfac
 
 > **A detached worker's result must be represented on a surface that survives a restart** — an
 > **emitted item** (durable, already `taskId`-attributed, and exactly what FIX-991's union retrieves),
-> or a **user/org-scoped resource** write. A bare return value is not durable and must not be what
-> parent-side settlement depends on. Inline workers are unaffected: their return value is passed by
-> reference and never round-trips.
+> or a **shared, task-keyed user/org resource**. A bare return value is not durable and must not be
+> what parent-side settlement depends on. Inline workers are unaffected: their return value is passed
+> by reference and never round-trips.
+>
+> **The resource must be `flowIsolation: false`.** `resolveResourceScopeId` keys an isolated
+> user/org resource `${identityId}:${flowKind}` (`stores/scope-keys.ts:154-160`), so a worker writing
+> under its own flow kind and a coordinator reading under a different one land in different buckets —
+> N13's mechanism, which is correct for boards and fatal here, because this read is deliberately
+> cross-flow. "Any user/org resource" is not sufficient; a *shared* one is.
+
+**And this narrows a claim made elsewhere in this document, which should be stated rather than left
+to collide.** §1 asserts that **the same block runs inline or detached with no change** — measured by
+identity in the config POC. That holds for the *block definition*; it does **not** hold for the
+*result contract*. A worker that simply `return`s a value works inline and silently loses its output
+when detached, because `RequestRecord` persists status and items but not `ExecutionResult.output`. So
+disposition is orthogonal to **what the worker is**, and not to **how it must surface its result** —
+detached carries one extra obligation. The alternative that would restore full orthogonality is to
+persist or project `ExecutionResult.output` automatically, which is a framework surface this epic is
+deliberately not adding right now (OQ-A's neighbour). **FIX-982 states the obligation in the worker
+contract, and §1's orthogonality claim is scoped to the block rather than the result.**
 
 **And it defers the question underneath.** Whether a parent session may read a **sub-session-scoped**
 resource is now **OQ-F**, deliberately open: the interim path (item, or user/org scope) does not need
@@ -1521,8 +1545,9 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N11** | **NEW — a task's assignee is mutable after admission.** `assignTask` / `updateTask` can change a pending task's assignee once a detached dispatch already persisted a binding and keyed a Workstream on the old one. The old request then runs the wrong worker, the new worker's turns land in history labelled for the old assignee, or an inline task switched to a detached assignee gets no request-creation wake at all. Make the assignee immutable after admission, or atomically cancel and re-dispatch under the new binding. | FIX-982 |
 | **N12** | **NEW — the uniform-worker board and the delegation floor need coordinates.** `workers` is a union — `TaskWorker \| TaskWorkerRegistry` (`task-board/index.ts:288`) — and a uniform worker has no assignee; separately, `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or absent"* (`:290-299`, `worker-step.ts:24-38`). Both need a key coordinate, and detached mode must not convert a floor-routed task into an error. Resolved shape: a **tagged** coordinate, `{ kind: "assignee", name } \| { kind: "uniform" } \| { kind: "floor" }` — not a reserved string, which an authored assignee can legally collide with (§1). The floor is tagged distinctly from `uniform` even though the two cannot coexist on one board, so a Workstream record says whether it holds a declared participant's work or work whose assignee failed to resolve. Proven end to end in §8. | FIX-982 |
 | **N8** | **NEW — Workstream routing must be tenant-scoped.** A key without `tenantId` aliases two tenants that reuse the same caller-chosen parent session id, board, assignee and topic (§8), and the same applies to S1's parent-to-child read. Session ids are already tenant-namespaced and history reads already exact-match the tenant (FIX-682); the new paths must too. | FIX-982 + S1 |
-| **N9** | **NEW, and UNRESOLVED — there is no surface from which a binding can be derived.** Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings. But §1's board surface declares only `{ worker, dispatch }` — **no hosting coordinate** — and a `BlockDefinition` carries no back-reference to the action that hosts it, so the coordinate cannot be recovered from the value either (§8 asserts both). The POC's binding map is therefore *invented*: it proves that **given** a correct binding re-resolution works, not that one can be produced. FIX-982 must either grow the board surface an explicit per-worker hosting coordinate, or move workers to a registry addressable outside `flow.actions` — and a worker reachable only through a closure the definitions cannot reconstruct is not durably dispatchable at all. | FIX-982 | Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings, so a worker reachable only through a closure the flow definitions cannot reconstruct is not durably dispatchable. FIX-982 must reject that at build time or restrict the feature to in-process execution, and say which. | FIX-982 |
+| **N9** | **NEW, and UNRESOLVED — there is no surface from which a binding can be derived.** Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings. But §1's board surface declares only `{ worker, dispatch }` — **no hosting coordinate** — and a `BlockDefinition` carries no back-reference to the action that hosts it, so the coordinate cannot be recovered from the value either (§8 asserts both). The POC's binding map is therefore *invented*: it proves that **given** a correct binding re-resolution works, not that one can be produced. FIX-982 must either grow the board surface an explicit per-worker hosting coordinate, or move workers to a registry addressable outside `flow.actions` — and a worker reachable only through a closure the definitions cannot reconstruct is not durably dispatchable at all. | FIX-982 |
 | **N26** | **NEW — parent-side settlement names an operation with no addressable surface.** Decision 7 has the parent settle the task when the Workstream's request goes terminal. But **every** way to obtain a `TaskCollectionRef` requires a live `BlockContext` — all three variants of `GetOrCreateTaskCollectionOptions` take `ctx` (`tasks/collection/get-or-create.ts:68-104`), and the durable one additionally needs a `ResourceCollectionRef`. Once the initiating request has ended there is no observer holding either, so a wake and a durable result still leave the task `in_progress`. FIX-982 must define a re-resolvable settlement action (a real `(flowKind, action)` the wake can dispatch, which lands it back in N6's admission-gate problem) or a store-level board-mutation seam that does not need a block context. **Same class as N9, N18 and the `buildTaskTools` gap: a requirement naming an operation the codebase has no surface for.** | FIX-982 |
+| **N28** | **NEW — a rebound board coordinate reuses a Workstream bound to the old flow.** `flowKind` is deliberately **not** in the routing key, so if a deployment points the same `(board, coordinate)` at an action in a different flow, get-or-create returns the **existing** Workstream — whose `SessionRecord.flowKind` still names the original flow, since flow binds to a session at creation. New requests then execute the replacement flow while the session state, resource and debug routes resolve configuration from the stale stored one. Excluding `flowKind` was right for its purpose (a rename of the *hosting* flow must not orphan a live Workstream); it is wrong when the *binding* changes underneath. FIX-982 must either carry a binding version in the identity, reject a rebind while a Workstream is live, or define a migration that starts a fresh Workstream. Related to N14 — same cause, a coordinate that outlives its deployment. | FIX-982 |
 | **N27** | **NEW — a deterministic Workstream id is squattable.** The id is `sha256` over the routing tuple, and session creation accepts **caller-chosen** ids. A same-tenant caller who knows or guesses the tuple — `parentSessionId` is theirs, `boardId` and `coordinate` are authored, `topic` is often an issue key — can create an ordinary session at the derived `ws_…` id *before* the task is admitted. The create-if-absent insert then conflicts permanently against a record that is not a Workstream, and nothing on a `SessionRecord` discriminates the two, so reconciliation cannot recover: the task never gets a request. Determinism bought race-safety (N5b) and sold predictability. Cheapest fix consistent with Decision 8: **reserve the `ws_` prefix from caller-supplied session ids** at the route and `runAction` boundary — no secret to manage. Alternatives: an HMAC derivation under a server-held key (unguessable, still deterministic, but adds key management), or a discriminator field plus a defined terminal recovery for an occupied key. | FIX-982 + create-if-absent (N5a) |
 | **N24** | **NEW — nothing marks the task scope on the detached path, so worker items are unattributed.** `_markTaskScope` has exactly one call site (`task-board/index.ts:682`, inside the worker-body sequencer). A registry worker run as a **top-level Workstream action** never reaches it, and `taskId` in request metadata does not stamp `OutputItem.taskId` — metadata is on the request, attribution is on the item. So `itemsForTask` / `attributeItemsToTasks` return nothing for a detached task: criterion 4b fails and the UI has no worker items to render. §5's "the client needs no new attribution mechanism" was true of the *algorithm* and false of the *stamping*. The spawn must mark the root execution scope, or FIX-991 must define an attribution that does not depend on scope marking. | FIX-982 + FIX-991 |
 | **N25** | **NEW — the worker payload is a claim-time artifact and cannot live in the admission template.** `packWorkerInput(claimed, collection)` runs after the claim (`dispatch-and-execute.ts:173`), materializing dep outputs from the live collection plus the claimed task's `attempts` and `feedback`; `priorWork` is a claim-time policy selection. A task with deps, or a retry after a soft failure, re-dispatched from an admission-time template gets stale or empty input — and Decision 7 forbids repairing it by reading the parent board. Split template from payload: coordinates + identity are written atomically at admission; the payload is built per attempt at claim time on the parent side. This **narrows** the atomic-write requirement rather than widening it. | FIX-982 |
@@ -1543,18 +1568,23 @@ with their resolution recorded rather than deleted, so a later reader does not r
 
 ## 7. Running index
 
-Durable audit log of every PR under this epic, refreshed from the coordinator's status table. Empty
-columns mean not yet reached. **Epic PR:**
+**Scope and dependencies only — no live status.** `AGENTS.md` puts orchestration state (the epic
+board, per-issue handles, coordination scratch) in the **gitignored `.orchestration/`**, and an
+earlier draft of this section carried Linear states and PR handles in the committed spec. That
+version went stale the moment any issue moved, while later text treats these tables as canonical
+lifecycle input — so a coordinator could dispatch or hold the wrong issue on the strength of a
+checked-in snapshot. What stays here is what does not change per wake: **membership, dependencies,
+and why each issue sits where it does.** Live state lives in `.orchestration/`. **Epic PR:**
 [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) · never merged, open for the life
 of the epic.
 
 **Active set** — runs an `issue-lifecycle` once the objective gate passes; holds at `NEEDS_SPEC`
 until then (`orchestration.md` → Gates). OQ-A still awaits that gate, so no lifecycle is dispatched:
 
-| Issue | M | Title (short) | Linear state | Spec PR | Impl PR |
-|---|---|---|---|---|---|
-| **FIX-981** | M1 | Two executions over one durable board can both claim a task | Backlog | — | — |
-| **FIX-925** | — | Declare a tool as a board participant (`tool:` on an `agents:` entry) | Todo | [#900](https://github.com/fixpoint-labs/flow-state-dev/pull/900) · merged | — |
+| Issue | M | Title (short) |
+|---|---|---|
+| **FIX-981** | M1 | Two executions over one durable board can both claim a task |
+| **FIX-925** | — | Declare a tool as a board participant (`tool:` on an `agents:` entry) |
 
 **FIX-925 enters this table post-spec, not at `NEEDS_SPEC`.** Its spec is already
 written, reviewed and merged (`docs/specs/FIX-925.md`, PR #900) — the Linear issue was marked Done
@@ -1570,12 +1600,12 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 
 **Filed, held as blocked** — no lifecycle until their dependency lands:
 
-| Issue | M | Title (short) | Blocked by | Linear state | Spec PR | Impl PR |
-|---|---|---|---|---|---|---|
-| **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 **+** create-if-absent (**unfiled**) **+** S1a (parent-session store filter, **unfiled**) | Backlog | — | — |
-| **FIX-983** | M4 | Tasks have no blocking/background disposition | FIX-982 | Backlog | — | — |
-| **FIX-984** | M5 | A detached task can't stream progress — `ctx.emit` doesn't survive | FIX-982 | Backlog | — | — |
-| **FIX-991** | — | `TaskHandle.items()` returns the wrong request's items once tasks execute out-of-request | **see the note — this row's direction is now wrong** | Backlog | — | — |
+| Issue | M | Title (short) | Blocked by |
+|---|---|---|---|
+| **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 **+** create-if-absent (**unfiled**) **+** S1a (parent-session store filter, **unfiled**) |
+| **FIX-983** | M4 | Tasks have no blocking/background disposition | FIX-982 |
+| **FIX-984** | M5 | A detached task can't stream progress — `ctx.emit` doesn't survive | FIX-982 |
+| **FIX-991** | — | `TaskHandle.items()` returns the wrong request's items once tasks execute out-of-request | **see the note — this row's direction is now wrong** |
 
 **FIX-991 and FIX-982 are recorded as a cycle, and it must be broken before either starts.** This row
 blocks FIX-991 *on* FIX-982, but Decision 7 assigns parent-side settlement to FIX-982 and that
@@ -1589,11 +1619,11 @@ the same way: a dependency stated in prose that the indexed row contradicts. **F
 
 **Tracked, not active** — parented here (or depended on) but running no lifecycle under this epic:
 
-| Issue | Relationship | Linear state | Why it is not in the active set |
-|---|---|---|---|
-| **FIX-957** | sub-issue of FIX-939 | Backlog | Retains the in-request half after the 2026-07-29 split. Durable scope/backing already ship, so there is no enum to coordinate — the real coordination point is **FIX-960** (`sequencer` → `state` rename). Blocks nothing here, but **see OQ-D**: it may still own cap enforcement. |
-| **FIX-825** | sub-issue of FIX-939 | Backlog | Topic notification subscribers that bubble up into the flow — the reactive-dispatch concern. Parented per the owner's explicit instruction, but it sits in the task-events-as-dispatch gap §2 puts out of this decomposition. Review argued `relates-to` models this better than parenting; re-parenting is destructive, so it is left as-is and flagged for the gate. Decision 6 is where its eventual capability is depended upon. |
-| **FIX-978** | **not** a sub-issue — owned by epic **FIX-980**, blocks **FIX-982** | **Backlog** (moved back from Spec Approved on 2026-07-30) | The M2 hole. Reclamation stays with FIX-980 per Decision 1; this epic consumes its outcome. Spec activity is on FIX-980's epic PR [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983). **Sequencing risk — Decision 1:** it owns *converting* `reclaim` while FIX-981 owns the *primitive*, with no dependency recorded between them. |
+| Issue | Relationship | Why it is not in the active set |
+|---|---|---|
+| **FIX-957** | sub-issue of FIX-939 | Retains the in-request half after the 2026-07-29 split. Durable scope/backing already ship, so there is no enum to coordinate — the real coordination point is **FIX-960** (`sequencer` → `state` rename). Blocks nothing here, but **see OQ-D**: it may still own cap enforcement. |
+| **FIX-825** | sub-issue of FIX-939 | Topic notification subscribers that bubble up into the flow — the reactive-dispatch concern. Parented per the owner's explicit instruction, but it sits in the task-events-as-dispatch gap §2 puts out of this decomposition. Review argued `relates-to` models this better than parenting; re-parenting is destructive, so it is left as-is and flagged for the gate. Decision 6 is where its eventual capability is depended upon. |
+| **FIX-978** | **not** a sub-issue — owned by epic **FIX-980**, blocks **FIX-982** | The M2 hole. Reclamation stays with FIX-980 per Decision 1; this epic consumes its outcome. Spec activity is on FIX-980's epic PR [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983). **Sequencing risk — Decision 1:** it owns *converting* `reclaim` while FIX-981 owns the *primitive*, with no dependency recorded between them. |
 
 ### Membership
 
@@ -1664,7 +1694,7 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **Twenty-three findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three) and two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor). It is still sized Medium; it should be split.** |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **Twenty-four findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three) and two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor). It is still sized Medium; it should be split.** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. |
