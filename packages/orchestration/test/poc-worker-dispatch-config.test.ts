@@ -46,7 +46,17 @@ type WorkerDispatch = { mode: "inline" } | { mode: "detached" };
  * knows per task which body of work it belongs to. Different knowledge, held at
  * different times, so it lives in different places.
  */
-type TaskWithTopic = TaskWorkerInput & { topic?: string };
+type TaskWithTopic = TaskWorkerInput & {
+  topic?: string;
+  /**
+   * `assignee` is on `Task`, not on `TaskWorkerInput` — the board reads it to
+   * pick the worker and then packs the worker's input without it
+   * (`workers/types.ts:26-71`). It is carried here because routing happens on
+   * the dispatch side of that boundary, and it is optional for the same reason
+   * the delegation floor exists: a task may legitimately arrive with none.
+   */
+  assignee?: string;
+};
 
 /**
  * Registry value. A bare `TaskWorker` is the shape that ships today and keeps
@@ -68,12 +78,23 @@ type WorkerEntry = TaskWorker | { worker: TaskWorker; dispatch: WorkerDispatch }
  */
 type Coordinate =
   | { kind: "assignee"; name: string }
-  | { kind: "uniform" };
+  | { kind: "uniform" }
+  | { kind: "floor" };
 
 const UNIFORM: Coordinate = { kind: "uniform" };
+/**
+ * The delegation floor is its OWN coordinate rather than reusing `uniform`.
+ * The two can't coexist on one board — a uniform board has no registry to miss
+ * — so sharing a key would be safe, but it would be a lie: a debug tool reading
+ * the Workstream record could not tell a board that declares one worker from a
+ * board where an assignee failed to resolve, and those want different
+ * attention (N11's mutable-assignee case is exactly the second one).
+ */
+const FLOOR: Coordinate = { kind: "floor" };
 
-/** Stable serialization for the Workstream key. `a:` can never equal `u`. */
-const coordinateKey = (c: Coordinate) => (c.kind === "uniform" ? "u" : `a:${c.name}`);
+/** Stable serialization for the Workstream key. `a:` can never equal `u` or `f`. */
+const coordinateKey = (c: Coordinate) =>
+  c.kind === "assignee" ? `a:${c.name}` : c.kind === "uniform" ? "u" : "f";
 
 type BoardConfig = {
   workers: WorkerEntry | Record<string, WorkerEntry>;
@@ -178,7 +199,7 @@ function resolveDispatch(config: BoardConfig, assignee?: string): {
       dispatch: entryDispatch(config.defaultWorker) ?? config.dispatch ?? INLINE,
       // The floor's own coordinate, so its Workstream is not keyed under a name
       // that resolves to a different worker.
-      coordinate: UNIFORM
+      coordinate: FLOOR
     };
   }
   throw new Error(
@@ -199,9 +220,22 @@ function resolveTopic(dispatch: WorkerDispatch, task: TaskWithTopic): string {
 
 // ─── Workstream routing, keyed on assignee (not flowKind) ────────────────────
 
+/**
+ * The routing field is `coordinate` — `coordinateKey(...)` of whatever
+ * `resolveDispatch` returned — NOT the raw assignee string. A uniform-worker
+ * board and a floor-routed task both have no assignee at all, so a key built
+ * from `assignee` cannot express them; keying on the coordinate makes those two
+ * cases route rather than being special-cased at the call site.
+ *
+ * `assignee` is retained alongside it as the human-readable label, and is
+ * `undefined` exactly when the coordinate is `uniform` — a Workstream that
+ * carries a fabricated assignee it was never given would misreport its own
+ * provenance in a debug tool.
+ */
 type Workstream = SessionRecord & {
   parentSessionId?: string;
   boardId?: string;
+  coordinate?: string;
   assignee?: string;
   topic?: string;
 };
@@ -225,29 +259,34 @@ const BOARD_B = "board_delivery";
 const TENANT = "tenant_a";
 
 /**
- * Keyed `(parentSessionId, boardId, assignee, topic)`.
+ * Keyed `(parentSessionId, boardId, coordinate, topic)`.
  *
- * `assignee` rather than `flowKind` because it is authored and already
- * validated, so a refactor cannot silently re-key a live Workstream. But
- * `assignee` is scoped *within* a registry — which is exactly why it is
- * ambiguous *across* registries, and why `boardId` is required rather than
- * optional. An earlier draft argued board-scoping made `boardId` unnecessary;
- * that inverted the implication, and the two-board test below is the
- * counterexample.
+ * The coordinate derives from `assignee` rather than `flowKind` because the
+ * assignee is authored and already validated, so a refactor cannot silently
+ * re-key a live Workstream. But `assignee` is scoped *within* a registry —
+ * which is exactly why it is ambiguous *across* registries, and why `boardId`
+ * is required rather than optional. An earlier draft argued board-scoping made
+ * `boardId` unnecessary; that inverted the implication, and the two-board test
+ * below is the counterexample.
+ *
+ * The parameter is the `Coordinate` `resolveDispatch` returned, not a raw
+ * string, so the uniform-worker and delegation-floor paths reach routing as
+ * themselves instead of the caller inventing a name for them.
  */
 async function routeToWorkstream(
   stores: StoreRegistry,
   parentSessionId: string,
   boardId: string,
-  assignee: string,
+  coordinate: Coordinate,
   topic: string
 ): Promise<Workstream> {
+  const ckey = coordinateKey(coordinate);
   const all = (await stores.session.list({ tenantId: TENANT })) as Workstream[];
   const existing = all.find(
     (s) =>
       s.parentSessionId === parentSessionId &&
       s.boardId === boardId &&
-      s.assignee === assignee &&
+      s.coordinate === ckey &&
       s.topic === topic
   );
   if (existing !== undefined) return existing;
@@ -269,11 +308,30 @@ async function routeToWorkstream(
     journal: [],
     parentSessionId,
     boardId,
-    assignee,
+    coordinate: ckey,
+    ...(coordinate.kind === "assignee" ? { assignee: coordinate.name } : {}),
     topic
   };
   await stores.session.set(created.id, created, "any");
   return created;
+}
+
+/** The end-to-end call a dispatch makes: resolve, then route on what it resolved. */
+async function dispatchAndRoute(
+  stores: StoreRegistry,
+  config: BoardConfig,
+  parentSessionId: string,
+  boardId: string,
+  task: TaskWithTopic
+): Promise<Workstream> {
+  const { dispatch, coordinate } = resolveDispatch(config, task.assignee);
+  return routeToWorkstream(
+    stores,
+    parentSessionId,
+    boardId,
+    coordinate,
+    resolveTopic(dispatch, task)
+  );
 }
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -289,8 +347,19 @@ const summarizeBlock: TaskWorker = handler({
 }) as unknown as TaskWorker;
 
 /** What the coordinator produces: `addTask({ goal, assignee, topic })`. */
-function taskInput(taskId: string, goal: string, topic?: string): TaskWithTopic {
-  return { taskId, goal, attempts: 0, ...(topic === undefined ? {} : { topic }) };
+function taskInput(
+  taskId: string,
+  goal: string,
+  topic?: string,
+  assignee?: string
+): TaskWithTopic {
+  return {
+    taskId,
+    goal,
+    attempts: 0,
+    ...(topic === undefined ? {} : { topic }),
+    ...(assignee === undefined ? {} : { assignee })
+  };
 }
 
 /** The surface a board author writes. */
@@ -338,7 +407,7 @@ describe("POC: board worker config — disposition, not target", () => {
     // floor for tasks admitted outside the roster-validated skills path.
     const { worker, coordinate } = resolveDispatch(board, "nope");
     expect(worker).toBe(summarizeBlock);
-    expect(coordinate).toEqual(UNIFORM);
+    expect(coordinate).toEqual(FLOOR);
   });
 
   it("without a defaultWorker, a registry miss still fails loudly", () => {
@@ -375,7 +444,7 @@ describe("POC: board worker config — disposition, not target", () => {
     expect(floor.worker).toBe(summarizeBlock);
     expect(coordinateKey(authored.coordinate)).not.toBe(coordinateKey(floor.coordinate));
     expect(coordinateKey(authored.coordinate)).toBe("a:__uniform__");
-    expect(coordinateKey(floor.coordinate)).toBe("u");
+    expect(coordinateKey(floor.coordinate)).toBe("f");
   });
 
   it("a registry with assignees named `kind` and `config` is NOT read as a block", () => {
@@ -423,19 +492,19 @@ describe("POC: board worker config — disposition, not target", () => {
 
   it("topic derivation gives continuity — two tasks, one issue, one Workstream", async () => {
     const stores = createInMemoryStores();
-    const { dispatch } = resolveDispatch(board, "implement");
 
-    const a = taskInput("t1", "write the parser", "FIX-981");
-    const b = taskInput("t2", "fix the parser bug", "FIX-981");
-    const c = taskInput("t3", "unrelated work", "FIX-982");
+    const a = taskInput("t1", "write the parser", "FIX-981", "implement");
+    const b = taskInput("t2", "fix the parser bug", "FIX-981", "implement");
+    const c = taskInput("t3", "unrelated work", "FIX-982", "implement");
 
-    const wsA = await routeToWorkstream(stores, "S", BOARD_A, "implement", resolveTopic(dispatch, a));
-    const wsB = await routeToWorkstream(stores, "S", BOARD_A, "implement", resolveTopic(dispatch, b));
-    const wsC = await routeToWorkstream(stores, "S", BOARD_A, "implement", resolveTopic(dispatch, c));
+    const wsA = await dispatchAndRoute(stores, board, "S", BOARD_A, a);
+    const wsB = await dispatchAndRoute(stores, board, "S", BOARD_A, b);
+    const wsC = await dispatchAndRoute(stores, board, "S", BOARD_A, c);
 
     expect(wsB.id).toBe(wsA.id); // same issue → same Workstream
     expect(wsC.id).not.toBe(wsA.id); // different issue → its own
     expect(wsA.topic).toBe("FIX-981");
+    expect(wsA.coordinate).toBe("a:implement");
   });
 
   it("with no topic named, each task gets its own Workstream — no accidental continuity", async () => {
@@ -445,12 +514,12 @@ describe("POC: board worker config — disposition, not target", () => {
     };
     const { dispatch } = resolveDispatch(bare, "impl");
 
-    const a = taskInput("t1", "one");
-    const b = taskInput("t2", "two");
+    const a = taskInput("t1", "one", undefined, "impl");
+    const b = taskInput("t2", "two", undefined, "impl");
     expect(resolveTopic(dispatch, a)).toBe("t1");
 
-    const wsA = await routeToWorkstream(stores, "S", BOARD_A, "impl", resolveTopic(dispatch, a));
-    const wsB = await routeToWorkstream(stores, "S", BOARD_A, "impl", resolveTopic(dispatch, b));
+    const wsA = await dispatchAndRoute(stores, bare, "S", BOARD_A, a);
+    const wsB = await dispatchAndRoute(stores, bare, "S", BOARD_A, b);
     expect(wsA.id).not.toBe(wsB.id);
   });
 
@@ -462,29 +531,126 @@ describe("POC: board worker config — disposition, not target", () => {
     // 3-part key `(parent, assignee, topic)` would return one Workstream for
     // both — mixing two boards' histories, and leaving the executor unable to
     // tell which registry supplies the worker.
-    const a = await routeToWorkstream(stores, "S", BOARD_A, "implement", "FIX-981");
-    const b = await routeToWorkstream(stores, "S", BOARD_B, "implement", "FIX-981");
+    const task = taskInput("t1", "work", "FIX-981", "implement");
+    const a = await dispatchAndRoute(stores, board, "S", BOARD_A, task);
+    const b = await dispatchAndRoute(stores, board, "S", BOARD_B, task);
 
     expect(a.id).not.toBe(b.id);
     expect(a.boardId).toBe(BOARD_A);
     expect(b.boardId).toBe(BOARD_B);
 
     // The 3-part key these two would have shared — the counterexample, stated.
-    const threePartKey = (w: Workstream) => `${w.parentSessionId}|${w.assignee}|${w.topic}`;
+    const threePartKey = (w: Workstream) => `${w.parentSessionId}|${w.coordinate}|${w.topic}`;
     expect(threePartKey(a)).toBe(threePartKey(b));
 
     // ...and each still round-trips to its own board.
-    expect((await routeToWorkstream(stores, "S", BOARD_A, "implement", "FIX-981")).id).toBe(a.id);
-    expect((await routeToWorkstream(stores, "S", BOARD_B, "implement", "FIX-981")).id).toBe(b.id);
+    expect((await dispatchAndRoute(stores, board, "S", BOARD_A, task)).id).toBe(a.id);
+    expect((await dispatchAndRoute(stores, board, "S", BOARD_B, task)).id).toBe(b.id);
   });
 
   it("assignee is part of the key — two workers, one topic, two Workstreams", async () => {
     const stores = createInMemoryStores();
-    const research = await routeToWorkstream(stores, "S", BOARD_A, "research", "FIX-981");
-    const implement = await routeToWorkstream(stores, "S", BOARD_A, "implement", "FIX-981");
+    const twoDetached: BoardConfig = {
+      workers: { research: summarizeBlock, implement: implementBlock },
+      dispatch: { mode: "detached" }
+    };
+    const asResearch = taskInput("t1", "work", "FIX-981", "research");
+    const asImplement = taskInput("t2", "work", "FIX-981", "implement");
+
+    const research = await dispatchAndRoute(stores, twoDetached, "S", BOARD_A, asResearch);
+    const implement = await dispatchAndRoute(stores, twoDetached, "S", BOARD_A, asImplement);
     expect(research.id).not.toBe(implement.id);
 
     // ...and each round-trips to itself.
-    expect((await routeToWorkstream(stores, "S", BOARD_A, "research", "FIX-981")).id).toBe(research.id);
+    expect((await dispatchAndRoute(stores, twoDetached, "S", BOARD_A, asResearch)).id).toBe(
+      research.id
+    );
+  });
+
+  it("UNIFORM — a uniform-worker board routes every task through one coordinate", async () => {
+    const stores = createInMemoryStores();
+    const uniform: BoardConfig = {
+      workers: { worker: implementBlock, dispatch: { mode: "detached" } }
+    };
+
+    // Two tasks on one topic, and neither carries an assignee — there is none
+    // to carry. Routing on a raw assignee string cannot express this at all;
+    // the tagged coordinate does, and it does so without a reserved name that
+    // an author could collide with.
+    const a = taskInput("t1", "one", "FIX-981");
+    const b = taskInput("t2", "two", "FIX-981");
+    const wsA = await dispatchAndRoute(stores, uniform, "S", BOARD_A, a);
+    const wsB = await dispatchAndRoute(stores, uniform, "S", BOARD_A, b);
+
+    expect(wsB.id).toBe(wsA.id);
+    expect(wsA.coordinate).toBe("u");
+    // No assignee is fabricated for a task that never had one.
+    expect(wsA.assignee).toBeUndefined();
+  });
+
+  it("FLOOR — an unknown assignee routes to the floor's coordinate, not an error", async () => {
+    const stores = createInMemoryStores();
+    // `defaultWorker` is the shipped delegation floor: it runs any task whose
+    // assignee is "unknown or absent" (`task-board/index.ts:290-299`). Detached
+    // mode must not convert a floor-routed task into a failure, so the floor
+    // needs a coordinate of its own — end to end, not just at resolution.
+    const withFloor: BoardConfig = {
+      workers: { implement: implementBlock },
+      defaultWorker: summarizeBlock,
+      dispatch: { mode: "detached" }
+    };
+
+    const unknown = taskInput("t1", "one", "FIX-981", "nobody-declares-this");
+    const absent = taskInput("t2", "two", "FIX-981");
+    const wsUnknown = await dispatchAndRoute(stores, withFloor, "S", BOARD_A, unknown);
+    const wsAbsent = await dispatchAndRoute(stores, withFloor, "S", BOARD_A, absent);
+
+    // Both land on the floor, so both share its Workstream for this topic —
+    // the floor is one participant, not one per misspelled assignee.
+    expect(wsAbsent.id).toBe(wsUnknown.id);
+    expect(wsUnknown.coordinate).toBe("f");
+    expect(wsUnknown.assignee).toBeUndefined();
+
+    // ...and it is a DIFFERENT Workstream from the declared worker on the same
+    // board and topic.
+    const declared = await dispatchAndRoute(
+      stores,
+      withFloor,
+      "S",
+      BOARD_A,
+      taskInput("t3", "three", "FIX-981", "implement")
+    );
+    expect(declared.id).not.toBe(wsUnknown.id);
+    expect(declared.coordinate).toBe("a:implement");
+  });
+
+  it("COLLISION — an author's `__uniform__` assignee does not land in the floor's Workstream", async () => {
+    const stores = createInMemoryStores();
+    const withFloor: BoardConfig = {
+      workers: { __uniform__: implementBlock },
+      defaultWorker: summarizeBlock,
+      dispatch: { mode: "detached" }
+    };
+
+    // The reserved-string design would have merged these two. The tagged
+    // coordinate keeps them apart all the way to the session record.
+    const authored = await dispatchAndRoute(
+      stores,
+      withFloor,
+      "S",
+      BOARD_A,
+      taskInput("t1", "one", "FIX-981", "__uniform__")
+    );
+    const floor = await dispatchAndRoute(
+      stores,
+      withFloor,
+      "S",
+      BOARD_A,
+      taskInput("t2", "two", "FIX-981")
+    );
+
+    expect(authored.id).not.toBe(floor.id);
+    expect(authored.coordinate).toBe("a:__uniform__");
+    expect(floor.coordinate).toBe("f");
   });
 });

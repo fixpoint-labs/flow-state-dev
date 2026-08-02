@@ -119,6 +119,30 @@ async function forkByCopy(
  */
 type ForkRef = { sessionId: string; visible: ReadonlySet<string> };
 
+/**
+ * What actually gets stored. A fork ref lives on the Workstream's session record
+ * (`SessionRecord.metadata`), which is persisted as JSON by every adapter, and
+ * `JSON.stringify(new Set([...]))` is `{}` — the cursor would serialize to
+ * nothing at all, silently, with no error at write time. The fork would come
+ * back from the store with an empty snapshot and inherit no history.
+ *
+ * So the persisted shape is an array and the runtime shape is a Set; the
+ * conversion is explicit at both ends rather than implied. Measured below.
+ */
+type PersistedForkRef = { sessionId: string; visible: readonly string[] };
+
+const persistForkRef = (ref: ForkRef): PersistedForkRef => ({
+  sessionId: ref.sessionId,
+  // Sorted so a stored cursor is stable across writes — two persists of the
+  // same snapshot produce byte-identical JSON, which matters for a CAS'd record.
+  visible: [...ref.visible].sort()
+});
+
+const hydrateForkRef = (ref: PersistedForkRef): ForkRef => ({
+  sessionId: ref.sessionId,
+  visible: new Set(ref.visible)
+});
+
 /** Takes the cursor: what the parent had completed at the moment of the fork. */
 async function forkCursor(
   store: InMemoryRequestStore,
@@ -410,5 +434,54 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // The timestamp rule this replaces would have admitted it.
     const byTimestamp = (await loadOwn(store, "S")).filter((r) => r.startedAtMs <= 3);
     expect(byTimestamp.map((r) => r.id).sort()).toEqual(["p1", "p_slow"]);
+  });
+
+  it("PERSISTENCE — a raw Set cursor serializes to nothing and empties the fork", async () => {
+    const store = await seed();
+    await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
+    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S") };
+
+    // What a store adapter actually writes. No throw, no warning — the Set is
+    // simply not a JSON value, so the cursor vanishes.
+    const naive = JSON.parse(JSON.stringify(live)) as { sessionId: string; visible?: unknown };
+    // eslint-disable-next-line no-console
+    console.log(
+      `[fork/persist] raw Set round-trip -> visible=${JSON.stringify(naive.visible)} ` +
+        `(cursor had ${live.visible.size} ids)`
+    );
+    expect(naive.visible).toEqual({});
+
+    // Reloaded from that record, the fork inherits nothing: a Workstream that
+    // was forked to continue a body of work resumes with no memory of it, and
+    // the only symptom is a worker that has forgotten its own context.
+    const reloaded: ForkRef = {
+      sessionId: naive.sessionId,
+      visible: new Set(Array.isArray(naive.visible) ? (naive.visible as string[]) : [])
+    };
+    const { records } = await loadForked(store, "W", { W: reloaded });
+    expect(asc(records)).toEqual(["w1"]);
+  });
+
+  it("PERSISTENCE — the array form round-trips through JSON unchanged", async () => {
+    const store = await seed();
+    await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
+    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S") };
+
+    const stored = JSON.parse(JSON.stringify(persistForkRef(live))) as PersistedForkRef;
+    // eslint-disable-next-line no-console
+    console.log(`[fork/persist] array round-trip -> visible=${stored.visible.join(",")}`);
+    expect(stored.visible).toEqual(["p1", "p2", "p3"]);
+
+    // Same visible history before and after a trip through the store.
+    const fromLive = await loadForked(store, "W", { W: live });
+    const fromStored = await loadForked(store, "W", { W: hydrateForkRef(stored) });
+    expect(asc(fromStored.records)).toEqual(asc(fromLive.records));
+    expect(asc(fromStored.records)).toEqual(["p1", "p2", "p3", "w1"]);
+
+    // ...and persisting twice is byte-identical, so re-storing an unchanged
+    // cursor is not a spurious version bump on a CAS'd session record.
+    expect(JSON.stringify(persistForkRef(hydrateForkRef(stored)))).toBe(
+      JSON.stringify(persistForkRef(live))
+    );
   });
 });

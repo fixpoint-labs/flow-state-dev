@@ -46,7 +46,7 @@ sequenceDiagram
 
   U->>C: sends a turn
   C->>B: addTask assignee implementer, topic FIX-981
-  C->>W: spawn — get-or-create by tenantId, parentSessionId, boardId, assignee, topic
+  C->>W: spawn — get-or-create by tenantId, parentSessionId, boardId, coordinate, topic
   Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.<br/>W may FORK S's history to a fork point.
   W->>B: claim taskId — the M1 conditional write
   B-->>W: claimed, attempts = 1
@@ -61,9 +61,17 @@ sequenceDiagram
 ```
 
 Two things the diagram cannot show, and both are binding: the routing key is
-`(tenantId, parentSessionId, boardId, assignee, topic)` — not topic alone, and **not `flowKind`** (see below); and the
+`(tenantId, parentSessionId, boardId, coordinate, topic)` — not topic alone, and **not `flowKind`**
+(see below), where `coordinate` is the tagged form of `assignee`; and the
 read model a UI needs already exists — `RequestStore.list({ sessionId, … })`
 (`engine/src/stores/types.ts:283`, `:110-147`).
+
+**"Get-or-create" is doing more work in that diagram than it looks.** It is not safe as written, and
+it takes two changes rather than one: the Workstream's session id must be **derived** from the four
+caller coordinates so racing callers target one key, *and* the store needs a **create-if-absent**
+insert so one of them loses. Either alone still ends with a broken uniqueness guarantee — measured
+both ways in §8. The store half is N5(a) and needs its own issue; the derivation is FIX-982's, and
+§5 carries the recommended encoding.
 
 **The board configures disposition, not a target.** DECIDED by the repo owner. The board already
 declares *what* runs: `TaskWorkerRegistry = Record<string, TaskWorker>`
@@ -88,13 +96,22 @@ Three properties, measured (§8):
   additive at the value position (BP-030 legacy shape). No board in the tree needs editing.
 - **Disposition is orthogonal to the worker.** The same block definition runs inline or detached with
   no change to the block — which is what makes this a disposition rather than a target.
-- **The routing coordinate is `assignee`, and it is already authored and validated.** `checkAssignee`
-  rejects an unknown assignee against the declared `WorkerRoster`
+- **The routing coordinate derives from `assignee`, which is already authored and validated.**
+  `checkAssignee` rejects an unknown assignee against the declared `WorkerRoster`
   (`skills/task-tools-capability.ts:131-170`), so a bad coordinate fails loudly at plan time instead
   of silently minting a stray Workstream. `flowKind` would not do — and block identity is worse
   still, since `buildBlockInstanceId` is `${requestId}:${path}:${attempt}` over positional paths
   (`contracts/src/block-instance-id.ts:50-75`), so it is request-scoped and changes when a sequencer
-  is reordered.
+  is reordered. It is a **tagged coordinate rather than the raw string**, because two of the
+  shipped routing cases have no assignee at all: `workers` is a union — `TaskWorker |
+  TaskWorkerRegistry` (`task-board/index.ts:288`), and a uniform worker names nobody — and
+  `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or
+  absent"* (`:290-299`). Reserved strings do not work here: assignees are unrestricted, so a board
+  may legally declare one named `__uniform__` and would then share a key with the floor, routing
+  two different workers into one history. `{ kind: "assignee", name } | { kind: "uniform" } |
+  { kind: "floor" }` cannot collide with any authored name. Measured end to end in §8, through
+  resolution into real session records — an unknown assignee and an absent one land in the *same*
+  floor Workstream, and neither fabricates an assignee the task never carried.
 - **`boardId` is required in the key, not optional.** An earlier draft argued that because
   `assignee` is board-scoped, two boards under one session could not collide, and dropped the board
   coordinate. **That inverted the implication.** `assignee` is unique only *within* a registry,
@@ -190,6 +207,14 @@ never had.
 > ceiling arithmetic from the chain walk: each level's snapshot *is* what that level could see.
 > Measured in §8 — under a timestamp rule the late-completing request is admitted; under the
 > cursor it never is.
+>
+> **Persist that cursor as an array, not a `Set`.** The fork ref lives on the Workstream's session
+> record, which every adapter stores as JSON, and `JSON.stringify(new Set([...]))` is `{}` — a
+> 3-id cursor serializes to nothing, with no throw and no warning at write time. Reloaded, the fork
+> inherits nothing and resumes with no memory of the work it was forked to continue; the only
+> symptom is a worker that has forgotten its own context. Store a sorted `string[]` and rehydrate
+> on read (sorted so re-storing an unchanged cursor is byte-identical and not a spurious version
+> bump on a CAS'd record). Measured both ways in §8.
 
 > **One implementation constraint the POC exposed, and it belongs to whoever builds this.** The
 > history window does **not** compose across a fork chain. Each read is bounded by
@@ -960,7 +985,7 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 |---|---|---|---|
 | **M1** — cross-execution claim safety | FIX-981 | **Unchanged, and more necessary.** | Large |
 | **M2** — reclamation joined to liveness | *(none — FIX-978, under FIX-980)* | Consumed, not built. | — |
-| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the two measured missing pieces — resolve a worker and invoke it — plus routing by `(tenantId, parentSessionId, boardId, assignee, topic)`, the fork decision, and interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. | Medium |
+| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the two measured missing pieces — resolve a worker and invoke it — plus routing by `(tenantId, parentSessionId, boardId, coordinate, topic)` over a **derived** session id, the fork decision, and interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. | Medium |
 | **M4** — blocking / background disposition | FIX-983 | **Halved, and the surviving half re-homed.** Disposition is board worker config (§1), so it lands with M3 rather than being its own mechanism. What remains under FIX-983 is cross-request *waiting* only. | Small |
 | **M5** — progress across the request boundary | FIX-984 | **Mostly dissolved.** | ~none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's residue. | Medium |
@@ -993,6 +1018,24 @@ system. Recommended shape: extend `ExpectedVersion` to `number | "any" | "absent
 `INSERT … ON CONFLICT DO NOTHING` in sqlite/postgres and `current === undefined` in memory. It needs
 its own issue — folding it into FIX-982 would repeat the unindexed-prerequisite pattern this epic
 has already hit twice (FIX-991's execution sequence, S1–S4's placement).
+
+**...and the half that is FIX-982's: the Workstream's session id must be DERIVED, not generated.**
+The sentinel above rejects a second insert *at the same key*. Get-or-create as first drafted mints a
+fresh opaque id per caller, so two racing callers aim at two different keys, the sentinel never
+fires, and both inserts succeed — measured (§8), and it means create-if-absent landing first would
+**not** by itself close the uniqueness hole this epic opened it for. The id has to be a function of
+the routing coordinates: `ws_${[parentSessionId, boardId, coordinate, topic].map(encodeURIComponent).join(":")}`,
+or a hash of that same canonical encoding if a key column can't take the length. `encodeURIComponent`
+is what makes it canonical rather than decorative — session ids already carry a "must not contain `:`
+ambiguously" caveat (`scope-keys.ts:69-71`), and a raw join would let two distinct tuples derive one
+id (§8). `tenantId` stays out of the derivation and does its work through the storage namespace
+(`${tenantId}:${id}`, `resolveSessionStorageKey`), which is where every other tenant separation in
+the system already happens; the consequence is that two tenants' Workstreams carry the **same** bare
+session id, so the tenant filter on the history read is load-bearing rather than belt-and-braces —
+omitting it hands one tenant the other's turns, silently, because `matchesTenantFilter`
+short-circuits on an absent key (§8). **Neither half is a fix alone.** Derivation without the
+sentinel gives one Workstream whose record the loser overwrites; the sentinel without derivation
+gives two Workstreams. FIX-982 owns (b) and is blocked on (a).
 
 **M1 / FIX-981 — survives unchanged; the one thing this model does not dissolve.** Two concurrent
 executions are two `runAction` calls, hence two execution contexts and two resource registries, so
@@ -1239,13 +1282,13 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N2** | **DISSOLVED.** `latestRequestId` is a per-session field (`runAction.ts:642-658`), and a Workstream has its own, so it cannot steal the parent's auto-resume pointer. No issue needed; the previously proposed candidate should not be filed. | — |
 | **N3** | **Reframed.** `ActiveRequestRegistry` still has no per-session query (`stores/types.ts:471-489`), but the question is now "what Workstreams are live under this session," which a `parentSessionId` filter answers at the session store rather than by filtering `listAll` globally (BP-033). | FIX-982 |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
-| **N5** | **NEW — no create-if-absent primitive.** `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. Workstream get-or-create is therefore unsafe, and a composite session id does not rescue it (§8). Recommended shape and reasoning in §5. | **new issue — must be filed** |
+| **N5** | **NEW — Workstream get-or-create is unsafe, and it takes TWO changes.** (a) *No create-if-absent primitive*: `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. (b) *The session id must be derived from the routing tuple*: with a generated id per caller, two racing creates target two different keys, so an `"absent"` insert never fires and both still succeed (§8). Derivation alone is equally insufficient — one key, last writer wins. Neither half is a fix without the other. (a) is shared store surface and needs its own issue; (b) is FIX-982's. | (a) **new issue — must be filed** · (b) FIX-982 |
 | **N6** | **NOT dissolved — reinstated, and now load-bearing.** A Workstream worker must be reachable through `resolve-action-core.ts`'s `flow.actions[actionName]` branch for the durable binding (N9) to re-resolve it after a restart, which makes that worker **caller-addressable** on any HTTP/MCP host the flow is mounted on. An earlier draft claimed disposition-not-target avoided this path; it does not, because the binding must name a real action to survive serialization. Durability and privacy are in tension: FIX-982 must add a trusted-`source` admission gate on worker actions, or a worker-only registry resolved outside `flow.actions`. | FIX-982 |
 | **N14** | **NEW — a persisted binding must survive a deployment, not just a restart.** The re-resolution evidence (§8) proves a *same-version* process restart. But a task pending or reclaimed across a deploy that **renames or removes** the derived action can no longer resolve its `(flowKind, action)` and is **permanently stranded** — directly contradicting the epic's non-stranding objective, and worse than the hang it replaces because no reclaim can recover it. FIX-982 needs a stable or versioned binding plus a compatibility/migration policy for persisted envelopes: reject the rename at build time, alias retired coordinates, or fail the task loudly rather than silently. | FIX-982 |
 | **N13** | **NEW — a flow-isolated user/org board does not resolve from a Workstream either.** Distinct from N10 and a second mechanism for the same outcome: `resolveResourceScopeId` keys an isolated resource `${identityId}:${flowKind}` (`stores/scope-keys.ts:154-160`), so a board declared with `flowIsolation: true` — or inheriting `isolateUserState`/`isolateOrgState` — is written by the coordinator under its flow kind and read by the detached worker under the **worker's** flow kind. Different bucket, empty ledger, task left pending. Retain the parent flow coordinate for resource resolution, or exclude flow-isolated boards from the guarantees. | FIX-982 |
 | **N10** | **NEW — a session-scoped board does not resolve from a Workstream.** `resolveConfigScopeId` returns the **current** request's `sessionKey` for `scope: "session"` (`createExecutionContext.ts:867-879`), so a detached worker running in a child session hydrates an *empty* board rather than the parent's task ledger — the task is never claimed and strands with no lease for FIX-978 to reclaim. FIX-982 must either carry an explicit parent-session resource coordinate for detached workers, or exclude session-scoped boards from the epic's guarantees and say so in the criteria. | FIX-982 |
 | **N11** | **NEW — a task's assignee is mutable after admission.** `assignTask` / `updateTask` can change a pending task's assignee once a detached dispatch already persisted a binding and keyed a Workstream on the old one. The old request then runs the wrong worker, the new worker's turns land in history labelled for the old assignee, or an inline task switched to a detached assignee gets no request-creation wake at all. Make the assignee immutable after admission, or atomically cancel and re-dispatch under the new binding. | FIX-982 |
-| **N12** | **NEW — the uniform-worker board and the delegation floor need coordinates.** `workers` is a union — `TaskWorker \| TaskWorkerRegistry` (`task-board/index.ts:288`) — and a uniform worker has no assignee; separately, `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or absent"* (`:290-299`, `worker-step.ts:24-38`). Both need a reserved key coordinate, and detached mode must not convert a floor-routed task into an error. §8 uses a reserved sentinel. | FIX-982 |
+| **N12** | **NEW — the uniform-worker board and the delegation floor need coordinates.** `workers` is a union — `TaskWorker \| TaskWorkerRegistry` (`task-board/index.ts:288`) — and a uniform worker has no assignee; separately, `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or absent"* (`:290-299`, `worker-step.ts:24-38`). Both need a key coordinate, and detached mode must not convert a floor-routed task into an error. Resolved shape: a **tagged** coordinate, `{ kind: "assignee", name } \| { kind: "uniform" } \| { kind: "floor" }` — not a reserved string, which an authored assignee can legally collide with (§1). The floor is tagged distinctly from `uniform` even though the two cannot coexist on one board, so a Workstream record says whether it holds a declared participant's work or work whose assignee failed to resolve. Proven end to end in §8. | FIX-982 |
 | **N8** | **NEW — Workstream routing must be tenant-scoped.** A key without `tenantId` aliases two tenants that reuse the same caller-chosen parent session id, board, assignee and topic (§8), and the same applies to S1's parent-to-child read. Session ids are already tenant-namespaced and history reads already exact-match the tenant (FIX-682); the new paths must too. | FIX-982 + S1 |
 | **N9** | **NEW, and UNRESOLVED — there is no surface from which a binding can be derived.** Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings. But §1's board surface declares only `{ worker, dispatch }` — **no hosting coordinate** — and a `BlockDefinition` carries no back-reference to the action that hosts it, so the coordinate cannot be recovered from the value either (§8 asserts both). The POC's binding map is therefore *invented*: it proves that **given** a correct binding re-resolution works, not that one can be produced. FIX-982 must either grow the board surface an explicit per-worker hosting coordinate, or move workers to a registry addressable outside `flow.actions` — and a worker reachable only through a closure the definitions cannot reconstruct is not durably dispatchable at all. | FIX-982 | Registry values are `BlockDefinition`s and cannot serialize; the envelope carries only `flowKind`/`action` strings, so a worker reachable only through a closure the flow definitions cannot reconstruct is not durably dispatchable. FIX-982 must reject that at build time or restrict the feature to in-process execution, and say which. | FIX-982 |
 | **N7** | **NEW — the window interacts with a fork chain in BOTH directions.** *Too many:* each read is bounded by `historyWindow.turns` but the union is not, so a depth-2 chain returned 80 turns against a 50-turn window. *Too few:* if the limit is applied before the cursor filter, a parent that produces a full window of post-fork turns leaves the fork **none** of its inherited prefix, with retention having removed nothing. Ancestor members must be selected by snapshot first and budgeted across the chain second (§8). | FIX-982 |
@@ -1267,6 +1310,14 @@ until then (`orchestration.md` → Gates). OQ-A still awaits that gate, so no li
 | Issue | M | Title (short) | Linear state | Spec PR | Impl PR |
 |---|---|---|---|---|---|
 | **FIX-981** | M1 | Two executions over one durable board can both claim a task | Backlog | — | — |
+| **FIX-925** | — | Declare a tool as a board participant (`tool:` on an `agents:` entry) | Todo | [#900](https://github.com/fixpoint-labs/flow-state-dev/pull/900) · merged | — |
+
+**FIX-925 enters this table post-spec, not at `NEEDS_SPEC`.** Its spec is already
+written, reviewed and merged (`docs/specs/FIX-925.md`, PR #900) — the Linear issue was marked Done
+against that merge even though nothing was implemented (verified: `AgentSpec` has no `tool` field,
+`AGENT_RESOLUTION_FIELDS` is still three, `materializeWorker` has no tool branch), and the owner
+moved it back to Todo under this epic. A lifecycle that re-entered it at `NEEDS_SPEC` would rewrite
+an approved spec; it starts at implementation.
 
 **FIX-981 does not close the ownership guarantee on its own** — it ships the primitive and fences
 the collection surface, but the `taskTools` settlement path is fenced only once the background
@@ -1448,7 +1499,7 @@ Run the first four with `npx vitest run test/spike-background-isolation.test.ts
 test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
 test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
 `packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
-re-export shim). **46 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
+re-export shim). **55 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
 
 | Finding | Measurement |
 |---|---|
@@ -1458,6 +1509,9 @@ re-export shim). **46 tests, all passing** (plus the full engine suite: 148 file
 | Topic reuse accumulates in place | A second task on one topic yields `["execute","execute"]` in the same Workstream; the parent still sees `["plan"]` |
 | Concurrent get-or-create duplicates | `distinct ids=true workstreams-for-FIX-981=2` — two Workstreams for one topic, thereafter diverging silently |
 | A composite session id does **not** prevent it | `first.ok=true second.ok=true` — the second create clobbers the first; `set` is an upsert |
+| **A create-if-absent sentinel does not prevent it either, on its own** | Modelled in its strongest form — an insert that fails whenever the key is occupied — and raced over generated ids: `both inserts ok=true`. Two callers mint two ids, so no key ever collides and the sentinel never fires. N5(a) landing alone would leave the hole open |
+| **A derived id is the sentinel's missing precondition** | `same key=true workstreams-for-FIX-981=1` — deriving the id from `(parentSessionId, boardId, coordinate, topic)` collapses both callers onto one key. Still not a fix by itself (the composite-id row above: last writer wins), but it is the only condition under which an `"absent"` insert can reject one of them |
+| **The derivation must be canonically encoded** | A raw join makes `assignee "a" + topic "b"` and `assignee "a:b" + topic ""` derive one id, silently merging two workers' Workstreams; `encodeURIComponent` per field separates them, and the same holds for a separator inside a topic |
 | The spawn gap is two pieces, not store plumbing | 40 ctx keys; `stores=true flow=true runAction=false dispatch=false` |
 | **Fork cost** | 40-turn parent → COPY `writes=40`, REFERENCE `writes=0 reads=2`; depth-2 chain `reads=3` |
 | **The fork point holds, both directions** | The parent's post-fork turns are invisible to the fork; the fork is never visible to the parent; a depth-2 walk inherits exactly what the intermediate fork could see |
@@ -1469,7 +1523,9 @@ re-export shim). **46 tests, all passing** (plus the full engine suite: 148 file
 | Continuity is opted into | With no topic named, the topic falls back to `taskId`, so each task gets its own Workstream |
 | **`boardId` is required in the key** | Two boards under one session, both declaring `implement`, both filed `FIX-981`: they **collide on the 3-part key** `(parent, assignee, topic)` and separate only on the 4-part one |
 | **`tenantId` is required in the key** | Two tenants reusing parent session id, board, assignee and topic are **identical on the 4-part key** and separate only once the tenant leads it; the lookup filters at the store, as every history read already does |
-| **The delegation floor survives detachment** | An unknown assignee routes to `defaultWorker` rather than throwing, and a uniform-worker board resolves every task to one reserved coordinate; without a floor a miss still fails loudly |
+| **...and with a derived id the two tenants share a bare session id** | `publicIdOf(a) === publicIdOf(b)` — the id that lands in `RequestRecord.sessionId` (bare, per `runAction.ts:618`) is the *same string* for both. The tenant filter on the history read is what separates them; omitting it returns `["r_a","r_b"]` — one tenant's turns handed to the other, silently, because `matchesTenantFilter` short-circuits on an absent key (`scope-keys.ts:131`) |
+| **The delegation floor survives detachment** | An unknown assignee routes to `defaultWorker` rather than throwing, and a uniform-worker board resolves every task to one tagged coordinate; without a floor a miss still fails loudly |
+| **...and it routes end to end, not just at resolution** | Driven through `resolveDispatch` → `routeToWorkstream` on real session records: an unknown assignee and an absent one land in the **same** Workstream (`coordinate=f`) — the floor is one participant, not one per misspelling — and a declared worker on the same board and topic gets its own. A uniform board routes every task to `coordinate=u` and fabricates no assignee for a task that never had one |
 | **Workstream records persist tenant-namespaced** | The public id stays bare (what a caller hands `runAction`), the record lives under `${tenantId}:${id}`, and a bare-id lookup misses — the silent second-session bug |
 | **The ctx capability gap is asserted, not logged** | `stores=true flow=true runAction=false dispatch=false`, each asserted, since M3's scope is derived from exactly these four |
 | **The block discriminator must check values, not keys** | A registry whose assignees are named `kind` and `config` passes a presence test and would be invoked as if it were the block; checking that `kind` is one of the four block kinds and `config` is an object separates them |
@@ -1479,6 +1535,7 @@ re-export shim). **46 tests, all passing** (plus the full engine suite: 148 file
 | **A tagged coordinate cannot collide with an authored assignee** | A registry legally declaring `__uniform__` alongside a `defaultWorker` keeps a distinct key (`a:__uniform__` vs `u`); a reserved string would have merged two workers into one history |
 | **A fork's inherited prefix survives a parent that outruns the window** | With the cursor filtered *before* the limit, a parent producing 50 post-fork turns still leaves the fork its 3 pre-fork turns; filtering after would have returned none of them |
 | **The dispatch binding survives a restart** | The persisted binding is strings only, round-trips through `JSON`, and re-resolves its worker against a registry rebuilt from static flow definitions; an assignee that names nothing on the board throws |
+| **A fork cursor held as a `Set` does not survive persistence** | `JSON.stringify` of the live ref yields `visible={}` from a 3-id cursor — no throw, no warning. Reloaded, the fork inherits nothing and resumes with no memory of the work it was forked to continue. Persisted as a sorted `string[]` it round-trips exactly (`p1,p2,p3`), rehydrates to the same visible history, and re-persists byte-identically, so re-storing an unchanged cursor is not a spurious version bump on a CAS'd session record |
 
 **What they do not establish.** The dispatch in the execution POC is performed **outside** the
 request, standing in for the capability FIX-982 will build. Everything downstream of the spawn is
