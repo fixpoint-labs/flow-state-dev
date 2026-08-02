@@ -89,8 +89,21 @@ function entryDispatch(entry: WorkerEntry): WorkerDispatch | undefined {
  * misclassified a bare `TaskWorker` as a registry and would also have mistaken a
  * registry containing an assignee literally named `worker` for the wrapper form.
  */
+const BLOCK_KINDS = new Set(["handler", "generator", "sequencer", "router"]);
+
 function isBareWorker(w: unknown): w is TaskWorker {
-  return typeof w === "object" && w !== null && "kind" in w && "config" in w;
+  if (typeof w !== "object" || w === null) return false;
+  const o = w as { kind?: unknown; config?: unknown };
+  // Check VALUES, not key presence. A registry whose assignees are literally
+  // named `kind` and `config` satisfies a presence test, and would then be
+  // invoked as if it were the block itself. `kind` is one of the four block
+  // kinds (an architectural constant), and `config` is an object.
+  return (
+    typeof o.kind === "string" &&
+    BLOCK_KINDS.has(o.kind) &&
+    typeof o.config === "object" &&
+    o.config !== null
+  );
 }
 
 /**
@@ -227,8 +240,13 @@ async function routeToWorkstream(
   );
   if (existing !== undefined) return existing;
   const ts = 1_000;
+  const publicId = `ws_${++seq}`;
   const created: Workstream = {
-    id: `ws_${++seq}`,
+    // Record id IS the storage key, matching `id: sessionKey`
+    // (`createExecutionContext.ts:584`) — later `setMetadata`/`appendJournal`
+    // writes key on `sessionRef.current.id`, so a bare id here would fork a
+    // second record and leave the canonical Workstream stale.
+    id: storageKey(publicId, TENANT),
     flowKind: "worker",
     userId: "u1",
     tenantId: TENANT,
@@ -242,7 +260,7 @@ async function routeToWorkstream(
     assignee,
     topic
   };
-  await stores.session.set(storageKey(created.id, TENANT), created, "any");
+  await stores.session.set(created.id, created, "any");
   return created;
 }
 
@@ -329,6 +347,14 @@ describe("POC: board worker config — disposition, not target", () => {
     // ...and it honours a board-level detached default.
     expect(resolveDispatch({ workers: implementBlock, dispatch: { mode: "detached" } }, undefined)
       .dispatch.mode).toBe("detached");
+  });
+
+  it("a registry with assignees named `kind` and `config` is NOT read as a block", () => {
+    // A key-presence discriminator would classify this registry as one uniform
+    // TaskWorker and then invoke the registry object instead of the block.
+    const tricky: BoardConfig = { workers: { kind: summarizeBlock, config: implementBlock } };
+    expect(resolveDispatch(tricky, "kind").worker).toBe(summarizeBlock);
+    expect(resolveDispatch(tricky, "config").worker).toBe(implementBlock);
   });
 
   it("a registry with an assignee named `worker` is NOT read as the wrapper form", () => {
