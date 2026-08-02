@@ -83,7 +83,11 @@ function loadOwn(store: InMemoryRequestStore, sessionId: string, tenantId: strin
   });
 }
 
-/** Unbounded read — an ancestor's contribution is bounded by its snapshot, not by N. */
+/**
+ * Unbounded read of a session's completed requests. Kept ONLY to measure what
+ * it costs — see `loadCursorMembers`, which is what an ancestor read should
+ * actually do.
+ */
 function loadAll(store: InMemoryRequestStore, sessionId: string, tenantId: string | undefined) {
   return store.list({
     sessionId,
@@ -92,6 +96,37 @@ function loadAll(store: InMemoryRequestStore, sessionId: string, tenantId: strin
     orderBy: "startedAtMs",
     withItems: true
   });
+}
+
+/**
+ * Fetch an ancestor's contribution BY ID, not by scanning the session.
+ *
+ * The cursor names at most `historyWindow.turns` ids, but `loadAll` is bounded
+ * by the ancestor's entire lifetime: a list-then-discard read pulls every
+ * completed parent request *and its items* on every child turn, and throws away
+ * all but the snapshot (BP-033 — filter at the source before you load). The
+ * §8 `reads=2` figure counts round trips, not rows; on a long-lived parent the
+ * two diverge sharply, which is measured below.
+ *
+ * Each fetched record is re-checked against the session and tenant it is
+ * supposed to belong to. `get` bypasses both filters, and the cursor is
+ * persisted data — a stale or tampered snapshot must not become a read
+ * primitive for another session's requests.
+ */
+async function loadCursorMembers(
+  store: InMemoryRequestStore,
+  sessionId: string,
+  visible: ReadonlySet<string>,
+  tenantId: string | undefined
+): Promise<RequestRecord[]> {
+  const fetched = await Promise.all([...visible].map((id) => store.get(id)));
+  return fetched.filter(
+    (r): r is RequestRecord =>
+      r !== undefined &&
+      r.sessionId === sessionId &&
+      r.tenantId === tenantId &&
+      r.status === "completed"
+  );
 }
 
 const asc = (rs: RequestRecord[]) =>
@@ -200,11 +235,12 @@ async function loadForked(
     // `loadOwn` takes the newest N; if the parent has produced N post-fork turns
     // then none of the cursor's pre-fork ids survive that cut, and the fork
     // silently loses its entire inherited prefix while retention removed
-    // nothing. Fetch unbounded for an ancestor and filter to the snapshot.
+    // nothing. So an ancestor is read by ID from its snapshot — which fixes
+    // that without the unbounded scan a list-then-discard read would cost.
     const own =
       visible === undefined
         ? await loadOwn(store, cursor, tenantId)
-        : (await loadAll(store, cursor, tenantId)).filter((r) => visible!.has(r.id));
+        : await loadCursorMembers(store, cursor, visible, tenantId);
     reads++;
     out.push(...own);
     const ref: ForkRef | undefined = forks[cursor];
@@ -462,6 +498,56 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // The timestamp rule this replaces would have admitted it.
     const byTimestamp = (await loadOwn(store, "S", NO_TENANT)).filter((r) => r.startedAtMs <= 3);
     expect(byTimestamp.map((r) => r.id).sort()).toEqual(["p1", "p_slow"]);
+  });
+
+  it("COST — an ancestor read must fetch its cursor, not scan the parent's lifetime", async () => {
+    // A long-lived parent: 500 completed turns, forked after the first 3.
+    const store = new InMemoryRequestStore();
+    for (let n = 1; n <= 3; n++) {
+      await store.set(`p${n}`, turn(`p${n}`, "S", n, `pre-fork ${n}`), "any");
+    }
+    const visible = await forkCursor(store, "S", NO_TENANT);
+    for (let n = 4; n <= 500; n++) {
+      await store.set(`p${n}`, turn(`p${n}`, "S", n, `post-fork ${n}`), "any");
+    }
+    await store.set("w1", turn("w1", "W", 1000, "fork own"), "any");
+
+    // List-then-discard: every completed parent request, WITH ITEMS, then throw
+    // all but 3 away. The row count is the parent's lifetime, not the cursor.
+    const scanned = (await loadAll(store, "S", NO_TENANT)).filter((r) => visible.has(r.id));
+    // Fetch by id: bounded by the cursor.
+    const fetched = await loadCursorMembers(store, "S", visible, NO_TENANT);
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[fork/cost-rows] parent lifetime=500 cursor=${visible.size} -> ` +
+        `scan reads ${(await loadAll(store, "S", NO_TENANT)).length} rows, ` +
+        `by-id reads ${visible.size}`
+    );
+
+    // Same answer, and that is the point — the scan is not more correct, only
+    // more expensive, and its cost grows with the parent forever.
+    expect(asc(fetched)).toEqual(asc(scanned));
+    expect(asc(fetched)).toEqual(["p1", "p2", "p3"]);
+    expect((await loadAll(store, "S", NO_TENANT))).toHaveLength(500);
+    expect(visible.size).toBe(3);
+  });
+
+  it("COST — a cursor id from another session or tenant is not a read primitive", async () => {
+    const store = new InMemoryRequestStore();
+    await store.set("p1", turn("p1", "S", 1, "parent", TENANT_A), "any");
+    // Records the cursor must not be able to reach: another session, and
+    // another tenant reusing the same bare session id.
+    await store.set("other1", turn("other1", "OTHER", 2, "other session", TENANT_A), "any");
+    await store.set("x1", turn("x1", "S", 3, "other tenant", "tenant_b"), "any");
+
+    // A stale or tampered snapshot naming all three. `get` applies neither the
+    // session nor the tenant filter, so the re-check on the fetched record is
+    // the only thing standing between a persisted cursor and someone else's
+    // history (BP-031 — never route off caller-influenced data alone).
+    const tampered = new Set(["p1", "other1", "x1"]);
+    const members = await loadCursorMembers(store, "S", tampered, TENANT_A);
+    expect(members.map((r) => r.id)).toEqual(["p1"]);
   });
 
   it("TENANT — a fork of a tenant-scoped parent inherits nothing unless the tenant is threaded", async () => {
