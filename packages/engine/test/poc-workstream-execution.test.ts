@@ -55,14 +55,22 @@ type DispatchBinding = {
 };
 
 /**
- * ONE declaration. An earlier draft hand-authored a parallel `BOARD_BINDINGS`
- * map beside the worker registry — which reintroduced exactly the second source
- * of truth the design rejects: nothing checked the two agreed, so the map could
- * have pointed `implementer` at an unrelated action and every restart test would
- * still have passed.
+ * ⚠️ UNRESOLVED DESIGN GAP — this map is invented by the POC, and that is the
+ * finding, not an implementation detail.
  *
- * Here the board declares each worker's block AND the action that hosts it once,
- * and the binding is DERIVED from that declaration.
+ * §1's board surface declares only `{ worker, dispatch }`: a `BlockDefinition`
+ * and a disposition. **Nothing in it names a `flowKind` or an `action`**, and a
+ * `BlockDefinition` carries no back-reference to the action that hosts it — so
+ * there is no production source from which `bindWorker` could derive a
+ * serializable coordinate. Two earlier drafts obscured this: first a parallel
+ * hand-authored map beside the registry, then this "derived" map, which is
+ * derived only from itself.
+ *
+ * What the tests below therefore prove is narrower than it looks: **given** a
+ * correct binding, re-resolution works. They do NOT prove one can be produced.
+ * Closing that is FIX-982's design work (N9/N14) — either the board surface
+ * grows an explicit hosting coordinate per worker, or workers move to a
+ * registry addressable outside `flow.actions`.
  */
 type BoardWorkerDecl = {
   /** The action on `flowKind` whose block IS this worker. */
@@ -82,7 +90,7 @@ const BOARD_DECL: Record<string, Record<string, BoardWorkerDecl>> = {
   }
 };
 
-/** Derived, never authored twice. */
+/** Stands in for a binding the real surface cannot yet supply — see above. */
 function bindWorker(boardId: string, assignee: string): DispatchBinding {
   const decl = BOARD_DECL[boardId]?.[assignee];
   if (decl === undefined) {
@@ -298,17 +306,26 @@ describe("POC v2: Workstream execution across flows", () => {
     expect(() => bindWorker(task.boardId, "nobody")).toThrow(/unknown_assignee/);
   });
 
-  it("BINDING — the coordinate is derived from the board declaration, not authored twice", async () => {
+  it("GAP — the board surface cannot supply this binding, and that is the finding", () => {
+    // What §1's config surface actually offers per worker.
+    const boardSurfaceEntry = { worker: workerFlow.actions.execute.block, dispatch: { mode: "detached" } };
+    const keys = Object.keys(boardSurfaceEntry);
+
+    // No hosting coordinate anywhere in it.
+    expect(keys).toEqual(["worker", "dispatch"]);
+    expect(keys).not.toContain("flowKind");
+    expect(keys).not.toContain("action");
+
+    // And the block itself carries no back-reference to the action hosting it,
+    // so the coordinate cannot be recovered from the value either.
+    const block = boardSurfaceEntry.worker as unknown as Record<string, unknown>;
+    expect(block.action).toBeUndefined();
+    expect(block.flowKind).toBeUndefined();
+
+    // Hence BOARD_DECL is an invention. The restart evidence below is therefore
+    // conditional: GIVEN a correct binding, re-resolution works. Producing one
+    // is FIX-982's unresolved design work (N9/N14).
     const binding = bindWorker(BOARD_ID, "implementer");
-    const decl = BOARD_DECL[BOARD_ID]!.implementer!;
-
-    // The binding cannot drift from the declaration, because it is computed
-    // from it. A hand-authored parallel map could point anywhere and still pass.
-    expect(binding.flowKind).toBe(decl.flowKind);
-    expect(binding.action).toBe(decl.action);
-
-    // And the action it names must actually exist on the resolved flow —
-    // the check a parallel map would not have.
     const flow = buildFlowRegistry()[binding.flowKind];
     expect(Object.keys((flow as unknown as { actions: object }).actions)).toContain(binding.action);
   });

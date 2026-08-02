@@ -58,6 +58,17 @@ function loadOwn(store: InMemoryRequestStore, sessionId: string) {
   });
 }
 
+/** Unbounded read — an ancestor's contribution is bounded by its snapshot, not by N. */
+function loadAll(store: InMemoryRequestStore, sessionId: string) {
+  return store.list({
+    sessionId,
+    tenantId: undefined,
+    status: "completed",
+    orderBy: "startedAtMs",
+    withItems: true
+  });
+}
+
 const asc = (rs: RequestRecord[]) =>
   [...rs].sort((a, b) => a.startedAtMs - b.startedAtMs).map((r) => r.id);
 
@@ -133,9 +144,17 @@ async function loadForked(
   let visible: ReadonlySet<string> | undefined; // undefined = the fork's own session
 
   while (cursor !== undefined) {
-    const own = await loadOwn(store, cursor);
+    // The cursor members must be selected BEFORE the window limit, not after.
+    // `loadOwn` takes the newest N; if the parent has produced N post-fork turns
+    // then none of the cursor's pre-fork ids survive that cut, and the fork
+    // silently loses its entire inherited prefix while retention removed
+    // nothing. Fetch unbounded for an ancestor and filter to the snapshot.
+    const own =
+      visible === undefined
+        ? await loadOwn(store, cursor)
+        : (await loadAll(store, cursor)).filter((r) => visible!.has(r.id));
     reads++;
-    out.push(...(visible === undefined ? own : own.filter((r) => visible!.has(r.id))));
+    out.push(...own);
     const ref: ForkRef | undefined = forks[cursor];
     if (ref === undefined) break;
     visible = ref.visible;
@@ -315,6 +334,29 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     // implements this must budget the window ACROSS the chain, not per read.
     expect(records.length).toBe(80);
     expect(records.length).toBeGreaterThan(HISTORY_WINDOW);
+  });
+
+  it("WINDOW — a parent that outruns the window does not erase the inherited prefix", async () => {
+    const store = new InMemoryRequestStore();
+    for (const n of [1, 2, 3]) {
+      await store.set(`p${n}`, turn(`p${n}`, "S", n, `pre-fork ${n}`), "any");
+    }
+    const visible = await forkCursor(store, "S");
+
+    // The parent then produces a full window's worth of POST-fork turns. A
+    // newest-N read would return only those, none of which are in the cursor.
+    for (let n = 0; n < HISTORY_WINDOW; n++) {
+      await store.set(`post${n}`, turn(`post${n}`, "S", 100 + n, `post ${n}`), "any");
+    }
+    await store.set("w1", turn("w1", "W", 500, "fork own"), "any");
+
+    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible } });
+    const ids = asc(records);
+    // eslint-disable-next-line no-console
+    console.log(`[fork/window-prefix] parent post-fork=${HISTORY_WINDOW} fork sees=${ids.join(",")}`);
+
+    expect(ids).toEqual(["p1", "p2", "p3", "w1"]);
+    expect(ids).not.toContain("post0");
   });
 
   it("REFERENCE — a stricter ancestor ceiling is not widened by a later fork", async () => {

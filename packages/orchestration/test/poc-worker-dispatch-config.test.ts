@@ -57,11 +57,23 @@ type WorkerEntry = TaskWorker | { worker: TaskWorker; dispatch: WorkerDispatch }
 /**
  * The shipping shape is a UNION — `workers: TaskWorker | TaskWorkerRegistry`
  * (`task-board/index.ts:288`). A single uniform worker has no assignee, so it
- * has no natural key coordinate; it gets the reserved sentinel below, mirroring
- * how `worker-step` already steers an absent assignee through a reserved
- * fallback route.
+ * has no natural key coordinate.
+ *
+ * It gets a **tagged** coordinate, not a reserved string. Assignees are unrestricted
+ * strings, so a registry may legally declare one named `__uniform__` — and on a
+ * board that also has a `defaultWorker`, that authored worker and every
+ * absent/unknown-assignee task would then share a Workstream key, routing two
+ * different workers into one history. A tagged form cannot collide with any
+ * authored name.
  */
-const UNIFORM_ASSIGNEE = "__uniform__";
+type Coordinate =
+  | { kind: "assignee"; name: string }
+  | { kind: "uniform" };
+
+const UNIFORM: Coordinate = { kind: "uniform" };
+
+/** Stable serialization for the Workstream key. `a:` can never equal `u`. */
+const coordinateKey = (c: Coordinate) => (c.kind === "uniform" ? "u" : `a:${c.name}`);
 
 type BoardConfig = {
   workers: WorkerEntry | Record<string, WorkerEntry>;
@@ -138,7 +150,7 @@ function resolveDispatch(config: BoardConfig, assignee?: string): {
   worker: TaskWorker;
   dispatch: WorkerDispatch;
   /** The coordinate that goes in the Workstream key. */
-  coordinate: string;
+  coordinate: Coordinate;
 } {
   // Uniform-worker board: every task runs the one worker, under the sentinel.
   if (!isRegistry(config.workers)) {
@@ -146,7 +158,7 @@ function resolveDispatch(config: BoardConfig, assignee?: string): {
     return {
       worker: entryWorker(entry),
       dispatch: entryDispatch(entry) ?? config.dispatch ?? INLINE,
-      coordinate: UNIFORM_ASSIGNEE
+      coordinate: UNIFORM
     };
   }
 
@@ -155,7 +167,7 @@ function resolveDispatch(config: BoardConfig, assignee?: string): {
     return {
       worker: entryWorker(hit),
       dispatch: entryDispatch(hit) ?? config.dispatch ?? INLINE,
-      coordinate: assignee!
+      coordinate: { kind: "assignee", name: assignee! }
     };
   }
 
@@ -166,7 +178,7 @@ function resolveDispatch(config: BoardConfig, assignee?: string): {
       dispatch: entryDispatch(config.defaultWorker) ?? config.dispatch ?? INLINE,
       // The floor's own coordinate, so its Workstream is not keyed under a name
       // that resolves to a different worker.
-      coordinate: UNIFORM_ASSIGNEE
+      coordinate: UNIFORM
     };
   }
   throw new Error(
@@ -326,7 +338,7 @@ describe("POC: board worker config — disposition, not target", () => {
     // floor for tasks admitted outside the roster-validated skills path.
     const { worker, coordinate } = resolveDispatch(board, "nope");
     expect(worker).toBe(summarizeBlock);
-    expect(coordinate).toBe(UNIFORM_ASSIGNEE);
+    expect(coordinate).toEqual(UNIFORM);
   });
 
   it("without a defaultWorker, a registry miss still fails loudly", () => {
@@ -343,10 +355,27 @@ describe("POC: board worker config — disposition, not target", () => {
     const r = resolveDispatch(legacy, undefined);
     expect(r.worker).toBe(implementBlock);
     expect(r.dispatch).toEqual({ mode: "inline" });
-    expect(r.coordinate).toBe(UNIFORM_ASSIGNEE);
+    expect(r.coordinate).toEqual(UNIFORM);
     // ...and it honours a board-level detached default.
     expect(resolveDispatch({ workers: implementBlock, dispatch: { mode: "detached" } }, undefined)
       .dispatch.mode).toBe("detached");
+  });
+
+  it("an authored assignee cannot collide with the uniform coordinate", () => {
+    // `__uniform__` is a legal assignee name. With a tagged coordinate it still
+    // cannot collide with the floor's; with a reserved string it would have.
+    const board2: BoardConfig = {
+      workers: { __uniform__: implementBlock },
+      defaultWorker: summarizeBlock
+    };
+    const authored = resolveDispatch(board2, "__uniform__");
+    const floor = resolveDispatch(board2, "not-declared");
+
+    expect(authored.worker).toBe(implementBlock);
+    expect(floor.worker).toBe(summarizeBlock);
+    expect(coordinateKey(authored.coordinate)).not.toBe(coordinateKey(floor.coordinate));
+    expect(coordinateKey(authored.coordinate)).toBe("a:__uniform__");
+    expect(coordinateKey(floor.coordinate)).toBe("u");
   });
 
   it("a registry with assignees named `kind` and `config` is NOT read as a block", () => {
@@ -375,8 +404,8 @@ describe("POC: board worker config — disposition, not target", () => {
     expect(a.dispatch.mode).toBe("detached");
     // Every task on the board resolves to one coordinate, so they share a
     // Workstream per topic rather than fragmenting by an assignee that is absent.
-    expect(a.coordinate).toBe(UNIFORM_ASSIGNEE);
-    expect(b.coordinate).toBe(UNIFORM_ASSIGNEE);
+    expect(a.coordinate).toEqual(UNIFORM);
+    expect(b.coordinate).toEqual(UNIFORM);
   });
 
   it("the SAME block runs inline or detached — disposition is orthogonal", () => {
