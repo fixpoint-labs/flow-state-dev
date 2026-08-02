@@ -183,7 +183,18 @@ function resolveDispatch(config: BoardConfig, assignee?: string): {
     };
   }
 
-  const hit = assignee === undefined ? undefined : config.workers[assignee];
+  // `Object.hasOwn`, not a bare index. `assignee` is model-controllable — it
+  // arrives from the `addTask` tool — so `workers[assignee]` resolves inherited
+  // `Object.prototype` members for `constructor` / `toString` / `valueOf`,
+  // returning a function that is not a worker and skipping both the delegation
+  // floor and the unknown-assignee error. The SHIPPED resolver already guards
+  // exactly this (`dispatch-and-execute.ts:94-102`, BP-031, FIX-943); a
+  // detached resolver that dropped the guard would reintroduce the bug FIX-943
+  // fixed, one layer over.
+  const hit =
+    assignee === undefined || !Object.hasOwn(config.workers, assignee)
+      ? undefined
+      : config.workers[assignee];
   if (hit !== undefined) {
     return {
       worker: entryWorker(hit),
@@ -463,6 +474,31 @@ describe("POC: board worker config — disposition, not target", () => {
     expect(coordinateKey(authored.coordinate)).not.toBe(coordinateKey(floor.coordinate));
     expect(coordinateKey(authored.coordinate)).toBe("a:__uniform__");
     expect(coordinateKey(floor.coordinate)).toBe("f");
+  });
+
+  it("PROTOTYPE — a prototype-member assignee is not a worker, and routes to the floor", () => {
+    const withFloor: BoardConfig = {
+      workers: { implement: implementBlock },
+      defaultWorker: summarizeBlock
+    };
+    // Every one of these resolves to a real function under a bare `[]` lookup.
+    for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      const r = resolveDispatch(withFloor, name);
+      expect(r.worker).toBe(summarizeBlock);
+      expect(r.coordinate).toEqual(FLOOR);
+    }
+
+    // ...and with no floor it fails loudly rather than invoking Object.prototype.
+    const noFloor: BoardConfig = { workers: { implement: implementBlock } };
+    expect(() => resolveDispatch(noFloor, "constructor")).toThrow(/unknown_assignee/);
+    expect(() => resolveDispatch(noFloor, "__proto__")).toThrow(/unknown_assignee/);
+
+    // The bare lookup this guards against, stated so the test cannot pass
+    // vacuously: `constructor` IS resolvable on the registry object.
+    expect(
+      (withFloor.workers as Record<string, unknown>)["constructor"]
+    ).toBeTypeOf("function");
+    expect(Object.hasOwn(withFloor.workers, "constructor")).toBe(false);
   });
 
   it("a registry with assignees named `kind` and `config` is NOT read as a block", () => {

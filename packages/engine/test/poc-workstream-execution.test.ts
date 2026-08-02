@@ -345,13 +345,43 @@ describe("POC v2: Workstream execution across flows", () => {
         `[poc2] stores=${has("stores")} sessionId=${has("sessionId")} ` +
         `flow=${has("flow")} runAction=${has("runAction")} dispatch=${has("dispatch")}`
     );
-    // The epic scopes M3 to exactly two missing capabilities using these four
-    // results, so assert each rather than only logging it — otherwise the POC
-    // stays green while the design premise silently goes stale.
+    // The epic scopes M3 using these four results, so assert each rather than
+    // only logging it — otherwise the POC stays green while the design premise
+    // silently goes stale.
     expect(has("stores")).toBe(true);
     expect(has("flow")).toBe(true);
     expect(has("runAction")).toBe(false);
     expect(has("dispatch")).toBe(false);
     expect(observedCtxKeys.length).toBeGreaterThan(0);
+  });
+
+  it("GAP — `stores` and `flow` are present at RUNTIME but absent from the PUBLIC context type", () => {
+    // The probe above enumerates runtime keys, which is not the same question as
+    // "what may a capability read". `ExecutionContext = BlockContext & { flow,
+    // actionName, requestRuntime, stores, ... }` (`engine/src/context/types.ts:25-43`)
+    // — those four are the ENGINE's additions. A capability's `fns(ctx)` is
+    // typed against `BlockContext`, which is declared in `@flow-state-dev/core`
+    // and cannot name `StoreRegistry` or `FlowInstance` at all: `core` does not
+    // depend on `engine`, and the package boundary is a locked constraint.
+    //
+    // So "only two pieces are missing" is measured on the wrong surface. A
+    // spawn capability reaching `ctx.stores` today would be reading an
+    // engine-internal field through a cast — which is what this POC does, and
+    // is not a thing FIX-982 may ship.
+    type PublicCtxKeys = keyof import("@flow-state-dev/core").BlockContext;
+    const publicKeys: PublicCtxKeys[] = ["request", "session", "user", "resources", "emit"];
+    // These are on the public type...
+    for (const k of publicKeys) expect(observedCtxKeys).toContain(k);
+
+    // ...and these two, which the POC depends on, are NOT — the cast in
+    // `probeBlock` is the only reason it can see them.
+    const publicOnly = ["stores", "flow"] as const;
+    for (const k of publicOnly) {
+      // Present at runtime (asserted above), but not assignable as a public key.
+      expect(observedCtxKeys).toContain(k);
+      // @ts-expect-error — `stores`/`flow` are not members of `BlockContext`.
+      const _typed: PublicCtxKeys = k;
+      void _typed;
+    }
   });
 });

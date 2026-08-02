@@ -559,6 +559,51 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     expect(members.map((r) => r.id)).toEqual(["p1"]);
   });
 
+  it("DISPATCH — a fork taken mid-request permanently omits the turn that spawned it", async () => {
+    // The realistic spawn: the parent is MID-TURN. `addTask` runs inside the
+    // parent's request, so at the moment the Workstream is created that request
+    // is `in_progress` — it is the turn that decided to delegate.
+    const store = new InMemoryRequestStore();
+    await store.set("p1", turn("p1", "S", 1, "earlier turn"), "any");
+    await store.set("p_now", {
+      ...turn("p_now", "S", 2, "the turn that spawned the workstream"),
+      status: "in_progress"
+    } as RequestRecord, "any");
+
+    const cursor = await forkCursor(store, "S", NO_TENANT);
+    await store.set("w1", turn("w1", "W", 10, "worker's first turn"), "any");
+
+    // The dispatching turn is absent from the snapshot, because `loadOwn`
+    // filters to `status: "completed"` — the same filter that makes the cursor
+    // immune to a late completer (the CURSOR test above). Both behaviours come
+    // from one rule, and here it cuts the wrong way.
+    expect([...cursor]).toEqual(["p1"]);
+
+    // The parent's turn completes a moment later...
+    await store.set("p_now", turn("p_now", "S", 2, "the turn that spawned the workstream"), "any");
+
+    // ...and the fork STILL cannot see it. The cursor is an immutable id
+    // snapshot by design, so this is permanent, not a race window.
+    const { records } = await loadForked(store, "W", { W: { sessionId: "S", visible: cursor } }, NO_TENANT);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[fork/dispatch] cursor=${[...cursor].join(",")} · after parent completes, fork sees=` +
+        `${asc(records).join(",")} (missing p_now — the delegating turn)`
+    );
+    expect(asc(records)).toEqual(["p1", "w1"]);
+    expect(asc(records)).not.toContain("p_now");
+
+    // Which is the one turn `contextSupply: "conversation"` most needs: a
+    // worker asked to continue a conversation cannot see the message that
+    // asked it. Either the current turn is snapshotted explicitly at dispatch,
+    // or cursor creation waits for the parent request to reach a terminal
+    // state — and the second option cannot work for a spawn that must run
+    // while the parent is still going.
+    const withCurrent = new Set([...cursor, "p_now"]);
+    const fixed = await loadForked(store, "W", { W: { sessionId: "S", visible: withCurrent } }, NO_TENANT);
+    expect(asc(fixed.records)).toEqual(["p1", "p_now", "w1"]);
+  });
+
   it("OWNERSHIP — a cursor in `metadata` is caller-writable, and that breaks the fork point", async () => {
     const store = new InMemoryRequestStore();
     for (const n of [1, 2, 3]) {
