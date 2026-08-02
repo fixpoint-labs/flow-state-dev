@@ -61,10 +61,18 @@ function makeParent(id: string, tenantId: string): Workstream {
   };
 }
 
-function makeWorkstream(id: string, k: Key): Workstream {
+/**
+ * Production sets `SessionRecord.id` to the **storage key**, not the bare id
+ * (`createExecutionContext.ts:584` — `id: sessionKey`), and later writes such as
+ * `appendJournal` / `setMetadata` persist using `sessionRef.current.id`. A record
+ * whose `id` is bare while its map key is namespaced would send those writes to a
+ * second, bare-keyed record and leave the canonical one stale. The bare id is
+ * still what a caller passes to `runAction`; it is recovered from the key.
+ */
+function makeWorkstream(publicId: string, k: Key): Workstream {
   const ts = 1_000;
   return {
-    id,
+    id: storageKey(publicId, k.tenantId),
     flowKind: WORKER_FLOW,
     userId: "u1",
     tenantId: k.tenantId,
@@ -118,6 +126,12 @@ const nextId = () => `sess_generated_${++seq}`;
 const storageKey = (id: string, tenantId: string | undefined) =>
   tenantId !== undefined && tenantId.length > 0 ? `${tenantId}:${id}` : id;
 
+/** Recovers the bare id a caller hands to `runAction` from the storage key. */
+const publicIdOf = (w: Workstream) =>
+  w.tenantId !== undefined && w.id.startsWith(`${w.tenantId}:`)
+    ? w.id.slice(w.tenantId.length + 1)
+    : w.id;
+
 async function getOrCreateWorkstream(
   store: InMemorySessionStore,
   k: Key
@@ -125,7 +139,8 @@ async function getOrCreateWorkstream(
   const existing = await findWorkstream(store, k);
   if (existing !== undefined) return existing;
   const created = makeWorkstream(nextId(), k);
-  await store.set(storageKey(created.id, k.tenantId), created, "any");
+  // Record id === map key, exactly as production writes it.
+  await store.set(created.id, created, "any");
   return created;
 }
 
@@ -212,17 +227,20 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, assig
     expect((await getOrCreateWorkstream(store, key({ tenantId: TENANT_B }))).id).toBe(b.id);
   });
 
-  it("STORAGE KEY — the record persists namespaced, the public id stays bare", async () => {
+  it("STORAGE KEY — record id IS the storage key; the public id is recovered", async () => {
     const store = await freshStore();
     const ws = await getOrCreateWorkstream(store, key());
 
-    // The id a caller hands to `runAction` is bare...
-    expect(ws.id.startsWith(`${TENANT_A}:`)).toBe(false);
-    // ...while the record lives under the tenant-namespaced key.
-    expect(await store.get(storageKey(ws.id, TENANT_A))).toBeDefined();
-    // A bare-id lookup misses — which in production would silently create a
-    // second session carrying none of the Workstream metadata.
-    expect(await store.get(ws.id)).toBeUndefined();
+    // The record's own id is namespaced, matching `id: sessionKey` in
+    // production — so later writes keyed on `sessionRef.current.id` land on the
+    // canonical record rather than forking a bare-keyed duplicate.
+    expect(ws.id).toBe(`${TENANT_A}:${publicIdOf(ws)}`);
+    expect(await store.get(ws.id)).toBeDefined();
+
+    // The bare id — what a caller passes to `runAction` — is recoverable, and
+    // is NOT itself a storage key.
+    expect(publicIdOf(ws).startsWith(`${TENANT_A}:`)).toBe(false);
+    expect(await store.get(publicIdOf(ws))).toBeUndefined();
   });
 
   it("history stays isolated per workstream, parent untouched", async () => {

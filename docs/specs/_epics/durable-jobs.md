@@ -1153,9 +1153,9 @@ in `react`, and `engine` never depends on `client` or `react`:
 
 | Layer | What has to exist |
 |---|---|
-| **`engine`** | Request metadata + trusted `source` on the create/dispatch path and the HTTP action routes. Whether "a session's requests, filtered/sorted by background" is a new route or an extension of the existing session-requests route — `RequestStore.list` already supports `sessionId` / `status` / `orderBy`, so this is likely a route-level projection, not a store change. |
-| **`client`** | Declaring a background request, and enumerating a session's requests with their background disposition. Isomorphic, so it is the single place transport shape is decided. |
-| **`react`** | How `useSession` exposes the foreground/background split — plural requests, and a deliberate classification decision per the paragraph above. Wraps `client`; no transport logic. |
+| **`engine`** | A **parent-to-child Workstream read** — `SessionListOptions` gains `parentSessionId` (plus `boardId` / `assignee` / `topic`, and always tenant-filtered), implemented across the four adapters, with a route to match. This **is** a store change, not a route-level projection: `RequestStore.list({ sessionId: parent })` cannot see a child session's requests at all. Plus request metadata and trusted `source` on the create/dispatch path. |
+| **`client`** | Declaring detached work, and enumerating a session's **Workstreams** — then each Workstream's requests. Two hops, not one filtered list. Isomorphic, so it is the single place transport shape is decided. |
+| **`react`** | How `useSession` exposes a parent's Workstreams as a distinct axis from its own items — a child session is not a filtered view of the parent, so this is a new read rather than a split of an existing one. Wraps `client`; no transport logic. |
 | **`apps/kitchen-sink`** | The demo that proves it: a flow that launches background work, plus a UI that visually distinguishes foreground conversation from background tasks. |
 | **Docs** | `packages/*/README.md` for the new public API, plus `apps/docs` pages for the concept and guide. No issue IDs in anything under `apps/docs`. |
 
@@ -1163,8 +1163,9 @@ in `react`, and `engine` never depends on `client` or `react`:
 Evidence path: `apps/kitchen-sink` flow run via `fsdev run` for the flow half, and the kitchen-sink
 UI in a browser for the render half (the one case where a browser is the right check, per
 `AGENTS.md`). Pass criteria: (1) a foreground turn returns while its background work is still
-running; (2) `GET` the session's requests and see the background one with `source: taskboard` and its
-`taskId` in metadata; (3) the background request's items are retrievable by task id from a *different*
+running; (2) `GET` the parent session's **Workstreams**, then that Workstream's requests, and see the
+detached one with `source: taskboard` and its `taskId` in metadata — the parent's own request list
+must NOT contain it; (3) the background request's items are retrievable by task id from a *different*
 request than the one that emitted them, including across a reclaim (criterion 4b); (4) cancelling the
 task terminates the background request, observably, not just flipping a flag; (5) the UI renders the
 background request as a task, distinct from the conversation.
@@ -1240,6 +1241,7 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
 | **N5** | **NEW — no create-if-absent primitive.** `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. Workstream get-or-create is therefore unsafe, and a composite session id does not rescue it (§8). Recommended shape and reasoning in §5. | **new issue — must be filed** |
 | **N6** | **NOT dissolved — reinstated, and now load-bearing.** A Workstream worker must be reachable through `resolve-action-core.ts`'s `flow.actions[actionName]` branch for the durable binding (N9) to re-resolve it after a restart, which makes that worker **caller-addressable** on any HTTP/MCP host the flow is mounted on. An earlier draft claimed disposition-not-target avoided this path; it does not, because the binding must name a real action to survive serialization. Durability and privacy are in tension: FIX-982 must add a trusted-`source` admission gate on worker actions, or a worker-only registry resolved outside `flow.actions`. | FIX-982 |
+| **N13** | **NEW — a flow-isolated user/org board does not resolve from a Workstream either.** Distinct from N10 and a second mechanism for the same outcome: `resolveResourceScopeId` keys an isolated resource `${identityId}:${flowKind}` (`stores/scope-keys.ts:154-160`), so a board declared with `flowIsolation: true` — or inheriting `isolateUserState`/`isolateOrgState` — is written by the coordinator under its flow kind and read by the detached worker under the **worker's** flow kind. Different bucket, empty ledger, task left pending. Retain the parent flow coordinate for resource resolution, or exclude flow-isolated boards from the guarantees. | FIX-982 |
 | **N10** | **NEW — a session-scoped board does not resolve from a Workstream.** `resolveConfigScopeId` returns the **current** request's `sessionKey` for `scope: "session"` (`createExecutionContext.ts:867-879`), so a detached worker running in a child session hydrates an *empty* board rather than the parent's task ledger — the task is never claimed and strands with no lease for FIX-978 to reclaim. FIX-982 must either carry an explicit parent-session resource coordinate for detached workers, or exclude session-scoped boards from the epic's guarantees and say so in the criteria. | FIX-982 |
 | **N11** | **NEW — a task's assignee is mutable after admission.** `assignTask` / `updateTask` can change a pending task's assignee once a detached dispatch already persisted a binding and keyed a Workstream on the old one. The old request then runs the wrong worker, the new worker's turns land in history labelled for the old assignee, or an inline task switched to a detached assignee gets no request-creation wake at all. Make the assignee immutable after admission, or atomically cancel and re-dispatch under the new binding. | FIX-982 |
 | **N12** | **NEW — the uniform-worker board and the delegation floor need coordinates.** `workers` is a union — `TaskWorker \| TaskWorkerRegistry` (`task-board/index.ts:288`) — and a uniform worker has no assignee; separately, `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or absent"* (`:290-299`, `worker-step.ts:24-38`). Both need a reserved key coordinate, and detached mode must not convert a floor-routed task into an error. §8 uses a reserved sentinel. | FIX-982 |
@@ -1354,7 +1356,7 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N10, N11, N12. |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N10, N11, N12, N13. |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. |
@@ -1444,7 +1446,7 @@ Run the first four with `npx vitest run test/spike-background-isolation.test.ts
 test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
 test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
 `packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
-re-export shim). **42 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
+re-export shim). **45 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
 
 | Finding | Measurement |
 |---|---|
@@ -1468,6 +1470,8 @@ re-export shim). **42 tests, all passing** (plus the full engine suite: 148 file
 | **The delegation floor survives detachment** | An unknown assignee routes to `defaultWorker` rather than throwing, and a uniform-worker board resolves every task to one reserved coordinate; without a floor a miss still fails loudly |
 | **Workstream records persist tenant-namespaced** | The public id stays bare (what a caller hands `runAction`), the record lives under `${tenantId}:${id}`, and a bare-id lookup misses — the silent second-session bug |
 | **The ctx capability gap is asserted, not logged** | `stores=true flow=true runAction=false dispatch=false`, each asserted, since M3's scope is derived from exactly these four |
+| **The union discriminator needs a required `dispatch`** | `{ worker: <block> }` is indistinguishable from a registry whose single assignee is named `worker`; requiring the discriminant removes the ambiguity, and a legacy bare `TaskWorker` (no top-level `execute` — `block.ts:886`) still resolves as a uniform worker |
+| **The record's `id` is its storage key** | Matching `id: sessionKey` (`createExecutionContext.ts:584`), so later `appendJournal`/`setMetadata` writes keyed on `sessionRef.current.id` hit the canonical record instead of forking a bare-keyed duplicate |
 | **The binding is derived, not authored twice** | The coordinate is computed from the same board declaration that supplies the block, and the action it names is asserted to exist on the resolved flow — a parallel hand-written map could point anywhere and still pass |
 | **The dispatch binding survives a restart** | The persisted binding is strings only, round-trips through `JSON`, and re-resolves its worker against a registry rebuilt from static flow definitions; an assignee that names nothing on the board throws |
 

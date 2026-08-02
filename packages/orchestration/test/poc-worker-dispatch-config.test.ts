@@ -52,7 +52,7 @@ type TaskWithTopic = TaskWorkerInput & { topic?: string };
  * Registry value. A bare `TaskWorker` is the shape that ships today and keeps
  * meaning "inline"; the object form adds disposition without a second registry.
  */
-type WorkerEntry = TaskWorker | { worker: TaskWorker; dispatch?: WorkerDispatch };
+type WorkerEntry = TaskWorker | { worker: TaskWorker; dispatch: WorkerDispatch };
 
 /**
  * The shipping shape is a UNION — `workers: TaskWorker | TaskWorkerRegistry`
@@ -74,15 +74,41 @@ type BoardConfig = {
 const INLINE: WorkerDispatch = { mode: "inline" };
 
 function entryWorker(entry: WorkerEntry): TaskWorker {
-  return "worker" in entry ? entry.worker : (entry as TaskWorker);
+  return isWrapper(entry) ? entry.worker : (entry as TaskWorker);
 }
 
 function entryDispatch(entry: WorkerEntry): WorkerDispatch | undefined {
-  return "worker" in entry ? entry.dispatch : undefined;
+  return isWrapper(entry) ? entry.dispatch : undefined;
+}
+
+/**
+ * Discriminates the shipping union. A `BlockDefinition` is identified by its own
+ * `kind` field (`core/src/types/block.ts:886` — the top-level keys are `kind`,
+ * `name`, `inputSchema`, `outputSchema`, `config`; there is **no** top-level
+ * `execute`). An earlier draft keyed off `execute`/`worker` presence, which
+ * misclassified a bare `TaskWorker` as a registry and would also have mistaken a
+ * registry containing an assignee literally named `worker` for the wrapper form.
+ */
+function isBareWorker(w: unknown): w is TaskWorker {
+  return typeof w === "object" && w !== null && "kind" in w && "config" in w;
+}
+
+/**
+ * `dispatch` is REQUIRED on the wrapper, and that is load-bearing rather than
+ * stylistic: `{ worker: <block> }` alone is indistinguishable from a registry
+ * whose single assignee is literally named `worker`. Requiring the discriminant
+ * removes the ambiguity — and costs nothing, since a wrapper with no disposition
+ * has no reason to exist over the bare block.
+ */
+function isWrapper(w: unknown): w is { worker: TaskWorker; dispatch: WorkerDispatch } {
+  if (typeof w !== "object" || w === null) return false;
+  const o = w as { worker?: unknown; dispatch?: unknown };
+  if (!isBareWorker(o.worker)) return false;
+  return typeof o.dispatch === "object" && o.dispatch !== null && "mode" in o.dispatch;
 }
 
 function isRegistry(w: BoardConfig["workers"]): w is Record<string, WorkerEntry> {
-  return !("execute" in (w as object)) && !("worker" in (w as object));
+  return !isBareWorker(w) && !isWrapper(w);
 }
 
 /**
@@ -289,6 +315,26 @@ describe("POC: board worker config — disposition, not target", () => {
     const noFloor: BoardConfig = { workers: { implement: implementBlock } };
     expect(() => resolveDispatch(noFloor, "nope")).toThrow(/unknown_assignee/);
     expect(() => resolveDispatch(noFloor, undefined)).toThrow(/unknown_assignee/);
+  });
+
+  it("the LEGACY bare uniform worker (no wrapper) is still supported", () => {
+    // `workers: TaskWorker` — the shipping form, no object wrapper. A
+    // BlockDefinition has no top-level `execute`, so a presence-based predicate
+    // would misread this as a registry and then do an assignee lookup on it.
+    const legacy: BoardConfig = { workers: implementBlock };
+    const r = resolveDispatch(legacy, undefined);
+    expect(r.worker).toBe(implementBlock);
+    expect(r.dispatch).toEqual({ mode: "inline" });
+    expect(r.coordinate).toBe(UNIFORM_ASSIGNEE);
+    // ...and it honours a board-level detached default.
+    expect(resolveDispatch({ workers: implementBlock, dispatch: { mode: "detached" } }, undefined)
+      .dispatch.mode).toBe("detached");
+  });
+
+  it("a registry with an assignee named `worker` is NOT read as the wrapper form", () => {
+    const tricky: BoardConfig = { workers: { worker: summarizeBlock, implement: implementBlock } };
+    expect(resolveDispatch(tricky, "worker").worker).toBe(summarizeBlock);
+    expect(resolveDispatch(tricky, "implement").worker).toBe(implementBlock);
   });
 
   it("a single uniform worker board is supported, and gets a stable coordinate", () => {
