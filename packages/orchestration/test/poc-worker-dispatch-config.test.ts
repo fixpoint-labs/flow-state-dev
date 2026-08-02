@@ -157,6 +157,16 @@ type Workstream = SessionRecord & {
 
 let seq = 0;
 
+/**
+ * Mirrors `resolveSessionStorageKey` (`stores/scope-keys.ts:75-82`): production
+ * resolves a session as `${tenantId}:${sessionId}`, so the record must persist
+ * under the namespaced key while the public id stays bare. Writing under the
+ * bare id passes an in-memory scan but a real detached request would miss it and
+ * create a second session with no Workstream metadata.
+ */
+const storageKey = (id: string, tenantId: string | undefined) =>
+  tenantId !== undefined && tenantId.length > 0 ? `${tenantId}:${id}` : id;
+
 /** Two boards under one parent session, each declaring an `implement` worker. */
 const BOARD_A = "board_research";
 const BOARD_B = "board_delivery";
@@ -206,7 +216,7 @@ async function routeToWorkstream(
     assignee,
     topic
   };
-  await stores.session.set(created.id, created, "any");
+  await stores.session.set(storageKey(created.id, TENANT), created, "any");
   return created;
 }
 

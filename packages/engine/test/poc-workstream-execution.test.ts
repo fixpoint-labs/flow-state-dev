@@ -54,24 +54,41 @@ type DispatchBinding = {
   assignee: string;
 };
 
-/** Where a board's workers live — known statically from the flow definitions. */
-const BOARD_BINDINGS: Record<string, Record<string, DispatchBinding>> = {
+/**
+ * ONE declaration. An earlier draft hand-authored a parallel `BOARD_BINDINGS`
+ * map beside the worker registry — which reintroduced exactly the second source
+ * of truth the design rejects: nothing checked the two agreed, so the map could
+ * have pointed `implementer` at an unrelated action and every restart test would
+ * still have passed.
+ *
+ * Here the board declares each worker's block AND the action that hosts it once,
+ * and the binding is DERIVED from that declaration.
+ */
+type BoardWorkerDecl = {
+  /** The action on `flowKind` whose block IS this worker. */
+  flowKind: string;
+  action: string;
+  /** The live block — what an inline drain runs. Not serializable. */
+  block: (input: string) => string;
+};
+
+const BOARD_DECL: Record<string, Record<string, BoardWorkerDecl>> = {
   [BOARD_ID]: {
     implementer: {
       flowKind: "worker",
       action: "execute",
-      boardId: BOARD_ID,
-      assignee: "implementer"
+      block: (input: string) => `did: ${input}`
     }
   }
 };
 
+/** Derived, never authored twice. */
 function bindWorker(boardId: string, assignee: string): DispatchBinding {
-  const b = BOARD_BINDINGS[boardId]?.[assignee];
-  if (b === undefined) {
+  const decl = BOARD_DECL[boardId]?.[assignee];
+  if (decl === undefined) {
     throw new Error(`unknown_assignee: "${assignee}" is not on board "${boardId}"`);
   }
-  return b;
+  return { flowKind: decl.flowKind, action: decl.action, boardId, assignee };
 }
 
 type Workstream = SessionRecord & {
@@ -279,6 +296,21 @@ describe("POC v2: Workstream execution across flows", () => {
     // A binding that names nothing on the board fails loudly rather than
     // silently running the wrong worker.
     expect(() => bindWorker(task.boardId, "nobody")).toThrow(/unknown_assignee/);
+  });
+
+  it("BINDING — the coordinate is derived from the board declaration, not authored twice", async () => {
+    const binding = bindWorker(BOARD_ID, "implementer");
+    const decl = BOARD_DECL[BOARD_ID]!.implementer!;
+
+    // The binding cannot drift from the declaration, because it is computed
+    // from it. A hand-authored parallel map could point anywhere and still pass.
+    expect(binding.flowKind).toBe(decl.flowKind);
+    expect(binding.action).toBe(decl.action);
+
+    // And the action it names must actually exist on the resolved flow —
+    // the check a parallel map would not have.
+    const flow = buildFlowRegistry()[binding.flowKind];
+    expect(Object.keys((flow as unknown as { actions: object }).actions)).toContain(binding.action);
   });
 
   it("PROBE — what a block can actually reach from ctx", async () => {

@@ -1013,13 +1013,23 @@ executor are absent. FIX-982 is the capability over those two pieces, and everyt
 — cross-flow execution, history isolation, topic reuse — is already demonstrated on the real path.
 
 Because the board configures disposition rather than a target (§1), the caller-facing surface is
-roughly `ctx.spawn({ assignee, topic, input })` (the board it belongs to is implicit in the caller) — the worker block comes from the registry entry the
-`assignee` already names, so nothing new has to be resolved by kind. **That also settles the
-drain-only-action constraint rather than hardening it.** What runs in the Workstream is a registry
-worker, not an arbitrary action on a foreign flow, so `resolve-action-core.ts`'s public-resolution
-path (webhook/chat/scheduled, else `flow.actions[actionName]`) is not the coordinate a spawn arrives
-through, and an internal-only worker needs no private one. The constraint returns only if per-task
-targeting is added later (N6).
+roughly `ctx.spawn({ assignee, topic, input })` (the board it belongs to is implicit in the caller) —
+the worker block comes from the registry entry the `assignee` already names, so a task author names
+no action.
+
+**But the drain-only-action constraint does NOT dissolve — it survives, and the durable binding is
+what keeps it alive.** An earlier draft claimed a spawn does not arrive through the public-resolution
+path. That was wrong. To be re-resolvable after a restart the binding must name a real
+`(flowKind, action)` (§1), and `runAction` resolves it through the same
+`resolve-action-core.ts` branch every non-event source uses — `flow.actions[actionName]`. So if the
+worker's flow is mounted on an HTTP or MCP host, **its internal worker action is caller-addressable**
+like any other. Durability and privacy pull in opposite directions here: the coordinate has to be
+nameable to survive a restart, and anything nameable on a mounted flow is reachable.
+
+**FIX-982 must therefore supply one of two things, and say which:** a trusted-`source` gate on the
+worker action so only a board dispatch may enter it (rule 9's mechanism, applied to admission rather
+than display), or a worker-only registry resolved outside `flow.actions` — re-resolvable by string
+but never routable from a transport. This is N6, un-dissolved.
 
 FIX-982 must also decide **whether the Workstream forks** (§1) and pick the fork strategy; the
 measured comparison is in §8 and points at the reference form. If it forks, the **window budget
@@ -1229,7 +1239,7 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N3** | **Reframed.** `ActiveRequestRegistry` still has no per-session query (`stores/types.ts:471-489`), but the question is now "what Workstreams are live under this session," which a `parentSessionId` filter answers at the session store rather than by filtering `listAll` globally (BP-033). | FIX-982 |
 | **N4** | **The reclamation wake does not collapse** (Decision 6). Criterion 3 still needs a named wake source, since a reclaimed task has no initiating request. | FIX-982 |
 | **N5** | **NEW — no create-if-absent primitive.** `ExpectedVersion = number \| "any"` (`stores/types.ts:166`) cannot express "must not exist", and `casWriteToMap` conflates a missing record with a version-0 one, so `set` is an upsert. Workstream get-or-create is therefore unsafe, and a composite session id does not rescue it (§8). Recommended shape and reasoning in §5. | **new issue — must be filed** |
-| **N6** | **NEW, and largely dissolved by disposition-not-target (§1).** The concern was that a Workstream action must be publicly resolvable on its target flow — `resolve-action-core.ts` branches on webhook/chat/scheduled and otherwise resolves `flow.actions[actionName]`, leaving an internal-only action no private coordinate to arrive through. Because a spawn runs a **registry worker named by `assignee`** rather than an arbitrary action on a foreign flow, that public-resolution path is not the coordinate it arrives through. Returns only if per-task targeting is added later. | FIX-982 |
+| **N6** | **NOT dissolved — reinstated, and now load-bearing.** A Workstream worker must be reachable through `resolve-action-core.ts`'s `flow.actions[actionName]` branch for the durable binding (N9) to re-resolve it after a restart, which makes that worker **caller-addressable** on any HTTP/MCP host the flow is mounted on. An earlier draft claimed disposition-not-target avoided this path; it does not, because the binding must name a real action to survive serialization. Durability and privacy are in tension: FIX-982 must add a trusted-`source` admission gate on worker actions, or a worker-only registry resolved outside `flow.actions`. | FIX-982 |
 | **N10** | **NEW — a session-scoped board does not resolve from a Workstream.** `resolveConfigScopeId` returns the **current** request's `sessionKey` for `scope: "session"` (`createExecutionContext.ts:867-879`), so a detached worker running in a child session hydrates an *empty* board rather than the parent's task ledger — the task is never claimed and strands with no lease for FIX-978 to reclaim. FIX-982 must either carry an explicit parent-session resource coordinate for detached workers, or exclude session-scoped boards from the epic's guarantees and say so in the criteria. | FIX-982 |
 | **N11** | **NEW — a task's assignee is mutable after admission.** `assignTask` / `updateTask` can change a pending task's assignee once a detached dispatch already persisted a binding and keyed a Workstream on the old one. The old request then runs the wrong worker, the new worker's turns land in history labelled for the old assignee, or an inline task switched to a detached assignee gets no request-creation wake at all. Make the assignee immutable after admission, or atomically cancel and re-dispatch under the new binding. | FIX-982 |
 | **N12** | **NEW — the uniform-worker board and the delegation floor need coordinates.** `workers` is a union — `TaskWorker \| TaskWorkerRegistry` (`task-board/index.ts:288`) — and a uniform worker has no assignee; separately, `defaultWorker` is the delegation floor that runs any task whose assignee is *"unknown or absent"* (`:290-299`, `worker-step.ts:24-38`). Both need a reserved key coordinate, and detached mode must not convert a floor-routed task into an error. §8 uses a reserved sentinel. | FIX-982 |
@@ -1434,7 +1444,7 @@ Run the first four with `npx vitest run test/spike-background-isolation.test.ts
 test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
 test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
 `packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
-re-export shim). **40 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
+re-export shim). **42 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
 
 | Finding | Measurement |
 |---|---|
@@ -1458,6 +1468,7 @@ re-export shim). **40 tests, all passing** (plus the full engine suite: 148 file
 | **The delegation floor survives detachment** | An unknown assignee routes to `defaultWorker` rather than throwing, and a uniform-worker board resolves every task to one reserved coordinate; without a floor a miss still fails loudly |
 | **Workstream records persist tenant-namespaced** | The public id stays bare (what a caller hands `runAction`), the record lives under `${tenantId}:${id}`, and a bare-id lookup misses — the silent second-session bug |
 | **The ctx capability gap is asserted, not logged** | `stores=true flow=true runAction=false dispatch=false`, each asserted, since M3's scope is derived from exactly these four |
+| **The binding is derived, not authored twice** | The coordinate is computed from the same board declaration that supplies the block, and the action it names is asserted to exist on the resolved flow — a parallel hand-written map could point anywhere and still pass |
 | **The dispatch binding survives a restart** | The persisted binding is strings only, round-trips through `JSON`, and re-resolves its worker against a registry rebuilt from static flow definitions; an assignee that names nothing on the board throws |
 
 **What they do not establish.** The dispatch in the execution POC is performed **outside** the
