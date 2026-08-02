@@ -181,14 +181,23 @@ async function forkByCopy(
 type ForkRef = { sessionId: string; visible: ReadonlySet<string> };
 
 /**
- * What actually gets stored. A fork ref lives on the Workstream's session record
- * (`SessionRecord.metadata`), which is persisted as JSON by every adapter, and
+ * What actually gets stored. A fork ref lives on the Workstream's session
+ * record, which is persisted as JSON by every adapter, and
  * `JSON.stringify(new Set([...]))` is `{}` — the cursor would serialize to
  * nothing at all, silently, with no error at write time. The fork would come
  * back from the store with an empty snapshot and inherit no history.
  *
  * So the persisted shape is an array and the runtime shape is a Set; the
  * conversion is explicit at both ends rather than implied. Measured below.
+ *
+ * **Not in `SessionRecord.metadata`, though — a framework-owned field.**
+ * `metadata` is a caller-writable shallow-merge bag on two public paths:
+ * `handlePatchSessionMetadata` (`session-routes.ts:216-217`) and
+ * `ctx.session.setMetadata` (`createExecutionContext.ts:1917-1918`), both
+ * writing with `expectedVersion: "any"`. A cursor kept there is not immutable
+ * in any sense the fork point requires — any caller who can PATCH the session
+ * can empty it, or repoint `sessionId` at a session the fork was never forked
+ * from. Measured below, on both the integrity and the read-escalation paths.
  */
 type PersistedForkRef = { sessionId: string; visible: readonly string[] };
 
@@ -548,6 +557,49 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
     const tampered = new Set(["p1", "other1", "x1"]);
     const members = await loadCursorMembers(store, "S", tampered, TENANT_A);
     expect(members.map((r) => r.id)).toEqual(["p1"]);
+  });
+
+  it("OWNERSHIP — a cursor in `metadata` is caller-writable, and that breaks the fork point", async () => {
+    const store = new InMemoryRequestStore();
+    for (const n of [1, 2, 3]) {
+      await store.set(`p${n}`, turn(`p${n}`, "S", n, `parent ${n}`), "any");
+    }
+    await store.set("w1", turn("w1", "W", 10, "fork own"), "any");
+    // A session the fork was never forked from.
+    await store.set("z1", turn("z1", "Z", 20, "someone else's turn"), "any");
+
+    const live: ForkRef = { sessionId: "S", visible: await forkCursor(store, "S", NO_TENANT) };
+    expect(asc((await loadForked(store, "W", { W: live }, NO_TENANT)).records)).toEqual([
+      "p1", "p2", "p3", "w1"
+    ]);
+
+    // Both public metadata paths are a shallow merge over an arbitrary key, so
+    // a caller supplying `forkedFrom` overwrites it wholesale rather than
+    // merging into it. Model the merge exactly.
+    const merge = (stored: PersistedForkRef, patch: Record<string, unknown>) =>
+      ({ forkedFrom: stored, ...patch }).forkedFrom as PersistedForkRef;
+
+    // (a) Integrity: emptied. The fork silently loses its inherited history.
+    const emptied = merge(persistForkRef(live), {
+      forkedFrom: { sessionId: "S", visible: [] }
+    });
+    const afterEmpty = await loadForked(store, "W", { W: hydrateForkRef(emptied) }, NO_TENANT);
+    expect(asc(afterEmpty.records)).toEqual(["w1"]);
+
+    // (b) Read escalation: repointed at a session the fork has no relation to.
+    // The by-id re-check does NOT catch this — it validates each record against
+    // the cursor's OWN declared parent, and the caller controls that too. So
+    // the cursor must not be caller-writable in the first place.
+    const repointed = merge(persistForkRef(live), {
+      forkedFrom: { sessionId: "Z", visible: ["z1"] }
+    });
+    const afterRepoint = await loadForked(store, "W", { W: hydrateForkRef(repointed) }, NO_TENANT);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[fork/ownership] emptied -> ${asc(afterEmpty.records).join(",")} · ` +
+        `repointed -> ${asc(afterRepoint.records).join(",")}`
+    );
+    expect(asc(afterRepoint.records)).toEqual(["w1", "z1"]);
   });
 
   it("TENANT — a fork of a tenant-scoped parent inherits nothing unless the tenant is threaded", async () => {
