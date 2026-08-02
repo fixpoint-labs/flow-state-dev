@@ -105,21 +105,32 @@ function resolveTopic(dispatch: WorkerDispatch, task: TaskWithTopic): string {
 
 type Workstream = SessionRecord & {
   parentSessionId?: string;
+  boardId?: string;
   assignee?: string;
   topic?: string;
 };
 
 let seq = 0;
 
+/** Two boards under one parent session, each declaring an `implement` worker. */
+const BOARD_A = "board_research";
+const BOARD_B = "board_delivery";
+
 /**
- * Keyed `(parentSessionId, assignee, topic)`. `assignee` rather than `flowKind`
- * because it is authored, board-scoped, and already validated — so two boards
- * under one session cannot collide, and a refactor cannot silently re-key a
- * live Workstream.
+ * Keyed `(parentSessionId, boardId, assignee, topic)`.
+ *
+ * `assignee` rather than `flowKind` because it is authored and already
+ * validated, so a refactor cannot silently re-key a live Workstream. But
+ * `assignee` is scoped *within* a registry — which is exactly why it is
+ * ambiguous *across* registries, and why `boardId` is required rather than
+ * optional. An earlier draft argued board-scoping made `boardId` unnecessary;
+ * that inverted the implication, and the two-board test below is the
+ * counterexample.
  */
 async function routeToWorkstream(
   stores: StoreRegistry,
   parentSessionId: string,
+  boardId: string,
   assignee: string,
   topic: string
 ): Promise<Workstream> {
@@ -127,6 +138,7 @@ async function routeToWorkstream(
   const existing = all.find(
     (s) =>
       s.parentSessionId === parentSessionId &&
+      s.boardId === boardId &&
       s.assignee === assignee &&
       s.topic === topic
   );
@@ -142,6 +154,7 @@ async function routeToWorkstream(
     updatedAt: ts,
     journal: [],
     parentSessionId,
+    boardId,
     assignee,
     topic
   };
@@ -230,9 +243,9 @@ describe("POC: board worker config — disposition, not target", () => {
     const b = taskInput("t2", "fix the parser bug", "FIX-981");
     const c = taskInput("t3", "unrelated work", "FIX-982");
 
-    const wsA = await routeToWorkstream(stores, "S", "implement", resolveTopic(dispatch, a));
-    const wsB = await routeToWorkstream(stores, "S", "implement", resolveTopic(dispatch, b));
-    const wsC = await routeToWorkstream(stores, "S", "implement", resolveTopic(dispatch, c));
+    const wsA = await routeToWorkstream(stores, "S", BOARD_A, "implement", resolveTopic(dispatch, a));
+    const wsB = await routeToWorkstream(stores, "S", BOARD_A, "implement", resolveTopic(dispatch, b));
+    const wsC = await routeToWorkstream(stores, "S", BOARD_A, "implement", resolveTopic(dispatch, c));
 
     expect(wsB.id).toBe(wsA.id); // same issue → same Workstream
     expect(wsC.id).not.toBe(wsA.id); // different issue → its own
@@ -250,18 +263,42 @@ describe("POC: board worker config — disposition, not target", () => {
     const b = taskInput("t2", "two");
     expect(resolveTopic(dispatch, a)).toBe("t1");
 
-    const wsA = await routeToWorkstream(stores, "S", "impl", resolveTopic(dispatch, a));
-    const wsB = await routeToWorkstream(stores, "S", "impl", resolveTopic(dispatch, b));
+    const wsA = await routeToWorkstream(stores, "S", BOARD_A, "impl", resolveTopic(dispatch, a));
+    const wsB = await routeToWorkstream(stores, "S", BOARD_A, "impl", resolveTopic(dispatch, b));
     expect(wsA.id).not.toBe(wsB.id);
+  });
+
+  it("boardId is REQUIRED in the key — two boards, same assignee and topic", async () => {
+    const stores = createInMemoryStores();
+
+    // Both boards legitimately declare an `implement` worker; the coordinator
+    // files FIX-981 on each. `assignee` is unique only WITHIN a registry, so a
+    // 3-part key `(parent, assignee, topic)` would return one Workstream for
+    // both — mixing two boards' histories, and leaving the executor unable to
+    // tell which registry supplies the worker.
+    const a = await routeToWorkstream(stores, "S", BOARD_A, "implement", "FIX-981");
+    const b = await routeToWorkstream(stores, "S", BOARD_B, "implement", "FIX-981");
+
+    expect(a.id).not.toBe(b.id);
+    expect(a.boardId).toBe(BOARD_A);
+    expect(b.boardId).toBe(BOARD_B);
+
+    // The 3-part key these two would have shared — the counterexample, stated.
+    const threePartKey = (w: Workstream) => `${w.parentSessionId}|${w.assignee}|${w.topic}`;
+    expect(threePartKey(a)).toBe(threePartKey(b));
+
+    // ...and each still round-trips to its own board.
+    expect((await routeToWorkstream(stores, "S", BOARD_A, "implement", "FIX-981")).id).toBe(a.id);
+    expect((await routeToWorkstream(stores, "S", BOARD_B, "implement", "FIX-981")).id).toBe(b.id);
   });
 
   it("assignee is part of the key — two workers, one topic, two Workstreams", async () => {
     const stores = createInMemoryStores();
-    const research = await routeToWorkstream(stores, "S", "research", "FIX-981");
-    const implement = await routeToWorkstream(stores, "S", "implement", "FIX-981");
+    const research = await routeToWorkstream(stores, "S", BOARD_A, "research", "FIX-981");
+    const implement = await routeToWorkstream(stores, "S", BOARD_A, "implement", "FIX-981");
     expect(research.id).not.toBe(implement.id);
 
     // ...and each round-trips to itself.
-    expect((await routeToWorkstream(stores, "S", "research", "FIX-981")).id).toBe(research.id);
+    expect((await routeToWorkstream(stores, "S", BOARD_A, "research", "FIX-981")).id).toBe(research.id);
   });
 });

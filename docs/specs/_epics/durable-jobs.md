@@ -46,7 +46,7 @@ sequenceDiagram
 
   U->>C: sends a turn
   C->>B: addTask assignee implementer, topic FIX-981
-  C->>W: spawn — get-or-create by parentSessionId, assignee, topic
+  C->>W: spawn — get-or-create by parentSessionId, boardId, assignee, topic
   Note over C,W: two sessions. S returns without waiting.<br/>W's turns never enter S's history.<br/>W may FORK S's history to a fork point.
   W->>B: claim taskId — the M1 conditional write
   B-->>W: claimed, attempts = 1
@@ -61,7 +61,7 @@ sequenceDiagram
 ```
 
 Two things the diagram cannot show, and both are binding: the routing key is
-`(parentSessionId, assignee, topic)` — not topic alone, and **not `flowKind`** (see below); and the
+`(parentSessionId, boardId, assignee, topic)` — not topic alone, and **not `flowKind`** (see below); and the
 read model a UI needs already exists — `RequestStore.list({ sessionId, … })`
 (`engine/src/stores/types.ts:283`, `:110-147`).
 
@@ -91,11 +91,18 @@ Three properties, measured (§8):
 - **The routing coordinate is `assignee`, and it is already authored and validated.** `checkAssignee`
   rejects an unknown assignee against the declared `WorkerRoster`
   (`skills/task-tools-capability.ts:131-170`), so a bad coordinate fails loudly at plan time instead
-  of silently minting a stray Workstream. It is also **board-scoped**, which closes an item an
-  earlier draft left open for FIX-982: two boards under one session can no longer collide.
-  `flowKind` would not do — and block identity is worse still, since `buildBlockInstanceId` is
-  `${requestId}:${path}:${attempt}` over positional paths (`contracts/src/block-instance-id.ts:50-75`),
-  so it is request-scoped and changes when a sequencer is reordered.
+  of silently minting a stray Workstream. `flowKind` would not do — and block identity is worse
+  still, since `buildBlockInstanceId` is `${requestId}:${path}:${attempt}` over positional paths
+  (`contracts/src/block-instance-id.ts:50-75`), so it is request-scoped and changes when a sequencer
+  is reordered.
+- **`boardId` is required in the key, not optional.** An earlier draft argued that because
+  `assignee` is board-scoped, two boards under one session could not collide, and dropped the board
+  coordinate. **That inverted the implication.** `assignee` is unique only *within* a registry,
+  which is exactly what makes it ambiguous *across* registries: two boards may each legitimately
+  declare an `implement` worker, and a coordinator may file `FIX-981` on both. A 3-part
+  `(parentSessionId, assignee, topic)` key routes both into one Workstream — mixing two boards'
+  histories and leaving the executor unable to tell which registry supplies the worker. Measured in
+  §8: the two collide on the 3-part key and separate on the 4-part one.
 
 **Topic is task data, not board config.** The two facts are known by different parties at different
 times: the *skill author* declares statically whether a participant detaches; the *coordinator* names
@@ -917,7 +924,7 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 |---|---|---|---|
 | **M1** — cross-execution claim safety | FIX-981 | **Unchanged, and more necessary.** | Large |
 | **M2** — reclamation joined to liveness | *(none — FIX-978, under FIX-980)* | Consumed, not built. | — |
-| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the two measured missing pieces — resolve a worker and invoke it — plus routing by `(parentSessionId, assignee, topic)`, the fork decision, and interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. | Medium |
+| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the two measured missing pieces — resolve a worker and invoke it — plus routing by `(parentSessionId, boardId, assignee, topic)`, the fork decision, and interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. | Medium |
 | **M4** — blocking / background disposition | FIX-983 | **Halved, and the surviving half re-homed.** Disposition is board worker config (§1), so it lands with M3 rather than being its own mechanism. What remains under FIX-983 is cross-request *waiting* only. | Small |
 | **M5** — progress across the request boundary | FIX-984 | **Mostly dissolved.** | ~none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's residue. | Medium |
@@ -970,7 +977,7 @@ executor are absent. FIX-982 is the capability over those two pieces, and everyt
 — cross-flow execution, history isolation, topic reuse — is already demonstrated on the real path.
 
 Because the board configures disposition rather than a target (§1), the caller-facing surface is
-roughly `ctx.spawn({ assignee, topic, input })` — the worker block comes from the registry entry the
+roughly `ctx.spawn({ assignee, topic, input })` (the board it belongs to is implicit in the caller) — the worker block comes from the registry entry the
 `assignee` already names, so nothing new has to be resolved by kind. **That also settles the
 drain-only-action constraint rather than hardening it.** What runs in the Workstream is a registry
 worker, not an arbitrary action on a foreign flow, so `resolve-action-core.ts`'s public-resolution
@@ -1028,35 +1035,47 @@ epic.
 ### The consumer surface — every issue here is substrate
 
 **Nothing in the current membership covers how a developer declares background work through the
-normal API, or how a client treats it differently.** Under requests-as-jobs that surface is where
-the value lands: "list a session's requests, sort background from foreground, render background as
-tasks" is the outcome, and no indexed issue owns any part of it. Recorded here because a substrate
-that no one can reach is not the objective.
+normal API, or how a client treats it differently.** No indexed issue owns any part of it. Recorded
+here because a substrate that no one can reach is not the objective.
+
+> **The Workstream model changes what this surface is, and S1–S3 below were written for the rejected
+> one.** Under sibling requests the client's job was *"list a session's requests and split them by
+> background disposition."* That no longer works at all: detached requests live in **child sessions**,
+> so `RequestStore.list({ sessionId: parent })` cannot see them and neither can `useSession(parent)`.
+> There is nothing in the parent to filter. The surface is now **two hops — enumerate a parent's
+> Workstreams, then read each one's requests** — which needs a parent-to-child read that does not
+> exist today (`SessionListOptions` is `flowKind / userId / tenantId / limit`, with no
+> `parentSessionId`). S1–S3 are restated accordingly below; their *sizes* have not been re-estimated.
 
 ```mermaid
 flowchart TB
-  subgraph S["One session — one ongoing operation"]
+  subgraph S["Parent session — the conversation"]
     FG["Foreground request<br/>source = user"]
-    BG1["Background request 1<br/>source = taskboard<br/>meta = taskId, title, background"]
-    BGN["Background request N<br/>source = taskboard"]
+  end
+  subgraph W1["Workstream — child session, topic FIX-981"]
+    R1["request 1"]
+    R1B["request 2 — follow-up"]
+  end
+  subgraph WN["Workstream — child session, topic FIX-982"]
+    RN["request 1"]
   end
   subgraph BD["Task board — resource-backed, scope session / user / org"]
     T1[(task 1)]
     TN[(task N)]
   end
   subgraph UI["Client"]
-    CONV["Conversation<br/>foreground items"]
-    TASKS["Task list<br/>background requests rendered as tasks"]
+    CONV["Conversation<br/>parent session items only"]
+    TASKS["Workstream list<br/>one entry per child session"]
   end
-  FG -->|addTask| T1
-  FG -->|addTask| TN
-  FG -.->|spawns sibling| BG1
-  FG -.->|spawns sibling| BGN
-  BG1 -->|claim + settle| T1
-  BGN -->|claim + settle| TN
+  FG -->|addTask assignee, topic| T1
+  FG -->|addTask assignee, topic| TN
+  FG -.->|spawn — get-or-create| W1
+  FG -.->|spawn — get-or-create| WN
+  R1 -->|claim + settle| T1
+  RN -->|claim + settle| TN
   FG --> CONV
-  BG1 --> TASKS
-  BGN --> TASKS
+  W1 -->|list children of parent,<br/>then that child's requests| TASKS
+  WN --> TASKS
 ```
 
 **What already exists, so the surface work is smaller than it looks.** Item-to-task attribution
@@ -1226,7 +1245,22 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 | **Filed, held as blocked** | 5 | FIX-982, FIX-983, FIX-984, FIX-991, FIX-925 |
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 |
-| **Indexed rows** = sub-issues + external dependency | **9** | — |
+| **Unfiled blocker** — must be filed before the gate releases execution | 1 | *create-if-absent* (N5) |
+| **Indexed rows** = sub-issues + external dependency + unfiled blocker | **10** | — |
+
+> **The create-if-absent blocker is indexed here deliberately, and it is still unfiled.** §5 names it
+> and puts it first in the execution sequence, but until this round it appeared in neither the
+> membership table nor any `blocked-by` relation — so a coordinator reading only the canonical
+> tables would start M3 without it and either duplicate Workstreams (§8) or absorb an unplanned
+> store-wide contract change into FIX-982. **FIX-982's blockers are `FIX-981 + FIX-978 +
+> create-if-absent`**, and the third has no issue to point at yet. Filing it is an owner action, not
+> done here.
+>
+> **Fourth instance of the defect class this epic keeps recording** — a dependency named in prose
+> and absent from the tables the coordinator actually reads. The prior three were FIX-991's execution
+> sequence (twice) and S1–S4's placement. That it recurred *in the round that added the item* is the
+> transferable lesson: naming a prerequisite and indexing it are separate acts, and only the second
+> one has mechanical effect.
 
 **FIX-991 carries no milestone number** — it is not one of M1–M5 but a correctness gap the
 decomposition exposed, and **criterion 4b depends on it**, so it appears in the membership table,
@@ -1281,9 +1315,9 @@ top:
 
 | | Proposed issue | Packages | Sequence | Prerequisite or polish? |
 |---|---|---|---|---|
-| **S1** | Request metadata + trusted `source` on the create/dispatch path; a session-requests read filtered/sorted by background disposition; **and the conversation-history policy** — §1's history-poisoning finding, which is server-side in the store query and so cannot be fixed anywhere above this layer | `engine` | after FIX-982 | **Prerequisite, and the heaviest of the five.** Nothing above it can see a background request, and without the history policy the model actively regresses the foreground conversation. |
-| **S2** | Declare a background request, and enumerate a session's requests with their background disposition | `client` | after S1 | **Prerequisite.** The isomorphic surface every consumer goes through. |
-| **S3** | `useSession` exposes the foreground/background split — plural requests, with a deliberate item-classification decision (no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. Carries the `latestRequest`-is-singular gap (N2's read-side twin). |
+| **S1** | **A parent-to-child Workstream read** — `SessionListOptions` gains `parentSessionId` (and the fields §1 needs: `boardId`, `assignee`, `topic`), implemented across the four adapters — plus request metadata and trusted `source` on the create/dispatch path | `engine` | after FIX-982 | **Prerequisite.** Nothing above it can enumerate a Workstream at all. **Lighter than before:** the conversation-history policy it used to carry is no longer needed — isolation is structural under this model, not a filter (§1). |
+| **S2** | Declare detached work, and enumerate a session's **Workstreams** — then each Workstream's requests. Two hops, not one filtered list | `client` | after S1 | **Prerequisite.** The isomorphic surface every consumer goes through. |
+| **S3** | `useSession` exposes a parent's Workstreams as a distinct axis from its own items — a child session is not a filtered view of the parent, so this is a new read rather than a split of an existing one (still no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. The `latestRequest`-is-singular gap no longer applies here — N2 dissolved with the model change. |
 | **S4** | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. |
 | **S5** | Document the surface: package READMEs for the public API + `apps/docs` concept and guide pages | `packages/*`, `apps/docs` | after S4 | **Polish**, but required by the "document new user-facing functionality" rule before the epic wraps. |
 
@@ -1359,7 +1393,7 @@ Run the first four with `npx vitest run test/spike-background-isolation.test.ts
 test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
 test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
 `packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
-re-export shim). **31 tests, all passing.**
+re-export shim). **32 tests, all passing.**
 
 | Finding | Measurement |
 |---|---|
@@ -1377,6 +1411,7 @@ re-export shim). **31 tests, all passing.**
 | A bare worker value still means inline | Existing boards need no edit; the object form adds disposition at the same value position (BP-030) |
 | Disposition is orthogonal to the worker | One block definition, two dispositions, asserted by identity — no change to the block |
 | Continuity is opted into | With no topic named, the topic falls back to `taskId`, so each task gets its own Workstream |
+| **`boardId` is required in the key** | Two boards under one session, both declaring `implement`, both filed `FIX-981`: they **collide on the 3-part key** `(parent, assignee, topic)` and separate only on the 4-part one |
 
 **What they do not establish.** The dispatch in the execution POC is performed **outside** the
 request, standing in for the capability FIX-982 will build. Everything downstream of the spawn is
