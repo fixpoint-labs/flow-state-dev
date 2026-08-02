@@ -14,6 +14,7 @@
  * the store must offer a create-if-absent insert (so one of them loses). Either
  * alone still ends with a broken uniqueness guarantee — measured below.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { InMemorySessionStore } from "../src/stores/memory/session-store";
 import { InMemoryRequestStore } from "../src/stores/memory/request-store";
@@ -156,29 +157,41 @@ const nextId = () => `sess_generated_${++seq}`;
  * collapses both callers onto one key, which is the precondition the sentinel
  * needs.
  *
+ * Two properties the derivation must have, and both are load-bearing:
+ *
+ * 1. **Canonical** — a raw `join(":")` lets a separator move between fields:
+ *    assignee `"a:b"` + topic `"c"` and assignee `"a"` + topic `"b:c"` produce
+ *    one id (measured below), silently merging two workers' Workstreams.
+ *    `JSON.stringify` of an ARRAY has unambiguous delimiters, so no coordinate
+ *    value can forge a field boundary.
+ * 2. **Total and bounded** — the coordinates are unbounded caller/model strings
+ *    and this value becomes a primary key. `encodeURIComponent` (an earlier
+ *    draft) is neither: it **throws `URIError`** on a lone UTF-16 surrogate,
+ *    which `JSON.parse` and `z.string()` both accept, and it expands rather
+ *    than bounds the length. A throw here lands *after* the task is admitted —
+ *    the exact stranding path this epic exists to close. Well-formed
+ *    `JSON.stringify` escapes lone surrogates instead of throwing (ES2019), and
+ *    hashing makes the length fixed regardless of input. Measured below.
+ *
+ * So the hash is **mandatory**, not a fallback for stores with short key
+ * columns. It costs debuggability, which the Workstream record's own
+ * `parentSessionId` / `boardId` / `coordinate` / `topic` fields give back.
+ *
  * `tenantId` is deliberately NOT in the derivation: the record is persisted at
  * `${tenantId}:${id}` (`resolveSessionStorageKey`), so the tenant already
- * separates two derivations that agree on all four coordinates. Adding it to
- * the id as well would be a second, parallel mechanism for the same thing, and
- * would leak the tenant into an id that callers pass to `runAction`.
+ * separates two derivations that agree on all four coordinates. Adding it here
+ * would be a second, parallel mechanism for the same thing, and would leak the
+ * tenant into an id that callers pass to `runAction`.
  *
- * `encodeURIComponent` is what makes the encoding canonical — session ids
- * already carry a "must not contain `:` ambiguously" caveat
- * (`scope-keys.ts:69-71`), and a raw join lets a separator move between two
- * fields: assignee `"a:b"` + topic `"c"` and assignee `"a"` + topic `"b:c"`
- * produce one id (measured below). If FIX-982 finds the length unacceptable for
- * a key column, a hash over this same canonical encoding has the identical
- * collision properties and loses only debuggability.
- *
- * The coordinate is SERIALIZED before encoding. It is a tagged union, so
- * passing it through `encodeURIComponent` directly yields
- * `%5Bobject%20Object%5D` for every variant — every assignee, the uniform
- * worker and the floor would derive one id and mix their histories.
+ * The coordinate is SERIALIZED first. It is a tagged union, so passing the
+ * object itself into the serialization yields one value for every variant —
+ * every assignee, the uniform worker and the floor deriving one id.
  */
+const canonicalKeyString = (k: Key) =>
+  JSON.stringify([k.parentSessionId, k.boardId, coordinateKey(k.coordinate), k.topic]);
+
 const deriveWorkstreamId = (k: Key) =>
-  `ws_${[k.parentSessionId, k.boardId, coordinateKey(k.coordinate), k.topic]
-    .map(encodeURIComponent)
-    .join(":")}`;
+  `ws_${createHash("sha256").update(canonicalKeyString(k), "utf8").digest("hex").slice(0, 32)}`;
 
 /**
  * Mirrors `resolveSessionStorageKey` (`stores/scope-keys.ts:75-82`): the record
@@ -478,6 +491,7 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, coord
     // field still contributes a separator, so `("a:b", "")` vs `("a", "b")`
     // does NOT collide; the pair that does is one where the separator moves
     // between two non-empty fields.
+    // The rejected form, kept as the counterexample the canonical one rules out.
     const rawJoin = (k: Key) =>
       [k.parentSessionId, k.boardId, coordinateKey(k.coordinate), k.topic].join(":");
 
@@ -488,7 +502,9 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, coord
     // eslint-disable-next-line no-console
     console.log(`[poc] raw join collides on "${rawJoin(left)}"`);
 
-    // ...and per-field encoding is what separates them.
+    // ...and the array serialization is what separates them: its delimiters
+    // cannot be forged from inside a coordinate value.
+    expect(canonicalKeyString(left)).not.toBe(canonicalKeyString(right));
     expect(deriveWorkstreamId(left)).not.toBe(deriveWorkstreamId(right));
 
     // Same hazard one field over: a separator inside the board id.
@@ -496,6 +512,36 @@ describe("POC: workstream routing via (tenantId, parentSessionId, boardId, coord
     const b2 = key({ boardId: "board", coordinate: assignee("a:b") });
     expect(rawJoin(b1)).toBe(rawJoin(b2));
     expect(deriveWorkstreamId(b1)).not.toBe(deriveWorkstreamId(b2));
+  });
+
+  it("DERIVATION — total and bounded: a lone surrogate does not throw, and length is fixed", () => {
+    // `encodeURIComponent` — the earlier draft — throws on a lone surrogate,
+    // which JSON and `z.string()` both accept. A coordinator naming a topic
+    // that contains one would take the throw AFTER admitting the task.
+    expect(() => encodeURIComponent("\uD800")).toThrow(URIError);
+
+    // The canonical serialization escapes it instead (well-formed
+    // JSON.stringify, ES2019), so the derivation is total.
+    const surrogate = key({ topic: "\uD800" });
+    expect(canonicalKeyString(surrogate)).toContain("\\ud800");
+    expect(() => deriveWorkstreamId(surrogate)).not.toThrow();
+
+    // ...and it stays distinct from the escape sequence written literally.
+    expect(deriveWorkstreamId(surrogate)).not.toBe(
+      deriveWorkstreamId(key({ topic: "\\ud800" }))
+    );
+
+    // Bounded: the id is the same length for a 4-character topic and a
+    // 100,000-character one, so it cannot overflow a key column.
+    const short = deriveWorkstreamId(key({ topic: "FIX-981" }));
+    const huge = deriveWorkstreamId(key({ topic: "x".repeat(100_000) }));
+    // eslint-disable-next-line no-console
+    console.log(
+      `[poc] derived id length: topic=7 -> ${short.length}, topic=100000 -> ${huge.length}`
+    );
+    expect(huge.length).toBe(short.length);
+    expect(short.length).toBeLessThanOrEqual(40);
+    expect(huge).not.toBe(short);
   });
 
   it("DERIVATION — the uniform and floor coordinates derive distinct ids", async () => {

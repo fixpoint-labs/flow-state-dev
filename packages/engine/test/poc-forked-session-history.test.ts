@@ -595,13 +595,75 @@ describe("POC: forked sessions — inherit history to a fork point", () => {
 
     // Which is the one turn `contextSupply: "conversation"` most needs: a
     // worker asked to continue a conversation cannot see the message that
-    // asked it. Either the current turn is snapshotted explicitly at dispatch,
-    // or cursor creation waits for the parent request to reach a terminal
-    // state — and the second option cannot work for a spawn that must run
-    // while the parent is still going.
-    const withCurrent = new Set([...cursor, "p_now"]);
-    const fixed = await loadForked(store, "W", { W: { sessionId: "S", visible: withCurrent } }, NO_TENANT);
-    expect(asc(fixed.records)).toEqual(["p1", "p_now", "w1"]);
+    // asked it.
+  });
+
+  it("DISPATCH — adding the request ID to the cursor does NOT fix it, in two ways", async () => {
+    // The obvious repair — put the in-flight request's id in the snapshot —
+    // fails at both ends, so the fix has to be finer-grained than a request id.
+    const store = new InMemoryRequestStore();
+    await store.set("p1", turn("p1", "S", 1, "earlier turn"), "any");
+    await store.set("p_now", {
+      ...turn("p_now", "S", 2, "the ask, as it stood at dispatch"),
+      status: "in_progress"
+    } as RequestRecord, "any");
+
+    const withCurrent = new Set([
+      ...(await forkCursor(store, "S", NO_TENANT)),
+      "p_now"
+    ]);
+    await store.set("w1", turn("w1", "W", 10, "worker's first turn"), "any");
+
+    // (a) TOO EARLY. While the parent turn is still running — which is exactly
+    // when the worker starts — the cursor names `p_now` but the member fetch
+    // filters to `completed`, so the fork gets nothing for it. A worker that
+    // begins before its parent's turn ends is the normal case, not an edge one.
+    const during = await loadForked(store, "W", { W: { sessionId: "S", visible: withCurrent } }, NO_TENANT);
+    expect(asc(during.records)).toEqual(["p1", "w1"]);
+
+    // (b) TOO LATE. The parent's turn finishes, having emitted MORE content
+    // after the fork was taken. `get` returns the record's current items, so
+    // the fork now sees post-fork content from inside the spawning turn.
+    await store.set("p_now", {
+      ...turn("p_now", "S", 2, "the ask, as it stood at dispatch"),
+      items: [
+        { id: "p_now_i0", requestId: "p_now", type: "message", role: "assistant",
+          text: "the ask, as it stood at dispatch" } as unknown as OutputItem,
+        { id: "p_now_i1", requestId: "p_now", type: "message", role: "assistant",
+          text: "AFTER THE FORK — the parent kept talking" } as unknown as OutputItem
+      ]
+    } as RequestRecord, "any");
+
+    const after = await loadForked(store, "W", { W: { sessionId: "S", visible: withCurrent } }, NO_TENANT);
+    const texts = after.records.flatMap((r) =>
+      (r.items ?? []).map((i) => (i as unknown as { text: string }).text)
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `[fork/dispatch-granularity] during=${asc(during.records).join(",")} · ` +
+        `after=${asc(after.records).join(",")} · ` +
+        `post-fork content leaked=${texts.includes("AFTER THE FORK — the parent kept talking")}`
+    );
+
+    // The fork point's whole invariant is that the parent's post-fork output is
+    // invisible. A request-id cursor breaks it from INSIDE the spawning turn:
+    // the record is mutable, so what the id resolves to keeps growing.
+    expect(asc(after.records)).toEqual(["p1", "p_now", "w1"]);
+    expect(texts).toContain("AFTER THE FORK — the parent kept talking");
+
+    // So the snapshot must be at item/sequence granularity — the item ids (or
+    // the sequence boundary) visible at dispatch — not the request id. Filtered
+    // that way, the fork sees the ask and not the continuation.
+    const visibleItems = new Set(["p1_i0", "p_now_i0"]);
+    const bounded = after.records.map((r) => ({
+      ...r,
+      items: (r.items ?? []).filter((i) => visibleItems.has((i as unknown as { id: string }).id))
+    }));
+    const boundedTexts = bounded.flatMap((r) =>
+      (r.items ?? []).map((i) => (i as unknown as { text: string }).text)
+    );
+    expect(boundedTexts).toContain("the ask, as it stood at dispatch");
+    expect(boundedTexts).not.toContain("AFTER THE FORK — the parent kept talking");
   });
 
   it("OWNERSHIP — a cursor in `metadata` is caller-writable, and that breaks the fork point", async () => {
