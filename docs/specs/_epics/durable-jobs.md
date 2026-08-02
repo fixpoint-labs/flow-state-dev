@@ -1834,25 +1834,32 @@ split ordering.
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980, blocks FIX-982 | 1 | FIX-978 |
 | **Unfiled — the consumer surface, in scope per OQ-E** | 6 | *S1a* store filter + adapters · *S1b* route & request metadata · *S2* `client` · *S3* `react` · *S4* kitchen-sink (**the epic's evidence path — gates the wrap**) · *S5* docs |
-| **Unfiled blockers** — must be filed before the gate releases execution | 2 (+1 conditional) | *create-if-absent* (N5a) — a new row · *S1a* — **already counted in the consumer surface above, not an additional item**; it is listed here because it must be filed and landed first (N16; **not** get-or-create's lookup, which is a keyed `get` on the derived id) · **conditional:** a batched cursor read (`RequestListOptions.ids`) becomes a third blocker **only if** FIX-982 takes REFERENCE forking without accepting the N+1 (N36) |
-| **Indexed rows** = sub-issues (8) + external dependency (1) + consumer surface (6) + create-if-absent (1) | **16** | — |
+| **Unfiled blockers** — must be filed before the gate releases execution | 3 (+1 conditional) | *create-if-absent* (N5a) — a new row · **FIX-991a — the result-read surface, a new row**: FIX-991 is filed as the *accessor* fix, so the half that must land **before** FIX-982 has no issue at all and needs one · *S1a* — **already counted in the consumer surface above, not an additional item**; it is listed here because it must be filed and landed first (N16; **not** get-or-create's lookup, which is a keyed `get` on the derived id) · **conditional:** a batched cursor read (`RequestListOptions.ids`) becomes a fourth blocker **only if** FIX-982 takes REFERENCE forking without accepting the N+1 (N36) |
+| **Indexed rows** = sub-issues (8) + external dependency (1) + consumer surface (6) + create-if-absent (1) + FIX-991a (1) | **17** | — |
 
 > **S1a and S1b are two issues, not one issue in two phases.** S1a lands before FIX-982 and S1b after
 > it, and no issue lifecycle can stay open across another issue's entire lifecycle — it would either
 > hold one issue open for the duration or complete half the work with no separately tracked PR for the
 > rest. They get separate ids. **The arithmetic above was also double-counting S1a**, once inside a
-> combined S1 row and again as a blocker; the total is unchanged at 16 because splitting S1 adds
-> exactly the row the de-duplication removes. **The same argument applies to FIX-991**, which §5 now
-> sequences as FIX-991a before FIX-982 and FIX-991b after it — that split needs a second Linear issue
-> for the same reason, and unlike S1 it cannot be done by editing this document.
+> combined S1 row and again as a blocker; splitting S1 adds exactly the row the de-duplication
+> removes, so that change alone left the total at 16.
+>
+> **The same argument applies to FIX-991, and the count now carries it.** §5 sequences FIX-991a (the
+> result-read surface) before FIX-982 and FIX-991b (the accessor fix) after it. **FIX-991 as filed is
+> the accessor fix** — that is what its title and description describe — so the half FIX-982 depends
+> on has no Linear issue at all, and an earlier revision of this table indexed only the filed row. A
+> coordinator reading the total would have seen every dependency accounted for while a hard
+> prerequisite of M3 had no lifecycle, no spec and no PR. It is a **new indexed row**, taking the
+> total to **17**, and unlike S1 the split cannot be completed by editing this document — it needs an
+> issue created in Linear.
 
 > **The create-if-absent blocker is indexed here deliberately, and it is still unfiled.** §5 names it
 > and puts it first in the execution sequence, but until this round it appeared in neither the
 > membership table nor any `blocked-by` relation — so a coordinator reading only the canonical
 > tables would start M3 without it and either duplicate Workstreams (§8) or absorb an unplanned
 > store-wide contract change into FIX-982. **FIX-982's blockers are `FIX-981 + FIX-978 +
-> create-if-absent`**, and the third has no issue to point at yet. Filing it is an owner action, not
-> done here.
+> create-if-absent + S1a + FIX-991a`**, and the last three have no issue to point at yet. Filing them
+> is an owner action, not done here.
 >
 > **Fourth instance of the defect class this epic keeps recording** — a dependency named in prose
 > and absent from the tables the coordinator actually reads. The prior three were FIX-991's execution
