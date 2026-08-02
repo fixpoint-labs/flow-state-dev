@@ -188,6 +188,24 @@ expressed by omitting the field."* Forking is how that survives detachment. With
 worker declaring `contextSupply: "conversation"` would need the parent session id threaded into its
 history slot by hand; a fork gives it structurally.
 
+> **Recommendation: ship isolated Workstreams first and defer forking, and this is a scope call the
+> owner should take rather than FIX-982.** Forking is optional by construction — nothing in §5's
+> completion criteria references it or `contextSupply` — yet it is where most of FIX-982's incidental
+> weight sits: a cursor on a surface the caller cannot write (N17), an awaited immutable content
+> snapshot of the spawning turn whose retention contradicts the reason COPY was rejected (N19, N32),
+> a history-window budget that composes across a chain rather than per read, and now either a batched
+> store read across four adapters or an accepted N+1 (N36). Five sub-problems, all serving a read
+> convenience. Meanwhile Decision 7 already requires a claim-time payload built parent-side, which is
+> a working channel for whatever context the worker actually needs — narrower than the parent's whole
+> history, and it is the channel a coordinator controls deliberately.
+>
+> **The one thing a deferral must do is fail loudly.** `contextSupply: "conversation"` is a shipped
+> field (`core/src/types/skill.ts:92`), so a detached participant declaring it while forking is
+> unbuilt must be **refused at build or admission by name**, not run silently with an empty history —
+> a worker that has quietly forgotten the conversation it was delegated from is the failure mode
+> hardest to see from the outside. Everything measured about forking (§8) stays on record and stays
+> correct; deferring it costs a re-read of that evidence later, not a re-derivation.
+
 **Two implementations were built and measured (§8). REFERENCE is the recommendation, but it does
 not win on every axis — it wins on correctness, retention and provenance, and *loses* on steady-state
 read cost:**
@@ -1148,12 +1166,32 @@ support so it seems like the primitives are already there."*
 
 **That reading is mostly right, and the shape it implies is the lighter one.** If the durable task
 row already carries the re-dispatchable template (§5's requirement (2)), then **the board is the
-source of truth and the queue is only a wake.** A lost, duplicated or late queue message costs a
-delay, not a stranded task, because the task is still `pending` on a durable board and the same
-reconciliation that FIX-978 already performs finds it. That inverts the usual queue-centric design —
-and it is why "lite" is achievable rather than a hope. It also softens two findings that only bite
-on a queue-as-truth model: **N14** (a binding that must survive a deploy) becomes "re-resolve from
-the task row", and **N9**'s serialization pressure lands on the task row rather than the envelope.
+source of truth and the queue is only a wake.** A lost, duplicated or late queue message should cost
+a delay rather than a stranded task, because the task is still on a durable board. That inverts the
+usual queue-centric design — and it is why "lite" is achievable rather than a hope. It also softens
+two findings that only bite on a queue-as-truth model: **N14** (a binding that must survive a deploy)
+becomes "re-resolve from the task row", and **N9**'s serialization pressure lands on the task row
+rather than the envelope.
+
+> **But the reconciliation that makes it true does not exist for the case that needs it most.** An
+> earlier draft of this decision said the lost wake is found by "the same reconciliation FIX-978
+> already performs." That is wrong, and it is wrong in the direction that strands work. `reclaim()`
+> iterates the mirror and `continue`s on every task that is not `in_progress` **with an expired
+> lease** (`resource-backed.ts:406-428`) — by construction it only rescues tasks a worker already
+> claimed and then dropped. A task admitted to the board and never claimed is `pending`, has no
+> lease, and is therefore invisible to reclamation forever. That is precisely the state a dropped
+> queue message leaves behind. **So on the lost-wake path the queue *is* the only truth, which is the
+> design this decision claims to avoid.** Decision 6 and N4 already say criterion 3 needs a named
+> wake source for reclaimed tasks; this is the same gap one step earlier, for tasks that were never
+> claimed at all.
+>
+> **FIX-982 owns a pending-task reconciler, and the lite model is not lite without it.** The shape is
+> small — a periodic sweep for `pending` tasks on a detached board older than some threshold with no
+> in-flight request, re-enqueuing the wake — and it is idempotent for free, because re-waking an
+> already-claimed task loses the claim race and no-ops. It is not free of design: it needs the
+> liveness query N3 says does not exist (`ActiveRequestRegistry` has no per-session predicate), or it
+> re-wakes on a timer and relies on the claim to deduplicate. **Pick one in FIX-982's spec.** What is
+> not available is the current text's assumption that FIX-978 covers it.
 
 **One primitive is genuinely missing, and exactly one.** Sessions are durable, boards are durable,
 BullMQ is wired. What is not there is **create-if-absent** (N5a) — `set` is an upsert, so Workstream
@@ -1257,11 +1295,16 @@ M1–M5 are the epic description's milestones. **M2 has no issue here on purpose
 | **(no milestone)** — declare a tool as a board participant | FIX-925 | **Moved in by the owner; spec already merged, implementation never built.** The registry's other end — see §7. | Medium |
 
 **Execution sequence: create-if-absent + S1a (the parent-session store filter) → FIX-981 →
-(FIX-978, elsewhere) → FIX-982 → FIX-991, then FIX-983 → S1b → S2 → S3 → S4 → S5. FIX-925 runs
-independently of that chain** and may start any time after the gate.
+(FIX-978, elsewhere) → FIX-991a (the result-read surface) → FIX-982 → FIX-991b (the accessor fix),
+then FIX-983 → S1b → S2 → S3 → S4 → S5. FIX-925 runs independently of that chain** and may start any
+time after the gate. **FIX-991 is split here on purpose** — Decision 7 puts settlement in FIX-982 and
+settlement needs a cross-boundary result read, so the whole of FIX-991 cannot sit after FIX-982
+without making it ship settlement it cannot recover a result for. The `TaskHandle.items()` accessor
+fix genuinely does depend on out-of-request execution and stays after. See §6's cycle note.
 **S1–S5 are in the sequence because OQ-E put them in this epic**, and **S4 gates the wrap**: it is the
 epic's BP-003 evidence path, so "every issue merged" is not "the epic is done" until S4 has run.
-FIX-991 is in the sequence because unconditional criterion 4b depends on it.
+FIX-991 is in the sequence because unconditional criterion 4b depends on it — and it appears twice
+because only its second half depends on FIX-982.
 Create-if-absent leads because Workstream get-or-create is the routing primitive M3's seam
 dispatches through, and it is shared store surface (`ExpectedVersion`) that FIX-992 is concurrently
 building on — so the two must agree on the sentinel rather than discover each other later.
@@ -1540,7 +1583,7 @@ Four remain, plus one placement decision that now blocks alongside them.
 | | Question | State |
 |---|---|---|
 | **OQ-A** | Does this epic change `ResourceStateStore`? | **OPEN — the gate.** A human decides. |
-| **OQ-E** | **Where do S1–S5 live** — filed and sequenced under FIX-939, or a follow-on epic? | **ANSWERED by the owner: here.** S1–S5 are filed and sequenced under FIX-939. S1 splits (S1a leads FIX-982, S1b follows); S4 is this epic's BP-003 evidence path and gates the wrap. |
+| **OQ-E** | **Where do S1–S5 live** — in FIX-939's scope, or a follow-on epic? | **ANSWERED by the owner: here.** S1–S5 are in scope and sequenced under FIX-939 — **but not yet filed; no Linear ids exist.** S1 splits (S1a leads FIX-982, S1b follows); S4 is this epic's BP-003 evidence path and gates the wrap. |
 | **OQ-B** | Does the blocking/background disposition need to be durable? | **Answered by the owner's decision** (Decision 0): disposition is request metadata, not a durable task field. Cross-request *waiting* remains, as FIX-983's scope. |
 | **OQ-C** | What is M5's real necessity argument? | **Answered by the owner's decision** (Decision 0), narrowing: a background request already has a persisted item stream, so no new progress surface is needed. Residue is lifetime, not progress. |
 | **OQ-D-i** | Who owns the **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`)? | **DEFERRED by the owner, with a condition** — see below. |
@@ -1556,11 +1599,14 @@ impossible to add without redoing them. Any spec that reaches an admission or ca
 states, in a sentence, how the deferred ceilings would attach. A reviewer may reject a design that
 closes that door; they may not demand the ceiling be built.
 
-**OQ-E — ANSWERED: S1–S5 live here.** They were called prerequisites in §5 while sitting outside the
-membership table and the execution sequence, which meant every indexed issue could complete while
-S4 — the epic's own BP-003 evidence path — had never run. The owner's answer closes that: **S1–S5 are
-filed and sequenced under FIX-939**, so they are indexed rows with a place in the sequence rather than
-prose. S1a (the `parentSessionId` filter, its default, and their adapters) leads FIX-982; S1b, S2, S3 follow it;
+**OQ-E — ANSWERED: S1–S5 belong to this epic.** They were called prerequisites in §5 while sitting
+outside the membership table and the execution sequence, which meant every indexed issue could
+complete while S4 — the epic's own BP-003 evidence path — had never run. The owner's answer closes
+the scope question: **S1–S5 are in FIX-939's scope and sequenced here**, rather than deferred to a
+follow-on epic. **They have no Linear issue ids yet — "in scope and sequenced" is not "filed", and
+nothing may treat them as indexed work until the ids exist.** Filing them is a prerequisite of the
+gate releasing execution, and the membership table's unfiled set is the authoritative list of what is
+still missing. S1a (the `parentSessionId` filter, its default, and their adapters) leads FIX-982; S1b, S2, S3 follow it;
 S4 is the epic's evidence path and **gates the wrap**; S5 is the documentation pass. They still have
 to be filed — see the membership table's unfiled set.
 
@@ -1621,6 +1667,8 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N33** | **NEW — JSON-safety must be checked on the CLAIM-TIME payload, not the admitted task.** N22 requires the admitted `input`/`metadata` to be JSON-safe, which is necessary and not sufficient: `packWorkerInput` adds **dependency outputs** and flow-policy **`priorWork`** after the claim, both typed `unknown` (`worker-step.ts:80-134`, `tasks/schema/task.ts:46-52`). A dep whose own output held a `BigInt` or a cycle makes **every** external dispatch throw at serialize time — after ownership is acquired — and a `Map` or class instance is silently flattened. Follows directly from N25: if the payload is built at claim time, it must be *validated* at claim time. **FIX-982 validates the fully materialized `TaskWorkerInput` before queueing and defines the failure transition** (a hard `fail` with the reason, not a throw into the void). | FIX-982 |
 | **N34** | **NEW — existing pending tasks have no template, so enabling detached dispatch strands them.** The template is written atomically with admission (§5), which says nothing about rows admitted *before* the deployment that turns a board detached. Those tasks are still `pending` or reclaimable, carry no re-dispatch template, and reconciliation has nothing to dispatch them from — so a rollout strands already-queued user work. This is BP-030 applied to the board's own rows. **FIX-982 states a persisted-record policy:** run legacy rows inline, CAS-backfill a template before claim, or require the board to drain before detached mode may be enabled. | FIX-982 |
 | **N35** | **NEW — M5's dissolution argument does not hold for in-flight generator text.** Decision 0 dissolved FIX-984 on the grounds that a background request already has a persisted item stream, so no new progress surface is needed. But `content.delta` is **non-replayable and excluded from the persisted events log** (`response-emitter.ts:804-838`, `streaming.md:186`), and the request-stream route live-tails `RequestStore.subscribeToEvents` (`stream-routes.ts:122-160`) — an in-process subscription. A client attaching to an **out-of-process** generator request therefore gets no in-flight text from the named surface; the worker's own bridge is best-effort and is not the durable reattachment path. **Either M5 stays in scope, or the epic defines a snapshot-aware polling / live-tail surface and says so.** The residue is larger than "lifetime, not progress". | FIX-984 (reopen) or FIX-982 |
+| **N37** | **NEW — the lost-wake path has no reconciler, so Decision 8's "lite" model can strand work rather than delay it.** Decision 8 rests on "board is truth, queue is a wake", justified by FIX-978 finding anything the queue drops. It does not: `reclaim()` `continue`s on every task that is not `in_progress` with an expired lease (`resource-backed.ts:406-428`), so it rescues only tasks a worker **claimed and dropped**. A task admitted and never claimed is `pending` with no lease and is invisible to reclamation permanently — exactly the state a dropped queue message leaves. **FIX-982 must name a pending-task reconciler** (a sweep for stale `pending` rows on a detached board, re-enqueuing the wake; idempotent because a re-wake loses the claim race). It needs either N3's missing per-session liveness query or a timer plus claim-dedupe — FIX-982 picks. Same gap as N4 one step earlier: N4 is the wake for a *reclaimed* task, this is the wake for a *never-claimed* one. | FIX-982 |
+| **N38** | **NEW — forking is optional, unreferenced by any completion criterion, and carries five sub-problems.** N17 (a cursor the caller cannot write), N19 + N32 (an awaited content snapshot whose retention contradicts the grounds COPY was rejected on), the cross-chain window budget, and N36 (batched read or accepted N+1) all exist **only** to serve parent-history inheritance — a read convenience, not a completion criterion. Decision 7's claim-time payload already carries context to the worker, parent-side and deliberately scoped. **Recommend deferring forking out of FIX-982 entirely**, which removes those five from the critical path; the required condition is that a detached participant declaring `contextSupply: "conversation"` (`core/src/types/skill.ts:92`) is **refused by name** rather than silently running with empty history. This is a scope decision for the owner, not FIX-982. | **owner** (then FIX-982) |
 | **N36** | **NEW — the chosen fork strategy has no batched read, so its cost is N+1 per child turn.** REFERENCE reads the cursor **by id** — required, since the list-then-discard alternative costs the parent's whole lifetime per turn (500 rows vs 3, §8) — but `RequestStore.get` takes one id (`stores/types.ts:275`) and `RequestListOptions` has no `ids` predicate (`:110-140`). Measured: a 40-id cursor is **41 store calls per turn**, and a depth-2 chain multiplies by level. §1 previously concluded REFERENCE "wins on every axis" on the strength of its 0 fork-time writes; that conclusion did not survive its own measurement. **FIX-982 either adds an `ids` predicate across the four adapters as a prerequisite, or states the N+1 and bounds cursor width.** Same class as create-if-absent and S1a: a store capability the model assumes and the surface does not have. | FIX-982 (+ a store seam, unfiled) |
 | **N31** | **NEW — "emit an item" does not by itself enable settlement.** The interim result rule says the worker's result must be durable, and FIX-991 retrieves `readonly OutputItem[]` — but `complete(taskId, output)` takes the collection's generic `TOutput`. A worker that emits progress items *and* result items gives the parent a list with no distinguished result and no decode rule, so after a restart the parent can retrieve everything and still not reconstruct the value `complete` needs. **FIX-982 defines a single result projection — a tagged result item, or a task-keyed shared resource as the recoverable path — plus the item-to-output contract.** Without it the interim rule is a durability guarantee with no reader. | FIX-982 + FIX-991 |
 | **N32** | **NEW — the required fork snapshot re-creates the failure that rejected COPY.** N19 now requires an immutable, awaited content snapshot of the spawning turn. But §1 rejects the COPY strategy *specifically because* duplicated content lives where the parent's retention rule cannot reach it, so `maxItems`/`maxAge` pruning leaves it behind — and a snapshot stored on the Workstream is duplicated content by another name. The two requirements are in direct tension and this document currently asserts both. **Either the snapshot lives on a surface the parent's retention governs, or pruning cascades to it, and FIX-982 says which.** Note the tension is narrow: the snapshot is *one turn*, not the whole prefix, so it does not reopen the COPY-vs-REFERENCE choice — it means REFERENCE has a small copied component whose lifetime must be stated rather than assumed. | FIX-982 |
@@ -1695,7 +1743,12 @@ FIX-991:** the *result-read surface* (reading a task's items from whichever requ
 is what settlement depends on and must land **before** FIX-982; the *accessor fix* on
 `TaskHandle.items()` — the cross-attempt union and its board-scoped lifetime — depends on
 out-of-request execution existing and stays **after**. Same defect class as the S1a ordering, caught
-the same way: a dependency stated in prose that the indexed row contradicts. **Fourth instance.**
+the same way: a dependency stated in prose that the indexed row contradicts. **Fourth instance** —
+and it recurred, because the split was written here and the canonical execution sequence in §5 kept
+the un-split order for two more revisions. **That recurrence is the fifth instance, and it is the
+argument for freezing this document:** a correction filed in one section does not propagate to the
+summary that contradicts it, and the summaries are what an implementer reads. §5 now carries the
+split ordering.
 
 **Tracked, not active** — parented here (or depended on) but running no lifecycle under this epic:
 
@@ -1774,10 +1827,10 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **Thirty-two findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), and one unbudgeted store cost (N36's N+1 cursor read). It is still sized Medium; it should be split.** |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Thirty-three findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), and one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler). It is still sized Medium; it should be split.** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
-| **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. |
+| **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. |
 | *(none)* | **N2 — RESOLVED, do not file.** `latestRequestId` is per-session, so a Workstream has its own and cannot steal the parent's auto-resume pointer. The earlier candidate is withdrawn; §6's findings table is authoritative. |
 
 **New issues for the consumer surface** (§5 → "The consumer surface"). None filed. The first three
