@@ -145,6 +145,24 @@ const asc = (rs: RequestRecord[]) =>
  * ids are primary keys, so copies cannot reuse them — which means the copies
  * are no longer the same records, and provenance to the original turn is lost
  * unless a back-reference is added.
+ *
+ * MEASUREMENT LIMIT — this understates COPY on every store that matters (N51).
+ * It runs against `InMemoryRequestStore`, where items ride on the record, so
+ * spreading `{...r}` into `set()` carries the messages along. Both persistent
+ * adapters deliberately DROP them on the way in:
+ *
+ *   const { items: _omitted, ...withoutItems } = value;   // before the base write
+ *   // "Items live in `request_items`; keep them out of `requests.data`"
+ *   //   store-sqlite/src/request-store.ts:279
+ *   //   store-postgres/src/request-store.ts:301
+ *
+ * So a COPY fork written this way reloads on SQLite or Postgres as N request
+ * records with NO messages — the fork inherits empty turns, silently, and only
+ * in a real deployment. Real COPY is `set` + `persistItems` + `flushItems` per
+ * copied request, with ids rewritten: roughly double the writes plus an
+ * ordering constraint this function never exercises. The `writes` count below
+ * is therefore a floor, not the cost. Anyone choosing COPY re-measures against
+ * a persistent adapter first. REFERENCE is unaffected — it writes nothing.
  */
 async function forkByCopy(
   store: InMemoryRequestStore,
