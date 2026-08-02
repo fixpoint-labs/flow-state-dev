@@ -26,6 +26,7 @@ import {
   PrincipalResolutionError
 } from "../errors";
 import { createConcurrencyArbiter } from "../concurrency/arbiter";
+import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
   createInProcessDispatcher,
@@ -428,10 +429,16 @@ export function createInboundTransportHost(
     // Per-flow `authentication.resolvePrincipal` wins over the host-level
     // fallback when the flow is registered and configured. Adapters never
     // touch this; they always call `host.resolvePrincipal` and the host
-    // routes per-flow overrides transparently.
+    // routes per-flow overrides transparently. The precedence itself lives in
+    // `pickPrincipalResolver` so the route-level guard's enforce/skip decision
+    // cannot drift from the resolver actually called here.
     const flow = registry.get(context.envelope.flowKind);
     const flowAuth = flow?.authentication;
-    const resolver = flowAuth?.resolvePrincipal ?? resolvePrincipal;
+    const resolver = pickPrincipalResolver(
+      registry,
+      context.envelope.flowKind,
+      resolvePrincipal
+    );
     const requireUser = flow?.requireUser ?? true;
     const defaultUserId = flowAuth?.defaultUserId;
 
