@@ -355,6 +355,63 @@ describe("POC v2: Workstream execution across flows", () => {
     expect(observedCtxKeys.length).toBeGreaterThan(0);
   });
 
+  it("BINDING — a Workstream must inherit the parent's org, or the dispatch throws or silently unbinds", async () => {
+    // Identity binds to a session at creation and is IMMUTABLE after
+    // (`createExecutionContext.ts:625-632`, plus the user and tenant twins in
+    // `binding-errors.ts`). A Workstream is a session, so the spawn has to copy
+    // the parent's binding — and gets two different failures if it does not.
+    const stores = createInMemoryStores();
+    await stores.session.set(
+      "S_org",
+      { id: "S_org", flowKind: "epic", userId: "u1", orgId: "org_acme",
+        state: {}, version: 0, createdAt: 1, updatedAt: 1, journal: [] } as never,
+      "any"
+    );
+    // The Workstream as this POC's spawn builds it: no orgId.
+    await stores.session.set(
+      "ws_unbound",
+      { id: "ws_unbound", flowKind: "worker", userId: "u1",
+        state: {}, version: 0, createdAt: 1, updatedAt: 1, journal: [] } as never,
+      "any"
+    );
+
+    // (a) Envelope carries the parent's org — the spec's own requirement — and
+    // the mismatch against the unbound child is a HARD THROW on every dispatch.
+    await expect(
+      runAction({
+        flow: workerFlow, actionName: "execute", input: "x",
+        userId: "u1", orgId: "org_acme", sessionId: "ws_unbound",
+        stores, runtimeConfig: {}
+      })
+    ).rejects.toThrow(/OrgBindingMismatch|org/i);
+
+    // (b) Envelope omits it — no throw, and the worker runs UNBOUND: it has
+    // lost the parent's org scope and every org-scoped resource with it. The
+    // silent branch is the more dangerous one.
+    const unbound = await runAction({
+      flow: workerFlow, actionName: "execute", input: "x",
+      userId: "u1", sessionId: "ws_unbound", stores, runtimeConfig: {}
+    });
+    expect(unbound).toBeDefined();
+    expect((await stores.session.get("ws_unbound"))?.orgId).toBeUndefined();
+
+    // (c) Inherited at creation, the same dispatch resolves cleanly.
+    await stores.session.set(
+      "ws_bound",
+      { id: "ws_bound", flowKind: "worker", userId: "u1", orgId: "org_acme",
+        state: {}, version: 0, createdAt: 1, updatedAt: 1, journal: [] } as never,
+      "any"
+    );
+    const bound = await runAction({
+      flow: workerFlow, actionName: "execute", input: "x",
+      userId: "u1", orgId: "org_acme", sessionId: "ws_bound",
+      stores, runtimeConfig: {}
+    });
+    expect(bound).toBeDefined();
+    // eslint-disable-next-line no-console
+    console.log("[poc2] org binding: unbound+orgId=throw · unbound+omitted=silent · inherited=ok");
+  });
+
   it("GAP — `stores` and `flow` are present at RUNTIME but absent from the PUBLIC context type", () => {
     // The probe above enumerates runtime keys, which is not the same question as
     // "what may a capability read". `ExecutionContext = BlockContext & { flow,
