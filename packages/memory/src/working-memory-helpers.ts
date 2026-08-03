@@ -1,6 +1,6 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { DecayStrategy, WorkingMemoryEntry, WorkingMemoryState } from './working-memory'
-import { shortId } from '@flow-state-dev/core/helpers'
+import { shortId, updateStateWith } from '@flow-state-dev/core/helpers'
 
 /** Decay configuration for working memory salience computation. */
 export interface WorkingMemoryDecayConfig {
@@ -110,22 +110,23 @@ export async function add(
   config?: WorkingMemoryHelperConfig,
 ): Promise<WorkingMemoryEntry> {
   const resolved = resolveConfig(config)
-  const state = ref.state
 
-  const newEntry: WorkingMemoryEntry = {
-    id: entry.id ?? `wm_${shortId()}`,
-    content: entry.content,
-    importance: entry.importance,
-    salience: entry.importance, // initial salience = importance (no decay yet)
-    pinned: entry.pinned ?? false,
-    addedAtTurn: state.currentTurn,
-    lastAccessedAtTurn: state.currentTurn,
-    durability: entry.durability ?? 'session',
-    category: entry.category ?? 'identity',
-    metadata: entry.metadata,
-  }
+  const added = await updateStateWith(ref, (s: WorkingMemoryState) => {
+    // Stamped from the state this invocation received, so a replayed write
+    // returns — and commits — the turn that actually won.
+    const newEntry: WorkingMemoryEntry = {
+      id: entry.id ?? `wm_${shortId()}`,
+      content: entry.content,
+      importance: entry.importance,
+      salience: entry.importance, // initial salience = importance (no decay yet)
+      pinned: entry.pinned ?? false,
+      addedAtTurn: s.currentTurn,
+      lastAccessedAtTurn: s.currentTurn,
+      durability: entry.durability ?? 'session',
+      category: entry.category ?? 'identity',
+      metadata: entry.metadata,
+    }
 
-  await ref.updateState((s: WorkingMemoryState) => {
     const entries = [...s.entries]
 
     // Evict lowest-salience non-pinned entry if at capacity
@@ -147,10 +148,15 @@ export async function add(
     }
 
     entries.push(newEntry)
-    return { ...s, entries }
+    return { state: { ...s, entries }, result: newEntry }
   })
 
-  return newEntry
+  // `updateState` always invokes its updater, so this is total in practice;
+  // the assertion documents that rather than silently fabricating an entry.
+  if (added === undefined) {
+    throw new Error('[memory] working-memory add: the updater never ran')
+  }
+  return added
 }
 
 /**
@@ -158,19 +164,14 @@ export async function add(
  * Returns true if the entry was found and removed, false otherwise.
  */
 export async function evict(ref: WmRef, id: string): Promise<boolean> {
-  let found = false
-
-  await ref.updateState((s: WorkingMemoryState) => {
+  return (await updateStateWith(ref, (s: WorkingMemoryState) => {
     const idx = s.entries.findIndex((e) => e.id === id)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
-    found = true
     const entries = [...s.entries]
     entries.splice(idx, 1)
-    return { ...s, entries }
-  })
-
-  return found
+    return { state: { ...s, entries }, result: true }
+  })) ?? false
 }
 
 /**
@@ -183,28 +184,23 @@ export async function pin(
   config?: WorkingMemoryHelperConfig,
 ): Promise<boolean> {
   const resolved = resolveConfig(config)
-  let success = false
 
-  await ref.updateState((s: WorkingMemoryState) => {
+  return (await updateStateWith(ref, (s: WorkingMemoryState) => {
     const idx = s.entries.findIndex((e) => e.id === id)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
     const entry = s.entries[idx]
     if (entry.pinned) {
-      success = true
-      return s // already pinned
+      return { state: s, result: true } // already pinned
     }
 
     const pinnedCount = s.entries.filter((e) => e.pinned).length
-    if (pinnedCount >= resolved.maxPinnedSlots) return s
+    if (pinnedCount >= resolved.maxPinnedSlots) return { state: s, result: false }
 
-    success = true
     const entries = [...s.entries]
     entries[idx] = { ...entry, pinned: true }
-    return { ...s, entries }
-  })
-
-  return success
+    return { state: { ...s, entries }, result: true }
+  })) ?? false
 }
 
 /**
@@ -212,22 +208,17 @@ export async function pin(
  * Returns true if the entry was found (regardless of prior pin state), false if not found.
  */
 export async function unpin(ref: WmRef, id: string): Promise<boolean> {
-  let found = false
-
-  await ref.updateState((s: WorkingMemoryState) => {
+  return (await updateStateWith(ref, (s: WorkingMemoryState) => {
     const idx = s.entries.findIndex((e) => e.id === id)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
-    found = true
     const entry = s.entries[idx]
-    if (!entry.pinned) return s
+    if (!entry.pinned) return { state: s, result: true }
 
     const entries = [...s.entries]
     entries[idx] = { ...entry, pinned: false }
-    return { ...s, entries }
-  })
-
-  return found
+    return { state: { ...s, entries }, result: true }
+  })) ?? false
 }
 
 /**
@@ -241,21 +232,17 @@ export async function refresh(
   config?: WorkingMemoryHelperConfig,
 ): Promise<boolean> {
   const resolved = resolveConfig(config)
-  let found = false
 
-  await ref.updateState((s: WorkingMemoryState) => {
+  return (await updateStateWith(ref, (s: WorkingMemoryState) => {
     const idx = s.entries.findIndex((e) => e.id === id)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
-    found = true
     const entries = [...s.entries]
     const entry = { ...entries[idx], lastAccessedAtTurn: s.currentTurn }
     entry.salience = computeSalience(entry, s.currentTurn, resolved.decay)
     entries[idx] = entry
-    return { ...s, entries }
-  })
-
-  return found
+    return { state: { ...s, entries }, result: true }
+  })) ?? false
 }
 
 /**

@@ -41,8 +41,20 @@ export function createCapturedChanges(): CapturedChanges {
  * serializes them through an internal queue so the second sees the
  * first's commit.
  */
+export interface ReplayOptions<TState> {
+  /**
+   * Simulate losing one CAS round (FIX-995). When set, the mutation callback
+   * runs once against the current state and that result is DISCARDED, this
+   * hook is applied to the stored state to stand in for the concurrent writer
+   * that won, and the callback runs again against that state — which commits.
+   * Mirrors `runWithCAS`, which re-invokes the mutator after a conflict.
+   */
+  onReplay?: (state: TState) => TState;
+}
+
 export function createFakeSequencerState<TState extends Record<string, unknown>>(
-  initial: TState
+  initial: TState,
+  replay?: ReplayOptions<TState>
 ): StateRef<TState> & { __raw: () => TState } {
   let state = { ...initial };
   let version = 0;
@@ -82,6 +94,12 @@ export function createFakeSequencerState<TState extends Record<string, unknown>>
       const prev = busy;
       const next = (async () => {
         await prev;
+        if (replay?.onReplay !== undefined) {
+          // The losing attempt: its output is thrown away, exactly as a failed
+          // compare-and-swap throws away the mutator's result.
+          mutator(state as Readonly<TState>);
+          state = replay.onReplay(state);
+        }
         const update = mutator(state as Readonly<TState>);
         state = { ...state, ...update };
         version += 1;
@@ -102,7 +120,8 @@ export function createFakeSequencerState<TState extends Record<string, unknown>>
  * the production scope-state CAS behavior in spirit).
  */
 export function createFakeResourceCollection<TState extends JsonObject>(
-  pattern = "tasks/{id}"
+  pattern = "tasks/{id}",
+  replay?: ReplayOptions<TState>
 ): ResourceCollectionRef<TState> {
   const instances = new Map<string, TState>();
   const inFlight = new Map<string, Promise<void>>();
@@ -127,6 +146,11 @@ export function createFakeResourceCollection<TState extends JsonObject>(
         const queue = inFlight.get(key) ?? Promise.resolve();
         const next = (async () => {
           await queue;
+          if (replay?.onReplay !== undefined) {
+            // The losing attempt: discarded, as a failed CAS discards it.
+            await updater(instances.get(key) ?? ({} as TState));
+            instances.set(key, replay.onReplay(instances.get(key) ?? ({} as TState)));
+          }
           const prev = instances.get(key) ?? ({} as TState);
           const updated = await updater(prev);
           instances.set(key, updated);

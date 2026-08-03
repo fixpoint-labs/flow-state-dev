@@ -17,7 +17,12 @@
 
 /** A replaying double, plus what it observed. */
 export type ReplayingRef<TState extends object> = {
-  /** The state the winning attempt sees — also what callers read via `ref.state`. */
+  /**
+   * What a caller reads before starting the write — the pre-conflict snapshot,
+   * NOT the state that ends up committing. Reading this and then using the
+   * value inside the callback is the stale-read defect; a helper that derives
+   * the value from the state the callback receives is immune.
+   */
   state: Readonly<TState>;
   /** Applies `updater` to the losing state, discards it, then applies it to the winning state and commits. */
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
@@ -60,7 +65,9 @@ export function createReplayingRef<TState extends object>(
   let committed: TState = winning;
 
   return {
-    state: winning,
+    // The pre-conflict snapshot, matching what a caller would have read before
+    // the concurrent writer landed.
+    state: losing,
     attempts,
     get committed() {
       return committed;
