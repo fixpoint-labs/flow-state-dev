@@ -345,9 +345,17 @@ Three clauses, in dependency order:
    settlement is rejected rather than applied. Today neither holds across executions — measured,
    §8. **Cap admission is not promised by this clause** — see C1b.
 2. **Reports what it is doing.** A task running outside its originating request has a durable
-   progress surface. Delivered by the model: a background request has its own persisted item
-   stream with sequence-number resume, so progress is "read the background request's items." No
-   new progress mechanism is required.
+   progress surface. Mostly delivered by the model: a background request has its own persisted item
+   stream with sequence-number resume, so **completed-item** progress is "read the background
+   request's items." **One hole is not closed by that, and this clause used to claim it was —
+   in-flight generator text.** `content.delta` is non-replayable and excluded from the persisted
+   events log (`response-emitter.ts:804-838`, `streaming.md:186`), and the request-stream route
+   live-tails an **in-process** subscription (`stream-routes.ts:122-160`), so a client attaching
+   while an **out-of-process** generator runs gets no in-flight text from the named surface. That is
+   **N35**, and it is the reason FIX-984 is *not* safely closable on the strength of this clause:
+   either M5 stays in scope for that residue, or the epic names a snapshot-aware polling / live-tail
+   surface. **Until one of those is chosen, clause 2 is delivered for items and open for deltas** —
+   §7's "close FIX-984 as dissolved" is conditional on that choice, not on this clause alone.
 3. **Steered, and never stranded.** A live coordinator can read the board and act on it; a
    coordinator that is gone does not strand the work. The non-stranding half is FIX-978's
    mechanism, consumed here.
@@ -1894,10 +1902,9 @@ to it. When the gate passes, dispatch is:
 | Issue | M | Title (short) | Spec PR | Impl PR |
 |---|---|---|---|---|
 | **FIX-981** | M1 | Two executions over one durable board can both claim a task | — | — |
+| **FIX-925** | — | Declare a tool as a board participant (`tool:` on an `agents:` entry) | [#900](https://github.com/fixpoint-labs/flow-state-dev/pull/900) · **UNMERGED** | — |
 
 > **FIX-981 is blocked by [FIX-992](https://linear.app/fixpoint-labs/issue/FIX-992), and Linear now says so** (the relation was `related`, which is not a scheduling constraint; it is `blocks` as of this revision). FIX-992 delivers the conditional write M1 fences with — and explicitly *does not* close claim safety: its own non-goals name **FIX-981 as "enables both, closes neither"** for the claim protocol and the `maxInstances` race. So the division of labour is clean and both issues state it the same way. FIX-992 is in turn blocked by FIX-995.
-
-| **FIX-925** | — | Declare a tool as a board participant (`tool:` on an `agents:` entry) | [#900](https://github.com/fixpoint-labs/flow-state-dev/pull/900) · merged | — |
 
 > **CORRECTION — the spec is written and reviewed but NOT merged, and this document said it was.**
 > `docs/specs/FIX-925.md` does not exist on `origin/main` and does not exist in this branch's tree.
@@ -2043,7 +2050,7 @@ gate-held issues is the owner's call.
 |---|---|
 | **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board by the **tagged `coordinate`** (rule 10 — not `assignee`, which the uniform and floor paths do not have), **persist the substrate-derived restart-safe binding** the reconciler needs (rule 10 as narrowed — the earlier "no stored `(flowKind, action)`" wording forbade the one artifact N9 requires; the prohibition is on *caller-authored* targets), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N45, N46, N47, N48, N50, N51, N53, N54, N55, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Forty-seven findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), one guarantee that two shipped admission paths bypass (N43), and two coordination mechanisms the 'primitives are there' count omitted (N46). It is still sized Medium; **the missing-mechanism count is now the argument for splitting it, not its finding count.**** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
-| **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
+| **FIX-984** (M5) | **Do NOT close yet — the dissolution argument is incomplete (N35).** It rested on clause 2's "a background request already has a persisted item stream", which is true for **items** and false for **in-flight generator text**: `content.delta` is non-replayable and excluded from the persisted events log, and the stream route live-tails an in-process subscription, so a client attaching to an out-of-process generator gets no in-flight text from the named surface. **Either M5 stays in scope for that residue, or the epic names a snapshot-aware polling / live-tail surface and closes FIX-984 against it.** The *other* residue (item lifetime / board-scoped retention bound) still moves to FIX-991 either way. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. |
 | *(none)* | **N2 — RESOLVED, do not file.** `latestRequestId` is per-session, so a Workstream has its own and cannot steal the parent's auto-resume pointer. The earlier candidate is withdrawn; §6's findings table is authoritative. |
 
