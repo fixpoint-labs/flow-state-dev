@@ -1,5 +1,6 @@
 /**
- * Throwaway POC for FIX-995. Not shipped.
+ * Throwaway POC for FIX-995. Evidence for the spec, not shipped — this file
+ * lives only on the never-merged `spec/FIX-995` branch and touches no `src/`.
  *
  * Proves that a replayed `updateState` updater makes first-party helpers report
  * work that never committed. The fake ref runs the updater TWICE — attempt 1
@@ -7,6 +8,15 @@
  * CAS attempt's is), attempt 2 against the winner's state, which is what
  * commits. That is the shape `runWithCAS` (engine/src/stores/cas.ts:131-160)
  * already implements for scope state and FIX-992 brings to resource state.
+ *
+ * **Every case uses `it.fails`, so the suite is GREEN while the defect exists.**
+ * Each body asserts the CORRECT post-fix behaviour; `it.fails` records that the
+ * assertion does not hold today. That keeps the branch green without weakening
+ * the demonstration, and makes it self-verifying in both directions: if someone
+ * makes a helper replay-safe, its case starts failing here — a passing body
+ * under `it.fails` is a failure — which is the signal we want, not noise.
+ *
+ * To see the raw assertion output quoted in the spec PR, drop `.fails`.
  */
 import { describe, expect, it } from 'vitest'
 import { evict, pin } from '../src/working-memory-helpers'
@@ -27,7 +37,7 @@ function replayingRef<S extends object>(attempt1State: S, winnerState: S) {
 }
 
 describe('FIX-995 — replayed updater reports uncommitted work', () => {
-  it('evict() returns true for an entry it did not remove', async () => {
+  it.fails('evict() returns true for an entry it did not remove', async () => {
     const entry = { id: 'wm_1', content: 'x', importance: 1, salience: 1, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, durability: 'session', category: 'identity' }
     // Attempt 1 sees the entry. The winner already removed it, so attempt 2 no-ops.
     const ref = replayingRef({ entries: [entry], currentTurn: 0 }, { entries: [], currentTurn: 0 })
@@ -38,7 +48,7 @@ describe('FIX-995 — replayed updater reports uncommitted work', () => {
     expect(removed).toBe(false) // FAILS today: returns true
   })
 
-  it('pin() returns true when the pin slots filled up under it', async () => {
+  it.fails('pin() returns true when the pin slots filled up under it', async () => {
     const target = { id: 'wm_1', content: 'x', importance: 1, salience: 1, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, durability: 'session', category: 'identity' }
     const other = (id: string) => ({ ...target, id, pinned: true })
     // Attempt 1: no pins, slot free. Winner: both slots taken.
@@ -53,7 +63,7 @@ describe('FIX-995 — replayed updater reports uncommitted work', () => {
     expect(ok).toBe(false) // FAILS today: returns true
   })
 
-  it('cullByTTL() accumulates IDs across attempts', async () => {
+  it.fails('cullByTTL() accumulates IDs across attempts', async () => {
     const ep = (id: string) => ({ id, durability: 'persistent', occurredAtTurn: 0, encodedAt: '2020-01-01T00:00:00.000Z', consolidated: false, stale: false, content: 'x', subject: 'user' })
     // Attempt 1 sees ep_a and ep_b; the winner already culled ep_a.
     const ref = replayingRef(
@@ -67,7 +77,7 @@ describe('FIX-995 — replayed updater reports uncommitted work', () => {
     expect(culled).toEqual(['ep_b']) // FAILS today: ['ep_a','ep_b','ep_b']
   })
 
-  it('markStale() accumulates IDs across attempts', async () => {
+  it.fails('markStale() accumulates IDs across attempts', async () => {
     const ep = (id: string, stale = false) => ({ id, durability: 'permanent', occurredAtTurn: 0, encodedAt: '2020-01-01T00:00:00.000Z', consolidated: false, stale, content: 'x', subject: 'user' })
     const ref = replayingRef(
       { episodes: [ep('ep_a'), ep('ep_b')], totalEncoded: 2 },
