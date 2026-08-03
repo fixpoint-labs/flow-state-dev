@@ -7,7 +7,7 @@
     "install:all": "pnpm install",
     "build": "turbo run build && pnpm build:assets",
     "build:assets": "pnpm --filter @flow-state-dev/devtool build:assets",
-    "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs",
+    "typecheck": "turbo run typecheck && node scripts/validate-package-boundaries.mjs && node scripts/validate-updater-purity.mjs",
     "lint": "turbo run lint",
     "knip": "knip",
     "knip:ci": "knip --include unlisted,binaries,unresolved",

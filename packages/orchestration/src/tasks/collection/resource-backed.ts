@@ -75,6 +75,7 @@
 import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
+import { updateStateWith } from "@flow-state-dev/core/helpers";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
@@ -380,21 +381,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       throw new Error(`[tasks] task "${id}" not found`);
     }
 
-    let prevStatus: TaskStatus | undefined;
-    let nextTask: Task<TInput, TOutput> | undefined;
+    let committed: { task: Task<TInput, TOutput>; prevStatus: TaskStatus } | undefined;
 
     try {
-      await ref.updateState((current) => {
+      committed = await updateStateWith(ref, (current) => {
         const task = current as unknown as Task<TInput, TOutput>;
         const reason = transitionDeclineReason(task as Task, targetStatus, guards);
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
         }
         assertTransitionAllowed(task.status, targetStatus, id);
-        prevStatus = task.status;
         const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
-        nextTask = next;
-        return next as unknown as JsonObject;
+        return {
+          state: next as unknown as JsonObject,
+          result: { task: next, prevStatus: task.status },
+        };
       });
     } catch (err) {
       // Only the decline is absorbed. A store failure, CAS exhaustion, or an
@@ -403,11 +404,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       return { outcome: "declined", reason: err.reason, status: err.status };
     }
 
-    // The updater always runs, so `nextTask` is set on every non-declined path.
-    // Reporting `unchanged` rather than `recorded` on the residual keeps the
-    // verdict from claiming a write this function did not observe.
-    if (nextTask === undefined) return { outcome: "unchanged" };
-    emit(kind, nextTask, prevStatus);
+    // The outcome describes the invocation that committed, so a replay that
+    // took a different branch cannot report an earlier attempt's write.
+    if (committed === undefined) return { outcome: "unchanged" };
+    emit(kind, committed.task, committed.prevStatus);
     return { outcome: "recorded" };
   }
 
@@ -440,16 +440,15 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     let nextTask: Task<TInput, TOutput> | undefined;
 
     try {
-      await ref.updateState((current) => {
+      nextTask = await updateStateWith(ref, (current) => {
         const task = current as unknown as Task<TInput, TOutput>;
         if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
           throw new WriteDeclined("terminal", task.status);
         }
         const update = patch(task);
-        if (update === undefined) return current;
+        if (update === undefined) return { state: current, result: undefined };
         const next = applyTransition(task, update, now());
-        nextTask = next;
-        return next as unknown as JsonObject;
+        return { state: next as unknown as JsonObject, result: next };
       });
     } catch (err) {
       if (!(err instanceof WriteDeclined)) throw err;
@@ -512,23 +511,21 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         const candidateRef = mirror.get(candidate.id);
         if (candidateRef === undefined) continue;
 
-        let claimed: Task<TInput, TOutput> | undefined;
-        let prevStatus: TaskStatus | undefined;
-
-        await candidateRef.updateState((current) => {
+        const claimed = await updateStateWith(candidateRef, (current) => {
           const task = current as unknown as Task<TInput, TOutput>;
           // Re-check eligibility on the freshest state — another worker
           // may have claimed this task in the time between scan and CAS.
-          if (!eligibility(task as Task)) return current;
-          prevStatus = task.status;
+          if (!eligibility(task as Task)) return { state: current, result: undefined };
           const next = applyClaimToTask(task, now(), leaseDurationMs);
-          claimed = next;
-          return next as unknown as JsonObject;
+          return {
+            state: next as unknown as JsonObject,
+            result: { task: next, prevStatus: task.status },
+          };
         });
 
         if (claimed !== undefined) {
-          emit("claimed", claimed, prevStatus);
-          return claimed;
+          emit("claimed", claimed.task, claimed.prevStatus);
+          return claimed.task;
         }
       }
 
@@ -647,15 +644,14 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           continue;
         }
 
-        let next: Task<TInput, TOutput> | undefined;
-        await taskRef.updateState((current) => {
+        const next = await updateStateWith(taskRef, (current) => {
           const t = current as unknown as Task<TInput, TOutput>;
           if (
             t.status !== "in_progress" ||
             t.leaseUntil === undefined ||
             t.leaseUntil >= at
           ) {
-            return current;
+            return { state: current, result: undefined };
           }
           // Preserve `assignee` — it's the user-set worker-registry
           // routing key, not the runtime worker identity. Clearing it
@@ -666,8 +662,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             leaseUntil: undefined,
             updatedAt: at,
           };
-          next = reset;
-          return reset as unknown as JsonObject;
+          return { state: reset as unknown as JsonObject, result: reset };
         });
 
         if (next !== undefined) {

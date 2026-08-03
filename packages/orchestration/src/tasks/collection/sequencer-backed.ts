@@ -14,6 +14,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
+import { withOutcome } from "@flow-state-dev/core/helpers";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
@@ -117,16 +118,18 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     });
   }
 
+  /** The tasks map `casWrite` hands to its mutator and expects back. */
+  type TasksMap<I, O> = Record<string, Task<I, O>>;
+
   /**
    * Run a CAS-guarded write. The `mutate` callback returns the next tasks
    * map (or `undefined` for a no-op). Errors thrown inside `mutate`
    * propagate; the CAS retry loop in `atomicState` re-runs the callback
    * with the freshest committed tasks map.
    *
-   * This helper does not emit. Each public method emits explicitly after
-   * `casWrite` returns, using the post-mutation task it captured (the
-   * captured value reflects the final winning attempt — earlier retry
-   * attempts are overwritten).
+   * This helper does not emit. Each public method emits explicitly after the
+   * write returns, using the outcome its callback returned through
+   * `withOutcome` — which is by construction the invocation that committed.
    */
   async function casWrite(
     mutate: (
@@ -195,9 +198,9 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
    * `undefined` from the mutator, which patches nothing and emits nothing —
    * and the reason travels out on the verdict.
    *
-   * Both `captured` and `declined` are reset on every mutator entry: `casWrite`
-   * may replay this closure with a fresher tasks map, and the verdict must
-   * describe the winning attempt, not an earlier one.
+   * The verdict travels out as the callback's return value, so it describes the
+   * invocation that committed even when `casWrite` replays this closure with a
+   * fresher tasks map.
    */
   async function transitionTo(
     id: string,
@@ -206,32 +209,40 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome> {
-    let captured:
-      | { task: Task<TInput, TOutput>; prevStatus: TaskStatus }
-      | undefined;
-    let declined: TaskWriteOutcome | undefined;
+    /** What one `transitionTo` invocation did — returned, never captured outward. */
+    type TransitionResult =
+      | { kind: "declined"; verdict: TaskWriteOutcome }
+      | { kind: "recorded"; task: Task<TInput, TOutput>; prevStatus: TaskStatus };
 
-    await casWrite((tasks) => {
-      const task = ownTask(tasks, id);
-      if (task === undefined) {
-        throw new Error(`[tasks] task "${id}" not found`);
+    const outcome = await withOutcome(
+      casWrite,
+      (tasks): { state: TasksMap<TInput, TOutput> | undefined; result: TransitionResult } => {
+        const task = ownTask(tasks, id);
+        if (task === undefined) {
+          throw new Error(`[tasks] task "${id}" not found`);
+        }
+        const reason = transitionDeclineReason(task as Task, targetStatus, guards);
+        if (reason !== undefined) {
+          return {
+            state: undefined,
+            result: {
+              kind: "declined",
+              verdict: { outcome: "declined", reason, status: task.status },
+            },
+          };
+        }
+        assertTransitionAllowed(task.status, targetStatus, id);
+        const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
+        return {
+          state: { ...tasks, [id]: next },
+          result: { kind: "recorded", task: next, prevStatus: task.status },
+        };
       }
-      const reason = transitionDeclineReason(task as Task, targetStatus, guards);
-      if (reason !== undefined) {
-        captured = undefined;
-        declined = { outcome: "declined", reason, status: task.status };
-        return undefined;
-      }
-      declined = undefined;
-      assertTransitionAllowed(task.status, targetStatus, id);
-      const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
-      captured = { task: next, prevStatus: task.status };
-      return { ...tasks, [id]: next };
-    });
+    );
 
-    if (declined !== undefined) return declined;
-    if (captured === undefined) return { outcome: "unchanged" };
-    emit(kind, captured.task, captured.prevStatus);
+    if (outcome === undefined) return { outcome: "unchanged" };
+    if (outcome.kind === "declined") return outcome.verdict;
+    emit(kind, outcome.task, outcome.prevStatus);
     return { outcome: "recorded" };
   }
 
@@ -254,33 +265,41 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>> | undefined,
     options?: { declineOnTerminal?: boolean }
   ): Promise<TaskWriteOutcome> {
-    let captured: Task<TInput, TOutput> | undefined;
-    let declined: TaskWriteOutcome | undefined;
+    /** What one `patchOne` invocation did — returned, never captured outward. */
+    type PatchResult =
+      | { kind: "declined"; verdict: TaskWriteOutcome }
+      | { kind: "unchanged" }
+      | { kind: "recorded"; task: Task<TInput, TOutput> };
 
-    await casWrite((tasks) => {
-      const task = ownTask(tasks, id);
-      if (task === undefined) {
-        throw new Error(`[tasks] task "${id}" not found`);
+    const outcome = await withOutcome(
+      casWrite,
+      (tasks): { state: TasksMap<TInput, TOutput> | undefined; result: PatchResult } => {
+        const task = ownTask(tasks, id);
+        if (task === undefined) {
+          throw new Error(`[tasks] task "${id}" not found`);
+        }
+        if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
+          return {
+            state: undefined,
+            result: {
+              kind: "declined",
+              verdict: { outcome: "declined", reason: "terminal", status: task.status },
+            },
+          };
+        }
+        const update = patch(task);
+        if (update === undefined) return { state: undefined, result: { kind: "unchanged" } };
+        const next = applyTransition(task, update, now());
+        return {
+          state: { ...tasks, [id]: next },
+          result: { kind: "recorded", task: next },
+        };
       }
-      if (options?.declineOnTerminal === true && isTerminalStatus(task.status)) {
-        captured = undefined;
-        declined = { outcome: "declined", reason: "terminal", status: task.status };
-        return undefined;
-      }
-      declined = undefined;
-      const update = patch(task);
-      if (update === undefined) {
-        captured = undefined;
-        return undefined;
-      }
-      const next = applyTransition(task, update, now());
-      captured = next;
-      return { ...tasks, [id]: next };
-    });
+    );
 
-    if (declined !== undefined) return declined;
-    if (captured === undefined) return { outcome: "unchanged" };
-    emit(kind, captured);
+    if (outcome === undefined || outcome.kind === "unchanged") return { outcome: "unchanged" };
+    if (outcome.kind === "declined") return outcome.verdict;
+    emit(kind, outcome.task);
     return { outcome: "recorded" };
   }
 
@@ -335,11 +354,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async claim(_workerId, claimOptions) {
-      let captured:
-        | { task: Task<TInput, TOutput>; prevStatus: TaskStatus }
-        | undefined;
-
-      await casWrite((tasks) => {
+      const captured = await withOutcome(casWrite, (tasks) => {
         const lookup = (id: string): Task | undefined =>
           (ownTask(tasks, id) as unknown as Task | undefined);
         const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
@@ -347,18 +362,17 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
         const candidates = Object.values(tasks).filter(eligibility).slice().sort(order);
         const pick = candidates[0];
-        if (pick === undefined) {
-          captured = undefined;
-          return undefined;
-        }
+        if (pick === undefined) return { state: undefined, result: undefined };
 
         const next = applyClaimToTask(
           pick,
           now(),
           claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS
         );
-        captured = { task: next, prevStatus: pick.status };
-        return { ...tasks, [next.id]: next };
+        return {
+          state: { ...tasks, [next.id]: next },
+          result: { task: next, prevStatus: pick.status },
+        };
       });
 
       if (captured === undefined) return null;
@@ -467,15 +481,12 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
     async reclaim(nowOverride) {
       const at = nowOverride ?? now();
-      const reclaimed: Task<TInput, TOutput>[] = [];
 
-      await casWrite((tasks) => {
+      const reclaimed = (await withOutcome(casWrite, (tasks) => {
         const next: Record<string, Task<TInput, TOutput>> = { ...tasks };
-        // Reset on every CAS retry — `casWrite` may replay this closure
-        // with a fresher tasks snapshot, and we must not push duplicates
-        // from a previous attempt onto `reclaimed` (which the post-write
-        // emit loop iterates).
-        reclaimed.length = 0;
+        // Built per invocation, so a replay reports only the attempt that
+        // committed rather than concatenating every attempt's tasks.
+        const claimedBack: Task<TInput, TOutput>[] = [];
         for (const task of Object.values(tasks)) {
           if (
             task.status === "in_progress" &&
@@ -492,11 +503,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
               updatedAt: at,
             };
             next[task.id] = reset;
-            reclaimed.push(reset);
+            claimedBack.push(reset);
           }
         }
-        return reclaimed.length === 0 ? undefined : next;
-      });
+        return {
+          state: claimedBack.length === 0 ? undefined : next,
+          result: claimedBack,
+        };
+      })) ?? [];
 
       // `kind: "resumed"` covers both human-review resume and lease reclaim
       // — the canonical "task is back to pending" event for a lifecycle UI.
