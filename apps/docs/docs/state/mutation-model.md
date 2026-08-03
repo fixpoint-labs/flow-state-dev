@@ -80,7 +80,13 @@ The updater returns `{ state, result }`: the state to commit, and what this invo
 
 The same applies to values you *derive* from state before the write. Reading `ref.state.currentTurn`, stamping it onto a record, and committing that record inside the callback has the same defect one step removed: the record carries the turn from before the conflict. Build the record from the state the callback receives.
 
-`withOutcome` is the same helper for a runner that isn't a resource — anything that applies a mutator, including a wrapper of your own. `updateStateWith(ref, updater)` is `withOutcome(ref.updateState, updater)`.
+`withOutcome` is the same helper for a runner that isn't a resource — anything that applies a mutator, including a wrapper of your own. Pass the runner as a closure, so the call keeps its receiver:
+
+```ts
+await withOutcome((mutator) => ref.updateState(mutator), updater)
+```
+
+That is what `updateStateWith(ref, updater)` does for you.
 
 A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck`) fails the build on the common outward-write forms — assigning an outer binding, pushing through one, assigning one of its properties — including where the target is wrapped in a type assertion. It is a backstop, not a proof: a custom mutating method, a write through a helper that receives the binding, or an alias will pass it. The helper above is the actual fix; the check is there to catch the shapes people reach for out of habit.
 
