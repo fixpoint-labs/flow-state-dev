@@ -118,7 +118,11 @@ const entry = (path: string, content: string): Entry => ({
 // ─── Q1 — two Workstreams, ONE shared collection ─────────────────────────────
 
 describe("Q1 shared collection", () => {
-  it("1a — both edit one file: does the second flush clobber the first?", async () => {
+  // `it.fails` — these assert the DESIRED behaviour and are expected to FAIL today.
+  // Polarity matters: asserting the bug as passing would turn a correct FileSync
+  // fix into a red CI run. This way the fix flips `it.fails` to "expected to fail
+  // but passed", which is the signal to delete the marker and keep the assertion.
+  it.fails("1a — DESIRED: a second flush must not clobber the first's edit", async () => {
     const shared = createCollection([entry("a.ts", "ORIGINAL")]);
 
     const sbA = createMockSandbox();
@@ -139,10 +143,11 @@ describe("Q1 shared collection", () => {
 
     console.log(`[q1a] after A=${afterA} · after B=${afterB} · A's edit survived=${afterB === "A-EDIT"}`);
     expect(afterA).toBe("A-EDIT");
-    expect(afterB).toBe("B-EDIT"); // last writer wins, A silently lost
+    // DESIRED: B is told it conflicts, A's edit stands. TODAY: B clobbers it.
+    expect(afterB).toBe("A-EDIT");
   });
 
-  it("1b — A adds a file, B (hydrated earlier) flushes: is A's file deleted?", async () => {
+  it.fails("1b — DESIRED: B must not delete a file it never hydrated", async () => {
     const shared = createCollection([entry("a.ts", "ORIGINAL")]);
 
     const sbA = createMockSandbox();
@@ -165,7 +170,8 @@ describe("Q1 shared collection", () => {
         `destroyed-by-absence=${existsAfterA && !existsAfterB} · log=${shared.log.filter((l) => l.startsWith("DELETE")).join(",")}`,
     );
     expect(existsAfterA).toBe(true);
-    expect(existsAfterB).toBe(false); // B deleted work it never saw
+    // DESIRED: new.ts survives. TODAY: B deletes work it never saw.
+    expect(existsAfterB).toBe(true);
   });
 });
 
