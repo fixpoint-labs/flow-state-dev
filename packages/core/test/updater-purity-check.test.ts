@@ -1,0 +1,242 @@
+import { describe, expect, it } from "vitest";
+// @ts-expect-error — root check script, plain .mjs with no type declarations.
+import { analyzeSources, exemptFiles } from "../../../scripts/validate-updater-purity.mjs";
+
+type Finding = {
+  file: string;
+  line: number;
+  binding: string;
+  form: string;
+  detail: string;
+};
+
+const analyze = (code: string, path = "/fixture.ts"): Finding[] =>
+  (analyzeSources as (s: Array<{ path: string; code: string }>) => Finding[])([{ path, code }]);
+
+describe("updater-purity check — the three write forms Decision 4 names", () => {
+  it("flags assignment to an outer binding", () => {
+    // The shape at working-memory-helpers.ts `evict`.
+    const findings = analyze(`
+      async function evict(ref: any, id: string) {
+        let found = false
+        await ref.updateState((s: any) => {
+          const idx = s.entries.findIndex((e: any) => e.id === id)
+          if (idx < 0) return s
+          found = true
+          return { ...s, entries: [] }
+        })
+        return found
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "found", form: "assignment" });
+  });
+
+  it("flags a mutating call whose receiver is an outer binding", () => {
+    // Round 1's regression case: `culled.push(id)` assigns to nothing, so an
+    // assignment-only rule passes it — and it is one of the three accumulators
+    // whose stale output the spec's POC printed.
+    const findings = analyze(`
+      async function cullByTTL(ref: any) {
+        const culled: string[] = []
+        await ref.updateState((s: any) => {
+          for (const ep of s.episodes) culled.push(ep.id)
+          return s
+        })
+        return culled
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "culled", form: "mutating-call" });
+  });
+
+  it("flags property assignment through an outer binding", () => {
+    // The shape at sequencer-backed.ts `reclaim` — neither an assignment to
+    // the binding nor a method call.
+    const findings = analyze(`
+      async function reclaim(casWrite: any) {
+        const reclaimed: any[] = []
+        await casWrite((tasks: any) => {
+          reclaimed.length = 0
+          return tasks
+        })
+        return reclaimed.length
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "reclaimed", form: "property-assignment" });
+  });
+
+  it("flags compound assignment and increment through an outer binding", () => {
+    const findings = analyze(`
+      async function count(ref: any) {
+        let total = 0
+        let seen = 0
+        await ref.updateState((s: any) => {
+          total += s.n
+          seen++
+          return s
+        })
+        return total + seen
+      }
+    `);
+
+    expect(findings.map((f) => f.form).sort()).toEqual(["assignment", "increment"]);
+  });
+});
+
+describe("updater-purity check — the wrapper registry", () => {
+  it("sees a callback reached only through a wrapper (casWrite)", () => {
+    // A direct-argument check inspects only `casWrite`'s internal closure and
+    // never sees the caller's callback. Without the registry this is green.
+    const findings = analyze(`
+      async function transitionTo(casWrite: any, id: string) {
+        let captured: any
+        await casWrite((tasks: any) => {
+          captured = tasks[id]
+          return tasks
+        })
+        return captured
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "captured", form: "assignment" });
+  });
+
+  it("sees a callback passed to atomicState and to the outcome helper itself", () => {
+    const findings = analyze(`
+      async function twoRunners(sequencer: any, run: any) {
+        let a: any
+        let b: any
+        await sequencer.atomicState((s: any) => { a = s.x; return {} })
+        await withOutcome(run, (s: any) => { b = s.y; return { state: s, result: 1 } })
+        return [a, b]
+      }
+      declare function withOutcome(run: any, updater: any): Promise<any>
+    `);
+
+    expect(findings.map((f) => f.binding).sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("updater-purity check — the negative space that keeps it usable", () => {
+  it("does NOT flag `assertWithinCaps(next)` — a factory-scoped pure validator", () => {
+    // Round 2's regression case, in the form that actually exercises the
+    // narrowed call rule. Declared as a `const` arrow it IS a variable binding
+    // in the enclosing factory, so the imports/globals carve-out does not
+    // excuse it and the `isBinding` filter does not skip it — the only thing
+    // keeping it green is that rule (b) requires a KNOWN-MUTATING method on
+    // the receiver. Widen (b) to "any call rooted at an outer binding" (round
+    // 1's proposal) and this fixture red-lights safe code in `pnpm typecheck`.
+    const findings = analyze(`
+      function createCollection(options: any) {
+        const assertWithinCaps = (next: any): void => {
+          if (Object.keys(next).length > 10) throw new Error("cap")
+        }
+        const helpers = { assertTransitionAllowed: (a: any) => a }
+        async function addTask(casWrite: any, task: any) {
+          await casWrite((tasks: any) => {
+            const next = { ...tasks, [task.id]: task }
+            assertWithinCaps(next)
+            helpers.assertTransitionAllowed(next)
+            return next
+          })
+        }
+        return { addTask }
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
+  it("does NOT flag a factory-scoped validator declared as a function declaration", () => {
+    // The form the real `sequencer-backed.ts` uses (`:160`).
+    const findings = analyze(`
+      function createCollection(options: any) {
+        function assertWithinCaps(next: any): void {
+          if (Object.keys(next).length > 10) throw new Error("cap")
+        }
+        async function addTask(casWrite: any, task: any) {
+          await casWrite((tasks: any) => {
+            const next = { ...tasks, [task.id]: task }
+            assertWithinCaps(next)
+            return next
+          })
+        }
+        return { addTask }
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
+  it("does NOT flag a binding the callback declares itself", () => {
+    const findings = analyze(`
+      async function safe(ref: any) {
+        await ref.updateState((s: any) => {
+          const entries = [...s.entries]
+          entries.push({ id: "x" })
+          let local = 0
+          local += 1
+          return { ...s, entries, local }
+        })
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
+  it("does NOT flag module imports or globals", () => {
+    const findings = analyze(`
+      import { logger } from "./logger"
+      const CACHE = new Map<string, number>()
+      async function safe(ref: any) {
+        await ref.updateState((s: any) => {
+          logger.push("hi")
+          CACHE.set("k", 1)
+          Object.defineProperty(s, "x", { value: 1 })
+          return s
+        })
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
+  it("does NOT flag a pure spread updater — the shape of the safe sites", () => {
+    const findings = analyze(`
+      async function advance(ref: any, resolved: any) {
+        await ref.updateState((s: any) => {
+          const newTurn = s.currentTurn + 1
+          return { entries: s.entries.map((e: any) => ({ ...e, turn: newTurn })), currentTurn: newTurn }
+        })
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+
+  it("does NOT flag reads of an outer binding", () => {
+    const findings = analyze(`
+      async function safe(ref: any, resolved: any) {
+        const limit = resolved.capacity
+        await ref.updateState((s: any) => {
+          if (s.entries.length >= limit) return s
+          return { ...s, ok: true }
+        })
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+});
+
+describe("updater-purity check — the exemption", () => {
+  it("holds exactly one entry, so it cannot be broadened into a no-op", () => {
+    expect(exemptFiles).toEqual(["packages/core/src/helpers/update-state-with.ts"]);
+  });
+});
