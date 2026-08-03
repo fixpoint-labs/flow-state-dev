@@ -110,12 +110,16 @@ export async function add(
   config?: WorkingMemoryHelperConfig,
 ): Promise<WorkingMemoryEntry> {
   const resolved = resolveConfig(config)
+  // Generated once, so the id is stable across CAS retries — same reasoning as
+  // `addTask` in the task collection. Only the state-derived fields below are
+  // computed per invocation.
+  const id = entry.id ?? `wm_${shortId()}`
 
   const added = await updateStateWith(ref, (s: WorkingMemoryState) => {
     // Stamped from the state this invocation received, so a replayed write
     // returns — and commits — the turn that actually won.
     const newEntry: WorkingMemoryEntry = {
-      id: entry.id ?? `wm_${shortId()}`,
+      id,
       content: entry.content,
       importance: entry.importance,
       salience: entry.importance, // initial salience = importance (no decay yet)

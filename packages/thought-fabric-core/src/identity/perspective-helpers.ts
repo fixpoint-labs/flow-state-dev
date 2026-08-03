@@ -213,11 +213,15 @@ export async function addPerspectiveObservation(
   ref: PerspectiveObservationsRef,
   input: AddPerspectiveObservationInput,
 ): Promise<PerspectiveObservation> {
+  // Generated once, so the id is stable across CAS retries; only `addedAt` is
+  // derived from the state each invocation receives.
+  const id = `pobs_${shortId()}`
+
   const added = await updateStateWith(ref, (s) => {
     // Stamped from the state this invocation received, so a replayed write
     // returns — and commits — the turn counter that actually won.
     const observation: PerspectiveObservation = {
-      id: `pobs_${shortId()}`,
+      id,
       content: input.content,
       category: input.category ?? 'observation',
       confidence: input.confidence ?? 0.7,
@@ -332,6 +336,9 @@ export async function addPerspectivePosition(
   input: AddPerspectivePositionInput,
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<PerspectivePosition> {
+  // Generated once, so the id is stable across CAS retries.
+  const id = `ppos_${shortId()}`
+
   const added = await updateStateWith(ref, (s) => {
     // The positional fallback is derived from the state this invocation
     // received — it indexes the very array a conflict would have changed.
@@ -340,7 +347,7 @@ export async function addPerspectivePosition(
     const addedAt = observationsRef ? observationsRef.state.turnCounter : s.positions.length
 
     const position: PerspectivePosition = {
-      id: `ppos_${shortId()}`,
+      id,
       claim: input.claim,
       reasoning: input.reasoning,
       confidence: input.confidence ?? 0.7,
