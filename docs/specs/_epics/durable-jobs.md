@@ -408,7 +408,7 @@ ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource r
 1b. **Cap admission — two independent contracts, each with its own outcome, owner and check.** Task
    ceilings live in the task layer (`task-caps.ts`, neither enforced on a resource-backed board
    today, `:52-65`); the `maxInstances` race lives in the resource registry
-   (`resource-registry.ts:989-1003`, enforced but from the per-execution cache). If OQ-A chooses exact
+   (`resource-registry.ts:989-1003`, enforced but from the per-execution cache). **OQ-A does not decide this** (FIX-992's D7: per-key CAS cannot enforce a set-level invariant) — **OQ-D does.** If OQ-D chooses exact
    arbitration, the check asserts the ceiling is never exceeded. If it chooses narrowed-but-unbounded
    overshoot, the check asserts the window narrowed and **must not** assert a maximum — a correct
    implementation would fail that. If a contract is scoped out, state which, and that the epic claims
@@ -492,8 +492,16 @@ Collected here so no issue has to hunt for them. Each is argued where it is deci
    proxy for "durable" — `factory` is a second durable path. (Decision 3.)
 9. **`source` is transport-set; `metadata` is not trusted.** Nothing may route or authorize on
    caller-supplied request metadata. (Decision 5.)
-10. **A detached request runs a board-registry worker resolved by `assignee`** — never the producer
-    action, and never a **caller-authored** `(flowKind, action)` target. The prohibition is on the
+10. **A detached request runs a board worker resolved by the tagged `coordinate`** — never the producer
+    action, and never a **caller-authored** `(flowKind, action)` target. **`coordinate`, not `assignee`:**
+    the shipped board contract has three worker paths, and only one of them has an assignee at all —
+    `workers: TaskWorker | TaskWorkerRegistry` (`task-board/index.ts:288`) means a **bare value is the
+    uniform worker every task runs through**, and `defaultWorker` is the **delegation floor** for a task
+    whose assignee is *unknown or absent* (`:290-299`, FIX-940). Resolving "by assignee" fails outright on
+    a uniform board and routes a floor-bound task to the wrong Workstream — or to none. §1's `Coordinate`
+    is already the three-case tag this needs (`{kind:"assignee";name} | {kind:"uniform"} | {kind:"floor"}`,
+    N12), and it is what the routing key carries. This rule now matches it; an earlier wording said
+    `assignee` and silently excluded two valid board shapes. The prohibition is on the
     *authorship*, not the storage: a task author cannot name the action, but the substrate **must**
     persist the binding it derived from the registry, because a process that restarted has no claim
     context to re-derive it from and `DispatchEnvelope` requires `flowKind` + `actionName`
@@ -805,7 +813,7 @@ guarantee this epic cannot honour.
 **FIX-981 inherits one contention harness with three assertions**, on the same
 two-executions-over-one-board setup: (1) only one `claim()` succeeds / only one worker starts —
 same-ID contention, guarding 1a's exclusivity boundary; (2) a stale owner's settlement is rejected;
-(3) the distinct-ID cap behaviour OQ-A actually selected — two executions creating *different* task
+(3) the distinct-ID cap behaviour **OQ-D** selects (not OQ-A — see §5's conditional-criteria note) — two executions creating *different* task
 IDs against one capped collection, which the same-ID shape cannot catch because both writes succeed
 and the failure shows only in the final row count. Assertion 3 is skipped if 1b is deferred.
 
@@ -814,8 +822,7 @@ under parallel Conductor — the opposite of why this epic exists. The house pat
 exactly that reason: in-process FIFO queueing per record + per-record version-gated CAS at the
 durable boundary (`scope-lock.ts:1-5`).
 
-*Recorded as **OQ-A**. When the gate answers, this heading changes to DECIDED and the rejected
-options stay recorded with their reasons.*
+*Recorded as **OQ-A**, now **ANSWERED**: [FIX-992](https://linear.app/fixpoint-labs/issue/FIX-992) takes the conditional write, under epic FIX-980 rather than this one. The rejected options stay recorded with their reasons; the option taken is FIX-992's, and its own review moved the CAS off `persistResourceKey` for the same reason recorded here.*
 
 ### Decision 3 — board lifetime and collection scope are two axes, not one
 
@@ -944,7 +951,7 @@ and the identity fields above.
 
 Under requests-as-jobs this is no longer a footnote. "Start a request" is the whole mechanism, so
 *what it runs* is the whole design. **Rule 10: a detached request runs a board-registry worker
-resolved by `assignee`, never the producer action.** §1 supersedes the framing below wherever it
+resolved by the tagged `coordinate` (rule 10 — **not `assignee`**, which two of the three shipped worker paths do not have), never the producer action.** §1 supersedes the framing below wherever it
 speaks of the task carrying a target: the registry supplies the worker, so there is no action for
 a task author to point wrongly. The clean shape is a dedicated, re-enterable
 drain action with no producer steps to repeat — it trades generality for a coordinate that is
@@ -1517,7 +1524,7 @@ concurrent writes, not about who executes — relocating execution into a Workst
 it, because the board is shared state and session isolation only partitions history.
 Without M1, two conductor executions can both claim one issue and both run a
 spec-authoring agent on it: duplicate model spend and duplicate PRs, a worse failure than the hang it
-replaces. **OQ-A remains open and remains the objective gate.**
+replaces. **OQ-A is answered — [FIX-992](https://linear.app/fixpoint-labs/issue/FIX-992) delivers the conditional write M1 fences with, and now `blocks` FIX-981 in Linear. What gates M1 is that dependency landing, not an open question.**
 
 **M3 / FIX-982 — reframed; the coordinate problem dissolves** (Decision 5). What remains is genuinely
 M3's: the spawn seam as an injected capability (Decision 0), Workstream routing, and cancellation,
@@ -1767,9 +1774,9 @@ to be filed — see the membership table's unfiled set.
 > was the first two. The transferable lesson for the lessons pass: **"prerequisite" in prose has no
 > mechanical effect** — the membership table and the execution sequence are what the coordinator reads.
 
-**OQ-A, in two parts** — evidence and pricing are in Decision 2, not repeated:
+**OQ-A, in two parts — retained as the record of what this epic recommended before [FIX-992](https://linear.app/fixpoint-labs/issue/FIX-992) took the work.** FIX-992's own design lands in the same place on the load-bearing point (CAS above the value-only persister). Evidence and pricing are in Decision 2, not repeated:
 
-| | Recommendation | If the gate refuses it |
+| | Recommendation | If FIX-992 had not taken it |
 |---|---|---|
 | **1a — ownership** | **Yes — (a), additively**, reusing the scope-store precedent, covering claim **and** settlement. The **shape** is not decided here: resource state has no version to gate on, so it is FIX-981's first design fork. | **M1 merges into M3** — (b)'s dedup can only live where the queue is. Not a smaller epic; a resequenced one. |
 | **1b — cap admission** (two contracts) | **No mechanism recommended for either.** Name one that enforces a hard maximum on concurrent admitters, or state honestly that overshoot is narrowed but unbounded. Answer per contract. | The relevant half of criterion 1b is relaxed away and the epic claims no guarantee for that contract. |
@@ -1824,6 +1831,8 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N38** | **NEW — forking is optional, unreferenced by any completion criterion, and carries five sub-problems.** N17 (a cursor the caller cannot write), N19 + N32 (an awaited content snapshot whose retention contradicts the grounds COPY was rejected on), the cross-chain window budget, and N36 (batched read or accepted N+1) all exist **only** to serve parent-history inheritance — a read convenience, not a completion criterion. Decision 7's claim-time payload already carries context to the worker, parent-side and deliberately scoped. **Recommend deferring forking out of FIX-982 entirely**, which removes those five from the critical path; the required condition is that a detached participant declaring `contextSupply: "conversation"` (`core/src/types/skill.ts:92`) is **refused by name** rather than silently running with empty history. This is a scope decision for the owner, not FIX-982. | **owner** (then FIX-982) |
 | **N36** | **NEW — the chosen fork strategy has no batched read, so its cost is N+1 per child turn.** REFERENCE reads the cursor **by id** — required, since the list-then-discard alternative costs the parent's whole lifetime per turn (500 rows vs 3, §8) — but `RequestStore.get` takes one id (`stores/types.ts:275`) and `RequestListOptions` has no `ids` predicate (`:110-140`). Measured: a 40-id cursor is **41 store calls per turn**, and a depth-2 chain multiplies by level. §1 previously concluded REFERENCE "wins on every axis" on the strength of its 0 fork-time writes; that conclusion did not survive its own measurement. **FIX-982 either adds an `ids` predicate across the four adapters as a prerequisite, or states the N+1 and bounds cursor width.** Same class as create-if-absent and S1a: a store capability the model assumes and the surface does not have. | FIX-982 (+ a store seam, unfiled) |
 | **N31** | **NEW — "emit an item" does not by itself enable settlement.** The interim result rule says the worker's result must be durable, and FIX-991 retrieves `readonly OutputItem[]` — but `complete(taskId, output)` takes the collection's generic `TOutput`. A worker that emits progress items *and* result items gives the parent a list with no distinguished result and no decode rule, so after a restart the parent can retrieve everything and still not reconstruct the value `complete` needs. **FIX-982 defines a single result projection — a tagged result item, or a task-keyed shared resource as the recoverable path — plus the item-to-output contract.** Without it the interim rule is a durability guarantee with no reader. | FIX-982 + FIX-991 |
+| **N54** | **NEW — rule 10 resolved workers by `assignee`, which two of the three shipped worker paths do not have.** `taskBoard` accepts `workers: TaskWorker | TaskWorkerRegistry` (`task-board/index.ts:288`) — **a bare value is the uniform worker every task runs through** — and `defaultWorker` is the **delegation floor** for a task whose assignee is *unknown or absent* (`:290-299`, FIX-940). So "resolve by `assignee`" fails outright on a uniform board and mis-routes a floor-bound task. The epic already had the right vocabulary and was not using it: §1's `Coordinate` is the three-case tag `{kind:"assignee";name} | {kind:"uniform"} | {kind:"floor"}` (N12), and the routing key carries it. **Rule 10, Decision 5's restatement and §7's FIX-982 scope now all say `coordinate`.** | FIX-982 |
+| **N55** | **NEW — §7's FIX-982 scope row still forbade the stored binding rule 10 now requires.** It read *"resolve the worker from the board registry by `assignee` (**not** a stored `(flowKind, action)` target)"* — the absolute prohibition rule 10 was narrowed away from, because a restarted process has no claim context to re-derive a binding from and `DispatchEnvelope` requires `flowKind` + `actionName`. Left as written, a coordinator scoping FIX-982 from the canonical row would omit the one artifact N9 says the reconciler needs, and a reconciled task would strand permanently. Row now requires the substrate-derived restart-safe binding and keeps the prohibition on *caller-authored* targets. **Third time a rule-10 correction failed to reach a summary.** | FIX-982 |
 | **N51** | **NEW — the COPY measurement was taken on the one store that makes it look cheap.** §8's fork POC copies each ancestor record with `store.set(copyId, {...r, id, sessionId})` against `InMemoryRequestStore`, where items ride on the record. **Both persistent adapters strip them**: `const { items: _omitted, ...withoutItems } = value` before the base write, deliberately, because *"Items live in `request_items`; keep them out of `requests.data`"* (`store-sqlite/src/request-store.ts:279`, `store-postgres/src/request-store.ts:301`). A COPY fork written that way reloads as N request records **with no messages** — the fork inherits empty turns, silently, and only on a real deployment. Real COPY is `set` **+** `persistItems` **+** `flushItems` per copied request, with ids rewritten, which roughly doubles its write cost and adds an ordering constraint the POC never exercised. **COPY remains permitted (§1), so this correction matters:** anyone choosing it must re-measure on a persistent adapter first. The REFERENCE measurements are unaffected — they write nothing. | FIX-982 |
 | **N52** | **NEW — FIX-983 has no caller, and "the primitive is absent" is not a reason to build it.** M4's surviving half is cross-request waiting. The analysis establishes that `.waitForCondition` cannot observe a detached completion (`sequencer.ts:2083-2100`) — it never establishes that this epic needs to block across requests. No completion criterion mentions waiting, and **S4, the epic's evidence path, requires the opposite**: the originating turn returns while work continues. A later turn reads the durable board and the Workstream; that needs no blocking primitive. **Recommend deferring FIX-983 until a concrete blocking consumer appears**, keeping the analysis as the record of why the primitive doesn't exist. Nothing depends on it. Owner's call, like N38. | **owner** |
 | **N50** | **NEW — the type assertion N18 rests on is never evaluated by any command we run.** `@ts-expect-error` in `poc-workstream-execution.test.ts` is the evidence that `stores`/`flow` are absent from the public `BlockContext`, and it sizes FIX-982's capability from two missing pieces to three. But `packages/engine/tsconfig.json` sets `include: ["src/**/*"]` and `pnpm typecheck` runs `tsc -p tsconfig.json`, so `test/` is never checked; `pnpm test` is vitest, which transpiles without type-checking. **The premise is true today — verified by hand, and by a control run that makes the directive report `TS2578` when the probed keys are public (recorded on N18)** — but nothing would catch it going stale. **Whoever builds N18's seam wires this into a checked project** (a type-test tsconfig in CI, or extending the package's `include`); until then the assertion is documentation, not a test. A latent `TS2322` in the same file (a durable `action: string` not assignable to the flow's action key) was fixed by narrowing explicitly rather than casting — that narrowing *is* N9's problem in miniature, so it is now visible in the POC instead of hidden. | FIX-982 |
@@ -1874,7 +1883,13 @@ PR links too (too little). PR links belong here; per-wake status does not. **Epi
 of the epic.
 
 **Active set** — runs an `issue-lifecycle` once the objective gate passes; holds at `NEEDS_SPEC`
-until then (`orchestration.md` → Gates). OQ-A still awaits that gate, so no lifecycle is dispatched:
+until then (`orchestration.md` → Gates). **The remaining conditions are no longer OQ-A** — it is answered
+(FIX-992 owns the conditional write). What still holds a lifecycle back is, in order: **(1)** the owner's
+objective-gate approval; **(2)** the three unfiled blockers having Linear ids — create-if-absent, S1a and
+FIX-991a; and **(3)** for FIX-981 specifically, `FIX-995 → FIX-992` landing, which Linear now enforces as a
+`blocks` relation. **FIX-925 is gated only by (1) plus its own spec PR merging** (#900 is unmerged, §7) —
+it depends on none of the rest, so a stale OQ-A gate would have frozen it for conditions that never applied
+to it. When the gate passes, dispatch is:
 
 | Issue | M | Title (short) | Spec PR | Impl PR |
 |---|---|---|---|---|
@@ -2026,7 +2041,7 @@ gate-held issues is the owner's call.
 
 | Issue | Proposed change |
 |---|---|
-| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board registry by `assignee` (not a stored `(flowKind, action)` target), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N45, N46, N47, N48, N50, N51, N53, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Forty-five findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), one guarantee that two shipped admission paths bypass (N43), and two coordination mechanisms the 'primitives are there' count omitted (N46). It is still sized Medium; **the missing-mechanism count is now the argument for splitting it, not its finding count.**** |
+| **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board by the **tagged `coordinate`** (rule 10 — not `assignee`, which the uniform and floor paths do not have), **persist the substrate-derived restart-safe binding** the reconciler needs (rule 10 as narrowed — the earlier "no stored `(flowKind, action)`" wording forbade the one artifact N9 requires; the prohibition is on *caller-authored* targets), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N45, N46, N47, N48, N50, N51, N53, N54, N55, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Forty-seven findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), one guarantee that two shipped admission paths bypass (N43), and two coordination mechanisms the 'primitives are there' count omitted (N46). It is still sized Medium; **the missing-mechanism count is now the argument for splitting it, not its finding count.**** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Close as dissolved**, moving its residue (item lifetime / board-scoped retention bound) to FIX-991. Alternative: retain as a thin issue for the retention bound alone, which then overlaps FIX-991. |
 | **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. |
