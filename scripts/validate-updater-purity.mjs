@@ -1,5 +1,5 @@
 /**
- * Enforce that a state-mutation callback never writes to a binding declared
+ * Reject the common ways a state-mutation callback writes to a binding declared
  * outside itself (FIX-995).
  *
  * A mutation callback may run more than once: the CAS retry loop re-invokes it
@@ -8,21 +8,52 @@
  * writing outward reports whichever attempt wrote last — including attempts
  * that never committed. `withOutcome` / `updateStateWith`
  * (`@flow-state-dev/core/helpers`) give the callback a way to *return* its
- * outcome instead; this check keeps the old shape from coming back.
+ * outcome instead.
  *
- * The rule bars three write forms, because the repo has a live example of each
- * and an assignment-only rule provably misses two of them:
+ * ## What this check is, and is not
+ *
+ * **It is defence in depth behind the helper, not a proof.** The helper is the
+ * actual fix: it removes the reason to hold an outward binding at all. This
+ * script catches the naive forms people actually write, so a regression is
+ * noticed rather than shipped.
+ *
+ * It is NOT a bright line and does not decide the question. Over one review
+ * cycle, four distinct shapes walked through earlier versions of it — an
+ * assignment-only rule missed `culled.push(id)`; a callback extracted to a
+ * `const` was skipped entirely; and an assignment target behind `as any` was
+ * invisible. Each was a real escape, and the pattern is that the rule was
+ * verified against remembered shapes rather than the shapes a refactor
+ * produces. Assume the same is true of what follows.
+ *
+ * **Known gaps — not caught, stated so nobody assumes coverage:**
+ *   - a CUSTOM mutating method on an outer binding (`myBuffer.append(x)`);
+ *     only the built-in mutators in `MUTATING_METHODS` are recognised
+ *   - a write through a function that receives the binding
+ *     (`Object.assign(outer, …)`, `mutate(outer)`)
+ *   - aliasing: `const alias = outer; alias.value = next`
+ *   - a callback this file cannot see — imported, or returned from a call
+ *   - a replay wrapper whose name is not in `REPLAY_ENTRY_POINTS`
+ *
+ * ## The rules
+ *
+ * Three write forms, because the repo has a live example of each and an
+ * assignment-only rule provably misses two:
  *
  *   found = true          assignment to the binding
  *   culled.push(id)       a mutating call whose RECEIVER is the binding
  *   reclaimed.length = 0  assignment through a member path rooted at the binding
+ *
+ * Type-only wrappers around the target are seen through — `(x as T)`, `<T>x`,
+ * `x satisfies T`, `x!`, `(x)` — since those are exactly what a developer
+ * reaches for when the compiler objects to the write.
  *
  * (b) is deliberately narrowed to a *known-mutating method on the receiver*
  * rather than "any call rooted at an outer binding". The wider rule red-lights
  * `assertWithinCaps(next)` in `sequencer-backed.ts` — a pure validator declared
  * inside the enclosing factory, passed callback-local state. A check that fails
  * `pnpm typecheck` on safe code gets widened by the first person it blocks, and
- * then it guards nothing.
+ * then it guards nothing. That trade is why the custom-method gap above stays
+ * open.
  *
  * Only bindings declared inside the *enclosing function* count, so module
  * imports and globals are out of scope.
@@ -232,20 +263,37 @@ function isOuterBinding(identifier, callback) {
   return true;
 }
 
-/** Walk a member-access chain down to the identifier it is rooted at. */
+/**
+ * Walk a member-access chain down to the identifier it is rooted at, seeing
+ * through the wrappers that carry no runtime meaning.
+ *
+ * The type-only wrappers matter because they are what a developer reaches for
+ * when the compiler complains about writing through a captured binding:
+ * `(captured as any).value = next` is the same write as `captured.value = next`,
+ * and stopping at the assertion would report nothing.
+ */
 function rootIdentifier(expression) {
   let current = expression;
-  while (true) {
+  while (current !== undefined) {
+    // Member access — keep walking toward the root of the path.
     if (Node.isPropertyAccessExpression(current) || Node.isElementAccessExpression(current)) {
       current = current.getExpression();
       continue;
     }
-    if (Node.isParenthesizedExpression(current) || Node.isNonNullExpression(current)) {
+    // Wrappers with no runtime effect: `(x)`, `x!`, `x as T`, `<T>x`, `x satisfies T`.
+    if (
+      Node.isParenthesizedExpression(current) ||
+      Node.isNonNullExpression(current) ||
+      Node.isAsExpression(current) ||
+      Node.isTypeAssertion(current) ||
+      Node.isSatisfiesExpression(current)
+    ) {
       current = current.getExpression();
       continue;
     }
     return Node.isIdentifier(current) ? current : undefined;
   }
+  return undefined;
 }
 
 /** Collect every outward write inside `callback`. */

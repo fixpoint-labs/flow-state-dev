@@ -82,7 +82,7 @@ The same applies to values you *derive* from state before the write. Reading `re
 
 `withOutcome` is the same helper for a runner that isn't a resource — anything that applies a mutator, including a wrapper of your own. `updateStateWith(ref, updater)` is `withOutcome(ref.updateState, updater)`.
 
-A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck`) fails the build if an updater writes outward, so this does not rely on anyone remembering it.
+A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck`) fails the build on the common outward-write forms — assigning an outer binding, pushing through one, assigning one of its properties — including where the target is wrapped in a type assertion. It is a backstop, not a proof: a custom mutating method, a write through a helper that receives the binding, or an alias will pass it. The helper above is the actual fix; the check is there to catch the shapes people reach for out of habit.
 
 ## Mutation timeout
 

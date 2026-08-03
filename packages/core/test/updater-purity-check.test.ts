@@ -88,6 +88,67 @@ describe("updater-purity check — the three write forms Decision 4 names", () =
   });
 });
 
+describe("updater-purity check — writes hidden behind type-only wrappers", () => {
+  // These are the shapes a developer reaches for when the compiler complains
+  // about writing through a captured binding. They carry no runtime meaning, so
+  // stopping at the wrapper reports nothing while the write still happens.
+  const cases: Array<[string, string]> = [
+    ["an `as` assertion", "(captured as any).value = next"],
+    ["an angle-bracket assertion", "(<any>captured).value = next"],
+    ["a `satisfies` expression", "(captured satisfies any).value = next"],
+    ["a non-null assertion", "captured!.value = next"],
+    ["redundant parentheses", "((captured)).value = next"],
+  ];
+
+  it.each(cases)("flags a property assignment through %s", (_name, write) => {
+    const findings = analyze(`
+      async function patch(ref: any, next: any) {
+        const captured: any = {}
+        await ref.updateState((s: any) => {
+          ${write}
+          return s
+        })
+        return captured
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "captured", form: "property-assignment" });
+  });
+
+  it("flags a mutating call whose receiver is an asserted outer binding", () => {
+    const findings = analyze(`
+      async function cull(ref: any) {
+        const culled: string[] = []
+        await ref.updateState((s: any) => {
+          (culled as any).push(s.id)
+          return s
+        })
+        return culled
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "culled", form: "mutating-call" });
+  });
+
+  it("flags a direct assignment to an asserted outer binding", () => {
+    const findings = analyze(`
+      async function evict(ref: any) {
+        let found = false
+        await ref.updateState((s: any) => {
+          (found as any) = true
+          return s
+        })
+        return found
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "found" });
+  });
+});
+
 describe("updater-purity check — the wrapper registry", () => {
   it("sees a callback reached only through a wrapper (casWrite)", () => {
     // A direct-argument check inspects only `casWrite`'s internal closure and
