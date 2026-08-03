@@ -131,6 +131,38 @@ function walk(dir, out) {
   }
 }
 
+/**
+ * Resolve a call argument to the function whose body should be analysed.
+ *
+ * An inline arrow or function expression is itself the callback. An identifier
+ * is resolved to its declaration, because extracting the callback to a variable
+ * (`const updater = (s) => { found = true; return s }; ref.updateState(updater)`)
+ * is a one-line refactor that would otherwise walk straight past this check and
+ * reintroduce exactly the outward write it exists to reject.
+ *
+ * Returns `undefined` for anything that does not resolve to a function we can
+ * see — an imported callback, a call result, a method reference. Those are out
+ * of reach of a single-file analysis, not silently approved.
+ */
+function resolveCallbackArgument(argument) {
+  if (isCallbackLike(argument)) return argument;
+  if (!Node.isIdentifier(argument)) return undefined;
+
+  const symbol = argument.getSymbol();
+  if (symbol === undefined) return undefined;
+
+  for (const declaration of symbol.getDeclarations()) {
+    // `function updater(s) { … }`
+    if (Node.isFunctionDeclaration(declaration)) return declaration;
+    // `const updater = (s) => { … }`
+    if (Node.isVariableDeclaration(declaration)) {
+      const initializer = declaration.getInitializer();
+      if (initializer !== undefined && isCallbackLike(initializer)) return initializer;
+    }
+  }
+  return undefined;
+}
+
 /** Is `node` a function-shaped expression we can treat as a callback body? */
 function isCallbackLike(node) {
   return (
@@ -335,8 +367,9 @@ function scanSourceFile(sourceFile, label) {
   for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
     if (!isReplayEntryPointCall(call)) continue;
     for (const argument of call.getArguments()) {
-      if (!isCallbackLike(argument)) continue;
-      findings.push(...findOutwardWrites(argument, label));
+      const callback = resolveCallbackArgument(argument);
+      if (callback === undefined) continue;
+      findings.push(...findOutwardWrites(callback, label));
     }
   }
   return findings;

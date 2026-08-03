@@ -23,6 +23,37 @@ export type UpdateOutcome<TState, TResult> = {
   result: TResult;
 };
 
+/** True for any thenable, including a Promise built in another realm (an iframe, a `vm` context). */
+function isThenable<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as PromiseLike<T>).then === "function"
+  );
+}
+
+/**
+ * The updater a given runner accepts.
+ *
+ * A runner declares what its mutator may return (`TNext`). If that includes a
+ * Promise — `updateState`, whose updater is `(s) => TState | Promise<TState>` —
+ * the updater may be `async`. If it does not — `casWrite`, whose mutator must
+ * return the next tasks map synchronously — the updater must be synchronous
+ * too, because there is nothing to await it before the runner reads it.
+ *
+ * This is a conditional on `TNext` rather than overloads on `run`'s shape
+ * deliberately: the repo compiles with `strictFunctionTypes` off, so parameter
+ * positions are checked bivariantly and an overload set keyed on the runner's
+ * signature would accept a sync runner for the async overload.
+ */
+export type OutcomeUpdater<TState, TNext, TResult> = [Promise<Awaited<TNext>>] extends [TNext]
+  ? (
+      state: TState
+    ) =>
+      | UpdateOutcome<Awaited<TNext>, TResult>
+      | Promise<UpdateOutcome<Awaited<TNext>, TResult>>
+  : (state: TState) => UpdateOutcome<Awaited<TNext>, TResult>;
+
 /**
  * Run a mutation through `run`, returning the updater's own outcome.
  *
@@ -36,9 +67,15 @@ export type UpdateOutcome<TState, TResult> = {
  * absorbed it. `undefined` means "nothing was reported", which is also the
  * correct answer for "nothing was committed".
  *
- * A synchronous updater keeps the mutator synchronous, which runners that
- * require a sync mutator (`casWrite`) depend on.
+ * **An async updater requires a runner that accepts one** — see
+ * `OutcomeUpdater`. Without that constraint an `async` updater type-checks
+ * against a synchronous runner and hands it a Promise where it expects the next
+ * state, which the runner then persists.
  */
+export async function withOutcome<TState, TNext, TResult>(
+  run: (mutator: (state: TState) => TNext) => Promise<unknown>,
+  updater: OutcomeUpdater<TState, TNext, TResult>
+): Promise<TResult | undefined>;
 export async function withOutcome<TState, TNext, TResult>(
   run: (mutator: (state: TState) => TNext) => Promise<unknown>,
   updater: (
@@ -55,12 +92,13 @@ export async function withOutcome<TState, TNext, TResult>(
 
     const produced = updater(state);
 
-    if (produced instanceof Promise) {
-      // The updater is async, so the mutator is too. Only runners that accept
-      // `TState | Promise<TState>` back (i.e. `updateState`) can infer a
-      // `TNext` this branch satisfies; a sync-only runner rejects it at the
-      // call site, which is the intended constraint.
-      return produced.then((settled) => {
+    // Thenable rather than `instanceof Promise`: a Promise from another realm
+    // fails the instanceof check, and falling through would read `.state` and
+    // `.result` off the Promise itself and hand the runner `undefined`.
+    // `Promise.resolve` assimilates it. The sync path below is untouched.
+    if (isThenable(produced)) {
+      // Only the async overload reaches here, so the runner accepts a Promise.
+      return Promise.resolve(produced).then((settled) => {
         outcome = settled.result;
         return settled.state;
       }) as TNext;
@@ -97,12 +135,15 @@ export async function updateStateWith<TState, TResult>(
   ) => UpdateOutcome<TState, TResult> | Promise<UpdateOutcome<TState, TResult>>
 ): Promise<TResult | undefined> {
   // Wrapped rather than passed by reference so the ref keeps its `this`.
+  // `updateState`'s mutator may return a Promise, so `OutcomeUpdater` resolves
+  // to the async-capable branch and an async updater is accepted here.
+  // The cast is confined to this line: inside a generic body `TState` is not
+  // resolved, so `OutcomeUpdater`'s conditional stays deferred and cannot be
+  // shown equal to this parameter's type. At every real call site `TState` is
+  // concrete, the conditional resolves, and the constraint is enforced —
+  // `update-state-with.type-test.ts` pins both directions.
   return withOutcome<TState, TState | Promise<TState>, TResult>(
     (mutator) => ref.updateState(mutator),
-    updater as (
-      state: TState
-    ) =>
-      | UpdateOutcome<TState | Promise<TState>, TResult>
-      | Promise<UpdateOutcome<TState | Promise<TState>, TResult>>
+    updater as OutcomeUpdater<TState, TState | Promise<TState>, TResult>
   );
 }

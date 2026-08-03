@@ -94,6 +94,23 @@ describe("updateStateWith", () => {
     expect(ref.committed).toEqual([{ n: 10 }]);
   });
 
+  it("assimilates a thenable that is not a native Promise", async () => {
+    // A Promise created in another realm (an iframe, a `vm` context) fails
+    // `instanceof Promise`. Under that check the helper falls through to the
+    // synchronous path, reads `.result` / `.state` off the Promise object
+    // itself, and hands the runner `undefined` as the next state.
+    const ref = singleRef({ n: 4 });
+
+    const result = await updateStateWith(ref, ((s: Counter) => ({
+      then(onFulfilled: (v: { state: Counter; result: number }) => unknown) {
+        onFulfilled({ state: { n: s.n * 3 }, result: s.n });
+      },
+    })) as unknown as (s: Counter) => Promise<{ state: Counter; result: number }>);
+
+    expect(result).toBe(4);
+    expect(ref.committed).toEqual([{ n: 12 }]);
+  });
+
   it("preserves the ref's `this` binding", async () => {
     class Ref {
       state: Counter = { n: 0 };

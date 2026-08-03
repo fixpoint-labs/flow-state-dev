@@ -123,6 +123,79 @@ describe("updater-purity check — the wrapper registry", () => {
   });
 });
 
+describe("updater-purity check — callbacks that are not written inline", () => {
+  it("flags a callback extracted to a const before being passed", () => {
+    // Extract-to-variable is a one-line refactor. If the check only inspects
+    // inline function expressions, this shape walks straight through it and
+    // reintroduces the defect the script exists to reject.
+    const findings = analyze(`
+      async function evict(ref: any, id: string) {
+        let found = false
+        const updater = (s: any) => {
+          found = true
+          return s
+        }
+        await ref.updateState(updater)
+        return found
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "found", form: "assignment" });
+  });
+
+  it("flags a callback extracted to a function declaration", () => {
+    const findings = analyze(`
+      async function cull(ref: any) {
+        const culled: string[] = []
+        function updater(s: any) {
+          for (const x of s.items) culled.push(x.id)
+          return s
+        }
+        await ref.updateState(updater)
+        return culled
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "culled", form: "mutating-call" });
+  });
+
+  it("flags a named callback passed through a wrapper (casWrite)", () => {
+    const findings = analyze(`
+      async function reclaim(casWrite: any) {
+        const reclaimed: any[] = []
+        const mutate = (tasks: any) => {
+          reclaimed.length = 0
+          return tasks
+        }
+        await casWrite(mutate)
+        return reclaimed.length
+      }
+    `);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ binding: "reclaimed", form: "property-assignment" });
+  });
+
+  it("does NOT flag a named callback that writes nothing outward", () => {
+    // The negative half: resolving identifiers must not start flagging the
+    // safe extracted callbacks that already exist.
+    const findings = analyze(`
+      async function advance(ref: any, decay: number) {
+        const updater = (s: any) => {
+          const entries = s.entries.map((e: any) => ({ ...e, salience: e.salience * decay }))
+          entries.sort()
+          return { ...s, entries }
+        }
+        await ref.updateState(updater)
+      }
+    `);
+
+    expect(findings).toEqual([]);
+  });
+});
+
 describe("updater-purity check — the negative space that keeps it usable", () => {
   it("does NOT flag `assertWithinCaps(next)` — a factory-scoped pure validator", () => {
     // Round 2's regression case, in the form that actually exercises the
