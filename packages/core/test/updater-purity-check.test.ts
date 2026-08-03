@@ -154,7 +154,7 @@ describe("updater-purity check — the negative space that keeps it usable", () 
   });
 
   it("does NOT flag a factory-scoped validator declared as a function declaration", () => {
-    // The form the real `sequencer-backed.ts` uses (`:160`).
+    // The form the real `sequencer-backed.ts` uses for `assertWithinCaps`.
     const findings = analyze(`
       function createCollection(options: any) {
         function assertWithinCaps(next: any): void {

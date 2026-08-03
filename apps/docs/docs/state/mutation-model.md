@@ -42,6 +42,48 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 `ConcurrentModificationError` continues to surface from these paths when retries exhaust. That's the contract: if you write through `persist` and the remote authority moves faster than your retry budget, you need to either widen the budget or restructure to avoid the contention.
 
+## Writing an updater that may run twice
+
+The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On the CAS path above, that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.
+
+That matters the moment your updater has something to tell its caller. The natural way to report an outcome is to reach outside the callback:
+
+```ts
+// Don't. `found` outlives the callback.
+let found = false
+await ref.updateState((s) => {
+  const idx = s.entries.findIndex((e) => e.id === id)
+  if (idx < 0) return s          // a replay lands here; `found` is still true
+  found = true
+  return { ...s, entries: withoutIndex(s.entries, idx) }
+})
+return found
+```
+
+If the first attempt removed the entry and a conflicting write removed it first, the second attempt takes the `idx < 0` branch and commits nothing — but `found` still holds `true` from the attempt that lost. The function reports work that was never saved. An accumulating array is worse: it keeps every attempt's entries, duplicates included.
+
+The rule is: **an updater treats everything declared outside it as read-only.** Reading an outer value is fine. Writing one — assigning it, pushing through it, assigning one of its properties — is not.
+
+Return the outcome instead. `updateStateWith` passes it back out of the write, taking the answer from whichever invocation committed:
+
+```ts
+import { updateStateWith } from "@flow-state-dev/core/helpers"
+
+return (await updateStateWith(ref, (s) => {
+  const idx = s.entries.findIndex((e) => e.id === id)
+  if (idx < 0) return { state: s, result: false }
+  return { state: { ...s, entries: withoutIndex(s.entries, idx) }, result: true }
+})) ?? false
+```
+
+The updater returns `{ state, result }`: the state to commit, and what this invocation did. `updateStateWith` returns the `result` belonging to the invocation whose state was committed, or `undefined` if the updater never completed one — which is why the example falls back to `false`.
+
+The same applies to values you *derive* from state before the write. Reading `ref.state.currentTurn`, stamping it onto a record, and committing that record inside the callback has the same defect one step removed: the record carries the turn from before the conflict. Build the record from the state the callback receives.
+
+`withOutcome` is the same helper for a runner that isn't a resource — anything that applies a mutator, including a wrapper of your own. `updateStateWith(ref, updater)` is `withOutcome(ref.updateState, updater)`.
+
+A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck`) fails the build if an updater writes outward, so this does not rely on anyone remembering it.
+
 ## Mutation timeout
 
 The lock path can deadlock if a mutator never finishes — say it awaits something that never resolves. To bound the worst case, every in-memory mutation has a budget:

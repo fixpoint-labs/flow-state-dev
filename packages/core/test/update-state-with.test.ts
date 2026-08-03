@@ -5,7 +5,8 @@ type Counter = { n: number; tag?: string };
 
 /**
  * A `updateState` double that replays the updater the way `runWithCAS` does
- * (`packages/engine/src/stores/cas.ts:131-160`): run once against the
+ * (`packages/engine/src/stores/cas.ts` — the `while (attempt <= maxRetries)`
+ * loop re-invokes `mutator`): run once against the
  * pre-conflict state and discard the result, then run against the winner's
  * state and commit that one.
  */
@@ -70,7 +71,7 @@ describe("updateStateWith", () => {
     expect(result).toBeUndefined();
   });
 
-  it("resets the outcome between invocations even when the second updater throws", async () => {
+  it("propagates a throw from the replayed invocation rather than reporting attempt 1", async () => {
     const ref = replayingRef({ n: 1 }, { n: 99 });
 
     await expect(

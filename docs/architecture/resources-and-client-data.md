@@ -205,6 +205,30 @@ async function addStep(ctx: PlanContext, step: string) {
 }
 ```
 
+The updater above reports nothing, which is why a plain `updateState` is right for
+it. As soon as a helper needs to tell its caller *what it did* — "yes, I removed
+that step", "here are the three I dropped" — reaching outside the callback for a
+variable is wrong: on the CAS path the updater can run more than once, and the
+value left behind describes whichever attempt ran last rather than the one that
+committed. Return the outcome through `updateStateWith` instead:
+
+```ts
+import { updateStateWith } from "@flow-state-dev/core/helpers";
+
+async function removeStep(ctx: PlanContext, step: string): Promise<boolean> {
+  return (await updateStateWith(ctx, (plan) => {
+    if (!plan.steps.includes(step)) return { state: plan, result: false };
+    return {
+      state: { ...plan, steps: plan.steps.filter((s) => s !== step) },
+      result: true,
+    };
+  })) ?? false;
+}
+```
+
+See [State mutation model](https://flow-state.dev/docs/state/mutation-model) →
+"Writing an updater that may run twice" for the full rule.
+
 ### Resource Collections
 
 Static resources are declared by name at definition time. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge stores, dynamic workspaces).

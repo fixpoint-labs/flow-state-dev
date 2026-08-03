@@ -230,11 +230,13 @@ function findOutwardWrites(callback, filePath) {
     });
   };
 
-  callback.forEachDescendant((node) => {
-    // Don't descend into a nested replay callback — it is checked on its own.
+  callback.forEachDescendant((node, traversal) => {
+    // Don't descend into a nested replay callback — the outer loop reaches it
+    // on its own, with its own notion of which bindings are "outer".
     if (node !== callback && isCallbackLike(node)) {
       const parent = node.getParent();
       if (Node.isCallExpression(parent) && isReplayEntryPointCall(parent)) {
+        traversal.skip();
         return;
       }
     }
