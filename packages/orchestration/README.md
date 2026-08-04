@@ -57,19 +57,16 @@ writes nothing.
 task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
 ```
 
-`granted` counts the failure retries this task was **authorized** — written when
-`fail()` re-pends the task, so it excludes the re-entries that do not spend the
-budget (`unblock`, `resumeFromReview`, `reclaim`) and includes a retry that was
-granted but never picked up. It is not derivable from `attempts`, which is a claim
-counter. `deniedByBudget` turns `true` once a retry was refused because the
-collection's budget was spent; the board's `terminationReason` reads that flag, so
-branch on it rather than parsing the error string.
+`granted` counts the failure retries this task was **authorized**, so it excludes
+the re-entries that do not spend the budget (`unblock`, `resumeFromReview`,
+`reclaim`) and includes a retry that was granted but never picked up.
+`deniedByBudget` turns `true` once a retry was refused because the collection's
+budget was spent; the board's `terminationReason` reads that flag, so branch on it
+rather than parsing the error string.
 
-The field is **absent** on a task that has never failed and on any task stored
-before it existed, so read it with a single guard — `task.retryLedger?.granted ?? 0`
-— and treat absent as zero granted, not denied. Counting starts at the upgrade: a
-durable task that had already retried comes back at zero rather than with a
-reconstructed history.
+The field is **absent** on a task that has never failed, so read it with a single
+guard — `task.retryLedger?.granted ?? 0` — and treat absent as zero granted, not
+denied.
 
 ### TaskCollection
 

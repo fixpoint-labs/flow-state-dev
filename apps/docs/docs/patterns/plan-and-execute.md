@@ -183,8 +183,8 @@ planAndExecute({
   // Default: false.
   enableReplanning?: boolean;
 
-  // Per-task retry budget stamped onto every seeded TaskInit. Default 1
-  // (no retries; preserves pre-migration behavior).
+  // Per-task retry budget stamped onto every seeded TaskInit. Default 1,
+  // meaning one attempt and no retries.
   maxAttemptsPerTask?: number;
 
   // Retries the whole board may authorize, across every task. Default 50.

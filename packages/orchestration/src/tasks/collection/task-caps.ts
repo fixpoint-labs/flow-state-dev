@@ -164,16 +164,27 @@ export interface TaskCapOptions {
   maxEnqueuedTasks?: number | null;
   /**
    * Cumulative failure retries this collection may authorize, across every task
-   * (FIX-948). Default {@link DEFAULT_MAX_TOTAL_RETRIES}. `null` = unbounded.
+   * (FIX-948). `null` = unbounded.
+   *
+   * **What omission does depends on where you are constructing.** Only the
+   * DEFAULTING SURFACES turn an omitted axis into
+   * {@link DEFAULT_MAX_TOTAL_RETRIES}: `taskBoard`'s declarative branch, the
+   * task-board capability, and the delegation surface — everything that routes
+   * through {@link resolveTaskCapDefaults}. Constructing a collection DIRECTLY
+   * (`createSequencerBackedTaskCollection`, `getOrCreateTaskCollection({ backing:
+   * "sequencer" | "request" })`) applies no default: an omitted axis is passed
+   * through as `undefined`, and `routeFailure` reads `undefined` as unbounded.
+   * So a direct caller who omits this option gets NO cumulative retry bound, not
+   * 50. Pass the value you want, or `resolveTaskCapDefaults` first.
    *
    * Three things about it are surprising and all three are deliberate:
    *
    * - **`0` is legal** and means "run every task once, never retry". Unlike the
    *   two creation caps — where `0` would mean "this board can do nothing" and
    *   is rightly refused — a zero retry budget is a coherent configuration, and
-   *   without accepting it there would be no way to express one: omission gives
-   *   the default and `null` gives unbounded. A first attempt is never refused
-   *   at any budget value, by construction.
+   *   without accepting it there would be no way to express one: on a defaulting
+   *   surface omission gives the default, and `null` gives unbounded. A first
+   *   attempt is never refused at any budget value, by construction.
    * - **The budget is spent at AUTHORIZATION**, not at execution. If a re-pended
    *   task is never re-claimed (the worker died, the lease expired) the grant
    *   stays spent. That errs conservative — the bound can only under-spend

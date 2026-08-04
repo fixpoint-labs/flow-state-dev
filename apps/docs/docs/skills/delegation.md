@@ -89,7 +89,7 @@ Only one of the two is recoverable by draining. `enqueued_task_cap_exceeded` mea
 
 That drain-then-continue loop assumes the pending work can run. It cannot always: a task stranded behind a failed dependency stays `pending`, holds its enqueue slot, and is why `runBoard` came back `blocked`. Draining again frees nothing, so a coordinator that sees `blocked` alongside a refused `addTask` has to cancel or replan the stranded tasks rather than repeat the drain.
 
-The board carries no retry budget, and it is the one bound you will not find here. A task created through `addTask` has no per-task retry setting: the tool does not accept one, so a delegated task runs once and its failure is final. There is nothing for a retry bound to bound. Plain `taskBoard` boards, where a task can carry `maxAttempts`, get [`maxTotalRetries`](../orchestration/task-board#bounding-the-retries) instead.
+A task created through `addTask` has no per-task retry setting, so a delegated task runs once and its failure is final. Plain `taskBoard` boards, where a task can carry `maxAttempts`, get [`maxTotalRetries`](../orchestration/task-board#bounding-the-retries).
 
 The enqueue bound applies **when a task is created**. Tasks also come back to `pending` on their own (a retry, an unblock, a resumed review, a reclaimed lease), and those are not bounded, so the pending count can sit above the number for a while. The hard ceiling is `maxTotalTasks`.
 

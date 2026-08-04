@@ -24,6 +24,33 @@
  * convergence, not of the two paths landing on different boards.
  */
 import { describe, expect, it, vi } from "vitest";
+
+/**
+ * Every `TaskCollectionRef` the delegation surface actually constructs.
+ *
+ * Hoisted so the `vi.mock` factory below (which vitest lifts above the imports)
+ * can close over it. The surface builds its board inside a private closure, so
+ * this is the only seam that observes the caps the SURFACE passed rather than
+ * caps a test re-derived alongside it.
+ */
+const { constructedRefs } = vi.hoisted(() => ({
+  constructedRefs: [] as { maxTotalRetries: number | null }[],
+}));
+
+// Wrap the real barrel: every export stays genuine, and the one construction
+// entry point the surface calls also records what it returned.
+vi.mock("../../src/tasks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/tasks")>();
+  return {
+    ...actual,
+    getOrCreateTaskCollection: async (options: Parameters<typeof actual.getOrCreateTaskCollection>[0]) => {
+      const ref = await actual.getOrCreateTaskCollection(options);
+      constructedRefs.push(ref);
+      return ref;
+    },
+  };
+});
+
 import { generator, handler } from "@flow-state-dev/core";
 import type { DefinedCapability, GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
@@ -371,6 +398,20 @@ describe("delegation board — the retry budget is filtered out of the cap sprea
       ...unfiltered,
     });
     expect(board.maxTotalRetries).toBe(DEFAULT_MAX_TOTAL_RETRIES);
+  });
+
+  it("holds on the board the SURFACE builds, not one a test rebuilds beside it", async () => {
+    // The two assertions above construct their collection from caps the test
+    // resolved itself, so they hold whatever `delegation-surface.ts` does —
+    // deleting its `maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE` leaves them
+    // green. This one drives the real executive tool surface and reads the ref
+    // the surface constructed, so the opt-out is pinned where it lives.
+    constructedRefs.length = 0;
+    const { tools, ctx } = await buildSurface();
+    await addN(toolNamed(tools, "addTask"), ctx, 1);
+
+    expect(constructedRefs.length).toBeGreaterThan(0);
+    for (const ref of constructedRefs) expect(ref.maxTotalRetries).toBeNull();
   });
 
   it("keeps the option off `SkillsLibraryOptions` — necessary, and not sufficient", () => {
