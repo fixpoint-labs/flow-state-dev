@@ -326,7 +326,7 @@ seam`, `the persisted log`), not functions you think exist.
 
 **When you do want real code, put it on the spec branch** — that's
 [`spec-poc`](../../.agents/skills/spec-poc/SKILL.md). Throwaway files under
-`poc/<ISSUE-ID>-<slug>/` on the never-merged spec branch are where a real POC belongs: the
+`spec-poc/<ISSUE-ID>-<slug>/` on the never-merged spec branch are where a real POC belongs: the
 author gets to try the design, the reviewer gets something to run, and the implementer gets a
 starting point, all without the doc carrying API-shaped claims. **Point at it from here in one
 line and say what it showed** — including when the premise held. Link **the spec PR**, not the

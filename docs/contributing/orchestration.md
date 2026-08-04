@@ -651,19 +651,23 @@ flowchart LR
 - **It never gates and it never decides.** A POC informs the human's call at the gate; no run
   answers *"should we build this?"*
 - **It never merges, and it is consumed before implementation.** The implementation branch is
-  cut from fresh `origin/main`, never from the spec branch (see "Worktree branching"), and while
-  the approved spec *document* is landed onto the implementation branch as its own commit,
-  **the POC never is.** A characterization test worth keeping is re-written under `tdd` as a
-  real CI spec or a `goals/` entry — graduated, not copied. Note that closing the spec PR also
-  **deletes its branch** (BP-037), which is fine because the POC's job finished at the gate —
-  but it means the durable citation is **the PR** (GitHub keeps a closed PR's diff viewable),
-  never the branch. An *epic* branch is never deleted, so an epic POC keeps a live home for the
-  life of the epic.
-- **CI stays green without weakening it.** POCs live in `poc/<ISSUE-ID>-<slug>/` at the repo
-  root, which is not a pnpm workspace package, so `turbo`-driven typecheck and test never see
-  it (`poc/**` is in `knip.json`'s root ignore for the same reason). This matters because CI
-  runs on every PR into `main`, spec PRs included, and the coordinator reads that signal — a
-  red spec PR is a broken gate.
+  cut from fresh `origin/main`, never from the spec branch (see "Worktree branching"), so
+  nothing on the spec branch reaches `main` by default. **Whatever an implementation PR does or
+  doesn't carry over from the spec branch, the POC is never part of it** — a characterization
+  test worth keeping is re-written under `tdd` as a real CI spec or a `goals/` entry, graduated
+  rather than copied. Closing the spec PR also **deletes its branch** (BP-037), which is fine
+  because the POC's job finished at the gate — but it means the durable citation is **the PR**
+  (GitHub keeps a closed PR's diff viewable), never the branch. An *epic* branch is never
+  deleted, so an epic POC keeps a live home for the life of the epic.
+- **CI stays green without weakening it.** POCs live in `spec-poc/<ISSUE-ID>-<slug>/`, outside
+  every pnpm workspace, so `turbo`-driven typecheck and test never reach them. That matters
+  because CI runs on every PR into `main`, spec PRs included, and the coordinator reads that
+  signal — a red spec PR is a broken gate. The mechanics live in
+  [`spec-poc/README.md`](../../spec-poc/README.md), next to the directory itself.
+
+  **`spec-poc/` (a directory) is not `poc/…` (a branch).** A settlement runs on a branch named
+  `poc/<ISSUE-ID>-<slug>`; a spec POC is a *directory* named `spec-poc/<ISSUE-ID>-<slug>/` on
+  the spec branch. Two mechanisms, two namespaces — deliberately not the same string.
 
 ### Who dispatches it
 

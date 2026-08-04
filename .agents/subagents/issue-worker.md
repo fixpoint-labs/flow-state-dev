@@ -31,14 +31,16 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   The PR description carries **both reviewer blocks** — the contract verbatim, then a per-PR
   *"Parts worth reviewing closely"* ([`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md)).
   **If an `issue-spec` Step 4 trigger fires, build the POC in this same step** — under
-  `poc/<ISSUE-ID>-<slug>/` on the spec branch, which CI ignores
+  `spec-poc/<ISSUE-ID>-<slug>/` on the spec branch, which CI ignores
   ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
   you already have the branch and the context, and you're the one who knows which premise is
   load-bearing. Costs **zero** review rounds. Record it in §7 (and §12 for a premise it settled)
   and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
-  waste. **Say in your status line if a load-bearing POC is unfinished**, so the coordinator
-  discloses it when it surfaces the gate rather than letting a human approve on an unchecked
-  premise.
+  waste. Report it on the `spec_poc:` line of your status (below); if a load-bearing one is
+  unfinished, say so there so the coordinator can disclose it when it surfaces the gate.
+  **Unlike a settlement, this disclosure is advisory** — there is no schema field and nothing in
+  `epic-wake` enforces it, so it holds only because you report it. Deliberate: a POC's trigger is
+  judgment, not mechanism, and it isn't worth a workflow field until the practice has run.
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
   changes the approach, record the rest verbatim as §13 implementer notes, escalate genuine
@@ -102,6 +104,7 @@ phase: <NEEDS_SPEC | AWAITING_SPEC_APPROVAL | NEEDS_IMPLEMENTATION | PR_FEEDBACK
 spec_pr: <#/none>   impl_pr: <#/none>   branch: <name>
 gate_or_blocker: <none | awaiting-spec-approval | ready-to-merge | blocked: ...>
 spec_review: <rounds spent this dispatch> · spec_level_found: <yes/no/n-a>
+spec_poc: none | <spec-poc/ path> · showed: <one line, or "unfinished — load-bearing"> (advisory: no schema field)
 settle_requested: none | claim: <X does/does not Y> · load: <what depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 did: <one line>
 ```

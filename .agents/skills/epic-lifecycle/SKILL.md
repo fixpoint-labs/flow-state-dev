@@ -504,24 +504,25 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
   document), and returns the handles. The coordinator holds only handles (epic issue ID, name,
   branch, epic PR#), never the spec text.
-- **Consider an end-state POC — before the objective gate, not after.** The one question only
-  this altitude can ask is *what does the set look like once every issue has landed*, and the
-  objective gate is the **last moment the division into issues is cheap to change**. Each issue
-  can be individually sound while the assembled surface is wrong: a seam two issues both want to
-  own, one decision landing in two places, an end-state nobody would have chosen if they'd seen
-  it. When that's genuinely unclear, dispatch `epic-agent` to build a rough
-  [`spec-poc`](../spec-poc/SKILL.md) end-state on the epic branch (`poc/epic-<name>/`, which CI
-  ignores) — all the set's surfaces sketched together, unshipped — and record what it showed in
-  the epic-spec's **§3 Shape of the whole** (four lines: built · see it · showed · changed).
-  Where the fork is *which* division to take, 2–3 variants at equal effort, and the pick becomes a
-  numbered theme.
-
-  **Triggered, not default** — "the shape is obvious" is a complete reason to skip, and an epic
-  whose issues barely touch each other has nothing to assemble. It **blocks nothing**: it costs no
-  review rounds and the gate stays reachable while it runs. But **disclose an in-flight one when
-  you surface the gate** — the human can approve anyway, and usually should, just not on a premise
-  nobody said was unchecked. Canonical:
+- **Consider an end-state POC — before the objective gate, not after.** The objective gate is the
+  **last moment the division into issues is cheap to change**, and whether the assembled surface
+  is right is the one question only this altitude can ask. When that's genuinely unclear, dispatch
+  `epic-agent` to build a rough [`spec-poc`](../spec-poc/SKILL.md) end-state on the epic branch,
+  recorded in the epic-spec's **§3 Shape of the whole**. Triggered, not default; blocks nothing;
+  **disclose an in-flight one when you surface the gate**, so nobody approves on an unchecked
+  premise. Why and when, canonically:
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec-branch POCs".
+
+  **Two mechanics are yours, because `epic-wake` has no slot for this.** The script's cap is shared
+  by the issue workers, the epic fold and settlements, and it knows nothing about a POC dispatch:
+  1. **It takes the fold's slot — never run it concurrently with a fold or a settlement.** One
+     `epic-agent` worktree at a time on the epic branch, or two dispatches race the same branch.
+     A wake that has a fold to do does the fold; the POC waits for the next one.
+  2. **Record it in the epic record, or it re-dispatches every wake.** `AWAITING_OBJECTIVE` wakes
+     on every bot review and CI event, and the trigger is judgment — so it re-fires unless the
+     answer is written down. Write `spec_poc: <path> · showed: <one line>` — or
+     `spec_poc: skipped: <why>` — the same way `lessons: skipped:` makes a wrap terminate. **A
+     skip is a recorded outcome, not a silent one.**
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
   until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*

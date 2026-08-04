@@ -101,7 +101,7 @@ Self-contained is the load-bearing constraint, not a style preference:
 - **We have no hosted PR preview.** GitHub serves committed HTML as plain text and does not
   render it, so the reviewer's path is *pull the branch and open the file* — and that only
   works if opening the file is the whole of it.
-- The PR description therefore gives **the literal command**: `open poc/FIX-820-timeline/variant-a.html`.
+- The PR description therefore gives **the literal command**: `open spec-poc/FIX-820-timeline/variant-a.html`.
   No dev server, no `pnpm install`, no build.
 
 Several variants are several files in the same directory, plus one `README.md` comparing
@@ -130,37 +130,40 @@ arguing. Four rules, and the second is the one that gets broken:
    for the option you already preferred and puts a human's name on it. If you notice you're
    building one properly and one carelessly, stop: you've already decided, so write the
    decision down and skip the variants.
-3. **One comparison page** (`poc/<ID>-<slug>/README.md`): what each variant does
+3. **One comparison page** (`spec-poc/<ID>-<slug>/README.md`): what each variant does
    differently, what each is better at, what each costs, and the **question the choice turns
    on**. Not a recommendation-free dump — say which you'd pick and why, then let it be
    argued with.
 4. **The chosen variant becomes a numbered §6 Decision** in the spec, citing the POC. A
    variant comparison that doesn't end in a Decision was a tour, not a fork.
 
-Two or three. Four is a sign the question is under-specified.
+**Two or three — deliberately tighter than [`prototype`](../prototype/SKILL.md)'s UI default of
+3 (cap 5).** Not drift: every variant here is a published artifact a reviewer has to open and
+form an opinion on, so the cost of a fourth falls on *them*, not on you. A private exploration
+can afford five; a review surface can't. Four is a sign the question is under-specified.
 
 ## Where it lives, and why CI stays green
 
-**`poc/<ISSUE-ID>-<slug>/`** at the repo root — e.g. `poc/FIX-775-resume-seam/`,
-`poc/epic-stream-resilience/`.
+**`spec-poc/<ISSUE-ID>-<slug>/`** at the repo root — e.g. `spec-poc/FIX-775-resume-seam/`,
+`spec-poc/epic-stream-resilience/`.
 
-That location is chosen for one mechanical reason: **`poc/` is not a pnpm workspace
-package** (`pnpm-workspace.yaml` lists `packages/*`, `apps/*`, `examples/*`,
-`examples/guides/*`, `labs/*`, `goals`), and both `pnpm typecheck` and `pnpm test` run
-through `turbo`, per package. Code outside every workspace is never typechecked and never
-collected as a test. This matters because **CI runs on every PR into `main`, including spec
-PRs** — and a POC is quick and dirty by design, so anywhere inside a package it would turn
-the spec PR red and the coordinator reads that CI signal.
+**`spec-poc/` is not a pnpm workspace package**, so `turbo`-driven `pnpm typecheck` and
+`pnpm test` never reach it — which is what lets a POC be quick and dirty even though **CI runs
+on every PR into `main`, spec PRs included**. Full mechanics, next to the directory:
+[`spec-poc/README.md`](../../../spec-poc/README.md).
 
 Rules that keep it that way:
 
 - **Never put a POC inside `packages/*`.** Those ship to consumers.
-- **Never add `poc/` to `pnpm-workspace.yaml`**, and give it no `package.json` — that is
+- **Never add `spec-poc/` to `pnpm-workspace.yaml`**, and give it no `package.json` — that is
   exactly what would pull it into turbo's graph.
-- **Run it directly**: `pnpm tsx poc/<dir>/run.ts`, `pnpm fsdev run …`, or open the HTML.
-  Don't wire a root `package.json` script; a script implies it's maintained.
+- **Run it directly**: `pnpm tsx spec-poc/<dir>/run.ts`, `pnpm fsdev run …`, or open the HTML.
+  **Never wire a root `package.json` script** — beyond implying it's maintained, that is the one
+  publishing route that *can* turn the knip gate red: knip's `unlisted` / `binaries` findings
+  attach to the root `package.json`, which the `spec-poc/**` ignore does **not** cover. A script
+  is how you'd reintroduce the exact failure this location was chosen to avoid.
 - **Imports resolve or CI complains.** `pnpm knip:ci` gates on unresolved imports and
-  undeclared dependencies across the root workspace, so `poc/**` is listed in `knip.json`'s
+  undeclared dependencies across the root workspace, so `spec-poc/**` is listed in `knip.json`'s
   root `ignore`. Don't remove that line, and don't rely on it to hide a POC that imports
   something that doesn't exist — prefer imports that actually resolve.
 - **If CI still goes red, fix the POC, don't disable the check.** A red spec PR is a broken
@@ -174,13 +177,13 @@ block, and it is not optional:
 ```
 ## POC on this branch
 
-`poc/FIX-820-timeline/` — three variants of the run timeline.
+`spec-poc/FIX-820-timeline/` — three variants of the run timeline.
 
-  open poc/FIX-820-timeline/variant-a.html      # one row per block
-  open poc/FIX-820-timeline/variant-b.html      # collapsed by phase
-  open poc/FIX-820-timeline/variant-c.html      # flame-graph
+  open spec-poc/FIX-820-timeline/variant-a.html      # one row per block
+  open spec-poc/FIX-820-timeline/variant-b.html      # collapsed by phase
+  open spec-poc/FIX-820-timeline/variant-c.html      # flame-graph
 
-Comparison + my pick: poc/FIX-820-timeline/README.md
+Comparison + my pick: spec-poc/FIX-820-timeline/README.md
 The question it turns on: does a reader scan for *what ran* or for *what was slow*?
 
 Throwaway — never merges, closes with this PR. Please don't review it as code.
@@ -214,9 +217,9 @@ diff GitHub keeps viewable after the branch is gone. **Cite the PR, never the br
 
 That the POC can't leak into the codebase rests on one mechanical fact worth stating: the
 implementation branch is cut from **fresh `origin/main`**, never from the spec branch (see
-`orchestration.md` → "Worktree branching"). The approved spec *document* is landed onto the
-implementation branch as its own commit; **the POC is not, ever.** If you find yourself
-copying `poc/` files onto a `fix/` branch, stop — either it's real code and needs `tdd`, or
+`orchestration.md` → "Worktree branching"). Whatever else an implementation PR carries over
+from the spec branch, **the POC is not part of it, ever.** If you find yourself
+copying `spec-poc/` files onto a `fix/` branch, stop — either it's real code and needs `tdd`, or
 it's throwaway and it stays behind.
 
 What crosses the line, and how:

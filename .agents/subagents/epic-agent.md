@@ -66,17 +66,15 @@ Take the single action the dispatch calls for:
   costs, plus where you're unsure. Rules:
   [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md). Refresh the
   per-PR block whenever the objective materially changes; the contract never changes.
-- **End-state POC** (when the coordinator dispatches one): build a rough
-  [`spec-poc`](../skills/spec-poc/SKILL.md) end state under `poc/epic-<name>/` on the epic
-  branch — every issue's surface sketched together, unshipped — to answer the one question only
-  this altitude can ask: *does the division into issues hold once it's all there?* Then write
-  the epic-spec's **§3 Shape of the whole** in four lines (built · see it · showed · changed)
-  and add the POC block to the PR description (one runnable/openable command per artifact, the
-  question it answers, and that it's throwaway). Where the fork is *which* division to take,
-  2–3 variants at **equal effort** — a strawman manufactures consent for the option you already
-  preferred — compared on one page, and the pick becomes a numbered theme. Keep it in `poc/`
-  (never a package, no `package.json`) so CI stays green, and **never merge it**. Report a POC
-  that changed nothing just the same: the premise holding is a real result.
+- **End-state POC** (when the coordinator dispatches one): build it under
+  `spec-poc/epic-<name>/` on the epic branch, following
+  [`spec-poc`](../skills/spec-poc/SKILL.md) — read it for the kinds, the variant rules and the
+  location constraints; don't re-derive them. It answers the one question only this altitude can
+  ask: *does the division into issues hold once it's all there?* **Three things are yours here:**
+  write the epic-spec's **§3 Shape of the whole** in four lines (built · see it · showed ·
+  changed); add the POC block to the PR description; and where the fork is *which* division to
+  take, let the chosen variant become a **numbered theme**. Report a POC that changed nothing
+  just the same — the premise holding is a real result.
 - **Update**: fold any given feedback into the objective/themes/open-questions (re-draft
   for coherence — anti-addenda discipline, same as issue specs) **and** refresh the running
   index from the PR handles the coordinator passed. Both happen in the one update pass — there
@@ -128,7 +126,9 @@ epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (doc attached to epic issue: yes/added)
 objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs) | end-state POC>
-poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>
+spec_poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>
+    (`spec_poc:`, never `poc:` — `issue-lifecycle` already uses `poc:` for a settlement verdict,
+     and these are the two mechanisms most easily confused)
 epic_review: <rounds spent this dispatch; 0 for factual-only> · above_bar_found: <yes/no/n-a>
 settle_requested: none | claim: <X does/does not Y> · load: <which cross-cutting decision depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 not_folded: <none | below-the-bar items + which issue each belongs to, for the coordinator to route>

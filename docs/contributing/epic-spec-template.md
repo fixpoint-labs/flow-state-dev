@@ -156,8 +156,8 @@ survived contact with code is worth knowing.
 > **Built:** all three issues' surfaces sketched together end to end, rough and unshipped
 > — a cursor on the stream seam, heartbeat frames, and a client that reconnects — driven by
 > one throwaway flow.
-> **See it:** `poc/epic-stream-resilience/` on this branch. `pnpm poc:stream-resilience`
-> prints the assembled reconnect transcript.
+> **See it:** `spec-poc/epic-stream-resilience/` on this branch.
+> `pnpm tsx spec-poc/epic-stream-resilience/run.ts` prints the assembled reconnect transcript.
 > **Showed:** heartbeats and resume both want to write through the sequence allocator, and
 > each issue read alone puts that decision in its own file. Considered separately they'd
 > have shipped two allocators.

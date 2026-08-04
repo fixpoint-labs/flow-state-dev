@@ -3,7 +3,7 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.mjs"],
-      "ignore": ["poc/**"],
+      "ignore": ["spec-poc/**"],
       "ignoreBinaries": ["build"]
     },
     "packages/*": {

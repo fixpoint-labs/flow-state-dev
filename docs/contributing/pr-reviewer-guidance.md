@@ -88,7 +88,16 @@ same review is the mistake this table exists to prevent.
 - **Implementation PR** — no template; the block below is the source. Authored in
   `issue-implement` Step 9, alongside the Key Decisions & Ramifications list.
 
-### Implementation-PR contract (paste into the description)
+### Implementation-PR contract — two variants, picked by route
+
+An implementation PR arrives by one of the two routes in
+[`orchestration.md`](orchestration.md) → "Which issues get a spec", and they need **opposite**
+things said. Using the spec-route text on a bug is a real defect, not a cosmetic one: it
+dangles a link to a spec that was never written, and it tells reviewers the approach is
+settled when on that route **nothing** was settled and the approach is the main thing to
+check.
+
+**Spec route** (Feature · Enhancement · Improvement — a spec exists and was approved):
 
 > **How to review this.** This implements an **approved spec**
 > ([spec PR](#) · `docs/specs/<ISSUE-ID>.md`), so the approach and the numbered Decisions
@@ -103,6 +112,23 @@ same review is the mistake this table exists to prevent.
 > **Already settled upstream:** the approach and every §6 Decision (human-approved — if
 > one is wrong, say so as a spec finding and it gets folded back; don't re-argue it inline),
 > and the conventions in `docs/contributing/best-practices.md`.
+>
+> **Parts worth reviewing closely:** *(1–3 items, per this file's rules)*
+
+**Direct route** (a **bug**, or a one-screen agent-brief change — no spec, no spec PR):
+
+> **How to review this.** This is a **bug fix on the direct route**: there is no spec and no
+> spec PR, because the hard part was the diagnosis and it happened in code. **This PR is the
+> only gate**, so unlike a spec-backed change, the **approach is in scope** — nothing here was
+> signed off upstream.
+>
+> **Most valuable here:** the diagnosis chain — does the repro actually reproduce the reported
+> failure, is the named cause the real one, does the fix address that cause rather than the
+> symptom, and does the regression test fail without the fix? Then the second path (the legacy
+> shape, the null boundary, the concurrent case, the cancel path).
+>
+> **In scope to challenge:** where the guard was placed, any behaviour change a user could
+> notice, and whether this should have been a spec'd feature instead of a fix.
 >
 > **Parts worth reviewing closely:** *(1–3 items, per this file's rules)*
 
