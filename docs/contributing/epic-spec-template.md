@@ -35,7 +35,9 @@ sub-issues — so it reads end to end. Copy the shape, not the content.
 ## For reviewers — what this document is
 
 *(Paste verbatim at the top of the epic PR description, the same way a spec PR carries
-its own contract. Most epic-PR review is automated reviewers we can't instruct.)*
+its own contract. Most epic-PR review is automated reviewers we can't instruct. This is the
+**static** half; the description also carries a **per-PR** "Parts worth reviewing closely"
+block — see [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), canonical for both.)*
 
 This is an **epic-spec**: the shared objective and cross-cutting decisions for a *set* of
 issues. It is not an implementation plan and it is not any one issue's design.
@@ -52,9 +54,35 @@ issues. It is not an implementation plan and it is not any one issue's design.
 
 - Any single issue's approach, architecture, file layout, or test plan.
 - Anything that touches exactly one issue. It belongs on that issue's spec PR.
+- **Any POC files on this branch, entirely.** This PR is never merged, so it may carry a
+  throwaway end-state POC built to show what the set looks like once every issue has landed
+  ([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)). None of it ships. React to the
+  *shape and the scoping it reveals* — §3 summarizes what it showed — and don't review it as
+  code.
 
 Feedback in the second list is routed to the issue it concerns as an implementer note,
 not folded in here.
+
+---
+
+## Parts worth reviewing closely
+
+*(Authored fresh each time the epic PR is opened or its objective materially changes. 1–3
+items at **epic altitude** — the objective, the set's composition, a cross-cutting decision.
+Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+
+> **1. §1 — whether this is three issues or two.** FIX-777 (backoff defaults) is the one I'd
+> cut. It's kept and scoped down, and the reasoning is in §1. The question: does shipping a
+> default with no knobs actually serve the objective, or is it a config line we're dressing
+> up as resilience? A wrong answer here costs a whole issue's work.
+>
+> **2. Theme 4 — the client is the only reconnect actor.** Two issues depend on it silently.
+> If it falls, the epic's *scope* changes rather than one issue's design, which is why it's
+> stated here and not in a spec.
+>
+> **Where I'm unsure:** the sequencing in theme 3. FIX-775 merging first is clearly right;
+> whether 776 and 777 can genuinely be *specced* in parallel against a cursor that doesn't
+> exist yet is a guess.
 
 ---
 
@@ -111,7 +139,33 @@ isn't a theme.**
 >    rules, and it is the decision most likely to be argued — if it falls, the
 >    epic's scope changes rather than one issue's design.
 
-## 3. Running index
+## 3. Shape of the whole *(POC — omit the section when the epic built none)*
+
+The one thing only this altitude can check: **what the set looks like once every issue has
+landed.** Each issue can be individually sound while the assembled surface is wrong — a
+seam two issues both want to own, a division that puts one decision in two places, an
+end-state nobody would have chosen if they'd seen it. A rough end-state POC on the epic
+branch makes that visible *before* the objective gate. Built under
+[`spec-poc`](../../.agents/skills/spec-poc/SKILL.md) when a trigger fires; the default is
+none, and "the shape is obvious" is a legitimate reason to skip.
+
+Four lines, not a report: **what was built · where to see it · what it showed · what
+changed because of it.** A POC that changed nothing still gets its line — that a premise
+survived contact with code is worth knowing.
+
+> **Built:** all three issues' surfaces sketched together end to end, rough and unshipped
+> — a cursor on the stream seam, heartbeat frames, and a client that reconnects — driven by
+> one throwaway flow.
+> **See it:** `spec-poc/epic-stream-resilience/` on this branch.
+> `pnpm tsx spec-poc/epic-stream-resilience/run.ts` prints the assembled reconnect transcript.
+> **Showed:** heartbeats and resume both want to write through the sequence allocator, and
+> each issue read alone puts that decision in its own file. Considered separately they'd
+> have shipped two allocators.
+> **Changed:** added theme 1's "one cursor format" as a *constraint on the allocator*, not
+> just on the encoding, and moved sequence allocation into FIX-775's scope so 776 consumes
+> it. Without the POC that surfaces as a merge conflict in week three.
+
+## 4. Running index
 
 The durable audit log — every issue under the epic and every PR it produced, so a human
 or an agent navigates the set from one place. Refreshed from the coordinator's status
@@ -128,7 +182,7 @@ table; it is a projection, not a second live source. **Keep it a table, not pros
 > ([`orchestration.md`](orchestration.md) → "Which issues get a spec"). An empty
 > Spec PR cell on a `bug` row is correct, not a gap.*
 
-## 4. Open cross-cutting questions
+## 5. Open cross-cutting questions
 
 Questions raised by epic-PR review, or by an issue commenting **up**, that no single
 issue can answer. Each: the question, who raised it, what it blocks (usually nothing),

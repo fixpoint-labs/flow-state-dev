@@ -21,6 +21,15 @@ Read [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Sett
 claim (POC settlement)" for when this fires, what it costs, and where the record lands. That
 is canonical; this file is how you execute it.
 
+**Not this skill: validating a direction before the gate.** A settlement is *reactive* — it
+arbitrates between two parties who have already stopped converging, which is why it's an
+independent worker and why its output is a verdict. Building throwaway code *proactively*, so
+reviewers and the human at the approval gate can see the shape a spec proposes, is
+[`spec-poc`](../spec-poc/SKILL.md): it fires on a trigger rather than a loop, lives published on
+the never-merged spec branch rather than in a deleted worktree, and answers *"is this direction
+right?"* rather than *"who is right?"*. A trigger noticed during authoring is the cheap case; by
+the time you're here, prose has already cost two rounds.
+
 **What justifies running at all: a loop, not an assertion.** This is for a claim that has been
 asserted and counter-asserted **at least twice** — it came back after being answered, the spec
 flipped on it, or two review rounds concluded opposite things. A claim asserted once gets

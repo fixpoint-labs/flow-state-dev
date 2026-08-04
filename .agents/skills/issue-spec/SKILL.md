@@ -314,10 +314,37 @@ implementer to weigh about code that isn't shipping. Only a comment on the sketc
 *direction* — wrong layer, wrong composition, won't work — is real, and that's an ordinary
 fold. See [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review".
 
-If a design question needs a real experiment rather than a sketch, **stop drafting and run
-`prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
+**When a sketch isn't enough — build a POC, and pick the right kind.** A spec that hand-waves
+through a question a day of throwaway code would have answered produces wasted implementation
+work. Two routes, and the difference is **who reads the result**:
 
-If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without a prototype.
+- **[`spec-poc`](../spec-poc/SKILL.md) — the published route, and the default here.** Built on
+  the spec branch under `spec-poc/<ISSUE-ID>-<slug>/` so the reviewers and the human at the gate
+  can run it. **Read that skill for the triggers and the four kinds** — the short version is an
+  unverified premise, a novel composition, ergonomics that only show in code, something with a
+  look, or two shapes in contention. The default is still *no POC*.
+- **[`prototype`](../prototype/SKILL.md) — the private route.** You're exploring, undecided,
+  and nobody else needs to see it: a throwaway flow in
+  `apps/kitchen-sink/flows/_prototypes/`, answer captured in `NOTES.md`, brought back as
+  input. Use it when the question is *yours* rather than the reviewer's.
+
+**Create the spec branch before you commit a POC — and then Step 6 must not re-create it.** A
+published POC has to be *on* the spec branch, so if a trigger fires, create the branch here,
+once, from fresh `origin/main`: `git fetch origin main && git checkout -B spec/<ISSUE-ID>
+origin/main`. Commit the POC to it. **Then tell Step 6 the branch already exists**, because
+Step 6's `checkout -B spec/<ISSUE-ID> origin/main` *resets* the branch and would silently
+discard every POC commit — leaving §7 and the PR description pointing at files that aren't in
+the PR. A private `prototype` needs none of this: it isn't committed to the spec branch at all.
+
+Either way, **record what it showed in §7 — including when the premise held.** A POC that
+changed nothing is a real result; only reporting the ones that found problems teaches the next
+reader that a quiet POC failed. A premise it settled goes in §12 with the same
+"resolved, don't reopen" force a `settle-claim` verdict carries, and if it moved the design,
+add a *Spec evolution* line. Building it costs **zero review rounds** and blocks nothing — but
+if a load-bearing POC is still in flight when the gate is surfaced, **say so**, so nobody
+approves on an unchecked premise. Full rules: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec-branch POCs".
+
+If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without either.
 
 Once design questions are resolved, draft the implementation spec. The spec must follow the project's conventions from `linear-practices.md`:
 
@@ -409,9 +436,14 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
 1. **Write `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`) with **Part I and Part II** in full, and an opening **Spec evolution** section with one entry: `- **Spec drafted** — <one line: how the problem is framed, the approach chosen, and the build shape>.` This is the canonical reviewable artifact.
 
-2. **Open the spec PR ready for review.** Create `spec/<ISSUE-ID>` based on fresh `origin/main` — worktree-safe, so it's correct whether you're in the coordinator's checkout or a worktree spun off it (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching): `git fetch origin main && git checkout -B spec/<ISSUE-ID> origin/main`. Commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>` **ready for review** (not a draft) with `create_pull_request`. **Label the PR `spec`** so spec PRs stay filterable and the orchestrators can find them by label (create the `spec` label in the repo if it doesn't exist yet).
+2. **Open the spec PR ready for review.** Get onto `spec/<ISSUE-ID>` — and **which command depends on whether Step 4 already created it for a POC**, because the create form resets the branch:
 
-   **The PR description opens with the reviewer contract, then Part I ("The Case") verbatim.** The contract is the `## For reviewers — what this document is` block from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted at the very top: what this document is, what's in scope to challenge (framing, approach, the numbered Decisions, invalidating constraints, scope), and what's deliberately unsettled and owned by the implementer (names, signatures, layout, local structure, micro-optimizations, test internals). Most spec-PR review comes from **automated reviewers we can't instruct**, tuned for code review and pointed at a document that is deliberately not a finished design — this block is the one lever we have on them, it costs nothing, and it raises the altitude of what comes back. Never ship a spec PR without it.
+   - **No POC (the common case): create it** on fresh `origin/main` — worktree-safe, so it's correct whether you're in the coordinator's checkout or a worktree spun off it (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching): `git fetch origin main && git checkout -B spec/<ISSUE-ID> origin/main`.
+   - **Step 4 built a POC: the branch already exists and carries commits. Do NOT run the line above** — `-B … origin/main` resets it, discarding every POC commit and leaving §7 and the POC block pointing at files that aren't in the PR. You are already on the branch in the same worktree, so just verify it (`git branch --show-current`) and commit onto it; if you somehow aren't, check it out **without** re-basing on main — `git checkout spec/<ISSUE-ID>` (or `git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` if it was already pushed).
+
+   Then commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>` **ready for review** (not a draft) with `create_pull_request`. **Label the PR `spec`** so spec PRs stay filterable and the orchestrators can find them by label (create the `spec` label in the repo if it doesn't exist yet).
+
+   **The PR description opens with the two reviewer blocks, then Part I ("The Case") verbatim.** Both are required and they do different jobs — the **reviewer contract** (`## For reviewers — what this document is`, pasted verbatim from [`spec-template.md`](../../../docs/contributing/spec-template.md); it's the one lever we have on automated reviewers we can't instruct, so never ship a spec PR without it), then **"Parts worth reviewing closely"**, authored fresh for this spec. The rules for both, and the worked example, are canonical in [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) and [`spec-template.md`](../../../docs/contributing/spec-template.md) → "Parts worth reviewing closely" — follow them there rather than re-deriving them here. **If a Step 4 POC was built, add the POC block too** (one runnable command per artifact, the question it answers, and that it's throwaway).
 
    Part I follows — problem/why-now, solution in plain terms and the tenets it leans on, tradeoffs, focus practices, usage examples, and the numbered Decisions & rules — so reviewers see the scan-first shape without opening the doc; Part II (the directional Build Plan) is reviewed via the committed doc diff, not pasted into the body. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the design *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
 
