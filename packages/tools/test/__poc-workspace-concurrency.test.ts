@@ -207,7 +207,8 @@ describe("Q2 separate collections", () => {
 
 // ─── Q3/Q4 — "detect, don't merge": minimal base-aware flush ─────────────────
 
-type Conflict = { path: string; base: string | null; theirs: string | null; ours: string };
+/** `ours: null` means our side is a deletion, not an edit. */
+type Conflict = { path: string; base: string | null; theirs: string | null; ours: string | null };
 
 /**
  * The whole proposed mechanism. Carries the hydrated hash per path, and:
@@ -269,11 +270,25 @@ class BaseAwareSync {
       written.push(p);
     }
 
-    for (const [p] of this.base) {
-      if (!present.has(p)) {
-        deleted.push(p);
-        await this.collection.delete(p);
+    for (const [p, baseHash] of this.base) {
+      if (present.has(p)) continue;
+      // A delete is a write of "absent", so it needs the same evidence: the
+      // collection must still hold what we hydrated. If someone edited the
+      // file since, deleting it destroys their work exactly as clobbering
+      // would — report the conflict instead (edit-vs-delete).
+      const existing = await this.collection.getOptional(p);
+      if (existing === undefined) continue; // already gone; nothing to do
+      if (existing.state.hash !== baseHash) {
+        conflicts.push({
+          path: p,
+          base: baseHash,
+          theirs: await existing.readContent(),
+          ours: null, // ours is the deletion
+        });
+        continue;
       }
+      deleted.push(p);
+      await this.collection.delete(p);
     }
     return { written, conflicts, deleted };
   }
@@ -322,6 +337,33 @@ describe("Q3/Q4 detect-don't-merge", () => {
     );
     expect(shared.store.has("new.ts")).toBe(true); // delete-by-absence gone
     expect(rB.deleted).toEqual([]);
+  });
+
+  it("3d — edit vs delete: B's delete must not erase A's flushed edit", async () => {
+    const shared = createCollection([entry("a.ts", "ORIGINAL")]);
+    const sbA = createMockSandbox();
+    const sbB = createMockSandbox();
+    const A = new BaseAwareSync(sbA, shared);
+    const B = new BaseAwareSync(sbB, shared);
+
+    await A.hydrate();
+    await B.hydrate(); // both carry a.ts@ORIGINAL as base
+    sbA.files.set("/w/a.ts", "A-EDIT");
+    sbB.files.delete("/w/a.ts"); // B removes its local copy
+
+    await A.flush(); // a.ts is now A-EDIT in the collection
+    const rB = await B.flush(); // B's delete is based on a stale hash
+
+    console.log(
+      `[q3d] B deleted=${JSON.stringify(rB.deleted)} conflicts=${rB.conflicts.length} · ` +
+        `a.ts survives=${shared.store.has("a.ts")} ` +
+        `content=${shared.store.get("a.ts")?.content ?? "GONE"}`,
+    );
+    // The write path already refuses to clobber a changed file; the delete
+    // path must refuse for the same reason and on the same evidence.
+    expect(rB.deleted).toEqual([]);
+    expect(rB.conflicts).toHaveLength(1);
+    expect(shared.store.get("a.ts")?.content).toBe("A-EDIT");
   });
 
   it("4 — is the conflict report actionable (both versions recoverable)?", async () => {
