@@ -1069,7 +1069,7 @@ request has no wake source.** Two ways in, and FIX-978 closes neither:
 | How a task gets there | Why FIX-978 does not help |
 |---|---|
 | FIX-978's own reclamation returned it to `pending` | Reclamation is what put it there; nothing then creates a request. |
-| **The admission window** — the task was persisted, and the Workstream's request never was: the coordinating request crashed in the gap, **or the dispatch was rejected at the concurrency gate** | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
+| **The admission window** — the task was persisted, and the Workstream's request never was: the coordinating request crashed in the gap, its dependencies were unsatisfied at admission, or a soft-fail retry returned it to `pending`. **Concurrency-rejected dispatch is NOT in this set** — under claim-before-spawn it is already `in_progress` with a lease, so FIX-978 reclaims it; see the paragraph below | **No worker ever claimed it, so there is no expired lease to reclaim.** `reclaim` skips any task that is not `in_progress` with a past `leaseUntil` — checked twice, on the mirror read (`resource-backed.ts:412-418`) and again inside `updateState` (`:422-428`). A never-claimed `pending` task is invisible to it by construction. |
 
 **Claim precedes spawn, and the ordering is load-bearing.** An earlier draft of §1's diagram spawned
 the Workstream first. That is wrong twice over: the claim *is* the exclusivity boundary, so spawning

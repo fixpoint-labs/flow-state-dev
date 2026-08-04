@@ -165,7 +165,11 @@ let seq = 0;
 async function dispatchToWorkstream(
   stores: StoreRegistry,
   parentSessionId: string,
-  task: WorkstreamTask
+  task: WorkstreamTask,
+  // The binding a restarted process would carry in the envelope. Defaults to
+  // deriving it live, which is what an in-process dispatch does; the restart
+  // test passes the PERSISTED one so the proof actually exercises it.
+  binding: DispatchBinding = bindWorker(task.boardId, task.assignee)
 ): Promise<string> {
   const all = (await stores.session.list({})) as Workstream[];
   const existing = all.find(
@@ -183,7 +187,7 @@ async function dispatchToWorkstream(
     workstreamId = `ws_${++seq}`;
     const record: Workstream = {
       id: workstreamId,
-      flowKind: "worker",
+      flowKind: binding.flowKind,
       boardId: task.boardId,
       assignee: task.assignee,
       userId: "u1",
@@ -198,26 +202,15 @@ async function dispatchToWorkstream(
     await stores.session.set(workstreamId, record, "any");
   }
 
-  // Re-resolve from the persisted string coordinate through a registry rebuilt
-  // from static flow definitions — what a BullMQ worker or restarted process
-  // must do, since it cannot be handed the block.
-  const binding = bindWorker(task.boardId, task.assignee);
+  // Re-resolve from the string coordinate through a registry rebuilt from
+  // static flow definitions — what a BullMQ worker or restarted process must
+  // do, since it cannot be handed the block.
   const flow = buildFlowRegistry()[binding.flowKind];
   if (flow === undefined) throw new Error(`unresolvable flowKind: ${binding.flowKind}`);
 
-  // The binding carries `action: string`, but `runAction` wants a key of this
-  // flow's actions. Narrowing it is a REQUIRED step, not ceremony: it is the
-  // point where a durable string coordinate re-enters the type system, and it
-  // is exactly what N9 says has no surface to derive from. A cast here would
-  // hide the one thing this POC exists to expose.
-  if (!(binding.action in flow.actions)) {
-    throw new Error(`unresolvable action: "${binding.action}" on flow "${binding.flowKind}"`);
-  }
-  const actionName = binding.action as keyof typeof flow.actions & string;
-
   await runAction({
     flow,
-    actionName,
+    actionName: binding.action,
     input: task.input,
     userId: "u1",
     sessionId: workstreamId,
@@ -307,9 +300,30 @@ describe("POC v2: Workstream execution across flows", () => {
 
     // Simulate a restart: throw away everything but the serialized task and
     // binding, rebuild the flow registry from static definitions, resolve, run.
+    // The revived BINDING is passed through — an earlier draft serialized it,
+    // asserted it round-tripped, then dropped it and re-derived from the live
+    // BOARD_DECL, so the proof held even if the persisted binding disagreed.
     const revived = JSON.parse(JSON.stringify(task)) as typeof task;
-    const wsId = await dispatchToWorkstream(stores, "S", revived);
+    const revivedBinding = JSON.parse(JSON.stringify(binding)) as DispatchBinding;
+    const wsId = await dispatchToWorkstream(stores, "S", revived, revivedBinding);
     expect(await historyOf(stores, wsId)).toEqual(["execute"]);
+    // The Workstream's flowKind came from the persisted binding, not a literal.
+    expect(((await stores.session.get(wsId)) as Workstream)!.flowKind).toBe(revivedBinding.flowKind);
+
+    // And it is load-bearing: with the assignee REMOVED from the live board —
+    // renamed, or the process restarted against a newer declaration — live
+    // re-derivation throws, while the persisted binding still resolves and runs.
+    const saved = BOARD_DECL[BOARD_ID]!.implementer!;
+    delete BOARD_DECL[BOARD_ID]!.implementer;
+    try {
+      expect(() => bindWorker(task.boardId, task.assignee)).toThrow(/unknown_assignee/);
+      const wsId2 = await dispatchToWorkstream(
+        stores, "S2", { ...revived, topic: "after-rename" }, revivedBinding
+      );
+      expect(await historyOf(stores, wsId2)).toEqual(["execute"]);
+    } finally {
+      BOARD_DECL[BOARD_ID]!.implementer = saved;
+    }
 
     // A binding that names nothing on the board fails loudly rather than
     // silently running the wrong worker.
