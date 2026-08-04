@@ -38,7 +38,19 @@
  * No cap is a stored counter. All three are DERIVED from the ledger's contents
  * at check time (`maxTotalTasks` = the task map's size, `maxEnqueuedTasks` = its
  * `pending` count, `maxTotalRetries` = the sum of every task's granted-retry
- * count). So they persist exactly as far as the ledger does, and no further:
+ * count).
+ *
+ * The two creation caps are pure derives — they read task fields that exist for
+ * other reasons. `maxTotalRetries` is not: each grant is explicitly WRITTEN to
+ * `task.retryLedger` at authorization time, and the check sums those stored
+ * per-task grants. What is absent is a *global* counter field, not the
+ * per-task record — so do not read "derived" here as "recomputed from
+ * `attempts` or a status histogram". Neither would be correct: `attempts` also
+ * moves for re-claims that were never retries (see "Counting begins at
+ * upgrade" below).
+ *
+ * Either way the derivation is over the ledger, so all three persist exactly as
+ * far as the ledger does, and no further:
  *
  * - **Request-backed** — the ledger lives on `ctx.request`, so it ends with the
  *   request. A new request starts empty and both counts start from zero.

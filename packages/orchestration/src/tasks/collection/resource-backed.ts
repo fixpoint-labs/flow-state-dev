@@ -555,21 +555,15 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async fail(id, error, options) {
-      // Retry path: if the task carries a `maxAttempts` budget that
-      // hasn't been exhausted, soft-fail back to `pending` and capture
-      // the error as `feedback` for the next attempt. The next claim
-      // will increment `attempts` again. Hard-fail (no budget left, or
-      // no budget set) goes terminal.
+      // Retry-vs-terminal is `routeFailure`'s decision, as on the sequencer
+      // backing — see its JSDoc.
       //
-      // ACCOUNTING WITHOUT ENFORCEMENT (FIX-948). This backing maintains the
-      // per-task granted-retry count exactly as the sequencer backing does —
-      // passing `undefined` for the budget, so the routing can never deny — but
-      // it enforces no cumulative bound, because that check must be atomic
-      // against the whole ledger and there is no CAS across resource instances.
-      // The count is not optional here: it is a public `Task` field feeding the
-      // board's retry report, so a durable board that skipped it would report
-      // zero retries having actually retried. That is a false statement on a
-      // public surface, not a coverage gap.
+      // ACCOUNTING WITHOUT ENFORCEMENT (FIX-948). The budget passed here is
+      // always `undefined`, so the routing can never deny; the per-task
+      // granted-retry count is still maintained exactly as the sequencer
+      // backing maintains it. Why the two are split, and why the count is not
+      // optional, is stated once in `task-caps.ts` → "Lifetime" →
+      // Resource-backed. Don't restate it here.
       //
       // `options` must reach BOTH branches — see the sequencer backing's
       // `fail` for why the status-blind retry predicate makes this the most

@@ -451,25 +451,21 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async fail(id, error, options) {
-      // Retry path: if the task carries a `maxAttempts` budget that hasn't been
-      // exhausted AND the collection's cumulative retry budget has room, soft-
-      // fail back to `pending` and capture the error as `feedback` for the next
-      // attempt. The next claim will increment `attempts` again. Hard-fail (no
-      // per-task budget left, none set, or the board's budget spent) goes
-      // terminal.
+      // Retry-vs-terminal, and whether a retry counts against the board's
+      // budget, is `routeFailure`'s decision — gate order, and the reason the
+      // budget is scoped to attempt-owned failures, are documented there.
       //
-      // The whole decision lives inside ONE atomic write (FIX-948). It used to
-      // read the task outside the CAS and then open a write, which was already a
-      // latent race on `maxAttempts` and is fatal for a board-wide budget: the
-      // sum a concurrent failure reads has to include the grant its rival
-      // committed, or two failures at the boundary both retry.
+      // Two things belong to this call site rather than to that helper:
       //
-      // `options` reaches every branch. The routing is status-blind on the
-      // `maxAttempts` half — a task settled mid-flight that still carries retry
-      // budget takes the retry branch and attempts a transition out of a
-      // terminal status — so threading the guards into only the hard-fail branch
-      // leaves that escape live, and passes any test that never sets
-      // `maxAttempts`.
+      // 1. The decision runs INSIDE the atomic write (FIX-948). `fail` used to
+      //    read the task outside the CAS and then open a write — already a
+      //    latent race on `maxAttempts`, and fatal for a board-wide budget,
+      //    since the sum a concurrent failure reads must include the grant its
+      //    rival committed, or two failures at the boundary both retry.
+      // 2. `options` reaches EVERY branch. The routing is status-blind on the
+      //    `maxAttempts` half, so threading the guards into only the hard-fail
+      //    branch leaves live an escape out of a terminal status — and passes
+      //    any test that never sets `maxAttempts`.
       return transitionDerived(
         id,
         (task, tasks) => {
