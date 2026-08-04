@@ -1663,12 +1663,23 @@ owns the board-scoped lifetime bound (Decision 5, rule 11).
 `items()` is documented **live** — *"re-reads the response item log on every call"* — and **"Sync,
 throw-free"** (`tasks/collection/types.ts:92-110`), typed `items(): readonly OutputItem[]` (`:109`),
 while `RequestStore` reads are async and request A's mirror does not observe request B's writes
-(Decision 2). Attribution is *not* the problem — it already travels. The gap is the accessor shape,
-and the candidates are a **versioned async API** beside the sync one (every existing caller,
-`synthesize.ts` included, must be shown to survive) or an **eagerly refreshed board-owned
-projection** keeping `items()` sync by loading cross-request items at board hydration (no signature
-change, but "live" weakens to as-of-hydration and that must be declared). **Criterion 4b stays
-unconditional** — this constrains how it is met, not whether.
+(Decision 2). The **accessor shape** is one gap, and the candidates are a **versioned async API**
+beside the sync one (every existing caller, `synthesize.ts` included, must be shown to survive) or an
+**eagerly refreshed board-owned projection** keeping `items()` sync by loading cross-request items at
+board hydration (no signature change, but "live" weakens to as-of-hydration and that must be
+declared). **Criterion 4b stays unconditional** — this constrains how it is met, not whether.
+
+**Attribution is the second gap, and an earlier draft of this paragraph said it was not a gap at
+all** — *"attribution is not the problem, it already travels."* That holds only on the **in-request**
+path, where the worker-body sequencer marks the scope. It is false on the detached path this epic
+exists for: `_markTaskScope` has exactly one call site (`task-board/index.ts:682`, verified), a
+registry worker invoked as a top-level Workstream action never reaches it, and `taskId` in request
+metadata does not stamp `OutputItem.taskId`. **So FIX-991 has two obligations, not one** — scoped
+from the old wording it could ship a correct async accessor that still returns an empty item set for
+every detached worker, which is criterion 4b failing while looking delivered. The precondition is
+**N24**: the spawn marks the root execution scope with the task id, or FIX-991 defines a
+request-to-task attribution that does not depend on scope marking. The algorithm is reusable; the
+stamping is not automatic.
 
 **Set-level verdict: the substrate set does not overbuild, and the model made it leaner.** The four
 surviving substrate surfaces are distinct — claim/CAS, dispatch seam, cross-request waiting, item
@@ -2104,7 +2115,7 @@ gate-held issues is the owner's call.
 | **FIX-982** (M3) | Re-scope from "out-of-request executor / board→queue bridge" to: expose the shipped dispatch seam **in-request** as an injected capability, carry task metadata + trusted `source`, resolve the worker from the board by the **tagged `coordinate`** (rule 10 — not `assignee`, which the uniform and floor paths do not have), **persist the substrate-derived restart-safe binding** the reconciler needs (rule 10 as narrowed — the earlier "no stored `(flowKind, action)`" wording forbade the one artifact N9 requires; the prohibition is on *caller-authored* targets), decide and implement forking, and **name the task-cancellation → request-interrupt mechanism** (which does not ship). Add N1, N3, N4, N6, N7, N8, N9, N11, N12, N14, N15, N17, N18, N19, N20, N21, N22, N23, N24, N25, N26, N27, N28, N29, N30, N31, N32, N33, N34, N35, N36, N37, N39, N40, N41, N42, N43, N45, N46, N47, N48, N50, N51, N53, N54, N55, N56, N57, N58, N59, N60, N5(b) — the derived session id — and N10's surviving half, the parent-side settlement path (Decision 7). **N38 is filed against the owner rather than this issue**, because it proposes removing forking from FIX-982's scope; if the owner takes it, N17, N19, N32 and N36 leave this issue with it. **Fifty-two findings, three of them unresolved design gaps (N9's binding surface, N15's board identifier, N18's missing public seam — which also re-sizes the capability from two missing pieces to three), two security boundaries (N6's caller-addressable worker action, N17's caller-writable fork cursor), one unbudgeted store cost (N36's N+1 cursor read), one missing mechanism the epic's own "lite" premise assumed existed (N37's pending-task reconciler), two destructive-path holes on the public session route (N21's parent delete, N40's child delete), one double-counted retry budget (N41), one guarantee that two shipped admission paths bypass (N43), and two coordination mechanisms the 'primitives are there' count omitted (N46). It is still sized Medium; **the missing-mechanism count is now the argument for splitting it, not its finding count.**** |
 | **FIX-983** (M4) | Narrow to **cross-request waiting** only. Drop the durable-disposition machinery. |
 | **FIX-984** (M5) | **Do NOT close yet — the dissolution argument is incomplete (N35).** It rested on clause 2's "a background request already has a persisted item stream", which is true for **items** and false for **in-flight generator text**: `content.delta` is non-replayable and excluded from the persisted events log, and the stream route live-tails an in-process subscription, so a client attaching to an out-of-process generator gets no in-flight text from the named surface. **Either M5 stays in scope for that residue, or the epic names a snapshot-aware polling / live-tail surface and closes FIX-984 against it.** The *other* residue (item lifetime / board-scoped retention bound) still moves to FIX-991 either way. |
-| **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. |
+| **FIX-991** | Re-scope from "fix the accessor" to the principle: **a task's items are the items of the request(s) that executed it, unioned across attempts, with a board-scoped lifetime.** Raise its prominence — criterion 4b is unconditional. **And split it in two:** the *result-read surface* lands **before** FIX-982 (settlement depends on it — §6's cycle note), the *accessor fix* after. **Carry N24 as a precondition of the accessor half**: `_markTaskScope` has one call site (`task-board/index.ts:682`) inside the worker-body sequencer, so a top-level Workstream action never marks the scope and the existing attribution returns no items for a detached task. Scoped as accessor-shape-only, FIX-991 can ship a correct async API that still yields an empty set for every detached worker — criterion 4b failing while looking delivered. |
 | *(none)* | **N2 — RESOLVED, do not file.** `latestRequestId` is per-session, so a Workstream has its own and cannot steal the parent's auto-resume pointer. The earlier candidate is withdrawn; §6's findings table is authoritative. |
 
 **New issues for the consumer surface** (§5 → "The consumer surface"). None filed. The first three
