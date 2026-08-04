@@ -28,6 +28,17 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   Don't report the route back either; the coordinator derives it and the schema has no field
   for it.
 - needs a spec → run the issue-spec step, open the spec PR (ready for review), stop (now awaiting spec approval).
+  The PR description carries **both reviewer blocks** — the contract verbatim, then a per-PR
+  *"Parts worth reviewing closely"* ([`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md)).
+  **If an `issue-spec` Step 4 trigger fires, build the POC in this same step** — under
+  `poc/<ISSUE-ID>-<slug>/` on the spec branch, which CI ignores
+  ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
+  you already have the branch and the context, and you're the one who knows which premise is
+  load-bearing. Costs **zero** review rounds. Record it in §7 (and §12 for a premise it settled)
+  and name it in the PR's POC block with the literal command to run it — a POC nobody can run is
+  waste. **Say in your status line if a load-bearing POC is unfinished**, so the coordinator
+  discloses it when it surfaces the gate rather than letting a human approve on an unchecked
+  premise.
 - spec PR open, **still awaiting approval**, with unhandled review events → run one
   `issue-spec` Step 6.5 round and stop. Triage against the spec-review bar: fold only what
   changes the approach, record the rest verbatim as §13 implementer notes, escalate genuine

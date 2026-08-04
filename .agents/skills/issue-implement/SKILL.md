@@ -344,6 +344,11 @@ Once approved:
 3. Open PR with `gh pr create`:
    - Title: concise description (under 70 characters)
    - Body: summary, changes, **Key Decisions & Ramifications (top 5)** (the same list compiled in Step 7 — so reviewers evaluate the direction, not only the diff), test plan, the **goal verdict** (goal-check command + PASS verdict; or the documented no-goal-check justification; or diagnose's real-path confirmation for bugs), `Fixes FIX-{number}`
+   - **Reviewer guidance — two blocks, both required.** [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) is canonical; paste its **implementation-PR contract** verbatim (this implements an approved spec, so the approach and every §6 Decision are already human-signed-off — review the code against that direction, not the direction itself), then author **"Parts worth reviewing closely"** fresh for this diff: 1–3 items, each naming *where* · *the question to answer* · *what a wrong answer costs*, plus where you are genuinely unsure and what is deliberately absent.
+
+     An implementation PR is the one altitude where an automated reviewer's exhaustiveness is **wanted** — so point it at where the risk is concentrated (the second paths from BP-035, anything deriving auth or routing from caller-controllable input per BP-031, legacy-shape tolerance per BP-030) rather than asking it to aim lower. What it must not do is re-litigate a Decision the human already approved; say so, and name the spec PR so a genuine spec-level finding gets folded back instead of argued inline.
+
+     **Name your own weak spot.** The single highest-value line in the description is the one you least want to write — the decision that was a coin flip, the test you're not sure covers the real path. A reviewer cannot tell which of your confident sentences was a guess unless you tell them.
 4. Update Linear issue:
    - State: "Done"
    - Attach PR URL

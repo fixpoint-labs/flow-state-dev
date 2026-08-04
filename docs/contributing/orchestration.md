@@ -3,9 +3,14 @@
 This is the **canonical reference** for how we drive Linear issues to merged PRs with
 agents — the roles, the artifacts, and the gates. The orchestration skills
 (`epic-lifecycle`, `issue-lifecycle`, `issue-spec`, `issue-implement`,
-`cross-spec-review`, `settle-claim`) and the worker sub-agents (`issue-worker`, `epic-agent`,
-`poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc** instead of
-each restating the shared concepts. When a concept here changes, it changes here.
+`cross-spec-review`, `spec-poc`, `settle-claim`) and the worker sub-agents (`issue-worker`,
+`epic-agent`, `poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc**
+instead of each restating the shared concepts. When a concept here changes, it changes here.
+
+One companion doc sits beside this one:
+[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) is canonical for what a PR description
+owes its two audiences — the static reviewer contract, and the per-PR *"Parts worth reviewing
+closely"* block. Every PR we open carries both.
 
 ## The pieces at a glance
 
@@ -168,9 +173,9 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 `relates-to` and flagged, never silently detached.
 
 **Contents and shape:
-[`epic-spec-template.md`](epic-spec-template.md)** — the four sections (purpose &
-objective · themes & long-horizon direction · running index · open cross-cutting
-questions), each with a worked example, plus the reviewer contract the epic PR
+[`epic-spec-template.md`](epic-spec-template.md)** — the five sections (purpose &
+objective · themes & long-horizon direction · shape of the whole · running index · open
+cross-cutting questions), each with a worked example, plus the reviewer guidance the epic PR
 description leads with. Read the template; it is the single source of truth for what
 each section owes its reader, exactly as `spec-template.md` is for an issue spec.
 
@@ -476,15 +481,19 @@ So the discipline is ours, not theirs:
 - **Only a human's approving comment or review trips the gate** (see Gates above) — bot
   reviews are explicitly excluded. A bot leaving `CHANGES_REQUESTED` on a spec PR does
   **not** hold the gate, and does not extend the round budget.
-- **The spec PR description carries a short reviewer contract** (`issue-spec` Step 6) —
-  what this document is, what to challenge, what is out of scope. It's the one lever we
-  have on an uninstructable reviewer, it costs nothing, and it measurably raises the
-  altitude of what comes back.
+- **The spec PR description carries reviewer guidance** (`issue-spec` Step 6) — the static
+  contract (what this document is, what to challenge, what is out of scope) plus a per-PR
+  *"Parts worth reviewing closely"*. It's the one lever we have on an uninstructable
+  reviewer, it costs nothing, and it measurably raises the altitude of what comes back. The
+  rules, the three altitudes, and the failure modes are canonical in
+  [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).
 
 ### How this shows up in the artifacts
 
-- **`spec-template.md`** — the reviewer contract at the top of Part II, and *Review notes
-  for the implementer* (§13) as the home for below-the-bar feedback.
+- **`spec-template.md`** — the reviewer contract and the *Parts worth reviewing closely*
+  block, and *Review notes for the implementer* (§13) as the home for below-the-bar feedback.
+- **`pr-reviewer-guidance.md`** — the two audiences, the three PR altitudes, and what makes a
+  *Parts worth reviewing closely* block useful rather than decorative.
 - **`issue-spec`** Step 6 (reviewer contract in the PR description) and Step 6.5 (the
   triage loop that applies the bar and the budget).
 - **`issue-lifecycle`** / **`epic-lifecycle`** — the round counters live in the handle cache
@@ -572,6 +581,108 @@ reason unrelated to the loop.
 - **`.agents/workflows/epic-wake.js`** — `atPrFeedbackCap()`, the executable copy of this
   rule, pinned by `.agents/workflows/verify.mjs`. As with the convergence rule: **this
   section is canonical for both, so change it here first, then both implementations.**
+
+## Spec-branch POCs (learn before implementing)
+
+A spec is a bet on a direction, and the gate in front of it asks a human to sign that bet
+off. Sometimes the honest answer at that moment is *"this reads right and nobody has checked
+it."* A **spec POC** is how we check: throwaway code committed to the **never-merged** spec
+or epic PR, built so the direction can be validated *before* implementation. The skill is
+[`spec-poc`](../../.agents/skills/spec-poc/SKILL.md).
+
+The spec PR is the natural home for it, and this is the property that makes the whole thing
+cheap: **it never merges.** Code there can't rot into the codebase, can't accrete public
+surface, and doesn't have to be good. So the cost of being wrong about a direction drops from
+a rewrite to a deleted branch.
+
+**Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
+and get confused constantly:
+
+| | **Spec POC** (this section) | **POC settlement** (next section) |
+|---|---|---|
+| Fires on | a *trigger* — an unverified premise, a novel composition, a look, a contested fork, an unclear end-state | a **loop** — the same factual claim asserted and counter-asserted twice |
+| Answers | *is this direction right?* | *who is right?* |
+| For | the reviewers and the human at the gate | the review thread that stopped converging |
+| Verdict shape | a summary + code someone can run | `CONFIRMED` / `REFUTED` / `INCONCLUSIVE` |
+| Lives | on the spec/epic branch, published | a throwaway worktree, deleted |
+| Timing | **before** the gate, usually during authoring | mid-review, after prose failed |
+
+A spec POC is *proactive* — it stops the loop from forming. A settlement is *reactive* — the
+loop already formed. Running a POC while authoring is strictly cheaper than settling a claim
+in round three, so a trigger noticed early is the best case available.
+
+### The two altitudes
+
+- **Issue altitude** — the spec's premise, composition, ergonomics, or look. See the
+  trigger list in the skill; the default is no POC, and a change that extends an existing
+  pattern needs none.
+- **Epic altitude — the strongest case on the list, and the one only this altitude can
+  make.** Every issue under an epic can be individually sound while the *assembled* surface
+  is wrong: a seam two issues both want to own, one decision landing in two places, an
+  end-state nobody would have chosen if they'd seen it. A rough **end-state POC** — all the
+  set's surfaces sketched together, unshipped — makes that visible before the objective gate,
+  which is the last moment the *division into issues* is cheap to change. It is recorded in
+  the epic-spec's [§3 Shape of the whole](epic-spec-template.md).
+
+Where a direction fork is genuinely contested, a POC can carry **2–3 radically different
+variants**, compared on one page, and the chosen one becomes a numbered §6 Decision. Equal
+effort on each is the rule that matters — a strawman variant manufactures consent for the
+option the author already preferred and puts a human's approval on it.
+
+```mermaid
+flowchart LR
+  A[spec / epic authoring] -->|trigger fires| P[spec-poc<br/>on the never-merged branch]
+  P --> S{what it showed}
+  S -->|premise held| R1[record in §7 / §3<br/>no change]
+  S -->|premise false| R2[fold before the gate<br/>cheapest version of the discovery]
+  S -->|variants| R3[human picks → a §6 Decision]
+  R1 & R2 & R3 --> G([approval gate])
+  P -.->|non-blocking, but disclosed| G
+```
+
+### What it costs, and what it never does
+
+- **Zero review rounds.** Like a factual correction and like requesting a settlement, a POC
+  doesn't move the design by argument — it moves the question out of prose.
+- **Non-blocking.** The spec keeps converging while it's built and the gate stays reachable.
+- **Disclosed, though.** A gate surfaced while a load-bearing POC is still in flight must
+  say so — the human can approve anyway, and usually should, but not on a premise nobody
+  mentioned was unchecked. Same rule as an in-flight settlement.
+- **It never gates and it never decides.** A POC informs the human's call at the gate; no run
+  answers *"should we build this?"*
+- **It never merges, and it is consumed before implementation.** The implementation branch is
+  cut from fresh `origin/main`, never from the spec branch (see "Worktree branching"), and while
+  the approved spec *document* is landed onto the implementation branch as its own commit,
+  **the POC never is.** A characterization test worth keeping is re-written under `tdd` as a
+  real CI spec or a `goals/` entry — graduated, not copied. Note that closing the spec PR also
+  **deletes its branch** (BP-037), which is fine because the POC's job finished at the gate —
+  but it means the durable citation is **the PR** (GitHub keeps a closed PR's diff viewable),
+  never the branch. An *epic* branch is never deleted, so an epic POC keeps a live home for the
+  life of the epic.
+- **CI stays green without weakening it.** POCs live in `poc/<ISSUE-ID>-<slug>/` at the repo
+  root, which is not a pnpm workspace package, so `turbo`-driven typecheck and test never see
+  it (`poc/**` is in `knip.json`'s root ignore for the same reason). This matters because CI
+  runs on every PR into `main`, spec PRs included, and the coordinator reads that signal — a
+  red spec PR is a broken gate.
+
+### Who dispatches it
+
+**No new worker.** A spec POC runs inside the step that already owns the branch: `issue-spec`
+(Step 4) for an issue, the `epic-agent` for an epic end-state POC, each in the worktree it
+already has. That's deliberate — a POC is part of authoring, not a separate errand, and the
+agent that has the spec in context is the one that knows which premise is load-bearing.
+(Contrast a settlement, which *is* its own worker: it arbitrates between parties, so it has
+to be independent of both.)
+
+### Where the record lives
+
+- **The spec** — §7 in one line (what was built, what it showed), §12 for a premise it
+  settled, and a *Spec evolution* entry **only if it moved the design**. At epic altitude,
+  §3 instead.
+- **The PR description** — the POC block: one runnable command per artifact, the question it
+  answers, and that it's throwaway.
+- **A POC that changed nothing still gets its line.** "The premise held" is a real result;
+  recording only the POCs that found problems teaches the next reader that a quiet POC failed.
 
 ## Settling a disputed claim (POC settlement)
 

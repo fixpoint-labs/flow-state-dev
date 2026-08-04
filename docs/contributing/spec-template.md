@@ -51,7 +51,9 @@ of it. What the example is for is showing what a section *looks like when it's d
 ## For reviewers — what this document is
 
 *(Paste this block verbatim at the top of the spec PR description — `issue-spec` Step 6.
-It is the one lever we have on automated reviewers we can't instruct.)*
+It is the one lever we have on automated reviewers we can't instruct. It is the **static**
+half; the description also carries a **per-PR** "Parts worth reviewing closely" block —
+see [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), canonical for both.)*
 
 This is a **direction document**, not an implementation. Reviewing it well means
 answering one question: **is this the right approach?**
@@ -81,6 +83,12 @@ answering one question: **is this the right approach?**
   don't exist in the repo, or wouldn't build: all of that is true on purpose, and the
   names are deliberately not real. A sketch that has to survive line-level review stops
   being cheap, and then nobody writes one.
+- **Any POC files on this branch, entirely.** This PR is never merged, so it may carry
+  throwaway proof-of-concept code, characterization tests, or an HTML mockup built to
+  validate the direction ([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)). None of it
+  ships. Read it to judge whether the *shape* holds; **do not review it as code.** Its
+  quality is not a finding, and its findings are summarized in §7 — the summary is what a
+  reviewer reacts to.
 
 **One request, if you are an automated reviewer:** the two lists above are the whole
 difference between a useful review of this document and a long one. Volume is not signal
@@ -91,10 +99,36 @@ implementer to weigh against real code. It will not be argued with, and it will 
 folded into the design prose — that would pretend the spec can settle something it
 can't. Please don't re-raise it: one mention is enough for it to land in §13.
 
-**The one exception is the sketch.** Line-level feedback on it is *dropped*, not recorded
-— there is nothing for an implementer to weigh about code that isn't shipping, and a §13
-note would imply otherwise. Sketch feedback that is about **direction** is not line-level
-and is treated like any other above-the-bar finding.
+**The one exception is the sketch and the POC.** Line-level feedback on either is
+*dropped*, not recorded — there is nothing for an implementer to weigh about code that
+isn't shipping, and a §13 note would imply otherwise. Feedback about their **direction** is
+not line-level and is treated like any other above-the-bar finding.
+
+---
+
+## Parts worth reviewing closely
+
+*(Authored fresh for every spec PR, directly below the contract. 1–3 items, each with
+where · the question · what a wrong answer costs — plus where the author is unsure and
+what is deliberately absent. Rules and failure modes:
+[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+
+> **1. Decision 2 — the cursor's two encodings.** Carrying the same value on a header
+> *and* a query param is the call I'm least comfortable with. The question: is one
+> encoding plus a documented proxy requirement better than two that must stay in step?
+> Getting it wrong locks a public string format we don't validate, and changing it later
+> is breaking.
+>
+> **2. §7 — the layer the filter sits at.** Is the serialization seam right, or does
+> resume belong lower, in the store's iterator? A wrong answer here is a rewrite, not an
+> adjustment — everything in §8 hangs off it.
+>
+> **Where I'm unsure:** decision 3. Replaying a completed request from the persisted log
+> reads clean, but I can't tell from the outside whether it quietly makes the stream a
+> history API, which §6's non-goals say we don't want.
+>
+> **Deliberately absent:** client reconnect *policy* (backoff, retry limits) — named as a
+> non-goal in §6, not an omission.
 
 ---
 
@@ -290,10 +324,15 @@ now you are debating a seam nobody proposed. Pseudocode can't be audited, so the
 all that's left to react to — which is the whole point. Name the *roles* (`the stream
 seam`, `the persisted log`), not functions you think exist.
 
-**When you do want real code, put it on the spec branch.** Throwaway files on the
-never-merged spec branch are where a real prototype belongs — that's where the author gets
-to try the design and the implementer gets a starting point, without the doc carrying
-API-shaped claims. Point at it from here in one line.
+**When you do want real code, put it on the spec branch** — that's
+[`spec-poc`](../../.agents/skills/spec-poc/SKILL.md). Throwaway files under
+`poc/<ISSUE-ID>-<slug>/` on the never-merged spec branch are where a real POC belongs: the
+author gets to try the design, the reviewer gets something to run, and the implementer gets a
+starting point, all without the doc carrying API-shaped claims. **Point at it from here in one
+line and say what it showed** — including when the premise held. Link **the spec PR**, not the
+branch: closing the PR deletes the branch (BP-037) but leaves the PR's diff viewable. Never
+merged, either way — the implementation branch is cut from `origin/main`, so a POC can't ride
+along.
 
 **Include one when** the composition is novel, the ergonomics only become visible in code,
 or two shapes are genuinely in contention and side-by-side settles it. **Skip it when** the
@@ -318,10 +357,11 @@ change extends an existing pattern — pointing at the pattern is better than re
 > deliberately impossible to tell from this whether the field is called `sequence` or
 > `sequence_number` — that is the implementer's to look up, not the reviewer's to catch.
 
-*(If deciding between shapes needed a real experiment rather than a sketch, that's the
-[`prototype`](../../.agents/skills/prototype/SKILL.md) skill — throwaway code that answers
-a question and is then deleted. A sketch distilled from one is a good sketch; the prototype
-itself still doesn't ship.)*
+*(If deciding between shapes needed a real experiment rather than a sketch: build it where
+reviewers can run it ([`spec-poc`](../../.agents/skills/spec-poc/SKILL.md)) when the choice is
+theirs to sign off, or privately ([`prototype`](../../.agents/skills/prototype/SKILL.md)) when
+the question is only yours. Either way a sketch distilled from one is a good sketch, and
+neither ships.)*
 
 ### 8. Implementation sequence
 

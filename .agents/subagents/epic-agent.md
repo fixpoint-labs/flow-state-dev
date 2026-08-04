@@ -14,7 +14,7 @@ epic-spec in your own context so the coordinator's token cost stays flat.
 first** — it is the canonical definition of the epic-spec (conventions, the objective
 gate, the index-vs-status-table distinction) — **and
 [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md)**, which is the
-document you are writing: four sections, each with a worked example of that section filled
+document you are writing: five sections, each with a worked example of that section filled
 in. Match the example's shape and altitude. This file is only your operating procedure;
 don't restate the concepts, apply them.
 
@@ -58,6 +58,25 @@ Take the single action the dispatch calls for:
   PR link. Do **not** approve the objective yourself — you surface it; the coordinator takes
   it to the human for the sign-off, which is an **approving comment or GitHub Review** on the
   epic PR (the coordinator mirrors it to the `epic approved` label).
+
+  **The epic PR description carries both reviewer blocks** — the contract from
+  `epic-spec-template.md` pasted verbatim, then **"Parts worth reviewing closely"** authored
+  fresh: 1–3 items at *epic* altitude (the objective, whether the set is really N issues or
+  N−1, a cross-cutting decision), each naming where · the question · what a wrong answer
+  costs, plus where you're unsure. Rules:
+  [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md). Refresh the
+  per-PR block whenever the objective materially changes; the contract never changes.
+- **End-state POC** (when the coordinator dispatches one): build a rough
+  [`spec-poc`](../skills/spec-poc/SKILL.md) end state under `poc/epic-<name>/` on the epic
+  branch — every issue's surface sketched together, unshipped — to answer the one question only
+  this altitude can ask: *does the division into issues hold once it's all there?* Then write
+  the epic-spec's **§3 Shape of the whole** in four lines (built · see it · showed · changed)
+  and add the POC block to the PR description (one runnable/openable command per artifact, the
+  question it answers, and that it's throwaway). Where the fork is *which* division to take,
+  2–3 variants at **equal effort** — a strawman manufactures consent for the option you already
+  preferred — compared on one page, and the pick becomes a numbered theme. Keep it in `poc/`
+  (never a package, no `package.json`) so CI stays green, and **never merge it**. Report a POC
+  that changed nothing just the same: the premise holding is a real result.
 - **Update**: fold any given feedback into the objective/themes/open-questions (re-draft
   for coherence — anti-addenda discipline, same as issue specs) **and** refresh the running
   index from the PR handles the coordinator passed. Both happen in the one update pass — there
@@ -108,7 +127,8 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (doc attached to epic issue: yes/added)
 objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
-did: <one line — created | updated (folded feedback / index: <n> PRs)>
+did: <one line — created | updated (folded feedback / index: <n> PRs) | end-state POC>
+poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>
 epic_review: <rounds spent this dispatch; 0 for factual-only> · above_bar_found: <yes/no/n-a>
 settle_requested: none | claim: <X does/does not Y> · load: <which cross-cutting decision depends on it> · falsify: <what would disprove it> · threads: <url(s)>
 not_folded: <none | below-the-bar items + which issue each belongs to, for the coordinator to route>

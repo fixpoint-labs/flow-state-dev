@@ -75,6 +75,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Follow [`../spec-template.md`](../spec-template.md), whose every section is a worked example of that section filled in. An epic's coordination artifact follows [`../epic-spec-template.md`](../epic-spec-template.md) the same way.
   - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
   - The spec PR is never merged: `issue-implement` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
+  - Because it never merges, the spec PR is also where a **POC** belongs when the design rests on something unverified — throwaway code under `poc/<ISSUE-ID>-<slug>/` that reviewers can actually run ([`spec-poc`](../../../.agents/skills/spec-poc/SKILL.md)). Triggered, not default; costs no review rounds; never lands on `main`. Cite the PR rather than the branch, since closing deletes the branch.
 - Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
 
 ### BP-040: Spec review is a direction check — converge, don't grind
@@ -88,7 +89,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - **Budget two review rounds**, then declare convergence and go to the approval gate, carrying remaining threads as §13 notes. A third round requires a genuine spec-level finding from round two, stated in one line. Count rounds **actually spent** — a factual-correction-only batch costs zero — and keep the conditional third round reachable rather than stopping on the count alone. The same budget applies to an **epic** PR.
   - **Don't drive spec-PR threads to zero.** The spec PR is never merged, so open threads gate nothing. A bot `CHANGES_REQUESTED` neither trips the gate nor extends the budget.
   - **Below-the-bar spec comments never block implementation** — they're implementer input, not prerequisites.
-  - The spec PR description leads with the reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) — the one lever available on reviewers we can't instruct.
+  - The spec PR description leads with the reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) — the one lever available on reviewers we can't instruct — followed by a per-PR **"Parts worth reviewing closely"** block. Both are required on every PR we open, at the altitude that PR is reviewed at; canonical in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
 - Why: Spec-PR review comes mostly from automated reviewers tuned for code, pointed at a document that is deliberately not a finished design. Treating every line-level observation as a spec defect turned directionally-sound specs into ten-round grinds, at the altitude where none of that detail can actually be settled. Full rule, with the rationale for why converging is safe: [`../orchestration.md`](../orchestration.md) → "Spec review: the bar and the convergence rule".
 
 ### BP-039: Specs lead with a plain-language summary

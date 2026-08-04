@@ -504,6 +504,24 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
   document), and returns the handles. The coordinator holds only handles (epic issue ID, name,
   branch, epic PR#), never the spec text.
+- **Consider an end-state POC — before the objective gate, not after.** The one question only
+  this altitude can ask is *what does the set look like once every issue has landed*, and the
+  objective gate is the **last moment the division into issues is cheap to change**. Each issue
+  can be individually sound while the assembled surface is wrong: a seam two issues both want to
+  own, one decision landing in two places, an end-state nobody would have chosen if they'd seen
+  it. When that's genuinely unclear, dispatch `epic-agent` to build a rough
+  [`spec-poc`](../spec-poc/SKILL.md) end-state on the epic branch (`poc/epic-<name>/`, which CI
+  ignores) — all the set's surfaces sketched together, unshipped — and record what it showed in
+  the epic-spec's **§3 Shape of the whole** (four lines: built · see it · showed · changed).
+  Where the fork is *which* division to take, 2–3 variants at equal effort, and the pick becomes a
+  numbered theme.
+
+  **Triggered, not default** — "the shape is obvious" is a complete reason to skip, and an epic
+  whose issues barely touch each other has nothing to assemble. It **blocks nothing**: it costs no
+  review rounds and the gate stays reachable while it runs. But **disclose an in-flight one when
+  you surface the gate** — the human can approve anyway, and usually should, just not on a premise
+  nobody said was unchecked. Canonical:
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec-branch POCs".
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
   until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*
