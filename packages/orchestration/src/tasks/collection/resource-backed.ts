@@ -93,9 +93,10 @@ import {
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
+  grantRetry,
   listTasks,
+  routeFailure,
   transitionDeclineReason,
-  shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
@@ -467,6 +468,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // This backing COUNTS retries but never enforces a budget (FIX-948): the
+    // check has to be atomic against the whole ledger and the resource layer has
+    // no CAS across instances. `null` says "no limit is in force", which is the
+    // truth here — so a caller can never read a non-zero retry count off this
+    // board as evidence that a budget applied.
+    maxTotalRetries: null,
 
     async addTask(init) {
       const task = buildInitialTask<TInput, TOutput>(init, now());
@@ -554,22 +561,42 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       // will increment `attempts` again. Hard-fail (no budget left, or
       // no budget set) goes terminal.
       //
+      // ACCOUNTING WITHOUT ENFORCEMENT (FIX-948). This backing maintains the
+      // per-task granted-retry count exactly as the sequencer backing does —
+      // passing `undefined` for the budget, so the routing can never deny — but
+      // it enforces no cumulative bound, because that check must be atomic
+      // against the whole ledger and there is no CAS across resource instances.
+      // The count is not optional here: it is a public `Task` field feeding the
+      // board's retry report, so a durable board that skipped it would report
+      // zero retries having actually retried. That is a false statement on a
+      // public surface, not a coverage gap.
+      //
       // `options` must reach BOTH branches — see the sequencer backing's
       // `fail` for why the status-blind retry predicate makes this the most
       // likely place to ship a partial fix.
       const candidateRef = mirror.get(id);
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
-        if (shouldRetryOnFail(current as Task)) {
+        if (routeFailure(current as Task, 0, undefined).action === "retry") {
           return transitionRef(
             id,
             "pending",
             "retried",
-            () => ({
-              feedback: error,
-              leaseUntil: undefined,
-              error: undefined,
-            }),
+            (task) => {
+              // Re-decided against the task the write actually sees, so the
+              // grant is not recorded off a status that moved since the
+              // candidate read above. The patch runs only after the decline
+              // check and the legality assert, so nothing lands on a write that
+              // is about to be refused.
+              const fresh = routeFailure(task as Task, 0, undefined);
+              const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
+              return {
+                feedback: error,
+                leaseUntil: undefined,
+                error: undefined,
+                ...(counts ? { retryLedger: grantRetry(task as Task) } : {}),
+              };
+            },
             options
           );
         }

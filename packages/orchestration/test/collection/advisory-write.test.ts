@@ -725,3 +725,106 @@ describe.each([
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The retry budget rides the same ordering contract (FIX-948)
+// ---------------------------------------------------------------------------
+
+/**
+ * A declined `fail()` must record NOTHING — including the retry facts.
+ *
+ * The board's failure write-back passes both guards
+ * (`{ ifAllowed: true, expectAttempt }`) precisely so a worker's failure
+ * arriving after its lease was reclaimed, or after a newer attempt claimed the
+ * task, is discarded. FIX-948 added two writes to that same path: a retry grant
+ * and a denial marker. If either lands before the decline, a stale failure
+ * **spends another task's retry allowance**, or marks the board
+ * `retry-budget-exhausted` when nothing was ever refused.
+ *
+ * The assertion SET is the point, not the scenario. A test checking only the
+ * task's status passes while the budget silently drains — which is the whole
+ * failure mode — so all four invariants are asserted in one test: status, grant
+ * count, denial flag, and the emitted event.
+ */
+describe("retry budget — a declined stale failure records nothing (FIX-948)", () => {
+  /**
+   * A board whose budget is either available or spent, plus a subject task whose
+   * attempt has been displaced by a newer claim. The subject is left
+   * `in_progress` under attempt 2 while the caller still holds attempt 1.
+   */
+  async function displacedAttempt(budget: "available" | "spent") {
+    const captured = createCapturedChanges();
+    const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
+      tasks: {},
+    });
+    const collection = createSequencerBackedTaskCollection({
+      collectionId: "tasks",
+      sequencer,
+      maxTotalRetries: budget === "spent" ? 1 : 10,
+      onChange: captured.onChange,
+    });
+
+    if (budget === "spent") {
+      // Burn the single grant on an unrelated task, so the subject's failure
+      // would be DENIED if the declined path wrote anything.
+      await collection.addTask({ id: "spender", goal: "spender", maxAttempts: 5 });
+      await collection.claim("w0", { eligibility: (t) => t.id === "spender" });
+      await collection.fail("spender", "spend it");
+    }
+
+    await collection.addTask({ id: "subject", goal: "subject", maxAttempts: 5 });
+    const first = await collection.claim("w1", { eligibility: (t) => t.id === "subject" });
+    if (first === null) throw new Error("fixture failed to claim");
+    // Displace it: reclaim the lease, then let a second worker claim it.
+    await collection.reclaim(Number.MAX_SAFE_INTEGER);
+    await collection.claim("w2", { eligibility: (t) => t.id === "subject" });
+
+    captured.events.length = 0;
+    return { collection, events: captured.events, staleAttempt: first.attempts };
+  }
+
+  for (const budget of ["available", "spent"] as const) {
+    it(`writes no status, no grant, no denial and no event with the budget ${budget}`, async () => {
+      const { collection, events, staleAttempt } = await displacedAttempt(budget);
+      const before = collection.get("subject");
+
+      const outcome = await collection.fail("subject", "late failure from a displaced worker", {
+        ifAllowed: true,
+        expectAttempt: staleAttempt,
+      });
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "lost-claim",
+        status: "in_progress",
+      });
+      const after = collection.get("subject");
+      // 1. status unchanged
+      expect(after?.status).toBe("in_progress");
+      expect(after?.status).toBe(before?.status);
+      // 2. grant count unchanged  3. denial flag unset
+      expect(after?.retryLedger).toEqual(before?.retryLedger);
+      expect(after?.retryLedger?.granted ?? 0).toBe(0);
+      expect(after?.retryLedger?.deniedByBudget ?? false).toBe(false);
+      // 4. no task-change event emitted
+      expect(events).toHaveLength(0);
+    });
+  }
+
+  it("leaves the board's budget intact, so a legitimate later failure still retries", async () => {
+    // The consequence the four invariants above exist to protect: a budget of 1
+    // that a declined write silently consumed would settle this failure instead.
+    const { collection, staleAttempt } = await displacedAttempt("available");
+    await collection.fail("subject", "stale", { ifAllowed: true, expectAttempt: staleAttempt });
+
+    await collection.addTask({ id: "later", goal: "later", maxAttempts: 5 });
+    await collection.claim("w3", { eligibility: (t) => t.id === "later" });
+    await collection.fail("later", "genuine failure");
+
+    expect(collection.get("later")?.status).toBe("pending");
+    expect(collection.get("later")?.retryLedger).toEqual({
+      granted: 1,
+      deniedByBudget: false,
+    });
+  });
+});

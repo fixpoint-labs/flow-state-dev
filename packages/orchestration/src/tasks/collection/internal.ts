@@ -95,8 +95,156 @@ export function shouldRetryOnFail(task: Task): boolean {
  *
  * Everything else means the attempt was displaced (reclaimed, re-queued,
  * parked) or the task was settled by someone else.
+ *
+ * Exported because the retry budget (FIX-948) is scoped to exactly this set, and
+ * that reuse is exact rather than coincidental — see {@link routeFailure}.
  */
-const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>(["in_progress", "awaiting_review"]);
+export const ATTEMPT_OWNED_STATUSES = new Set<TaskStatus>([
+  "in_progress",
+  "awaiting_review",
+]);
+
+/**
+ * Read a task's retry ledger with the BP-030 legacy guard applied (FIX-948).
+ *
+ * One `== null` check on the object rather than one per member, which is the
+ * concrete reason the two facts live in one field. Absent means "no counted
+ * history" — a task persisted before FIX-948, or one that has never failed.
+ * Never let an absent ledger become `undefined` arithmetic in the sum.
+ */
+export function readRetryLedger(task: Task): { granted: number; deniedByBudget: boolean } {
+  const ledger = task.retryLedger;
+  if (ledger == null) return { granted: 0, deniedByBudget: false };
+  return {
+    granted: ledger.granted ?? 0,
+    deniedByBudget: ledger.deniedByBudget === true,
+  };
+}
+
+/**
+ * The task's retry ledger with one more grant recorded (FIX-948).
+ *
+ * Written in the SAME patch that re-pends the task, which is the property the
+ * whole bound rests on: the counted fact changes when the retry is *authorized*,
+ * not when it is later observed at claim time.
+ */
+export function grantRetry(task: Task): { granted: number; deniedByBudget: boolean } {
+  const ledger = readRetryLedger(task);
+  return { granted: ledger.granted + 1, deniedByBudget: ledger.deniedByBudget };
+}
+
+/**
+ * The task's retry ledger with the budget denial recorded (FIX-948).
+ *
+ * Written in the same patch that settles the task terminal. This is the marker
+ * the board's `terminationReason` reads — it exists precisely so that reason is
+ * never inferred from `retries === limit`, which does not establish that
+ * anything was refused.
+ */
+export function denyRetry(task: Task): { granted: number; deniedByBudget: boolean } {
+  return { granted: readRetryLedger(task).granted, deniedByBudget: true };
+}
+
+/** Sum the authorized-retry grants across a ledger — the board's retry total. */
+export function sumGrantedRetries(tasks: Iterable<Task>): number {
+  let total = 0;
+  for (const task of tasks) total += readRetryLedger(task).granted;
+  return total;
+}
+
+/** True once any task in the ledger had a retry refused by the budget. */
+export function anyRetryDeniedByBudget(tasks: Iterable<Task>): boolean {
+  for (const task of tasks) {
+    if (readRetryLedger(task).deniedByBudget) return true;
+  }
+  return false;
+}
+
+/**
+ * How `fail(id, error)` should route this failure — the one place retry-vs-
+ * terminal is decided, widened by FIX-948 to also answer the collection's
+ * cumulative retry budget.
+ *
+ * - `retry` — re-pend. `countsAgainstBudget` says whether this grant is recorded
+ *   on the task and therefore consumes the board's allowance.
+ * - `terminal` — settle `errored`. `deniedByBudget` distinguishes "the board's
+ *   budget refused this retry" from "this task had no retry budget of its own",
+ *   which is today's unchanged behaviour.
+ */
+export type FailRouting =
+  | { action: "retry"; countsAgainstBudget: boolean }
+  | { action: "terminal"; deniedByBudget: boolean };
+
+/**
+ * Decide how a `fail()` routes, given the task, the board's granted-retry total,
+ * and the budget in force (FIX-948).
+ *
+ * **Must be called from inside the atomic write**, against the committed ledger,
+ * so `grantedTotal` and the grant this decision authorizes land together. A
+ * budget compared against a total read outside the write is a check-after-read
+ * race, and the overshoot it admits is exactly what the bound exists to prevent.
+ *
+ * Two gates, in this order, and the second is a correctness requirement rather
+ * than a nicety:
+ *
+ * 1. **The task's own `maxAttempts` still decides first.** Without one, or with
+ *    it exhausted, the failure is terminal exactly as before — the budget can
+ *    only ever refuse a retry that would otherwise have happened, and it can
+ *    never refuse a first attempt.
+ * 2. **The budget applies only to attempt-owned failures.** `errored` is
+ *    reachable from `in_progress` and `awaiting_review` and from NEITHER
+ *    `pending` nor `blocked`, while this routing is status-blind on the
+ *    `maxAttempts` half — so a `fail()` on a pending or blocked task carrying
+ *    `maxAttempts` legally re-pends today, and rerouting it to `errored` at the
+ *    bound would attempt an illegal transition and THROW instead of settling, on
+ *    a reachable path. So both the accounting and the denial are gated on
+ *    {@link ATTEMPT_OWNED_STATUSES} — which is precisely the set from which the
+ *    reroute is legal, and is also the set for which a *settlement* is
+ *    meaningful at all: a task that held no attempt has nothing to settle.
+ *    Widening the transition table instead was rejected — permitting
+ *    `pending → errored` would let a fresh, never-attempted task be failed
+ *    outright, which is a new correctness hole rather than a fix.
+ *
+ * @param grantedTotal Sum of granted retries across the committed ledger.
+ * @param maxTotalRetries The budget in force, or `undefined` for unbounded —
+ *   which is what the resource backing passes, since it counts but cannot
+ *   enforce.
+ */
+export function routeFailure(
+  task: Task,
+  grantedTotal: number,
+  maxTotalRetries: number | undefined
+): FailRouting {
+  if (!shouldRetryOnFail(task)) return { action: "terminal", deniedByBudget: false };
+  if (!ATTEMPT_OWNED_STATUSES.has(task.status)) {
+    return { action: "retry", countsAgainstBudget: false };
+  }
+  if (maxTotalRetries === undefined || grantedTotal < maxTotalRetries) {
+    return { action: "retry", countsAgainstBudget: true };
+  }
+  return { action: "terminal", deniedByBudget: true };
+}
+
+/**
+ * The error recorded on a task settled by the collection's retry budget rather
+ * than by its own `maxAttempts` (FIX-948).
+ *
+ * Names the board's budget explicitly, because the whole point of the bound is
+ * that an operator can tell "we stopped retrying because the budget ran out"
+ * from "this task ran out of its own attempts". The structured fact a consumer
+ * should branch on is `task.retryLedger.deniedByBudget` — this string is for a
+ * human reading the failure.
+ */
+export function retryBudgetExhaustedError(
+  error: string,
+  limit: number,
+  collectionId: string
+): string {
+  return (
+    `${error} — not retried: collection "${collectionId}" has spent its retry budget of ` +
+    `${limit} (maxTotalRetries). Raise it, or pass null to opt out.`
+  );
+}
 
 /**
  * True when `expectAttempt` still owns `task` (FIX-951).

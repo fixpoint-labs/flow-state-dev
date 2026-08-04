@@ -54,13 +54,16 @@ export { createSequencerBackedTaskCollection } from "./collection/sequencer-back
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";
 export type { ResourceBackedOptions } from "./collection/resource-backed";
-// Creation caps (FIX-931) — the two bounds a collection enforces on insertion.
+// Collection caps — the two creation bounds (FIX-931) and the cumulative retry
+// budget (FIX-948).
 export {
   TaskCapExceededError,
   validateTaskCaps,
   resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   DEFAULT_MAX_TOTAL_TASKS,
   DEFAULT_MAX_ENQUEUED_TASKS,
+  DEFAULT_MAX_TOTAL_RETRIES,
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";

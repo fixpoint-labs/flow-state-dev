@@ -44,6 +44,7 @@ import { z } from "zod";
 import {
   getOrCreateTaskCollection,
   resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   taskStatusSchema,
 } from "../tasks";
 import type { TaskCollectionRef } from "../tasks";
@@ -577,9 +578,20 @@ async function buildTools(
   // Resolved once per surface build, not per call: the defaults and their
   // validation live in `resolveTaskCapDefaults`, so a bad library option fails
   // here rather than deep inside the collection constructor.
+  //
+  // The retry budget (FIX-948) is explicitly OPTED OUT here, not merely left off
+  // `SkillsLibraryOptions`. A task created through the delegation `addTask` tool
+  // can never retry — the tool neither accepts nor stamps `maxAttempts`, and the
+  // routing predicate settles terminal without one — so a budget here has no
+  // subject. Omitting the option would not refuse the cap: `resolveTaskCapDefaults`
+  // applies the DEFAULT budget to whatever it is handed and this construction
+  // spreads the whole resolved object, so the axis would install a real,
+  // non-configurable cap that starts binding the day delegation gains
+  // `maxAttempts`. Closing it at the declaration leaves it open at the path.
   const caps = resolveTaskCapDefaults("[skills] delegation board", {
     maxTotalTasks: deps.maxTotalTasks,
     maxEnqueuedTasks: deps.maxEnqueuedTasks,
+    maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
   });
 
   // Every writer for this board — the executive's flat task tools, a worker's

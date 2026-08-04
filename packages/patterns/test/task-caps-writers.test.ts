@@ -459,3 +459,134 @@ describe("pattern boards expose the caps their writers need", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// The retry budget reaches the three patterns whose tasks can retry (FIX-948)
+// ---------------------------------------------------------------------------
+
+/**
+ * One rule decides every board-building surface: **can a task on this board
+ * carry a `maxAttempts`?**
+ *
+ * If yes, the knob is required — because the finite default applies whether or
+ * not it is configurable, so without the option the default is a ceiling with no
+ * way to raise it or turn it off. If no, the knob would be inert and is refused,
+ * and refusing it means filtering the axis out of the cap forwarding, not just
+ * leaving the option undeclared.
+ *
+ * `supervisor` is the one to watch: `maxAttemptsPerTask` defaults to 3, so it
+ * retries out of the box and the new default binds it immediately.
+ */
+describe("retry budget — reaches the patterns that can retry, refused where it cannot", () => {
+  const capsWorker = handler({
+    name: "retry-caps-worker",
+    inputSchema: z.any(),
+    outputSchema: z.string(),
+    execute: () => "ok",
+  });
+
+  it("forwards the budget on supervisor / planAndExecute / parallelTasks", async () => {
+    const { planAndExecute } = await import("../src/plan-and-execute");
+    const { supervisor } = await import("../src/supervisor");
+    const { parallelTasks } = await import("../src/parallelTasks");
+
+    // An invalid value must be REJECTED at construction. That is the proof the
+    // option is genuinely forwarded into `resolveTaskCapDefaults` rather than
+    // accepted and dropped — a knob that is accepted and ignored is the exact
+    // "coverage claimed, not delivered" shape this rule exists to prevent.
+    expect(() =>
+      supervisor({ name: "rb-sup-bad", worker: capsWorker as never, maxTotalRetries: -1 }),
+    ).toThrow(/maxTotalRetries/);
+    expect(() =>
+      planAndExecute({ name: "rb-pae-bad", worker: capsWorker as never, maxTotalRetries: 1.5 }),
+    ).toThrow(/maxTotalRetries/);
+    expect(() =>
+      parallelTasks({
+        name: "rb-pt-bad",
+        worker: capsWorker as never,
+        maxTotalRetries: Number.NaN,
+      }),
+    ).toThrow(/maxTotalRetries/);
+
+    // And each can RAISE it and DISABLE it — the two migration paths a binding
+    // default has to leave open.
+    for (const build of [
+      (r: number | null) =>
+        supervisor({ name: `rb-sup-${r}`, worker: capsWorker as never, maxTotalRetries: r }),
+      (r: number | null) =>
+        planAndExecute({ name: `rb-pae-${r}`, worker: capsWorker as never, maxTotalRetries: r }),
+      (r: number | null) =>
+        parallelTasks({ name: `rb-pt-${r}`, worker: capsWorker as never, maxTotalRetries: r }),
+    ]) {
+      expect(() => build(5000)).not.toThrow();
+      expect(() => build(null)).not.toThrow();
+      expect(() => build(0)).not.toThrow();
+    }
+  });
+
+  it("lets a supervisor plan large enough to exceed the default be configured past it", async () => {
+    const { supervisor } = await import("../src/supervisor");
+    // `maxAttemptsPerTask` defaults to 3, so a supervisor board retries by
+    // default and the finite default binds it out of the box. Without this
+    // option that would be an un-opt-out-able ceiling on an existing pattern —
+    // which is the finding this assertion proves is fixed.
+    const raised = supervisor({
+      name: "rb-sup-large",
+      worker: capsWorker as never,
+      maxTotalTasks: 500,
+      maxTotalRetries: 1500,
+    });
+    expect(raised).toBeDefined();
+  });
+
+  it("installs NO budget on an eventActors board, whose tasks cannot retry", async () => {
+    const { createEventActorsWorkspace, actor, eventActors } = await import(
+      "../src/eventActors"
+    );
+    const entrySchema = z.object({ type: z.string(), topic: z.string(), body: z.any() });
+    const rb = createEventActorsWorkspace({ name: "rb-ea", entries: entrySchema });
+    const noop = actor({
+      name: "noop",
+      watch: ["**"],
+      block: handler({
+        name: "rb-ea-h",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => ({}),
+      }),
+    });
+
+    // The option is not on `EventActorsConfig` at all…
+    expect(() =>
+      // @ts-expect-error — refused: an eventActors task never carries maxAttempts.
+      eventActors({ name: "rb-ea-opt", workspace: rb, actors: [noop], maxTotalRetries: 5 }),
+    ).not.toThrow();
+
+    // …and, the part that matters, the DEFAULT does not install either. The
+    // board reports the limit actually in force on its completion item, read off
+    // the collection it constructed — so this is the real path, not a
+    // declaration check. `resolveTaskCapDefaults` supplies a default budget to
+    // whatever it is handed and this surface spreads the whole object, so
+    // without the filter the board would silently carry one.
+    const { emit } = eventActors({ name: "rb-ea-run", workspace: rb, actors: [noop] });
+    const result = await testBlock(emit as never, {
+      input: { type: "request", topic: "go", body: "hi" } as never,
+      session: { resources: { eventedActors: { entries: [] } } },
+    } as never);
+    expect(result.error).toBeNull();
+
+    type MetaItem = {
+      type?: string;
+      component?: string;
+      data?: { status?: string; maxTotalRetries?: number | null };
+    };
+    const meta = (result.items as MetaItem[]).find(
+      (i) =>
+        i.type === "component" &&
+        i.component === "task-board-meta" &&
+        i.data?.status === "completed",
+    );
+    expect(meta).toBeDefined();
+    expect(meta?.data?.maxTotalRetries).toBeNull();
+  });
+});

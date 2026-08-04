@@ -29,7 +29,16 @@ import type { DefinedCapability, GeneratorTool, InitialSkill } from "@flow-state
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
-import { getOrCreateTaskCollection } from "../../src/tasks";
+import {
+  createSequencerBackedTaskCollection,
+  DEFAULT_MAX_ENQUEUED_TASKS,
+  DEFAULT_MAX_TOTAL_RETRIES,
+  DEFAULT_MAX_TOTAL_TASKS,
+  getOrCreateTaskCollection,
+  resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
+} from "../../src/tasks";
+import { createFakeSequencerState } from "../helpers";
 import {
   buildTaskToolsList,
   createTaskToolsCapability,
@@ -303,5 +312,74 @@ describe("delegation board caps — a worker's mid-drain fan-out", () => {
       ctx,
     )) as AddTaskResult;
     expect(fanOut).toEqual({ ok: false, error: "enqueued_task_cap_exceeded" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The retry budget is refused here — at the PATH, not just the declaration
+// ---------------------------------------------------------------------------
+
+/**
+ * A delegation board carries **no** retry budget (FIX-948, Decision 8).
+ *
+ * A task created through the delegation `addTask` tool can never retry — the
+ * tool neither accepts nor stamps `maxAttempts`, and the routing predicate
+ * settles terminal without one — so a budget here would have no subject.
+ *
+ * The trap this suite exists for: refusing the public option on
+ * `SkillsLibraryOptions` does **not** refuse the cap. `resolveTaskCapDefaults`
+ * applies the DEFAULT budget to whatever it is handed, and the delegation
+ * surface spreads the *whole* resolved object into its collection constructor —
+ * so leaving the option off would still install a real, non-configurable cap
+ * with no way to raise it or pass `null`, silently activating the day delegation
+ * gains `maxAttempts`. A type-level "absent from `SkillsLibraryOptions`" check
+ * passes in exactly that broken state, which is why these assertions are about
+ * the constructed collection instead.
+ */
+describe("delegation board — the retry budget is filtered out of the cap spread", () => {
+  it("installs no budget on a collection built from the surface's resolved caps", async () => {
+    const caps = resolveTaskCapDefaults("[skills] delegation board", {
+      maxTotalTasks: undefined,
+      maxEnqueuedTasks: undefined,
+      maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
+    });
+
+    const board = createSequencerBackedTaskCollection({
+      collectionId: DELEGATION_BOARD_FIELD,
+      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      ...caps,
+    });
+
+    // No limit is in force — which is what the board's completion item reports,
+    // and what a caller reads to know nothing was enforced.
+    expect(board.maxTotalRetries).toBeNull();
+    // The creation caps still apply: this refuses ONE axis, not the object.
+    expect(caps.maxTotalTasks).toBe(DEFAULT_MAX_TOTAL_TASKS);
+    expect(caps.maxEnqueuedTasks).toBe(DEFAULT_MAX_ENQUEUED_TASKS);
+  });
+
+  it("would install one if the axis were merely OMITTED — the failure mode, pinned", async () => {
+    // The counterfactual, asserted so the test above cannot pass vacuously.
+    // Leaving the option undeclared is not the same as refusing it: an absent
+    // axis takes the default at every defaulting site, so the spread below —
+    // exactly what the delegation surface performs — silently acquires a budget
+    // the board cannot configure.
+    const unfiltered = resolveTaskCapDefaults("[skills] delegation board", {});
+    const board = createSequencerBackedTaskCollection({
+      collectionId: DELEGATION_BOARD_FIELD,
+      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      ...unfiltered,
+    });
+    expect(board.maxTotalRetries).toBe(DEFAULT_MAX_TOTAL_RETRIES);
+  });
+
+  it("keeps the option off `SkillsLibraryOptions` — necessary, and not sufficient", () => {
+    // The type-level half. Kept because the option genuinely must not be
+    // offered, but it is the assertion that used to pass while the cap
+    // installed, so it is deliberately paired with the two above.
+    const options: Record<string, unknown> = {};
+    // @ts-expect-error — `maxTotalRetries` is not part of SkillsLibraryOptions.
+    createSkillsLibrary({ catalog: {}, initialSkills: [], maxTotalRetries: 10 });
+    expect(options.maxTotalRetries).toBeUndefined();
   });
 });

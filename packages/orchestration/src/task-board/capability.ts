@@ -226,7 +226,7 @@ export function createTaskBoardCapability<
     // `getOrCreateTaskCollection` never caches, so `ctx.cap.<board>.addTask`
     // builds its OWN ref. One resolver per board, not one per writer — without
     // this the capability would be an uncapped writer onto the same board.
-    const { stateKey, maxTotalTasks, maxEnqueuedTasks } = options;
+    const { stateKey, maxTotalTasks, maxEnqueuedTasks, maxTotalRetries } = options;
     return defineCapability({
       name: capabilityName,
       fns: (ctx: BlockContext): TaskBoardCapabilityAccessor<TInput, TOutput> =>
@@ -238,6 +238,7 @@ export function createTaskBoardCapability<
             stateKey,
             maxTotalTasks,
             maxEnqueuedTasks,
+            maxTotalRetries,
           })
         ),
     });
@@ -265,7 +266,7 @@ export function createTaskBoardCapability<
   // strictly via `ctx.getTarget(boardName)`. No `ctx.sequencer` fallback — the
   // targets registry only resolves inside the board's subtree, so failing loudly
   // here beats silently writing to a sibling's state.
-  const { stateKey, maxTotalTasks, maxEnqueuedTasks } = options;
+  const { stateKey, maxTotalTasks, maxEnqueuedTasks, maxTotalRetries } = options;
   return defineCapability({
     name: capabilityName,
     targetStateSchemas: {
@@ -289,6 +290,7 @@ export function createTaskBoardCapability<
           stateKey,
           maxTotalTasks,
           maxEnqueuedTasks,
+          maxTotalRetries,
         });
       }),
   });

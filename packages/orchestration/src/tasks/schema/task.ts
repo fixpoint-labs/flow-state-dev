@@ -37,6 +37,40 @@ export const taskSchema = z.object({
    * single-attempt — `fail()` transitions straight to `errored`.
    */
   maxAttempts: z.number().int().positive().optional(),
+  /**
+   * This task's record against the collection's cumulative retry budget
+   * (`maxTotalRetries`, FIX-948). Written only by `fail()`, inside the same
+   * atomic write that routes the failure.
+   *
+   * Two facts, one field, because they are written at the same seam and are read
+   * together: how many retries this task was GRANTED, and whether one was
+   * REFUSED because the board's budget was spent.
+   *
+   * `granted` counts AUTHORIZED failure retries — incremented when `fail()`
+   * re-pends the task, not when the retry is later observed at claim time. It is
+   * therefore not derivable from `attempts`, which also moves for re-claims
+   * after an `unblock`, a `resumeFromReview`, or a `reclaim` — none of which are
+   * failure retries and none of which touch this field.
+   *
+   * `deniedByBudget` is what the board's `terminationReason` reads. It exists so
+   * that reason can never be inferred from arithmetic: a task can consume the
+   * last grant and then succeed while an unrelated task fails normally, leaving
+   * the count at the limit with nothing ever refused.
+   *
+   * **Absent on any task persisted before FIX-948**, and on any task that has
+   * never failed. Read it through one `== null` guard on the object (BP-030) —
+   * absent means "no counted history": zero granted, not denied. It is
+   * deliberately not backfilled from `attempts`; see the "counting begins at
+   * upgrade" section in `tasks/collection/task-caps.ts`.
+   */
+  retryLedger: z
+    .object({
+      /** Failure retries this task was authorized, since the FIX-948 upgrade. */
+      granted: z.number().int().nonnegative(),
+      /** True once a retry was refused because the collection's budget was spent. */
+      deniedByBudget: z.boolean(),
+    })
+    .optional(),
 
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),
