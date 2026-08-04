@@ -83,7 +83,7 @@ task runs.
 
 ```ts
 taskBoard({
-  collection: { backing: "resource", collection: workBoardCollection },  // REQUIRED to detach
+  collection: workBoardCollection,                 // a defineTaskCollection(…) — REQUIRED to detach
   workers: {
     summarize: summarizeBlock,                     // bare value = inline, as today
     implement: { worker: implementBlock, dispatch: { mode: "detached" } }
@@ -92,6 +92,15 @@ taskBoard({
 })
 ```
 
+> **The `collection` value is the `defineTaskCollection(…)` itself, not a wrapper.** An earlier draft
+> of this snippet wrote `{ backing: "resource", collection: workBoardCollection }`, which is not one of
+> the four accepted shapes — `TaskBoardConfig.collection` takes a `DefinedTaskCollection`, a
+> request spec, a sequencer spec, or a `(ctx) => collection` factory (`task-board/index.ts:276-280`),
+> and only the `isDefinedTaskCollection` branch (`:929`) selects resource backing. Measured: that
+> literal does not compile — `Type '"resource"' is not assignable to type '"sequencer" | "request" |
+> undefined'` — so an implementer copying it gets a build error rather than a silently request-backed
+> board. Wrong either way, and corrected above.
+>
 > **The `collection` line is not decoration — omit it and the feature cannot work.** An omitted
 > `collection` selects the **request** backing, which is `taskBoard`'s documented default
 > (`task-board/index.ts:205,219`) and whose **lifetime is the request**
@@ -379,13 +388,13 @@ Anything not listed here is unconditional.
 | **C1** | clause 1 ownership · criterion 1 | ~~OQ-A~~ **FIX-992 landing** · the store adapter · the backing | Ownership holds only on a board the framework can fence. If the gate refuses the conditional write it is not delivered generally; on a store without the verb (filesystem) the durable board is refused rather than guaranteed; a `factory`-backed board is unverifiable and out of scope by default (Decision 3). |
 | **C1b-i** | criterion 1b-i — **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`) | **OQ-D-i** only — **no longer conditional on OQ-A** | May be narrowed-but-unbounded, or not delivered. Neither ceiling is enforced on a resource-backed board today (`tasks/collection/task-caps.ts:52-65`). |
 | **C1b-ii** | criterion 1b-ii — **the `maxInstances` registry race** | **OQ-D-ii** only — **no longer conditional on OQ-A** | May be narrowed-but-unbounded, or not delivered. This is the contract §8 measured. |
+| **C3** | clause 3 non-stranding · criterion 3 | **FIX-978** (external, not an OQ) | This epic consumes reclamation and does not build it. If FIX-978 does not land, work can still strand. |
 
 > **OQ-A's answer does not reach criterion 1b, and this table used to imply it did.** Both 1b rows were conditional on the conditional write arriving. It arrives (FIX-992) and they are **still open**, because
 > FIX-992's Decision 7 states the position outright: the `maxInstances` cap is *"explicitly not closed — a **set**-level invariant per-key CAS cannot enforce."* That is the same distinction §4 draws between
 > **1a** (one task's row — same key, so a version guard discriminates) and **1b** (the collection's cardinality — different task ids are different keys, so two CAS writes to different keys both succeed).
 > **A per-key conditional write was never the mechanism 1b needed**, so no answer to OQ-A could have closed it. The rows now depend on OQ-D alone, and binding rule 6 still applies: name a mechanism that
 > enforces a hard maximum on concurrent admitters, or say plainly that overshoot is narrowed but unbounded.
-| **C3** | clause 3 non-stranding · criterion 3 | **FIX-978** (external, not an OQ) | This epic consumes reclamation and does not build it. If FIX-978 does not land, work can still strand. |
 
 **C1b-i and C1b-ii are independent.** Two ceilings, two files, two enforcement points: task
 ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource registry's
