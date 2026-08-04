@@ -91,10 +91,11 @@ Exits when one of the following is true on a worker's `checkBoard` iteration:
 - **Drained** — no `pending`, `in_progress`, or `awaiting_review` tasks remain.
 - **Blocked** — no task is `in_progress` or `awaiting_review`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
 
-The final `task-board-meta` item carries a `terminationReason` field that tells the two cases apart:
+The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
+- `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 
 A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
 
@@ -105,7 +106,8 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
   data: {
     collectionId: "echo",
     status: "completed",
-    terminationReason: "all-completed",   // or "blocked-by-failures"
+    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
+    maxTotalRetries: 50,
     counts: {
       total: 2,
       completed: 2,
@@ -115,12 +117,13 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
       awaiting_review: 0,
       in_progress: 0,
       pending: 0,
+      retries: 0,
     },
   },
 }
 ```
 
-`terminationReason` is derived purely from those counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. `"retry-budget-exhausted"` is not a count comparison: it appears only when a retry was actually refused.
 
 ### `"complete"`
 
@@ -255,14 +258,14 @@ The two bounds above count tasks the board *creates*. A retry does not create a 
 const board = taskBoard({
   name: "research",
   workers,
-  maxTotalRetries: 250,
+  maxTotalRetries: 200,
 });
 ```
 
 It counts failure retries across the whole board. When the count reaches the bound, the next task that fails goes to `errored` instead of back to `pending`, with an error naming the board's budget, and its `error` reads:
 
 ```
-worker timed out — not retried: collection "research" has spent its retry budget of 250 (maxTotalRetries). Raise it, or pass null to opt out.
+worker timed out — not retried: collection "research" has spent its retry budget of 200 (maxTotalRetries). Raise it, or pass null to opt out.
 ```
 
 The task is settled, not parked: the drain counts it as resolved and the board finishes normally. Set `null` for no bound at all, or `0` to run every task once and never retry. A first attempt is never refused, at any value.
@@ -290,8 +293,8 @@ When a board's completion item reports `terminationReason: "retry-budget-exhaust
 // task-board-meta, status: "completed"
 {
   terminationReason: "retry-budget-exhausted",
-  maxTotalRetries: 250,
-  counts: { total: 12, completed: 9, errored: 3, retries: 250 },
+  maxTotalRetries: 200,
+  counts: { total: 12, completed: 9, errored: 3, retries: 200 },
 }
 ```
 

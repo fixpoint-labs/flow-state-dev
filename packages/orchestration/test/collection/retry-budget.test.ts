@@ -113,6 +113,28 @@ describe("retry budget — what is counted", () => {
     expect(collection.get(task.id)?.status).toBe("pending");
   });
 
+  it("keeps a grant spent when the retry is never claimed", async () => {
+    // The budget is spent at AUTHORIZATION, so a re-pended task whose worker
+    // died or whose lease expired does not get its grant back. Refunding would
+    // mean treating an expired lease as evidence of abandonment, which the
+    // substrate does not do.
+    const collection = makeCollection({ maxTotalRetries: 1 });
+    const abandoned = await collection.addTask({ goal: "abandoned", maxAttempts: 5 });
+    await collection.claim("w1");
+    await collection.fail(abandoned.id, "worker died mid-attempt");
+    expect(collection.get(abandoned.id)?.status).toBe("pending");
+
+    // The retry is never claimed; the lease reclaim re-pends it again without
+    // touching the ledger.
+    await collection.reclaim(Date.now() + 60_000);
+
+    // The board's only grant is gone, so a genuine failure elsewhere settles.
+    const other = await collection.addTask({ goal: "other", maxAttempts: 5 });
+    await collection.claim("w2", { eligibility: (t) => t.id === other.id });
+    await collection.fail(other.id, "boom");
+    expect(collection.get(other.id)?.status).toBe("errored");
+  });
+
   it("never refuses a first attempt, even at a budget of `0`", async () => {
     const collection = makeCollection({ maxTotalRetries: 0 });
     const a = await collection.addTask({ goal: "a", maxAttempts: 3 });

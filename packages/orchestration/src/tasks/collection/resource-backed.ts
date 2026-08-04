@@ -577,7 +577,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       const candidateRef = mirror.get(id);
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
-        if (routeFailure(current as Task, 0, undefined).action === "retry") {
+        if (routeFailure(current as Task, () => 0, undefined).action === "retry") {
           return transitionRef(
             id,
             "pending",
@@ -588,7 +588,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               // candidate read above. The patch runs only after the decline
               // check and the legality assert, so nothing lands on a write that
               // is about to be refused.
-              const fresh = routeFailure(task as Task, 0, undefined);
+              const fresh = routeFailure(task as Task, () => 0, undefined);
               const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
               return {
                 feedback: error,

@@ -475,7 +475,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         (task, tasks) => {
           const routing = routeFailure(
             task as Task,
-            sumGrantedRetries(Object.values(tasks) as Task[]),
+            () => sumGrantedRetries(Object.values(tasks) as Task[]),
             maxTotalRetries
           );
           if (routing.action === "retry") {
@@ -497,7 +497,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             kind: "errored" as const,
             patch: (current: Task<TInput, TOutput>) => ({
               error: routing.deniedByBudget
-                ? retryBudgetExhaustedError(error, maxTotalRetries as number, collectionId)
+                ? retryBudgetExhaustedError(error, routing.limit, collectionId)
                 : error,
               completedAt: now(),
               leaseUntil: undefined,

@@ -322,8 +322,9 @@ contracts with different triggers, so don't read one as the other:
   `pending`, `in_progress`, `awaiting_review`, or `blocked`. Terminal tasks don't
   count toward it.
 - **A code-defined board.** Its final item carries
-  `terminationReason: "blocked-by-failures"` whenever any task is not
-  `completed` — `errored` and `cancelled` included.
+  `terminationReason: "blocked-by-failures"` when any task is not
+  `completed` — `errored` and `cancelled` included — or
+  `"retry-budget-exhausted"` when `maxTotalRetries` refused a retry.
 
 They can disagree about the identical board. One errored task with everything
 else complete reports `blocked-by-failures` on the code-first side and `drained`

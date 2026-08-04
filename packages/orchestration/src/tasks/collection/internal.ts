@@ -173,7 +173,12 @@ export function anyRetryDeniedByBudget(tasks: Iterable<Task>): boolean {
  */
 export type FailRouting =
   | { action: "retry"; countsAgainstBudget: boolean }
-  | { action: "terminal"; deniedByBudget: boolean };
+  /**
+   * `limit` is present exactly when `deniedByBudget` is true, so the error
+   * message can name the budget without a cast the type system cannot check.
+   */
+  | { action: "terminal"; deniedByBudget: false }
+  | { action: "terminal"; deniedByBudget: true; limit: number };
 
 /**
  * Decide how a `fail()` routes, given the task, the board's granted-retry total,
@@ -212,17 +217,19 @@ export type FailRouting =
  */
 export function routeFailure(
   task: Task,
-  grantedTotal: number,
+  grantedTotal: () => number,
   maxTotalRetries: number | undefined
 ): FailRouting {
   if (!shouldRetryOnFail(task)) return { action: "terminal", deniedByBudget: false };
   if (!ATTEMPT_OWNED_STATUSES.has(task.status)) {
     return { action: "retry", countsAgainstBudget: false };
   }
-  if (maxTotalRetries === undefined || grantedTotal < maxTotalRetries) {
+  // `grantedTotal` is a thunk so the O(tasks) sum is only walked once the two
+  // cheap gates above have passed and a budget is actually in force.
+  if (maxTotalRetries === undefined || grantedTotal() < maxTotalRetries) {
     return { action: "retry", countsAgainstBudget: true };
   }
-  return { action: "terminal", deniedByBudget: true };
+  return { action: "terminal", deniedByBudget: true, limit: maxTotalRetries };
 }
 
 /**
