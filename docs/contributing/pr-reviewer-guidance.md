@@ -88,21 +88,21 @@ same review is the mistake this table exists to prevent.
 - **Implementation PR** — no template; the block below is the source. Authored in
   `issue-implement` Step 9, alongside the Key Decisions & Ramifications list.
 
-### Implementation-PR contract — two variants, picked by route
+### Implementation-PR contract — three variants, picked by what backs the change
 
-An implementation PR arrives by one of the two routes in
-[`orchestration.md`](orchestration.md) → "Which issues get a spec", and they need **opposite**
-things said. Using the spec-route text on a bug is a real defect, not a cosmetic one: it
-dangles a link to a spec that was never written, and it tells reviewers the approach is
-settled when on that route **nothing** was settled and the approach is the main thing to
-check.
+An implementation PR reaches review with one of three things behind it, and they need
+**different** review. Getting this wrong is a real defect, not a cosmetic one: telling
+reviewers "the approach is already approved" on a change where nothing was approved suppresses
+the only review that change will ever get.
 
-**Spec route** (Feature · Enhancement · Improvement — a spec exists and was approved):
+**1. Spec-backed** (Feature · Enhancement · Improvement with an approved spec):
 
-> **How to review this.** This implements an **approved spec**
-> ([spec PR](#) · `docs/specs/<ISSUE-ID>.md`), so the approach and the numbered Decisions
-> in its §6 are already signed off by a human. Please review the **code against that
-> direction**, not the direction itself.
+> **How to review this.** This implements an **approved spec** — the approach and the numbered
+> Decisions in its §6 are already signed off by a human, so please review the **code against
+> that direction**, not the direction itself. The spec lives on the issue's **Linear document**
+> (the durable copy) and on the **closed spec PR** ([link](#)), which keeps its review history.
+> Don't expect `docs/specs/<ISSUE-ID>.md` to be in *this* diff — the spec PR closes unmerged
+> and its branch is deleted before implementation starts (BP-037).
 >
 > **Most valuable here:** correctness on the second path (the legacy shape, the null
 > boundary, the concurrent case, the cancel path), anything deriving an auth or routing
@@ -115,7 +115,7 @@ check.
 >
 > **Parts worth reviewing closely:** *(1–3 items, per this file's rules)*
 
-**Direct route** (a **bug**, or a one-screen agent-brief change — no spec, no spec PR):
+**2. A bug on the direct route** (no spec, by design — the hard part was the diagnosis):
 
 > **How to review this.** This is a **bug fix on the direct route**: there is no spec and no
 > spec PR, because the hard part was the diagnosis and it happened in code. **This PR is the
@@ -129,6 +129,24 @@ check.
 >
 > **In scope to challenge:** where the guard was placed, any behaviour change a user could
 > notice, and whether this should have been a spec'd feature instead of a fix.
+>
+> **Parts worth reviewing closely:** *(1–3 items, per this file's rules)*
+
+**3. Brief-backed** (a one-screen agent brief is the contract — `agent-brief-template.md`).
+**Not a bug**, so the diagnosis chain above does not apply and pasting variant 2 would point
+reviewers at a repro that doesn't exist:
+
+> **How to review this.** The contract for this change is a **one-screen agent brief** on the
+> issue, not a spec — the work was small and local enough that a full spec would have been a
+> document round-trip. So **no approach was signed off upstream, and this PR is the only gate**:
+> the design is in scope alongside the code.
+>
+> **Most valuable here:** whether the change is actually as small and local as the brief
+> assumed — a brief-backed change that turns out to touch a contract, add public surface, or
+> need a migration was mis-routed and should have been specced. Then the second path (the
+> legacy shape, the null boundary, the concurrent case, the cancel path).
+>
+> **In scope to challenge:** the approach, the scope, and whether this earned its place at all.
 >
 > **Parts worth reviewing closely:** *(1–3 items, per this file's rules)*
 
