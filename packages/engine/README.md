@@ -567,10 +567,16 @@ touch content, so a request that loses a race never reaches `ContentStore`.
   the stored body belongs to the client that won. The conflict is terminal — a
   losing create is never retried into an overwrite.
 - `DELETE /sessions/:id/resources/:ref/:topic` reads the row's version, deletes
-  state conditionally on it, and deletes content only after that commits. A
-  delete built against a generation that has since been replaced returns `409`
-  and leaves the item intact in both stores. Deleting an absent topic is still
-  an idempotent `200`.
+  state conditionally on it, and deletes content only after that commits. If
+  the row moves between that read and the delete, the request returns `409` and
+  leaves the item intact in both stores. Deleting an absent topic is still an
+  idempotent `200`.
+
+  The version is one the **route** observes while serving the request, not one
+  the client supplied, so the window it closes is the route's own. A `DELETE`
+  issued from a client view that is already out of date still reads the live
+  row and removes it. Closing that needs a caller-supplied precondition on the
+  request, which this route does not accept.
 
 Two limits are real and stated rather than implied. A create is two writes to
 two stores: if the state row commits and the content write then fails, the item

@@ -18,15 +18,21 @@ that commits. One client gets `201`, the other gets `409` and never reaches the
 content store, so the persisted body always belongs to the client that won the
 topic. The conflict is final: a losing create is not retried into an overwrite.
 
-`DELETE` now deletes state conditionally on the version the request actually
-read, and deletes content only after that commits. A delete that lost its race
-returns `409` and leaves the item completely intact, content included. Deleting
-a topic that does not exist is still `200`, so retrying a completed delete stays
-safe.
+`DELETE` now deletes state conditionally on the version it read while serving
+the request, and deletes content only after that commits. If the row moves in
+between, the request returns `409` and leaves the item completely intact,
+content included. Deleting a topic that does not exist is still `200`, so
+retrying a completed delete stays safe.
 
-Both are new failure modes for clients: `DELETE` previously returned `200`
-unconditionally. A 409 means the client's view is stale, not that the operation
-is impossible — re-read and decide again.
+`DELETE` previously returned `200` unconditionally, so the 409 is a new failure
+mode for clients — worth retrying, since it means something touched the item
+mid-request rather than that the delete is impossible.
+
+What the delete check covers is the route's own window, between its read and
+its write. It is not a client precondition: a `DELETE` issued from a view the
+client fetched earlier still reads the live row and removes it. Accepting a
+caller-supplied expected version is a separate piece of surface these routes do
+not have.
 
 Two limits are worth stating rather than implying. A create is still two writes
 to two stores: if the state row commits and the content write then fails, the

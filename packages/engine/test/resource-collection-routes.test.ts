@@ -201,6 +201,13 @@ describe("create collection item route — the winner owns the content", () => {
     expect(contentSet).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * A guard rather than a change detector for the sequential case: the pre-read
+   * this change removes already turned a second create away, so this passes
+   * before and after. What it pins is that the CAS insert kept that behaviour —
+   * the loser bumps no version and writes no content. The concurrent case above
+   * is the detector.
+   */
   it("a losing create leaves the winner's row untouched and writes no content", async () => {
     const ctx = await setupCtx();
     expect((await create(ctx, "a", "first")).status).toBe(201);

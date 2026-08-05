@@ -420,23 +420,31 @@ All paths are relative to `/api/flows`. Permissions are enforced server-side bas
 
 ### `POST` and `DELETE` can return 409
 
-Both write endpoints check that the item is in the state the request assumed
-before they change anything, so either can now come back `409 Conflict`.
+Both write endpoints settle the item's state before they change anything else,
+so either can now come back `409 Conflict`.
 
 `POST` returns 409 when the topic already exists. That includes the case where
 two clients create the same topic at once: one gets `201`, the other gets `409`
 and never writes content, so the stored body belongs to the client that won.
 
-`DELETE` returns 409 when the item moved between the request being served and
-the delete being applied — usually because it was removed and recreated in the
-meantime. Previously every `DELETE` returned `200`, and a request built against
-a stale view would remove whatever was there at the time. A rejected `DELETE`
+`DELETE` returns 409 when the item's state changed while the request was being
+served — between the server reading the item and applying the delete. In
+practice that means something removed and recreated it, or a block wrote to it,
+in that window. Previously `DELETE` always returned `200`. A rejected `DELETE`
 leaves the item completely intact, content included.
 
-Both are worth handling in client code that retries. A 409 on `DELETE` means
-your view is out of date, not that the delete failed for good: re-read the item
-and decide again. Deleting a topic that does not exist is still a `200`, so
-retrying a delete you already completed is safe.
+Be precise about what this does and doesn't protect. The server reads the
+item's current version as part of handling your request, so **a `DELETE` built
+from a view you fetched a while ago still deletes whatever is live now.** There
+is no way yet for a client to attach its own precondition to the request, so
+the check covers the server's own window, not the age of your data. If you need
+delete-if-unchanged, compare state client-side before you call and accept that
+it races.
+
+A 409 on `DELETE` is worth retrying: re-read the item and decide again, since
+it usually means something else touched the item mid-request. Deleting a topic
+that does not exist is still a `200`, so retrying a delete you already
+completed is safe.
 
 ## Live updates
 

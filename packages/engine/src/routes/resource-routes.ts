@@ -708,12 +708,19 @@ export async function handleDeleteCollectionItem(
   // Conflict before anything is deleted (FIX-992 D12) — the create route's
   // rule, mirrored.
   //
-  // Delete state on the version this request actually observed, so a DELETE
-  // chosen against a generation that has since been deleted and recreated
-  // conflicts instead of tombstoning the replacement. `undefined` means no
+  // Delete state on the version this request observed, so a generation that is
+  // replaced while the request is in flight conflicts instead of being
+  // tombstoned by a decision made against its predecessor. `undefined` means no
   // live row, which is `expectedVersion: 0` — an absent key stays an
   // idempotent 200, but a create landing between the read and the delete makes
   // this request a loser rather than letting it remove what it never saw.
+  //
+  // The scope of that, stated because the prose around this change is easy to
+  // over-read: the version comes from this read, not from the caller, so the
+  // window closed is this route's own. A DELETE issued from a client view that
+  // is already stale reads the live row here and removes it. Closing that needs
+  // a caller-supplied precondition on the request, which is new surface and not
+  // this change's to invent.
   const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
   const removed = await ctx.stores.resourceState.delete(
     "session",
