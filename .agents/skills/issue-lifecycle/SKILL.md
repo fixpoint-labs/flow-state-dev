@@ -436,8 +436,10 @@ A PR-activity event arrives in *this* session with the comment bodies and CI out
 and the harness's own posture on PRs you opened is that they are yours to drive green: diagnose
 the failure, push the fix, answer the reviewer. **Under this skill that posture does not apply
 to you.** You "opened" that PR only in the sense that you hold its subscription — a sub-agent
-can't. The work on it is the PR_FEEDBACK row of the phase table: a fresh bounded sub-agent
-running `issue-implement` Step 10 over the batch.
+can't. The work on it belongs to whichever row the phase table puts the event in — a spec-PR
+event under AWAITING_SPEC_APPROVAL goes to `issue-spec` Step 6.5 on the spec-review budget, an
+impl-PR event under PR_FEEDBACK to `issue-implement` Step 10 on the round cap. Either way it is
+a fresh bounded sub-agent, and either way it is not you.
 
 So on any PR-activity event — a review comment, a CI failure, a push, an approval:
 
@@ -445,10 +447,10 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   thread. Not for a one-line CI fix, and not because the change looks obvious from the event
   text; "obvious" is what every round nine looked like at round three.
 - **Do** re-derive the phase from the small durable read above, take that phase's one bounded
-  action — which for PR_FEEDBACK means *dispatching*, not doing — and end the turn. Take the
-  action from the row itself, not from that gloss: PR_FEEDBACK dispatches on review comments and
-  CI, but an **approved + green** PR surfaces "ready to merge" and stops. A feedback worker sent
-  over a merge-ready PR spends a round on nothing and delays the one gate that is yours.
+  action, and end the turn. Take it from the row itself, never from a summary of the row —
+  including this section's. The rows branch, and the branches are exactly where acting on a
+  summary costs you: an **approved + green** PR surfaces "ready to merge" and stops instead of
+  dispatching, and a spec-PR event is charged to the spec-review budget, not the feedback cap.
 
 This is the skill-level statement of a rule canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token discipline (why it
