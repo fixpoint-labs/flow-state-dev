@@ -638,7 +638,10 @@ export interface ResourceStateStore {
    * snapshot conflicts instead of tombstoning a newer generation.
    *
    * The row keeps its version and drops its payload. Deleting an absent or
-   * already-tombstoned key is an idempotent success.
+   * already-tombstoned key is an idempotent success — an absent key reports
+   * `version: 0`, consistent with `0` meaning "no live row" everywhere else in
+   * this contract. That is not a version any row holds, so never carry it
+   * forward as the basis for a later write.
    */
   delete(
     scopeType: ContentScopeType,

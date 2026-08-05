@@ -79,16 +79,24 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       const payload = JSON.stringify(state);
 
       if (expectedVersion === "any") {
-        const current = await readRow(scopeType, scopeId, resourceKey);
-        const nextVersion = (current?.version ?? 0) + 1;
-        await executor.query(
+        // The bump happens IN the statement, not from a prior read: a
+        // read-then-write here is not atomic, and two concurrent `"any"`
+        // writers would both compute the same next version and both commit it.
+        // The loser would then hold a version naming the winner's row, and its
+        // next CAS write would sail through and clobber it — the exact lost
+        // update this store exists to stop, on the one path every caller uses
+        // until the registry driver lands.
+        const written = await executor.query(
           `INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle)
-           VALUES ($1, $2, $3, $4::jsonb, $5, 'live')
+           VALUES ($1, $2, $3, $4::jsonb, 1, 'live')
            ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET
-             state = EXCLUDED.state, version = EXCLUDED.version, lifecycle = 'live'`,
-          [scopeType, scopeId, resourceKey, payload, nextVersion]
+             state = EXCLUDED.state,
+             version = resource_state.version + 1,
+             lifecycle = 'live'
+           RETURNING version`,
+          [scopeType, scopeId, resourceKey, payload]
         );
-        return { ok: true, version: nextVersion };
+        return { ok: true, version: Number(written.rows[0]!.version) };
       }
 
       if (expectedVersion === 0) {
@@ -109,11 +117,16 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
           return conflictFrom(current);
         }
         const nextVersion = current.version + 1;
+        // Fence on the tombstone version this call actually observed. Without
+        // it the predicate says only "still not live", so a revive that raced
+        // another revive-plus-delete would write a version the other
+        // generation already used — reusing a version is precisely what the
+        // retained tombstone exists to prevent.
         const revived = await executor.query(
           `UPDATE resource_state SET state = $1::jsonb, version = $2, lifecycle = 'live'
            WHERE scope_type = $3 AND scope_id = $4 AND resource_key = $5
-             AND lifecycle <> 'live'`,
-          [payload, nextVersion, scopeType, scopeId, resourceKey]
+             AND lifecycle <> 'live' AND version = $6`,
+          [payload, nextVersion, scopeType, scopeId, resourceKey, current.version]
         );
         if ((revived.rowCount ?? 0) === 0) {
           return conflictFrom(await readRow(scopeType, scopeId, resourceKey));
@@ -151,13 +164,16 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       const marked = await executor.query(
         `UPDATE resource_state SET state = '{}'::jsonb, lifecycle = 'deleted'
          WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3
-           AND lifecycle = 'live' AND ($4 = -1 OR version = $4)`,
+           AND lifecycle = 'live' AND ($4 = -1 OR version = $4)
+         RETURNING version`,
         [scopeType, scopeId, resourceKey, guard]
       );
       if ((marked.rowCount ?? 0) === 0) {
         return conflictFrom(await readRow(scopeType, scopeId, resourceKey));
       }
-      return { ok: true, version: current.version };
+      // Read the retained version off the statement, not off the pre-read:
+      // under `"any"` a concurrent writer can advance the row between the two.
+      return { ok: true, version: Number(marked.rows[0]!.version) };
     },
 
     async getAll(

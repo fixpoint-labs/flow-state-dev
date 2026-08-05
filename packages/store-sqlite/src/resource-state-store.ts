@@ -55,24 +55,33 @@ export function createSQLiteResourceStateStore(
       "WHERE scope_type = ? AND scope_id = ? AND resource_key = ? " +
       "AND version = ? AND lifecycle = 'live'"
   );
-  // Recreate over a tombstone: only when the row is NOT live.
+  // Recreate over a tombstone, fenced on the tombstone version the caller
+  // observed. "Still not live" alone is not enough: a revive racing another
+  // revive-plus-delete would otherwise write a version the other generation
+  // already used, which is the version reuse the retained tombstone prevents.
   const reviveIfDeletedStmt = db.prepare(
     "UPDATE resource_state SET state = ?, version = ?, lifecycle = 'live' " +
-      "WHERE scope_type = ? AND scope_id = ? AND resource_key = ? AND lifecycle != 'live'"
+      "WHERE scope_type = ? AND scope_id = ? AND resource_key = ? " +
+      "AND lifecycle != 'live' AND version = ?"
   );
-  // Unconditional write for the `"any"` opt-out.
+  // Unconditional write for the `"any"` opt-out. The bump happens IN the
+  // statement: a read-then-write is not atomic, and two concurrent `"any"`
+  // writers would both compute the same next version and both commit it,
+  // leaving the loser holding a version that names the winner's row.
   const upsertStmt = db.prepare(
     "INSERT INTO resource_state (scope_type, scope_id, resource_key, state, version, lifecycle) " +
-      "VALUES (?, ?, ?, ?, ?, 'live') " +
+      "VALUES (?, ?, ?, ?, 1, 'live') " +
       "ON CONFLICT (scope_type, scope_id, resource_key) DO UPDATE SET " +
-      "state = excluded.state, version = excluded.version, lifecycle = 'live'"
+      "state = excluded.state, version = resource_state.version + 1, lifecycle = 'live' " +
+      "RETURNING version"
   );
   // Tombstone: retain the version, drop the payload. `-1` is the "any"
   // sentinel, safe because a real version is always >= 1.
   const tombstoneIfVersionStmt = db.prepare(
     "UPDATE resource_state SET state = '{}', lifecycle = 'deleted' " +
       "WHERE scope_type = ? AND scope_id = ? AND resource_key = ? " +
-      "AND lifecycle = 'live' AND (? = -1 OR version = ?)"
+      "AND lifecycle = 'live' AND (? = -1 OR version = ?) " +
+      "RETURNING version"
   );
   const getAllStmt = db.prepare(
     "SELECT resource_key, state, version FROM resource_state " +
@@ -134,10 +143,10 @@ export function createSQLiteResourceStateStore(
       const payload = JSON.stringify(state);
 
       if (expectedVersion === "any") {
-        const current = readRow(scopeType, scopeId, resourceKey);
-        const nextVersion = (current?.version ?? 0) + 1;
-        upsertStmt.run(scopeType, scopeId, resourceKey, payload, nextVersion);
-        return { ok: true, version: nextVersion };
+        const written = upsertStmt.get(scopeType, scopeId, resourceKey, payload) as {
+          version: number;
+        };
+        return { ok: true, version: written.version };
       }
 
       if (expectedVersion === 0) {
@@ -158,7 +167,8 @@ export function createSQLiteResourceStateStore(
           nextVersion,
           scopeType,
           scopeId,
-          resourceKey
+          resourceKey,
+          current.version
         );
         if (revived.changes === 0) {
           return conflictFrom(readRow(scopeType, scopeId, resourceKey));
@@ -194,17 +204,18 @@ export function createSQLiteResourceStateStore(
       if (current.lifecycle !== "live") return { ok: true, version: current.version };
 
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
-      const marked = tombstoneIfVersionStmt.run(
+      const marked = tombstoneIfVersionStmt.get(
         scopeType,
         scopeId,
         resourceKey,
         guard,
         guard
-      );
-      if (marked.changes === 0) {
+      ) as { version: number } | undefined;
+      if (marked === undefined) {
         return conflictFrom(readRow(scopeType, scopeId, resourceKey));
       }
-      return { ok: true, version: current.version };
+      // Read the retained version off the statement, not off the pre-read.
+      return { ok: true, version: marked.version };
     },
 
     async getAll(

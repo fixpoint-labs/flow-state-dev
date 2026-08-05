@@ -380,6 +380,32 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it('two concurrent "any" writes never commit the same version', async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", makeState(0));
+
+        // `"any"` is the opt-out every un-migrated caller passes, so this is
+        // the only write path in production until the registry driver lands.
+        // If the version bump is computed from a prior read rather than
+        // applied atomically, both writers compute the same next version and
+        // both commit it — and the loser then holds a version naming the
+        // winner's row, so its next version-checked write sails through and
+        // clobbers it. That is the lost update this store exists to stop,
+        // arriving through the one path that does not check a version.
+        const [first, second] = await Promise.all([
+          store.set("session", "s1", "k", makeState(1), "any"),
+          store.set("session", "s1", "k", makeState(2), "any")
+        ]);
+        expect(first.ok && second.ok).toBe(true);
+        const versions = [first, second].map((r) => (r.ok ? r.version : -1));
+        expect(new Set(versions).size).toBe(2);
+
+        // and the row ends at the higher of the two, not at a shared number
+        const current = await store.get("session", "s1", "k");
+        expect(current?.version).toBe(Math.max(...versions));
+      });
+    });
+
     it("expectedVersion 0 inserts when there is no live row", async () => {
       await withStore(async (store) => {
         const created = await store.set("session", "s1", "k", makeState(1), 0);

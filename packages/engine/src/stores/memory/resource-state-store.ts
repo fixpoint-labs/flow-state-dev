@@ -21,6 +21,7 @@ import type {
   SetResult,
   VersionedResourceState
 } from "../types";
+import { checkWriteVersion } from "../resource-state-predicate";
 
 /** A stored row: the state, its version, and whether it is live or a tombstone. */
 type ResourceStateRow = {
@@ -125,39 +126,6 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
       this.data.set(key, { state: {}, version: row.version, lifecycle: "deleted" });
     }
   }
-}
-
-/**
- * Shared write predicate: returns a conflict `SetResult` when `expectedVersion`
- * does not admit a write against `row`, or `undefined` when it does.
- *
- * A conflict reports the current **live** value, or `undefined` when the row
- * is a tombstone — the distinction a caller needs in order to treat a deleted
- * resource as terminal rather than refreshing from a stale cache.
- */
-export function checkWriteVersion(
-  row: { state: JsonObject; version: number; lifecycle: "live" | "deleted" } | undefined,
-  expectedVersion: ExpectedVersion
-): { ok: false; conflict: { currentValue: JsonObject | undefined; currentVersion: number } } | undefined {
-  if (expectedVersion === "any") return undefined;
-
-  const isLive = row !== undefined && row.lifecycle === "live";
-  const conflict = {
-    ok: false as const,
-    conflict: {
-      currentValue: isLive ? row.state : undefined,
-      currentVersion: row?.version ?? 0
-    }
-  };
-
-  // `0` means "no live row" — create-if-absent, satisfied by a tombstone as
-  // well as a key that never existed.
-  if (expectedVersion === 0) return isLive ? conflict : undefined;
-
-  // A positive version requires a live row at exactly that version. A
-  // tombstone retaining the same number must still be refused, or the delete
-  // never happened.
-  return isLive && row.version === expectedVersion ? undefined : conflict;
 }
 
 export function createInMemoryResourceStateStore(): ResourceStateStore {
