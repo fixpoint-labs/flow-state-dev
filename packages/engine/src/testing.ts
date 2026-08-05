@@ -21,4 +21,8 @@ export {
   type CreateContentStoreConformanceTestsOptions,
   type CreateResourceStateStoreConformanceTestsOptions
 } from "./stores/testing/resource-store-conformance";
-export { gateNextStateRead, type StateReadGate } from "./stores/testing/state-read-gate";
+export {
+  gateNextStateRead,
+  StateReadGateTimeoutError,
+  type StateReadGate
+} from "./stores/testing/state-read-gate";

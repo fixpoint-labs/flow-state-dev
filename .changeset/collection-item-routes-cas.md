@@ -46,9 +46,11 @@ item's content returns `null` rather than an empty string. A `PATCH` to its
 content endpoint repairs it, but that needs the collection to grant
 `client.content.update` — a collection granting `create` alone leaves an
 authorized client holding an item it can neither fill nor remove. Grant `update`
-alongside `create`; the resource client-access guide now says so. None of this
-applies to a collection declaring `contentTemplate` or `contentTemplateRef`,
-whose content renders from state and never reads the content row.
+alongside `create`; the resource client-access guide now says so. A collection
+declaring `contentTemplate` or `contentTemplateRef` escapes only the repair
+half — its content renders from state and never reads the content row, so the
+item stays readable — but the create route still writes content whenever the
+caller sends any, so the failed request and the live item are the same there.
 
 The other windows produce no error at all, which is what makes them the ones
 worth stating. If a `DELETE` lands in that same window, the create's body is orphaned behind

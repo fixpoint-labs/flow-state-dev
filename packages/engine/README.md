@@ -581,9 +581,11 @@ listable but reads back as `content: null` rather than `""` — a create's body
 can be orphaned by an overlapping delete, an acknowledged `PATCH` can be
 overwritten by an in-flight create, and a recreation can lose its content to a
 delete already in flight. Only the first surfaces as an error; the others are
-silent. The first also does not arise for a collection whose content comes from
-`contentTemplate` / `contentTemplateRef`, which renders from state and never
-reads the content row. These are
+silent. A collection whose content comes from `contentTemplate` /
+`contentTemplateRef` loses only the *repair* half of the first — it renders from
+state and never reads the content row, so it stays readable — but the create
+route does not guard its content write on the template config, so the
+half-commit is identical there. These are
 accepted — content is deliberately unversioned, so no state predicate fences a
 write to it, and closing them is cross-record atomicity, which this store does
 not provide. The full contract, with the reasoning and the residual table, is

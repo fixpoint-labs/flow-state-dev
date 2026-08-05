@@ -11,6 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { parseResourceTemplate } from "@flow-state-dev/core/resource-template";
 import { createInMemoryStores, createFlowRegistry } from "../src";
 import { gateNextStateRead } from "../src/testing";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
@@ -20,6 +21,7 @@ import {
   handleDeleteCollectionItem,
   handleUpdateResourceContent,
   handleListCollectionState,
+  handleGetCollectionItemContent,
 } from "../src/routes/resource-routes";
 
 // ---------------------------------------------------------------------------
@@ -49,13 +51,17 @@ type Ctx = {
   sessionId: string;
 };
 
-async function setupCtx(client: Record<string, unknown> = FULL_GRANTS): Promise<Ctx> {
+async function setupCtx(
+  client: Record<string, unknown> = FULL_GRANTS,
+  extra: Record<string, unknown> = {}
+): Promise<Ctx> {
   const notes = defineResourceCollection({
     scope: "session",
     pattern: "notes/*",
     stateSchema: noteSchema,
     client: client as never,
-  });
+    ...extra,
+  } as never);
   const block = handler({ name: "noop", resources: { notes }, execute: () => "ok" });
   const flow = defineFlow({
     kind: "notes-flow",
@@ -116,6 +122,20 @@ function list(ctx: Ctx): Promise<Response> {
     { kind: "list_collection_state", sessionId: ctx.sessionId, ref: "notes" },
     { registry: ctx.registry, stores: ctx.stores }
   );
+}
+
+/**
+ * Read an item's content back through the route, which is where the rendered
+ * shape is decided — `storedContent` below reads the row underneath it, and the
+ * two do not agree when there is no row.
+ */
+async function readContent(ctx: Ctx, topic: string): Promise<unknown> {
+  const response = await handleGetCollectionItemContent(
+    new Request(`http://x/sessions/sess_1/resources/notes/${topic}/content`),
+    { kind: "get_collection_item_content", sessionId: ctx.sessionId, ref: "notes", topic },
+    { registry: ctx.registry, stores: ctx.stores }
+  );
+  return ((await response.json()) as { content: unknown }).content;
 }
 
 const KEY = "notes/a";
@@ -213,11 +233,17 @@ describe("create collection item route — the winner owns the content", () => {
 
     await expect(create(ctx, "a", "never-lands")).rejects.toThrow("content store down");
 
-    // The state row committed, so the item exists — with no content row at all,
-    // which is why a read of it returns `null` rather than an empty string.
+    // The state row committed, so the item exists — with no content row at all.
     // D12's accepted residual, pinned by a test rather than carried as prose.
     expect(await storedState(ctx)).toBeDefined();
     expect(await storedContent(ctx)).toBeUndefined();
+
+    // The shape an adapter or client author branches on, and the one the
+    // architecture reference promises: **absent, not empty**. The line above
+    // only says the row is missing; this says what the route makes of that. A
+    // `renderContent` that coerced the missing row to `""` would satisfy the
+    // line above and break every caller that distinguishes the two.
+    expect(await readContent(ctx, "a")).toBeNull();
 
     // The retry's 409 is honest: the item really does exist.
     expect((await create(ctx, "a", "retry")).status).toBe(409);
@@ -225,6 +251,43 @@ describe("create collection item route — the winner owns the content", () => {
     // On a collection granting `content.update`, PATCH repairs it.
     expect((await patchContent(ctx, "a", "repaired")).status).toBe(200);
     expect(await storedContent(ctx)).toBe("repaired");
+  });
+
+  /**
+   * A template-backed collection splits the residual rather than escaping it,
+   * which is the part that is easy to state too strongly in either direction.
+   *
+   * `renderContent` checks `contentTemplate` / `contentTemplateRef` before it
+   * ever reads `rawContent`, so **readability** costs nothing — the item renders
+   * from state whether or not a content row exists. But the create route writes
+   * content whenever the caller sends any, with no template guard, so the
+   * **partial commit** is exactly as real here: the request fails, the item is
+   * live, and the retry 409s. This test asserts both halves so neither claim
+   * can drift into the other.
+   */
+  it("a template-backed collection still reads fully, but its failed create still half-commits", async () => {
+    const ctx = await setupCtx(FULL_GRANTS, {
+      contentTemplate: parseResourceTemplate("# Rendered from state, not the content row"),
+    });
+    const contentSet = vi
+      .spyOn(ctx.stores.content, "set")
+      .mockRejectedValueOnce(new Error("content store down"));
+
+    // The route does not skip the content write for a template-backed
+    // collection: the rejection could not surface otherwise.
+    await expect(create(ctx, "a", "never-lands")).rejects.toThrow("content store down");
+    expect(contentSet).toHaveBeenCalledTimes(1);
+
+    // Same starting point as the test above — no content row at all.
+    expect(await storedContent(ctx)).toBeUndefined();
+
+    // Readability half: nothing to repair, because nothing reads the row.
+    expect(await readContent(ctx, "a")).toBe("# Rendered from state, not the content row");
+
+    // Partial-commit half: the item exists all the same, so the failed create
+    // was not a no-op here either.
+    expect(await storedState(ctx)).toBeDefined();
+    expect((await create(ctx, "a", "retry")).status).toBe(409);
   });
 
   it("on a create-only collection the half-written item cannot be repaired, but stays visible", async () => {

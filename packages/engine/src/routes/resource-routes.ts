@@ -267,9 +267,11 @@ export async function handleCreateCollectionItem(
   //      item exists anyway with no content row: live and listable, reading back
   //      as `content: null` (not ""), a retry gets an honest 409, and repair is
   //      the content PATCH route (which needs exactly the state row now
-  //      committed, and the `content.update` grant). `renderContent` checks the
-  //      template branches first, so this does not arise for a template-backed
-  //      collection, which renders from state;
+  //      committed, and the `content.update` grant). A template-backed
+  //      collection loses only the repair half — `renderContent` checks the
+  //      template branches before `rawContent`, so it reads fine either way —
+  //      but this write is deliberately not guarded on the template config, so
+  //      the half-commit is identical there;
   //   2. a DELETE lands in the window -> this body is orphaned behind the
   //      tombstone, and a later create with no content surfaces it as current;
   //   3. a PATCH lands in the window -> it is acknowledged 200 and then

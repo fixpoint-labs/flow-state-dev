@@ -67,9 +67,11 @@ content gives you `null`, not an empty string. It still appears in listings, so
 nothing is lost quietly, and a `PATCH` to the item's content endpoint fills it
 in. That repair needs `update`.
 
-(If the collection declares `contentTemplate` or `contentTemplateRef`, this
-doesn't apply — content is rendered from the item's state, so there's nothing
-to repair.)
+(If the collection declares `contentTemplate` or `contentTemplateRef`, the
+*repair* part doesn't apply — content is rendered from the item's state, so the
+item reads fine and there's nothing to fill in. The failure itself still
+happens: if you sent `content`, the server still tried to store it, so the
+request still fails and the item still exists.)
 
 A collection granting `create` on its own therefore has a gap: an authorized
 client can end up holding an item it can neither fill nor remove, because
@@ -467,10 +469,11 @@ which needs the collection to grant `client.content.update`. Without that grant
 there's no repair route at all, so grant `create` and `update` together unless
 you have a reason not to.
 
-This one is specific to collections that store their content. If the collection
-declares `contentTemplate` or `contentTemplateRef`, content is rendered from the
-item's state and never read from the content row, so a failed content write
-leaves the item perfectly readable and there is nothing to repair.
+If the collection declares `contentTemplate` or `contentTemplateRef`, only the
+repair half changes: content is rendered from the item's state and never read
+from the content row, so the item reads fine and there's nothing to fill in. The
+server still attempts the content write when you send `content`, so the request
+still fails and the item still exists — treat the failed create the same way.
 
 The other two are worth knowing precisely because they *don't* show up as an
 error — nothing fails, and a wrong body is simply what you read back:
