@@ -451,12 +451,13 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   over a merge-ready PR spends a round on nothing and delays the one gate that is yours.
 
 This is the skill-level statement of a rule canonical in
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token & context budget":
-*the orchestrator does not read event content — it maps the PR to its owning issue and
-dispatches the worker, which reads the review/CI in its own context.*
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token discipline (why it
+stays cheap)": *the orchestrator does not read event content — it maps the PR to its owning issue
+and dispatches the worker, which reads the review/CI in its own context.*
 
-**The line on writing to a PR: you may carry a human's decision outward, never a technical
-judgment of your own.** Applying the `spec approved` label carries a sign-off you can see.
+**The line on writing to a PR — a skill-level rule, not one of `orchestration.md`'s: you may
+carry a human's decision outward, never a technical judgment of your own.** Applying the
+`spec approved` label carries a sign-off you can see.
 Answering a reviewer, explaining a design choice, conceding a point, or saying a finding is
 wrong are judgments about a diff you haven't read, and they belong to the worker that has.
 

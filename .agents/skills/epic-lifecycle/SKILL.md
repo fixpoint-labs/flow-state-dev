@@ -136,16 +136,17 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   AWAITING_OBJECTIVE until a heartbeat happens to catch it.
 
 This is the skill-level statement of a rule that is canonical in
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token & context budget":
-*the coordinator does not read event content — on a PR event it maps PR# → owning issue and
-dispatches that issue's worker, which reads the review/CI in its own context.* That section
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token discipline (why it
+stays cheap)": *the coordinator does not read event content — on a PR event it maps PR# → owning
+issue and dispatches that issue's worker, which reads the review/CI in its own context.* That section
 also records why there is no separate feedback-router agent: the coordinator's per-event work
 is already just PR# → owner → dispatch, and content reading already lives in the workers.
 
-**The line on writing to a PR: you may carry a human's decision outward, never a technical
-judgment of your own.** Applying a `spec approved` label, posting the alignment a user just
-decided in the cross-spec walkthrough (step 4 of that section) — those carry a decision that
-was already made somewhere you can see. Answering a reviewer, explaining a design choice,
+**The line on writing to a PR — a skill-level rule, not one of `orchestration.md`'s: you may
+carry a human's decision outward, never a technical judgment of your own.** Applying a
+`spec approved` label, posting the alignment a user just decided ("Cross-spec coherence" →
+step 4, *Route the alignment*) — those carry a decision that was already made somewhere you
+can see. Answering a reviewer, explaining a design choice,
 conceding a point, or saying a finding is wrong are all judgments about a diff you haven't
 read, and they belong to the worker that has read it.
 
