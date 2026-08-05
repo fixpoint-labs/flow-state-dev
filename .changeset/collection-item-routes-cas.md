@@ -2,67 +2,35 @@
 "@flow-state-dev/engine": minor
 ---
 
-The collection-item `POST` and `DELETE` routes now win the state key before
-touching content, so either can return `409 Conflict`.
+The collection-item `POST` and `DELETE` routes now settle the item's state before
+touching its content, so both can return `409 Conflict`.
 
-Both HTTP routes wrote the two stores without a version. `POST` read the key,
-saw nothing, wrote content, then wrote state — so two clients creating the same
-topic at once both got `201`, and the stored body could belong to whichever
-finished second while the state row belonged to the other. `DELETE` deleted
-state and content in one unordered pair, so a request built against a view that
-had since changed removed whatever generation was live at the time, in both
-stores.
+`POST` returns `409` when the topic already exists, including when two clients
+create it at once: one gets `201`, the other `409` without writing any content,
+so the stored body always belongs to the winner. `DELETE` returns `409` when the
+item changed while the request was being served, and leaves the item intact in
+both stores. Deleting a topic that does not exist is still `200`.
 
-`POST` now inserts the state row create-if-absent and writes content only after
-that commits. One client gets `201`, the other gets `409` and never reaches the
-content store, so the persisted body always belongs to the client that won the
-topic. The conflict is final: a losing create is not retried into an overwrite.
+**Migration.** `DELETE` previously returned `200` unconditionally, so its `409`
+is a new failure mode. It means something touched the item mid-request, not that
+the delete is impossible — re-read and decide again. Note that the check covers
+the server's own read-to-write window, not the age of your data: a `DELETE` built
+from a view you fetched earlier still removes whatever is live now.
 
-`DELETE` now deletes state conditionally on the version it read while serving
-the request, and deletes content only after that commits. If the row moves in
-between, the request returns `409` and leaves the item completely intact,
-content included. Deleting a topic that does not exist is still `200`, so
-retrying a completed delete stays safe.
+**A failed `POST` is not a no-op.** State commits before content, so if the
+content write fails the request errors *and the item still exists* — live,
+listable, and with no content row, which reads back as `content: null` rather
+than `""`. Retrying the topic gets a `409`; repair it with `PATCH` instead. That
+needs the collection to grant `client.content.update`, so grant `create` and
+`update` together — `create` alone leaves a client holding an item it can neither
+fill nor remove. (A collection using `contentTemplate` / `contentTemplateRef`
+still reads fine, since its content renders from state, but the failed request
+and the live item are the same.)
 
-`DELETE` previously returned `200` unconditionally, so the 409 is a new failure
-mode for clients — worth retrying, since it means something touched the item
-mid-request rather than that the delete is impossible.
-
-What the delete check covers is the route's own window, between its read and
-its write. It is not a client precondition: a `DELETE` issued from a view the
-client fetched earlier still reads the live row and removes it. Accepting a
-caller-supplied expected version is a separate piece of surface these routes do
-not have.
-
-These limits are worth stating rather than implying, because ordering state
-before content means an item is briefly live while its content is still being
-written.
-
-If the state row commits and the content write then fails, the request fails —
-but the item exists anyway, because the state row committed first. A failed
-create is therefore not a no-op: the item is live and listable, and a retry of
-the same topic gets an honest `409`. There is no content row, so reading the
-item's content returns `null` rather than an empty string. A `PATCH` to its
-content endpoint repairs it, but that needs the collection to grant
-`client.content.update` — a collection granting `create` alone leaves an
-authorized client holding an item it can neither fill nor remove. Grant `update`
-alongside `create`; the resource client-access guide now says so. A collection
-declaring `contentTemplate` or `contentTemplateRef` escapes only the repair
-half — its content renders from state and never reads the content row, so the
-item stays readable — but the create route still writes content whenever the
-caller sends any, so the failed request and the live item are the same there.
-
-The other windows produce no error at all, which is what makes them the ones
-worth stating. If a `DELETE` lands in that same window, the create's body is orphaned behind
-the tombstone, and a later create of the topic **that sends no content** revives
-the row over it — so a deleted generation's content can read as current. Sending
-`content` with every `POST` avoids it. If a `PATCH` lands in the window, it is
-acknowledged `200` and then overwritten by the create still in flight. And on
-the delete side, an item recreated between the state delete and the content
-delete loses its new content to the delete already in flight.
-
-All of these are the same shape: content is deliberately unversioned, so no
-predicate on the state row fences a write to it, and a version cannot tell a
-create's own row from a successor generation at the same number. Sequencing
-narrows each window to two statements rather than a whole request; closing them
-is cross-record atomicity, which these stores do not provide.
+**Two windows stay open**, and neither reports an error. A `DELETE` overlapping a
+create can leave that create's body behind, and a later create of the same topic
+*that sends no content* will then show the old body as its own — sending
+`content` with every `POST` avoids it. A `PATCH` overlapping a create is
+acknowledged `200` and then overwritten. Both are consequences of state and
+content being separate stores; the reasoning and the full residual table are in
+the resources architecture reference and the client-access guide.
