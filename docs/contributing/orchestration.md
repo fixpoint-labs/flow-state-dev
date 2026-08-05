@@ -1015,12 +1015,17 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
 - **Don't** relay the comment text into whatever you dispatch. The thing that handles the PR
   next re-reads its comments, reviews and checks off the activity cursor itself, so a pasted
   copy is a second, staler one.
-- **Do** derive the action from durable state — the phase table row, or the wake script — take
-  it, and end the turn. Take it from the row itself, **never from a summary of the row**,
-  including any in a skill and including this section. The rows branch on the *kind* of event,
-  and the branches can differ in which worker runs, which budget is charged, and whether to
-  dispatch at all. A summary that flattens them reads as the rule and quietly outranks the row
-  it came from — which is why nothing here lists the routes.
+- **Do** derive the action from durable state — the phase table row, or the wake script — and
+  take it. Take it from the row itself, **never from a summary of the row**, including any in a
+  skill and including this section. The rows branch on the *kind* of event, and the branches can
+  differ in which worker runs, which budget is charged, and whether to dispatch at all. A summary
+  that flattens them reads as the rule and quietly outranks the row it came from — which is why
+  nothing here lists the routes.
+- **Then end the turn — unless what you just read says not to.** Ending is the *default*, not a
+  rule of its own, and the same source that gave you the action decides whether the turn is over.
+  An epic wake returning `moreWorkNow: true` means something is dispatchable with no external
+  event, so the next wake runs **now**; ending there strands ready work until an unrelated event
+  or a heartbeat happens along.
 
 **What handling a round yourself actually costs:**
 
