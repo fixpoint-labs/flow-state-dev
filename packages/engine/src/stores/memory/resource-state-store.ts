@@ -21,14 +21,7 @@ import type {
   SetResult,
   VersionedResourceState
 } from "../types";
-import { checkWriteVersion } from "../resource-state-predicate";
-
-/** A stored row: the state, its version, and whether it is live or a tombstone. */
-type ResourceStateRow = {
-  state: JsonObject;
-  version: number;
-  lifecycle: "live" | "deleted";
-};
+import { checkWriteVersion, type ResourceStateRow } from "../resource-state-predicate";
 
 export class InMemoryResourceStateStore implements ResourceStateStore {
   private readonly data = new Map<string, ResourceStateRow>();
