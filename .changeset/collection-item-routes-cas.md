@@ -39,13 +39,16 @@ before content means an item is briefly live while its content is still being
 written.
 
 If the state row commits and the content write then fails, the request fails —
-but the item exists anyway, with empty content, because the state row committed
-first. A failed create is therefore not a no-op: the item is live and listable,
-and a retry of the same topic gets an honest `409`. A `PATCH` to its content
-endpoint repairs it, but that needs the collection to grant
+but the item exists anyway, because the state row committed first. A failed
+create is therefore not a no-op: the item is live and listable, and a retry of
+the same topic gets an honest `409`. There is no content row, so reading the
+item's content returns `null` rather than an empty string. A `PATCH` to its
+content endpoint repairs it, but that needs the collection to grant
 `client.content.update` — a collection granting `create` alone leaves an
 authorized client holding an item it can neither fill nor remove. Grant `update`
-alongside `create`; the resource client-access guide now says so.
+alongside `create`; the resource client-access guide now says so. None of this
+applies to a collection declaring `contentTemplate` or `contentTemplateRef`,
+whose content renders from state and never reads the content row.
 
 The other windows produce no error at all, which is what makes them the ones
 worth stating. If a `DELETE` lands in that same window, the create's body is orphaned behind

@@ -575,12 +575,15 @@ touch content, so a request that loses a race never reaches `ContentStore`.
   an out-of-date client view still reads the live row and removes it.
 
 Because each route writes two stores, some windows stay open: an item can exist
-with empty content after a create whose content write **failed** — the state row
-commits first, so a failed `POST` is not a no-op and the item is live and
-listable — a create's body can be orphaned by an overlapping delete, an
-acknowledged `PATCH` can be overwritten by an in-flight create, and a
-recreation can lose its content to a delete already in flight. Only the first
-surfaces as an error; the others are silent. These are
+with **no content row** after a create whose content write **failed** — the state
+row commits first, so a failed `POST` is not a no-op, and the item is live and
+listable but reads back as `content: null` rather than `""` — a create's body
+can be orphaned by an overlapping delete, an acknowledged `PATCH` can be
+overwritten by an in-flight create, and a recreation can lose its content to a
+delete already in flight. Only the first surfaces as an error; the others are
+silent. The first also does not arise for a collection whose content comes from
+`contentTemplate` / `contentTemplateRef`, which renders from state and never
+reads the content row. These are
 accepted — content is deliberately unversioned, so no state predicate fences a
 write to it, and closing them is cross-record atomicity, which this store does
 not provide. The full contract, with the reasoning and the residual table, is

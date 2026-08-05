@@ -520,9 +520,13 @@ Item state and item content live in two stores (`ResourceStateStore`, `ContentSt
 
 | Window | Outcome |
 | --- | --- |
-| The content write fails | **The request fails, but the item exists anyway**, with empty content. The state row committed first and the `content.set` is a bare `await`, so the rejection propagates out of the handler — a failed `POST` is not a no-op. The item is live and listable, a retry of the topic gets an honest `409`, and repair is `PATCH` when the collection grants `client.content.update` |
+| The content write fails | **The request fails, but the item exists anyway**, with **no content row**. The state row committed first and the `content.set` is a bare `await`, so the rejection propagates out of the handler — a failed `POST` is not a no-op. The item is live and listable, a retry of the topic gets an honest `409`, and repair is `PATCH` when the collection grants `client.content.update`. Applies to content-storing collections only — see the shape note below |
 | A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current. **No error** |
 | A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create. **No error** |
+
+**The shape of a missing body is `null`, not `""`.** A failed content write leaves no content row, and `renderContent` (`packages/engine/src/resources/internal.ts`) returns `null` when `rawContent === undefined`. `handleGetCollectionItemContent` passes that straight through, so the item reads back as `{ content: null }`. Adapter and client code that branches on `content === ""` takes the wrong path — the distinction is between *absent* and *empty*, and only the former occurs here.
+
+**And it only applies to collections that store their content.** `renderContent` checks `contentTemplate` and `contentTemplateRef` *before* it looks at `rawContent`, and returns from the template branch without consulting it. For a template-backed collection, content is rendered from the item's state — so a failed content write leaves the item fully readable, with no residual and nothing to repair. The first row of the table above is a statement about content-storing collections, not about every collection.
 
 These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
 

@@ -264,9 +264,12 @@ export async function handleCreateCollectionItem(
   // because a version cannot tell this generation from its successor:
   //
   //   1. this write fails -> the await is bare, so the request fails, but the
-  //      item exists anyway with empty content: live and listable, a retry gets
-  //      an honest 409, and repair is the content PATCH route (which needs
-  //      exactly the state row now committed, and the `content.update` grant);
+  //      item exists anyway with no content row: live and listable, reading back
+  //      as `content: null` (not ""), a retry gets an honest 409, and repair is
+  //      the content PATCH route (which needs exactly the state row now
+  //      committed, and the `content.update` grant). `renderContent` checks the
+  //      template branches first, so this does not arise for a template-backed
+  //      collection, which renders from state;
   //   2. a DELETE lands in the window -> this body is orphaned behind the
   //      tombstone, and a later create with no content surfaces it as current;
   //   3. a PATCH lands in the window -> it is acknowledged 200 and then

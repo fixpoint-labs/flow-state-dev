@@ -213,8 +213,9 @@ describe("create collection item route — the winner owns the content", () => {
 
     await expect(create(ctx, "a", "never-lands")).rejects.toThrow("content store down");
 
-    // The state row committed, so the item exists — with empty content. This
-    // is D12's accepted residual, pinned by a test rather than carried as prose.
+    // The state row committed, so the item exists — with no content row at all,
+    // which is why a read of it returns `null` rather than an empty string.
+    // D12's accepted residual, pinned by a test rather than carried as prose.
     expect(await storedState(ctx)).toBeDefined();
     expect(await storedContent(ctx)).toBeUndefined();
 

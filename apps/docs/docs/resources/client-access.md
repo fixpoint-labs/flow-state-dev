@@ -62,9 +62,14 @@ ordering is what stops two simultaneous creates from leaving one client's state
 paired with the other's body.
 
 The tradeoff sits at the other end. If the state write succeeds and the content
-write then fails, the item exists with empty content. It still appears in
-listings, so nothing is lost quietly, and a `PATCH` to the item's content
-endpoint fills it in. That repair needs `update`.
+write then fails, the item exists with **no content row at all** — reading its
+content gives you `null`, not an empty string. It still appears in listings, so
+nothing is lost quietly, and a `PATCH` to the item's content endpoint fills it
+in. That repair needs `update`.
+
+(If the collection declares `contentTemplate` or `contentTemplateRef`, this
+doesn't apply — content is rendered from the item's state, so there's nothing
+to repair.)
 
 A collection granting `create` on its own therefore has a gap: an authorized
 client can end up holding an item it can neither fill nor remove, because
@@ -454,11 +459,18 @@ its body hasn't landed yet. Three things follow.
 
 **A failed `POST` doesn't mean nothing was created.** If the content write
 fails, the request comes back as an error — but the state row committed before
-it, so the item exists with **empty content** and is live and listable. Don't
-treat the error as a no-op: retrying the same topic finds it already there and
-gets a `409`. Repair it with `PATCH` instead, which needs the collection to
-grant `client.content.update`. Without that grant there's no repair route at
-all, so grant `create` and `update` together unless you have a reason not to.
+it, so the item is live and listable with **no content row**. Reading its
+content returns `null`, not an empty string; if you branch on `content === ""`
+you'll take the wrong path. Don't treat the error as a no-op either: retrying
+the same topic finds it already there and gets a `409`. Repair it with `PATCH`,
+which needs the collection to grant `client.content.update`. Without that grant
+there's no repair route at all, so grant `create` and `update` together unless
+you have a reason not to.
+
+This one is specific to collections that store their content. If the collection
+declares `contentTemplate` or `contentTemplateRef`, content is rendered from the
+item's state and never read from the content row, so a failed content write
+leaves the item perfectly readable and there is nothing to repair.
 
 The other two are worth knowing precisely because they *don't* show up as an
 error — nothing fails, and a wrong body is simply what you read back:
