@@ -10,7 +10,7 @@
  * `clearPortfolioMandate` resets it to null.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import portfolioFlow from "../flows/portfolio/flow";
 import type { PortfolioMandate } from "../domain/portfolio/schema/portfolio-mandate-schema";
@@ -22,7 +22,7 @@ const USER_ID = "devuser";
 async function readMandate(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<PortfolioMandate | null> {
-  const all = toStates(await stores.resourceState.getAll("user", USER_ID));
+  const all = toBareStates(await stores.resourceState.getAll("user", USER_ID));
   const entry = Object.values(all).find(
     (v) => v != null && typeof v === "object" && "objectives" in (v as object),
   );

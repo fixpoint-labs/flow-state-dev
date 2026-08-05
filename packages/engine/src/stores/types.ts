@@ -550,7 +550,7 @@ declare const versionedResourceStateBrand: unique symbol;
  * cleanly and produced the wrong value downstream. The phantom brand below
  * breaks that assignability: its declared type is a `unique symbol`, which is
  * not a `JsonValue`, so `VersionedResourceState` (and any `Record` of them) is
- * no longer assignable to `JsonObject`. Use {@link toState} / {@link toStates}
+ * no longer assignable to `JsonObject`. Use {@link toBareState} / {@link toBareStates}
  * to project down; forgetting to is now a type error.
  *
  * The property is optional and never written, so constructing a versioned read

@@ -18,7 +18,7 @@
  * focuses on pipeline wiring and rescue semantics.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -237,7 +237,7 @@ describe("Phase 2 end-to-end", () => {
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.technical.memoKey)).toBe("published");
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.companyProfile.memoKey)).toBe("published");
 
-    const memoResources = toStates(await stores.resourceState.getAll("session", sessionId));
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const rmMemo = memoResources["memos/p2/research-manager"] as
       | { status?: string; unresolvedDisagreements?: string[] | null }
       | undefined;
@@ -297,7 +297,7 @@ describe("Phase 2 end-to-end", () => {
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.bear.memoKey)).toBe("published");
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.researchManager.memoKey)).toBe("published");
 
-    const memoResources = toStates(await stores.resourceState.getAll("session", sessionId));
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const bullMemo = memoResources["memos/p2/bull"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

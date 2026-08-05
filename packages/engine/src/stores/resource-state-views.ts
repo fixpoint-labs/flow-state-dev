@@ -38,7 +38,7 @@ import type { VersionedResourceState } from "./types";
  *
  * @typeParam T - The stored state's shape. Asserted, not validated; defaults to `JsonObject`.
  */
-export function toState<T extends JsonObject = JsonObject>(
+export function toBareState<T extends JsonObject = JsonObject>(
   entry: VersionedResourceState | undefined
 ): T | undefined {
   return entry?.state as T | undefined;
@@ -49,7 +49,7 @@ export function toState<T extends JsonObject = JsonObject>(
  *
  * @typeParam T - The stored state's shape. Asserted, not validated; defaults to `JsonObject`.
  */
-export function toStates<T extends JsonObject = JsonObject>(
+export function toBareStates<T extends JsonObject = JsonObject>(
   entries: Record<string, VersionedResourceState>
 ): Record<string, T> {
   const result: Record<string, T> = {};

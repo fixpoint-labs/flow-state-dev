@@ -17,7 +17,7 @@ import { createInMemoryActiveRequestRegistry } from "./memory/active-request-reg
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
 import { createInMemoryContentStore } from "./memory/content-store";
 import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
-import { toState, toStates } from "./resource-state-views";
+import { toBareState, toBareStates } from "./resource-state-views";
 export type {
   ResourceStateConflict,
   ResourceStateRow
@@ -104,8 +104,8 @@ export {
   createInMemoryCheckpointStore,
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
-  toState,
-  toStates,
+  toBareState,
+  toBareStates,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,

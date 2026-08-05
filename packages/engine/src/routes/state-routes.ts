@@ -6,7 +6,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { collapseToCanonicalLog, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { toStates } from "../stores/resource-state-views";
+import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
   resolveOrgStorageKey,
@@ -151,12 +151,12 @@ export async function handleGetSessionState(
     mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   const [sessionState, userState, orgState] = await Promise.all([
-    ctx.stores.resourceState.getAll("session", session.id).then(toStates),
+    ctx.stores.resourceState.getAll("session", session.id).then(toBareStates),
     mergeScopeReads(
-      userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toStates))
+      userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
     ),
     mergeScopeReads(
-      orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toStates))
+      orgScopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toBareStates))
     )
   ]);
 

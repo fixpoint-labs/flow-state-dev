@@ -28,7 +28,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { toStates } from "@flow-state-dev/engine";
+import { toBareStates } from "@flow-state-dev/engine";
 import { callMcpTool as callMcpToolHttp } from "./mcp-http";
 
 const original = process.env.KH_MCP_SECRET;
@@ -126,7 +126,7 @@ async function readSource(
   id: string
 ): Promise<string | null> {
   const runtime = await flowState.getRuntime();
-  const all = toStates<{ source: string | null }>(
+  const all = toBareStates<{ source: string | null }>(
     await runtime.stores.resourceState.getAll("user", "owner")
   );
   return all[`inbox/${id}`]?.source ?? null;
@@ -217,7 +217,7 @@ describe("mcp.session groups captures under a conversation (FIX-897)", () => {
     expect((session?.state as { description?: unknown } | undefined)?.description).toBe(description);
 
     // Both inbox rows carry the conversationId (the grouping key the sweeper reads).
-    const inbox = toStates<{ conversationId?: string }>(
+    const inbox = toBareStates<{ conversationId?: string }>(
       await runtime.stores.resourceState.getAll("user", "owner")
     );
     const rows = Object.entries(inbox).filter(([key]) => key.startsWith("inbox/"));

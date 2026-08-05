@@ -10,7 +10,7 @@
  * session — has nothing valid to adopt and the action throws.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../flows/analysis/flow";
 import type { DecisionSnapshotState } from "../flows/analysis/decision-snapshot-resource";
@@ -22,7 +22,7 @@ const USER_ID = "devuser";
 async function thesesOf(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<Record<string, ThesisRecord>> {
-  return toStates<ThesisRecord>(await stores.resourceState.getAll("user", USER_ID));
+  return toBareStates<ThesisRecord>(await stores.resourceState.getAll("user", USER_ID));
 }
 
 const completedSnapshot: DecisionSnapshotState = {

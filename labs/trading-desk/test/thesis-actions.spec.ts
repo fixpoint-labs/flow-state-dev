@@ -9,7 +9,7 @@
  * report path is tested separately in the analysis flow.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import portfolioFlow from "../flows/portfolio/flow";
 import type { ThesisRecord } from "../domain/portfolio/schema/thesis-schema";
@@ -20,7 +20,7 @@ const USER_ID = "devuser";
 async function thesesOf(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<Record<string, ThesisRecord>> {
-  return toStates<ThesisRecord>(await stores.resourceState.getAll("user", USER_ID));
+  return toBareStates<ThesisRecord>(await stores.resourceState.getAll("user", USER_ID));
 }
 
 let stores: ReturnType<typeof createInMemoryStores>;

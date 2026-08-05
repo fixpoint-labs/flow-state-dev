@@ -41,7 +41,7 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ExternalResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { createScopePersist } from "../stores/scope-persist";
-import { toState, toStates } from "../stores/resource-state-views";
+import { toBareState, toBareStates } from "../stores/resource-state-views";
 import type { TraceStore } from "../stores/types";
 import type {
   ContentScopeType,
@@ -1209,7 +1209,7 @@ export async function createExecutionContext<
           if (storageKey in stateRef.current) return;
           const started = Date.now();
           const [state, content] = await Promise.all([
-            stores.resourceState.get(scope, scopeId, storageKey).then(toState),
+            stores.resourceState.get(scope, scopeId, storageKey).then(toBareState),
             stores.content.get(scope, scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
@@ -1236,7 +1236,7 @@ export async function createExecutionContext<
           if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
           const started = Date.now();
           const [state, content] = await Promise.all([
-            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix).then(toStates),
+            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix).then(toBareStates),
             stores.content.getByPrefix(scope, scopeId, keyPrefix)
           ]);
           durationMs = Date.now() - started;

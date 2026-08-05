@@ -15,7 +15,7 @@ import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchExternalR
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { toState, toStates } from "../stores/resource-state-views";
+import { toBareState, toBareStates } from "../stores/resource-state-views";
 import {
   extractBareTopic,
   jsonResponse,
@@ -429,7 +429,7 @@ export async function handleListCollectionState(
     // whole scope. An empty prefix (e.g. `[topic]/observations`) falls back to
     // getAll.
     const keyPrefix = getPatternPrefix(config.pattern);
-    persisted = toStates(
+    persisted = toBareStates(
       keyPrefix
         ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
         : await ctx.stores.resourceState.getAll("session", session.id)
@@ -525,7 +525,7 @@ export async function handleGetCollectionItemState(
       extCtx
     );
   } else if (scope === "session") {
-    value = toState(await ctx.stores.resourceState.get("session", session.id, storageKey));
+    value = toBareState(await ctx.stores.resourceState.get("session", session.id, storageKey));
   } else {
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores, toStates } from "../src";
+import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
@@ -614,7 +614,7 @@ describe("maxInstances with eviction: lru", () => {
 
     // Verify persistence — collection-instance state lives in the
     // ResourceStateStore (FIX-689), not inline in the scope record.
-    const persisted = toStates(await stores.resourceState.getAll("session", "sess_1"));
+    const persisted = toBareStates(await stores.resourceState.getAll("session", "sess_1"));
     expect(persisted["lrufiles/a.ts"]).toBeUndefined();
     expect(persisted["lrufiles/d.ts"]).toBeDefined();
   });
@@ -769,7 +769,7 @@ describe("flat storage model", () => {
 
     // Collection-instance state is keyed flatly by path-based storage key in
     // the ResourceStateStore (FIX-689), not inline in the scope record.
-    const resources = toStates(await stores.resourceState.getAll("session", "sess_1"));
+    const resources = toBareStates(await stores.resourceState.getAll("session", "sess_1"));
 
     expect(resources["files/readme.md"]).toEqual({ language: "markdown" });
     expect(resources["files/src/utils.ts"]).toEqual({ language: "typescript" });

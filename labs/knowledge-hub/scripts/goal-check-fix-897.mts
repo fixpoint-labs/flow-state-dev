@@ -18,7 +18,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { toStates } from "@flow-state-dev/engine";
+import { toBareStates } from "@flow-state-dev/engine";
 
 const SECRET = "test-secret";
 process.env.KH_MCP_SECRET = SECRET;
@@ -60,7 +60,7 @@ try {
   check("(b) both logActivity requests recorded under the conversation session id", logReqs.length === 2);
 
   // (c) both inbox rows carry the conversationId.
-  const inbox = toStates<{ conversationId?: string }>(
+  const inbox = toBareStates<{ conversationId?: string }>(
     await runtime.stores.resourceState.getAll("user", "owner")
   );
   const rows = Object.entries(inbox).filter(([k]) => k.startsWith("inbox/"));

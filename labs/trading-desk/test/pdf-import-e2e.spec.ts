@@ -42,7 +42,7 @@ vi.mock(
 );
 
 import { beforeEach } from "vitest";
-import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import { toAccountStates, type PortfolioRepository } from "@/db/repository";
@@ -135,7 +135,7 @@ describe("extractHoldingsFromPdf action", () => {
     expect(result.status).toBe("completed");
 
     // The extraction landed on the session-scoped resource for the dialog.
-    const sessionResources = (toStates(await stores.resourceState.getAll(
+    const sessionResources = (toBareStates(await stores.resourceState.getAll(
       "session",
       sessionId,
     ))) as Record<string, { extraction?: PdfExtraction }>;
