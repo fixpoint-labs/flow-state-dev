@@ -32,10 +32,7 @@ function list(stores: Stores, input: Record<string, unknown> = {}) {
 
 /** All stored inbox records for the owner, keyed by storage path. */
 async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
-  return toStates(await stores.resourceState.getAll("user", USER)) as unknown as Record<
-    string,
-    InboxRecord
-  >;
+  return toStates<InboxRecord>(await stores.resourceState.getAll("user", USER));
 }
 
 let stores: Stores;

@@ -536,6 +536,16 @@ Retention is the guarantee, not an oversight: because a tombstone keeps its vers
 
 `toState` / `toStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
 
+Both are generic in the state shape, so a caller that knows what it stored names it in the call instead of casting the result:
+
+```ts
+const rows = toStates<InboxRecord>(await stores.resourceState.getAll("user", userId));
+const one = toState<InboxRecord>(await stores.resourceState.get("user", userId, key));
+const bare = toStates(rows); // no type argument → Record<string, JsonObject>
+```
+
+The type argument is asserted, not validated — nothing checks the stored row against it at runtime, exactly as the cast it replaces did not. What it buys is that the assertion is named and greppable at the call site rather than hidden in an `as unknown as`. The `JsonObject` bound keeps it honest: it rejects any shape the store could not have held (a `Date` field, say) and rejects `VersionedResourceState` itself, so the projection cannot be used to launder the versioned shape back in.
+
 A `delete` is idempotent at the terminal state: deleting a key that is already absent or already tombstoned succeeds and reports the retained version, and that holds under a race — two concurrent deletes of one live key both report success. A conflict is reserved for a version mismatch against a row that is **still live**.
 
 ### Per-adapter guarantee

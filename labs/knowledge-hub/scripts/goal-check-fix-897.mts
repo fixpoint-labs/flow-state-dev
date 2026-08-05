@@ -60,9 +60,9 @@ try {
   check("(b) both logActivity requests recorded under the conversation session id", logReqs.length === 2);
 
   // (c) both inbox rows carry the conversationId.
-  const inbox = toStates(
+  const inbox = toStates<{ conversationId?: string }>(
     await runtime.stores.resourceState.getAll("user", "owner")
-  ) as unknown as Record<string, { conversationId?: string }>;
+  );
   const rows = Object.entries(inbox).filter(([k]) => k.startsWith("inbox/"));
   check("(c) two inbox rows exist and both carry the conversationId", rows.length === 2 && rows.every(([, v]) => v.conversationId === conversationId));
 

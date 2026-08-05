@@ -22,10 +22,7 @@ const USER_ID = "devuser";
 async function thesesOf(
   stores: ReturnType<typeof createInMemoryStores>,
 ): Promise<Record<string, ThesisRecord>> {
-  return toStates(await stores.resourceState.getAll("user", USER_ID)) as unknown as Record<
-    string,
-    ThesisRecord
-  >;
+  return toStates<ThesisRecord>(await stores.resourceState.getAll("user", USER_ID));
 }
 
 const completedSnapshot: DecisionSnapshotState = {

@@ -49,3 +49,10 @@ posture explicitly. `VersionedResourceState` is branded so it is not assignable
 to `JsonObject`: a read handed on without unwrapping is a compile error, and
 `toState` / `toStates` are the way down. The brand is phantom and optional, so
 constructing one is still a plain object literal.
+
+`toState` and `toStates` are generic in the state shape — `toStates<InboxRecord>(rows)`
+hands back `Record<string, InboxRecord>` — and default to `JsonObject`, so callers
+that only want bare state are unchanged. The shape is asserted, not validated, but
+the `JsonObject` bound rejects any shape the store could not have held, including
+`VersionedResourceState` itself, so the projection cannot be used to launder the
+versioned shape back in.

@@ -36,10 +36,7 @@ function capture(stores: Stores, sessionId: string, input: Record<string, unknow
 }
 
 async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
-  return toStates(await stores.resourceState.getAll("user", USER)) as unknown as Record<
-    string,
-    InboxRecord
-  >;
+  return toStates<InboxRecord>(await stores.resourceState.getAll("user", USER));
 }
 
 /** The topic description stashed in a session's state (the conversation record). */
