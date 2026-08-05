@@ -237,11 +237,6 @@ export async function handleCreateCollectionItem(
     return jsonResponse(501, { error: "Collection mutations only supported for session scope" });
   }
 
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
-  if (existing !== undefined) {
-    return jsonResponse(409, { error: `Item "${topic}" already exists` });
-  }
-
   // Seed default state from schema
   const defaultState = config.stateSchema.safeParse({});
   const initialState: JsonObject =
@@ -249,19 +244,36 @@ export async function handleCreateCollectionItem(
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
-  // Write content before the state key. A failed state write then leaves
-  // orphaned content under a key whose state doesn't yet exist, so a client
-  // retry can re-create the item (the same content key is harmlessly
-  // overwritten). Writing the state entry first would commit the resource and
-  // let a content failure trip the 409 guard on retry, with no recovery.
+  // Win the key first, then write content (FIX-992 D12).
+  //
+  // `expectedVersion: 0` is create-if-absent — it commits only when there is
+  // no live row, and conflicts against one. That single write both replaces
+  // the read-then-act pre-check this route used to do (two concurrent creates
+  // both read absence and both returned 201) and decides the race, so a loser
+  // returns here without ever reaching `ContentStore`. The persisted content
+  // is therefore always the winner's. The conflict is terminal: a losing
+  // create must never be retried into an overwrite.
+  const inserted = await ctx.stores.resourceState.set(
+    "session",
+    session.id,
+    storageKey,
+    initialState,
+    0
+  );
+  if (!inserted.ok) {
+    return jsonResponse(409, { error: `Item "${topic}" already exists` });
+  }
+
+  // Accepted residual, not an oversight: if this write fails the item exists
+  // with empty content. That is visible in listings and repairable through the
+  // content PATCH route, which needs exactly the live state row now committed.
+  // The caller's retry then gets an honest 409, because the item does exist.
+  // Making the pair atomic is cross-record atomicity (FIX-854), a non-goal —
+  // and the collection must grant `client.content.update` for the repair route
+  // to be reachable at all (see `apps/docs` → resources / client access).
   if (content !== undefined) {
     await ctx.stores.content.set("session", session.id, storageKey, content);
   }
-
-  // `"any"` is the pre-conversion posture: this route keeps today's
-  // last-write-wins behaviour until sub-PR c makes it a create-if-absent CAS
-  // insert that wins the key before any content is written.
-  await ctx.stores.resourceState.set("session", session.id, storageKey, initialState, "any");
 
   return jsonResponse(201, { topic: topic.trim() });
 }
@@ -693,14 +705,39 @@ export async function handleDeleteCollectionItem(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  // `"any"` is the pre-conversion posture. Sub-PR c replaces this pair with a
-  // version-conditional state delete that must commit *before* the content
-  // delete runs — sequencing the two is the point, so the unordered
-  // `Promise.all` goes with it.
-  await Promise.all([
-    ctx.stores.resourceState.delete("session", session.id, storageKey, "any"),
-    ctx.stores.content.delete("session", session.id, storageKey),
-  ]);
+  // Conflict before anything is deleted (FIX-992 D12) — the create route's
+  // rule, mirrored.
+  //
+  // Delete state on the version this request actually observed, so a DELETE
+  // chosen against a generation that has since been deleted and recreated
+  // conflicts instead of tombstoning the replacement. `undefined` means no
+  // live row, which is `expectedVersion: 0` — an absent key stays an
+  // idempotent 200, but a create landing between the read and the delete makes
+  // this request a loser rather than letting it remove what it never saw.
+  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  const removed = await ctx.stores.resourceState.delete(
+    "session",
+    session.id,
+    storageKey,
+    existing?.version ?? 0
+  );
+  if (!removed.ok) {
+    return jsonResponse(409, {
+      error: `Item "${route.topic}" was modified concurrently; re-read it and retry`,
+    });
+  }
+
+  // Only after the state delete commits, and never concurrently with it. The
+  // two calls were a `Promise.all`: adding a version to the state delete while
+  // leaving them raced reads as correct and is not — a losing DELETE returns
+  // the same 409 and still removes the winner's content.
+  //
+  // The residual this does not close, stated rather than engineered around: a
+  // recreation landing between these two statements loses its content to this
+  // delete. `ContentStore` is last-write-wins by decision, so no state
+  // predicate fences it; sequencing narrows the window from a whole request to
+  // two statements, and closing it is cross-record atomicity (FIX-854).
+  await ctx.stores.content.delete("session", session.id, storageKey);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

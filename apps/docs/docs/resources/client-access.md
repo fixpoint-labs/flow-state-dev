@@ -53,6 +53,33 @@ For collections, two additional permissions control mutations:
 | `update` | Client can modify item content via `PATCH` |
 | `delete` | Client can remove items via `DELETE` |
 
+#### Grant `update` alongside `create`
+
+Creating an item is two writes: the item's state, then its content. The server
+commits the state first, so the client that wins the race for a topic owns it,
+and a client that loses is turned away before it writes any content. That
+ordering is what stops two simultaneous creates from leaving one client's state
+paired with the other's body.
+
+The tradeoff sits at the other end. If the state write succeeds and the content
+write then fails, the item exists with empty content. It still appears in
+listings, so nothing is lost quietly, and a `PATCH` to the item's content
+endpoint fills it in. That repair needs `update`.
+
+A collection granting `create` on its own therefore has a gap: an authorized
+client can end up holding an item it can neither fill nor remove, because
+`PATCH` and `DELETE` are both refused. If your clients create items, grant
+`update` too:
+
+```ts
+client: {
+  content: { read: true, create: true, update: true },
+}
+```
+
+Adding `delete` gives them a second way out. Collections that are read-only, or
+that only your blocks write, are unaffected.
+
 ## Choosing the projection shape
 
 You have four ways to control what state reaches the client. Pick one — they're mutually exclusive.
@@ -390,6 +417,26 @@ Under the hood, these hooks and clients talk to these endpoints:
 All paths are relative to `/api/flows`. Permissions are enforced server-side based on the resource's `client.content` config. Requests for resources without `client` config return 404.
 
 `:topic` is a multi-segment wildcard. Collections whose pattern allows nested keys (e.g. `memos/**` with topics like `p1/fundamentals`) work without special encoding — the client encodes slashes as `%2F` and the server decodes them back into the captured topic. The only restriction: a topic literally named `"content"` is shadowed by the `/:ref/content` route and isn't addressable via the state-get endpoint.
+
+### `POST` and `DELETE` can return 409
+
+Both write endpoints check that the item is in the state the request assumed
+before they change anything, so either can now come back `409 Conflict`.
+
+`POST` returns 409 when the topic already exists. That includes the case where
+two clients create the same topic at once: one gets `201`, the other gets `409`
+and never writes content, so the stored body belongs to the client that won.
+
+`DELETE` returns 409 when the item moved between the request being served and
+the delete being applied — usually because it was removed and recreated in the
+meantime. Previously every `DELETE` returned `200`, and a request built against
+a stale view would remove whatever was there at the time. A rejected `DELETE`
+leaves the item completely intact, content included.
+
+Both are worth handling in client code that retries. A 409 on `DELETE` means
+your view is out of date, not that the delete failed for good: re-read the item
+and decide again. Deleting a topic that does not exist is still a `200`, so
+retrying a delete you already completed is safe.
 
 ## Live updates
 

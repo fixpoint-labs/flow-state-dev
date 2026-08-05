@@ -555,6 +555,34 @@ A `delete` is idempotent at the terminal state: deleting a key that is already a
 
 Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts in one Node process, and does not coordinate two OS processes over one directory.
 
+### The collection-item HTTP routes use it
+
+The two client-facing write routes are the callers that pass a real
+`expectedVersion` today. Both follow one rule: settle the state key first, then
+touch content, so a request that loses a race never reaches `ContentStore`.
+
+- `POST /sessions/:id/resources/:ref` inserts the state row at
+  `expectedVersion: 0` (create-if-absent) and writes content only after that
+  commits. Two clients creating the same topic get one `201` and one `409`, and
+  the stored body belongs to the client that won. The conflict is terminal — a
+  losing create is never retried into an overwrite.
+- `DELETE /sessions/:id/resources/:ref/:topic` reads the row's version, deletes
+  state conditionally on it, and deletes content only after that commits. A
+  delete built against a generation that has since been replaced returns `409`
+  and leaves the item intact in both stores. Deleting an absent topic is still
+  an idempotent `200`.
+
+Two limits are real and stated rather than implied. A create is two writes to
+two stores: if the state row commits and the content write then fails, the item
+exists with empty content — visible in listings, and repairable through the
+content `PATCH` route, which requires the collection to grant
+`client.content.update`. And on the delete side, an item recreated between the
+state delete and the content delete loses its new content to the delete already
+in flight; content is deliberately last-write-wins, so no version on the state
+row fences it, and sequencing narrows the window to two statements rather than
+a whole request. Making either pair atomic is cross-record atomicity, which
+this store does not provide.
+
 ## CheckpointStore
 
 `StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints. Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime reads `latest(...)` to resume after an interruption.
