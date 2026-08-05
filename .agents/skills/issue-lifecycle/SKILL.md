@@ -430,6 +430,33 @@ And as the PR_FEEDBACK row states: after the **last** sub-PR merges the issue is
 The script enforces that (a build wake never returns `done: true`), but the merge that makes
 the assembled goal runnable is *your* event to act on — re-enter and run the workflow again.
 
+## PR events are wake signals, not work items
+
+A PR-activity event arrives in *this* session with the comment bodies and CI output attached,
+and the harness's own posture on PRs you opened is that they are yours to drive green: diagnose
+the failure, push the fix, answer the reviewer. **Under this skill that posture does not apply
+to you.** You "opened" that PR only in the sense that you hold its subscription — a sub-agent
+can't. The work on it is the PR_FEEDBACK row of the phase table: a fresh bounded sub-agent
+running `issue-implement` Step 10 over the batch.
+
+So on any PR-activity event — a review comment, a CI failure, a push, an approval:
+
+- **Don't** read the diff, diagnose the failure, write a fix, push a commit, or reply on a
+  thread. Not for a one-line CI fix, and not because the change looks obvious from the event
+  text; "obvious" is what every round nine looked like at round three.
+- **Do** re-derive the phase from the small durable read above, take that phase's one bounded
+  action — which for PR_FEEDBACK means *dispatching*, not doing — and end the turn.
+
+The gate work stays yours, because nothing else can hold it: subscribing, surfacing a gate,
+recording a human's answer, writing the Linear mirror. None of it involves acting on review
+content.
+
+**Handling a round here costs more than the tokens it burns.** `prFeedbackRounds` only advances
+on a worker's reported `prFeedbackRoundsSpent`, so a round you handle yourself is uncounted: the
+twelve-round cap never trips on an issue that is genuinely looping, which is the one signal that
+would have told you the approach is wrong rather than the lines being argued about. A round
+handled here is worse than a round handled a wake late.
+
 ## Waking
 
 **Re-subscribe on every invocation, not just when a PR first opens — and do it last, after**

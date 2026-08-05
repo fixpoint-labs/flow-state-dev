@@ -111,6 +111,39 @@ even if more are queued. State the chosen N and the cap to the user.
 > and only inside each issue's own worktree/branch. A PR whose diff is a board /
 > status / scratch file is a bug — do not open it.
 
+## PR events are wake signals, not work items
+
+A PR-activity event arrives in *this* session with the comment bodies and CI output attached,
+and the harness's own posture on PRs you opened is that they are yours to drive green: diagnose
+the failure, push the fix, answer the reviewer. **Under this skill that posture does not apply
+to you.** You "opened" those PRs only in the sense that you hold their subscriptions. The work
+on them belongs to `issue-worker`, and `epic-wake` already routes it there — three separate
+`pr-feedback` dispatches (CI failing, unhandled impl-PR activity, late spec-PR activity), each
+carrying the round count, the cap, and the pause-comment instruction.
+
+So on any PR-activity event — a review comment, a CI failure, a push, an approval:
+
+- **Don't** read the diff, diagnose the failure, write a fix, push a commit, or reply on a
+  thread. Not for a one-line CI fix, and not because the change looks obvious from the event
+  text; "obvious" is what every round nine looked like at round three.
+- **Don't** relay the comment text into the wake's `args`. The wake's refresh scouts re-read
+  each PR's comments, reviews and checks off the activity cursor themselves, so anything you
+  paste in is a second, staler copy of what the script is about to fetch.
+- **Do** confirm the PR belongs to a row in your table, run the wake, and end the turn. Waking
+  you was the event's whole job, and it has done it.
+
+Three things stay yours, because no sub-agent can do them: **subscribing** to the PR,
+**surfacing** a gate the wake returned, and **recording** a human's answer to a blocker. None
+of the three involves acting on review content.
+
+**Handling a round here costs more than the tokens it burns.** The round goes uncounted —
+`prFeedbackRounds` only advances on a worker's reported `prFeedbackRoundsSpent` — so the
+twelve-round cap never trips on an issue that is genuinely looping, which is the one thing that
+would have told you the approach is wrong. And the activity cursor only advances for actions
+that consume it (`spec-review`, `pr-feedback`), so a batch you answer by hand is still `new` at
+the next wake: the script dispatches a worker that re-reads it and re-posts replies to comments
+you already answered. A round handled here is worse than a round handled a wake late.
+
 ## The loop (each invocation)
 
 1. **Resolve the epic and its set.** Take the epic issue ID, or the issue IDs, from the
