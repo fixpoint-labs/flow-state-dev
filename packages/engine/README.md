@@ -570,24 +570,19 @@ touch content, so a request that loses a race never reaches `ContentStore`.
   state conditionally on it, and deletes content only after that commits. If
   the row moves between that read and the delete, the request returns `409` and
   leaves the item intact in both stores. Deleting an absent topic is still an
-  idempotent `200`.
+  idempotent `200`. The version is one the **route** observes, not one the
+  client supplied, so the window it closes is the route's own — a `DELETE` from
+  an out-of-date client view still reads the live row and removes it.
 
-  The version is one the **route** observes while serving the request, not one
-  the client supplied, so the window it closes is the route's own. A `DELETE`
-  issued from a client view that is already out of date still reads the live
-  row and removes it. Closing that needs a caller-supplied precondition on the
-  request, which this route does not accept.
-
-Two limits are real and stated rather than implied. A create is two writes to
-two stores: if the state row commits and the content write then fails, the item
-exists with empty content — visible in listings, and repairable through the
-content `PATCH` route, which requires the collection to grant
-`client.content.update`. And on the delete side, an item recreated between the
-state delete and the content delete loses its new content to the delete already
-in flight; content is deliberately last-write-wins, so no version on the state
-row fences it, and sequencing narrows the window to two statements rather than
-a whole request. Making either pair atomic is cross-record atomicity, which
-this store does not provide.
+Because each route writes two stores, some windows stay open: an item can exist
+with empty content, a create's body can be orphaned by an overlapping delete,
+an acknowledged `PATCH` can be overwritten by an in-flight create, and a
+recreation can lose its content to a delete already in flight. These are
+accepted — content is deliberately unversioned, so no state predicate fences a
+write to it, and closing them is cross-record atomicity, which this store does
+not provide. The full contract, with the reasoning and the residual table, is
+in `docs/architecture/resources-and-client-data.md`; client-facing guidance is
+in the resources / client access docs.
 
 ## CheckpointStore
 

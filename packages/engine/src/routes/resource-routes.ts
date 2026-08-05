@@ -244,15 +244,9 @@ export async function handleCreateCollectionItem(
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
-  // Win the key first, then write content (FIX-992 D12).
-  //
-  // `expectedVersion: 0` is create-if-absent — it commits only when there is
-  // no live row, and conflicts against one. That single write both replaces
-  // the read-then-act pre-check this route used to do (two concurrent creates
-  // both read absence and both returned 201) and decides the race, so a loser
-  // returns here without ever reaching `ContentStore`. The persisted content
-  // is therefore always the winner's. The conflict is terminal: a losing
-  // create must never be retried into an overwrite.
+  // Win the key first, then write content. `expectedVersion: 0` is
+  // create-if-absent, so a loser returns below without ever reaching
+  // `ContentStore`, and its 409 is terminal — never retried into an overwrite.
   const inserted = await ctx.stores.resourceState.set(
     "session",
     session.id,
@@ -264,13 +258,21 @@ export async function handleCreateCollectionItem(
     return jsonResponse(409, { error: `Item "${topic}" already exists` });
   }
 
-  // Accepted residual, not an oversight: if this write fails the item exists
-  // with empty content. That is visible in listings and repairable through the
-  // content PATCH route, which needs exactly the live state row now committed.
-  // The caller's retry then gets an honest 409, because the item does exist.
-  // Making the pair atomic is cross-record atomicity (FIX-854), a non-goal —
-  // and the collection must grant `client.content.update` for the repair route
-  // to be reachable at all (see `apps/docs` → resources / client access).
+  // The item is live from here, but its content is not final until the write
+  // below lands. Three accepted residuals follow, all of them cross-record
+  // atomicity (FIX-854), a declared non-goal — stated rather than approximated,
+  // because a version cannot tell this generation from its successor:
+  //
+  //   1. this write fails -> the item exists with empty content, visible in
+  //      listings and repairable via the content PATCH route (which needs
+  //      exactly the state row now committed, and the `content.update` grant);
+  //   2. a DELETE lands in the window -> this body is orphaned behind the
+  //      tombstone, and a later create with no content surfaces it as current;
+  //   3. a PATCH lands in the window -> it is acknowledged 200 and then
+  //      overwritten here.
+  //
+  // All three are pinned by tests in `resource-collection-routes.test.ts`.
+  // Client-facing guidance: `apps/docs` -> resources / client access.
   if (content !== undefined) {
     await ctx.stores.content.set("session", session.id, storageKey, content);
   }
@@ -705,22 +707,15 @@ export async function handleDeleteCollectionItem(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  // Conflict before anything is deleted (FIX-992 D12) — the create route's
-  // rule, mirrored.
+  // Conflict before anything is deleted — the create route's rule, mirrored.
+  // `undefined` means no live row, i.e. `expectedVersion: 0`, so an absent key
+  // stays an idempotent 200 while a create landing in the window makes this
+  // request a loser rather than letting it remove what it never saw.
   //
-  // Delete state on the version this request observed, so a generation that is
-  // replaced while the request is in flight conflicts instead of being
-  // tombstoned by a decision made against its predecessor. `undefined` means no
-  // live row, which is `expectedVersion: 0` — an absent key stays an
-  // idempotent 200, but a create landing between the read and the delete makes
-  // this request a loser rather than letting it remove what it never saw.
-  //
-  // The scope of that, stated because the prose around this change is easy to
-  // over-read: the version comes from this read, not from the caller, so the
-  // window closed is this route's own. A DELETE issued from a client view that
-  // is already stale reads the live row here and removes it. Closing that needs
-  // a caller-supplied precondition on the request, which is new surface and not
-  // this change's to invent.
+  // The version is the one this read observed, not one the caller supplied, so
+  // the window closed is this route's own: a DELETE issued from an already
+  // stale client view still reads the live row here and removes it. A
+  // caller-supplied precondition is separate surface (FIX-1006).
   const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
   const removed = await ctx.stores.resourceState.delete(
     "session",
@@ -734,16 +729,10 @@ export async function handleDeleteCollectionItem(
     });
   }
 
-  // Only after the state delete commits, and never concurrently with it. The
-  // two calls were a `Promise.all`: adding a version to the state delete while
-  // leaving them raced reads as correct and is not — a losing DELETE returns
-  // the same 409 and still removes the winner's content.
-  //
-  // The residual this does not close, stated rather than engineered around: a
-  // recreation landing between these two statements loses its content to this
-  // delete. `ContentStore` is last-write-wins by decision, so no state
-  // predicate fences it; sequencing narrows the window from a whole request to
-  // two statements, and closing it is cross-record atomicity (FIX-854).
+  // The residual sequencing does not close, stated rather than engineered
+  // around: a recreation landing between these two statements loses its content
+  // to this delete. `ContentStore` is last-write-wins by decision, so no state
+  // predicate fences it, and closing it is cross-record atomicity (FIX-854).
   await ctx.stores.content.delete("session", session.id, storageKey);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });

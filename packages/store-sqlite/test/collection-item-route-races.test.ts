@@ -13,7 +13,6 @@
  * DELETE built against a generation that has since been replaced leaves the
  * replacement untouched in both stores.
  */
-import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import os from "node:os";
 import path from "node:path";
@@ -22,6 +21,7 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
 import type { SessionRecord } from "@flow-state-dev/engine";
+import { gateNextStateRead } from "@flow-state-dev/engine/testing";
 import { createSQLiteStores } from "../src";
 
 const notes = defineResourceCollection({
@@ -106,44 +106,6 @@ function storedContent(): Promise<string | undefined> {
   return stores.content.get("session", SESSION_ID, KEY);
 }
 
-/**
- * Hold the next resource-state read open, so a test can move the key while a
- * route is mid-request.
- *
- * `whenRead` races a turn of the event loop rather than waiting outright: a
- * route that never reads must fail its assertions, not hang the suite.
- */
-function gateNextStateRead() {
-  let release!: () => void;
-  const released = new Promise<void>((r) => {
-    release = r;
-  });
-  let markRead!: () => void;
-  const read = new Promise<void>((r) => {
-    markRead = r;
-  });
-
-  let armed = true;
-  const real = stores.resourceState.get.bind(stores.resourceState);
-  stores.resourceState.get = async (...args) => {
-    const value = await real(...args);
-    if (!armed) return value;
-    armed = false;
-    markRead();
-    await released;
-    return value;
-  };
-
-  const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  return {
-    whenRead: async () => {
-      await Promise.race([read, tick().then(tick)]);
-      armed = false;
-    },
-    release,
-  };
-}
-
 describe("collection-item write routes on a durable store", () => {
   it("two clients racing one topic: the surviving content is the winner's", async () => {
     const [first, second] = await Promise.all([post("a", "from-first"), post("a", "from-second")]);
@@ -164,7 +126,7 @@ describe("collection-item write routes on a durable store", () => {
     // router, so what is under test is the version the route carries and the
     // order it writes in — not the store's predicate, which is already pinned
     // by the conformance suite.
-    const gate = gateNextStateRead();
+    const gate = gateNextStateRead(stores.resourceState);
     const inFlight = del("a");
     await gate.whenRead();
 

@@ -446,6 +446,30 @@ it usually means something else touched the item mid-request. Deleting a topic
 that does not exist is still a `200`, so retrying a delete you already
 completed is safe.
 
+### A create isn't final the moment it returns
+
+Item state and item content are stored separately, and `POST` writes them in
+that order. So there is a brief window where the item is already visible but
+its body hasn't landed yet. Three things follow, and they're worth knowing
+because none of them shows up as an error:
+
+- If the content write fails, the item exists with **empty content**. It's
+  visible in listings, and you can repair it with `PATCH` — provided the
+  collection grants `client.content.update`. Without that grant there's no
+  repair route, so grant `create` and `update` together unless you have a
+  reason not to.
+- If a `DELETE` lands in that window, the create's body can be left behind
+  after the item is gone. A later create of the same topic **that sends no
+  content** will then show the old body as its own.
+- If a `PATCH` lands in that window, it returns `200` and is then overwritten
+  by the create that was still finishing.
+
+Two practical habits cover all three: **send `content` with every `POST`** so a
+new item never inherits an old body, and treat a create as settled only once
+you've read the item back. If a create and a delete of the same topic can
+overlap in your app, serialize them client-side — the server can't order writes
+across two stores for you.
+
 ## Live updates
 
 When a resource changes during streaming (e.g., a tool creates an artifact), the server emits a `resource_change` event over the stream. By default this is an invalidation cue, not the data: the React hooks refresh the session snapshot once the request completes, and collection items update in place then. You don't need to poll or manually refetch. If an artifact is created mid-turn, it appears in `useResourceCollection`'s `items` once the turn finishes.

@@ -1,24 +1,18 @@
 /**
- * Route-level tests for the two collection-item write routes (FIX-992 D12).
+ * Route-level tests for the two collection-item write routes: both win the
+ * state key first, then touch content, so a loser never reaches `ContentStore`.
+ * The contract itself is in `docs/architecture/resources-and-client-data.md`.
  *
- * Both routes follow one rule: **win the state key first, then touch content.**
- * The create route inserts at `expectedVersion: 0` and writes content only
- * after that commits; the delete route reads the version, deletes state
- * conditionally on it, and deletes content only after that commits. A loser
- * therefore never touches `ContentStore` on either route.
- *
- * Every assertion here is on the **persisted artifact**, not the status code.
- * That is deliberate: the rejected designs returned exactly the same 201/409
- * and 200/409 as the accepted one while storing the wrong thing, so a
- * status-code test passes against the bug it exists to catch. The delete
- * route's ordering assertion is the sharpest case — a version-checked state
- * delete left inside the original `Promise.all` produces identical status
- * codes and still clobbers content.
+ * Every assertion here is on the **persisted artifact**, not the status code,
+ * and that is the point: the rejected designs answered exactly the same
+ * 201/409 and 200/409 as the accepted one while storing the wrong thing, so a
+ * status-code test passes against the bug it exists to catch.
  */
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, createFlowRegistry } from "../src";
+import { gateNextStateRead } from "../src/testing";
 import type { StoreRegistry, SessionRecord } from "../src/stores/types";
 import type { FlowRegistry } from "../src/registry/flow-registry";
 import {
@@ -138,40 +132,32 @@ function storedState(ctx: Ctx) {
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 /**
- * Hold a route open between its resource-state read and whatever it does next,
- * so a test can move the key underneath it.
+ * Park the create route between its state insert and its content write, so a
+ * test can act on an item that is live but whose content has not landed.
  *
- * `whenRead` deliberately races a timeout rather than waiting outright: a route
- * that never reads (the un-fixed delete route does not) must fail its
- * assertions, not hang the suite on a gate nothing will ever reach.
+ * That window is what the two residual tests below are about, and it is only
+ * reachable from inside the request — the route answers 201 either way.
  */
-function gateNextStateRead(ctx: Ctx) {
+function gateNextContentWrite(ctx: Ctx) {
   let release!: () => void;
   const released = new Promise<void>((r) => {
     release = r;
   });
-  let markRead!: () => void;
-  const read = new Promise<void>((r) => {
-    markRead = r;
+  let markReached!: () => void;
+  const reached = new Promise<void>((r) => {
+    markReached = r;
   });
 
-  let armed = true;
-  const real = ctx.stores.resourceState.get.bind(ctx.stores.resourceState);
-  vi.spyOn(ctx.stores.resourceState, "get").mockImplementation(async (...args) => {
-    const value = await real(...args);
-    if (!armed) return value;
-    armed = false;
-    markRead();
+  const real = ctx.stores.content.set.bind(ctx.stores.content);
+  vi.spyOn(ctx.stores.content, "set").mockImplementationOnce(async (...args) => {
+    markReached();
     await released;
-    return value;
+    return await real(...args);
   });
 
   return {
-    /** Resolves once the route has read, or after a turn if it never does. */
-    whenRead: async () => {
-      await Promise.race([read, tick().then(tick)]);
-      armed = false;
-    },
+    /** Resolves once the route is parked, or after a turn if it never writes. */
+    whenReached: () => Promise.race([reached, tick().then(tick)]),
     release,
   };
 }
@@ -258,6 +244,76 @@ describe("create collection item route — the winner owns the content", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Create route — the window between "live" and "content final"
+// ---------------------------------------------------------------------------
+
+/**
+ * Winning the key before writing content is what makes the two races above
+ * come out right, and it has a price: the state row is live while the content
+ * write is still in flight, so the item is briefly reachable with content that
+ * is not yet its own.
+ *
+ * These two tests assert the **wrong** outcome on purpose. They are not guards
+ * — they pin residuals D12 accepts, so the cost is falsifiable rather than
+ * prose, and so closing it (cross-record atomicity, FIX-854) turns them red
+ * instead of passing silently. Read a failure here as "the residual closed",
+ * and delete the test.
+ *
+ * Neither is closable with a version. A create that won at version 1 and looks
+ * back cannot tell its own row after a block wrote state (version 2) from a
+ * successor generation created after a delete (also version 2) — the counter is
+ * per key, not per generation. Abandoning the write on "version moved" would
+ * silently drop the caller's content on the ordinary path. Telling those apart
+ * needs an owner token, and a token still cannot fence a write to an unversioned
+ * `ContentStore`.
+ */
+describe("create collection item route — residuals of the live-before-final window", () => {
+  it("RESIDUAL: a DELETE in the window orphans the body, and a later create surfaces it", async () => {
+    const ctx = await setupCtx();
+
+    const gate = gateNextContentWrite(ctx);
+    const inFlight = create(ctx, "a", "deleted-generation-body");
+    await gate.whenReached();
+
+    // The item is already live, so this DELETE is a normal, uncontended one:
+    // it removes the state row and finds no content to remove.
+    expect((await del(ctx, "a")).status).toBe(200);
+    expect(await storedState(ctx)).toBeUndefined();
+
+    // The parked write now lands behind the tombstone.
+    gate.release();
+    expect((await inFlight).status).toBe(201);
+    expect(await storedContent(ctx)).toBe("deleted-generation-body");
+    expect(await storedState(ctx)).toBeUndefined();
+
+    // The sharp part: a later create carrying no content revives the row over
+    // the orphan, so a deleted generation's body reads as the current one.
+    expect((await create(ctx, "a")).status).toBe(201);
+    expect(await storedState(ctx)).toBeDefined();
+    expect(await storedContent(ctx)).toBe("deleted-generation-body");
+  });
+
+  it("RESIDUAL: a PATCH in the window is acknowledged 200 and then overwritten", async () => {
+    const ctx = await setupCtx();
+
+    const gate = gateNextContentWrite(ctx);
+    const inFlight = create(ctx, "a", "create-body");
+    await gate.whenReached();
+
+    // The item is live, so PATCH is reachable and commits for real.
+    expect((await patchContent(ctx, "a", "newer-committed-update")).status).toBe(200);
+    expect(await storedContent(ctx)).toBe("newer-committed-update");
+
+    // The parked create write then clobbers an update the client was told
+    // succeeded. Ordering content before state instead loses the create's own
+    // body to the same window, so this is a trade, not a regression to undo.
+    gate.release();
+    expect((await inFlight).status).toBe(201);
+    expect(await storedContent(ctx)).toBe("create-body");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Delete route — D12 mirrored: conflict before ContentStore is touched
 // ---------------------------------------------------------------------------
 
@@ -271,7 +327,7 @@ describe("delete collection item route — conflict before ContentStore is touch
     // Hold the route between its version read and its state delete, then let
     // the item be deleted and recreated underneath it. What the route holds is
     // now a pre-delete version.
-    const gate = gateNextStateRead(ctx);
+    const gate = gateNextStateRead(ctx.stores.resourceState);
     const inFlight = del(ctx, "a");
     await gate.whenRead();
 
@@ -298,7 +354,7 @@ describe("delete collection item route — conflict before ContentStore is touch
     // The route reads "no live row"; a create lands before it can act on that.
     // `expectedVersion: 0` is what makes the difference visible — `"any"` would
     // tombstone the new generation and delete its content.
-    const gate = gateNextStateRead(ctx);
+    const gate = gateNextStateRead(ctx.stores.resourceState);
     const inFlight = del(ctx, "a");
     await gate.whenRead();
 

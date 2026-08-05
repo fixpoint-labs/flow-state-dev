@@ -34,15 +34,27 @@ client fetched earlier still reads the live row and removes it. Accepting a
 caller-supplied expected version is a separate piece of surface these routes do
 not have.
 
-Two limits are worth stating rather than implying. A create is still two writes
-to two stores: if the state row commits and the content write then fails, the
-item exists with empty content. It stays visible in listings and a `PATCH` to
-its content endpoint repairs it, but that needs the collection to grant
+These limits are worth stating rather than implying, because ordering state
+before content means an item is briefly live while its content is still being
+written, and none of them surfaces as an error.
+
+If the state row commits and the content write then fails, the item exists with
+empty content. It stays visible in listings and a `PATCH` to its content
+endpoint repairs it, but that needs the collection to grant
 `client.content.update` — a collection granting `create` alone leaves an
 authorized client holding an item it can neither fill nor remove. Grant `update`
-alongside `create`; the resource client-access guide now says so. And on the
-delete side, an item recreated in the narrow window between the state delete and
-the content delete loses its new content to the delete that is already in
-flight. Content is deliberately last-write-wins, so no version on the state row
-fences it; sequencing the two narrows the window to two statements rather than a
-whole request.
+alongside `create`; the resource client-access guide now says so.
+
+If a `DELETE` lands in that same window, the create's body is orphaned behind
+the tombstone, and a later create of the topic **that sends no content** revives
+the row over it — so a deleted generation's content can read as current. Sending
+`content` with every `POST` avoids it. If a `PATCH` lands in the window, it is
+acknowledged `200` and then overwritten by the create still in flight. And on
+the delete side, an item recreated between the state delete and the content
+delete loses its new content to the delete already in flight.
+
+All of these are the same shape: content is deliberately unversioned, so no
+predicate on the state row fences a write to it, and a version cannot tell a
+create's own row from a successor generation at the same number. Sequencing
+narrows each window to two statements rather than a whole request; closing them
+is cross-record atomicity, which these stores do not provide.

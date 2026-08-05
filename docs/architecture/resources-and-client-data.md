@@ -507,6 +507,25 @@ DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic         → delete i
 
 Server enforces declared permissions and rejects operations that exceed them.
 
+#### Write ordering and `409 Conflict`
+
+Item state and item content live in two stores (`ResourceStateStore`, `ContentStore`). Both write routes therefore follow one rule: **settle the state key first, then touch content.** A request that loses the state race returns `409` and never reaches `ContentStore`.
+
+- **`POST`** inserts the state row at `expectedVersion: 0` (create-if-absent) and writes content only after that commits. Two concurrent creates of one topic yield one `201` and one `409`, and the stored body always belongs to the winner. The conflict is terminal — a losing create is never retried into an overwrite.
+- **`DELETE`** reads the row's version, deletes state conditionally on it, and deletes content only after that commits. Deleting an absent topic is still an idempotent `200`.
+
+**What the `DELETE` check covers.** The version is the one the *route* observes while serving the request, not one the caller supplied, so the window it closes is the route's own read→write window. A `DELETE` issued from a client view fetched earlier still reads the live row and removes it. A caller-supplied precondition is separate surface these routes do not accept ([FIX-1006](https://linear.app/fixpoint-labs/issue/FIX-1006)).
+
+**Residuals, because a create is still two writes to two stores.** Between the `POST`'s state insert and its content write the item is *live but its content is not final*, and `ContentStore` is unversioned by decision, so no state predicate can fence a write to it:
+
+| Window | Outcome |
+| --- | --- |
+| The content write fails | The item exists with empty content — visible in listings, repairable via `PATCH` when the collection grants `client.content.update` |
+| A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current |
+| A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create |
+
+These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
+
 ### React Hooks
 
 ```ts
