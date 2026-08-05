@@ -129,8 +129,11 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
 - **Don't** relay the comment text into the wake's `args`. The wake's refresh scouts re-read
   each PR's comments, reviews and checks off the activity cursor themselves, so anything you
   paste in is a second, staler copy of what the script is about to fetch.
-- **Do** confirm the PR belongs to a row in your table, run the wake, and end the turn. Waking
-  you was the event's whole job, and it has done it.
+- **Do** confirm the PR is one you track — a row in your table **or the epic PR itself** — run
+  the wake, and end the turn. Waking you was the event's whole job, and it has done it. The epic
+  PR has no row; it lives in the `epic` handle beside them, and its events are the objective
+  sign-off and the epic-spec's own feedback. Drop one as "not mine" and the whole set sits at
+  AWAITING_OBJECTIVE until a heartbeat happens to catch it.
 
 This is the skill-level statement of a rule that is canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token & context budget":

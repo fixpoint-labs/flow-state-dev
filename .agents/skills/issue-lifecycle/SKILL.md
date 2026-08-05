@@ -445,7 +445,10 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   thread. Not for a one-line CI fix, and not because the change looks obvious from the event
   text; "obvious" is what every round nine looked like at round three.
 - **Do** re-derive the phase from the small durable read above, take that phase's one bounded
-  action — which for PR_FEEDBACK means *dispatching*, not doing — and end the turn.
+  action — which for PR_FEEDBACK means *dispatching*, not doing — and end the turn. Take the
+  action from the row itself, not from that gloss: PR_FEEDBACK dispatches on review comments and
+  CI, but an **approved + green** PR surfaces "ready to merge" and stops. A feedback worker sent
+  over a merge-ready PR spends a round on nothing and delays the one gate that is yours.
 
 This is the skill-level statement of a rule canonical in
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token & context budget":
