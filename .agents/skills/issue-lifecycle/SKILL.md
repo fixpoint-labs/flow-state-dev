@@ -439,11 +439,12 @@ failure, push the fix, answer the reviewer) is louder than this heading and wins
 
 The issue-specific delta: **the phase table decides what the event becomes, and it is the
 authority — not any summary of it, including this one.** Re-derive the phase from the small
-durable read above and take that row's action. The rows branch, and the branches are what a
-summary loses: a spec-PR event under AWAITING_SPEC_APPROVAL goes to `issue-spec` Step 6.5 on
-the **spec-review budget**; an impl-PR event under PR_FEEDBACK goes to `issue-implement` Step 10
-on the **round cap**; an **approved + green** PR surfaces "ready to merge" and *stops* rather
-than dispatching anything.
+durable read above, find the row, and take the action that row gives for *that kind of event*.
+
+This section deliberately does not list the routes. The rows branch on the event — feedback,
+an approval, approved-and-green — and the branches differ in which worker runs, which budget is
+charged, and whether to dispatch at all. Every route written down here would be a rule that
+outranks the row it was copied from and goes stale the moment the row moves.
 
 ## Waking
 

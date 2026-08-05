@@ -1017,9 +1017,10 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   copy is a second, staler one.
 - **Do** derive the action from durable state — the phase table row, or the wake script — take
   it, and end the turn. Take it from the row itself, **never from a summary of the row**,
-  including any in a skill. The rows branch, and the branches are exactly where acting on a
-  summary costs you: an approved + green PR surfaces "ready to merge" and *stops* rather than
-  dispatching, and a spec-PR event is charged to the spec-review budget, not the feedback cap.
+  including any in a skill and including this section. The rows branch on the *kind* of event,
+  and the branches can differ in which worker runs, which budget is charged, and whether to
+  dispatch at all. A summary that flattens them reads as the rule and quietly outranks the row
+  it came from — which is why nothing here lists the routes.
 
 **What handling a round yourself actually costs:**
 
