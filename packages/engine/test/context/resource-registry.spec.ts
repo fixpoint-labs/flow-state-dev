@@ -53,7 +53,18 @@ function asRow(
  */
 function makeStateProviders(
   state: Record<string, JsonObject>,
-  { persistDelay = false }: { persistDelay?: boolean } = {}
+  {
+    persistDelay = false,
+    beforeFirstPersist
+  }: {
+    persistDelay?: boolean;
+    /**
+     * Runs once, immediately before the first store write, so a test can land a
+     * competing writer in the window between the driver's read and its persist
+     * — the only way to force the retry path deterministically.
+     */
+    beforeFirstPersist?: (rows: Map<string, { state: JsonObject; version: number; deleted: boolean }>) => void;
+  } = {}
 ) {
   const rows = new Map<string, { state: JsonObject; version: number; deleted: boolean }>();
   const versions: Record<string, number> = {};
@@ -69,12 +80,17 @@ function makeStateProviders(
     return row !== undefined && !row.deleted ? row.version : 0;
   };
 
+  let firstPersistDone = false;
   const set = async (
     key: string,
     next: JsonObject,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<JsonObject>> => {
     if (persistDelay) await Promise.resolve();
+    if (!firstPersistDone) {
+      firstPersistDone = true;
+      beforeFirstPersist?.(rows);
+    }
     const row = rows.get(key);
     // The REAL store predicate — see the note in `resource-cas.spec.ts`.
     const conflict = checkWriteVersion(asRow(row), expectedVersion);
@@ -91,7 +107,7 @@ function makeStateProviders(
       key: string,
       mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
       opts?: { intent?: ResourceCASIntent; seed?: JsonObject }
-    ): Promise<{ committed: boolean }> => {
+    ): Promise<{ committed: boolean; previousState: JsonObject }> => {
       const container = createStateContainer<JsonObject>(
         opts?.seed ?? state[key] ?? {},
         versions[key] ?? 0
@@ -109,11 +125,13 @@ function makeStateProviders(
             : { state: structuredClone(row.state), version: row.version };
         }
       });
-      if (result.committed) {
+      // Mirrors the real provider: refresh from every outcome that saw a live
+      // row, not only committed ones.
+      if (result.version > 0) {
         state[key] = result.state;
         versions[key] = result.version;
       }
-      return { committed: result.committed };
+      return { committed: result.committed, previousState: result.previousState };
     },
     deleteResourceKey: async (key: string): Promise<boolean> => {
       if (!(key in state)) return false;
@@ -836,6 +854,93 @@ describe("createScopeResourceRegistry — lifecycle hooks", () => {
     // A real change still emits exactly one event.
     await ref.patchState({ v: 2 });
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the basis the write landed on as prevState after a retry (FIX-992)", async () => {
+    // On retry the mutator re-runs against the winner's state, so the value that
+    // lands is built on it. Reporting the caller's pre-race snapshot describes a
+    // transition that never occurred — a hook diffing prevState against state
+    // would see the winner's field appear as though THIS mutation made it.
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      stateSchema: z.object({}).passthrough()
+    });
+    const state: Record<string, JsonObject> = { "items/doc1": { base: 1 } };
+    const providers = makeStateProviders(state, {
+      // A competing writer lands `fromOther` between our read and our persist,
+      // forcing exactly one conflict-and-retry.
+      beforeFirstPersist: (rows) => {
+        rows.set("items/doc1", {
+          state: { base: 1, fromOther: true },
+          version: 2,
+          deleted: false
+        });
+      }
+    });
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: { items: nsConfig },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      mutateResourceKey: providers.mutateResourceKey,
+      deleteResourceKey: providers.deleteResourceKey,
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+      onResourceChanged: onChange
+    });
+
+    const ref = await (registry as any).items.get("doc1");
+    await ref.patchState({ mine: true });
+
+    const [, , , change] = onChange.mock.calls.at(-1)!;
+    // The merge is right...
+    expect(change.state).toEqual({ base: 1, fromOther: true, mine: true });
+    // ...and prevState is the state the committed attempt actually ran against,
+    // which already includes the winner's field. The pre-race snapshot
+    // ({ base: 1 }) would make `fromOther` look like this mutation's doing.
+    expect(change.prevState).toEqual({ base: 1, fromOther: true });
+  });
+
+  it("classifies a create over another context's delete as created, not updated (FIX-992)", async () => {
+    // This context still has the instance cached when another deletes it. The
+    // create commits at "no live row" — proving none existed — so it is a new
+    // generation. Reading the stale cache instead would route it through the
+    // update hooks and hand them the deleted generation's state as `prevState`:
+    // a create reported as an update, against a previous state that is nobody's.
+    const onChange = vi.fn();
+    const nsConfig = makeCollectionConfig("items/*", {
+      stateSchema: z.object({}).passthrough(),
+      onInstanceCreated: vi.fn(),
+      onInstanceUpdated: vi.fn()
+    });
+    const state: Record<string, JsonObject> = { "items/doc1": { generation: 1 } };
+    const providers = makeStateProviders(state);
+    // Another context deleted it: the durable row is a tombstone while this
+    // context's cache still shows generation 1.
+    providers.rows.set("items/doc1", { state: {}, version: 1, deleted: true });
+
+    const registry = createScopeResourceRegistry({
+      scope: "session",
+      scopeId: "sess_1",
+      configs: { items: nsConfig },
+      readResources: () => state,
+      readResourceContent: () => ({}),
+      mutateResourceKey: providers.mutateResourceKey,
+      deleteResourceKey: providers.deleteResourceKey,
+      persistResourceContentKey: async () => {},
+      deleteResourceContentKey: async () => {},
+      onResourceChanged: onChange
+    });
+
+    await (registry as any).items.create("doc1", { generation: 2 });
+
+    const [path, changeType, , change] = onChange.mock.calls.at(-1)!;
+    expect(path).toBe("items/doc1");
+    expect(changeType).toBe("created");
+    expect(change.prevState).toBeUndefined();
+    expect(nsConfig.onInstanceCreated).toHaveBeenCalledTimes(1);
+    expect(nsConfig.onInstanceUpdated).not.toHaveBeenCalled();
   });
 
   it("onResourceChanged fires on create/update/delete", async () => {

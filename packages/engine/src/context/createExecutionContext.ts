@@ -1502,9 +1502,12 @@ export async function createExecutionContext<
         key: string,
         mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
         opts?: { intent?: ResourceCASIntent; seed?: JsonObject }
-      ): Promise<{ committed: boolean }> => {
+      ): Promise<{ committed: boolean; previousState: JsonObject }> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
-        if (scopeId === undefined) return { committed: false };
+        if (scopeId === undefined) {
+          // Scope absent this request — nothing was read and nothing written.
+          return { committed: false, previousState: opts?.seed ?? {} };
+        }
         const intent = opts?.intent ?? "mutate";
 
         // State comes from the registry's own read (which applies a declared
@@ -1541,13 +1544,27 @@ export async function createExecutionContext<
           throw err;
         }
 
-        if (result.committed) {
+        // Refresh the cache from EVERY outcome that saw a live row, not only
+        // committed ones. A verified no-op can arrive after the driver refreshed
+        // to a newer row — the caller wrote a value another context had already
+        // committed — and it carries that row's state and version. Skipping the
+        // refresh there leaves this request reading a value the store no longer
+        // holds and, worse, holding a stale version that makes the next
+        // conditional write or delete conflict for no reason.
+        //
+        // `version === 0` is the one outcome with nothing to refresh: the key
+        // has no live row, so writing the seed into the cache would invent a
+        // key the store does not have and change what `exists` means upstream.
+        //
+        // Only NOTIFICATIONS are gated on `committed` (D8), and they are gated
+        // by the registry, not here.
+        if (result.version > 0) {
           // Mutate the live cache IN PLACE at this key (FIX-744) so concurrent
           // distinct-key writes still coexist in the in-memory view.
           stateRef.current[key] = result.state;
           versionRef.current[key] = result.version;
         }
-        return { committed: result.committed };
+        return { committed: result.committed, previousState: result.previousState };
       },
       deleteResourceKey: async (key: string): Promise<boolean> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);

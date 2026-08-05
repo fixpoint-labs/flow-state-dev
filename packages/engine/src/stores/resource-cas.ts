@@ -51,6 +51,12 @@ import {
   ResourceAlreadyExistsError,
   ResourceDeletedError
 } from "../errors/flow-error";
+
+// Re-exported here for the same reason `cas.ts` re-exports
+// `ConcurrentModificationError`: these are part of this driver's contract, and
+// a caller that catches one should not have to reach into the errors module to
+// name it. `stores/index.ts` and the package root re-export them onward.
+export { ResourceAlreadyExistsError, ResourceDeletedError };
 import type { ExpectedVersion, SetResult, VersionedResourceState } from "./types";
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -105,6 +111,19 @@ export type RunResourceCASOptions = {
 
 export type ResourceCASResult = {
   state: JsonObject;
+  /**
+   * The state the returned outcome was computed against — the basis of the
+   * attempt that actually committed, not the caller's pre-race snapshot.
+   *
+   * These differ exactly when a retry happened: attempt 1 runs against what the
+   * caller had cached, and after a conflict the driver refreshes and re-runs
+   * the mutator against the winner's state. The value that lands is therefore
+   * built on the winner's, and reporting the caller's original snapshot as the
+   * "previous state" describes a transition that never occurred — a hook
+   * diffing prev against next would see the winner's fields appear as though
+   * this mutation made them.
+   */
+  previousState: JsonObject;
   /**
    * `true` when a write actually landed. `false` means a **verified** no-op —
    * the mutator's output equalled the stored value at a version this driver
@@ -192,6 +211,10 @@ export async function runResourceCAS({
     // user-supplied updater — so without this an in-place mutation would edit
     // the very object the deep-equal check below compares against, making the
     // check trivially true and suppressing the write.
+    // The pre-mutation state for THIS attempt. `commit` replaces the
+    // container's reference rather than mutating it, and the mutator only ever
+    // sees the clone below, so this stays a faithful snapshot of the basis.
+    const basis = container.read() as JsonObject;
     const current = cloneValue(container.read()) as JsonObject;
     const expectedVersion: ExpectedVersion =
       intent === "create" ? 0 : intent === "replace" ? "any" : container.getVersion();
@@ -219,7 +242,12 @@ export async function runResourceCAS({
         //    deletion reports an event that never happened, to a caller doing
         //    the most ordinary thing there is.
         if (container.getVersion() === 0) {
-          return { state: container.read() as JsonObject, committed: false, version: 0 };
+          return {
+            state: container.read() as JsonObject,
+            previousState: basis,
+            committed: false,
+            version: 0
+          };
         }
         throw new ResourceDeletedError(key);
       }
@@ -228,6 +256,7 @@ export async function runResourceCAS({
         // version we just confirmed.
         return {
           state: container.read() as JsonObject,
+          previousState: basis,
           committed: false,
           version: fresh.version
         };
@@ -246,6 +275,7 @@ export async function runResourceCAS({
     if (result.ok) {
       return {
         state: container.commit(next, result.version) as JsonObject,
+        previousState: basis,
         committed: true,
         version: result.version
       };

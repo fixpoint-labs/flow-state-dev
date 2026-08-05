@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError, runWithCAS } from "./cas";
+import { ResourceAlreadyExistsError, ResourceDeletedError } from "./resource-cas";
 import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
@@ -86,6 +87,8 @@ export type {
 
 export {
   ConcurrentModificationError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError,
   ScopeMutationTimeoutError,
   createScopeStateOps,
   createStateContainer,

@@ -26,6 +26,8 @@ import type { JsonObject } from "@flow-state-dev/core/types";
 import {
   createExecutionContext,
   createInMemoryStores,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError,
   type StoreRegistry
 } from "../src";
 
@@ -130,8 +132,12 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     await (ctxA.resources.tasks as any).delete("t1");
 
     const instance = await (ctxB.resources.tasks as any).get("t1");
-    await expect(instance.patchState({ claimedBy: "worker-b" })).rejects.toThrow(
-      /deleted/i
+    // `instanceof` against the PACKAGE ROOT export, not the internal module:
+    // these errors are named in the changeset and the engine README, so a
+    // consumer has to be able to catch them the same way it catches
+    // `ConcurrentModificationError`.
+    await expect(instance.patchState({ claimedBy: "worker-b" })).rejects.toBeInstanceOf(
+      ResourceDeletedError
     );
 
     expect(await readStored(stores, "tasks/t1")).toBeUndefined();
@@ -145,7 +151,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     await (ctxA.resources.tasks as any).create("t1", { owner: "a" });
     await expect(
       (ctxB.resources.tasks as any).create("t1", { owner: "b" })
-    ).rejects.toThrow(/already exists/i);
+    ).rejects.toBeInstanceOf(ResourceAlreadyExistsError);
 
     expect(await readStored(stores, "tasks/t1")).toEqual({ owner: "a" });
   });
@@ -271,6 +277,79 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     expect(await readStored(stores, "capped/c1")).toEqual({ n: 1 });
     expect(await readStored(stores, "capped/c2")).toEqual({ n: 2 });
     expect(await readStored(stores, "capped/c3")).toEqual({ n: 3 });
+  });
+
+  it("refreshes the cache and version after a no-op that raced a newer write", async () => {
+    // A stale context writes the value another context already committed. The
+    // driver refreshes to that row and correctly reports `committed: false` —
+    // but the outcome still carries the newer state and version, and dropping
+    // them leaves this request reading a value the store no longer holds and
+    // holding a version that makes its next conditional write conflict for no
+    // reason.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.tasks as any).create("t1", { mode: "old" });
+
+    const ctxB = await makeCtx(stores, "req_b"); // loads t1 at {mode:"old"}
+    const instanceB = await (ctxB.resources.tasks as any).get("t1");
+
+    const instanceA = await (ctxA.resources.tasks as any).get("t1");
+    await instanceA.setState({ mode: "new" });
+
+    // B writes what A already stored: a genuine no-op, but only after the
+    // driver refreshed past B's stale view.
+    await instanceB.setState({ mode: "new" });
+
+    // B's in-request read must show the value that is actually stored.
+    const refreshed = await (ctxB.resources.tasks as any).get("t1");
+    expect(refreshed.state).toEqual({ mode: "new" });
+
+    // And B's version must be current, so a follow-up delete is not refused
+    // against a row nobody else has touched since.
+    await expect((ctxB.resources.tasks as any).delete("t1")).resolves.toBeUndefined();
+    expect(await readStored(stores, "tasks/t1")).toBeUndefined();
+  });
+
+  it("classifies a create over another context's delete as a create", async () => {
+    // B still has t1 cached when A deletes it. B's create commits at "no live
+    // row" — proving none existed — so it is a new generation, not an update of
+    // the row A removed.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
+
+    const ctxB = await makeCtx(stores, "req_b"); // caches generation 1
+    await (ctxA.resources.tasks as any).delete("t1");
+
+    await (ctxB.resources.tasks as any).create("t1", { generation: 2 });
+
+    expect(await readStored(stores, "tasks/t1")).toEqual({ generation: 2 });
+  });
+
+  it("keeps a create that succeeded when its capacity eviction loses a race", async () => {
+    // Eviction is best-effort capacity management over a cap this design does
+    // not close. If the victim was replaced by another context the delete is
+    // refused — but the create already committed, so failing here would report
+    // a create that demonstrably happened as a failure and still leave the row.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.capped as any).create("c1", { n: 1 });
+    await (ctxA.resources.capped as any).create("c2", { n: 2 });
+
+    // B loads c1 and c2 and is at the cap.
+    const ctxB = await makeCtx(stores, "req_b");
+
+    // Another writer replaces B's eviction victim, so B's version-checked
+    // delete of it will be refused.
+    await stores.resourceState.set("session", "sess_1", "capped/c1", { n: 99 }, "any");
+
+    await expect(
+      (ctxB.resources.capped as any).create("c3", { n: 3 })
+    ).resolves.toBeDefined();
+
+    // The create landed, and the row whose eviction was refused is untouched.
+    expect(await readStored(stores, "capped/c3")).toEqual({ n: 3 });
+    expect(await readStored(stores, "capped/c1")).toEqual({ n: 99 });
   });
 
   it("does not bump the version for a verified no-op write", async () => {

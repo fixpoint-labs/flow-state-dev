@@ -49,6 +49,10 @@ Failures say which thing actually happened rather than collapsing together:
 | A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
 | Retry budget exhausted | `ConcurrentModificationError` |
 
+`ResourceDeletedError` and `ResourceAlreadyExistsError` are exported from
+`@flow-state-dev/engine`, so you can catch them with `instanceof` the same way
+you already catch `ConcurrentModificationError`.
+
 The first row matters in ordinary use: a resource you declared but never wrote
 exists only as its schema default, and touching it with a write that changes
 nothing is a no-op, not a report that something was deleted.
