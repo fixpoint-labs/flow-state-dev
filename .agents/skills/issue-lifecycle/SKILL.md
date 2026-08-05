@@ -432,53 +432,18 @@ the assembled goal runnable is *your* event to act on — re-enter and run the w
 
 ## PR events are wake signals, not work items
 
-A PR-activity event arrives in *this* session with the comment bodies and CI output attached,
-and the harness's own posture on PRs you opened is that they are yours to drive green: diagnose
-the failure, push the fix, answer the reviewer. **Under this skill that posture does not apply
-to you.** You "opened" that PR only in the sense that you hold its subscription — a sub-agent
-can't. The work on it belongs to whichever row the phase table puts the event in — a spec-PR
-event under AWAITING_SPEC_APPROVAL goes to `issue-spec` Step 6.5 on the spec-review budget, an
-impl-PR event under PR_FEEDBACK to `issue-implement` Step 10 on the round cap. Either way it is
-a fresh bounded sub-agent, and either way it is not you.
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR events are
+wake signals, not work items".** Read it, don't re-derive it here. It is a *correctness* rule —
+and the harness's own posture on PRs you opened (they're yours to drive green, so diagnose the
+failure, push the fix, answer the reviewer) is louder than this heading and wins if you let it.
 
-So on any PR-activity event — a review comment, a CI failure, a push, an approval:
-
-- **Don't** read the diff, diagnose the failure, write a fix, push a commit, or reply on a
-  thread. Not for a one-line CI fix, and not because the change looks obvious from the event
-  text; "obvious" is what every round nine looked like at round three.
-- **Do** re-derive the phase from the small durable read above, take that phase's one bounded
-  action, and end the turn. Take it from the row itself, never from a summary of the row —
-  including this section's. The rows branch, and the branches are exactly where acting on a
-  summary costs you: an **approved + green** PR surfaces "ready to merge" and stops instead of
-  dispatching, and a spec-PR event is charged to the spec-review budget, not the feedback cap.
-
-This is the skill-level statement of a rule canonical in
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token discipline (why it
-stays cheap)": *the orchestrator does not read event content — it maps the PR to its owning issue
-and dispatches the worker, which reads the review/CI in its own context.*
-
-**The line on writing to a PR — a skill-level rule, not one of `orchestration.md`'s: you may
-carry a human's decision outward, never a technical judgment of your own.** Applying the
-`spec approved` label carries a sign-off you can see.
-Answering a reviewer, explaining a design choice, conceding a point, or saying a finding is
-wrong are judgments about a diff you haven't read, and they belong to the worker that has.
-
-The gate work stays yours, because nothing else can hold it: subscribing, surfacing a gate,
-recording a human's answer, writing the Linear mirror. None of it involves acting on review
-content.
-
-**Handling a round here costs more than the tokens it burns.** `prFeedbackRounds` only advances
-on a worker's reported `prFeedbackRoundsSpent`, so a round you handle yourself is uncounted: the
-twelve-round cap never trips on an issue that is genuinely looping, which is the one signal that
-would have told you the approach is wrong rather than the lines being argued about. A round
-handled here is worse than a round handled a wake late.
-
-**What you report instead.** The sub-agent's summary is what you have and what the user gets:
-phase, PR, and its one line on what it did. Don't recap the comments it answered or the fix it
-wrote — you didn't see either, and reconstructing them from the event text is the reading this
-section forbids, done after the fact. If a round produced something that needs the user, it is a
-gate, a blocker, or the cap; surface that in its own line with the specific question. Everything
-else is one line and an ended turn.
+The issue-specific delta: **the phase table decides what the event becomes, and it is the
+authority — not any summary of it, including this one.** Re-derive the phase from the small
+durable read above and take that row's action. The rows branch, and the branches are what a
+summary loses: a spec-PR event under AWAITING_SPEC_APPROVAL goes to `issue-spec` Step 6.5 on
+the **spec-review budget**; an impl-PR event under PR_FEEDBACK goes to `issue-implement` Step 10
+on the **round cap**; an **approved + green** PR surfaces "ready to merge" and *stops* rather
+than dispatching anything.
 
 ## Waking
 

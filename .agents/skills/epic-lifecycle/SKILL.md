@@ -113,64 +113,26 @@ even if more are queued. State the chosen N and the cap to the user.
 
 ## PR events are wake signals, not work items
 
-A PR-activity event arrives in *this* session with the comment bodies and CI output attached,
-and the harness's own posture on PRs you opened is that they are yours to drive green: diagnose
-the failure, push the fix, answer the reviewer. **Under this skill that posture does not apply
-to you.** You "opened" those PRs only in the sense that you hold their subscriptions. The work
-on them belongs to `issue-worker`, and `epic-wake` already routes it there — three separate
-`pr-feedback` dispatches (CI failing, unhandled impl-PR activity, late spec-PR activity), each
-carrying the round count, the cap, and the pause-comment instruction.
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR events are
+wake signals, not work items".** Read it, don't re-derive it here. It is a *correctness* rule —
+and the harness's own posture on PRs you opened (they're yours to drive green, so diagnose the
+failure, push the fix, answer the reviewer) is louder than this heading and wins if you let it.
 
-So on any PR-activity event — a review comment, a CI failure, a push, an approval:
+The epic-specific delta:
 
-- **Don't** read the diff, diagnose the failure, write a fix, push a commit, or reply on a
-  thread. Not for a one-line CI fix, and not because the change looks obvious from the event
-  text; "obvious" is what every round nine looked like at round three.
-- **Don't** relay the comment text into the wake's `args`. The wake's refresh scouts re-read
-  each PR's comments, reviews and checks off the activity cursor themselves, so anything you
-  paste in is a second, staler copy of what the script is about to fetch.
-- **Do** confirm the PR is one you track — a row in your table **or the epic PR itself** — run
-  the wake, and end the turn. Waking you was the event's whole job, and it has done it. The epic
-  PR has no row; it lives in the `epic` handle beside them, and its events are the objective
-  sign-off and the epic-spec's own feedback. Drop one as "not mine" and the whole set sits at
-  AWAITING_OBJECTIVE until a heartbeat happens to catch it.
-
-This is the skill-level statement of a rule that is canonical in
-[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token discipline (why it
-stays cheap)": *the coordinator does not read event content — on a PR event it maps PR# → owning
-issue and dispatches that issue's worker, which reads the review/CI in its own context.* That section
-also records why there is no separate feedback-router agent: the coordinator's per-event work
-is already just PR# → owner → dispatch, and content reading already lives in the workers.
-
-**The line on writing to a PR — a skill-level rule, not one of `orchestration.md`'s: you may
-carry a human's decision outward, never a technical judgment of your own.** Applying a
-`spec approved` label, posting the alignment a user just decided ("Cross-spec coherence" →
-step 4, *Route the alignment*) — those carry a decision that was already made somewhere you
-can see. Answering a reviewer, explaining a design choice,
-conceding a point, or saying a finding is wrong are all judgments about a diff you haven't
-read, and they belong to the worker that has read it.
-
-Three other things stay yours, because no sub-agent can do them: **subscribing** to the PR,
-**surfacing** a gate the wake returned, and **recording** a human's answer to a blocker. None
-of the three involves acting on review content.
-
-**Handling a round here costs more than the tokens it burns.** The round goes uncounted —
-`prFeedbackRounds` only advances on a worker's reported `prFeedbackRoundsSpent` — so the
-twelve-round cap never trips on an issue that is genuinely looping, which is the one thing that
-would have told you the approach is wrong. And the activity cursor only advances for actions
-that consume it (`spec-review`, `pr-feedback`), so a batch you answer by hand is still `new` at
-the next wake: the script dispatches a worker that re-reads it and re-posts replies to comments
-you already answered. A round handled here is worse than a round handled a wake late.
-
-**What you report instead.** The worker's status line is what you have, and it is what the user
-gets: the issue, its phase, the PR, and the worker's one line on what it did. One line per issue
-that moved. Don't recap the comments it answered or the fix it wrote — you didn't see either,
-and reconstructing them from the event text is the reading this section forbids, done after the
-fact and less accurately. If a round produced something that needs the user, it is a **gate**, a
-**blocker**, or the **cap**, and step 4 surfaces it in its own line with the specific question.
-Everything else is one line and an ended turn. The user asked for a coordinator because they
-didn't want to read the implementation dialog; narrating it back at them is the same cost with
-an extra hop.
+- **`epic-wake` routes the work; your job is to run the wake.** Review activity becomes a
+  `pr-feedback` dispatch to `issue-worker` carrying the round count and the cap. Don't
+  re-implement that routing here, and don't relay comment text into `args` — the refresh scouts
+  re-read each PR off the activity cursor themselves, so a pasted copy is only a staler one.
+- **The PR you have to recognize includes the epic PR, which has no row.** It lives in the
+  `epic` handle beside them; its events are the objective sign-off and the epic-spec's own
+  feedback. Drop one as "not mine" and the whole set sits at AWAITING_OBJECTIVE until a
+  heartbeat catches it — the epic gate is a barrier, so a missed approval parks every issue,
+  not one.
+- **The write rule's instance here:** posting an alignment the user just decided
+  ("Cross-spec coherence" → step 4, *Route the alignment*) carries a human's decision, so it is
+  allowed. Answering a reviewer is a technical judgment about a diff you haven't read, so it is
+  not.
 
 ## The loop (each invocation)
 
