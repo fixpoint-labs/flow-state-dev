@@ -16,6 +16,7 @@
     "@flow-state-dev/node": "workspace:*",
     "@flow-state-dev/orchestration": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
+    "@flow-state-dev/store-sqlite": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {

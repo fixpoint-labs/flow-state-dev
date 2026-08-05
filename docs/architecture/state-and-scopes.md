@@ -79,7 +79,22 @@ Every persisted scope state is versioned. Writes provide an expected version; mi
 
 **Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing reclaims a tombstone; that is deliberate, and it is why the ABA argument needs no sweep, no timer and no retention window. The cost is one row per deleted key, in every scope.
 
-Resource state will **not** reuse `runWithCAS` when the retry driver is added, and the reason is policy rather than shape: a conflict against a deleted resource, and a losing create-if-absent, are both terminal rather than retryable, where the scope driver treats every conflict as retryable. That driver, and the registry writers that call it, are a separate change — the store contract described here is what exists today, and every in-tree writer currently passes the `"any"` opt-out.
+Resource state does **not** reuse `runWithCAS`, and the reason is policy rather than shape. It has its own driver (`stores/resource-cas.ts`), placed at the registry's read/mutate seam rather than at the persister: the persister is value-only, and by the time a write reaches it the caller's intent has already been materialized into an object, so a retry there could only overwrite a concurrent writer's field. The driver takes each write op's real mutator and re-runs it against refreshed state.
+
+Six decisions diverge from the scope driver, each avoiding a specific failure:
+
+| Case | Resource driver | `runWithCAS` would |
+|---|---|---|
+| Conflict, live row at a newer version | Refresh, re-run the mutator, retry with backoff | same — the one row that transfers |
+| Conflict, no live row | Terminal `ResourceDeletedError` | Fall back to the container's stale cached state (`cas.ts:158-159`) and retry; the tombstone's version matches, resurrecting a deleted resource |
+| Conflict, create-if-absent | Terminal `ResourceAlreadyExistsError` | Refresh to the winner's version and retry, overwriting the winner |
+| `ctx.signal` aborted | Stop before persisting; backoff is abortable | No signal; `wait()` is an unabortable timer |
+| Mutator output equals the cached state | Suppress only against a **re-read** version; a moved version is a conflict, not a no-op | Return `committed: false` before `persist` (`cas.ts:143-145`, ahead of the only version check at `:147`), dropping a deliberate write |
+| Single-field literal patch | Stays on CAS — no hint surface exists here | Route a commutative hint to `runCommutative`, which persists at `expectedVersion: "any"` (`state-container.ts:189-193`) |
+
+The commutative row is the one to keep in view when reading the two modules side by side: `createScopeStateOps` lives in `state-container.ts` and its ops are named `patchState` / `setState` / `updateState`, the same names as the registry's resource ops. Nothing on that path is inherited, including `createScopePersist` (`scope-persist.ts:60`), which downgrades `expectedVersion` to `"any"` for commutative hints on adapters advertising a delta verb.
+
+Every registry writer now drives this: the single-resource and collection-instance write ops, `create()` at `expectedVersion: 0`, and both delete writers (`collection.delete()` and `evictInstance`) at the version the context observed. `"any"` remains the explicit opt-out for the seed helpers in `@flow-state-dev/testing` and for `deleteAll`, which is a scope operation.
 
 **What per-key CAS honestly does not close**, recorded so this is not read as full coverage: a create of a *previously-absent* key racing `deleteAll` still lands, because `expectedVersion: 0` is satisfied by a key that never existed and a bulk mark only touches rows that already exist. That is a cross-key invariant, and no per-key predicate expresses one. The `maxInstances` cap is the same shape — a read-then-act on a set.
 

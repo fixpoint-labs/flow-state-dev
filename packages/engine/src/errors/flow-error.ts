@@ -211,6 +211,64 @@ export class FlowStateDisposedError extends FlowError {
 }
 
 /**
+ * Thrown when a resource write loses to a concurrent delete.
+ *
+ * The resource CAS driver treats this as **terminal**, never retryable: the
+ * only state a retry could re-apply is the caller's pre-delete snapshot, so
+ * retrying would resurrect a resource somebody deliberately removed. That is
+ * why resource state does not reuse `runWithCAS`, whose conflict handler falls
+ * back to the container's cached state and would do exactly that once a
+ * tombstone makes the version matchable.
+ */
+export class ResourceDeletedError extends FlowError {
+  readonly resourceKey: string;
+
+  constructor(resourceKey: string, options?: SubclassOptions) {
+    super(
+      `Resource "${resourceKey}" was deleted by another writer`,
+      withDefaults(options, {
+        code: "resource_deleted",
+        retryable: false
+      })
+    );
+    this.name = "ResourceDeletedError";
+    this.resourceKey = resourceKey;
+    if (!this.details) {
+      (this as { details: Record<string, unknown> }).details = {};
+    }
+    (this.details as Record<string, unknown>).resourceKey = resourceKey;
+  }
+}
+
+/**
+ * Thrown when a create-if-absent resource write loses its race.
+ *
+ * Terminal by the same rule as {@link ResourceDeletedError}: retrying a losing
+ * `create()` against the winner's version would overwrite the winner, and
+ * silently succeeding would break `create()`'s already-exists contract. The
+ * loser has to hear that it lost.
+ */
+export class ResourceAlreadyExistsError extends FlowError {
+  readonly resourceKey: string;
+
+  constructor(resourceKey: string, options?: SubclassOptions) {
+    super(
+      `Resource instance "${resourceKey}" already exists`,
+      withDefaults(options, {
+        code: "resource_already_exists",
+        retryable: false
+      })
+    );
+    this.name = "ResourceAlreadyExistsError";
+    this.resourceKey = resourceKey;
+    if (!this.details) {
+      (this as { details: Record<string, unknown> }).details = {};
+    }
+    (this.details as Record<string, unknown>).resourceKey = resourceKey;
+  }
+}
+
+/**
  * Thrown when a CAS retry loop exhausts its budget on an external-store scope.
  * Only surfaces for read-modify-write ops (`setState`, `atomicState`,
  * multi-field `patchState`, updater-form `patchState`); commutative ops

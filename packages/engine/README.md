@@ -500,7 +500,9 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so the contract is compare-and-swap: every write takes an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
 
-What follows describes that store contract, not the guarantee the flow path gets today. The writers the runtime drives for flow-authored resource mutations all pass `"any"`, so those writes stay last-write-wins until the registry driver threads the observed version through them. A caller holding a `ResourceStateStore` directly gets the compare-and-swap now.
+That guarantee reaches flow-authored mutations, not only callers holding the store directly. The runtime drives every resource write through a CAS retry driver at the registry's read/mutate seam, passing the version the execution context observed: a conflict re-runs the op's mutator against the value that won and retries, so two contexts patching different fields of one resource both land. Two conflicts are terminal rather than retried — a write whose key was deleted (`ResourceDeletedError`) and a `create` that lost its race (`ResourceAlreadyExistsError`) — because retrying either would resurrect a deleted resource or overwrite the winner. Retry exhaustion raises `ConcurrentModificationError`.
+
+The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable and has no cancellation. Resource writes also honour `ctx.signal`, so an aborted action stops instead of persisting after cancellation.
 
 ```ts
 // branded — see the note under the table below
