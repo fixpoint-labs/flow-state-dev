@@ -41,6 +41,15 @@ const tasks = defineResourceCollection({
   stateSchema: z.object({}).passthrough()
 });
 
+/** A capped collection, for the eviction-ordering case. */
+const capped = defineResourceCollection({
+  scope: "session",
+  pattern: "capped/**",
+  stateSchema: z.object({}).passthrough(),
+  maxInstances: 2,
+  eviction: "lru"
+});
+
 function makeFlow() {
   return defineFlow({
     kind: "fix992-cas",
@@ -49,7 +58,7 @@ function makeFlow() {
         inputSchema: z.string(),
         block: handler({
           name: "noop",
-          resources: { spine, tasks },
+          resources: { spine, tasks, capped },
           execute: () => "ok"
         })
       }
@@ -156,6 +165,112 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     await expect((ctxB.resources.tasks as any).delete("t1")).rejects.toThrow();
 
     expect(await readStored(stores, "tasks/t1")).toEqual({ generation: 2 });
+  });
+
+  it("first touch of a defaulted resource is a no-op, not a deletion", async () => {
+    // The seed-block path: a declared single resource that has never been
+    // persisted, written with a value equal to its default. This is the
+    // regression that took trading-desk's seed-session blocks red — the driver
+    // read "no row" as "someone deleted it" and threw at every flow's first
+    // touch of a defaulted resource.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+
+    await expect(
+      (ctx.resources.spine as any).patchState({})
+    ).resolves.toBeUndefined();
+
+    // Nothing was written, and nothing claimed to have been deleted.
+    expect(await readStored(stores, "spine")).toBeUndefined();
+
+    // And a real change on the same never-persisted key still creates it.
+    await (ctx.resources.spine as any).patchState({ seeded: true });
+    expect(await readStored(stores, "spine")).toEqual({ seeded: true });
+  });
+
+  it("a stale delete against a RECREATED row reports a concurrent modification, not a deletion", async () => {
+    // The row demonstrably exists — it was deleted and recreated under us — so
+    // `resource_deleted` would report the opposite of what happened.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
+
+    const ctxB = await makeCtx(stores, "req_b");
+    await (ctxA.resources.tasks as any).delete("t1");
+    await (ctxA.resources.tasks as any).create("t1", { generation: 2 });
+
+    const err = await (ctxB.resources.tasks as any)
+      .delete("t1")
+      .catch((e: unknown) => e);
+
+    expect((err as Error).name).toBe("ConcurrentModificationError");
+    expect((err as Error).message).not.toMatch(/deleted/i);
+    expect(await readStored(stores, "tasks/t1")).toEqual({ generation: 2 });
+  });
+
+  it("getOrCreate returns the winner's instance when its create loses", async () => {
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    const ctxB = await makeCtx(stores, "req_b");
+
+    await (ctxA.resources.tasks as any).create("t1", { owner: "a" });
+
+    // B never saw the row, so its getOrCreate takes the create path and loses.
+    // Its contract is get-or-create; it must hand back the instance.
+    const ref = await (ctxB.resources.tasks as any).getOrCreate("t1", { owner: "b" });
+    expect(ref.state).toEqual({ owner: "a" });
+    expect(await readStored(stores, "tasks/t1")).toEqual({ owner: "a" });
+  });
+
+  it("upsert applies its update when its create loses", async () => {
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    const ctxB = await makeCtx(stores, "req_b");
+
+    await (ctxA.resources.tasks as any).create("t1", { owner: "a", note: "first" });
+
+    // B loses the create, so the upsert becomes the patch it would have been
+    // had it seen the row: `update` lands over the winner's state, and
+    // `createOnly` is correctly dropped since B did not create anything.
+    await (ctxB.resources.tasks as any).upsert(
+      "t1",
+      { note: "second" },
+      { scaffold: "should-not-appear" }
+    );
+
+    expect(await readStored(stores, "tasks/t1")).toEqual({
+      owner: "a",
+      note: "second"
+    });
+  });
+
+  it("a losing create does not evict an unrelated instance", async () => {
+    // Eviction tombstones a real instance. A create that loses is terminal, so
+    // evicting first leaves the caller with an exception AND an unrelated
+    // instance permanently gone — a net loss from an operation that never
+    // happened. The losing context must genuinely be AT the cap for this to
+    // exercise anything, so it loads both instances before the race.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.capped as any).create("c1", { n: 1 });
+    await (ctxA.resources.capped as any).create("c2", { n: 2 });
+
+    // B starts here, so it loads c1 and c2 and is at maxInstances.
+    const ctxB = await makeCtx(stores, "req_b");
+
+    // A third writer creates c3 — B cannot see it.
+    await stores.resourceState.set("session", "sess_1", "capped/c3", { n: 3 }, "any");
+
+    // B's create is over the cap (so it wants to evict) and also loses the key.
+    await expect(
+      (ctxB.resources.capped as any).create("c3", { n: 99 })
+    ).rejects.toThrow(/already exists/i);
+
+    // Every pre-existing instance must survive: the failed create must not have
+    // paid for itself with somebody else's row.
+    expect(await readStored(stores, "capped/c1")).toEqual({ n: 1 });
+    expect(await readStored(stores, "capped/c2")).toEqual({ n: 2 });
+    expect(await readStored(stores, "capped/c3")).toEqual({ n: 3 });
   });
 
   it("does not bump the version for a verified no-op write", async () => {

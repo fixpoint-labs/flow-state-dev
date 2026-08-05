@@ -19,6 +19,19 @@ import {
   ResourceDeletedError
 } from "../../src/errors/flow-error";
 import type { ExpectedVersion, SetResult } from "../../src/stores/types";
+import {
+  checkWriteVersion,
+  type ResourceStateRow
+} from "../../src/stores/resource-state-predicate";
+
+/** Project the local row shape onto the store's, for the shared predicate. */
+function asRow(
+  row: { state: JsonObject; version: number; deleted: boolean } | undefined
+): ResourceStateRow | undefined {
+  return row === undefined
+    ? undefined
+    : { state: row.state, version: row.version, lifecycle: row.deleted ? "deleted" : "live" };
+}
 
 /**
  * A single versioned key with the store semantics sub-PR a defined: reads see
@@ -30,8 +43,6 @@ function makeKey(initial?: { state: JsonObject; version: number }) {
     initial === undefined
       ? undefined
       : { state: initial.state, version: initial.version, deleted: false };
-
-  const liveVersion = (): number => (row !== undefined && !row.deleted ? row.version : 0);
 
   return {
     /** Another writer commits a value, bumping the version. */
@@ -48,15 +59,12 @@ function makeKey(initial?: { state: JsonObject; version: number }) {
       next: JsonObject,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> => {
-      if (expectedVersion !== "any" && expectedVersion !== liveVersion()) {
-        return {
-          ok: false,
-          conflict: {
-            currentValue: liveVersion() === 0 ? undefined : { ...row!.state },
-            currentVersion: row?.version ?? 0
-          }
-        };
-      }
+      // The REAL store predicate, not a re-implementation of it. A fake that
+      // encoded conflict semantics slightly differently could not detect a
+      // divergence from the adapters — which is the whole thing these tests
+      // are meant to be able to see.
+      const conflict = checkWriteVersion(asRow(row), expectedVersion);
+      if (conflict !== undefined) return conflict;
       row = { state: next, version: (row?.version ?? 0) + 1, deleted: false };
       return { ok: true, version: row.version };
     },
@@ -147,6 +155,29 @@ describe("resource CAS driver — conflict policy", () => {
     ).rejects.toBeInstanceOf(ResourceAlreadyExistsError);
 
     expect(key.snapshot()).toEqual({ owner: "winner" });
+  });
+
+  it("carries the winner's row on the already-exists refusal", async () => {
+    // The first-touch APIs (`getOrCreate`, `upsert`) turn a lost create into a
+    // read of the winner. They can only do that without a second round trip if
+    // the refusal carries what the store already reported on the conflict.
+    const key = makeKey();
+    const container = createStateContainer<JsonObject>({}, 0);
+    key.writeBehindOurBack({ owner: "winner" });
+
+    const err = await runResourceCAS({
+      key: "tasks/t1",
+      container,
+      intent: "create",
+      options: fastRetries,
+      persist: key.persist,
+      reread: key.reread,
+      mutator: () => ({ owner: "loser" })
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ResourceAlreadyExistsError);
+    expect((err as ResourceAlreadyExistsError).currentValue).toEqual({ owner: "winner" });
+    expect((err as ResourceAlreadyExistsError).currentVersion).toBe(1);
   });
 
   it("is terminal when a create loses its race, against an IDENTICAL winning state", async () => {
@@ -329,6 +360,53 @@ describe("resource CAS driver — the no-op is verified, not assumed", () => {
     expect(persist).not.toHaveBeenCalled();
     // No version bump — this is what makes `committed: false` safe to gate a
     // change notification on.
+    expect(key.version()).toBe(1);
+  });
+
+  it("is a no-op, NOT a deletion, when the key was never persisted", async () => {
+    // The most ordinary path there is: a declared single resource that exists
+    // so far only through its schema default, touched for the first time with a
+    // write equal to that default. No row, no version — and nothing was taken
+    // away, so reporting `resource_deleted` here would tell the caller about an
+    // event that never happened. On the pre-CAS code this was a silent no-op.
+    const key = makeKey(); // never written
+    const container = createStateContainer<JsonObject>({ count: 0 }, 0);
+    const persist = vi.fn(key.persist);
+
+    const result = await runResourceCAS({
+      key: "financialsData",
+      container,
+      intent: "mutate",
+      options: fastRetries,
+      persist,
+      reread: key.reread,
+      mutator: (current) => current
+    });
+
+    expect(result.committed).toBe(false);
+    expect(result.version).toBe(0);
+    expect(persist).not.toHaveBeenCalled();
+    expect(key.snapshot()).toBeUndefined();
+  });
+
+  it("still creates the row when a never-persisted key's mutator DOES change it", async () => {
+    // The companion to the case above: absent must mean "nothing to do" only
+    // when the mutator asked for nothing. A real change still inserts.
+    const key = makeKey();
+    const container = createStateContainer<JsonObject>({ count: 0 }, 0);
+
+    const result = await runResourceCAS({
+      key: "financialsData",
+      container,
+      intent: "mutate",
+      options: fastRetries,
+      persist: key.persist,
+      reread: key.reread,
+      mutator: (current) => ({ ...current, count: 1 })
+    });
+
+    expect(result.committed).toBe(true);
+    expect(key.snapshot()).toEqual({ count: 1 });
     expect(key.version()).toBe(1);
   });
 

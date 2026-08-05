@@ -46,6 +46,7 @@ import type {
   VersionedResourceState
 } from "../stores/types";
 import type { ResourceCASIntent } from "../stores/resource-cas";
+import { ResourceAlreadyExistsError } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -1070,6 +1071,14 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // Check instance limits ONLY when adding a new instance. The replace
           // branch reuses an existing storage slot, so it can't push us over
           // maxInstances.
+          //
+          // The hard-cap refusal is decided here, because it destroys nothing.
+          // The *eviction* is deliberately deferred until after the write
+          // commits: it tombstones a real instance, and a create that loses its
+          // race is terminal, so evicting first would leave the caller with an
+          // exception AND an unrelated instance permanently gone — a net loss
+          // from an operation that did not happen.
+          let evictionNeeded: "lru" | "oldest" | undefined;
           if (!exists) {
             const currentCount = countInstances(nsConfig.pattern, resources);
             if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
@@ -1079,8 +1088,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
                   `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
                 );
               }
-              // Evict one instance — persists the deletion
-              await evictInstance(nsConfig, resources, eviction, lruAccess, options.deleteResourceKey, hookCtx, options.onResourceChanged);
+              evictionNeeded = eviction;
             }
           }
 
@@ -1121,6 +1129,21 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
 
           lruAccess.set(storageKey, Date.now());
 
+          // Now that the instance really exists, make room for it. Read the
+          // resource map fresh — it gained this key — and the just-created key
+          // is the most recently accessed, so neither policy selects it.
+          if (evictionNeeded !== undefined) {
+            await evictInstance(
+              nsConfig,
+              options.readResources(),
+              evictionNeeded,
+              lruAccess,
+              options.deleteResourceKey,
+              hookCtx,
+              options.onResourceChanged
+            );
+          }
+
           if (exists) {
             if (nsConfig.onInstanceUpdated) {
               await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
@@ -1146,7 +1169,20 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             lruAccess.set(storageKey, Date.now());
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
-          return nsHandle.create(key, initial);
+          try {
+            return await nsHandle.create(key, initial);
+          } catch (err) {
+            // The presence check above is this context's cached view, so a
+            // concurrent creator — or a row this context simply never loaded —
+            // turns the create into a terminal already-exists. For
+            // `getOrCreate` that is the "or get" half of its own contract, not
+            // an error: the instance exists, which is all the caller asked for.
+            // The provider has already folded the winner's state into the cache
+            // off the conflict, so the ref below reads the real instance.
+            if (!(err instanceof ResourceAlreadyExistsError)) throw err;
+            lruAccess.set(storageKey, Date.now());
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          }
         },
 
         async upsert(
@@ -1165,23 +1201,20 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           }
 
-          const resources = options.readResources();
-          const exists = storageKey in resources;
-
-          if (exists) {
-            // Patch branch: merge `update` over existing state, validate the
-            // merged shape explicitly, then persist. We validate (rather
-            // than rely on `persistNamespaceInstanceState`'s safeParse-with-
-            // empty-fallback) so a bad `update` throws loudly — matching the
-            // create branch's behavior. Without this, an invalid `update`
-            // would silently overwrite the resource with `{}` on the patch
-            // branch but throw on the create branch — an asymmetry that
-            // makes caller bugs hard to detect.
-            //
-            // The merge runs INSIDE the mutator so a CAS retry re-merges
-            // `update` over the winner's state rather than re-applying a merge
-            // computed against this context's pre-race snapshot.
-            const rawPrev = resources[storageKey] as JsonObject;
+          // Patch branch: merge `update` over existing state, validate the
+          // merged shape explicitly, then persist. We validate (rather
+          // than rely on `persistNamespaceInstanceState`'s safeParse-with-
+          // empty-fallback) so a bad `update` throws loudly — matching the
+          // create branch's behavior. Without this, an invalid `update`
+          // would silently overwrite the resource with `{}` on the patch
+          // branch but throw on the create branch — an asymmetry that
+          // makes caller bugs hard to detect.
+          //
+          // The merge runs INSIDE the mutator so a CAS retry re-merges
+          // `update` over the winner's state rather than re-applying a merge
+          // computed against this context's pre-race snapshot.
+          const patchExisting = async (): Promise<ResourceRef<JsonObject>> => {
+            const rawPrev = (options.readResources()[storageKey] ?? {}) as JsonObject;
             // Clone `prev` before passing it to the hook — matches the
             // defensive copy `readState()` does on the per-instance
             // `patchState` path. Hook code that caches or mutates `prev`
@@ -1217,6 +1250,10 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             }
             await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState), { state: postState, prevState: prev, evicted: false });
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          };
+
+          if (storageKey in options.readResources()) {
+            return patchExisting();
           }
 
           // Create branch: delegate to `create`. Merge `update` over
@@ -1224,7 +1261,19 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // the "what I'm trying to express now"; createOnly is the
           // scaffold that only matters at first creation).
           const initial = { ...(createOnly ?? {}), ...update };
-          return nsHandle.create(key, initial);
+          try {
+            return await nsHandle.create(key, initial);
+          } catch (err) {
+            // The absence check above is this context's cached view. A
+            // concurrent creator makes the create terminal, but `upsert`
+            // promised to apply `update` either way — so the loser becomes the
+            // patch it would have been had it seen the row. `createOnly` is
+            // correctly dropped: the instance was not created by this call.
+            // The provider folded the winner's state into the cache off the
+            // conflict, so the merge below runs against the real instance.
+            if (!(err instanceof ResourceAlreadyExistsError)) throw err;
+            return patchExisting();
+          }
         },
 
         async list(prefix?: string): Promise<ResourceRef<JsonObject>[]> {

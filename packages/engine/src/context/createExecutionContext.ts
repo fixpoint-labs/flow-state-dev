@@ -43,7 +43,11 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import { createScopePersist } from "../stores/scope-persist";
 import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
-import { ResourceDeletedError } from "../errors/flow-error";
+import {
+  ConcurrentModificationError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError
+} from "../errors/flow-error";
 import type { TraceStore, VersionedResourceState } from "../stores/types";
 import type {
   ContentScopeType,
@@ -1477,11 +1481,22 @@ export async function createExecutionContext<
        * a concurrent writer's field.
        *
        * There is deliberately **no** `deepEqual` short-circuit in front of the
-       * store call. Under CAS that check would swallow the write the driver
-       * just decided to make, on every write rather than only the equal ones,
-       * and it would decide it against this context's cache — a value that
-       * another writer may have moved. Exactly one place decides a no-op now
-       * (the driver) and it decides against a version it has re-read.
+       * store call: `runResourceCAS` is the only thing that decides a no-op,
+       * and the reason that matters is in its header, not restated here.
+       *
+       * **Cancellation uses `backgroundSignal`, not `options.signal`.** The
+       * spec said `ctx.signal`, which is wrong here for two reasons found in
+       * the code. `options.signal` is the composed transport signal and fires
+       * on client disconnect / SSE teardown, so threading it would abandon the
+       * resource writes of a `.work()` background task the request is still
+       * running — the exact failure FIX-663 exists to prevent. And there is no
+       * per-scope signal available at this seam anyway: persisters and
+       * `ResourceRef`s are built once per context, while `ctx.signal` is
+       * per-execution-scope, so one ref serves foreground and background
+       * callers alike. `backgroundSignal` "fires only on explicit
+       * user-requested abort, not on transport-level teardown", which is
+       * precisely the condition under which a durable write should stop.
+       * Absent for non-server callers, where no cancellation applies.
        */
       mutateResourceKey: async (
         key: string,
@@ -1501,16 +1516,30 @@ export async function createExecutionContext<
           versionRef.current[key] ?? 0
         );
 
-        const result = await runResourceCAS({
-          key,
-          container,
-          mutator,
-          intent,
-          signal: options.signal,
-          persist: (next, expectedVersion) =>
-            stores.resourceState.set(scope, scopeId, key, next, expectedVersion),
-          reread: () => stores.resourceState.get(scope, scopeId, key)
-        });
+        let result: Awaited<ReturnType<typeof runResourceCAS>>;
+        try {
+          result = await runResourceCAS({
+            key,
+            container,
+            mutator,
+            intent,
+            signal: options.backgroundSignal,
+            persist: (next, expectedVersion) =>
+              stores.resourceState.set(scope, scopeId, key, next, expectedVersion),
+            reread: () => stores.resourceState.get(scope, scopeId, key)
+          });
+        } catch (err) {
+          // A lost create still taught us something: the store reported the
+          // winner's row on the conflict. Fold it into the cache before
+          // rethrowing, so `getOrCreate` / `upsert` can turn the refusal into
+          // a read of the real instance rather than a second round trip or a
+          // ref that would serve schema defaults.
+          if (err instanceof ResourceAlreadyExistsError && err.currentValue !== undefined) {
+            stateRef.current[key] = err.currentValue as JsonObject;
+            versionRef.current[key] = err.currentVersion;
+          }
+          throw err;
+        }
 
         if (result.committed) {
           // Mutate the live cache IN PLACE at this key (FIX-744) so concurrent
@@ -1542,6 +1571,19 @@ export async function createExecutionContext<
           expectedVersion
         );
         if (!result.ok) {
+          // Report what actually happened, which is two different things:
+          //
+          //  - a LIVE row at a version we did not expect — the key was deleted
+          //    and recreated under us, which is the ABA this version check
+          //    exists to catch. Nothing was deleted, so `resource_deleted`
+          //    would say the opposite of the truth.
+          //  - no live row — someone else's delete got there first.
+          if (result.conflict.currentValue !== undefined) {
+            throw new ConcurrentModificationError(
+              `Resource "${key}" was replaced by another writer (expected version ${expectedVersion}, found ${result.conflict.currentVersion}) — the delete was refused rather than applied to the new generation`,
+              1
+            );
+          }
           throw new ResourceDeletedError(key);
         }
         delete stateRef.current[key];

@@ -35,12 +35,29 @@ await ctx.sessionResources.tasks.create("t1");
 ```
 
 Both refusals are final rather than retried, because a retry could only re-apply
-what the loser read before it lost. They surface as `ResourceDeletedError` and
-`ResourceAlreadyExistsError`; sustained contention still raises
-`ConcurrentModificationError`. Deleting a collection instance, and evicting one
-under `maxInstances`, now carry the version the context observed too, so a delete
-chosen from a stale snapshot conflicts instead of tombstoning the generation that
-replaced it.
+what the loser read before it lost. `getOrCreate` and `upsert` never surface the
+already-exists one — their contract is to hand you the instance either way, so a
+lost create becomes a read of the winner or applies the update as a patch.
+
+Failures say which thing actually happened rather than collapsing together:
+
+| Situation | Result |
+|---|---|
+| Key never persisted, write asks for no change | Verified no-op — not an error |
+| Held a live version, row is now a tombstone | `ResourceDeletedError` |
+| A `create` lost its race | `ResourceAlreadyExistsError` |
+| A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
+| Retry budget exhausted | `ConcurrentModificationError` |
+
+The first row matters in ordinary use: a resource you declared but never wrote
+exists only as its schema default, and touching it with a write that changes
+nothing is a no-op, not a report that something was deleted.
+
+Deleting a collection instance, and evicting one under `maxInstances`, now carry
+the version the context observed, so a delete chosen from a stale snapshot
+conflicts instead of tombstoning the generation that replaced it. `create()`
+also defers its `maxInstances` eviction until after its write commits, so a
+create that loses a race no longer evicts an unrelated instance on its way out.
 
 Writing a value a resource already holds still skips the write and emits no
 change event — but only after re-reading the key and confirming the version is
@@ -53,9 +70,10 @@ Resource state deliberately does not reuse `runWithCAS`, the driver the session 
 request / user / org scopes use. Its conflict policy retries cases that must be
 terminal here, it suppresses a no-op before checking any version, it routes
 single-field literal patches down a commutative path that writes without a
-version check at all, and it has no cancellation. Resource writes honour
-`ctx.signal`, so an aborted action stops instead of persisting after
-cancellation.
+version check at all, and it has no cancellation. Resource writes stop on an
+explicit abort of the request rather than persisting after it — but not on a
+client disconnect, since background `.work()` tasks keep running past that and
+their writes still have to land.
 
 Task boards backed by a durable resource collection inherit this: a claim written
 against a stale read is refused and re-applied rather than overwriting the worker

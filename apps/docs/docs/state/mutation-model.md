@@ -70,6 +70,10 @@ await ctx.sessionResources.tasks.create("t1");
 
 Both refusals are final rather than retried. A retry could only re-apply what you read before you lost, which for a deleted resource means bringing it back and for a lost `create` means overwriting whoever won.
 
+`getOrCreate` and `upsert` never surface the second one. Their contract is to hand you the instance either way, so a create that loses the race becomes a read of the winner (`getOrCreate`) or applies its update as a patch (`upsert`).
+
+One thing that is deliberately *not* an error: touching a resource that has never been stored. A resource you declared but never wrote exists so far only as its schema default, and a write to it that changes nothing is a no-op, not a report that something was deleted.
+
 Those two cases are why resource state has its own retry driver rather than sharing the one the four scopes use. The scope driver treats every conflict as retryable, which is correct when the only thing a conflict can mean is "somebody else moved this value." Resource state has two conflicts that mean something else — the key is gone, and the key is already taken — and retrying either produces exactly the write the version check was there to stop. Resource writes also run under the same two-tier dispatch the scopes use: a per-key queue orders one context's writes to a resource so they never contend with each other, and the compare-and-swap underneath handles the contexts the queue cannot see.
 
 Writing a value the resource already holds still skips the write and emits no change event — but only once the runtime has re-read the key and confirmed your version is current. If the version moved, that is a conflict, not a no-op: the value you are writing happens to equal a stale cache, and suppressing it there would be the silent lost update this whole model exists to prevent.

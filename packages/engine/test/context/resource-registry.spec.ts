@@ -22,6 +22,19 @@ import { runResourceCAS, type ResourceCASIntent } from "../../src/stores/resourc
 import { createStateContainer } from "../../src/stores/state-container";
 import { ResourceDeletedError } from "../../src/errors/flow-error";
 import type { ExpectedVersion, SetResult } from "../../src/stores/types";
+import {
+  checkWriteVersion,
+  type ResourceStateRow
+} from "../../src/stores/resource-state-predicate";
+
+/** Project the local row shape onto the store's, for the shared predicate. */
+function asRow(
+  row: { state: JsonObject; version: number; deleted: boolean } | undefined
+): ResourceStateRow | undefined {
+  return row === undefined
+    ? undefined
+    : { state: row.state, version: row.version, lifecycle: row.deleted ? "deleted" : "live" };
+}
 
 /**
  * Stand-ins for `createExecutionContext`'s resource-state providers, over a
@@ -63,16 +76,9 @@ function makeStateProviders(
   ): Promise<SetResult<JsonObject>> => {
     if (persistDelay) await Promise.resolve();
     const row = rows.get(key);
-    const liveVersion = liveVersionOf(key);
-    if (expectedVersion !== "any" && expectedVersion !== liveVersion) {
-      return {
-        ok: false,
-        conflict: {
-          currentValue: liveVersion === 0 ? undefined : structuredClone(row!.state),
-          currentVersion: row?.version ?? 0
-        }
-      };
-    }
+    // The REAL store predicate — see the note in `resource-cas.spec.ts`.
+    const conflict = checkWriteVersion(asRow(row), expectedVersion);
+    if (conflict !== undefined) return conflict;
     const version = (row?.version ?? 0) + 1;
     rows.set(key, { state: structuredClone(next), version, deleted: false });
     return { ok: true, version };

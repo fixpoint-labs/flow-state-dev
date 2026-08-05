@@ -211,14 +211,20 @@ export class FlowStateDisposedError extends FlowError {
 }
 
 /**
- * Thrown when a resource write loses to a concurrent delete.
+ * Thrown when a resource write loses to a concurrent **delete** — the row this
+ * caller held a live version for is now a tombstone.
  *
- * The resource CAS driver treats this as **terminal**, never retryable: the
- * only state a retry could re-apply is the caller's pre-delete snapshot, so
- * retrying would resurrect a resource somebody deliberately removed. That is
- * why resource state does not reuse `runWithCAS`, whose conflict handler falls
- * back to the container's cached state and would do exactly that once a
- * tombstone makes the version matchable.
+ * Terminal, never retryable: the only state a retry could re-apply is the
+ * caller's pre-delete snapshot, so retrying would resurrect a resource somebody
+ * deliberately removed. That is why resource state does not reuse
+ * `runWithCAS`, whose conflict handler falls back to the container's cached
+ * state and would do exactly that once a tombstone makes the version matchable.
+ *
+ * **Raised only when a live version was actually lost.** A key that was never
+ * persisted — a declared resource that exists so far only through its schema
+ * default — is *absent*, not deleted, and a write that asks for no change to
+ * one is a no-op. Reporting a deletion there would be this store telling a
+ * caller that something happened to a row that never existed.
  */
 export class ResourceDeletedError extends FlowError {
   readonly resourceKey: string;
@@ -247,11 +253,25 @@ export class ResourceDeletedError extends FlowError {
  * `create()` against the winner's version would overwrite the winner, and
  * silently succeeding would break `create()`'s already-exists contract. The
  * loser has to hear that it lost.
+ *
+ * It carries the winner's state and version because the store already reported
+ * them on the conflict, and the first-touch APIs need them: `getOrCreate` and
+ * `upsert` promise to hand back *the* instance, so a lost create is a "then
+ * get" for them rather than an error. Handing the winner's row along with the
+ * refusal is what lets them do that without a second read.
  */
 export class ResourceAlreadyExistsError extends FlowError {
   readonly resourceKey: string;
+  /** The winner's state, as the store reported it on the conflict. */
+  readonly currentValue: Record<string, unknown> | undefined;
+  /** The version now stored for the key. */
+  readonly currentVersion: number;
 
-  constructor(resourceKey: string, options?: SubclassOptions) {
+  constructor(
+    resourceKey: string,
+    current?: { value: Record<string, unknown> | undefined; version: number },
+    options?: SubclassOptions
+  ) {
     super(
       `Resource instance "${resourceKey}" already exists`,
       withDefaults(options, {
@@ -261,6 +281,8 @@ export class ResourceAlreadyExistsError extends FlowError {
     );
     this.name = "ResourceAlreadyExistsError";
     this.resourceKey = resourceKey;
+    this.currentValue = current?.value;
+    this.currentVersion = current?.version ?? 0;
     if (!this.details) {
       (this as { details: Record<string, unknown> }).details = {};
     }

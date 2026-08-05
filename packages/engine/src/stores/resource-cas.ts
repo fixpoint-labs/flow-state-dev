@@ -12,19 +12,29 @@
  * | Case | Here | `runWithCAS` would |
  * |---|---|---|
  * | Conflict, live row at a newer version | Refresh, re-run the mutator, retry with backoff | same — the one row that transfers |
- * | Conflict, **no live row** | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state (`cas.ts:158-159`) and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
+ * | Conflict, **no live row**, and we held a live version | **Terminal** {@link ResourceDeletedError} | Falls back to the container's stale cached state (`cas.ts:158-159`) and retries; the tombstone's version matches, so the write lands — **resurrecting a deleted resource** |
+ * | No live row and we never held one (`version === 0`) | **Not an error** — a verified no-op. The key was never persisted, and nothing was taken away | n/a — the shared driver has no absent/deleted distinction to get wrong |
  * | Conflict, **create-if-absent** | **Terminal** {@link ResourceAlreadyExistsError} | Refreshes to the winner's version and retries, **overwriting the winner** |
  * | `signal` aborted | Stop before backoff **and** before persisting | No signal; `wait()` (`cas.ts:96-104`) is an unabortable timer — **persists after cancellation** |
  * | Retry budget exhausted | {@link ConcurrentModificationError} | same |
  * | Mutator output equals the cached state | Suppress **only against a re-read, verified version** | Returns `committed: false` *before* `persist` (`cas.ts:143-145`, ahead of the only version check at `:147`) — **silently drops a deliberate write** |
  * | Single-field literal patch | Stays on CAS — there is no hint surface here | `state-container.ts:155-157` routes a commutative hint to `runCommutative`, which persists at `expectedVersion: "any"` (`:189-193`) — **no version check at all** |
  *
- * The last two rows are the subtle ones. A no-op decided against an unverified
- * snapshot *is* a lost update: a context that reads `{mode:"old"}`, loses to a
- * writer of `{mode:"new"}`, then deliberately writes `{mode:"old"}` would be
- * told "no-op" while the other value stands. So `committed: false` from this
- * driver means *verified no-op* and nothing else, which is the invariant the
- * `resource_change` notification gate rests on.
+ * The no-op and commutative rows are the subtle ones. A no-op decided against an
+ * unverified snapshot *is* a lost update: a context that reads `{mode:"old"}`,
+ * loses to a writer of `{mode:"new"}`, then deliberately writes `{mode:"old"}`
+ * would be told "no-op" while the other value stands. So `committed: false`
+ * from this driver means *verified no-op* and nothing else, which is the
+ * invariant the `resource_change` notification gate rests on.
+ *
+ * **Absent is not deleted, and the distinction is load-bearing.** "No live row"
+ * covers two situations that must not report the same thing: a row we held a
+ * live version for and lost, versus a key that was never persisted at all — a
+ * declared resource living so far on its schema default, being touched for the
+ * first time. Collapsing them makes the most ordinary write there is throw
+ * `ResourceDeletedError` about a row that never existed, which is precisely the
+ * "report what didn't happen" failure this store exists to stop. The container's
+ * version discriminates: `0` means this context never observed a live row.
  *
  * **Do not reach for the commutative path.** `createScopeStateOps` lives in
  * `state-container.ts` and its ops are named `patchState` / `setState` /
@@ -35,7 +45,7 @@
  */
 
 import type { CASOptions, JsonObject, StateContainer } from "@flow-state-dev/core/types";
-import { deepEqual } from "@flow-state-dev/core/helpers";
+import { cloneValue, deepEqual } from "@flow-state-dev/core/helpers";
 import {
   ConcurrentModificationError,
   ResourceAlreadyExistsError,
@@ -104,11 +114,6 @@ export type ResourceCASResult = {
   /** The version now stored for this key. */
   version: number;
 };
-
-/** Structured clone of a plain JSON object graph. */
-function cloneState(value: JsonObject): JsonObject {
-  return structuredClone(value);
-}
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted === true) {
@@ -187,7 +192,7 @@ export async function runResourceCAS({
     // user-supplied updater — so without this an in-place mutation would edit
     // the very object the deep-equal check below compares against, making the
     // check trivially true and suppressing the write.
-    const current = cloneState(container.read() as JsonObject);
+    const current = cloneValue(container.read()) as JsonObject;
     const expectedVersion: ExpectedVersion =
       intent === "create" ? 0 : intent === "replace" ? "any" : container.getVersion();
 
@@ -201,7 +206,21 @@ export async function runResourceCAS({
     if (intent === "mutate" && deepEqual(container.read(), next)) {
       const fresh = await reread();
       if (fresh === undefined) {
-        // The row is gone. Not a no-op — a write that lost to a delete.
+        // No live row. That is two different situations and they must not
+        // report the same thing:
+        //
+        //  - We held a live version and it is gone → our write lost to a
+        //    delete, and saying so is accurate.
+        //  - We never held one (`version === 0`) → the key was never
+        //    persisted. A declared resource that exists only through its
+        //    schema default is here on its first touch, and the mutator asked
+        //    for no change. Store and cache agree there is no live row, so
+        //    nothing is written and nothing was taken away. Calling that a
+        //    deletion reports an event that never happened, to a caller doing
+        //    the most ordinary thing there is.
+        if (container.getVersion() === 0) {
+          return { state: container.read() as JsonObject, committed: false, version: 0 };
+        }
         throw new ResourceDeletedError(key);
       }
       if (fresh.version === container.getVersion()) {
@@ -235,12 +254,20 @@ export async function runResourceCAS({
     // --- Conflict policy: the reason this driver exists. ---
 
     if (intent === "create") {
-      // Terminal. Retrying would overwrite whoever won.
-      throw new ResourceAlreadyExistsError(key);
+      // Terminal. Retrying would overwrite whoever won. The winner's row rides
+      // along on the error so the first-touch APIs can turn this into a "get"
+      // without a second read.
+      throw new ResourceAlreadyExistsError(key, {
+        value: result.conflict.currentValue,
+        version: result.conflict.currentVersion
+      });
     }
 
     if (result.conflict.currentValue === undefined) {
-      // No live row. Terminal — and specifically NOT `runWithCAS`'s
+      // No live row, and reaching here means we asked for a positive version:
+      // `expectedVersion: 0` is satisfied by the absence of one, so it could
+      // not have conflicted this way. So the row we held really was deleted.
+      // Terminal — and specifically NOT `runWithCAS`'s
       // `result.currentState ?? container.read()`, which would re-run the
       // mutator over a pre-delete snapshot and write it back over a tombstone
       // whose version now matches.
