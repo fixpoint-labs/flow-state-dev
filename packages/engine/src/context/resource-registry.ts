@@ -1261,40 +1261,58 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // `update` over the winner's state rather than re-applying a merge
           // computed against this context's pre-race snapshot.
           const patchExisting = async (): Promise<ResourceRef<JsonObject>> => {
-            const rawPrev = (options.readResources()[storageKey] ?? {}) as JsonObject;
-            // Clone `prev` before passing it to the hook — matches the
-            // defensive copy `readState()` does on the per-instance
-            // `patchState` path. Hook code that caches or mutates `prev`
-            // shouldn't be able to observe stale store internals.
-            const prev = cloneValue(rawPrev) as JsonObject;
-            const { committed, previousState: committedPrev } = await persistNamespaceInstanceState(
-              storageKey,
-              nsConfig,
-              (current) => {
-                const merged = updateObjectState(current, update);
-                const parseResult = nsConfig.stateSchema.safeParse(merged);
-                if (!parseResult.success) {
-                  const issue = parseResult.error.issues[0];
-                  const issuePath = issue === undefined ? "" : issue.path.join(".");
-                  const issueMessage =
-                    issue === undefined ? "schema validation failed" : issue.message;
-                  const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-                  throw new Error(
-                    `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
-                  );
-                }
-                return merged;
-              },
-              prev
-            );
+            let committed = false;
+            let reported!: JsonObject;
+            let postState: JsonObject = {};
+
+            // Enter this key's write chain, like the three per-instance write
+            // ops do. Without it, N concurrent `upsert`s of one key inside a
+            // single context all start from the same cached version, only one
+            // wins per retry round, and a caller can exhaust the retry budget
+            // and surface `ConcurrentModificationError` — raised by writers
+            // this queue exists precisely to stop from contending. The write
+            // is a read-modify-write, so the seed is read INSIDE the chain:
+            // reading it outside would hand the mutator a value from before
+            // the prior write in the queue committed.
+            //
+            // Only the persist is inside. Hooks fire after the slot releases,
+            // matching every other write op here — a reactive block that
+            // patches this same key re-enters `serializeResourceWrite`, and a
+            // chain slot taken while we still hold one could never resolve.
+            await serializeResourceWrite(storageKey, async () => {
+              const seed = (options.readResources()[storageKey] ?? {}) as JsonObject;
+              const result = await persistNamespaceInstanceState(
+                storageKey,
+                nsConfig,
+                (current) => {
+                  const merged = updateObjectState(current, update);
+                  const parseResult = nsConfig.stateSchema.safeParse(merged);
+                  if (!parseResult.success) {
+                    const issue = parseResult.error.issues[0];
+                    const issuePath = issue === undefined ? "" : issue.path.join(".");
+                    const issueMessage =
+                      issue === undefined ? "schema validation failed" : issue.message;
+                    const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+                    throw new Error(
+                      `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+                    );
+                  }
+                  return merged;
+                },
+                seed
+              );
+              committed = result.committed;
+              // The basis the write landed on, which differs from what this
+              // caller read whenever a retry happened. Cloned because hook code
+              // may cache or mutate it.
+              reported = cloneValue(result.previousState) as JsonObject;
+              postState = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
+            });
+
             lruAccess.set(storageKey, Date.now());
             if (!committed) {
               return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
             }
-            const postState = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
-            // `committedPrev` is the basis the write landed on, which differs
-            // from the pre-race `prev` whenever a retry happened.
-            const reported = cloneValue(committedPrev) as JsonObject;
             if (nsConfig.onInstanceUpdated) {
               await nsConfig.onInstanceUpdated(storageKey, postState, reported, hookCtx);
             }

@@ -45,8 +45,7 @@ import { toBareState, toBareStates, toVersions } from "../stores/resource-state-
 import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
 import {
   ConcurrentModificationError,
-  ResourceAlreadyExistsError,
-  ResourceDeletedError
+  ResourceAlreadyExistsError
 } from "../errors/flow-error";
 import type { TraceStore, VersionedResourceState } from "../stores/types";
 import type {
@@ -63,7 +62,7 @@ import { createRequestWorkPool } from "../execution/request-work-pool";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -1538,7 +1537,16 @@ export async function createExecutionContext<
           // a read of the real instance rather than a second round trip or a
           // ref that would serve schema defaults.
           if (err instanceof ResourceAlreadyExistsError && err.currentValue !== undefined) {
-            stateRef.current[key] = err.currentValue as JsonObject;
+            // Clone on the way INTO the cache rather than on the way into the
+            // error. Either side breaks the aliasing, but only one of the two
+            // objects carries an invariant: the cache's value must match what
+            // the store holds at the version recorded beside it, because
+            // `ref.state` reads from it and a later patch persists from it. The
+            // error payload is a detached diagnostic the loser may annotate or
+            // mutate freely — and now that this error is exported for
+            // `instanceof`, callers will. So the clone goes where the invariant
+            // is, leaving exactly one owner of the live object.
+            stateRef.current[key] = cloneValue(err.currentValue) as JsonObject;
             versionRef.current[key] = err.currentVersion;
           }
           throw err;
@@ -1595,13 +1603,47 @@ export async function createExecutionContext<
           //    exists to catch. Nothing was deleted, so `resource_deleted`
           //    would say the opposite of the truth.
           //  - no live row — someone else's delete got there first.
+          // Either way the store has just told us, conclusively, what the key
+          // actually holds — so take it before rethrowing. This matches the
+          // create path (which folds the winner's row in off its conflict) and
+          // the no-op refresh: a caller that catches one of these errors must
+          // not then read a generation the store has already superseded.
           if (result.conflict.currentValue !== undefined) {
+            // A live row at a version we did not expect.
+            //
+            // The clone is deliberate but, unlike the create path's, NOT
+            // falsifiable — and it is worth saying which so nobody later reads
+            // it as a tested guard. There is no second owner to defend against
+            // today: the store deep-copies `currentValue` out of its row (a
+            // documented, conformance-held property), and
+            // `ConcurrentModificationError` carries no payload, so nothing this
+            // caller can reach ever aliases what goes into the cache. It stays
+            // because the cache's one-owner invariant should not depend
+            // silently on the store's copy, and because enriching this error
+            // with the conflict row — exactly what was just done to
+            // `ResourceAlreadyExistsError` — would reintroduce the aliasing
+            // with no test to catch it.
+            stateRef.current[key] = cloneValue(result.conflict.currentValue) as JsonObject;
+            versionRef.current[key] = result.conflict.currentVersion;
             throw new ConcurrentModificationError(
               `Resource "${key}" was replaced by another writer (expected version ${expectedVersion}, found ${result.conflict.currentVersion}) — the delete was refused rather than applied to the new generation`,
               1
             );
           }
-          throw new ResourceDeletedError(key);
+          // Unreachable by contract, kept as a guard rather than deleted.
+          // `delete` answers an already-tombstoned key with idempotent SUCCESS
+          // before it ever consults the version — the conformance suite pins
+          // that on all four adapters, in the raced form as well as the
+          // sequential one. So a delete conflict can only come from a LIVE row
+          // at an unexpected version, which always carries a value. (The
+          // `currentValue: undefined` conflict is real, but it belongs to
+          // `set`, not to `delete`.) Reaching here would mean an adapter had
+          // broken that rule, so it says so instead of inventing a story about
+          // a resource that was deleted.
+          throw new ConcurrentModificationError(
+            `Resource "${key}" delete was refused with no current value — the store reported a conflict where the contract requires an idempotent success`,
+            1
+          );
         }
         delete stateRef.current[key];
         delete versionRef.current[key];

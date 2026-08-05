@@ -95,7 +95,22 @@ The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-c
 | A delete's version check failed against a **live** row (deleted and recreated under us) | `ConcurrentModificationError` — nothing was deleted, so a deletion error would report the opposite |
 | Retry budget exhausted | `ConcurrentModificationError` |
 
-Every registry writer drives this: the single-resource and collection-instance write ops, `create()` at `expectedVersion: 0`, and both delete writers (`collection.delete()` and `evictInstance`) at the version the context observed. `"any"` remains the explicit opt-out for the seed helpers in `@flow-state-dev/testing` and for `deleteAll`, which is a scope operation.
+**Which writers carry a version, and which deliberately do not.** The list is a search result rather than a judgement — the store's mutating surface is three methods on one named field, so `grep -a "resourceState[?.]*\.\(set\|delete\|deleteAll\)(" packages/*/src` decides it. (The `-a` matters: `resource-registry.ts` carries a NUL byte, so plain `grep` reports it binary and prints nothing.)
+
+Version-checked, through the driver above:
+
+- every registry write op — single-resource and collection-instance `patchState` / `setState` / `updateState`, plus `upsert`'s patch path
+- `create()` at `expectedVersion: 0`, terminal on conflict
+- both delete writers, `collection.delete()` and `evictInstance`, at the version the context observed
+
+Deliberately unconditional, each for a stated reason rather than because it was missed:
+
+- **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
+- **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
+- **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
+- **scope state** — `request` / `session` / `user` / `org` — is not this driver's at all. It keeps `runWithCAS`, and `createScopePersist` downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
+
+The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
 
 Cancellation uses the request's **background** abort signal, not the transport signal. The transport signal fires on client disconnect, which must not abandon the writes of a `.work()` task the request is still running; and there is no per-scope signal available at this seam anyway, since persisters and `ResourceRef`s are built once per context while `ctx.signal` is per execution scope.
 

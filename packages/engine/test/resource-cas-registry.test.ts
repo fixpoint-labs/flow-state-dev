@@ -352,6 +352,101 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     expect(await readStored(stores, "capped/c1")).toEqual({ n: 99 });
   });
 
+  it("serializes concurrent upserts of one key past the retry budget", async () => {
+    // `upsert`'s patch path is a read-modify-write with a retry budget of three
+    // (four attempts). Unserialized, N concurrent upserts in ONE context all
+    // start from the same cached version, exactly one wins per round, and the
+    // Nth writer needs N-1 retries — so past the fourth writer a caller gets
+    // `ConcurrentModificationError` raised by writers the per-key queue exists
+    // specifically to keep from contending.
+    //
+    // Eight is chosen to clear the budget with margin, and every writer adds a
+    // DISTINCT field so the assertion is positive: all eight landed. A test
+    // that only asserted "no throw" could pass without any of them committing.
+    const stores = createInMemoryStores();
+    const ctx = await makeCtx(stores, "req_a");
+    await (ctx.resources.tasks as any).create("t1", { base: true });
+
+    const writers = Array.from({ length: 8 }, (_, i) => `w${i}`);
+    await Promise.all(
+      writers.map((w) => (ctx.resources.tasks as any).upsert("t1", { [w]: true }))
+    );
+
+    const stored = (await readStored(stores, "tasks/t1")) as Record<string, unknown>;
+    for (const w of writers) {
+      expect(stored[w]).toBe(true);
+    }
+    expect(stored.base).toBe(true);
+  });
+
+  it("does not let a caught conflict error mutate live context state", async () => {
+    // `ResourceAlreadyExistsError` is exported for `instanceof`, so its payload
+    // is public and callers will annotate it. It must not be the same object the
+    // context cache holds, or a caller inspecting the error would silently
+    // change `ref.state` with no store write and no version bump — and a later
+    // patch would persist the mutation.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    const ctxB = await makeCtx(stores, "req_b");
+
+    await (ctxA.resources.tasks as any).create("t1", { owner: "a" });
+
+    const err = await (ctxB.resources.tasks as any)
+      .create("t1", { owner: "b" })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ResourceAlreadyExistsError);
+
+    // A caller doing the most ordinary thing with a caught error.
+    (err as ResourceAlreadyExistsError).currentValue!.owner = "tampered";
+
+    const ref = await (ctxB.resources.tasks as any).get("t1");
+    expect(ref.state).toEqual({ owner: "a" });
+    expect(await readStored(stores, "tasks/t1")).toEqual({ owner: "a" });
+  });
+
+  it("shows the new generation after a delete refused by the version check", async () => {
+    // The throw is already pinned elsewhere; the defect is in what is READABLE
+    // after it. The store reported generation 2 on the conflict, so a caller
+    // that catches the error must not then be served generation 1.
+    const stores = createInMemoryStores();
+    const ctxA = await makeCtx(stores, "req_a");
+    await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
+
+    const ctxB = await makeCtx(stores, "req_b"); // caches generation 1
+    await (ctxA.resources.tasks as any).delete("t1");
+    await (ctxA.resources.tasks as any).create("t1", { generation: 2 });
+
+    const err = await (ctxB.resources.tasks as any)
+      .delete("t1")
+      .catch((e: unknown) => e);
+    expect((err as Error).name).toBe("ConcurrentModificationError");
+
+    // Assert at the observation point, not on the throw.
+    const ref = await (ctxB.resources.tasks as any).get("t1");
+    expect(ref.state).toEqual({ generation: 2 });
+    const listed = await (ctxB.resources.tasks as any).list();
+    expect(listed.map((r: any) => r.state)).toEqual([{ generation: 2 }]);
+  });
+
+  // No aliasing test for the refused-delete path, deliberately. The create
+  // path's twin is real and tested because `ResourceAlreadyExistsError`
+  // carries `currentValue` to its catcher. `ConcurrentModificationError`
+  // carries no payload, and the store deep-copies the conflict row, so nothing
+  // a caller can reach aliases the cached object. The `cloneValue` there is
+  // defence against a future change to that error, not a guard over an
+  // observable defect — a test would have to mutate something no caller can
+  // see, and would pass either way.
+
+  // No test for "this context's delete loses to another context's delete":
+  // that path is unreachable by contract, not merely hard to stage. `delete`
+  // answers an already-tombstoned key with idempotent SUCCESS before consulting
+  // the version — pinned by the shared conformance suite on all four adapters,
+  // in the raced form as well as the sequential one — so a delete conflict can
+  // only ever come from a LIVE row at an unexpected version. The
+  // `currentValue: undefined` conflict is real but belongs to `set`. A test
+  // here would pass for the wrong reason: it would observe an ordinary
+  // successful delete and prove nothing about the branch it claimed to cover.
+
   it("does not bump the version for a verified no-op write", async () => {
     const stores = createInMemoryStores();
     const ctx = await makeCtx(stores, "req_a");
