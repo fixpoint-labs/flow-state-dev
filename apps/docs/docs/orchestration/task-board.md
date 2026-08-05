@@ -91,10 +91,11 @@ Exits when one of the following is true on a worker's `checkBoard` iteration:
 - **Drained** — no `pending`, `in_progress`, or `awaiting_review` tasks remain.
 - **Blocked** — no task is `in_progress` or `awaiting_review`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
 
-The final `task-board-meta` item carries a `terminationReason` field that tells the two cases apart:
+The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
+- `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 
 A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
 
@@ -105,7 +106,8 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
   data: {
     collectionId: "echo",
     status: "completed",
-    terminationReason: "all-completed",   // or "blocked-by-failures"
+    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
+    maxTotalRetries: 50,
     counts: {
       total: 2,
       completed: 2,
@@ -115,12 +117,13 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
       awaiting_review: 0,
       in_progress: 0,
       pending: 0,
+      retries: 0,
     },
   },
 }
 ```
 
-`terminationReason` is derived purely from those counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. `"retry-budget-exhausted"` is not a count comparison: it appears only when a retry was actually refused.
 
 ### `"complete"`
 
@@ -224,34 +227,86 @@ A delegation board catches a bad assignee earlier than that. When the skill decl
 
 - `concurrency` — max parallel workers. Default `4`.
 - `onError: "skip" | "fail"` — `"skip"` records the error on the offending task; siblings continue. `"fail"` rethrows; the board fails. Default `"skip"`.
-- `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored. There is no board-level retry cap.
+- `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored.
+- `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 
 The board drops those results. A cancel stays cancelled, output the worker recorded for itself stays, and a second worker's claim is left alone. The drop is silent and affects exactly one task: the rest of the board keeps draining, and under `onError: "fail"` the error that surfaces is the worker's own rather than a conflict on the write-back.
 
-A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `resumeFromReview`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling. `maxIterations` is what ends it, and it counts per worker, so a board at `concurrency: 4` can spend four times that many iterations first.
+A task can also keep returning to `pending` without ever settling. `maxAttempts` bounds ordinary retries, because `attempts` climbs on every claim until the budget runs out. The paths that re-pend a task *without* advancing `attempts` (`reclaim()`, `unblock`, `resumeFromReview`) never consume that budget, so if one of them runs in a loop against a worker that keeps failing, the task is re-dispatched each cycle instead of settling.
+
+`maxTotalRetries` bounds what the board **spends**: it counts failure retries across every task, and at the bound the next failing task settles instead of re-dispatching. `maxIterations` bounds how long a worker loops, per worker, including idle polls that claim nothing — at `concurrency: 4` a board can spend four times `maxIterations` before every worker has tripped. Neither `reclaim()` nor `unblock` spends the retry budget, so on a board looping through those, `maxIterations` is what ends it.
 
 ## Bounding how much work a board takes on
 
-`concurrency` paces how many tasks run at once. It says nothing about how many can be *created*, so a coordinator that plans badly can queue far more work than anyone intended. The board's bounds sit at three scopes:
+`concurrency` paces how many tasks run at once. It says nothing about how many can be *created*, so a coordinator that plans badly can queue far more work than anyone intended. The board's bounds:
 
 - `maxEnqueuedTasks` (default `100`) — how many tasks may be **added while others are still waiting**. Checked when a task is created, against the resulting `pending` count, so a slot comes back when its task leaves `pending` by completing, erroring, or being cancelled. A task that cannot run, such as one stranded behind a failed dependency, stays `pending` and keeps its slot however long the board drains.
 - `maxTotalTasks` (default `500`) — how many tasks the board may **ever hold**, completed and cancelled ones included. Never refunded by draining, so it also catches a board that keeps draining and re-queueing.
+- `maxTotalRetries` (default `50`) — how many failure retries the board may **authorize in total**, across every task.
 - `concurrency` (default `4`) — how many run at the same time.
 
-Creating a task past either bound throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound. What a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
+Creating a task past `maxEnqueuedTasks` or `maxTotalTasks` throws a `TaskCapExceededError` carrying `cap` (`"enqueued"` or `"total"`), `limit`, and `attempted`. Nothing is written. A batch `addTasks` is all-or-nothing: if the batch would cross a bound, none of it lands. On a delegation board the model-facing `addTask` tool returns a soft `{ ok: false, error: "enqueued_task_cap_exceeded" }` or `"total_task_cap_exceeded"` instead of throwing. Draining frees enqueue slots, but only for tasks that can actually run, and it gives nothing back against the lifetime bound. What a coordinator should do about each is in [Delegation](../skills/delegation#how-much-work-the-board-will-take-on).
 
 The enqueue bound applies only **when a task is created**. Tasks also return to `pending` through the lifecycle, via a retry under `maxAttempts`, an `unblock`, a `resumeFromReview`, or a reclaimed lease, and none of those paths is bounded. So `pending` can sit above `maxEnqueuedTasks` for a while. `maxTotalTasks` is the hard ceiling.
 
+### Bounding the retries
+
+The two bounds above count tasks the board *creates*. A retry does not create a task, it re-runs one that already exists, so a task that keeps failing keeps costing model calls while both counts hold still. `maxTotalRetries` is the bound on that.
+
+```ts
+const board = taskBoard({
+  name: "research",
+  workers,
+  maxTotalRetries: 200,
+});
+```
+
+It counts failure retries across the whole board. When the count reaches the bound, the next task that fails goes to `errored` instead of back to `pending`, with an error naming the board's budget, and its `error` reads:
+
+```
+worker timed out — not retried: collection "research" has spent its retry budget of 200 (maxTotalRetries). Raise it, or pass null to opt out.
+```
+
+The task is settled, not parked: the drain counts it as resolved and the board finishes normally. Set `null` for no bound at all, or `0` to run every task once and never retry. A first attempt is never refused, at any value.
+
+Only failure retries count. `reclaim()`, `unblock`, and `resumeFromReview` also return a task to `pending`, and none of them spends the budget.
+
+The budget is spent when a retry is granted, not when it runs. If a re-dispatched task is never picked up again because its worker died or its lease expired, the retry still counts.
+
+On the durable (resource-backed) backing, retries are counted but the bound is not enforced. The completion item reports `maxTotalRetries: null` there.
+
+Every task carries its own record of this in `task.retryLedger`:
+
+```ts
+const task = collection.get(id);
+task.retryLedger;   // { granted: 2, deniedByBudget: false }
+```
+
+`granted` is how many retries this task was authorized. `deniedByBudget` is `true` once one was refused because the board's budget was spent. The field is absent on a task that has never failed, so read it as `task.retryLedger?.granted ?? 0`.
+
+When a board's completion item reports `terminationReason: "retry-budget-exhausted"`, the budget is what stopped it:
+
+```ts
+// task-board-meta, status: "completed"
+{
+  terminationReason: "retry-budget-exhausted",
+  maxTotalRetries: 200,
+  counts: { total: 12, completed: 9, errored: 3, retries: 200 },
+}
+```
+
+`maxTotalRetries` on that item is the limit the board's collection actually enforced, and `null` means none was. A board whose retry count happens to equal its limit but never refused a retry reports `"blocked-by-failures"`, the ordinary reason for a board that exited with unfinished tasks.
+
 ### How long the counts last
 
-Neither bound is a stored counter. Both are computed when a task is created, from the board's stored task map: the total is that map's size, the enqueue count is how many of its tasks are `pending`. So the counts last exactly as long as the storage, which depends on the backing:
+No count is a stored counter. All three are read off the board's stored task map at the moment the bound is checked: the total is that map's size, the enqueue count is how many of its tasks are `pending`, and the retry count is the sum of every task's `retryLedger.granted`. The two creation counts are read when a task is created; the retry count is read when a task fails. All three last exactly as long as the map does, which depends on the backing:
 
-- **Request-backed** (the default) — the tasks live on the request, so a new request starts empty and both counts start from zero.
-- **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. The counts come back with it, so a wave of new tasks after a resume is checked against the tasks that were already there, not against an empty board.
-- **Durable (resource-backed)** — neither bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
+- **Request-backed** (the default) — the tasks live on the request, so a new request starts empty and all three counts start from zero.
+- **Sequencer-backed, resumed from a checkpoint** — the sequencer restores its whole state on resume, and the task map is part of that state. All three counts come back with it, retries included, so work after a resume is checked against the tasks that were already there, not against an empty board.
+- **Durable (resource-backed)** — no bound is enforced. What the resource layer gives you instead is `maxInstances` on `defineTaskCollection`, and that is a capacity limit rather than a lifetime ceiling: it caps how many task instances the collection **holds at once**, and creating one past it throws. Deleting an instance through the resource collection frees the slot again, so a board that deletes and re-queues can create more tasks over its life than `maxInstances` ever allows at one moment. Creation here also goes one instance at a time, so a batch that crosses the limit stops partway and the tasks made before it stay; the all-or-nothing behavior above belongs to the request and sequencer backings only.
 
 `backing: "sequencer"` names the shape of the state reference the tasks are stored in, not the kind of block it hangs off. Any block that holds its own state can supply one, and only a sequencer block checkpoints. See [Block State → The durability boundary](../advanced/block-state#the-durability-boundary).
 

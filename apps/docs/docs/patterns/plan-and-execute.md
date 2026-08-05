@@ -183,9 +183,15 @@ planAndExecute({
   // Default: false.
   enableReplanning?: boolean;
 
-  // Per-task retry budget stamped onto every seeded TaskInit. Default 1
-  // (no retries; preserves pre-migration behavior).
+  // Per-task retry budget stamped onto every seeded TaskInit. Default 1,
+  // meaning one attempt and no retries.
   maxAttemptsPerTask?: number;
+
+  // Retries the whole board may authorize, across every task. Default 50.
+  // `null` for no bound, `0` to never retry. Binds only once
+  // `maxAttemptsPerTask` is raised above 1. See Task Board → Bounding the
+  // retries.
+  maxTotalRetries?: number | null;
 
   // Worker pool size for the underlying taskBoard. Default 1 (sequential
   // drain). Bump to fan out independent dep-free steps within a single

@@ -42,6 +42,21 @@ export interface ParallelTasksConfig<
    */
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
+  /**
+   * Cumulative failure retries the internal board may authorize, across every
+   * task (FIX-948). Default 50 — a number, or `null` for explicitly unbounded.
+   *
+   * The two bounds above count only *new* tasks, so a task that keeps failing
+   * keeps spending while both sit still. This is the one number that bounds
+   * that. At the bound the failing task settles terminal `errored` instead of
+   * re-pending, and the board reports `terminationReason:
+   * "retry-budget-exhausted"`. `0` means "run every task once, never retry".
+   *
+   * Reachable here even though this pattern has no `maxAttemptsPerTask`
+   * option: the planning entry stamps `maxAttempts` straight from planner
+   * output, so a planned task can carry one and retry.
+   */
+  maxTotalRetries?: number | null;
 
   /** Override the planning step. Defaults to `utility.decomposer()`. */
   planner?: BlockDefinition<any, any>;
@@ -106,6 +121,9 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
+    ...(config.maxTotalRetries !== undefined
+      ? { maxTotalRetries: config.maxTotalRetries }
+      : {}),
     ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
     ...(config.maxEnqueuedTasks !== undefined
       ? { maxEnqueuedTasks: config.maxEnqueuedTasks }

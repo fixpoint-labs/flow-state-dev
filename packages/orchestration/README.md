@@ -28,7 +28,7 @@ import { taskSchema, type Task } from "@flow-state-dev/orchestration";
 ```
 
 A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease`,
-`attempts`, optional typed `input`/`output`. Status enum:
+`attempts`, `retryLedger`, optional typed `input`/`output`. Status enum:
 `pending | in_progress | blocked | awaiting_review | completed | errored | cancelled`.
 
 ```
@@ -49,6 +49,24 @@ pending ─┬─→ in_progress ─┬─→ completed
 already holds is on the table, so a repeat write doesn't throw. Anything else
 throws an `IllegalTaskTransitionError` carrying `taskId`, `from`, and `to`, and
 writes nothing.
+
+**`retryLedger`** records the task's standing against the collection's
+`maxTotalRetries` budget:
+
+```ts
+task.retryLedger;   // { granted: 2, deniedByBudget: false } | undefined
+```
+
+`granted` counts the failure retries this task was **authorized**, so it excludes
+the re-entries that do not spend the budget (`unblock`, `resumeFromReview`,
+`reclaim`) and includes a retry that was granted but never picked up.
+`deniedByBudget` turns `true` once a retry was refused because the collection's
+budget was spent; the board's `terminationReason` reads that flag, so branch on it
+rather than parsing the error string.
+
+The field is **absent** on a task that has never failed, so read it with a single
+guard — `task.retryLedger?.granted ?? 0` — and treat absent as zero granted, not
+denied.
 
 ### TaskCollection
 
@@ -130,15 +148,21 @@ single uniform worker or a
 omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
 `onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
-`onError`, `maxIterations` (per-worker claim-loop cap, default 10000), and the two creation caps
+`onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.
-terminal, never refunded). Both take a positive integer or `null` (explicitly
-unbounded); omission reapplies the default. They apply only when the board
+terminal, never refunded), and the retry budget `maxTotalRetries` (default 50 —
+failure retries the board may authorize across every task). The creation caps take a
+positive integer or `null` (explicitly unbounded); `maxTotalRetries` takes a
+**nonnegative** integer or `null`, so `0` means "run every task once, never retry".
+Omission reapplies the default on all three. They apply only when the board
 constructs its own collection — a supplied `collection` is left alone and passing
-both is a construction error, so configure caps on `getOrCreateTaskCollection`'s
-sequencer/request backing instead. Per-task retries are set via `maxAttempts` on
-each task (`TaskInit`), not on the board. See the
+any of them is a construction error, so configure caps on
+`getOrCreateTaskCollection`'s sequencer/request backing instead. Per-task retries
+are set via `maxAttempts` on each task (`TaskInit`), not on the board. At the retry
+budget the failing task settles terminal `errored` and the board's completion item
+reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries` and
+the limit in force. See the
 [Task board guide](https://flow-state.dev/docs/orchestration/task-board).
 
 ### goalSeekLoop
@@ -209,7 +233,9 @@ The board is bounded by default: `addTask` is refused past 100 tasks enqueued at
 free slots, though tasks stranded behind a failed dep stay `pending` and hold
 theirs) or 500 over the board's lifetime (`total_task_cap_exceeded`, never
 refunded by draining), tunable via `createSkillsLibrary`'s `maxEnqueuedTasks` /
-`maxTotalTasks` (`null` = unbounded).
+`maxTotalTasks` (`null` = unbounded). It carries no retry budget: a task created
+through the delegation `addTask` tool takes no `maxAttempts`, so it runs once and
+never retries.
 
 > **Which surfaces are capped.** The caps come from the code that CONSTRUCTS the
 > collection, so they cover boards the skills library installs and boards

@@ -340,6 +340,24 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   maxTotalTasks?: number | null;
 
   /**
+   * Cumulative failure retries this board may authorize, across every task
+   * (FIX-948). Default 50. `null` is explicitly unbounded; same
+   * supplied-collection rule as `maxEnqueuedTasks`.
+   *
+   * The creation caps above count only *new* tasks, and a retry re-runs one that
+   * already exists — so a failing task keeps spending while both of them sit
+   * still. This is the one number that bounds that. At the bound a failing task
+   * settles terminal `errored` rather than re-pending, and the board's
+   * completion item reports `terminationReason: "retry-budget-exhausted"`.
+   *
+   * `0` is legal and means "run every task once, never retry". Only failure
+   * retries count — `unblock`, `resumeFromReview`, and `reclaim` also re-pend a
+   * task and do not consume the budget. See `tasks/collection/task-caps.ts` for
+   * the full semantics, including why the budget is spent at authorization.
+   */
+  maxTotalRetries?: number | null;
+
+  /**
    * Dispatcher for ready-task selection. Either a `TaskDispatcher`
    * instance or a string naming one of the standard dispatchers
    * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
@@ -846,15 +864,17 @@ function resolveBoardCaps(
     typeof config.collection === "function" ||
     isDefinedTaskCollection(config.collection);
   const capsRequested =
-    config.maxTotalTasks !== undefined || config.maxEnqueuedTasks !== undefined;
+    config.maxTotalTasks !== undefined ||
+    config.maxEnqueuedTasks !== undefined ||
+    config.maxTotalRetries !== undefined;
 
   if (supplied) {
     if (capsRequested) {
       throw new Error(
-        `[task-board] "${name}" cannot take maxTotalTasks/maxEnqueuedTasks together with a ` +
-          `supplied collection — caps belong to the collection, so configure them where it is ` +
-          `created (e.g. getOrCreateTaskCollection({ backing: "sequencer", maxTotalTasks })). ` +
-          `A board only applies caps to a collection it constructs itself.`
+        `[task-board] "${name}" cannot take maxTotalTasks/maxEnqueuedTasks/maxTotalRetries ` +
+          `together with a supplied collection — caps belong to the collection, so configure ` +
+          `them where it is created (e.g. getOrCreateTaskCollection({ backing: "sequencer", ` +
+          `maxTotalTasks })). A board only applies caps to a collection it constructs itself.`
       );
     }
     return {};
@@ -868,6 +888,7 @@ function resolveBoardCaps(
   return resolveTaskCapDefaults(`[task-board] "${name}"`, {
     maxTotalTasks: config.maxTotalTasks,
     maxEnqueuedTasks: config.maxEnqueuedTasks,
+    maxTotalRetries: config.maxTotalRetries,
   });
 }
 

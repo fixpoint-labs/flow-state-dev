@@ -93,9 +93,10 @@ import {
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
+  grantRetry,
   listTasks,
+  routeFailure,
   transitionDeclineReason,
-  shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
@@ -467,6 +468,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // This backing COUNTS retries but never enforces a budget (FIX-948): the
+    // check has to be atomic against the whole ledger and the resource layer has
+    // no CAS across instances. `null` says "no limit is in force", which is the
+    // truth here — so a caller can never read a non-zero retry count off this
+    // board as evidence that a budget applied.
+    maxTotalRetries: null,
 
     async addTask(init) {
       const task = buildInitialTask<TInput, TOutput>(init, now());
@@ -548,11 +555,15 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async fail(id, error, options) {
-      // Retry path: if the task carries a `maxAttempts` budget that
-      // hasn't been exhausted, soft-fail back to `pending` and capture
-      // the error as `feedback` for the next attempt. The next claim
-      // will increment `attempts` again. Hard-fail (no budget left, or
-      // no budget set) goes terminal.
+      // Retry-vs-terminal is `routeFailure`'s decision, as on the sequencer
+      // backing — see its JSDoc.
+      //
+      // ACCOUNTING WITHOUT ENFORCEMENT (FIX-948). The budget passed here is
+      // always `undefined`, so the routing can never deny; the per-task
+      // granted-retry count is still maintained exactly as the sequencer
+      // backing maintains it. Why the two are split, and why the count is not
+      // optional, is stated once in `task-caps.ts` → "Lifetime" →
+      // Resource-backed. Don't restate it here.
       //
       // `options` must reach BOTH branches — see the sequencer backing's
       // `fail` for why the status-blind retry predicate makes this the most
@@ -560,16 +571,26 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       const candidateRef = mirror.get(id);
       if (candidateRef !== undefined) {
         const current = readTaskState<TInput, TOutput>(candidateRef);
-        if (shouldRetryOnFail(current as Task)) {
+        if (routeFailure(current as Task, () => 0, undefined).action === "retry") {
           return transitionRef(
             id,
             "pending",
             "retried",
-            () => ({
-              feedback: error,
-              leaseUntil: undefined,
-              error: undefined,
-            }),
+            (task) => {
+              // Re-decided against the task the write actually sees, so the
+              // grant is not recorded off a status that moved since the
+              // candidate read above. The patch runs only after the decline
+              // check and the legality assert, so nothing lands on a write that
+              // is about to be refused.
+              const fresh = routeFailure(task as Task, () => 0, undefined);
+              const counts = fresh.action === "retry" && fresh.countsAgainstBudget;
+              return {
+                feedback: error,
+                leaseUntil: undefined,
+                error: undefined,
+                ...(counts ? { retryLedger: grantRetry(task as Task) } : {}),
+              };
+            },
             options
           );
         }

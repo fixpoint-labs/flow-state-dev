@@ -204,6 +204,25 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */
   collectionId: string;
 
+  /**
+   * The cumulative retry budget this ref actually enforces (FIX-948), or `null`
+   * when none is in force.
+   *
+   * Read by the board's completion item so the retry count it reports is never
+   * mistaken for evidence that a budget applied. It is exposed **here**, where
+   * enforcement lives, rather than derived from the board's own config, because
+   * a board handed a collection it did not construct knows nothing about that
+   * collection's caps — and a caller who builds one deliberately
+   * (`getOrCreateTaskCollection({ backing: "request", maxTotalRetries: 5 })`)
+   * would otherwise be told "no limit" about a limit they set themselves.
+   *
+   * `null` means exactly one thing everywhere: no limit is in force. That covers
+   * both an explicit opt-out and a backing that counts retries without enforcing
+   * them (the resource backing), so there is no third "unknown" state. If you
+   * implement this interface yourself and enforce no budget, report `null`.
+   */
+  readonly maxTotalRetries: number | null;
+
   // creation
   addTask(task: TaskInit<TInput>): Promise<Task<TInput, TOutput>>;
   addTasks(tasks: TaskInit<TInput>[]): Promise<Task<TInput, TOutput>[]>;

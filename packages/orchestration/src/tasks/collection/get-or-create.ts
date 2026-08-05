@@ -47,12 +47,14 @@ interface CommonOptions {
 /**
  * Sequencer-state backing options.
  *
- * The creation caps (FIX-931) live here and on {@link RequestBackingSpec} rather
- * than on the shared common options, because these are exactly the two backings
- * that route through `createSequencerBackedTaskCollection` — where enforcement
- * lives. `ResourceBackingSpec` builds a different constructor and enforces
- * nothing, so asking for a cap there is a type error rather than a silently
- * ignored ceiling.
+ * The caps (creation caps FIX-931, retry budget FIX-948) live here and on
+ * {@link RequestBackingSpec} rather than on the shared common options, because
+ * these are exactly the two backings that route through
+ * `createSequencerBackedTaskCollection` — where enforcement lives.
+ * `ResourceBackingSpec` builds a different constructor and enforces nothing, so
+ * asking for a cap there is a type error rather than a silently ignored ceiling.
+ * (That backing still *counts* retries; see `task-caps.ts` on why counting and
+ * enforcing are separate there.)
  */
 export interface SequencerBackingSpec extends CommonOptions, TaskCapOptions {
   backing: "sequencer";
@@ -167,6 +169,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       now: options.now,
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
+      maxTotalRetries: options.maxTotalRetries,
     });
   }
 
@@ -182,6 +185,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       now: options.now,
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
+      maxTotalRetries: options.maxTotalRetries,
     });
   }
 

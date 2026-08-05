@@ -31,9 +31,13 @@ import {
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
+  denyRetry,
+  grantRetry,
   listTasks,
+  retryBudgetExhaustedError,
+  routeFailure,
+  sumGrantedRetries,
   transitionDeclineReason,
-  shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import {
@@ -84,12 +88,15 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
+  // Captured because `fail`'s own `options` parameter shadows the factory's.
+  const collectionId = options.collectionId;
   validateTaskCaps(`[tasks] collection "${options.collectionId}"`, options);
   // `null` (explicitly unbounded) and omission collapse to the same runtime
   // state here — the distinction only matters at the construction points that
   // decide whether to apply a default.
   const maxTotalTasks = options.maxTotalTasks ?? undefined;
   const maxEnqueuedTasks = options.maxEnqueuedTasks ?? undefined;
+  const maxTotalRetries = options.maxTotalRetries ?? undefined;
   const wrap = createTaskHandleWrapper<TInput, TOutput>(
     options.collectionId,
     options.getItems,
@@ -209,10 +216,46 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome> {
-    /** What one `transitionTo` invocation did — returned, never captured outward. */
+    return transitionDerived(id, () => ({ targetStatus, kind, patch }), guards);
+  }
+
+  /** What a derived transition decided to write, computed inside the CAS. */
+  interface DerivedTransition {
+    targetStatus: TaskStatus;
+    kind: TaskChangeKind;
+    patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
+  }
+
+  /**
+   * `transitionTo` for a transition whose TARGET depends on the ledger (FIX-948).
+   *
+   * `fail()` is the only caller: its retry-vs-terminal routing now reads a
+   * board-wide sum, and a sum read outside the write races the write it gates.
+   * So `derive` runs inside the mutator, against the committed map, and re-runs
+   * on every CAS retry — which is what makes "the budget's worth lands, and no
+   * more" a claim we can hold rather than a cosmetic one.
+   *
+   * **`derive` must be pure.** It only chooses what to write; the write itself
+   * happens below, after the decline check. That ordering is a correctness
+   * requirement, not a style preference — see the mutator body.
+   */
+  async function transitionDerived(
+    id: string,
+    derive: (
+      task: Task<TInput, TOutput>,
+      tasks: Readonly<Record<string, Task<TInput, TOutput>>>
+    ) => DerivedTransition,
+    guards?: TaskTransitionOptions
+  ): Promise<TaskWriteOutcome> {
+    /** What one invocation did — returned, never captured outward. */
     type TransitionResult =
       | { kind: "declined"; verdict: TaskWriteOutcome }
-      | { kind: "recorded"; task: Task<TInput, TOutput>; prevStatus: TaskStatus };
+      | {
+          kind: "recorded";
+          changeKind: TaskChangeKind;
+          task: Task<TInput, TOutput>;
+          prevStatus: TaskStatus;
+        };
 
     const outcome = await withOutcome(
       casWrite,
@@ -221,6 +264,16 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         if (task === undefined) {
           throw new Error(`[tasks] task "${id}" not found`);
         }
+        // Choosing the target is pure — it reads the ledger and writes nothing —
+        // so running it here does not weaken the ordering the decline check
+        // below depends on. NOTHING may be recorded before that check: the
+        // board's failure write-back passes `{ ifAllowed, expectAttempt }` so a
+        // displaced worker's late failure is discarded, and a retry grant or a
+        // denial marker written ahead of the decline would let that stale
+        // failure spend another task's retry allowance, or mark the board
+        // "retry-budget-exhausted" when nothing was ever refused. Both are
+        // invisible to a test that only checks the task's status.
+        const { targetStatus, kind, patch } = derive(task, tasks);
         const reason = transitionDeclineReason(task as Task, targetStatus, guards);
         if (reason !== undefined) {
           return {
@@ -235,14 +288,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
         return {
           state: { ...tasks, [id]: next },
-          result: { kind: "recorded", task: next, prevStatus: task.status },
+          result: { kind: "recorded", changeKind: kind, task: next, prevStatus: task.status },
         };
       }
     );
 
     if (outcome === undefined) return { outcome: "unchanged" };
     if (outcome.kind === "declined") return outcome.verdict;
-    emit(kind, outcome.task, outcome.prevStatus);
+    emit(outcome.changeKind, outcome.task, outcome.prevStatus);
     return { outcome: "recorded" };
   }
 
@@ -305,6 +358,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // This backing enforces, so the resolved budget IS the limit in force.
+    maxTotalRetries: maxTotalRetries ?? null,
 
     async addTask(init) {
       // Build the task once — id and createdAt are stable across CAS retries
@@ -396,41 +451,56 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async fail(id, error, options) {
-      // Retry path: if the task carries a `maxAttempts` budget that
-      // hasn't been exhausted, soft-fail back to `pending` and capture
-      // the error as `feedback` for the next attempt. The next claim
-      // will increment `attempts` again. Hard-fail (no budget left, or
-      // no budget set) goes terminal.
+      // Retry-vs-terminal, and whether a retry counts against the board's
+      // budget, is `routeFailure`'s decision — gate order, and the reason the
+      // budget is scoped to attempt-owned failures, are documented there.
       //
-      // `options` must reach BOTH branches. `shouldRetryOnFail` is
-      // status-blind — it reads only `attempts` vs `maxAttempts` — so a task
-      // settled mid-flight that still carries retry budget takes the retry
-      // branch and attempts a transition out of a terminal status. Threading
-      // the guards into only the hard-fail branch leaves the escape live for
-      // exactly that shape, and passes any test that never sets `maxAttempts`.
-      const current = ownTask(readTasks(), id);
-      if (current !== undefined && shouldRetryOnFail(current)) {
-        return transitionTo(
-          id,
-          "pending",
-          "retried",
-          () => ({
-            feedback: error,
-            leaseUntil: undefined,
-            error: undefined,
-          }),
-          options
-        );
-      }
-      return transitionTo(
+      // Two things belong to this call site rather than to that helper:
+      //
+      // 1. The decision runs INSIDE the atomic write (FIX-948). `fail` used to
+      //    read the task outside the CAS and then open a write — already a
+      //    latent race on `maxAttempts`, and fatal for a board-wide budget,
+      //    since the sum a concurrent failure reads must include the grant its
+      //    rival committed, or two failures at the boundary both retry.
+      // 2. `options` reaches EVERY branch. The routing is status-blind on the
+      //    `maxAttempts` half, so threading the guards into only the hard-fail
+      //    branch leaves live an escape out of a terminal status — and passes
+      //    any test that never sets `maxAttempts`.
+      return transitionDerived(
         id,
-        "errored",
-        "errored",
-        () => ({
-          error,
-          completedAt: now(),
-          leaseUntil: undefined,
-        }),
+        (task, tasks) => {
+          const routing = routeFailure(
+            task as Task,
+            () => sumGrantedRetries(Object.values(tasks) as Task[]),
+            maxTotalRetries
+          );
+          if (routing.action === "retry") {
+            return {
+              targetStatus: "pending" as const,
+              kind: "retried" as const,
+              patch: (current: Task<TInput, TOutput>) => ({
+                feedback: error,
+                leaseUntil: undefined,
+                error: undefined,
+                ...(routing.countsAgainstBudget
+                  ? { retryLedger: grantRetry(current) }
+                  : {}),
+              }),
+            };
+          }
+          return {
+            targetStatus: "errored" as const,
+            kind: "errored" as const,
+            patch: (current: Task<TInput, TOutput>) => ({
+              error: routing.deniedByBudget
+                ? retryBudgetExhaustedError(error, routing.limit, collectionId)
+                : error,
+              completedAt: now(),
+              leaseUntil: undefined,
+              ...(routing.deniedByBudget ? { retryLedger: denyRetry(current) } : {}),
+            }),
+          };
+        },
         options
       );
     },

@@ -38,6 +38,7 @@ import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
   resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   type TaskCapOptions,
   type TaskCollectionRef,
   type TaskInit,
@@ -244,9 +245,18 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   // over per-ref — so a resolver built without them writes past the bounds the
   // board advertises. Resolved up here rather than read off `board.caps`
   // because `getCollection` is declared before the board is built.
+  // The retry budget (FIX-948) is explicitly OPTED OUT, not merely left
+  // unexposed. An `eventActors` board builds its task inits directly and never
+  // stamps a `maxAttempts`, so its tasks cannot retry and a budget here has no
+  // subject. Omission would not refuse it: this object is spread into BOTH the
+  // collection constructor and `taskBoard` below, and each of those defaults an
+  // absent axis again — so the board would carry an inert, non-configurable cap
+  // that starts binding the moment this surface gains `maxAttempts`. `null` is
+  // the value that survives defaulting.
   const boardCaps = resolveTaskCapDefaults(`[eventActors] "${name}"`, {
     maxTotalTasks: config.maxTotalTasks,
     maxEnqueuedTasks: config.maxEnqueuedTasks,
+    maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
   });
 
   async function getCollection(ctx: BlockContext): Promise<TaskCollectionRef> {
