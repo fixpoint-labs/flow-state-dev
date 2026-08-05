@@ -609,6 +609,7 @@ export type VersionedResourceState = {
  * |---|---|
  * | Lifecycle | `live` (visible) or `deleted` (tombstone: invisible, version retained) |
  * | Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A tombstone reads exactly like an absent key |
+ * | Snapshots | Every state crossing the boundary is a **deep copy**, both ways: what a read returns, what a caller passed to `set`, and a conflict's `currentValue`. Mutating any of them never changes the stored row — the version has to witness the value, so no path may change a value without bumping a version |
  * | Version | First create writes `1`; each committed write bumps by 1; **never reused**. A recreate continues from the tombstone's version + 1 |
  * | `delete` | Retains the version, drops the payload (stores `{}`), marks `deleted`. The version is the only thing a tombstone carries |
  * | `deleteAll` | Bulk-marks every live key in the scope `deleted`. A scope operation, so it takes no expected version |

@@ -36,6 +36,17 @@ infinite version names nothing the store can hold — it throws rather than
 reporting a conflict, because it is a programming error at the call site and
 not a lost race.
 
+A state you read is a snapshot, not a live handle into the store. Mutating what
+`get` / `getAll` / `getByPrefix` returned does not change what is stored, the
+object you passed to `set` stays yours to mutate afterwards, and the
+`currentValue` a conflict reports is a copy too. This is what makes the version
+mean anything: if a caller could change the stored value without going through
+`set`, the value would move while the version stood still, and a later write at
+the old version would commit against data that had already changed. The
+filesystem and SQL adapters got this from serializing; the in-memory adapter now
+copies on the way in and on the way out, and the shared conformance suite pins
+the guarantee for all four.
+
 SQLite and Postgres migrate automatically with `ADD COLUMN` only: no table
 rebuild, no backfill, indexes untouched, and rows written before the upgrade
 read as live at version 1. The filesystem adapter commits state and metadata as

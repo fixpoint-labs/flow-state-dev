@@ -326,6 +326,122 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    // --- snapshot isolation: a read is a copy, not a handle ----------------
+    //
+    // The contract this store exists for is that the version witnesses the
+    // value: holding version N means the bytes you read at N are still the
+    // bytes in the store. Any path that hands a caller a live reference into
+    // the stored row breaks that — the value moves while the version stands
+    // still, so a later CAS write at the old version commits against data that
+    // already changed, and the conflict that should have fired never does.
+    //
+    // Three handles exist, and all three are asserted: what `get`/`getAll`
+    // return, what the caller passed to `set` and may still hold, and the
+    // `currentValue` a conflict reports. The mutations below are all **nested**
+    // on purpose — a shallow copy passes a top-level check while still
+    // aliasing the objects underneath, so the depth of the copy is the thing
+    // under test, not merely that the identity differs.
+    //
+    // Adapters that serialize (filesystem writes JSON, both SQL adapters
+    // stringify on write and parse per read) satisfy this by construction and
+    // cost nothing to assert; the in-memory adapter is the one that has to
+    // clone deliberately. Pinning it here rather than in a memory-only test is
+    // what stops the next adapter from reintroducing it.
+
+    /** A state with nesting, so a shallow copy cannot pass these cases. */
+    const nestedState = (): JsonObject => ({
+      profile: { name: "before", flags: { archived: false } },
+      tags: ["a"]
+    });
+
+    it("a state from get is a snapshot: mutating it does not write through to the store", async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", nestedState());
+
+        const read = await store.get("session", "s1", "k");
+        expect(read).toEqual({ state: nestedState(), version: 1 });
+
+        // Mutate through the returned handle, nested-first.
+        const profile = read!.state.profile as JsonObject;
+        profile.name = "after";
+        (profile.flags as JsonObject).archived = true;
+        (read!.state.tags as string[]).push("b");
+
+        // The stored row did not move...
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(nestedState());
+        // ...through any reader.
+        expect((await store.getAll("session", "s1")).k.state).toEqual(nestedState());
+        expect((await store.getByPrefix("session", "s1", "k")).k.state).toEqual(nestedState());
+
+        // ...and the version still witnesses it: a real write moves the value
+        // to 2, and the version 1 this caller holds is genuinely stale.
+        const committed = await store.set("session", "s1", "k", makeState(2), 1);
+        expect(committed).toEqual({ ok: true, version: 2 });
+        const stale = await store.set("session", "s1", "k", makeState(9), 1);
+        expect(stale.ok).toBe(false);
+      });
+    });
+
+    it("a state from getAll/getByPrefix is a snapshot, not a handle into the store", async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", nestedState());
+
+        const fromGetAll = (await store.getAll("session", "s1")).k;
+        ((fromGetAll.state.profile as JsonObject).flags as JsonObject).archived = true;
+
+        const fromPrefix = (await store.getByPrefix("session", "s1", "k")).k;
+        ((fromPrefix.state.profile as JsonObject).flags as JsonObject).archived = true;
+        (fromPrefix.state.tags as string[]).push("b");
+
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(nestedState());
+        // A stale write must still conflict once a real write moves the row.
+        await store.set("session", "s1", "k", makeState(2), 1);
+        expect((await store.set("session", "s1", "k", makeState(9), 1)).ok).toBe(false);
+      });
+    });
+
+    it("the state passed to set is copied, so the caller's retained reference cannot mutate the stored row", async () => {
+      await withStore(async (store) => {
+        // The other direction of the same aliasing bug: the caller keeps the
+        // object it handed to `set`. Codex's finding named only the read side.
+        const written = nestedState();
+        const first = await store.set("session", "s1", "k", written, 0);
+        expect(first).toEqual({ ok: true, version: 1 });
+
+        ((written.profile as JsonObject).flags as JsonObject).archived = true;
+        (written.tags as string[]).push("b");
+
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(nestedState());
+        expect((await store.get("session", "s1", "k"))?.version).toBe(1);
+
+        const committed = await store.set("session", "s1", "k", makeState(2), 1);
+        expect(committed).toEqual({ ok: true, version: 2 });
+        expect((await store.set("session", "s1", "k", makeState(9), 1)).ok).toBe(false);
+      });
+    });
+
+    it("the currentValue a conflict reports is a snapshot, not a handle into the store", async () => {
+      await withStore(async (store) => {
+        // Same bug on the error path: a conflict exists to tell a loser what
+        // is actually there, and handing it a live handle lets the loser
+        // corrupt the winner's row while the winner's version stands still.
+        await seed(store, "k", nestedState());
+        await store.set("session", "s1", "k", nestedState(), 1); // now version 2
+
+        const stale = await store.set("session", "s1", "k", makeState(9), 1);
+        expect(stale.ok).toBe(false);
+        if (stale.ok) throw new Error("expected a conflict");
+        expect(stale.conflict.currentValue).toEqual(nestedState());
+
+        const reported = stale.conflict.currentValue as JsonObject;
+        ((reported.profile as JsonObject).flags as JsonObject).archived = true;
+        (reported.tags as string[]).push("b");
+
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(nestedState());
+        expect((await store.get("session", "s1", "k"))?.version).toBe(2);
+      });
+    });
+
     // --- versioning -------------------------------------------------------
 
     it("a first create writes version 1", async () => {

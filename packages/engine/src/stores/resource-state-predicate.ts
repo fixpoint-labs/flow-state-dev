@@ -11,6 +11,7 @@
  * because there the compare and the swap have to be one statement to be
  * atomic. This function is the reference those predicates mirror.
  */
+import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { ExpectedVersion } from "./types";
 
@@ -41,6 +42,17 @@ export type ResourceStateConflict = {
  * they can share {@link ResourceStateRow} but not runtime code. What keeps the
  * four from drifting is the shared conformance suite, which pins the rule
  * against every adapter.
+ *
+ * `currentValue` is deep-copied out of the row. A conflict exists to tell the
+ * losing writer what is actually stored, so handing it a live reference into
+ * the row would let the loser mutate the winner's value without touching the
+ * winner's version — the same aliasing bug as on the read path, on the error
+ * path. The in-memory adapter is the caller that makes this load-bearing: it
+ * passes its retained row straight in. The filesystem adapter passes a leaf it
+ * just parsed off disk, so the copy is redundant there but costs one small
+ * clone on an already-failed write. The SQL adapters restate this function and
+ * need no copy of their own — they build the conflict from a row parsed for
+ * that one query and never retained.
  */
 export function resourceStateConflict(
   row: ResourceStateRow | undefined
@@ -49,7 +61,7 @@ export function resourceStateConflict(
   return {
     ok: false,
     conflict: {
-      currentValue: isLive ? row.state : undefined,
+      currentValue: isLive ? cloneValue(row.state) : undefined,
       currentVersion: row?.version ?? 0
     }
   };
