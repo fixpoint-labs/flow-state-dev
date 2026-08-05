@@ -3,6 +3,8 @@
 "@flow-state-dev/store-sqlite": minor
 "@flow-state-dev/store-postgres": minor
 "@flow-state-dev/testing": minor
+"@flow-state-dev/orchestration": patch
+"@flow-state-dev/patterns": patch
 ---
 
 Resource state is now compare-and-swap instead of last-write-wins.
@@ -42,7 +44,10 @@ a single record so the two can never disagree after a crash.
 Flow-authoring code is unchanged — nobody writes `expectedVersion` in a flow,
 and the runtime still writes resource state unconditionally, so resource
 mutations from flow code remain last-write-wins until that path passes the
-version it observed.
+version it observed. The adapter, engine, orchestration and patterns READMEs
+now scope their concurrency claims to match: the store-level compare-and-swap
+is real, the flow path does not use it yet, and a task board on the resource
+backing keeps claims exclusive within one process rather than across two.
 
 Callers of the store interface directly (including test harnesses) now pass a
 posture explicitly. `VersionedResourceState` is branded so it is not assignable

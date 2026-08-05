@@ -498,7 +498,9 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 `StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem adapter writes each resource as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
 
-It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so it is compare-and-swap: every write carries an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
+It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so the contract is compare-and-swap: every write takes an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
+
+What follows describes that store contract, not the guarantee the flow path gets today. The writers the runtime drives for flow-authored resource mutations all pass `"any"`, so those writes stay last-write-wins until the registry driver threads the observed version through them. A caller holding a `ResourceStateStore` directly gets the compare-and-swap now.
 
 ```ts
 // branded — see the note under the table below
