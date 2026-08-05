@@ -18,7 +18,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -172,7 +172,7 @@ describe("financials data spine", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
 
-    const resources = await stores.resourceState.getAll("session", sessionId);
+    const resources = toStates(await stores.resourceState.getAll("session", sessionId));
 
     // 1. Each tool wrote its payload into its domain spine (one field per tool).
     const financials = resources["financialsData"] as Record<string, unknown> | undefined;
@@ -217,7 +217,7 @@ describe("financials data spine", () => {
       seed: { session: { state: baseState } },
     });
     expect(first.error).toBeUndefined();
-    const afterFill = await stores.resourceState.getAll("session", sessionId);
+    const afterFill = toStates(await stores.resourceState.getAll("session", sessionId));
     expect((afterFill["financialsData"] as Record<string, unknown>)?.fundamentals).toBeTruthy();
     // The derived surfaces are populated by the run (compute-spine + the price tap).
     expect(afterFill["valuationSpine"]).toBeTruthy();
@@ -238,7 +238,7 @@ describe("financials data spine", () => {
     });
     expect(second.error).toBeUndefined();
 
-    const afterSeed = await stores.resourceState.getAll("session", sessionId);
+    const afterSeed = toStates(await stores.resourceState.getAll("session", sessionId));
     expect(afterSeed["financialsData"]).toEqual({});
     // The derived surfaces are cleared: the prior run's valuation envelope and
     // price chart are gone. (A reset nullable single persists as {} — the
@@ -277,7 +277,7 @@ describe("financials data spine", () => {
     });
     expect(seeded.error).toBeUndefined();
 
-    const afterSeed = await stores.resourceState.getAll("session", sessionId);
+    const afterSeed = toStates(await stores.resourceState.getAll("session", sessionId));
     // The transcript is reset to the round-robin's own init shape — no prior turn.
     expect(afterSeed["p2Contributions"]).toEqual({ entries: [] });
     // Lens convergence is cleared: whatever the stored representation (absent /
@@ -306,7 +306,7 @@ describe("financials data spine", () => {
     });
     expect(fill.error).toBeUndefined();
     const subjectFundamentals = (
-      (await stores.resourceState.getAll("session", sessionId))["financialsData"] as {
+      (toStates(await stores.resourceState.getAll("session", sessionId)))["financialsData"] as {
         fundamentals?: unknown;
       }
     ).fundamentals;
@@ -330,7 +330,7 @@ describe("financials data spine", () => {
     expect(cross.output).not.toEqual(subjectFundamentals);
     // ...and the subject's spine payload is untouched (not overwritten with AAPL).
     const afterCross = (
-      (await stores.resourceState.getAll("session", sessionId))["financialsData"] as {
+      (toStates(await stores.resourceState.getAll("session", sessionId)))["financialsData"] as {
         fundamentals?: unknown;
       }
     ).fundamentals;

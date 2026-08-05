@@ -17,6 +17,7 @@ import { createInMemoryActiveRequestRegistry } from "./memory/active-request-reg
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
 import { createInMemoryContentStore } from "./memory/content-store";
 import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
+import { toState, toStates } from "./resource-state-views";
 import { createInMemoryProjectStore } from "./memory/org-store";
 import { createInMemoryRequestStore } from "./memory/request-store";
 import { createInMemorySessionStore } from "./memory/session-store";
@@ -40,6 +41,7 @@ export type {
   ContentStore,
   LeaseStore,
   ResourceStateStore,
+  VersionedResourceState,
   ExpectedVersion,
   OrgListOptions,
   OrgRecord,
@@ -98,6 +100,8 @@ export {
   createInMemoryCheckpointStore,
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
+  toState,
+  toStates,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,

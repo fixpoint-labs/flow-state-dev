@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../flows/analysis/store-price-history";
 import { get_price_history } from "../flows/analysis/tools/data/get_price_history";
@@ -59,7 +59,7 @@ async function readSlice(
   stores: ReturnType<typeof createInMemoryStores>,
   sessionId: string,
 ): Promise<StoredSlice | null | undefined> {
-  const resources = await stores.resourceState.getAll("session", sessionId);
+  const resources = toStates(await stores.resourceState.getAll("session", sessionId));
   return resources["priceHistory"] as StoredSlice | null | undefined;
 }
 

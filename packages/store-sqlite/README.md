@@ -87,6 +87,14 @@ Everything this adapter stores survives a process restart, including resource st
 | Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
 | Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
 
+### Resource state carries a version, and deletes leave a row behind
+
+`resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap — a write states the version it expects and is refused if the row moved since it was read — which is what stops two concurrent workers from silently overwriting each other's changes to one resource.
+
+The migration is applied automatically on open and is **purely additive**: `ADD COLUMN` with defaults, no table rebuild, no backfill, indexes untouched, and `state` stays `NOT NULL`. Rows written before the upgrade read as **live at version 1**. Re-opening an already-migrated database is a no-op, so it is safe to roll forward repeatedly.
+
+**Operator-visible:** deleting a resource does not remove its row. It marks the row `deleted`, keeps the version, and replaces the payload with `{}`. That retained version is what makes delete-then-recreate safe. Nothing reclaims these rows — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one small row per deleted key. Plan for it rather than expecting a cleanup pass that does not exist.
+
 ```ts
 const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
 await stores.content.set("session", sessionId, "artifacts/report", "…body…");

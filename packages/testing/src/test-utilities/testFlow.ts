@@ -92,9 +92,11 @@ async function seedFlowStores(options: {
     if (resources === undefined) return;
     const normalized = toJsonObjectRecord(cloneValue(resources));
     for (const [key, value] of Object.entries(normalized)) {
+      // Seed-if-absent against a fresh scope. `"any"` matches the harness's
+      // get-then-set shape; nothing else is writing this scope yet.
       const existing = await options.stores.resourceState.get(scopeType, scopeId, key);
       if (existing === undefined) {
-        await options.stores.resourceState.set(scopeType, scopeId, key, value);
+        await options.stores.resourceState.set(scopeType, scopeId, key, value, "any");
       }
     }
   };

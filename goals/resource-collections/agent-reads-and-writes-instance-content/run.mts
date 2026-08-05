@@ -109,7 +109,7 @@ await runGoal(async () => {
   );
   // State in ResourceStateStore (so the collection enumerates the instance),
   // body in ContentStore (what readContent returns) — FIX-689 keeps them apart.
-  await stores.resourceState.set("session", sessionId, storageKey, { title: "A" });
+  await stores.resourceState.set("session", sessionId, storageKey, { title: "A" }, "any");
   await stores.content.set("session", sessionId, storageKey, fixture.seedBody);
 
   const responseEmitter = createResponseEmitter({ requestId: "goal_req_1", onEvent: () => {} });

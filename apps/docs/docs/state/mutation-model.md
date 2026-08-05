@@ -42,6 +42,20 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 `ConcurrentModificationError` continues to surface from these paths when retries exhaust. That's the contract: if you write through `persist` and the remote authority moves faster than your retry budget, you need to either widen the budget or restructure to avoid the contention.
 
+### Resource state is compare-and-swap too, with its own rules
+
+The four scopes above hold one state record each. **Resource state** — the state behind `ctx.sessionResources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource, and it used to be plain last-write-wins: two workers reading the same task, each changing a different field, and whoever saved second silently erased the first.
+
+It is now versioned. Every stored resource carries a version that increases by one on each committed write and is never reused. A write says which version it expected to find; if the resource moved since you read it, the write is refused rather than applied on top.
+
+Nothing changes in flow code — you still write `patchState` and `updateState`, and the framework supplies the version. What changes is that two contexts patching different fields of one resource now both land, instead of one quietly winning.
+
+Resource state does not share the retry driver the scopes above use, and the reason is worth knowing if you are reading the code: a resource can be **deleted**, and it can be **created only if absent**. Both produce conflicts that must not be retried. Retrying a write against a deleted resource would resurrect it from a stale read; retrying a losing create would overwrite the winner. The scope driver treats every conflict as retryable, which is right for a record that always exists and wrong here.
+
+Deleting a resource leaves a small marker behind rather than removing the row outright, and that marker keeps the version. It is what makes delete-then-recreate safe: a worker holding a version from before the delete can never match the resource that replaced it, because versions are never reused. These markers are kept indefinitely — nothing sweeps them — which costs a row per deleted key and is what the guarantee is built on.
+
+One limit stated plainly: on the filesystem store the comparison is held per key within a single process. That closes the race between two contexts in one Node process, which is the one this fixes. It does not coordinate two operating-system processes pointed at the same directory. The in-memory, SQLite and Postgres stores do a real compare-and-swap in the store itself.
+
 ## Writing an updater that may run twice
 
 The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On the CAS path above, that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.

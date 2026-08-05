@@ -10,7 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toState } from "@flow-state-dev/engine";
 import { testBlock, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -713,7 +713,7 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     // Nullable single resources persist their reset value as an empty object;
     // the schema hydrates that representation back to null for consumers.
     expect(
-      await stores.resourceState.get("session", sessionId, "rewardToRisk"),
+      toState(await stores.resourceState.get("session", sessionId, "rewardToRisk")),
     ).toEqual({});
   });
 

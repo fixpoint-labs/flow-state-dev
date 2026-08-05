@@ -16,7 +16,7 @@
  * the portfolio-fit derivation is independent of the lens pack.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -444,7 +444,7 @@ async function runAndReadPmMemo(opts: {
     unmockedGeneratorPolicy: "error",
   });
   expect(result.status).toBe("completed");
-  const resources = await stores.resourceState.getAll("session", opts.sessionId);
+  const resources = toStates(await stores.resourceState.getAll("session", opts.sessionId));
   return resources["memos/p5/portfolio-manager"] as PmMemo | undefined;
 }
 

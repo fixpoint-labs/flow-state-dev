@@ -496,20 +496,46 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 ## ResourceStateStore
 
-`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem `ResourceStateStore` writes each resource's state as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem adapter writes each resource as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+
+It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so it is compare-and-swap: every write carries an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
 
 ```ts
+type VersionedResourceState = { state: JsonObject; version: number };
+
 interface ResourceStateStore {
-  get(scopeType, scopeId, resourceKey): Promise<JsonObject | undefined>;
-  set(scopeType, scopeId, resourceKey, state): Promise<void>;
-  delete(scopeType, scopeId, resourceKey): Promise<void>;
-  getAll(scopeType, scopeId): Promise<Record<string, JsonObject>>;
-  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, JsonObject>>;
+  get(scopeType, scopeId, resourceKey): Promise<VersionedResourceState | undefined>;
+  set(scopeType, scopeId, resourceKey, state, expectedVersion): Promise<SetResult<JsonObject>>;
+  delete(scopeType, scopeId, resourceKey, expectedVersion): Promise<SetResult<JsonObject>>;
+  getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
 
-The interface and loading semantics mirror `ContentStore` exactly: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` for collections), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
+`expectedVersion` is a number, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
+
+- **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
+- **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
+
+### Versions, deletes and retention
+
+| Rule | Behaviour |
+|---|---|
+| Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A deleted key reads exactly like an absent one |
+| Version | First create writes `1`; each committed write adds one; **never reused**. A recreate continues from the tombstone's version |
+| `delete` | Takes a version like every other write, retains it, and drops the payload. A delete chosen from a stale snapshot conflicts rather than tombstoning a newer generation |
+| `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
+| Retention | Tombstones are kept **indefinitely, in every scope**. Nothing reclaims one |
+| Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
+
+Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it. A tombstone that is never removed is always sound. It costs one row per deleted key.
+
+`toState` / `toStates` are exported for readers that only want the stored value and not the version beside it. Reach for them rather than an inline `.state` — the versioned shape is structurally assignable to `JsonObject`, so a missing unwrap is not a type error, just a wrong value handed downstream.
+
+### Per-adapter guarantee
+
+Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts in one Node process, and does not coordinate two OS processes over one directory.
 
 ## CheckpointStore
 

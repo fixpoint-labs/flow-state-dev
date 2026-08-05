@@ -10,7 +10,7 @@
  *     with a soft `userThesisWarning` surfaced on session state.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -376,7 +376,7 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(0);
 
-    const resourceState = await stores.resourceState.getAll("session", sessionId);
+    const resourceState = toStates(await stores.resourceState.getAll("session", sessionId));
     expect(resourceState["memos/p6/thesis-alignment"]).toBeUndefined();
   });
 
@@ -407,7 +407,7 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(1);
 
-    const resourceState = await stores.resourceState.getAll("session", sessionId);
+    const resourceState = toStates(await stores.resourceState.getAll("session", sessionId));
     const memo = resourceState["memos/p6/thesis-alignment"] as
       | { status?: string; alignment?: string | null }
       | undefined;

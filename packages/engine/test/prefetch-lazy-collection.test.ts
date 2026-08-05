@@ -74,7 +74,7 @@ const coll = (ctx: Awaited<ReturnType<typeof ctxFor>>): LazyColl =>
 describe("FIX-688: lazy collection accessor", () => {
   it("get() issues a single-row store read and returns a sync-readable ref", async () => {
     const { stores, get } = spyStores();
-    await stores.resourceState.set("session", "s1", "lz/a", { n: 5 });
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 5 }, "any");
     const ctx = await ctxFor(stores);
     get.mockClear();
 
@@ -90,7 +90,7 @@ describe("FIX-688: lazy collection accessor", () => {
 
   it("single-flights concurrent get() of the same key", async () => {
     const { stores, get } = spyStores();
-    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 });
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     const ctx = await ctxFor(stores);
     get.mockClear();
 
@@ -100,8 +100,8 @@ describe("FIX-688: lazy collection accessor", () => {
 
   it("list() issues one prefix read and warms the cache for later gets", async () => {
     const { stores, get, getByPrefix } = spyStores();
-    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 });
-    await stores.resourceState.set("session", "s1", "lz/b", { n: 2 });
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
+    await stores.resourceState.set("session", "s1", "lz/b", { n: 2 }, "any");
     const ctx = await ctxFor(stores);
     getByPrefix.mockClear();
     get.mockClear();
@@ -119,8 +119,8 @@ describe("FIX-688: lazy collection accessor", () => {
 
   it("does not resurrect a key deleted while the prefix read was in flight", async () => {
     const { stores } = spyStores();
-    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 });
-    await stores.resourceState.set("session", "s1", "lz/b", { n: 2 });
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
+    await stores.resourceState.set("session", "s1", "lz/b", { n: 2 }, "any");
     const ctx = await ctxFor(stores);
 
     // Pull `lz/a` into the request cache so the delete has something to remove.
@@ -184,7 +184,7 @@ describe("FIX-688: lazy collection accessor", () => {
 
   it("treats a miss as authoritative after the prefix is bulk-loaded — zero extra reads", async () => {
     const { stores, get } = spyStores();
-    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 });
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     const ctx = await ctxFor(stores);
 
     await coll(ctx).list(); // bulk-loads the "lz/" prefix
@@ -200,7 +200,7 @@ describe("FIX-688: lazy collection accessor", () => {
 
     const ref = await coll(ctx).create("x", { n: 7 });
     expect(ref.state.n).toBe(7);
-    expect(await stores.resourceState.get("session", "s1", "lz/x")).toEqual({ n: 7 });
+    expect((await stores.resourceState.get("session", "s1", "lz/x"))?.state).toEqual({ n: 7 });
 
     get.mockClear();
     const got = await coll(ctx).get("x");
@@ -210,7 +210,7 @@ describe("FIX-688: lazy collection accessor", () => {
 
   it("does not preload a flow-level lazy collection at request start", async () => {
     const { stores, getByPrefix } = spyStores();
-    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 });
+    await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     await ctxFor(stores);
     expect(getByPrefix.mock.calls.filter((c) => c[2] === "lz/").length).toBe(0);
   });

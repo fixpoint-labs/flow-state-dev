@@ -2,15 +2,35 @@
  * In-memory resource state store implementation.
  *
  * Stores resource state (single-resource and collection-instance alike) in a
- * flat Map keyed by `scopeType:scopeId:resourceKey`. The state-layer twin of
- * the in-memory ContentStore. Suitable for development, testing, and
- * single-process deployments where state need not survive process restarts.
+ * flat Map keyed by `scopeType:scopeId:resourceKey`. Suitable for development,
+ * testing, and single-process deployments where state need not survive
+ * process restarts.
+ *
+ * Unlike the in-memory `ContentStore` this is a compare-and-swap store: each
+ * row carries a monotonic version and a lifecycle, deletes tombstone rather
+ * than remove, and tombstones are retained indefinitely. See
+ * {@link ResourceStateStore} for the semantics every adapter shares. JS
+ * single-threaded execution gives the compare-and-set its atomicity here —
+ * there is no await between the read and the write.
  */
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { ContentScopeType, ResourceStateStore } from "../types";
+import type {
+  ContentScopeType,
+  ExpectedVersion,
+  ResourceStateStore,
+  SetResult,
+  VersionedResourceState
+} from "../types";
+
+/** A stored row: the state, its version, and whether it is live or a tombstone. */
+type ResourceStateRow = {
+  state: JsonObject;
+  version: number;
+  lifecycle: "live" | "deleted";
+};
 
 export class InMemoryResourceStateStore implements ResourceStateStore {
-  private readonly data = new Map<string, JsonObject>();
+  private readonly data = new Map<string, ResourceStateRow>();
 
   private key(scopeType: ContentScopeType, scopeId: string, resourceKey: string): string {
     return `${scopeType}:${scopeId}:${resourceKey}`;
@@ -20,19 +40,62 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     return `${scopeType}:${scopeId}:`;
   }
 
-  async get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<JsonObject | undefined> {
-    return this.data.get(this.key(scopeType, scopeId, resourceKey));
+  async get(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    resourceKey: string
+  ): Promise<VersionedResourceState | undefined> {
+    const row = this.data.get(this.key(scopeType, scopeId, resourceKey));
+    if (row === undefined || row.lifecycle !== "live") return undefined;
+    return { state: row.state, version: row.version };
   }
 
-  async set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void> {
-    this.data.set(this.key(scopeType, scopeId, resourceKey), state);
+  async set(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    resourceKey: string,
+    state: JsonObject,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<JsonObject>> {
+    const mapKey = this.key(scopeType, scopeId, resourceKey);
+    const row = this.data.get(mapKey);
+    const check = checkWriteVersion(row, expectedVersion);
+    if (check !== undefined) return check;
+
+    // A recreate continues from the tombstone's version, so a version is
+    // never reused for a key that has been deleted and written again.
+    const nextVersion = (row?.version ?? 0) + 1;
+    this.data.set(mapKey, { state, version: nextVersion, lifecycle: "live" });
+    return { ok: true, version: nextVersion };
   }
 
-  async delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void> {
-    this.data.delete(this.key(scopeType, scopeId, resourceKey));
+  async delete(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    resourceKey: string,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<JsonObject>> {
+    const mapKey = this.key(scopeType, scopeId, resourceKey);
+    const row = this.data.get(mapKey);
+
+    // Nothing live to remove: idempotent success, and no tombstone is minted
+    // for a key that never existed (there is no observer to fence).
+    if (row === undefined) return { ok: true, version: 0 };
+    if (row.lifecycle !== "live") return { ok: true, version: row.version };
+
+    const check = checkWriteVersion(row, expectedVersion);
+    if (check !== undefined) return check;
+
+    // Retain the version, drop the payload — the version is the only thing a
+    // tombstone has to carry, and it is retained indefinitely.
+    this.data.set(mapKey, { state: {}, version: row.version, lifecycle: "deleted" });
+    return { ok: true, version: row.version };
   }
 
-  async getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, JsonObject>> {
+  async getAll(
+    scopeType: ContentScopeType,
+    scopeId: string
+  ): Promise<Record<string, VersionedResourceState>> {
     return this.getByPrefix(scopeType, scopeId, "");
   }
 
@@ -40,14 +103,15 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
     scopeType: ContentScopeType,
     scopeId: string,
     keyPrefix: string
-  ): Promise<Record<string, JsonObject>> {
+  ): Promise<Record<string, VersionedResourceState>> {
     const prefix = this.prefix(scopeType, scopeId);
-    const result: Record<string, JsonObject> = {};
-    for (const [key, value] of this.data) {
+    const result: Record<string, VersionedResourceState> = {};
+    for (const [key, row] of this.data) {
       if (!key.startsWith(prefix)) continue;
+      if (row.lifecycle !== "live") continue;
       const resourceKey = key.slice(prefix.length);
       if (resourceKey.startsWith(keyPrefix)) {
-        result[resourceKey] = value;
+        result[resourceKey] = { state: row.state, version: row.version };
       }
     }
     return result;
@@ -55,12 +119,45 @@ export class InMemoryResourceStateStore implements ResourceStateStore {
 
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
     const prefix = this.prefix(scopeType, scopeId);
-    for (const key of this.data.keys()) {
-      if (key.startsWith(prefix)) {
-        this.data.delete(key);
-      }
+    for (const [key, row] of this.data) {
+      if (!key.startsWith(prefix)) continue;
+      if (row.lifecycle !== "live") continue;
+      this.data.set(key, { state: {}, version: row.version, lifecycle: "deleted" });
     }
   }
+}
+
+/**
+ * Shared write predicate: returns a conflict `SetResult` when `expectedVersion`
+ * does not admit a write against `row`, or `undefined` when it does.
+ *
+ * A conflict reports the current **live** value, or `undefined` when the row
+ * is a tombstone — the distinction a caller needs in order to treat a deleted
+ * resource as terminal rather than refreshing from a stale cache.
+ */
+export function checkWriteVersion(
+  row: { state: JsonObject; version: number; lifecycle: "live" | "deleted" } | undefined,
+  expectedVersion: ExpectedVersion
+): { ok: false; conflict: { currentValue: JsonObject | undefined; currentVersion: number } } | undefined {
+  if (expectedVersion === "any") return undefined;
+
+  const isLive = row !== undefined && row.lifecycle === "live";
+  const conflict = {
+    ok: false as const,
+    conflict: {
+      currentValue: isLive ? row.state : undefined,
+      currentVersion: row?.version ?? 0
+    }
+  };
+
+  // `0` means "no live row" — create-if-absent, satisfied by a tombstone as
+  // well as a key that never existed.
+  if (expectedVersion === 0) return isLive ? conflict : undefined;
+
+  // A positive version requires a live row at exactly that version. A
+  // tombstone retaining the same number must still be refused, or the delete
+  // never happened.
+  return isLive && row.version === expectedVersion ? undefined : conflict;
 }
 
 export function createInMemoryResourceStateStore(): ResourceStateStore {

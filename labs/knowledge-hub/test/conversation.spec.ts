@@ -12,7 +12,7 @@
 // check over the MCP HTTP endpoint.
 
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import knowledgeHubFlow from "../src/flow";
 import type { InboxRecord } from "../src/inbox";
@@ -36,7 +36,10 @@ function capture(stores: Stores, sessionId: string, input: Record<string, unknow
 }
 
 async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
-  return (await stores.resourceState.getAll("user", USER)) as Record<string, InboxRecord>;
+  return toStates(await stores.resourceState.getAll("user", USER)) as unknown as Record<
+    string,
+    InboxRecord
+  >;
 }
 
 /** The topic description stashed in a session's state (the conversation record). */
@@ -157,7 +160,7 @@ describe("logActivity conversationId", () => {
       source: null,
       status: "pending",
       fingerprint: "deadbeef",
-    });
+    }, "any");
 
     const listed = await testFlow({
       flow: knowledgeHubFlow,

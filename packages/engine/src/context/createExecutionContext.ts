@@ -41,6 +41,7 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ExternalResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { createScopePersist } from "../stores/scope-persist";
+import { toState, toStates } from "../stores/resource-state-views";
 import type { TraceStore } from "../stores/types";
 import type {
   ContentScopeType,
@@ -1208,7 +1209,7 @@ export async function createExecutionContext<
           if (storageKey in stateRef.current) return;
           const started = Date.now();
           const [state, content] = await Promise.all([
-            stores.resourceState.get(scope, scopeId, storageKey),
+            stores.resourceState.get(scope, scopeId, storageKey).then(toState),
             stores.content.get(scope, scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
@@ -1235,7 +1236,7 @@ export async function createExecutionContext<
           if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
           const started = Date.now();
           const [state, content] = await Promise.all([
-            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
+            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix).then(toStates),
             stores.content.getByPrefix(scope, scopeId, keyPrefix)
           ]);
           durationMs = Date.now() - started;
@@ -1428,7 +1429,10 @@ export async function createExecutionContext<
         const scopeId = resolveResourceStorageScopeId(scope, key);
         if (scopeId === undefined) return;
         if (deepEqual(stateRef.current[key], value)) return;
-        await stores.resourceState.set(scope, scopeId, key, value);
+        // `"any"` is the pre-conversion posture. Sub-PR b puts the resource
+        // CAS driver in front of this persister and passes the version the
+        // driver is writing against; this function stays a single attempt.
+        await stores.resourceState.set(scope, scopeId, key, value, "any");
         stateRef.current[key] = value;
       },
       deleteResourceKey: async (key: string): Promise<void> => {
@@ -1441,7 +1445,9 @@ export async function createExecutionContext<
         // request the store row is left untouched — a pre-existing gap, not
         // introduced by the per-key path.
         if (scopeId === undefined || !(key in stateRef.current)) return;
-        await stores.resourceState.delete(scope, scopeId, key);
+        // `"any"` is the pre-conversion posture — sub-PR b gives both registry
+        // delete writers the version they observed and makes conflict terminal.
+        await stores.resourceState.delete(scope, scopeId, key, "any");
         delete stateRef.current[key];
         deletedStateKeys[scope].add(key);
       },

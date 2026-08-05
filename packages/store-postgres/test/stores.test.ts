@@ -425,45 +425,66 @@ describe("PostgreSQL store adapter", () => {
   });
 
   describe("resource state store", () => {
-    it("set then get round-trips JSONB state", async () => {
+    it("set then get round-trips JSONB state with its version", async () => {
       const s = await freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 });
+      await s.resourceState.set(
+        "session",
+        "s1",
+        "files/a.ts",
+        { language: "ts", lines: 10 },
+        0
+      );
       expect(await s.resourceState.get("session", "s1", "files/a.ts")).toEqual({
-        language: "ts",
-        lines: 10
+        state: { language: "ts", lines: 10 },
+        version: 1
       });
     });
 
     it("getByPrefix returns only keys matching the prefix", async () => {
       const s = await freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
-      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 });
-      await s.resourceState.set("session", "s1", "notes", { v: 3 });
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 }, 0);
+      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 }, 0);
+      await s.resourceState.set("session", "s1", "notes", { v: 3 }, 0);
 
       expect(await s.resourceState.getByPrefix("session", "s1", "files/")).toEqual({
-        "files/a.ts": { v: 1 },
-        "files/b.ts": { v: 2 }
+        "files/a.ts": { state: { v: 1 }, version: 1 },
+        "files/b.ts": { state: { v: 2 }, version: 1 }
       });
     });
 
     it("getByPrefix treats LIKE metacharacters in the prefix literally", async () => {
       const s = await freshStores();
-      await s.resourceState.set("session", "s1", "a_b/1", { v: "match" });
-      await s.resourceState.set("session", "s1", "axb/1", { v: "no" });
-      await s.resourceState.set("session", "s1", "other", { v: "no" });
+      await s.resourceState.set("session", "s1", "a_b/1", { v: "match" }, 0);
+      await s.resourceState.set("session", "s1", "axb/1", { v: "no" }, 0);
+      await s.resourceState.set("session", "s1", "other", { v: "no" }, 0);
 
       expect(await s.resourceState.getByPrefix("session", "s1", "a_b/")).toEqual({
-        "a_b/1": { v: "match" }
+        "a_b/1": { state: { v: "match" }, version: 1 }
       });
     });
 
-    it("set overwrites and delete removes a single key", async () => {
+    it("set overwrites and delete tombstones a single key", async () => {
       const s = await freshStores();
-      await s.resourceState.set("session", "s1", "k", { v: 1 });
-      await s.resourceState.set("session", "s1", "k", { v: 2 });
-      expect(await s.resourceState.get("session", "s1", "k")).toEqual({ v: 2 });
-      await s.resourceState.delete("session", "s1", "k");
+      await s.resourceState.set("session", "s1", "k", { v: 1 }, 0);
+      await s.resourceState.set("session", "s1", "k", { v: 2 }, 1);
+      expect(await s.resourceState.get("session", "s1", "k")).toEqual({
+        state: { v: 2 },
+        version: 2
+      });
+      await s.resourceState.delete("session", "s1", "k", 2);
       expect(await s.resourceState.get("session", "s1", "k")).toBeUndefined();
+    });
+
+    it("keeps the version numeric across the BIGINT column", async () => {
+      // node-pg hands back BIGINT as a string; an uncoerced version would make
+      // every `===` comparison in the CAS predicate fail silently.
+      const s = await freshStores();
+      await s.resourceState.set("session", "s1", "k", { v: 1 }, 0);
+      const read = await s.resourceState.get("session", "s1", "k");
+      expect(typeof read?.version).toBe("number");
+      // and the round-trip works: passing it straight back must commit
+      const second = await s.resourceState.set("session", "s1", "k", { v: 2 }, read!.version);
+      expect(second).toEqual({ ok: true, version: 2 });
     });
   });
 

@@ -15,6 +15,7 @@ import { getPatternPrefix, matchesPattern, resolveCollectionKey, searchExternalR
 import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import { toState, toStates } from "../stores/resource-state-views";
 import {
   extractBareTopic,
   jsonResponse,
@@ -257,7 +258,10 @@ export async function handleCreateCollectionItem(
     await ctx.stores.content.set("session", session.id, storageKey, content);
   }
 
-  await ctx.stores.resourceState.set("session", session.id, storageKey, initialState);
+  // `"any"` is the pre-conversion posture: this route keeps today's
+  // last-write-wins behaviour until sub-PR c makes it a create-if-absent CAS
+  // insert that wins the key before any content is written.
+  await ctx.stores.resourceState.set("session", session.id, storageKey, initialState, "any");
 
   return jsonResponse(201, { topic: topic.trim() });
 }
@@ -425,9 +429,11 @@ export async function handleListCollectionState(
     // whole scope. An empty prefix (e.g. `[topic]/observations`) falls back to
     // getAll.
     const keyPrefix = getPatternPrefix(config.pattern);
-    persisted = keyPrefix
-      ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
-      : await ctx.stores.resourceState.getAll("session", session.id);
+    persisted = toStates(
+      keyPrefix
+        ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
+        : await ctx.stores.resourceState.getAll("session", session.id)
+    );
   } else {
     // User/org scope: resolve the persisted record via the shared scope
     // resolver (honors flowIsolation). A missing user/org record is a valid
@@ -519,7 +525,7 @@ export async function handleGetCollectionItemState(
       extCtx
     );
   } else if (scope === "session") {
-    value = await ctx.stores.resourceState.get("session", session.id, storageKey);
+    value = toState(await ctx.stores.resourceState.get("session", session.id, storageKey));
   } else {
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present
@@ -687,8 +693,12 @@ export async function handleDeleteCollectionItem(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
+  // `"any"` is the pre-conversion posture. Sub-PR c replaces this pair with a
+  // version-conditional state delete that must commit *before* the content
+  // delete runs — sequencing the two is the point, so the unordered
+  // `Promise.all` goes with it.
   await Promise.all([
-    ctx.stores.resourceState.delete("session", session.id, storageKey),
+    ctx.stores.resourceState.delete("session", session.id, storageKey, "any"),
     ctx.stores.content.delete("session", session.id, storageKey),
   ]);
 

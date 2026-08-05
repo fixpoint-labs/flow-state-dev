@@ -40,6 +40,7 @@ import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helper
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
+import { toState, toStates } from "../stores/resource-state-views";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -404,7 +405,9 @@ export async function loadDeclaredResourceState(
     if (isCollectionConfig(config)) {
       const prefix = getPatternPrefix(config.pattern);
       const keyPrefix = prefix === "" ? "" : `${prefix}/`;
-      collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
+      collectionReads.push(
+        resourceState.getByPrefix(scopeType, scopeId, keyPrefix).then(toStates)
+      );
     } else {
       fixedKeys.add(storageKeys[accessor]!);
     }
@@ -414,7 +417,8 @@ export async function loadDeclaredResourceState(
     Promise.all(collectionReads),
     Promise.all(
       [...fixedKeys].map(
-        async (key) => [key, await resourceState.get(scopeType, scopeId, key)] as const
+        async (key) =>
+          [key, toState(await resourceState.get(scopeType, scopeId, key))] as const
       )
     )
   ]);

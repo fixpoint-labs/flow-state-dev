@@ -4,7 +4,7 @@
  * and confirms patch semantics across multiple writes.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import analysisFlow from "../flows/analysis/flow";
 
@@ -45,7 +45,7 @@ describe("setInstructions action", () => {
     expect(userRecord, `record at ${USER_KEY}`).toBeDefined();
     // Resource state lives in the ResourceStateStore (FIX-689), keyed by the
     // user record id, not inline on the record.
-    const resources = await stores.resourceState.getAll("user", USER_KEY);
+    const resources = toStates(await stores.resourceState.getAll("user", USER_KEY));
     const persisted = resources[STORAGE_KEY] as
       | Record<string, string>
       | undefined;
@@ -88,7 +88,7 @@ describe("setInstructions action", () => {
       },
     });
 
-    const resources = await stores.resourceState.getAll("user", USER_KEY);
+    const resources = toStates(await stores.resourceState.getAll("user", USER_KEY));
     const persisted = resources[STORAGE_KEY] as
       | Record<string, string>
       | undefined;

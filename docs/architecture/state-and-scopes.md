@@ -73,6 +73,23 @@ Apply `transientSlot()` last in the schema chain — after `.optional()`, `.defa
 
 Every persisted scope state is versioned. Writes provide an expected version; mismatches trigger optimistic retry.
 
+**Resource state is versioned too, and it has its own driver.** The four scopes above hold one state record each; resource state lives in `ResourceStateStore`, keyed per resource, and was originally modelled on `ContentStore` as plain last-write-wins. That model is wrong for structured state concurrent workers read-modify-write, so it is now compare-and-swap: `set` and `delete` take an `ExpectedVersion` and return a `SetResult`, and the three reads carry the version alongside the state.
+
+It does **not** reuse `runWithCAS`, and the reason is policy rather than shape. Two of its conflicts are terminal, not retryable:
+
+| Conflict | Resource driver | `runWithCAS` would |
+|---|---|---|
+| No live row (deleted), op is a patch | Terminal — abort, never recreate | Fall back to the container's stale cached state and retry, resurrecting the resource |
+| Create-if-absent (`expectedVersion: 0`) loses | Terminal — surface already-exists | Refresh to the winner's version and retry, overwriting the winner |
+
+`0` means *no live row*, so it is create-if-absent and a tombstone satisfies it. Deletes mark a `lifecycle` column rather than removing the row, retain the version, and drop the payload; `deleteAll` bulk-marks the scope. Reads filter to `live`, so a tombstone is indistinguishable from an absent key to callers.
+
+**Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing reclaims a tombstone; that is deliberate, and it is why the ABA argument needs no sweep, no timer and no retention window. The cost is one row per deleted key, in every scope.
+
+**What per-key CAS honestly does not close**, recorded so the table above is not read as full coverage: a create of a *previously-absent* key racing `deleteAll` still lands, because `expectedVersion: 0` is satisfied by a key that never existed and a bulk mark only touches rows that already exist. That is a cross-key invariant, and no per-key predicate expresses one. The `maxInstances` cap is the same shape — a read-then-act on a set.
+
+Per-adapter guarantee: real CAS on memory, SQLite and Postgres; the filesystem adapter compares under a per-key mutex on the store instance, which closes the in-process race and not a cross-process one.
+
 ```ts
 // The framework handles CAS internally. You just use the ops.
 await ctx.session.patchState({ count: newCount });

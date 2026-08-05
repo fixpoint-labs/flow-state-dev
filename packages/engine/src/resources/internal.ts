@@ -22,6 +22,7 @@ import type {
 import { isExternalResourceCollection, readExternalRecord } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
+import { toStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
   resolveSessionStorageKey,
@@ -192,7 +193,7 @@ export async function getPersistedData(
 
   if (scope === "session") {
     const [resources, content] = await Promise.all([
-      ctx.stores.resourceState.getAll("session", session.id),
+      ctx.stores.resourceState.getAll("session", session.id).then(toStates),
       ctx.stores.content.getAll("session", session.id)
     ]);
     return { resources, content };
@@ -206,7 +207,9 @@ export async function getPersistedData(
     // flows' shared rows under the bare key never surface.
     const scopeIds = resourceScopeIds(session.userId, toIsolationFlow(flow), "user");
     const [resources, content] = await Promise.all([
-      mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id))),
+      mergeScopeReads(
+        scopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toStates))
+      ),
       mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("user", id)))
     ]);
     return { resources, content };
@@ -216,7 +219,9 @@ export async function getPersistedData(
   if (!session.orgId) return undefined;
   const scopeIds = resourceScopeIds(session.orgId, toIsolationFlow(flow), "org");
   const [resources, content] = await Promise.all([
-    mergeScopeReads(scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id))),
+    mergeScopeReads(
+      scopeIds.map((id) => ctx.stores.resourceState.getAll("org", id).then(toStates))
+    ),
     mergeScopeReads(scopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   return { resources, content };

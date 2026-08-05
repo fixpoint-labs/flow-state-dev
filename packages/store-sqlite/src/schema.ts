@@ -200,6 +200,8 @@ CREATE TABLE IF NOT EXISTS resource_state (
   scope_id      TEXT NOT NULL,
   resource_key  TEXT NOT NULL,
   state         TEXT NOT NULL,
+  version       INTEGER NOT NULL DEFAULT 1,
+  lifecycle     TEXT NOT NULL DEFAULT 'live',
   PRIMARY KEY (scope_type, scope_id, resource_key)
 );
 CREATE INDEX IF NOT EXISTS idx_resource_state_scope ON resource_state(scope_type, scope_id);
@@ -401,6 +403,38 @@ function migrateAddSuspensionStatusColumns(db: Database.Database): void {
 }
 
 /**
+ * Add `version` and `lifecycle` to a pre-CAS `resource_state` table.
+ *
+ * Purely additive. `state` stays `TEXT NOT NULL` and the table is never
+ * rebuilt — a tombstone stores `{}` rather than a null state precisely so this
+ * migration needs no `DROP NOT NULL` (SQLite has none) and no twelve-step
+ * table rebuild on live data. Indexes are untouched.
+ *
+ * The defaults are the legacy contract: an existing row becomes **live at
+ * version 1**, never absent, so a reader that predates versioning keeps seeing
+ * its data and an `expectedVersion: 0` create against it correctly conflicts.
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info`
+ * first, which also makes a second boot a no-op.
+ */
+function migrateAddResourceStateVersioning(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'resource_state'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('resource_state')")
+    .all() as Array<{ name: string }>;
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("version")) {
+    db.exec("ALTER TABLE resource_state ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!names.has("lifecycle")) {
+    db.exec("ALTER TABLE resource_state ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'live'");
+  }
+}
+
+/**
  * Apply per-connection PRAGMAs (busy_timeout, synchronous, cache_size,
  * temp_store, foreign_keys) plus journal_mode (persisted on the database
  * file but cheap to re-issue). Every new better-sqlite3 connection starts
@@ -431,6 +465,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateAddActiveRequestsSource(db);
   migrateAddTenantId(db);
   migrateAddSuspensionStatusColumns(db);
+  migrateAddResourceStateVersioning(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);
