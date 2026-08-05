@@ -514,10 +514,12 @@ interface ResourceStateStore {
 }
 ```
 
-`expectedVersion` is a number, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
+`expectedVersion` is a non-negative integer, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
 
 - **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
 - **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
+
+A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
 
 ### Versions, deletes and retention
 

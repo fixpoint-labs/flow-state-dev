@@ -789,15 +789,20 @@ describe("per-key state write routing", () => {
     const stateDeleteKeys: string[] = [];
     let sessionSetCount = 0;
 
+    // Forward every argument, `expectedVersion` included. Dropping it does not
+    // just lose a value — it changes the outcome: the store read `undefined` as
+    // a version matching nothing, so every routed write took the conflict path
+    // while these tests asserted only which keys were touched, and passed
+    // regardless.
     const realStateSet = stores.resourceState.set.bind(stores.resourceState);
-    stores.resourceState.set = async (scope, id, key, value) => {
-      stateSetKeys.push(key);
-      return realStateSet(scope, id, key, value);
+    stores.resourceState.set = async (...args) => {
+      stateSetKeys.push(args[2]);
+      return realStateSet(...args);
     };
     const realStateDelete = stores.resourceState.delete.bind(stores.resourceState);
-    stores.resourceState.delete = async (scope, id, key) => {
-      stateDeleteKeys.push(key);
-      return realStateDelete(scope, id, key);
+    stores.resourceState.delete = async (...args) => {
+      stateDeleteKeys.push(args[2]);
+      return realStateDelete(...args);
     };
     const realSessionSet = stores.session.set.bind(stores.session);
     stores.session.set = async (...args) => {

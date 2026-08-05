@@ -55,7 +55,7 @@ import type {
   SetResult,
   VersionedResourceState
 } from "../types";
-import { checkWriteVersion } from "../resource-state-predicate";
+import { assertExpectedVersion, checkWriteVersion } from "../resource-state-predicate";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
 import { createFilesystemResourceStoreWithLayoutOps } from "./filesystem-resource-store";
 
@@ -139,6 +139,7 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       state: JsonObject,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
+      assertExpectedVersion(expectedVersion);
       return gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
         // Guard first: a write that conflicts never reaches the factory's own
         // mutator, so the legacy re-scan has to happen here or a conflicting
@@ -166,6 +167,9 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       resourceKey,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
+      // Ahead of the idempotent short-circuits below: an unusable
+      // `expectedVersion` is refused for every key, live or not.
+      assertExpectedVersion(expectedVersion);
       return gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
         // Same reason as `set`, and sharper: a delete of an absent key returns
         // without writing anything, so without this guard the destructive path

@@ -614,6 +614,7 @@ export type VersionedResourceState = {
  * | `deleteAll` | Bulk-marks every live key in the scope `deleted`. A scope operation, so it takes no expected version |
  * | Retention | **Tombstones are retained indefinitely, in every scope.** Nothing reclaims one, and nothing here depends on anything ever doing so |
  * | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
+ * | Version domain | A numeric `expectedVersion` must be a **non-negative integer**. Negative, fractional, `NaN` and `Infinity` **throw** — a programming error, not a lost race, so it is never folded into a conflict |
  *
  * Retention is what closes the delete/recreate ABA: because a tombstone keeps
  * its version, an observer holding a pre-delete version never matches the row
@@ -647,6 +648,9 @@ export interface ResourceStateStore {
    *   (never existed, or tombstoned) and conflicts against a live one.
    * - `"any"` writes unconditionally — the opt-out, and the posture every
    *   caller that has not adopted CAS passes explicitly.
+   *
+   * A number outside that domain — negative, fractional, `NaN`, `Infinity` —
+   * throws rather than conflicting. The type admits it; the contract does not.
    *
    * On conflict, `conflict.currentValue` is the current live state or
    * `undefined` when the row is tombstoned, and `conflict.currentVersion` is

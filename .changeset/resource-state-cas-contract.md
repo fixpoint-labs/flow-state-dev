@@ -28,6 +28,12 @@ state: deleting an absent or already-tombstoned key succeeds, including when
 two deletes of the same live key race each other. A conflict means a version
 mismatch against a row that is still live, and nothing else.
 
+A numeric `expectedVersion` must be a non-negative integer. `0` means "no live
+row" and real versions start at `1`, so a negative, fractional, `NaN` or
+infinite version names nothing the store can hold — it throws rather than
+reporting a conflict, because it is a programming error at the call site and
+not a lost race.
+
 SQLite and Postgres migrate automatically with `ADD COLUMN` only: no table
 rebuild, no backfill, indexes untouched, and rows written before the upgrade
 read as live at version 1. The filesystem adapter commits state and metadata as

@@ -507,6 +507,51 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it("rejects a numeric expectedVersion that is not a version, rather than treating it as a conflict or a wildcard", async () => {
+      await withStore(async (store) => {
+        await seed(store, "k", makeState(1));
+
+        // `ExpectedVersion` is `number | "any"`, so every one of these is
+        // statically legal at a call site while none of them can name a
+        // stored version: `0` means "no live row" and real versions start at
+        // `1`. That is a programming error, not a lost race, so it is
+        // refused loudly rather than folded into a `SetResult` conflict —
+        // a conflict would invite a retry loop that can never converge, and
+        // would report a concurrency outcome the store never observed.
+        //
+        // `-1` is the sharp one: the SQL adapters carry it as the in-band
+        // "any" sentinel inside the delete predicate, so before this guard a
+        // direct `delete(…, -1)` tombstoned any live row.
+        const notVersions = [-1, -5, 1.5, Number.NaN, Number.POSITIVE_INFINITY];
+        for (const invalid of notVersions) {
+          await expect(store.delete("session", "s1", "k", invalid)).rejects.toThrow(
+            /expectedVersion/
+          );
+          await expect(
+            store.set("session", "s1", "k", makeState(2), invalid)
+          ).rejects.toThrow(/expectedVersion/);
+        }
+
+        // Nothing was written, and in particular `-1` did not delete the row.
+        expect(await store.get("session", "s1", "k")).toEqual({
+          state: makeState(1),
+          version: 1
+        });
+
+        // Also refused on the keys a delete answers without ever consulting
+        // the version — absent, and already tombstoned. Those return early on
+        // some adapters, so a guard placed behind the version check would
+        // leave both paths unreached and this rule unpinned.
+        await expect(store.delete("session", "s1", "never", -1)).rejects.toThrow(
+          /expectedVersion/
+        );
+        await store.delete("session", "s1", "k", 1);
+        await expect(store.delete("session", "s1", "k", -1)).rejects.toThrow(
+          /expectedVersion/
+        );
+      });
+    });
+
     it("a conflict against a tombstone reports no current value, so a caller cannot mistake it for a live row", async () => {
       await withStore(async (store) => {
         await seed(store, "k", makeState(1));

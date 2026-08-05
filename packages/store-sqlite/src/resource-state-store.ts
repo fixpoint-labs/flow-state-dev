@@ -77,7 +77,10 @@ export function createSQLiteResourceStateStore(
       "RETURNING version"
   );
   // Tombstone: retain the version, drop the payload. `-1` is the "any"
-  // sentinel, safe because a real version is always >= 1.
+  // sentinel. What makes it safe is not that a real version is always >= 1 —
+  // that is a fact about the versions the store produces, and the guard sits on
+  // the input side. It is safe because `assertExpectedVersion` has already
+  // refused every negative, so no caller-supplied value reaches this branch.
   const tombstoneIfVersionStmt = db.prepare(
     "UPDATE resource_state SET state = '{}', lifecycle = 'deleted' " +
       "WHERE scope_type = ? AND scope_id = ? AND resource_key = ? " +
@@ -117,6 +120,30 @@ export function createSQLiteResourceStateStore(
       version: row.version,
       lifecycle: row.lifecycle === "live" ? "live" : "deleted"
     };
+  };
+
+  /**
+   * Refuse an `expectedVersion` that cannot name a version.
+   *
+   * Mirrors `assertExpectedVersion` in the engine's
+   * `stores/resource-state-predicate` module — restated for the same reason as
+   * {@link conflictFrom} below, and pinned across all four adapters by the
+   * shared conformance suite. `ExpectedVersion` is `number | "any"`, so a
+   * caller can legally pass a number the contract has no meaning for: `0` means
+   * "no live row" and real versions start at `1`. Refused loudly, because that
+   * is a programming error and not a lost race — reporting it as a conflict
+   * would name a concurrency outcome this store never observed.
+   *
+   * This is also what keeps the `-1` sentinel in `delete` sound: without it,
+   * `delete(…, -1)` matched the sentinel branch and tombstoned any live row.
+   */
+  const assertExpectedVersion = (expectedVersion: ExpectedVersion): void => {
+    if (expectedVersion === "any") return;
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+      throw new TypeError(
+        `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
+      );
+    }
   };
 
   /**
@@ -162,6 +189,7 @@ export function createSQLiteResourceStateStore(
       state: JsonObject,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
+      assertExpectedVersion(expectedVersion);
       const payload = JSON.stringify(state);
 
       if (expectedVersion === "any") {
@@ -226,6 +254,7 @@ export function createSQLiteResourceStateStore(
       // conflict to the loser while the sequential idempotence test passed.
       // One path means the contract is decided in one place for every caller,
       // raced or not, and the conformance suite exercises it every run.
+      assertExpectedVersion(expectedVersion);
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
       const marked = tombstoneIfVersionStmt.get(
         scopeType,

@@ -56,8 +56,43 @@ export function resourceStateConflict(
 }
 
 /**
+ * Refuse an `expectedVersion` that cannot name a version, before any adapter
+ * acts on it.
+ *
+ * `ExpectedVersion` is `number | "any"`, so the type admits values the contract
+ * has no meaning for: `0` means "no live row" and real versions start at `1`, so
+ * a negative, fractional, `NaN` or infinite version is a programming error at
+ * the call site — not a lost race. It is thrown rather than returned as a
+ * conflict for that reason: a `SetResult` conflict reports a concurrency
+ * outcome the store never observed, and sends the caller into a retry loop that
+ * can never converge.
+ *
+ * The rule is stated here and mirrored in the two SQL adapters, which cannot
+ * import runtime engine code (see {@link resourceStateConflict}); the shared
+ * conformance suite pins it against all four.
+ *
+ * `-1` is the value this exists for. Both SQL adapters carry it as the in-band
+ * `"any"` sentinel inside the delete predicate, which is sound over the versions
+ * the store *produces* and says nothing about what a caller may *pass*. This
+ * closes the input domain so the sentinel is unreachable from outside.
+ */
+export function assertExpectedVersion(expectedVersion: ExpectedVersion): void {
+  if (expectedVersion === "any") return;
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
+    throw new TypeError(
+      `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
+    );
+  }
+}
+
+/**
  * Shared write predicate: returns a conflict `SetResult` when `expectedVersion`
  * does not admit a write against `row`, or `undefined` when it does.
+ *
+ * Assumes `expectedVersion` has already passed {@link assertExpectedVersion}.
+ * The assertion is not folded in here because `delete` answers an absent or
+ * already-tombstoned key without ever consulting the version — a check behind
+ * this one would leave those paths unguarded.
  */
 export function checkWriteVersion(
   row: ResourceStateRow | undefined,
