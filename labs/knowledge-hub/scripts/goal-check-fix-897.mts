@@ -18,6 +18,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { toStates } from "@flow-state-dev/engine";
 
 const SECRET = "test-secret";
 process.env.KH_MCP_SECRET = SECRET;
@@ -59,7 +60,9 @@ try {
   check("(b) both logActivity requests recorded under the conversation session id", logReqs.length === 2);
 
   // (c) both inbox rows carry the conversationId.
-  const inbox = (await runtime.stores.resourceState.getAll("user", "owner")) as Record<string, { conversationId?: string }>;
+  const inbox = toStates(
+    await runtime.stores.resourceState.getAll("user", "owner")
+  ) as unknown as Record<string, { conversationId?: string }>;
   const rows = Object.entries(inbox).filter(([k]) => k.startsWith("inbox/"));
   check("(c) two inbox rows exist and both carry the conversationId", rows.length === 2 && rows.every(([, v]) => v.conversationId === conversationId));
 

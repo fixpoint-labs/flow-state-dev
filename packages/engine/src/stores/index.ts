@@ -18,6 +18,10 @@ import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
 import { createInMemoryContentStore } from "./memory/content-store";
 import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
 import { toState, toStates } from "./resource-state-views";
+export type {
+  ResourceStateConflict,
+  ResourceStateRow
+} from "./resource-state-predicate";
 import { createInMemoryProjectStore } from "./memory/org-store";
 import { createInMemoryRequestStore } from "./memory/request-store";
 import { createInMemorySessionStore } from "./memory/session-store";

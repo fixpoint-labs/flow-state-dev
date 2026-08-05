@@ -42,13 +42,15 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 `ConcurrentModificationError` continues to surface from these paths when retries exhaust. That's the contract: if you write through `persist` and the remote authority moves faster than your retry budget, you need to either widen the budget or restructure to avoid the contention.
 
-### Resource state is versioned too
+### The resource state store is versioned too
 
 The four scopes above hold one state record each. **Resource state** — the state behind `ctx.sessionResources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
 
-That store used to be plain last-write-wins, which is the right model for a document body nothing merges against a prior read, and the wrong one for structured state concurrent workers read-modify-write. It is now versioned: every stored resource carries a version that increases by one on each committed write and is never reused, and a write states the version it expected to find. If the resource moved since that read, the write is refused rather than applied on top.
+That store used to be plain last-write-wins, which is the right model for a document body nothing merges against a prior read, and the wrong one for structured state concurrent workers read-modify-write. The store is now versioned: every stored resource carries a version that increases by one on each committed write and is never reused, and a write **can** state the version it expected to find. A write that names a version lands only if nobody moved the key since; otherwise it is refused, and the refusal reports the version that is actually current.
 
-Nothing changes in flow code — you never write a version yourself.
+Read that as a property of the store, not yet as a property of your flow. The refusal is available to whoever holds the `ResourceStateStore` — a store adapter, a test harness, code reaching for `runtime.stores.resourceState` — because those callers choose what version to name. The runtime's own resource persister does not name one yet: when a flow mutates `ctx.sessionResources.something` or a collection instance, that write still goes to the store unconditionally. **Resource mutations from flow code are therefore still last-write-wins.** Threading the observed version through that path is the next piece of this work; until it lands, two contexts patching the same resource can still lose one of the writes, exactly as before.
+
+Nothing changes in flow code either way — you never write a version yourself.
 
 Deleting a resource leaves a small marker behind rather than removing the row, and that marker keeps the version. It is what makes delete-then-recreate safe: a worker holding a version from before the delete can never match the resource that replaced it, because versions are never reused. Markers are kept indefinitely — nothing sweeps them — which costs one row per deleted key.
 

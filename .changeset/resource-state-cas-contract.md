@@ -23,14 +23,23 @@ Deletes mark a lifecycle column and retain the version rather than removing the
 row, so a worker holding a version from before a delete can never match the
 resource that replaces it. Tombstones are retained indefinitely — nothing
 reclaims them — which is what makes the guarantee hold without a sweep, and
-costs one small row per deleted key.
+costs one small row per deleted key. Delete is idempotent at the terminal
+state: deleting an absent or already-tombstoned key succeeds, including when
+two deletes of the same live key race each other. A conflict means a version
+mismatch against a row that is still live, and nothing else.
 
 SQLite and Postgres migrate automatically with `ADD COLUMN` only: no table
 rebuild, no backfill, indexes untouched, and rows written before the upgrade
 read as live at version 1. The filesystem adapter commits state and metadata as
 a single record so the two can never disagree after a crash.
 
-Flow-authoring code is unchanged — nobody writes `expectedVersion` in a flow.
+Flow-authoring code is unchanged — nobody writes `expectedVersion` in a flow,
+and the runtime still writes resource state unconditionally, so resource
+mutations from flow code remain last-write-wins until that path passes the
+version it observed.
+
 Callers of the store interface directly (including test harnesses) now pass a
-posture explicitly; `toState` / `toStates` are exported for readers that only
-want the stored value.
+posture explicitly. `VersionedResourceState` is branded so it is not assignable
+to `JsonObject`: a read handed on without unwrapping is a compile error, and
+`toState` / `toStates` are the way down. The brand is phantom and optional, so
+constructing one is still a plain object literal.

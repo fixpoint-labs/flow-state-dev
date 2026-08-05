@@ -501,6 +501,7 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so it is compare-and-swap: every write carries an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
 
 ```ts
+// branded — see the note under the table below
 type VersionedResourceState = { state: JsonObject; version: number };
 
 interface ResourceStateStore {
@@ -531,7 +532,9 @@ interface ResourceStateStore {
 
 Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it. A tombstone that is never removed is always sound. It costs one row per deleted key.
 
-`toState` / `toStates` are exported for readers that only want the stored value and not the version beside it. Reach for them rather than an inline `.state` — the versioned shape is structurally assignable to `JsonObject`, so a missing unwrap is not a type error, just a wrong value handed downstream.
+`toState` / `toStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
+
+A `delete` is idempotent at the terminal state: deleting a key that is already absent or already tombstoned succeeds and reports the retained version, and that holds under a race — two concurrent deletes of one live key both report success. A conflict is reserved for a version mismatch against a row that is **still live**.
 
 ### Per-adapter guarantee
 

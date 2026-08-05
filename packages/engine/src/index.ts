@@ -64,6 +64,8 @@ export type {
   ResourceStateStore,
   VersionedResourceState,
   ExpectedVersion,
+  ResourceStateConflict,
+  ResourceStateRow,
   OrgListOptions,
   OrgRecord,
   OrgStore,

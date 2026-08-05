@@ -23,40 +23,62 @@ import type {
   ResourceStateStore,
   ContentScopeType,
   ExpectedVersion,
+  ResourceStateRow,
   SetResult,
   VersionedResourceState
 } from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
 
-/** A row as stored, before lifecycle filtering. */
-type StoredRow = { state: JsonObject; version: number; lifecycle: string };
+/** A row as Postgres hands it back, before coercion and lifecycle narrowing. */
+type RawRow = { state: JsonObject; version: number | string; lifecycle: string };
 
 export function createPostgresResourceStateStore(executor: QueryExecutor): ResourceStateStore {
+  /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = async (
     scopeType: ContentScopeType,
     scopeId: string,
     resourceKey: string
-  ): Promise<StoredRow | undefined> => {
+  ): Promise<ResourceStateRow | undefined> => {
     const result = await executor.query(
       "SELECT state, version, lifecycle FROM resource_state " +
         "WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3",
       [scopeType, scopeId, resourceKey]
     );
-    const row = result.rows[0] as StoredRow | undefined;
+    const row = result.rows[0] as RawRow | undefined;
     if (row === undefined) return undefined;
-    // node-pg returns BIGINT as a string, so coerce rather than letting a
-    // string version silently fail every `===` comparison downstream.
-    return { ...row, version: Number(row.version) };
+    return {
+      state: row.state,
+      // node-pg returns BIGINT as a string, so coerce rather than letting a
+      // string version silently fail every `===` comparison downstream.
+      version: Number(row.version),
+      lifecycle: row.lifecycle === "live" ? "live" : "deleted"
+    };
   };
 
-  /** Build the conflict result from whatever is stored right now. */
-  const conflictFrom = (row: StoredRow | undefined): SetResult<JsonObject> => ({
-    ok: false,
-    conflict: {
-      currentValue: row !== undefined && row.lifecycle === "live" ? row.state : undefined,
-      currentVersion: row?.version ?? 0
-    }
-  });
+  /**
+   * Build the conflict result from whatever is stored right now.
+   *
+   * This mirrors `resourceStateConflict` in the engine's
+   * `stores/resource-state-predicate` module, which is the reference for what a
+   * conflict reports. It is restated rather than imported because a store
+   * adapter's dependency on `@flow-state-dev/engine` is **type-only** by
+   * package boundary (`scripts/validate-package-boundaries.mjs`), and that
+   * module is runtime code. What is shared is `ResourceStateRow`, above: both
+   * SQL adapters parse into the same shape, so the two bodies are the same
+   * three lines, and the shared conformance suite pins the rule for all four
+   * adapters — a semantic tweak that misses one shows up as a failing case
+   * rather than as silent divergence.
+   */
+  const conflictFrom = (row: ResourceStateRow | undefined): SetResult<JsonObject> => {
+    const isLive = row !== undefined && row.lifecycle === "live";
+    return {
+      ok: false,
+      conflict: {
+        currentValue: isLive ? row.state : undefined,
+        currentVersion: row?.version ?? 0
+      }
+    };
+  };
 
   return {
     async get(
@@ -153,12 +175,14 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       resourceKey: string,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
-      const current = await readRow(scopeType, scopeId, resourceKey);
-      // Nothing live to remove: idempotent, and no tombstone is minted for a
-      // key that never existed — there is no observer to fence.
-      if (current === undefined) return { ok: true, version: 0 };
-      if (current.lifecycle !== "live") return { ok: true, version: current.version };
-
+      // The statement goes first, with no pre-read short-circuit ahead of it.
+      // A short-circuit would answer "already tombstoned" on its own path,
+      // leaving the zero-row branch reachable only under a real race — which
+      // is how two concurrent deletes of one live row ended up reporting a
+      // conflict to the loser while the sequential idempotence test passed.
+      // One path means the contract is decided in one place for every caller,
+      // raced or not, and the conformance suite exercises it every run.
+      //
       // `-1` is the "any" sentinel, safe because a real version is always >= 1.
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
       const marked = await executor.query(
@@ -168,12 +192,23 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
          RETURNING version`,
         [scopeType, scopeId, resourceKey, guard]
       );
-      if ((marked.rowCount ?? 0) === 0) {
-        return conflictFrom(await readRow(scopeType, scopeId, resourceKey));
-      }
-      // Read the retained version off the statement, not off the pre-read:
+      // Read the retained version off the statement, not off a prior read:
       // under `"any"` a concurrent writer can advance the row between the two.
-      return { ok: true, version: Number(marked.rows[0]!.version) };
+      if ((marked.rowCount ?? 0) > 0) {
+        return { ok: true, version: Number(marked.rows[0]!.version) };
+      }
+
+      // Nothing matched. Re-read to tell the two reasons apart.
+      const current = await readRow(scopeType, scopeId, resourceKey);
+      // Nothing live to remove — absent, or already a tombstone (whether it was
+      // tombstoned an hour ago or by the delete that just beat us). The
+      // requested terminal state holds, so this is an idempotent success. No
+      // tombstone is minted for a key that never existed: there is no observer
+      // to fence.
+      if (current === undefined) return { ok: true, version: 0 };
+      if (current.lifecycle !== "live") return { ok: true, version: current.version };
+      // Still live: the version guard genuinely did not match.
+      return conflictFrom(current);
     },
 
     async getAll(

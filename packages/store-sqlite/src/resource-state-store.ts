@@ -24,12 +24,13 @@ import type {
   ResourceStateStore,
   ContentScopeType,
   ExpectedVersion,
+  ResourceStateRow,
   SetResult,
   VersionedResourceState
 } from "@flow-state-dev/engine";
 
-/** A row as stored, before lifecycle filtering. */
-type StoredRow = { state: string; version: number; lifecycle: string };
+/** A row as SQLite hands it back: state is TEXT, lifecycle is unnarrowed. */
+type RawRow = { state: string; version: number; lifecycle: string };
 
 /**
  * Create a SQLite-backed `ResourceStateStore` over the provided database
@@ -103,24 +104,45 @@ export function createSQLiteResourceStateStore(
       "WHERE scope_type = ? AND scope_id = ? AND lifecycle = 'live'"
   );
 
+  /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = (
     scopeType: ContentScopeType,
     scopeId: string,
     resourceKey: string
-  ): StoredRow | undefined =>
-    getRowStmt.get(scopeType, scopeId, resourceKey) as StoredRow | undefined;
+  ): ResourceStateRow | undefined => {
+    const row = getRowStmt.get(scopeType, scopeId, resourceKey) as RawRow | undefined;
+    if (row === undefined) return undefined;
+    return {
+      state: JSON.parse(row.state) as JsonObject,
+      version: row.version,
+      lifecycle: row.lifecycle === "live" ? "live" : "deleted"
+    };
+  };
 
-  /** Build the conflict result from whatever is stored right now. */
-  const conflictFrom = (row: StoredRow | undefined): SetResult<JsonObject> => ({
-    ok: false,
-    conflict: {
-      currentValue:
-        row !== undefined && row.lifecycle === "live"
-          ? (JSON.parse(row.state) as JsonObject)
-          : undefined,
-      currentVersion: row?.version ?? 0
-    }
-  });
+  /**
+   * Build the conflict result from whatever is stored right now.
+   *
+   * This mirrors `resourceStateConflict` in the engine's
+   * `stores/resource-state-predicate` module, which is the reference for what a
+   * conflict reports. It is restated rather than imported because a store
+   * adapter's dependency on `@flow-state-dev/engine` is **type-only** by
+   * package boundary (`scripts/validate-package-boundaries.mjs`), and that
+   * module is runtime code. What is shared is `ResourceStateRow`, above: both
+   * SQL adapters parse into the same shape, so the two bodies are the same
+   * three lines, and the shared conformance suite pins the rule for all four
+   * adapters — a semantic tweak that misses one shows up as a failing case
+   * rather than as silent divergence.
+   */
+  const conflictFrom = (row: ResourceStateRow | undefined): SetResult<JsonObject> => {
+    const isLive = row !== undefined && row.lifecycle === "live";
+    return {
+      ok: false,
+      conflict: {
+        currentValue: isLive ? row.state : undefined,
+        currentVersion: row?.version ?? 0
+      }
+    };
+  };
 
   return {
     async get(
@@ -130,7 +152,7 @@ export function createSQLiteResourceStateStore(
     ): Promise<VersionedResourceState | undefined> {
       const row = readRow(scopeType, scopeId, resourceKey);
       if (row === undefined || row.lifecycle !== "live") return undefined;
-      return { state: JSON.parse(row.state) as JsonObject, version: row.version };
+      return { state: row.state, version: row.version };
     },
 
     async set(
@@ -197,12 +219,13 @@ export function createSQLiteResourceStateStore(
       resourceKey: string,
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
-      const current = readRow(scopeType, scopeId, resourceKey);
-      // Nothing live to remove: idempotent, and no tombstone is minted for a
-      // key that never existed — there is no observer to fence.
-      if (current === undefined) return { ok: true, version: 0 };
-      if (current.lifecycle !== "live") return { ok: true, version: current.version };
-
+      // The statement goes first, with no pre-read short-circuit ahead of it.
+      // A short-circuit would answer "already tombstoned" on its own path,
+      // leaving the zero-row branch reachable only under a real race — which
+      // is how two concurrent deletes of one live row ended up reporting a
+      // conflict to the loser while the sequential idempotence test passed.
+      // One path means the contract is decided in one place for every caller,
+      // raced or not, and the conformance suite exercises it every run.
       const guard = expectedVersion === "any" ? -1 : expectedVersion;
       const marked = tombstoneIfVersionStmt.get(
         scopeType,
@@ -211,11 +234,20 @@ export function createSQLiteResourceStateStore(
         guard,
         guard
       ) as { version: number } | undefined;
-      if (marked === undefined) {
-        return conflictFrom(readRow(scopeType, scopeId, resourceKey));
-      }
-      // Read the retained version off the statement, not off the pre-read.
-      return { ok: true, version: marked.version };
+      // Read the retained version off the statement, not off a prior read.
+      if (marked !== undefined) return { ok: true, version: marked.version };
+
+      // Nothing matched. Re-read to tell the two reasons apart.
+      const current = readRow(scopeType, scopeId, resourceKey);
+      // Nothing live to remove — absent, or already a tombstone (whether it was
+      // tombstoned an hour ago or by the delete that just beat us). The
+      // requested terminal state holds, so this is an idempotent success. No
+      // tombstone is minted for a key that never existed: there is no observer
+      // to fence.
+      if (current === undefined) return { ok: true, version: 0 };
+      if (current.lifecycle !== "live") return { ok: true, version: current.version };
+      // Still live: the version guard genuinely did not match.
+      return conflictFrom(current);
     },
 
     async getAll(

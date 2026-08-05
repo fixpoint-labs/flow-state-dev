@@ -463,6 +463,33 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it("two concurrent deletes of one live key both report success", async () => {
+      await withStore(async (store) => {
+        const version = await seed(store, "k", makeState(1));
+
+        // The idempotence rule above is stated sequentially, and an adapter
+        // can satisfy the sequential form on a path the raced form never
+        // takes — a pre-read that short-circuits on "already tombstoned"
+        // answers the second call without ever reaching the write. Race the
+        // two and the loser lands on that other path: its write matches
+        // nothing, because the winner already tombstoned the row. It must
+        // still report success. The requested terminal state was reached, and
+        // a caller that treats a conflict as terminal would otherwise abandon
+        // a delete that in fact happened.
+        const [first, second] = await Promise.all([
+          store.delete("session", "s1", "k", version),
+          store.delete("session", "s1", "k", version)
+        ]);
+        expect([first.ok, second.ok]).toEqual([true, true]);
+
+        // Both name the retained version, and the key really is gone.
+        for (const result of [first, second]) {
+          expect(result.ok && result.version).toBe(version);
+        }
+        expect(await store.get("session", "s1", "k")).toBeUndefined();
+      });
+    });
+
     it("a stale-version delete conflicts instead of tombstoning the current row", async () => {
       await withStore(async (store) => {
         await seed(store, "k", makeState(1));

@@ -528,6 +528,12 @@ export interface ContentStore {
 }
 
 /**
+ * Phantom brand for {@link VersionedResourceState}. Declared, never defined —
+ * it exists only in the type system and is absent from every runtime value.
+ */
+declare const versionedResourceStateBrand: unique symbol;
+
+/**
  * A live resource state row together with the CAS version it was read at.
  *
  * The version is what makes a read usable as the basis for a conditional
@@ -535,8 +541,31 @@ export interface ContentStore {
  * if nobody moved the key in between. `undefined` from a read means "no live
  * row" — an absent key and a tombstoned one are indistinguishable to readers
  * by design (see {@link ResourceStateStore}).
+ *
+ * ## Why this type is branded
+ *
+ * Structurally, `{ state, version }` is a perfectly good `JsonObject`. That
+ * made every missed unwrap a *silent* bug rather than a compile error — handing
+ * `{ state, version }` where the state itself was expected typechecked
+ * cleanly and produced the wrong value downstream. The phantom brand below
+ * breaks that assignability: its declared type is a `unique symbol`, which is
+ * not a `JsonValue`, so `VersionedResourceState` (and any `Record` of them) is
+ * no longer assignable to `JsonObject`. Use {@link toState} / {@link toStates}
+ * to project down; forgetting to is now a type error.
+ *
+ * The property is optional and never written, so constructing a versioned read
+ * stays a plain object literal — adapters pay nothing for the brand. It does
+ * not defend against an explicit `as` cast, which remains the caller's
+ * assertion to make.
  */
 export type VersionedResourceState = {
+  /**
+   * Phantom. Never present at runtime — see the note above. The key is a
+   * string rather than the symbol itself on purpose: a `JsonObject`'s index
+   * signature only constrains string keys, so a symbol-keyed brand would be
+   * ignored by the assignability check this exists to fail.
+   */
+  readonly __versionedResourceState?: typeof versionedResourceStateBrand;
   /** The stored state. A tombstone is never returned, so this is always live. */
   state: JsonObject;
   /** Monotonic per key, never reused — see {@link ResourceStateStore}. */
