@@ -520,9 +520,9 @@ Item state and item content live in two stores (`ResourceStateStore`, `ContentSt
 
 | Window | Outcome |
 | --- | --- |
-| The content write fails | The item exists with empty content — visible in listings, repairable via `PATCH` when the collection grants `client.content.update` |
-| A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current |
-| A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create |
+| The content write fails | **The request fails, but the item exists anyway**, with empty content. The state row committed first and the `content.set` is a bare `await`, so the rejection propagates out of the handler — a failed `POST` is not a no-op. The item is live and listable, a retry of the topic gets an honest `409`, and repair is `PATCH` when the collection grants `client.content.update` |
+| A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current. **No error** |
+| A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create. **No error** |
 
 These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
 

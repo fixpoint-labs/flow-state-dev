@@ -36,16 +36,19 @@ not have.
 
 These limits are worth stating rather than implying, because ordering state
 before content means an item is briefly live while its content is still being
-written, and none of them surfaces as an error.
+written.
 
-If the state row commits and the content write then fails, the item exists with
-empty content. It stays visible in listings and a `PATCH` to its content
+If the state row commits and the content write then fails, the request fails —
+but the item exists anyway, with empty content, because the state row committed
+first. A failed create is therefore not a no-op: the item is live and listable,
+and a retry of the same topic gets an honest `409`. A `PATCH` to its content
 endpoint repairs it, but that needs the collection to grant
 `client.content.update` — a collection granting `create` alone leaves an
 authorized client holding an item it can neither fill nor remove. Grant `update`
 alongside `create`; the resource client-access guide now says so.
 
-If a `DELETE` lands in that same window, the create's body is orphaned behind
+The other windows produce no error at all, which is what makes them the ones
+worth stating. If a `DELETE` lands in that same window, the create's body is orphaned behind
 the tombstone, and a later create of the topic **that sends no content** revives
 the row over it — so a deleted generation's content can read as current. Sending
 `content` with every `POST` avoids it. If a `PATCH` lands in the window, it is

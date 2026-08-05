@@ -450,14 +450,19 @@ completed is safe.
 
 Item state and item content are stored separately, and `POST` writes them in
 that order. So there is a brief window where the item is already visible but
-its body hasn't landed yet. Three things follow, and they're worth knowing
-because none of them shows up as an error:
+its body hasn't landed yet. Three things follow.
 
-- If the content write fails, the item exists with **empty content**. It's
-  visible in listings, and you can repair it with `PATCH` — provided the
-  collection grants `client.content.update`. Without that grant there's no
-  repair route, so grant `create` and `update` together unless you have a
-  reason not to.
+**A failed `POST` doesn't mean nothing was created.** If the content write
+fails, the request comes back as an error — but the state row committed before
+it, so the item exists with **empty content** and is live and listable. Don't
+treat the error as a no-op: retrying the same topic finds it already there and
+gets a `409`. Repair it with `PATCH` instead, which needs the collection to
+grant `client.content.update`. Without that grant there's no repair route at
+all, so grant `create` and `update` together unless you have a reason not to.
+
+The other two are worth knowing precisely because they *don't* show up as an
+error — nothing fails, and a wrong body is simply what you read back:
+
 - If a `DELETE` lands in that window, the create's body can be left behind
   after the item is gone. A later create of the same topic **that sends no
   content** will then show the old body as its own.

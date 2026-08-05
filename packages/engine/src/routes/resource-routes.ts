@@ -263,13 +263,17 @@ export async function handleCreateCollectionItem(
   // atomicity (FIX-854), a declared non-goal — stated rather than approximated,
   // because a version cannot tell this generation from its successor:
   //
-  //   1. this write fails -> the item exists with empty content, visible in
-  //      listings and repairable via the content PATCH route (which needs
+  //   1. this write fails -> the await is bare, so the request fails, but the
+  //      item exists anyway with empty content: live and listable, a retry gets
+  //      an honest 409, and repair is the content PATCH route (which needs
   //      exactly the state row now committed, and the `content.update` grant);
   //   2. a DELETE lands in the window -> this body is orphaned behind the
   //      tombstone, and a later create with no content surfaces it as current;
   //   3. a PATCH lands in the window -> it is acknowledged 200 and then
   //      overwritten here.
+  //
+  // Only (1) surfaces as an error, and it understates what happened; (2) and
+  // (3) are silent.
   //
   // All three are pinned by tests in `resource-collection-routes.test.ts`.
   // Client-facing guidance: `apps/docs` -> resources / client access.
