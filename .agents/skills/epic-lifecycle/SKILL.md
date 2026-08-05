@@ -132,7 +132,21 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
 - **Do** confirm the PR belongs to a row in your table, run the wake, and end the turn. Waking
   you was the event's whole job, and it has done it.
 
-Three things stay yours, because no sub-agent can do them: **subscribing** to the PR,
+This is the skill-level statement of a rule that is canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token & context budget":
+*the coordinator does not read event content — on a PR event it maps PR# → owning issue and
+dispatches that issue's worker, which reads the review/CI in its own context.* That section
+also records why there is no separate feedback-router agent: the coordinator's per-event work
+is already just PR# → owner → dispatch, and content reading already lives in the workers.
+
+**The line on writing to a PR: you may carry a human's decision outward, never a technical
+judgment of your own.** Applying a `spec approved` label, posting the alignment a user just
+decided in the cross-spec walkthrough (step 4 of that section) — those carry a decision that
+was already made somewhere you can see. Answering a reviewer, explaining a design choice,
+conceding a point, or saying a finding is wrong are all judgments about a diff you haven't
+read, and they belong to the worker that has read it.
+
+Three other things stay yours, because no sub-agent can do them: **subscribing** to the PR,
 **surfacing** a gate the wake returned, and **recording** a human's answer to a blocker. None
 of the three involves acting on review content.
 
@@ -143,6 +157,16 @@ would have told you the approach is wrong. And the activity cursor only advances
 that consume it (`spec-review`, `pr-feedback`), so a batch you answer by hand is still `new` at
 the next wake: the script dispatches a worker that re-reads it and re-posts replies to comments
 you already answered. A round handled here is worse than a round handled a wake late.
+
+**What you report instead.** The worker's status line is what you have, and it is what the user
+gets: the issue, its phase, the PR, and the worker's one line on what it did. One line per issue
+that moved. Don't recap the comments it answered or the fix it wrote — you didn't see either,
+and reconstructing them from the event text is the reading this section forbids, done after the
+fact and less accurately. If a round produced something that needs the user, it is a **gate**, a
+**blocker**, or the **cap**, and step 4 surfaces it in its own line with the specific question.
+Everything else is one line and an ended turn. The user asked for a coordinator because they
+didn't want to read the implementation dialog; narrating it back at them is the same cost with
+an extra hop.
 
 ## The loop (each invocation)
 
@@ -728,7 +752,9 @@ step. So:
 - **A real blocker is the agent's to resolve or sequence, not to punt.** If implementation
   can't proceed because of an open decision or an unlanded prerequisite from another issue,
   that's the coordinator's problem to handle: sequence the prerequisite (run its blocker to merge
-  first), or resolve the decision from the spec/codebase. Surface it to the user **only** when
+  first), or **dispatch a worker to** resolve the decision from the spec/codebase — the answer is
+  in artifacts you don't read (Token discipline: handles and status only), so resolving it here
+  would mean pulling a spec or a diff into this context to do it. Surface it to the user **only** when
   it genuinely needs a human call (a decision the spec doesn't settle) — with the specific
   question, not a vague "should I continue?". A prerequisite that simply needs to land is
   tracked and ordered by the coordinator, never a reason to idle.

@@ -447,6 +447,16 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
 - **Do** re-derive the phase from the small durable read above, take that phase's one bounded
   action — which for PR_FEEDBACK means *dispatching*, not doing — and end the turn.
 
+This is the skill-level statement of a rule canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Token & context budget":
+*the orchestrator does not read event content — it maps the PR to its owning issue and
+dispatches the worker, which reads the review/CI in its own context.*
+
+**The line on writing to a PR: you may carry a human's decision outward, never a technical
+judgment of your own.** Applying the `spec approved` label carries a sign-off you can see.
+Answering a reviewer, explaining a design choice, conceding a point, or saying a finding is
+wrong are judgments about a diff you haven't read, and they belong to the worker that has.
+
 The gate work stays yours, because nothing else can hold it: subscribing, surfacing a gate,
 recording a human's answer, writing the Linear mirror. None of it involves acting on review
 content.
@@ -456,6 +466,13 @@ on a worker's reported `prFeedbackRoundsSpent`, so a round you handle yourself i
 twelve-round cap never trips on an issue that is genuinely looping, which is the one signal that
 would have told you the approach is wrong rather than the lines being argued about. A round
 handled here is worse than a round handled a wake late.
+
+**What you report instead.** The sub-agent's summary is what you have and what the user gets:
+phase, PR, and its one line on what it did. Don't recap the comments it answered or the fix it
+wrote — you didn't see either, and reconstructing them from the event text is the reading this
+section forbids, done after the fact. If a round produced something that needs the user, it is a
+gate, a blocker, or the cap; surface that in its own line with the specific question. Everything
+else is one line and an ended turn.
 
 ## Waking
 
