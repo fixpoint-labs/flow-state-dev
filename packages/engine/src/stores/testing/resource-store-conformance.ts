@@ -420,6 +420,38 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
+    it("set snapshots before it yields, so a mutation made while the write is in flight is not the one that commits", async () => {
+      await withStore(async (store) => {
+        // The *timing* half of the same contract, and a different question
+        // from the case above: that one asks whether `set` copies at all,
+        // this one asks WHEN. An adapter can serialize faithfully and still
+        // be wrong if it does so after an `await` — the caller has had
+        // control back by then, so whatever it did in the meantime is what
+        // gets written. The committed version must witness the value passed
+        // to `set`, not the value the caller's object happened to hold once
+        // the write got round to looking at it.
+        //
+        // The mutation below is therefore synchronous, in the window between
+        // `set` returning its promise and that promise settling. An adapter
+        // that captures in the same tick as the call is unaffected; one that
+        // captures behind a lock or a microtask persists the mutation.
+        const written = nestedState();
+        const pending = store.set("session", "s1", "k", written, 0);
+        ((written.profile as JsonObject).flags as JsonObject).archived = true;
+        (written.tags as string[]).push("b");
+
+        expect(await pending).toEqual({ ok: true, version: 1 });
+        expect((await store.get("session", "s1", "k"))?.state).toEqual(nestedState());
+
+        // And the version genuinely witnesses it: a write at version 1 lands,
+        // so the row really is the one this call committed.
+        expect(await store.set("session", "s1", "k", makeState(2), 1)).toEqual({
+          ok: true,
+          version: 2
+        });
+      });
+    });
+
     it("the currentValue a conflict reports is a snapshot, not a handle into the store", async () => {
       await withStore(async (store) => {
         // Same bug on the error path: a conflict exists to tell a loser what

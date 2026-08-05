@@ -46,7 +46,13 @@
  * key. This closes the in-process race — two execution contexts in one Node
  * process — and does **not** protect two OS processes over one directory.
  * Documented, not implied.
+ *
+ * The value `set` commits is snapshotted *before* the mutex is entered rather
+ * than inside it. The lock decides the order writes land in; it does not decide
+ * which bytes a write carries, and by the time the guarded body runs the caller
+ * has long had control back.
  */
+import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
   ContentScopeType,
@@ -140,6 +146,24 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
       expectedVersion: ExpectedVersion
     ): Promise<SetResult<JsonObject>> {
       assertExpectedVersion(expectedVersion);
+      // Snapshot BEFORE the gate, not inside it.
+      //
+      // The contract's snapshot rule is about *when* the value is captured, not
+      // about whether the adapter serializes at all. This one does serialize —
+      // but only in the gate callback, and `runExclusive` resolves through a
+      // `.then`, so that callback runs on a microtask at the earliest and
+      // behind any same-key writer at the latest. Either way the caller has had
+      // control back before it runs. Capturing there commits whatever the
+      // caller's object holds by then, so a caller that mutates or reuses
+      // `state` while the promise is in flight gets that later mutation
+      // persisted under a version that never witnessed it — the same failure as
+      // aliasing, reached by timing rather than by a retained reference.
+      //
+      // The other three adapters get this right by capturing on the synchronous
+      // run-up to their first `await`: memory clones with no `await` at all,
+      // and both SQL adapters `JSON.stringify` before their first query. That
+      // is the property to check, not the presence of serialization.
+      const snapshot = cloneValue(state);
       return gate.runExclusive(lockKey(scopeType, scopeId, resourceKey), async () => {
         // Guard first: a write that conflicts never reaches the factory's own
         // mutator, so the legacy re-scan has to happen here or a conflicting
@@ -153,7 +177,7 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
         // A recreate continues from the tombstone's version, never reusing one.
         const nextVersion = (leaf?.version ?? 0) + 1;
         await leaves.set(scopeType, scopeId, resourceKey, {
-          state,
+          state: snapshot,
           version: nextVersion,
           lifecycle: "live"
         });

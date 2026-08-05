@@ -42,10 +42,24 @@ object you passed to `set` stays yours to mutate afterwards, and the
 `currentValue` a conflict reports is a copy too. This is what makes the version
 mean anything: if a caller could change the stored value without going through
 `set`, the value would move while the version stood still, and a later write at
-the old version would commit against data that had already changed. The
-filesystem and SQL adapters got this from serializing; the in-memory adapter now
-copies on the way in and on the way out, and the shared conformance suite pins
-the guarantee for all four.
+the old version would commit against data that had already changed.
+
+The snapshot is taken before `set` yields, not merely somewhere inside it.
+Serializing eventually is not enough. An adapter that copies only after an
+`await` has already handed control back to the caller, so whatever the caller
+does to the object while the write is in flight becomes the value that lands.
+The in-memory adapter copies on the way in and on the way out; the SQL adapters
+serialize on the synchronous run-up to their first query; the filesystem adapter
+now snapshots before taking its per-key lock rather than inside the guarded
+body. The shared conformance suite pins both the copy and its timing for all
+four.
+
+`delete` distinguishes what the caller asserted when it finds nothing to remove
+and a live row turns up before it can report why. `"any"` asserted nothing about
+versions, so "no live row existed" already answers it: idempotent success at
+`version: 0`, with a recreate that raced in belonging to a later story. A
+positive `expectedVersion` asserted something that did not hold, so it still
+conflicts.
 
 SQLite and Postgres migrate automatically with `ADD COLUMN` only: no table
 rebuild, no backfill, indexes untouched, and rows written before the upgrade

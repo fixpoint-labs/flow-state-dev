@@ -275,7 +275,30 @@ export function createSQLiteResourceStateStore(
       // to fence.
       if (current === undefined) return { ok: true, version: 0 };
       if (current.lifecycle !== "live") return { ok: true, version: current.version };
-      // Still live: the version guard genuinely did not match.
+
+      // A live row, after a statement that matched nothing. What that means
+      // depends on what the caller asserted, and the two cases are NOT the
+      // same. `"any"` asserts nothing about versions and its `-1` guard matches
+      // every one, so a zero-row UPDATE can only mean there was no live row
+      // when it ran — the blind delete's own question, already answered. The
+      // call linearizes there, and the row visible now was recreated between
+      // the UPDATE and this read by another connection or process. Version `0`
+      // rather than `current.version`, because `0` is this contract's "no live
+      // row" and names no row, whereas `current.version` names the recreated
+      // live row this delete never removed.
+      //
+      // Reachable here only across connections: `better-sqlite3` is
+      // synchronous, so nothing yields between the two statements inside one
+      // process and no in-process test can produce the interleaving. The
+      // Postgres adapter, where the round trips are genuinely separate, carries
+      // the gated test for both — this branch is kept identical to it
+      // deliberately, and the shared conformance suite pins the sequential
+      // halves for all four adapters.
+      if (expectedVersion === "any") return { ok: true, version: 0 };
+
+      // A positive `expectedVersion` DID assert one, and at that same
+      // linearization point it did not hold. A genuine conflict, carrying the
+      // version now stored so the caller can retry against it.
       return conflictFrom(current);
     },
 

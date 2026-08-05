@@ -530,6 +530,7 @@ A number outside that domain — negative, fractional, `NaN`, `Infinity` — thr
 | Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A deleted key reads exactly like an absent one |
 | Version | First create writes `1`; each committed write adds one; **never reused**. A recreate continues from the tombstone's version |
 | `delete` | Takes a version like every other write, retains it, and drops the payload. A delete chosen from a stale snapshot conflicts rather than tombstoning a newer generation |
+| `delete(…, "any")` | Never reports a conflict. Finding no live row is the whole answer to a blind delete, so it succeeds at `version: 0` even if a concurrent recreate makes the key live again a moment later. A positive `expectedVersion` in the same race still conflicts — it asserted something that did not hold |
 | `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
 | Retention | Tombstones are kept **indefinitely, in every scope**. Nothing reclaims one |
 | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |

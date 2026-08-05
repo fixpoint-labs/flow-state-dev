@@ -610,6 +610,7 @@ export type VersionedResourceState = {
  * | Lifecycle | `live` (visible) or `deleted` (tombstone: invisible, version retained) |
  * | Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A tombstone reads exactly like an absent key |
  * | Snapshots | Every state crossing the boundary is a **deep copy**, both ways: what a read returns, what a caller passed to `set`, and a conflict's `currentValue`. Mutating any of them never changes the stored row — the version has to witness the value, so no path may change a value without bumping a version |
+ * | Snapshot timing | `set` captures its value **before it yields** — on the synchronous run-up to the adapter's first `await`, never behind a lock or a microtask. A mutation the caller makes while the returned promise is still in flight must not be the one that commits. Serializing *eventually* is not enough: by the time a deferred body runs, the caller has had control back |
  * | Version | First create writes `1`; each committed write bumps by 1; **never reused**. A recreate continues from the tombstone's version + 1 |
  * | `delete` | Retains the version, drops the payload (stores `{}`), marks `deleted`. The version is the only thing a tombstone carries |
  * | `deleteAll` | Bulk-marks every live key in the scope `deleted`. A scope operation, so it takes no expected version |
@@ -676,6 +677,18 @@ export interface ResourceStateStore {
    * `version: 0`, consistent with `0` meaning "no live row" everywhere else in
    * this contract. That is not a version any row holds, so never carry it
    * forward as the basis for a later write.
+   *
+   * `"any"` and a positive version part company when a delete finds nothing to
+   * remove and a live row appears before it can say why. `"any"` asserts
+   * nothing about versions, so "there was no live row" is already the whole
+   * answer to what it asked: the call linearizes there, a recreate that lands
+   * afterwards belongs to a later story, and the result is an idempotent
+   * success reporting `version: 0` — never the recreated row's version, which
+   * names a live row this delete did not remove. A positive `expectedVersion`
+   * asserted something that did not hold at that same point, so it conflicts,
+   * carrying the version now stored. Both halves matter: collapsing them into
+   * "always succeed" hides a real lost race, and collapsing them into "always
+   * conflict" reports one to a caller that opted out of versions entirely.
    */
   delete(
     scopeType: ContentScopeType,

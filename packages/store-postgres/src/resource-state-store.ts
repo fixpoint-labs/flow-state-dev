@@ -239,7 +239,32 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       // to fence.
       if (current === undefined) return { ok: true, version: 0 };
       if (current.lifecycle !== "live") return { ok: true, version: current.version };
-      // Still live: the version guard genuinely did not match.
+
+      // A live row, after a statement that matched nothing. What that means
+      // depends on what the caller asserted, and the two cases are NOT the
+      // same — flattening them either way loses a real answer.
+      //
+      // `"any"` asserts nothing about versions, and its `-1` guard matches
+      // every one of them, so a zero-row UPDATE can only mean there was no
+      // live row when it ran. That is exactly the question a blind delete
+      // asks, already answered: the call linearizes at the UPDATE, and the row
+      // visible now was recreated after it. Reporting a conflict would name a
+      // concurrency failure that did not affect this request.
+      //
+      // Version `0` and not `current.version`. `0` is this contract's "no live
+      // row", which is what the UPDATE observed, and it is deliberately not a
+      // version any row holds. `current.version` names the recreated row —
+      // live, and something this delete never removed — so handing it back as
+      // though it were a tombstone's retained version is the one genuinely
+      // unsafe answer here: a caller could carry it forward into a write
+      // against a generation it has never seen.
+      if (expectedVersion === "any") return { ok: true, version: 0 };
+
+      // A positive `expectedVersion` DID assert one, and at that same
+      // linearization point the assertion did not hold — the row was live at
+      // another version, or not live at all. That is a genuine conflict on its
+      // own terms, whatever happened afterwards, and it carries the version
+      // now stored so the caller can retry against it.
       return conflictFrom(current);
     },
 
