@@ -22,7 +22,7 @@
  *    so there is one entries array — not two (FIX-591).
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
@@ -204,7 +204,7 @@ describe("session resources are persisted after analyze run", () => {
 
     // Collection-instance and single-resource state live in the
     // ResourceStateStore (FIX-689), keyed per-resource, not inline on the record.
-    const resources = (await stores.resourceState.getAll("session", sessionId)) as Record<
+    const resources = (toBareStates(await stores.resourceState.getAll("session", sessionId))) as Record<
       string,
       unknown
     >;

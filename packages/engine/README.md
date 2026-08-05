@@ -496,20 +496,64 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 ## ResourceStateStore
 
-`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence — the state-layer twin of `ContentStore`. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem `ResourceStateStore` writes each resource's state as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+`StoreRegistry` includes a required `resourceState: ResourceStateStore` field that separates resource *state* persistence from scope record persistence. It holds the structured `JsonObject` each resource carries (single resources and collection instances alike), keyed by `(scopeType, scopeId, resourceKey)`. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ResourceStateStore`. The filesystem adapter writes each resource as a nested `.json` file mirroring the content store's layout (same nested-tree upgrade and legacy-layout guard).
+
+It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so the contract is compare-and-swap: every write takes an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
+
+What follows describes that store contract, not the guarantee the flow path gets today. The writers the runtime drives for flow-authored resource mutations all pass `"any"`, so those writes stay last-write-wins until the registry driver threads the observed version through them. A caller holding a `ResourceStateStore` directly gets the compare-and-swap now.
 
 ```ts
+// branded — see the note under the table below
+type VersionedResourceState = { state: JsonObject; version: number };
+
 interface ResourceStateStore {
-  get(scopeType, scopeId, resourceKey): Promise<JsonObject | undefined>;
-  set(scopeType, scopeId, resourceKey, state): Promise<void>;
-  delete(scopeType, scopeId, resourceKey): Promise<void>;
-  getAll(scopeType, scopeId): Promise<Record<string, JsonObject>>;
-  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, JsonObject>>;
+  get(scopeType, scopeId, resourceKey): Promise<VersionedResourceState | undefined>;
+  set(scopeType, scopeId, resourceKey, state, expectedVersion): Promise<SetResult<JsonObject>>;
+  delete(scopeType, scopeId, resourceKey, expectedVersion): Promise<SetResult<JsonObject>>;
+  getAll(scopeType, scopeId): Promise<Record<string, VersionedResourceState>>;
+  getByPrefix(scopeType, scopeId, keyPrefix): Promise<Record<string, VersionedResourceState>>;
   deleteAll(scopeType, scopeId): Promise<void>;
 }
 ```
 
-The interface and loading semantics mirror `ContentStore` exactly: declared state is loaded per-request (`get` for fixed resources, `getByPrefix` for collections), and a state mutation writes only the affected key rather than rewriting the whole scope record. `createInMemoryResourceStateStore()` is the simplest implementation; database adapters can route state to a dedicated table (Postgres uses `JSONB`). A separate store from `ContentStore` keeps payload types clean — state is `JsonObject`, content is `string`, and a resource can have one without the other.
+`expectedVersion` is a non-negative integer, or `"any"` to write unconditionally. Two meanings differ from the scope stores that share these types, and both are deliberate:
+
+- **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
+- **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
+
+A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
+
+### Versions, deletes and retention
+
+| Rule | Behaviour |
+|---|---|
+| Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A deleted key reads exactly like an absent one |
+| Version | First create writes `1`; each committed write adds one; **never reused**. A recreate continues from the tombstone's version |
+| `delete` | Takes a version like every other write, retains it, and drops the payload. A delete chosen from a stale snapshot conflicts rather than tombstoning a newer generation |
+| `delete(…, "any")` | Never reports a conflict. Finding no live row is the whole answer to a blind delete, so it succeeds at `version: 0` even if a concurrent recreate makes the key live again a moment later. A positive `expectedVersion` in the same race still conflicts — it asserted something that did not hold |
+| `deleteAll` | Bulk-marks every live key in the scope. A scope operation, so it carries no expected version |
+| Retention | Tombstones are kept **indefinitely, in every scope**. Nothing reclaims one |
+| Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
+
+Retention is the guarantee, not an oversight: because a tombstone keeps its version, an observer holding a pre-delete version can never match the row that replaces it. A tombstone that is never removed is always sound. It costs one row per deleted key.
+
+`toBareState` / `toBareStates` are exported for readers that only want the stored value and not the version beside it. `VersionedResourceState` is **branded**, so it is not assignable to `JsonObject` and a missing unwrap fails to compile rather than silently handing the wrong shape downstream. The brand is a phantom optional property that never exists at runtime — adapters still construct a versioned read as a plain object literal. It does not defend against an explicit `as` cast; that stays the caller's assertion to make.
+
+Both are generic in the state shape, so a caller that knows what it stored names it in the call instead of casting the result:
+
+```ts
+const rows = toBareStates<InboxRecord>(await stores.resourceState.getAll("user", userId));
+const one = toBareState<InboxRecord>(await stores.resourceState.get("user", userId, key));
+const bare = toBareStates(rows); // no type argument → Record<string, JsonObject>
+```
+
+The type argument is asserted, not validated — nothing checks the stored row against it at runtime, exactly as the cast it replaces did not. What it buys is that the assertion is named and greppable at the call site rather than hidden in an `as unknown as`. The `JsonObject` bound keeps it honest: it rejects any shape the store could not have held (a `Date` field, say) and rejects `VersionedResourceState` itself, so the projection cannot be used to launder the versioned shape back in.
+
+A `delete` is idempotent at the terminal state: deleting a key that is already absent or already tombstoned succeeds and reports the retained version, and that holds under a race — two concurrent deletes of one live key both report success. A conflict is reserved for a version mismatch against a row that is **still live**.
+
+### Per-adapter guarantee
+
+Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts in one Node process, and does not coordinate two OS processes over one directory.
 
 ## CheckpointStore
 

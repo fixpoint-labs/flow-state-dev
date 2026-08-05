@@ -859,29 +859,29 @@ describe("SQLite store adapter", () => {
   describe("resource state store", () => {
     it("set then get round-trips JSON state", async () => {
       const s = freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 });
+      await s.resourceState.set("session", "s1", "files/a.ts", { language: "ts", lines: 10 }, "any");
       expect(await s.resourceState.get("session", "s1", "files/a.ts")).toEqual({
-        language: "ts",
-        lines: 10
+        state: { language: "ts", lines: 10 },
+        version: 1
       });
     });
 
     it("getByPrefix returns only keys matching the prefix", async () => {
       const s = freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
-      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 });
-      await s.resourceState.set("session", "s1", "notes", { v: 3 });
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 }, "any");
+      await s.resourceState.set("session", "s1", "files/b.ts", { v: 2 }, "any");
+      await s.resourceState.set("session", "s1", "notes", { v: 3 }, "any");
 
       expect(await s.resourceState.getByPrefix("session", "s1", "files/")).toEqual({
-        "files/a.ts": { v: 1 },
-        "files/b.ts": { v: 2 }
+        "files/a.ts": { state: { v: 1 }, version: 1 },
+        "files/b.ts": { state: { v: 2 }, version: 1 }
       });
     });
 
     it("delete removes a single key", async () => {
       const s = freshStores();
-      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 });
-      await s.resourceState.delete("session", "s1", "files/a.ts");
+      await s.resourceState.set("session", "s1", "files/a.ts", { v: 1 }, "any");
+      await s.resourceState.delete("session", "s1", "files/a.ts", "any");
       expect(await s.resourceState.get("session", "s1", "files/a.ts")).toBeUndefined();
     });
   });

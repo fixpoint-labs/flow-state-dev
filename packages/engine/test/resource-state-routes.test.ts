@@ -134,7 +134,7 @@ async function setupCtx(opts: {
   await stores.session.set(sessionId, session, "any");
   // Resource state is canonical in the ResourceStateStore (FIX-689).
   for (const [key, state] of Object.entries(resources)) {
-    await stores.resourceState.set("session", sessionId, key, state as JsonObject);
+    await stores.resourceState.set("session", sessionId, key, state as JsonObject, "any");
   }
 
   // Seed user-scope data only when accounts are provided. Omitting `accounts`
@@ -156,7 +156,7 @@ async function setupCtx(opts: {
     // independent of the (flow-flag) scope-record key above.
     const accountsScopeId = resolveResourceScopeId(userId, flow.kind, true);
     for (const [topic, state] of Object.entries(opts.accounts)) {
-      await stores.resourceState.set("user", accountsScopeId, `accounts/${topic}`, state as JsonObject);
+      await stores.resourceState.set("user", accountsScopeId, `accounts/${topic}`, state as JsonObject, "any");
     }
   }
 
@@ -657,7 +657,7 @@ describe("client projection shapes (FIX-580)", () => {
           title: "T",
           body: "B",
           secret: "S",
-        })
+        }, "any")
       )
       .then(() => ({
         registry,

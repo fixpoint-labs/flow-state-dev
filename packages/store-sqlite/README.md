@@ -87,6 +87,16 @@ Everything this adapter stores survives a process restart, including resource st
 | Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
 | Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
 
+### Resource state carries a version, and deletes leave a row behind
+
+`resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.
+
+**What that guarantee covers, and what it does not yet.** The compare-and-swap is real, and it protects any caller that passes the version it read — code holding a `ResourceStateStore` directly. It does not yet reach resource mutations authored inside a flow. The runtime still persists those unconditionally, so two flow contexts writing the same resource remain last-write-wins, on this adapter and on every other. Threading the observed version through the runtime's resource writes is the next piece of this work. Choose an adapter here for durability and for the version and tombstone semantics described below, not for protection against concurrent flow-authored writes.
+
+The migration is applied automatically on open and is **purely additive**: `ADD COLUMN` with defaults, no table rebuild, no backfill, indexes untouched, and `state` stays `NOT NULL`. Rows written before the upgrade read as **live at version 1**. Re-opening an already-migrated database is a no-op, so it is safe to roll forward repeatedly.
+
+**Operator-visible:** deleting a resource does not remove its row. It marks the row `deleted`, keeps the version, and replaces the payload with `{}`. That retained version is what makes delete-then-recreate safe. Nothing reclaims these rows — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one small row per deleted key. Plan for it rather than expecting a cleanup pass that does not exist.
+
 ```ts
 const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
 await stores.content.set("session", sessionId, "artifacts/report", "…body…");

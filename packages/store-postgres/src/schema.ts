@@ -174,6 +174,8 @@ CREATE TABLE IF NOT EXISTS resource_state (
   scope_id      TEXT NOT NULL,
   resource_key  TEXT NOT NULL,
   state         JSONB NOT NULL,
+  version       BIGINT NOT NULL DEFAULT 1,
+  lifecycle     TEXT NOT NULL DEFAULT 'live',
   PRIMARY KEY (scope_type, scope_id, resource_key)
 );
 `;
@@ -310,6 +312,31 @@ BEGIN
 END $$;
 `;
 
+/**
+ * Add `version` and `lifecycle` to a pre-CAS `resource_state` table.
+ *
+ * Purely additive: `ADD COLUMN IF NOT EXISTS ... DEFAULT`, no `DROP NOT NULL`,
+ * no table rewrite, indexes untouched. `state` stays `JSONB NOT NULL` — a
+ * tombstone stores `{}` rather than a null state precisely so this stays a
+ * pure `ADD COLUMN`.
+ *
+ * The defaults are the legacy contract: an existing row becomes **live at
+ * version 1**, never absent, so a reader that predates versioning keeps seeing
+ * its data and an `expectedVersion: 0` create against it correctly conflicts.
+ */
+const ADD_RESOURCE_STATE_VERSIONING_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'resource_state'
+  ) THEN
+    EXECUTE 'ALTER TABLE resource_state ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 1';
+    EXECUTE 'ALTER TABLE resource_state ADD COLUMN IF NOT EXISTS lifecycle TEXT NOT NULL DEFAULT ''live''';
+  END IF;
+END $$;
+`;
+
 const SUSPENSION_RECORDS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id)",
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at)",
@@ -388,7 +415,11 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   ADD_TENANT_ID_MIGRATION,
   // FIX-141: ensure `suspension_records.status` / `resolved_at` exist on
   // pre-FIX-141 schemas. Idempotent on fresh databases.
-  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION
+  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION,
+
+  // FIX-992: add `version` / `lifecycle` to a pre-CAS `resource_state`.
+  // Purely additive; existing rows become live at version 1.
+  ADD_RESOURCE_STATE_VERSIONING_MIGRATION
 ];
 
 /**

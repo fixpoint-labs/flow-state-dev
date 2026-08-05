@@ -200,7 +200,10 @@ async function seedStores(options: {
     if (resources === undefined) return;
     const normalized = toJsonObjectRecord(cloneValue(resources));
     for (const [key, value] of Object.entries(normalized)) {
-      await options.stores.resourceState.set(scopeType, scopeId, key, value);
+      // Seeding a fresh scope before the flow runs: no concurrent writer
+      // exists, so `"any"` is the honest posture rather than a version the
+      // harness would have to invent.
+      await options.stores.resourceState.set(scopeType, scopeId, key, value, "any");
     }
   };
 

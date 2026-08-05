@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
-import { createExecutionContext, createInMemoryStores } from "../src";
+import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
 
 describe("FIX-591: resource state keyed by ref, not accessor name", () => {
   it("two accessors of the same DefinedResource see shared state", async () => {
@@ -108,7 +108,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
 
     // Resource state lives in the ResourceStateStore (FIX-689); aliases dedup
     // to exactly one storage slot holding the latest written value.
-    const persisted = await stores.resourceState.getAll("session", "sess_aliases");
+    const persisted = toBareStates(await stores.resourceState.getAll("session", "sess_aliases"));
     const matching = Object.keys(persisted).filter(
       (k) => k === "primary" || k === "alias"
     );

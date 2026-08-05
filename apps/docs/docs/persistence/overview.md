@@ -63,7 +63,24 @@ const flowstate = createFlowState({
 });
 ```
 
-On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` instead — it bakes in the pool tuning and Neon client swap. Postgres provides the concurrency safety that CAS (Compare-and-Swap) operations rely on. In-memory and filesystem stores serialize writes, which works for single-process development but doesn't scale across instances.
+On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` instead — it bakes in the pool tuning and Neon client swap.
+
+Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
+
+How much of that each store actually gives you differs, and it is worth knowing before you pick one:
+
+| Store | Scope state | Resource state |
+|---|---|---|
+| In-memory | Serialized per container | Real compare-and-swap (single process by definition) |
+| Filesystem | Serialized per container | Compared under a per-key lock, **within one process only** |
+| SQLite | Real compare-and-swap | Real compare-and-swap |
+| Postgres | Real compare-and-swap | Real compare-and-swap |
+
+The filesystem row is the one to read twice. Two contexts inside one Node process are protected. Two separate processes pointed at the same directory are not — the lock lives in process memory, not on disk. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
+
+The resource-state column describes the store, not yet the flow path on top of it. The runtime writes resource state without naming a version today, so a flow mutating `ctx.sessionResources` or a collection instance is still last-write-wins whichever store is underneath — see [the mutation model](../state/mutation-model.md) for where that line currently sits.
+
+Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Markers are kept indefinitely — nothing reclaims them today — so a workload that creates and deletes many resource keys will accumulate one row per deleted key.
 
 ## What gets persisted
 
