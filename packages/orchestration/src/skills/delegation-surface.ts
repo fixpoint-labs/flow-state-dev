@@ -794,7 +794,7 @@ const FLOOR_ADVISORY_ROSTERLESS =
  * told about are exactly the ones it may assign to. Called only when the surface
  * installs; `resolveBuild` owns that decision.
  *
- * A rosterless board leads with the floor rather than an empty "Your agents:"
+ * A rosterless board leads with the floor rather than an empty "Your team:"
  * list, and takes a different floor advisory: only a roster-carrying board
  * validates assignment (FIX-924), so promising rejection on a board that accepts
  * anything would be a lie.

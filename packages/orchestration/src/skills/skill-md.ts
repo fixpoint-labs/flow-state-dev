@@ -236,7 +236,8 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
   const setResolution = AGENT_RESOLUTION_FIELDS.filter((f) => f in obj && obj[f] !== null && obj[f] !== undefined);
   if (setResolution.length === 0) {
     throw new Error(
-      `SKILL.md agent \`${key}\`: exactly one of \`prompt\`, \`prompt-ref\`, \`agent-ref\` required`,
+      `SKILL.md agent \`${key}\`: exactly one of ` +
+        `${AGENT_RESOLUTION_FIELDS.map((f) => `\`${f}\``).join(", ")} required`,
     );
   }
   if (setResolution.length > 1) {

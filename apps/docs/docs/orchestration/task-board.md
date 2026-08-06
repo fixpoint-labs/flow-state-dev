@@ -221,7 +221,7 @@ const board = taskBoard({
 
 There is no `defaultWorker` unless you pass one. The skills delegation surface always passes one, which is how every delegation board gets an on-demand [default worker](../skills/delegation.md#default-worker-the-floor); a plain `taskBoard` opts in.
 
-A delegation board catches a bad assignee earlier than that. When the skill declares agents, `addTask` with an assignee that isn't one of them returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. The check needs a roster to check against. A delegation board with no declared agents has no roster, and neither does a `taskBoard` you wire yourself, so on those boards every assignee is accepted and an unmatched one takes the fallback path above.
+A delegation board catches a bad assignee earlier than that. When the skill declares participants — agents or tools — `addTask` with an assignee that isn't one of them returns `{ ok: false, error: "unknown_assignee: …" }` and writes nothing, so a typo is refused at creation rather than quietly landing on the default worker. The check needs a roster to check against. A delegation board with no declared participants has no roster, and neither does a `taskBoard` you wire yourself, so on those boards every assignee is accepted and an unmatched one takes the fallback path above.
 
 ## Concurrency and error handling
 

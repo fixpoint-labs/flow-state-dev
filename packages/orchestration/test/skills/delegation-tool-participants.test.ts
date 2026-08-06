@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 import { generator, handler } from "@flow-state-dev/core";
 import type { GeneratorTool, InitialSkill } from "@flow-state-dev/core";
-import { runForTest, testBlock } from "@flow-state-dev/testing";
+import { mockGenerator, runForTest, testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { buildDelegationCtx } from "./delegation-ctx";
 import { createSkillsLibrary } from "../../src/skills/library";
@@ -268,5 +268,101 @@ describe("delegation surface — the drain runs a mixed board", () => {
     for (const call of fetchCalls) {
       expect(Object.keys(call)).toEqual(["url"]);
     }
+  });
+
+  it("chains tool → agent: the tool's output reaches the downstream agent's prompt", async () => {
+    // The mixed board's payoff. The tool node takes no model turn; the agent
+    // node does, and it receives the tool's recorded output as an upstream
+    // result (agents DO get dep outputs — only tools don't).
+    fetchCalls.length = 0;
+    const analyst = mockGenerator({
+      name: "skillWorker_research_analyst",
+      // A predicate entry matches repeatedly rather than being consumed once:
+      // the fixture's state ref isn't CAS-backed, so the drain's lanes can claim
+      // the same task more than once and a one-shot script would run dry.
+      script: [{ when: () => true, then: { text: "Claim: the page loaded." } }],
+    });
+    const { gen, ctx } = mixedSurface();
+    const tools = await resolveTools(gen, ctx);
+    const addTask = pickTool(tools, "addTask");
+    const runBoard = pickTool(tools, "runBoard");
+
+    const fetchTask = (await runForTest(
+      addTask,
+      { goal: "fetch page A", assignee: "fetch", input: { url: "https://a.example" } },
+      ctx,
+    )) as { taskId: string };
+    await runForTest(
+      addTask,
+      { goal: "extract claims from A", assignee: "analyst", deps: [fetchTask.taskId] },
+      ctx,
+    );
+
+    const drained = await testBlock(runBoard as never, {
+      input: {},
+      generators: { skillWorker_research_analyst: analyst },
+      unmockedGeneratorPolicy: "error",
+    });
+    expect(drained.error).toBeNull();
+
+    // The deterministic node ran as a direct call...
+    expect(fetchCalls[0]).toEqual({ url: "https://a.example" });
+    // ...and exactly one model turn happened on this board — the agent's.
+    expect(analyst.calls.length).toBeGreaterThan(0);
+    // The tool's own return value reached that turn as an upstream result.
+    const promptText = JSON.stringify(analyst.calls);
+    expect(promptText).toContain("body of https://a.example");
+
+    const result = drained.output as {
+      tasks: Array<{ assignee?: string; status: string; output?: unknown }>;
+    };
+    expect(result.tasks.find((t) => t.assignee === "fetch")?.output).toEqual({
+      body: "body of https://a.example",
+    });
+    expect(result.tasks.find((t) => t.assignee === "analyst")?.status).toBe("completed");
+  });
+
+  it("fails the offending task when the tool throws, leaving the board settled", async () => {
+    // The worker here is a sequencer, a shape that hadn't sat in the worker
+    // position before. A throw from inside it must still reach the board's
+    // rescue path and fail that task rather than escaping the drain.
+    const boom = handler({
+      name: "boom",
+      description: "Always throws.",
+      inputSchema: z.unknown(),
+      outputSchema: z.string(),
+      execute: async () => {
+        throw new Error("tool exploded");
+      },
+    }) as never;
+    const skills = createSkillsLibrary({
+      catalog: { httpGet: boom } as never,
+      initialSkills: [mixedSkill],
+    });
+    const failingGen = generator({
+      name: "executive",
+      model: "openai/gpt-5.4-mini",
+      prompt: "delegate",
+      inputSchema: z.object({}),
+      uses: [skills.with({ active: ["research"] } as never)],
+    });
+    const { ctx } = buildDelegationCtx();
+    const tools = await resolveTools(failingGen, ctx);
+
+    await runForTest(
+      pickTool(tools, "addTask"),
+      { goal: "fetch page A", assignee: "fetch", input: { url: "https://a.example" } },
+      ctx,
+    );
+    const drained = await testBlock(pickTool(tools, "runBoard") as never, { input: {} });
+
+    // The drain itself completes — the failure is recorded, not thrown outward.
+    expect(drained.error).toBeNull();
+    const result = drained.output as {
+      tasks: Array<{ assignee?: string; status: string; error?: string }>;
+    };
+    const task = result.tasks.find((t) => t.assignee === "fetch");
+    expect(task?.status).toBe("errored");
+    expect(task?.error).toContain("tool exploded");
   });
 });

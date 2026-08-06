@@ -89,7 +89,7 @@ Two things are rejected rather than ignored, both when the skill is parsed:
 - Agent tuning fields (`prompt`, `model`, `visibility`, `context-supply`, `tools`, `agent-overrides`) alongside `tool:`. There's no model turn to tune.
 - A `tool:` naming a catalog key that doesn't exist. For a statically-bound skill that surfaces at build time.
 
-A `tool:` also has to name a deterministic block. A catalog key pointing at a generator, or at a router with a generator branch, is rejected — those take a model turn, which is the cost this participant kind exists to avoid. A generator nested deeper inside a sequencer isn't detected, so keep a catalog tool you intend to use this way free of them.
+A `tool:` also has to name a deterministic block. A catalog key pointing at a generator, or at a router with a generator branch, is rejected — those take a model turn, which is the cost this participant kind exists to avoid. A generator nested deeper isn't detected, whether it sits inside a sequencer's steps or behind a route of a route, so keep a catalog tool you intend to use this way free of them.
 
 ## Board and overrides
 

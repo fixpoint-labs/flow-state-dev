@@ -48,11 +48,12 @@ export function resolveToolParticipant(
  *   - `kind === "generator"` — rejected outright.
  *   - a `router` — rejected when its `config.routes` (which core *does* expose)
  *     contains a generator branch.
- *   - a `sequencer` — NOT walked. `createSequencer` closes its steps into the
- *     block's `execute` and exposes no enumeration API, so a deep guarantee
- *     would need an unscoped public-traversal API to be earned. A generator
- *     buried in a sequencer's steps is the author's own misuse; 925 makes no
- *     claim there.
+ * Nothing deeper is walked. A generator nested inside a `sequencer`'s steps, or
+ * behind a route of a route, is not detected: `createSequencer` closes its steps
+ * into the block's `execute` and exposes no enumeration API, so a deep guarantee
+ * would need an unscoped public-traversal API to be earned. A catalog block
+ * registered as a `tool:` participant is the author's to keep model-free below
+ * this surface; FIX-925 makes no claim there.
  */
 export function assertDeterministicTool(
   agentKey: string,

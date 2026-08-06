@@ -84,7 +84,7 @@ angle, each `assignee: "analyst"`. Then call `runBoard` and synthesize the
 settled tasks' output.
 ```
 
-The generator that bound the skill (the coordinator) picks assignees off a roster the skill builds from its `agents:` map: each agent key with a one-line purpose beside it. For an `agent-ref` entry that purpose is the referenced agent's name. For a `prompt` or `prompt-ref` entry it is the first line of the prompt, cut off past 80 characters. So an inline prompt's opening line doubles as routing copy: write it as a summary of what the agent does, not as a preamble.
+The generator that bound the skill (the coordinator) picks assignees off a roster the skill builds from its `agents:` map: each key with a one-line purpose beside it. For an `agent-ref` entry that purpose is the referenced agent's name. For a `prompt` or `prompt-ref` entry it is the first line of the prompt, cut off past 80 characters. So an inline prompt's opening line doubles as routing copy: write it as a summary of what the agent does, not as a preamble. A [`tool` entry](../skills/delegation#deterministic-participants-tools) is marked deterministic and described from the catalog tool's own `description`.
 
 Overrides use REPLACE semantics, not merge. If `agent-overrides.tools` is present, it replaces the agent's `allowedTools` entirely; the two lists are not combined. Same for `model` and `visibility` (the frontmatter key for `itemVisibility`). Read the override block and you know exactly what the agent can do.
 
