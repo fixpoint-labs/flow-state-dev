@@ -1188,7 +1188,7 @@ the task.
 documented at-most-once guarantee (`scheduled/src/scheduleIndex.ts:14-17`); this substrate is
 at-least-once with reclaim. The shapes rhyme; the delivery semantics are opposites.
 
-### Decision 7 — a Workstream owns its own board; the parent's board is the coordinator's alone
+### Decision 7 — a Workstream owns its own board, and settles its own task
 
 DECIDED by the repo owner. A board is **the coordinator's instrument for managing work it planned.**
 A task on that board *commands* a Workstream; it does not hand the Workstream the board. If a
@@ -1247,11 +1247,35 @@ parent's task still has to be **settled**. Today the *pattern* settles it — th
 > settlement** (Decision 4's attempt token). A map that stops at success/failure/abort/cancel is
 > incomplete in both directions.
 >
-> **Settlement happens on the PARENT side, driven by the Workstream's request reaching a terminal
-> state** — not by the worker calling back into the parent's board. That needs the wake source
-> (N4 / Decision 6) and the task output crossing the request boundary (FIX-991), both already in
-> scope. **If FIX-982 instead lets the worker settle directly, it needs the parent's board
-> coordinate and N10/N13 return exactly as filed.** Whichever it picks, it must say which.
+> **SETTLEMENT HAPPENS INSIDE THE WORKSTREAM — DECIDED by the repo owner, and this paragraph
+> previously said the opposite.** The owner's reasoning: *the assignee of the task is effectively the
+> owner of the workstream, and the owner of the task, so why shouldn't the workstream settle its own
+> task.* The decision was given in conversation and, through an omission on the coordinating side,
+> was never folded here until [FIX-982's spec](https://github.com/fixpoint-labs/flow-state-dev/pull/1063)
+> flagged the contradiction. **N63b — the same defect class as N61: a decision that exists but is not
+> where the reader looks.** It is the more dangerous direction, because a spec author following this
+> document faithfully would have built the wrong thing.
+>
+> *The superseded text, kept so the reasoning is not re-derived:* settlement was to happen on the
+> **parent** side, driven by observing the Workstream's request reach a terminal state, needing the
+> wake source (N4 / Decision 6) and the task output crossing the request boundary (FIX-991).
+>
+> **Why the owner's answer is also the better one, on evidence gathered after it was given.**
+> Parent-side settlement names an operation with **no addressable surface**: every
+> `TaskCollectionRef` constructor requires a live `BlockContext`, and once the initiating request ends
+> nothing holds one (N26). Inside the Workstream a live context exists by construction. It also
+> collapses the six-terminal-status map above to **three** in-Workstream outcomes — success →
+> `complete`, throw → `fail`, abort → the canceller already settled — because the Workstream knows
+> what happened directly instead of inferring it from a request status written identically on a
+> retryable and a final attempt (N41).
+>
+> **The cost, and the one place the two documents still disagree.** This narrows binding rule 14: a
+> Workstream now writes to the board that dispatched it. This paragraph previously asserted that
+> letting the worker settle directly makes **N10/N13 return exactly as filed**; FIX-982's spec argues
+> instead that the rule's *reason* is untouched (the coordinator's outstanding-work list does not grow
+> with entries it never planned — settling a task it *did* plan adds nothing), so the rule holds in
+> spirit and is amended in letter. **That disagreement is live and belongs to FIX-982's spec review**,
+> not to this document. Every such write is fenced with `expectAttempt`.
 >
 > **And "reached a terminal state" is not the same as "finished" once BullMQ is the transport.**
 > `attempts` defaults to **3** (`bullmq/src/retry.ts:12`), every attempt calls `runAction` with the
