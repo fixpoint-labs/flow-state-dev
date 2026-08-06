@@ -729,6 +729,11 @@ async function buildTools(
  * marked as a tool so the coordinator knows to pass structured `input` rather
  * than expect prose reasoning. `BlockDefinition.description` is optional, so the
  * fallback is pinned — a roster line must never render empty.
+ *
+ * The catalog read uses the same own-property semantics as
+ * `resolveToolParticipant` (BP-031): the catalog is a plain object, so a
+ * participant keyed `constructor` or `toString` would otherwise resolve to an
+ * inherited `Object.prototype` member and render a roster line off it.
  */
 export function agentPurpose(
   spec: AgentSpec,
@@ -736,7 +741,10 @@ export function agentPurpose(
   catalog?: ToolCatalog,
 ): string {
   if (spec.tool) {
-    const described = catalog?.[spec.tool]?.config?.description;
+    const described =
+      catalog && Object.hasOwn(catalog, spec.tool)
+        ? catalog[spec.tool]?.config?.description
+        : undefined;
     return described
       ? `tool \`${spec.tool}\` (deterministic) — ${described}`
       : `tool \`${spec.tool}\` (deterministic)`;

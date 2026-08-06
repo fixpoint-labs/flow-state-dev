@@ -130,7 +130,7 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
  * advertises as "Your team:", so context and validation cannot disagree.
  */
 export interface WorkerRoster {
-  /** True when `assignee` names a declared agent on this board. */
+  /** True when `assignee` names a declared participant — agent or tool — on this board. */
   has(assignee: string): boolean;
   /** Roster rendered for an error message, e.g. `researcher (…), writer (…)`. */
   describe(): string;
@@ -155,7 +155,7 @@ const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
  *   default worker (the delegation floor, FIX-940). Reaching the floor by
  *   *intent* stays open; only reaching it by *accident* (a typo) is closed.
  * - **No roster.** The standalone `taskTools` singleton, and a delegation board
- *   with no declared agents at all, supply none — there is nothing to validate
+ *   with no declared participants at all, supply none — there is nothing to validate
  *   against, so validation is inert and every assignee is accepted as before
  *   (BP-030: tolerate the old, roster-less shape).
  *
@@ -667,9 +667,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
  * generator's `tools:` array rather than composing the capability via `uses:`).
  * Defaults to the own-state board resolver.
  *
- * @param roster Optional declared-agent roster. Supply it and `addTask`/
- *   `assignTask`/`updateTask` reject an assignee that names no declared agent.
- *   Omit it and assignment is unvalidated, as before.
+ * @param roster Optional declared-participant roster. Supply it and `addTask`/
+ *   `assignTask`/`updateTask` reject an assignee that names no declared
+ *   participant. Omit it and assignment is unvalidated, as before.
  */
 export function buildTaskToolsList(
   resolveCollection: TaskCollectionResolver = defaultOwnStateResolver,
@@ -690,7 +690,7 @@ export function buildTaskToolsList(
  *   generator's own-state board via `ctx.parent`. Pass a resolver targeting a
  *   shared board for the shared-board delegation case (or a drain board for a
  *   Shape 2 fan-out worker).
- * @param roster Optional declared-agent roster for assignee validation. Supply
+ * @param roster Optional declared-participant roster for assignee validation. Supply
  *   it so a fan-out worker enqueuing follow-up tasks mid-drain is held to the
  *   same roster the executive is.
  */

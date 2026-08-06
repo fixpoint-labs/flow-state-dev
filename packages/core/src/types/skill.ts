@@ -125,6 +125,42 @@ export interface AgentSpec {
 }
 
 /**
+ * The mutually-exclusive participant resolution fields, keyed by SKILL.md
+ * frontmatter (kebab) name → the `AgentSpec` field it parses into. Exactly one
+ * is set on any spec.
+ */
+export const AGENT_RESOLUTION_FIELDS = {
+  prompt: "prompt",
+  "prompt-ref": "promptRef",
+  "agent-ref": "agentRef",
+  tool: "tool",
+} as const satisfies Record<string, keyof AgentSpec>;
+
+/**
+ * Every field that only means something for a prompt-driven agent — each one
+ * tunes a model turn a `tool:` participant never takes — keyed by SKILL.md
+ * frontmatter (kebab) name → the `AgentSpec` field it parses into (FIX-925).
+ *
+ * ONE list, two gates. The SKILL.md parser rejects the kebab keys on a `tool:`
+ * spec; the materializer re-checks the camelCase fields, because `AgentSpec` is
+ * exported and a persisted or programmatic `PatternBinding` reaches
+ * materialization having never passed through the parser. Two hand-maintained
+ * lists would drift, and a drifted pair is a *silent* hole in that fail-loud
+ * guarantee: a spec carrying a field only one side knows about passes one gate
+ * and fails the other. Both gates derive from here.
+ *
+ * The kebab→camel mapping is stated rather than computed because it is not
+ * mechanical: `visibility` parses into `itemVisibility`.
+ */
+export const AGENT_ONLY_TUNING_FIELDS = {
+  "agent-overrides": "agentOverrides",
+  tools: "tools",
+  visibility: "itemVisibility",
+  model: "model",
+  "context-supply": "contextSupply",
+} as const satisfies Record<string, keyof AgentSpec>;
+
+/**
  * Parsed state for a `skills/{name}/SKILL.md` resource. Derived from the
  * file's YAML frontmatter (kebab-case) and stored on the resource as
  * camelCase. Unknown frontmatter keys are preserved on `_preservedFields`

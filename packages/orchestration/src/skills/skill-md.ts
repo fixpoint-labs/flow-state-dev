@@ -12,6 +12,10 @@
  * inside `substitute()`.
  */
 
+import {
+  AGENT_ONLY_TUNING_FIELDS,
+  AGENT_RESOLUTION_FIELDS,
+} from "@flow-state-dev/core";
 import type {
   AgentOverrides,
   AgentSpec,
@@ -81,24 +85,20 @@ const AGENT_KNOWN_KEYS = new Set([
 const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "visibility"]);
 
 /**
- * Mutually-exclusive participant resolution fields. Exactly one must be set.
+ * Mutually-exclusive participant resolution keys. Exactly one must be set.
  * `tool` (FIX-925) joins the three agent kinds as a fourth resolution kind on
  * the same map — one assignee namespace, not a second registry.
  */
-const AGENT_RESOLUTION_FIELDS = ["prompt", "prompt-ref", "agent-ref", "tool"] as const;
+const AGENT_RESOLUTION_KEYS = Object.keys(AGENT_RESOLUTION_FIELDS);
 
 /**
- * Fields that only mean something for a prompt-driven agent — every one of them
- * tunes a model turn a `tool:` participant does not take. Rejected on a tool
- * spec rather than ignored, mirroring the `agent-ref`-tuning rejection below.
+ * Frontmatter keys that only mean something for a prompt-driven agent — every
+ * one of them tunes a model turn a `tool:` participant does not take. Rejected
+ * on a tool spec rather than ignored, mirroring the `agent-ref`-tuning
+ * rejection below. Derived from the core constant the materializer's camelCase
+ * re-check also derives from, so the two gates cannot drift.
  */
-const AGENT_ONLY_TUNING_KEYS = [
-  "agent-overrides",
-  "tools",
-  "visibility",
-  "model",
-  "context-supply",
-] as const;
+const AGENT_ONLY_TUNING_KEYS = Object.keys(AGENT_ONLY_TUNING_FIELDS);
 
 /**
  * Claude-Code fields we silently ignore at runtime but warn about so users
@@ -233,11 +233,11 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
     }
   }
 
-  const setResolution = AGENT_RESOLUTION_FIELDS.filter((f) => f in obj && obj[f] !== null && obj[f] !== undefined);
+  const setResolution = AGENT_RESOLUTION_KEYS.filter((f) => f in obj && obj[f] !== null && obj[f] !== undefined);
   if (setResolution.length === 0) {
     throw new Error(
       `SKILL.md agent \`${key}\`: exactly one of ` +
-        `${AGENT_RESOLUTION_FIELDS.map((f) => `\`${f}\``).join(", ")} required`,
+        `${AGENT_RESOLUTION_KEYS.map((f) => `\`${f}\``).join(", ")} required`,
     );
   }
   if (setResolution.length > 1) {

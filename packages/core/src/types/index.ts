@@ -275,6 +275,8 @@ export type {
   AgentSpec,
 } from "./skill";
 
+export { AGENT_ONLY_TUNING_FIELDS, AGENT_RESOLUTION_FIELDS } from "./skill";
+
 export type { Agent, AgentOverrides, AgentRegistry } from "./agent";
 
 export type {

@@ -19,6 +19,8 @@
  */
 
 import {
+  AGENT_ONLY_TUNING_FIELDS,
+  AGENT_RESOLUTION_FIELDS,
   generator,
   sequencer,
   warnOnceDev,
@@ -115,47 +117,35 @@ export const CONVERSATION_HISTORY_TURNS = 8;
  * Every `AgentSpec` field that only means something for a prompt-driven agent.
  * Each one tunes a model turn, which a `tool:` participant never takes — so on
  * a tool spec they are inapplicable, not merely unused (FIX-925).
+ *
+ * Derived, not hand-listed: the tuning fields plus the agent resolution kinds,
+ * both read off the core constants the SKILL.md parser's kebab-key gate also
+ * derives from. A field added to `AgentSpec` reaches both gates or neither —
+ * two hand-maintained lists would drift into a spec that passes one and fails
+ * the other.
  */
-const AGENT_ONLY_SPEC_FIELDS = [
-  "prompt",
-  "promptRef",
-  "agentRef",
-  "agentOverrides",
-  "tools",
-  "itemVisibility",
-  "model",
-  "contextSupply",
-] as const satisfies ReadonlyArray<keyof AgentSpec>;
+const AGENT_ONLY_SPEC_FIELDS: ReadonlyArray<keyof AgentSpec> = [
+  ...Object.values(AGENT_RESOLUTION_FIELDS).filter((field) => field !== "tool"),
+  ...Object.values(AGENT_ONLY_TUNING_FIELDS),
+];
 
 /**
  * Adapt a catalog tool into a board worker (FIX-925).
  *
  * The board feeds every worker a `TaskWorkerInput` envelope, but a tool declares
- * its own typed argument schema, so something has to unwrap `env.input`. That
- * unwrap must be **compositional**, not a bare `tool.connectInput(...)`:
- * `buildWorkerStep` applies its own `connectInput<Task>(packWorkerInput)` to
- * every registered worker, and `connectInput` REBUILDS a block with the new
- * mapper rather than composing with the old one — so a bare unwrap would be
- * clobbered and the tool would receive the whole envelope, failing its own
- * `inputSchema`.
- *
- * Wrapping in a one-step sequencer keeps the unwrap on an INNER block the board
- * never re-connects: the board connects the outer sequencer
- * (`Task → TaskWorkerInput`), the inner tool keeps its own
- * (`TaskWorkerInput → tool args`). This is why the substrate needs no edit
- * (BP-011: compose as a sequencer, not a handler calling a block; BP-013:
- * `connectInput` on the inner step).
- *
- * BP-025: no `outputSchema` is declared on the wrapper deliberately — the
- * sequencer tracks its last step's schema, so the tool's NATIVE output schema
- * propagates to `record-result` unchanged. Declaring one here would only create
- * a second shape that could drift from the tool's.
+ * its own typed argument schema, so the unwrap lives on an INNER step the board
+ * never re-connects — `buildWorkerStep` re-applies `connectInput` to every
+ * registered worker, and `connectInput` replaces a mapper rather than composing
+ * with it. `worker-materializer.test.ts` → "survives the board's own
+ * connectInput" pins that. No `outputSchema` on the wrapper is deliberate
+ * (BP-025): the sequencer tracks its last step's, so the tool's native output
+ * schema reaches `record-result` unchanged.
  */
-async function materializeToolWorker(
+function materializeToolWorker(
   agentKey: string,
   toolKey: string,
   deps: WorkerMaterializationDeps,
-): Promise<BlockDefinition> {
+): BlockDefinition {
   const tool = resolveToolParticipant(agentKey, toolKey, deps.catalog, "skills:");
   assertDeterministicTool(agentKey, toolKey, tool, "skills:");
   return sequencer({

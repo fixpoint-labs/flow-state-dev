@@ -175,6 +175,20 @@ describe("delegation surface — tool participants in the roster", () => {
     expect(purpose).toContain("compute");
     expect(purpose).toContain("deterministic");
   });
+
+  // BP-031, the same own-property semantics `resolveToolParticipant` enforces.
+  // A bare `catalog?.[key]` reads straight through the prototype chain, so an
+  // inherited entry would describe a participant that resolution refuses to
+  // materialize — the roster advertising a tool the board cannot run.
+  it("describes only own catalog entries, not inherited ones", () => {
+    const catalog = Object.create({
+      ghost: { config: { description: "Inherited, not really in the catalog." } },
+    }) as never;
+
+    expect(agentPurpose({ tool: "ghost" }, undefined, catalog)).toBe(
+      "tool `ghost` (deterministic)",
+    );
+  });
 });
 
 describe("delegation surface — tool participants and the per-execution memo", () => {

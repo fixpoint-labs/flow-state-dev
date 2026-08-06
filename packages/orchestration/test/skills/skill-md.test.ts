@@ -517,21 +517,9 @@ describe("parseSkillMd — tool participants", () => {
     expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
   });
 
-  // Each of these maps to generator-only machinery. Silently ignoring them
-  // would let an author believe a tool participant is being tuned when the
-  // fields can't apply — there is no model turn to tune.
-  it.each([
-    ["model", `    model: openai/gpt-5.4-mini`],
-    ["visibility", `    visibility: primary`],
-    ["context-supply", `    context-supply: conversation`],
-    ["tools", `    tools: [search]`],
-    ["agent-overrides", `    agent-overrides:\n      model: x`],
-  ])("rejects agent-only field `%s` on a tool participant", (field, line) => {
-    const text = withFrontmatter(
-      [`agents:`, `  fetch:`, `    tool: httpGet`, line].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(new RegExp(`\`${field}\``));
-  });
+  // Rejecting the agent-only fields on a tool participant is walked field by
+  // field in `agent-only-fields.test.ts`, which drives this gate and the
+  // materializer's camelCase one off the single core constant they share.
 
   it("points a removed `block-ref` at `tool:` as its migration target", () => {
     const text = withFrontmatter(

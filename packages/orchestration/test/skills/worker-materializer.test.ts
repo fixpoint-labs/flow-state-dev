@@ -461,29 +461,10 @@ describe("materializeWorker — tool participants (FIX-925)", () => {
     },
   );
 
-  // The parser rejects the kebab-case forms, but `AgentSpec` is exported and a
-  // persisted/programmatic PatternBinding arrives already camelCase, having
-  // bypassed the parser entirely. Without a guard here, `{ tool, agentRef }`
-  // would take the agentRef branch and silently materialize an AGENT.
-  it.each([
-    ["agentRef", { agentRef: "research-analyst" }],
-    ["promptRef", { promptRef: "./p.md" }],
-    ["prompt", { prompt: "You are a fetcher." }],
-    ["model", { model: "openai/gpt-5.4-mini" }],
-    ["contextSupply", { contextSupply: "conversation" as const }],
-    ["itemVisibility", { itemVisibility: { client: true, history: false } }],
-    ["tools", { tools: ["search"] }],
-    ["agentOverrides", { agentOverrides: { model: "x" } }],
-  ])("throws on a parser-bypassed camelCase `%s` alongside `tool`", async (_name, extra) => {
-    const calls: unknown[] = [];
-    await expect(
-      materializeWorker(
-        "fetch",
-        { tool: "httpGet", ...extra } as AgentSpec,
-        deps({ catalog: { httpGet: makeFetchTool(calls) } }),
-      ),
-    ).rejects.toThrow(/`tool`/);
-  });
+  // The parser-bypassed camelCase guard (`{ tool, agentRef }` must not fall
+  // into the agentRef branch and silently materialize an AGENT) is walked field
+  // by field in `agent-only-fields.test.ts`, alongside the parser's kebab gate,
+  // off the single core constant both derive from.
 
   // Decision 7: `tool:` must resolve to a deterministic block, enforced at the
   // block's directly-detectable surface. A generator would take the model turn
