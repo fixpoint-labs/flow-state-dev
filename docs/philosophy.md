@@ -176,6 +176,31 @@ tests prove the pieces; a real-model goal check proves the point. And tests must
 encode *why* a behavior matters, not just *what* it does — a test that can't fail
 when the business logic changes is not a test.
 
+That last sentence generalizes past tests, and the general form is the one that
+keeps catching us: **a check that silently skipped its input is indistinguishable
+from a check that passed.** Both are green. So the question is never "did it
+pass" — it is *could it have failed, and did I see it fail for the reason I
+think?* A `grep` reports nothing for a pattern that isn't there and for a file it
+declined to read. A typecheck reports success over the files it compiles and says
+nothing about the ones its `include` never named. A test harness that gates a
+race reports a pass whether it held the race open or gave up on it. This applies
+to any instrument you are about to trust — a grep, a linter, a CI job, a fixture,
+and the revert you use to red-check another guard. Prove the instrument can fail
+before you read its silence as evidence.
+
+Two corollaries worth naming, because both cost us rounds:
+
+- **Assert where the defect is observable, not where the data lands.** When the
+  bug is in *which* event fires, or in what a caller can read afterwards,
+  asserting the stored artifact cannot see it — the artifact is identical either
+  way. Move the assertion to the seam the defect actually crosses.
+- **Pin a behavioural claim as a test and prose becomes commentary.** Prose about
+  behaviour drifts wherever it is written, and consolidating it does not stop the
+  drift — a pointer that paraphrases is another copy, and different audiences
+  genuinely need different documents. What stops the drift is the claim being
+  asserted somewhere that goes red. Documentation is then downstream of a fact
+  instead of a second, competing statement of it.
+
 *Derives:* BP-003 (verification evidence), the two-kinds-of-test discipline.
 
 ---
