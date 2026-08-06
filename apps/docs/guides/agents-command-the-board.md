@@ -186,8 +186,8 @@ dependencies are satisfied, waiting, dispatching whatever that unblocked, and
 repeating until nothing runnable is left. It returns once, with every task's
 output.
 
-Each task goes to its assigned agent or tool — a tool participant runs as a direct
-call, with no model turn.
+Each task goes to its assigned agent, or to a tool if you assigned one — a tool runs
+as a direct call, with no model turn.
 
 So the whole shape of a delegating skill is: plan with `addTask`, run with
 `runBoard`, read the result. There is no other way to execute delegated work.

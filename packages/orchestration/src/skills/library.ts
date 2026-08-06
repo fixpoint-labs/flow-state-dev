@@ -34,10 +34,6 @@ import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
 import { specsCollide } from "./internal/agent-key-reconcile";
-import {
-  assertDeterministicTool,
-  resolveToolParticipant,
-} from "./internal/tool-participant";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
@@ -506,25 +502,6 @@ export function createSkillsLibrary(
               `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
           );
         }
-        // FIX-925: a `tool:` participant resolves against the catalog, so the
-        // miss is knowable now — surface it here rather than mid-request, in the
-        // same loop and with the same fail-loud policy as the agent-ref /
-        // prompt-ref misses above. `materializeWorker` re-checks for runtime
-        // activations, which this loop can't see.
-        if (spec.tool !== undefined) {
-          const tool = resolveToolParticipant(
-            agentKey,
-            spec.tool,
-            catalog,
-            `skills: delegation (skill "${skillName}")`,
-          );
-          assertDeterministicTool(
-            agentKey,
-            spec.tool,
-            tool,
-            `skills: delegation (skill "${skillName}")`,
-          );
-        }
       }
     }
 
@@ -590,6 +567,10 @@ export function createSkillsLibrary(
             skillName: name,
             agents: entry.agents!,
             ...(entry.files ? { files: entry.files } : {}),
+            // The skill's tool seats (FIX-925). `validateDeclaredTools` has
+            // already failed the build on a key that isn't in the catalog, so
+            // every entry reaching the board here resolves.
+            ...(entry.allowedTools ? { allowedTools: entry.allowedTools } : {}),
           }),
         ),
         bundledAgentIndex: buildBundledAgentIndex(index),
@@ -643,17 +624,28 @@ export function createSkillsLibrary(
 /**
  * Project the bundled index down to agent-declaring skills, so a runtime
  * activation of a bundled skill materializes without a manifest read.
+ *
+ * `allowedTools` rides along because it is the skill's **tool seats**
+ * (FIX-925), not only the rendered restriction note — a bundled activation must
+ * carry the same seat scope a manifest read would give it.
  */
 function buildBundledAgentIndex(
   index: Map<string, IndexedSkill>,
-): Map<string, { agents: Record<string, AgentSpec>; files?: SkillFile[] }> {
-  const out = new Map<string, { agents: Record<string, AgentSpec>; files?: SkillFile[] }>();
+): Map<string, BundledAgentEntry> {
+  const out = new Map<string, BundledAgentEntry>();
   for (const [name, entry] of index) {
     if (!entry.agents || Object.keys(entry.agents).length === 0) continue;
     out.set(name, {
       agents: entry.agents,
       ...(entry.files ? { files: entry.files } : {}),
+      ...(entry.allowedTools ? { allowedTools: entry.allowedTools } : {}),
     });
   }
   return out;
 }
+
+/** What `buildBundledAgentIndex` projects per skill — the surface's own shape. */
+type BundledAgentEntry = Pick<
+  DelegationAgentSource,
+  "agents" | "files" | "allowedTools"
+>;

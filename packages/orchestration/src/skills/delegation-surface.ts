@@ -16,15 +16,22 @@
  *     own-state board, so the skill assigns work as tasks and then executes the
  *     whole graph under concurrency and dependency gating in one call.
  *
- * The board's participant registry is built from the skill's `agents:` map:
- * each declared participant materializes into a board worker (inline `prompt`/
- * `prompt-ref` agents via `materializeWorker` threading the drain-board
- * `taskTools`; `agent-ref` agents via the library's `agentRegistry`/
- * `materializeAgent`; `tool` participants via the same `materializeWorker`,
- * adapted from the catalog to run deterministically with no model turn,
- * FIX-925). One map, one assignee namespace — the drain routes by assignee and
- * cannot tell the kinds apart. Nothing drains the board behind the model's back
- * — the skill assigns tasks, then calls `runBoard`.
+ * The board's participant registry has two sources, sharing ONE assignee
+ * namespace — the drain routes by assignee and cannot tell them apart:
+ *
+ *   - **Agents**, from the skill's `agents:` map. Each declared agent
+ *     materializes via `materializeWorker` (inline `prompt`/`prompt-ref`
+ *     threading the drain-board `taskTools`; `agent-ref` through the library's
+ *     `agentRegistry`/`materializeAgent`).
+ *   - **Tool seats**, from the catalog, declared nowhere (FIX-925). Every tool
+ *     the skill allows — its `allowed-tools` when it declares one, the whole
+ *     catalog when it doesn't — is assignable by its catalog key. That is the
+ *     same set the coordinator can already call directly as its own tools, so
+ *     seating them opens no reach it did not have.
+ *
+ * A declared agent key wins a collision, so an agent may shadow a tool's name.
+ * Nothing drains the board behind the model's back — the skill assigns tasks,
+ * then calls `runBoard`.
  */
 
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -58,7 +65,7 @@ import { findBundledFile } from "./internal/bundled-files";
 import { getCollection } from "./internal/get-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { isValidAgentKey } from "./skill-md";
-import { materializeWorker } from "./worker-materializer";
+import { materializeToolSeat, materializeWorker } from "./worker-materializer";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import { resolveDelegationBuild } from "./internal/delegation-memo";
 import {
@@ -129,6 +136,15 @@ export interface DelegationAgentSource {
   files?: SkillFile[];
   /** Activation input for `$ARGUMENTS` substitution (runtime activations only). */
   input?: string;
+  /**
+   * The skill's `allowed-tools`, when it declares one. This is the skill's tool
+   * seats (FIX-925): every key here is assignable to a task. Absent means the
+   * skill narrowed nothing, so its seats are the whole catalog — which is also
+   * exactly the tool set the coordinator generator itself gets (`library.ts`
+   * registers `fullCatalog()`), so neither reading grants reach the model did
+   * not already have.
+   */
+  allowedTools?: string[];
 }
 
 /** Everything the surface needs, closed over by the library's config resolver. */
@@ -156,7 +172,10 @@ export interface DelegationSurfaceDeps {
    * Bundled agent specs by skill name — lets a runtime activation of a
    * bundled skill materialize without a manifest read.
    */
-  bundledAgentIndex: Map<string, Pick<DelegationAgentSource, "agents" | "files">>;
+  bundledAgentIndex: Map<
+    string,
+    Pick<DelegationAgentSource, "agents" | "files" | "allowedTools">
+  >;
   /** Restrict runtime lookups to these names (the binding's `allowed` list). */
   allowedNames?: string[];
   /** Whether this binding has a runtime activation path at all. */
@@ -249,6 +268,7 @@ export async function collectAgentSources(
         skillName: entry.name,
         agents: bundled.agents,
         ...(bundled.files ? { files: bundled.files } : {}),
+        ...(bundled.allowedTools ? { allowedTools: bundled.allowedTools } : {}),
         ...(entry.input !== undefined ? { input: entry.input } : {}),
       });
       continue;
@@ -258,7 +278,11 @@ export async function collectAgentSources(
     if (!collection) continue;
     const manifest = await collection.getOptional(skillManifestKey(entry.name));
     const state = manifest?.state as
-      | { agents?: Record<string, AgentSpec>; disableModelInvocation?: boolean }
+      | {
+          agents?: Record<string, AgentSpec>;
+          allowedTools?: string[];
+          disableModelInvocation?: boolean;
+        }
       | undefined;
     if (state?.disableModelInvocation === true) continue;
     const agents = state?.agents;
@@ -266,6 +290,12 @@ export async function collectAgentSources(
       sources.push({
         skillName: entry.name,
         agents,
+        // The live manifest is the authority for a non-bundled skill's seats
+        // too — an admin who edits `allowed-tools` after seeding changes what
+        // this board can be assigned, same as it changes the rendered note.
+        ...(Array.isArray(state?.allowedTools)
+          ? { allowedTools: state.allowedTools }
+          : {}),
         ...(entry.input !== undefined ? { input: entry.input } : {}),
       });
     }
@@ -496,18 +526,26 @@ async function resolveBuild(
     // is the shape that lets the model be told about an agent it is then
     // refused for naming, so the invariant is literal here rather than
     // true-by-inspection in two places.
-    const rosterPurposes = buildRosterPurposes(sources, deps.catalog);
+    const rosterPurposes = buildRosterPurposes(sources);
     // ...and ONE install decision, for the same reason. An empty roster means
     // nothing to delegate to, so the surface contributes nothing — unless the
     // binding opted the floor in (`delegation: true`), where the default worker
     // IS the board. Tools and guidance must agree on this: a playbook with no
     // tools tells the model to call `runBoard` it doesn't have, and tools with
     // no playbook leave it unexplained.
+    //
+    // Declaring `agents:` is still what turns delegation ON — tool seats are
+    // additive to a board that already exists, never the reason one is built. A
+    // skill wanting only tool seats says `delegation: true`, the same door the
+    // floor uses.
     const installs = rosterPurposes.size > 0 || deps.allowEmptyRoster;
     if (!installs) return { tools: [], guidance: null };
+    // Declared agents win their key, so seats are resolved against the roster
+    // that already exists (FIX-925).
+    const toolSeats = resolveToolSeats(sources, deps.catalog, rosterPurposes);
     return {
-      tools: await buildTools(ctx, deps, sources, rosterPurposes),
-      guidance: buildGuidance(rosterPurposes),
+      tools: await buildTools(ctx, deps, sources, rosterPurposes, toolSeats),
+      guidance: buildGuidance(rosterPurposes, toolSeats.size > 0),
     };
   });
 }
@@ -521,21 +559,71 @@ async function resolveBuild(
  * is skipped, and a divergent static spec throws the whole build. So every key
  * reachable here maps to exactly the spec the board dispatches to.
  */
-function buildRosterPurposes(
-  sources: DelegationAgentSource[],
-  catalog: ToolCatalog,
-): Map<string, string> {
+function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, string> {
   const purposes = new Map<string, string>();
   for (const source of sources) {
     for (const [key, spec] of Object.entries(source.agents)) {
       if (purposes.has(key)) continue;
-      purposes.set(
-        key,
-        agentPurpose(withBundledPrompt(spec, source.files), source.files, catalog),
-      );
+      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files), source.files));
     }
   }
   return purposes;
+}
+
+/**
+ * Derive the board's **tool seats** — `catalogKey → tool` (FIX-925).
+ *
+ * A seat is declared nowhere. Every tool the skill allows is one, because the
+ * board routes on `registry[task.assignee]` and a catalog tool is already a
+ * `BlockDefinition`. A skill's `allowed-tools` narrows its own seats; a skill
+ * that declares none contributes the whole catalog, which is also the tool set
+ * its coordinator generator is registered with — so neither reading widens what
+ * the model can reach, only how it can reach it (as a task rather than a direct
+ * call).
+ *
+ * **No sources at all** is the rosterless `delegation: true` board (the caller
+ * only reaches this function when the surface installs, so that is the one way
+ * to get here with an empty list). Nothing narrowed anything, so the seats are
+ * the whole catalog — the same answer the `else` branch below gives a skill
+ * that declared no `allowed-tools`. Without this the floor would be a board's
+ * only worker even though its generator holds a full catalog.
+ *
+ * Three filters, each dropping a key rather than throwing:
+ *
+ *   - **Not in the catalog.** `allowed-tools` is additive-not-restrictive
+ *     everywhere else (`resolveTools`, the rendered restriction note), and a
+ *     static binding's misses already fail loud at build time in
+ *     `validateDeclaredTools`. Only a runtime skill reaches here with a miss,
+ *     and there is nothing to seat. `Object.hasOwn` per BP-031: the catalog is
+ *     a plain object, so `constructor`/`toString` are truthy on a bare lookup.
+ *   - **Not a legal assignee key.** `allowed-tools` comes off a `.passthrough()`
+ *     manifest an admin can edit, so it is caller-controllable in the BP-031
+ *     sense — `__proto__` would hit the prototype setter of the worker registry
+ *     rather than create an own key.
+ *   - **Already an agent's key.** A declared agent shadows a same-named tool,
+ *     matching what the coordinator is told: the agent gets the roster line.
+ */
+function resolveToolSeats(
+  sources: DelegationAgentSource[],
+  catalog: ToolCatalog,
+  rosterPurposes: Map<string, string>,
+): Map<string, GeneratorTool> {
+  const seats = new Map<string, GeneratorTool>();
+  const add = (key: string): void => {
+    if (seats.has(key) || rosterPurposes.has(key)) return;
+    if (!Object.hasOwn(catalog, key)) return;
+    if (!isValidAgentKey(key)) return;
+    seats.set(key, catalog[key]!);
+  };
+  if (sources.length === 0) {
+    Object.keys(catalog).forEach(add);
+    return seats;
+  }
+  for (const source of sources) {
+    if (source.allowedTools) source.allowedTools.forEach(add);
+    else Object.keys(catalog).forEach(add);
+  }
+  return seats;
 }
 
 /**
@@ -567,6 +655,7 @@ async function buildTools(
   deps: DelegationSurfaceDeps,
   sources: DelegationAgentSource[],
   rosterPurposes: Map<string, string>,
+  toolSeats: Map<string, GeneratorTool>,
 ): Promise<GeneratorTool[]> {
   // The board lives on the generator's own block state. The tools resolver
   // runs in the generator's own scope, so `ctx.self` IS that state ref — the
@@ -622,10 +711,19 @@ async function buildTools(
   // the coordinator is told and what it may assign to are one list by
   // construction. The worker loop below builds `boardWorkers` from the same
   // sources under the same first-wins rule, so the registry agrees too.
+  //
+  // Tool seats (FIX-925) are on the same namespace, so `has` covers both or the
+  // coordinator would be refused for assigning to a tool the board can route to.
+  // They join `describe` too — an `unknown_assignee` error is where naming every
+  // legal option earns its tokens, unlike the always-rendered guidance, which
+  // gets one line about tools instead of one line per tool.
   const roster: WorkerRoster = {
-    has: (assignee) => rosterPurposes.has(assignee),
+    has: (assignee) => rosterPurposes.has(assignee) || toolSeats.has(assignee),
     describe: () =>
-      [...rosterPurposes].map(([key, purpose]) => `${key} (${purpose})`).join(", "),
+      [
+        ...[...rosterPurposes].map(([key, purpose]) => `${key} (${purpose})`),
+        ...[...toolSeats.keys()].map((key) => `${key} (tool)`),
+      ].join(", "),
   };
 
   // Two task-tools shapes are deliberately both in play here: `buildTaskToolsList()`
@@ -690,6 +788,16 @@ async function buildTools(
     }
   }
 
+  // Tool seats (FIX-925). Registered AFTER the agent loop and only for keys the
+  // loop didn't claim (`resolveToolSeats` already dropped those), so a declared
+  // agent can shadow a tool's name and never the reverse — assignment is
+  // validated against `rosterPurposes ∪ toolSeats`, and the model is told about
+  // the agent. Scoped to `delegation` rather than a skill name because a seat
+  // belongs to the board, not to whichever bound skill allowed the tool.
+  for (const [toolKey, tool] of toolSeats) {
+    boardWorkers[toolKey] = materializeToolSeat(toolKey, tool, FLOOR_SKILL_NAME);
+  }
+
   // The floor is wired as the board's fallback whenever the surface builds —
   // roster+floor and rosterless alike (decision 3: unconditional when
   // delegation installs). Declared workers still win their keys.
@@ -712,7 +820,7 @@ async function buildTools(
     // roster and every task runs on the floor exactly as before.
     ...(buildTaskToolsList(
       () => boardCollection(),
-      rosterPurposes.size > 0 ? roster : undefined,
+      rosterPurposes.size > 0 || toolSeats.size > 0 ? roster : undefined,
     ) as GeneratorTool[]),
     buildRunBoardTool(boardCollection, boardWorkers, defaultWorker),
   ];
@@ -723,32 +831,9 @@ async function buildTools(
 // ---------------------------------------------------------------------------
 
 /**
- * One-line participant purpose for the roster, derived from its declaration.
- *
- * A `tool:` participant (FIX-925) is described from its catalog `description`,
- * marked as a tool so the coordinator knows to pass structured `input` rather
- * than expect prose reasoning. `BlockDefinition.description` is optional, so the
- * fallback is pinned — a roster line must never render empty.
- *
- * The catalog read uses the same own-property semantics as
- * `resolveToolParticipant` (BP-031): the catalog is a plain object, so a
- * participant keyed `constructor` or `toString` would otherwise resolve to an
- * inherited `Object.prototype` member and render a roster line off it.
+ * One-line agent purpose for the roster, derived from its declaration.
  */
-export function agentPurpose(
-  spec: AgentSpec,
-  files?: SkillFile[],
-  catalog?: ToolCatalog,
-): string {
-  if (spec.tool) {
-    const described =
-      catalog && Object.hasOwn(catalog, spec.tool)
-        ? catalog[spec.tool]?.config?.description
-        : undefined;
-    return described
-      ? `tool \`${spec.tool}\` (deterministic) — ${described}`
-      : `tool \`${spec.tool}\` (deterministic)`;
-  }
+export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
   if (spec.agentRef) return `agent \`${spec.agentRef}\``;
   const body = withBundledPrompt(spec, files).prompt;
   if (body) {
@@ -769,9 +854,6 @@ const DELEGATION_PLAYBOOK = [
   "first; input carries a structured payload), then call runBoard once. The board runs your workers —",
   "independent tasks in parallel, dependency-gated tasks once their deps complete —",
   "and returns each task's result. Synthesize the results into your own answer.",
-  "A participant marked `tool` is deterministic: it runs your input directly with no reasoning step,",
-  "so pass it the tool's own structured arguments in input. It gets dependency ordering from deps but",
-  "cannot read an upstream task's result — when a step must consume one, assign it to an agent.",
   "The board bounds how much work you can queue: if addTask reports",
   "enqueued_task_cap_exceeded, you have too many tasks waiting — call runBoard to drain them,",
   "then add the next wave. total_task_cap_exceeded is the board's lifetime ceiling and does not",
@@ -789,12 +871,30 @@ const FLOOR_ADVISORY_WITH_ROSTER =
   "one of your agents or tools is rejected when you add the task, so name one exactly or leave it unset.";
 
 /**
- * Rosterless advisory (a `delegation: true` board with no declared agents).
- * There is no roster to validate against, so assignment is unvalidated and
- * every task lands on the floor.
+ * Rosterless advisory (a `delegation: true` board with no declared agents AND
+ * no tool seats). There is nothing to validate against, so assignment is
+ * unvalidated and every task lands on the floor.
  */
 const FLOOR_ADVISORY_ROSTERLESS =
   "A capable default worker handles every task on this board — leave each task's assignee unset.";
+
+/**
+ * Tool-seat note (FIX-925) — ONE line, whatever the catalog's size.
+ *
+ * Deliberately not one roster line per tool: the coordinator already carries
+ * every one of these tools in its own tool surface, with the model-facing
+ * descriptions the provider renders, so re-listing them here would re-pay for
+ * that in the system prompt on every turn and scale with the app's catalog
+ * rather than with the skill's team. What the model can't know from the tool
+ * surface alone is that a tool is *also* assignable and how it differs as a
+ * seat — that is what this says. `describe()` still names them individually,
+ * because an `unknown_assignee` error is read once, not every turn.
+ */
+const TOOL_SEAT_NOTE =
+  "Any tool you can call directly is also assignable as a task: name the tool as the assignee and " +
+  "pass its own structured arguments in input. It runs deterministically, with no reasoning step. " +
+  "It gets dependency ordering from deps but cannot read an upstream task's result — when a step " +
+  "must consume one, assign it to an agent.";
 
 /**
  * Render the guidance from the roster `resolveBuild` already derived — the same
@@ -802,20 +902,31 @@ const FLOOR_ADVISORY_ROSTERLESS =
  * told about are exactly the ones it may assign to. Called only when the surface
  * installs; `resolveBuild` owns that decision.
  *
- * A rosterless board leads with the floor rather than an empty "Your team:"
- * list, and takes a different floor advisory: only a roster-carrying board
- * validates assignment (FIX-924), so promising rejection on a board that accepts
- * anything would be a lie.
+ * A board with neither agents nor tool seats leads with the floor rather than an
+ * empty "Your team:" list, and takes a different floor advisory: only a board
+ * with something to validate against validates assignment (FIX-924), so
+ * promising rejection on a board that accepts anything would be a lie. Tool
+ * seats count as something to validate against, so a seated board takes the
+ * rejecting advisory even with no declared agents.
  */
-function buildGuidance(rosterPurposes: Map<string, string>): string {
-  if (rosterPurposes.size === 0) {
-    return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY_ROSTERLESS}`;
+function buildGuidance(
+  rosterPurposes: Map<string, string>,
+  hasToolSeats: boolean,
+): string {
+  const parts = [DELEGATION_PLAYBOOK];
+  if (rosterPurposes.size > 0) {
+    // "Your team:" rather than "Your agents:" — this is the roster the
+    // coordinator plans against, and the tool note below joins it.
+    const lines = [...rosterPurposes].map(([key, purpose]) => `- ${key}: ${purpose}`);
+    parts.push(`Your team:\n${lines.join("\n")}`);
   }
-  const lines = [...rosterPurposes].map(([key, purpose]) => `- ${key}: ${purpose}`);
-  // "Your team:" rather than "Your agents:" — the list is mixed now, and a tool
-  // listed under an agents-only heading is a contradiction the model has to
-  // resolve on its own (FIX-925).
-  return `${DELEGATION_PLAYBOOK}\n\nYour team:\n${lines.join("\n")}\n\n${FLOOR_ADVISORY_WITH_ROSTER}`;
+  if (hasToolSeats) parts.push(TOOL_SEAT_NOTE);
+  parts.push(
+    rosterPurposes.size > 0 || hasToolSeats
+      ? FLOOR_ADVISORY_WITH_ROSTER
+      : FLOOR_ADVISORY_ROSTERLESS,
+  );
+  return parts.join("\n\n");
 }
 
 /**

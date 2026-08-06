@@ -338,6 +338,25 @@ describe("parseSkillMd — delegation agents", () => {
     expect(() => parseSkillMd(text)).toThrow(/agent key/);
   });
 
+  // FIX-925: assignee keys and catalog keys are one namespace, and a tool
+  // catalog is app code whose keys are camelCase by convention (`httpGet`).
+  // A lowercase-only pattern would filter exactly those out of the board's
+  // worker registry, so uppercase is legal here too.
+  it("accepts a camelCase agent key", () => {
+    const text = withFrontmatter([`agents:`, `  httpGet:`, `    prompt: hi`].join("\n"));
+    expect(parseSkillMd(text).state.agents?.httpGet?.prompt).toBe("hi");
+  });
+
+  // The leading-alphanumeric anchor is what widening must not cost: it is the
+  // only thing keeping the board's reserved routes unclaimable.
+  it.each(["__proto__", "__floor__", "__no_assignee__", "-lead", "_lead"])(
+    "still rejects the reserved-shape agent key %j",
+    (key) => {
+      const text = withFrontmatter([`agents:`, `  "${key}":`, `    prompt: hi`].join("\n"));
+      expect(() => parseSkillMd(text)).toThrow(/agent key/);
+    },
+  );
+
   // FIX-920 — context-supply sub-key
   it("parses `context-supply: conversation` into contextSupply", () => {
     const text = withFrontmatter(
@@ -471,60 +490,5 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
     const reparsed = parseSkillMd(out);
     expect(reparsed.state.agents?.summarizer?.contextSupply).toBe("conversation");
     expect(reparsed.state.agents).toEqual(parsed.state.agents);
-  });
-
-  // FIX-925 — a `tool:` participant must survive serialize → parse too, or it
-  // parses but is silently lost the first time a skill's state is written back.
-  it("round-trips a `tool:` participant", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  fetch:`, `    tool: httpGet`].join("\n"),
-    );
-    const parsed = parseSkillMd(text);
-    const out = serializeSkillMd(parsed.state, parsed.body);
-    const reparsed = parseSkillMd(out);
-    expect(reparsed.state.agents?.fetch?.tool).toBe("httpGet");
-    expect(reparsed.state.agents).toEqual(parsed.state.agents);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Tool participants — FIX-925
-// ---------------------------------------------------------------------------
-
-describe("parseSkillMd — tool participants", () => {
-  it("parses a `tool:` entry as a resolution kind on the participant map", () => {
-    const text = withFrontmatter(
-      [
-        `agents:`,
-        `  fetch:`,
-        `    tool: httpGet`,
-        `  analyst:`,
-        `    prompt: You extract the key claims.`,
-      ].join("\n"),
-    );
-    const { state } = parseSkillMd(text);
-    expect(state.agents?.fetch?.tool).toBe("httpGet");
-    // A tool participant carries no agent machinery at all.
-    expect(state.agents?.fetch?.prompt).toBeUndefined();
-    // ...and shares the one namespace with prompt-driven participants.
-    expect(state.agents?.analyst?.prompt).toBe("You extract the key claims.");
-  });
-
-  it("rejects `tool:` alongside another resolution field (exactly-one still holds)", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  fetch:`, `    tool: httpGet`, `    prompt: Fetch it.`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
-  });
-
-  // Rejecting the agent-only fields on a tool participant is walked field by
-  // field in `agent-only-fields.test.ts`, which drives this gate and the
-  // materializer's camelCase one off the single core constant they share.
-
-  it("points a removed `block-ref` at `tool:` as its migration target", () => {
-    const text = withFrontmatter(
-      [`agents:`, `  fetch:`, `    block-ref: someBlock`].join("\n"),
-    );
-    expect(() => parseSkillMd(text)).toThrow(/`tool`/);
   });
 });

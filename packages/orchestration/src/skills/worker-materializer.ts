@@ -1,26 +1,23 @@
 /**
  * Participant → board-worker materialization for delegation skills (FIX-918).
  *
- * Given a parsed `AgentSpec` (one of `prompt`, `promptRef`, `agentRef`, `tool`),
- * build a `BlockDefinition` the delegation board dispatches by `task.assignee`.
- * Every declared participant becomes a **board worker**: its `inputSchema` is
- * the substrate's `workerInputSchema` (`taskId`/`goal`/`attempts`/…) and its
- * name is namespaced (`skillWorker_<skill>_<key>`), matching what the board
- * drain feeds. There is no direct-call (host-tool) mode — work reaches a
- * participant only by being assigned as a task and drained (see
+ * Two kinds of participant reach the delegation board, and this module builds
+ * both into the SAME worker shape — `inputSchema` is the substrate's
+ * `workerInputSchema` (`taskId`/`goal`/`attempts`/…), name namespaced
+ * `skillWorker_<skill>_<key>` — so the board can't tell them apart. It routes by
+ * assignee and records the result. There is no direct-call (host-tool) mode:
+ * work reaches a participant only by being assigned as a task and drained (see
  * `delegation-surface.ts`).
  *
- * Inline agents (`prompt`/`prompt-ref`) build a generator with the substituted
- * body as the system prompt; the `agentRef` branch resolves a registered Agent
- * through the injected registry + `materializeAgent`; the `tool` branch
- * (FIX-925) adapts a catalog tool into a deterministic worker that takes no
- * model turn. All four produce the same worker shape, so the board can't tell
- * them apart — it routes by assignee and records the result.
+ *   - **Agents**, from a parsed `AgentSpec` (`materializeWorker`). Inline
+ *     (`prompt`/`prompt-ref`) builds a generator with the substituted body as
+ *     the system prompt; `agentRef` resolves a registered Agent through the
+ *     injected registry + `materializeAgent`.
+ *   - **Tools**, from the skill's catalog (`materializeToolSeat`, FIX-925).
+ *     Nothing declares these — every tool the skill allows is already a seat.
  */
 
 import {
-  AGENT_ONLY_TUNING_FIELDS,
-  AGENT_RESOLUTION_FIELDS,
   generator,
   sequencer,
   warnOnceDev,
@@ -44,10 +41,6 @@ import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
 import { taskTools as taskToolsCapability } from "./task-tools-capability";
-import {
-  assertDeterministicTool,
-  resolveToolParticipant,
-} from "./internal/tool-participant";
 
 /**
  * Dependencies for materializing a skill's agents into board workers.
@@ -114,42 +107,43 @@ type WorkerInput = TaskWorkerInput;
 export const CONVERSATION_HISTORY_TURNS = 8;
 
 /**
- * Every `AgentSpec` field that only means something for a prompt-driven agent.
- * Each one tunes a model turn, which a `tool:` participant never takes — so on
- * a tool spec they are inapplicable, not merely unused (FIX-925).
+ * Adapt a catalog tool into a board worker — a **tool seat** (FIX-925).
  *
- * Derived, not hand-listed: the tuning fields plus the agent resolution kinds,
- * both read off the core constants the SKILL.md parser's kebab-key gate also
- * derives from. A field added to `AgentSpec` reaches both gates or neither —
- * two hand-maintained lists would drift into a spec that passes one and fails
- * the other.
- */
-const AGENT_ONLY_SPEC_FIELDS: ReadonlyArray<keyof AgentSpec> = [
-  ...Object.values(AGENT_RESOLUTION_FIELDS).filter((field) => field !== "tool"),
-  ...Object.values(AGENT_ONLY_TUNING_FIELDS),
-];
-
-/**
- * Adapt a catalog tool into a board worker (FIX-925).
+ * Nothing declares a tool seat. Every tool the skill allows is one, keyed by its
+ * catalog key, because the board already routes on `registry[task.assignee]` and
+ * a catalog tool already IS a `BlockDefinition`. All this function supplies is
+ * the envelope unwrap.
  *
- * The board feeds every worker a `TaskWorkerInput` envelope, but a tool declares
- * its own typed argument schema, so the unwrap lives on an INNER step the board
- * never re-connects — `buildWorkerStep` re-applies `connectInput` to every
- * registered worker, and `connectInput` replaces a mapper rather than composing
- * with it. `worker-materializer.test.ts` → "survives the board's own
- * connectInput" pins that. No `outputSchema` on the wrapper is deliberate
- * (BP-025): the sequencer tracks its last step's, so the tool's native output
- * schema reaches `record-result` unchanged.
+ * That unwrap must be **compositional**, not a bare `tool.connectInput(...)`:
+ * the board feeds every worker a `TaskWorkerInput` envelope, but a tool declares
+ * its own typed argument schema, and `buildWorkerStep` applies its own
+ * `connectInput<Task>(packWorkerInput)` to every registered worker.
+ * `connectInput` REBUILDS a block with the new mapper rather than composing with
+ * the old one — so a bare unwrap would be clobbered and the tool would receive
+ * the whole envelope, failing its own `inputSchema`.
+ *
+ * Wrapping in a one-step sequencer keeps the unwrap on an INNER block the board
+ * never re-connects: the board connects the outer sequencer
+ * (`Task → TaskWorkerInput`), the inner tool keeps its own
+ * (`TaskWorkerInput → tool args`). This is why the substrate needs no edit
+ * (BP-011: compose as a sequencer, not a handler calling a block; BP-013:
+ * `connectInput` on the inner step).
+ *
+ * BP-025: no `outputSchema` is declared on the wrapper deliberately — the
+ * sequencer tracks its last step's schema, so the tool's NATIVE output schema
+ * propagates to `record-result` unchanged. Declaring one here would only create
+ * a second shape that could drift from the tool's.
+ *
+ * Synchronous, unlike `materializeWorker`: a seat resolves no registry and reads
+ * no file, so there is nothing to await.
  */
-function materializeToolWorker(
-  agentKey: string,
+export function materializeToolSeat(
   toolKey: string,
-  deps: WorkerMaterializationDeps,
+  tool: GeneratorTool,
+  skillName: string,
 ): BlockDefinition {
-  const tool = resolveToolParticipant(agentKey, toolKey, deps.catalog, "skills:");
-  assertDeterministicTool(agentKey, toolKey, tool, "skills:");
   return sequencer({
-    name: `skillWorker_${deps.skillName}_${agentKey}`,
+    name: `skillWorker_${skillName}_${toolKey}`,
     inputSchema: workerInputSchema,
   }).step(
     (tool as unknown as BlockDefinition).connectInput<WorkerInput>((env) => env.input),
@@ -157,45 +151,16 @@ function materializeToolWorker(
 }
 
 /**
- * Build the executable board worker for one participant entry.
+ * Build the executable board worker for one agent entry.
  *
  * Dispatch order (parse-time mutual exclusion guarantees exactly one branch
- * fires): `tool` → `agentRef` → `promptRef` → `prompt`. `tool` goes first so a
- * parser-bypassed spec carrying both can't fall into an agent branch.
+ * fires): `agentRef` → `promptRef` → `prompt`.
  */
 export async function materializeWorker(
   agentKey: string,
   spec: AgentSpec,
   deps: WorkerMaterializationDeps,
 ): Promise<BlockDefinition> {
-  // FIX-925: a `tool:` participant is deterministic — it takes no model turn, so
-  // every agent field is inapplicable to it. This runs FIRST, before the
-  // contextSupply guard and before the resolution branches below, and that
-  // order is load-bearing: the dispatch order is `agentRef → promptRef →
-  // prompt`, so a parser-bypassed `{ tool, agentRef }` would otherwise take the
-  // agentRef branch and silently materialize an AGENT under a key the author
-  // declared as a tool.
-  //
-  // Guarding by the **camelCase `AgentSpec`** names (not the parser's kebab
-  // keys) is the whole point of re-checking here: `parseAgentSpec` already
-  // rejects the kebab forms, but `AgentSpec` is exported and a persisted or
-  // programmatic `PatternBinding` reaches this function having never passed
-  // through the parser. Mirrors the FIX-920 `contextSupply` re-validation below.
-  if (spec.tool !== undefined) {
-    const inapplicable = AGENT_ONLY_SPEC_FIELDS.filter(
-      (field) => spec[field] !== undefined,
-    );
-    if (inapplicable.length > 0) {
-      throw new Error(
-        `Participant '${agentKey}': ${inapplicable.map((f) => `\`${f}\``).join(", ")} ` +
-          `can't be set alongside \`tool\` — a tool participant is invoked directly with ` +
-          `the task's input and takes no model turn, so there is nothing to tune. Use a ` +
-          `prompt/prompt-ref/agent-ref agent if the node needs one.`,
-      );
-    }
-    return materializeToolWorker(agentKey, spec.tool, deps);
-  }
-
   // FIX-920: validate `contextSupply` here, not only in the frontmatter parser.
   // `AgentSpec`/`materializeWorker` are exported and persisted `PatternBinding`s
   // are only shallowly revalidated, so a programmatic or persisted spec bypasses

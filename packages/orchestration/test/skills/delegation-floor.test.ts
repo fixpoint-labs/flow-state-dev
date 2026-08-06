@@ -231,8 +231,9 @@ describe("delegation floor — reserved agent keys", () => {
     // Hits the Object.prototype setter rather than creating an own key, which
     // would leave the registry empty and silently disable the surface.
     "__proto__",
-    // Uppercase — outside the agent-key pattern.
-    "ToString",
+    // Leading `-` — outside the key pattern's alphanumeric anchor, which is
+    // what keeps the three reserved names above unclaimable.
+    "-lead",
   ])("skips the illegal agent key %s and still builds the floor", async (key) => {
     materializeWorkerSpy.mockClear();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
