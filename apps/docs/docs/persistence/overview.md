@@ -78,7 +78,7 @@ How much of that each store actually gives you differs, and it is worth knowing 
 
 The filesystem row is the one to read twice. Two contexts inside one Node process are protected. Two separate processes pointed at the same directory are not — the lock lives in process memory, not on disk. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
 
-The resource-state column describes the store, not yet the flow path on top of it. The runtime writes resource state without naming a version today, so a flow mutating `ctx.sessionResources` or a collection instance is still last-write-wins whichever store is underneath — see [the mutation model](../state/mutation-model.md) for where that line currently sits.
+The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.sessionResources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 
 Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Markers are kept indefinitely — nothing reclaims them today — so a workload that creates and deletes many resource keys will accumulate one row per deleted key.
 
