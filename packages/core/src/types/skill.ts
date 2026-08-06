@@ -18,8 +18,16 @@ import type { AgentOverrides } from "./agent";
  * A bag of executable tools that skills may reference by string key.
  *
  * Tools are executable code and cannot round-trip through a resource
- * collection — apps register them once and skills reference them by name
- * via `allowed-tools` in frontmatter. Unknown refs are warned and skipped.
+ * collection — apps register them once and skills reference them by name.
+ *
+ * Two consumers reference this catalog, with deliberately OPPOSITE
+ * missing-key semantics:
+ *   - `allowed-tools` (and an agent's `tools:`) — additive, not restrictive:
+ *     an unknown ref is warned and skipped.
+ *   - `AgentSpec.tool` (a deterministic board participant, FIX-925) — an
+ *     unknown key **always throws**, at build time for a static skill and at
+ *     materialization for a runtime activation. A board node that silently
+ *     vanished would leave the coordinator assigning work to nothing.
  */
 export type ToolCatalog = Record<string, GeneratorTool>;
 
@@ -39,19 +47,24 @@ export type ToolCatalog = Record<string, GeneratorTool>;
 export type SkillContextMode = "inline";
 
 /**
- * A single agent entry under a skill's `agents:` map (FIX-918). A skill
- * describes its team as agents — prompt-driven participants — and the board
- * commands them: work is assigned as tasks and executed by draining the board.
+ * A single entry under a skill's `agents:` map (FIX-918) — the board's
+ * **participant registry**. The board commands its participants: work is
+ * assigned as tasks and executed by draining the board. Every key in this map
+ * is an `assignee` the coordinator may name; the map holds both prompt-driven
+ * agents and deterministic tools in ONE namespace.
  *
- * An agent is defined one of two ways (exactly one resolution field is set,
- * validated at parse time):
- *   - **inline** — `prompt` (or `promptRef`) plus optional `tools`/`model`/
- *     `visibility`. Travels inside the skill folder; a skill stays code-free.
- *   - **registry** — `agentRef` (+ optional `agentOverrides`), resolving a
- *     named agent through the supplied AgentRegistry.
+ * A participant is defined one of three ways (exactly one resolution field is
+ * set, validated at parse time):
+ *   - **inline agent** — `prompt` (or `promptRef`) plus optional `tools`/
+ *     `model`/`visibility`. Travels inside the skill folder; a skill stays
+ *     code-free.
+ *   - **registry agent** — `agentRef` (+ optional `agentOverrides`), resolving
+ *     a named agent through the supplied AgentRegistry.
+ *   - **tool** — `tool` (FIX-925), naming a `ToolCatalog` key. A deterministic
+ *     participant: the board invokes the tool directly with the task's `input`
+ *     as its typed arguments, with no model turn.
  *
- * There is no `blockRef`: an arbitrary app block is a *tool* (assign a task to
- * it — a follow-up), while a prompt-driven participant is an *agent*.
+ * There is no `blockRef`: an arbitrary app block reaches the board as a `tool`.
  */
 export interface AgentSpec {
   /** Inline agent: prompt body (the persona). Substitutions apply at activation. */
@@ -60,6 +73,25 @@ export interface AgentSpec {
   promptRef?: string;
   /** Registry agent: agent registry key — resolves through the supplied AgentRegistry. */
   agentRef?: string;
+  /**
+   * Tool participant (FIX-925): a `ToolCatalog` key. The board invokes the
+   * resolved tool directly with the task's `input` as its typed arguments — no
+   * LLM turn — and records the return value as the task's output.
+   *
+   * Mutually exclusive with the agent resolution fields, and with every
+   * agent-only tuning field (`tools`/`model`/`visibility`/`contextSupply`/
+   * `agentOverrides`), which have no meaning without a model turn and are
+   * rejected rather than ignored.
+   *
+   * The key must resolve to a deterministic block: a `generator` (or a `router`
+   * whose routes expose one) is rejected, since it would take the model turn
+   * this participant kind exists to avoid.
+   *
+   * Dep semantics are **ordering only** — a tool task waits for its `deps` but
+   * receives only `input` (fixed at plan time), never an upstream's runtime
+   * output. A node that must consume an upstream result stays an agent.
+   */
+  tool?: string;
   /** REPLACE-semantic overrides applied to the resolved registry agent. Requires agentRef. */
   agentOverrides?: AgentOverrides;
   /** Tool catalog keys an inline agent may call directly (incl. `taskTools`). */
@@ -132,13 +164,15 @@ export interface SkillState {
   _preservedFields?: Record<string, unknown>;
 
   /**
-   * Declared delegation agents, parsed from the `agents:` frontmatter field
-   * (FIX-918). A bound skill that declares `agents:` turns on the delegation
-   * surface in `createSkillsLibrary`: a private task board, `taskTools`, and a
-   * board-drain tool. The skill assigns work as tasks (`addTask` with an
-   * `assignee` naming an agent) and executes the graph by draining the board —
-   * there are no per-agent host tools. `prompt`/`promptRef` agents are portable
-   * data (inline, code-free); `agentRef` references a registered agent.
+   * Declared delegation participants, parsed from the `agents:` frontmatter
+   * field (FIX-918). A bound skill that declares `agents:` turns on the
+   * delegation surface in `createSkillsLibrary`: a private task board,
+   * `taskTools`, and a board-drain tool. The skill assigns work as tasks
+   * (`addTask` with an `assignee` naming a participant) and executes the graph
+   * by draining the board — there are no per-participant host tools.
+   * `prompt`/`promptRef` agents are portable data (inline, code-free);
+   * `agentRef` references a registered agent; `tool` names a catalog tool that
+   * runs deterministically, with no model turn (FIX-925).
    */
   agents?: Record<string, AgentSpec>;
 }

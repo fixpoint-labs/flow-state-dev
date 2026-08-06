@@ -472,4 +472,71 @@ describe("serializeSkillMd — delegation agents round-trip", () => {
     expect(reparsed.state.agents?.summarizer?.contextSupply).toBe("conversation");
     expect(reparsed.state.agents).toEqual(parsed.state.agents);
   });
+
+  // FIX-925 — a `tool:` participant must survive serialize → parse too, or it
+  // parses but is silently lost the first time a skill's state is written back.
+  it("round-trips a `tool:` participant", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  fetch:`, `    tool: httpGet`].join("\n"),
+    );
+    const parsed = parseSkillMd(text);
+    const out = serializeSkillMd(parsed.state, parsed.body);
+    const reparsed = parseSkillMd(out);
+    expect(reparsed.state.agents?.fetch?.tool).toBe("httpGet");
+    expect(reparsed.state.agents).toEqual(parsed.state.agents);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool participants — FIX-925
+// ---------------------------------------------------------------------------
+
+describe("parseSkillMd — tool participants", () => {
+  it("parses a `tool:` entry as a resolution kind on the participant map", () => {
+    const text = withFrontmatter(
+      [
+        `agents:`,
+        `  fetch:`,
+        `    tool: httpGet`,
+        `  analyst:`,
+        `    prompt: You extract the key claims.`,
+      ].join("\n"),
+    );
+    const { state } = parseSkillMd(text);
+    expect(state.agents?.fetch?.tool).toBe("httpGet");
+    // A tool participant carries no agent machinery at all.
+    expect(state.agents?.fetch?.prompt).toBeUndefined();
+    // ...and shares the one namespace with prompt-driven participants.
+    expect(state.agents?.analyst?.prompt).toBe("You extract the key claims.");
+  });
+
+  it("rejects `tool:` alongside another resolution field (exactly-one still holds)", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  fetch:`, `    tool: httpGet`, `    prompt: Fetch it.`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(/mutually exclusive/);
+  });
+
+  // Each of these maps to generator-only machinery. Silently ignoring them
+  // would let an author believe a tool participant is being tuned when the
+  // fields can't apply — there is no model turn to tune.
+  it.each([
+    ["model", `    model: openai/gpt-5.4-mini`],
+    ["visibility", `    visibility: primary`],
+    ["context-supply", `    context-supply: conversation`],
+    ["tools", `    tools: [search]`],
+    ["agent-overrides", `    agent-overrides:\n      model: x`],
+  ])("rejects agent-only field `%s` on a tool participant", (field, line) => {
+    const text = withFrontmatter(
+      [`agents:`, `  fetch:`, `    tool: httpGet`, line].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(new RegExp(`\`${field}\``));
+  });
+
+  it("points a removed `block-ref` at `tool:` as its migration target", () => {
+    const text = withFrontmatter(
+      [`agents:`, `  fetch:`, `    block-ref: someBlock`].join("\n"),
+    );
+    expect(() => parseSkillMd(text)).toThrow(/`tool`/);
+  });
 });

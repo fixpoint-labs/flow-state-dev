@@ -34,6 +34,10 @@ import { z } from "zod";
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
 import { specsCollide } from "./internal/agent-key-reconcile";
+import {
+  assertDeterministicTool,
+  resolveToolParticipant,
+} from "./internal/tool-participant";
 import type {
   DeclaredResourceEntry,
   ResourceScope,
@@ -500,6 +504,25 @@ export function createSkillsLibrary(
           throw new Error(
             `skills: delegation agent "${agentKey}" (skill "${skillName}") declares ` +
               `prompt-ref "${spec.promptRef}", but no such file is bundled with the skill.`,
+          );
+        }
+        // FIX-925: a `tool:` participant resolves against the catalog, so the
+        // miss is knowable now — surface it here rather than mid-request, in the
+        // same loop and with the same fail-loud policy as the agent-ref /
+        // prompt-ref misses above. `materializeWorker` re-checks for runtime
+        // activations, which this loop can't see.
+        if (spec.tool !== undefined) {
+          const tool = resolveToolParticipant(
+            agentKey,
+            spec.tool,
+            catalog,
+            `skills: delegation (skill "${skillName}")`,
+          );
+          assertDeterministicTool(
+            agentKey,
+            spec.tool,
+            tool,
+            `skills: delegation (skill "${skillName}")`,
           );
         }
       }

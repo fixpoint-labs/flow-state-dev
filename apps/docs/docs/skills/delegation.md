@@ -34,19 +34,62 @@ You are the research lead. Plan the work on your board, then run it:
 3. Call runBoard once. Surface the writer task's output.
 ```
 
-Each agent resolves one of two ways: it's defined inline in the skill, or it references an agent in the registry.
+Each entry resolves one of four ways: defined inline in the skill, referencing an agent in the registry, or naming a tool from the catalog.
 
 | Field | Behavior | Portable? |
 |-------|----------|-----------|
 | `prompt` | Inline persona body. `$ARGUMENTS` is substituted at activation. | Yes — ships inside the skill folder. |
 | `prompt-ref` | Path to a Markdown persona file inside the skill folder. Loaded at activation. | Yes — ships inside the skill folder. |
 | `agent-ref` | Name of a registered agent, resolved through the `agentRegistry` / `materializeAgent` pair passed to the library. | No — needs the app's agent registry. |
+| `tool` | Key of a tool in the library's catalog. The board calls it directly, with no model turn. See [Deterministic participants](#deterministic-participants-tools). | No — needs the app's tool catalog. |
+
+Set exactly one. An entry carrying two resolution fields is rejected when the skill is parsed.
 
 An inline agent (`prompt` or `prompt-ref`) is fully portable: a skill folder carries its own team with no app wiring beyond the tool catalog. An `agent-ref` agent resolves against the registry the app supplies, so it can't travel alone. What you get in exchange is reuse: one agent definition serving many skills.
 
-Agents materialize when the generator's tool surface resolves, once per execution, so a resolution step that has to await (a registry lookup, a prompt file read) is fine. Missing wiring on a statically-bound skill, such as an `agent-ref` with no registry, fails loud at build time.
+Participants materialize when the generator's tool surface resolves, once per execution, so a resolution step that has to await (a registry lookup, a prompt file read) is fine. Missing wiring on a statically-bound skill, such as an `agent-ref` with no registry or a `tool` naming an absent catalog key, fails loud at build time.
 
 Per-agent tuning on an inline agent: `tools` (catalog keys the agent may call itself; `taskTools` is a special key that gives the agent the task tools bound to the coordinator's board, which is how an agent fans out follow-up tasks mid-drain), `visibility` (`sub`, `primary`, or a `{ client, history }` mapping), and `model`. An `agent-ref` agent tunes through `agent-overrides` instead (replace-semantics for `tools` / `model` / `visibility`).
+
+### Deterministic participants (tools)
+
+Some board nodes don't need a model. Fetching a document, running a calculation, calling an API, reshaping a payload: the work is a function call, and wrapping it in an agent buys a language-model turn you pay for in latency and tokens without getting a decision back.
+
+A `tool:` entry puts that function on the board directly.
+
+```yaml
+---
+description: Fetch a set of pages and summarize each.
+agents:
+  fetch:
+    tool: httpGet
+  analyst:
+    prompt: You read fetched page text and extract the key claims.
+---
+You are the research lead. For each URL:
+1. addTask assignee "fetch", input { url } — one per page.
+2. addTask assignee "analyst", deps set to the matching fetch task.
+3. Call runBoard once. Surface the analyst outputs.
+```
+
+`httpGet` is a key in the catalog you passed to `createSkillsLibrary`. The coordinator assigns to `fetch` the same way it assigns to any agent:
+
+```
+addTask({ goal: "fetch page A", assignee: "fetch", input: { url: "https://a.example" } })
+```
+
+The task's `input` is handed to the tool as its own arguments, so it has to match the tool's input schema. The tool's return value is recorded as the task's output, whatever its shape.
+
+Tool keys and agent keys share one namespace. Two entries can't use the same key, an assignee names either kind, and a misnamed one is rejected at `addTask` either way.
+
+**What a tool participant won't do: read an upstream task's result.** `deps` on a tool task control *ordering* — the task waits for its dependencies to finish — but the tool receives only the `input` fixed when the task was added. Nothing from the upstream output reaches it. When a step has to consume what the previous step produced, make it an agent; agents get their dependencies' outputs in the prompt.
+
+Two things are rejected rather than ignored, both when the skill is parsed:
+
+- Agent tuning fields (`prompt`, `model`, `visibility`, `context-supply`, `tools`, `agent-overrides`) alongside `tool:`. There's no model turn to tune.
+- A `tool:` naming a catalog key that doesn't exist. For a statically-bound skill that surfaces at build time.
+
+A `tool:` also has to name a deterministic block. A catalog key pointing at a generator, or at a router with a generator branch, is rejected — those take a model turn, which is the cost this participant kind exists to avoid. A generator nested deeper inside a sequencer isn't detected, so keep a catalog tool you intend to use this way free of them.
 
 ## Board and overrides
 
@@ -63,7 +106,7 @@ skills.with({ active: ["research-lead"], delegation: false });
 skills.with({ active: ["triage"], delegation: true });
 ```
 
-The delegation surface also injects a **guidance context**: a short prompt fragment that tells the model it has a board and a roster of agents, lists the current agents by name, and reminds it to assign tasks and drain. The skill body then carries only skill-specific content (purpose, when to delegate, what "done" looks like) rather than hand-written "how to delegate" boilerplate. Turn it off with `guidance: false` if you'd rather write the orchestration instructions yourself:
+The delegation surface also injects a **guidance context**: a short prompt fragment that tells the model it has a board and a team, lists the current participants by name (marking which are tools), and reminds it to assign tasks and drain. The skill body then carries only skill-specific content (purpose, when to delegate, what "done" looks like) rather than hand-written "how to delegate" boilerplate. Turn it off with `guidance: false` if you'd rather write the orchestration instructions yourself:
 
 ```ts
 skills.with({ active: ["research-lead"], guidance: false });
@@ -73,7 +116,7 @@ A skill that declares no `agents:` and does not set `delegation: true` installs 
 
 ### How much work the board will take on
 
-Every task is an agent turn, and every turn costs tokens. `concurrency` (fixed at 4 for the delegation board) only paces how many run at once, so the board carries two more bounds on how much work can be *created*:
+Most tasks are an agent turn, and every turn costs tokens. `concurrency` (fixed at 4 for the delegation board) only paces how many run at once, so the board carries two more bounds on how much work can be *created*:
 
 - `maxEnqueuedTasks` (default 100) — how many tasks the coordinator may add while others are still waiting. It refreshes as the board drains.
 - `maxTotalTasks` (default 500) — how many tasks the board may hold over its whole run, completed ones included. Draining does not give any back.
@@ -144,7 +187,7 @@ generator({
 
 ## Default worker (the floor)
 
-Every delegation board has a **default worker**, a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared agent, that agent runs it. When the `assignee` is unset, the task runs on the default worker instead of erroring.
+Every delegation board has a **default worker**, a floor beneath the roster. It is a generic, capable worker (no special persona, no tools) that runs any task the roster doesn't claim. When a task's `assignee` names a declared participant, that participant runs it. When the `assignee` is unset, the task runs on the default worker instead of erroring.
 
 That gives you two ways to reach it:
 
@@ -173,7 +216,7 @@ All eight report a problem the same way. Each returns `{ ok: true }` on success 
 
 | Tool | Input | What it does |
 |------|-------|--------------|
-| `addTask` | `goal`, plus optional `assignee`, `deps`, `input`, `priority`, `metadata` | Creates a task and returns its id. `assignee` is an agent key; leave it unset to run on the default worker. `deps` are task ids that must complete first. `input` is a structured payload handed to the worker. |
+| `addTask` | `goal`, plus optional `assignee`, `deps`, `input`, `priority`, `metadata` | Creates a task and returns its id. `assignee` is an agent or tool key; leave it unset to run on the default worker. `deps` are task ids that must complete first. `input` is a structured payload handed to the worker, and for a tool participant it is the tool's own arguments. |
 | `assignTask` | `taskId`, `assignee` | Reassigns an existing task to a different worker. Refused on a task that already finished. |
 | `completeTask` | `taskId`, `output` | Marks a task complete and records its output. |
 | `failTask` | `taskId`, `error` | Marks a task failed with an error message. Its dependents stay `pending`; nothing cascades. |
@@ -186,18 +229,18 @@ Most skills only need `addTask` and `runBoard`. The rest matter when the coordin
 
 **`blockTask` does not pause a task you can later resume.** The tool surface has no unblock. `updateTask` cannot change a status, and `failTask` on a blocked task comes back refused rather than releasing it: tasks created through `addTask` carry no retry budget, and `blocked → errored` is not a permitted transition. `cancelTask` is the only exit. Treat blocking as retiring a task with a reason recorded on it, not as parking one you intend to pick back up. If work needs to wait for something and then continue, keep it off the board until its precondition holds. (The collection underneath does have an unblock operation; it isn't exposed to a coordinator.)
 
-Every tool that writes an `assignee` checks it: `addTask`, `assignTask`, and `updateTask` reject a name that isn't one of the declared agents, and say which agents exist:
+Every tool that writes an `assignee` checks it: `addTask`, `assignTask`, and `updateTask` reject a name that isn't one of the declared participants, and say which ones exist:
 
 ```
 addTask({ goal: "Find sources", assignee: "reseacher" })
 → { ok: false,
-    error: 'unknown_assignee: "reseacher" is not an agent on this board.
+    error: 'unknown_assignee: "reseacher" is not on this board's team.
             Available: researcher (Researches sources), writer (Drafts prose).
             Name one of these exactly, or leave assignee unset to run the task
             on the default worker.' }
 ```
 
-No task is created, so a typo never reaches the board. The generator reads the error and re-issues the call with a real agent. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from.
+No task is created, so a typo never reaches the board. The generator reads the error and re-issues the call with a real name. The roster in that message is the same list the guidance context advertises and the same one the board dispatches from.
 
 When an `addTask` could fail more than one way, the checks run in a fixed order: no board, then an unknown assignee, then the creation bounds. A task rejected for a bad assignee never reaches the board, so it consumes no budget.
 

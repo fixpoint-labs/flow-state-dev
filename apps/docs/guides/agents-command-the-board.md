@@ -146,8 +146,8 @@ The skill body is where you tell the coordinator what to put on the board. You'r
 writing instructions for a model, so write them as steps.
 
 The planning tool is `addTask`. It takes a `goal` and, optionally, an `assignee`
-naming one of your agents, `deps` listing task ids that must finish first, and a
-structured `input` payload the agent receives. It returns the new task's id.
+naming one of your agents or tools, `deps` listing task ids that must finish first,
+and a structured `input` payload the worker receives. It returns the new task's id.
 
 ```markdown title="src/skills/research-company/SKILL.md (body, trimmed)"
 You run the board. Extract the target from the user's message, then:
@@ -186,8 +186,11 @@ dependencies are satisfied, waiting, dispatching whatever that unblocked, and
 repeating until nothing runnable is left. It returns once, with every task's
 output.
 
+Each task goes to its assigned agent or tool — a tool participant runs as a direct
+call, with no model turn.
+
 So the whole shape of a delegating skill is: plan with `addTask`, run with
-`runBoard`, read the result. There is no other way to execute a delegated agent.
+`runBoard`, read the result. There is no other way to execute delegated work.
 There is no per-agent tool the coordinator calls directly, and nothing drains the
 board behind the coordinator's back. The skill body decides when to run it.
 

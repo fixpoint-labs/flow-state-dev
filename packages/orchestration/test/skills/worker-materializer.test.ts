@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSpec } from "@flow-state-dev/core";
-import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
+import {
+  __resetDeprecationWarningsForTests,
+  generator,
+  handler,
+  utility,
+} from "@flow-state-dev/core";
+import { testBlock } from "@flow-state-dev/testing";
+import { z } from "zod";
 import {
   materializeWorker,
   buildUserMessage,
@@ -361,5 +368,188 @@ describe("buildUserMessage", () => {
   it("omits the input line when no payload was attached", () => {
     const msg = buildUserMessage({ taskId: "t1", goal: "g", attempts: 0 } as never);
     expect(msg).not.toContain("Input:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool participants — FIX-925
+// ---------------------------------------------------------------------------
+
+/** A deterministic catalog tool with a typed argument schema. */
+function makeFetchTool(calls: unknown[]) {
+  return handler({
+    name: "httpGet",
+    description: "Fetch a URL and return its body.",
+    inputSchema: z.object({ url: z.string() }),
+    outputSchema: z.object({ body: z.string() }),
+    execute: async (input: { url: string }) => {
+      calls.push(input);
+      return { body: `body of ${input.url}` };
+    },
+  }) as never;
+}
+
+/** A worker-input envelope shaped exactly as the board's drain packs it. */
+function envelope(input: unknown) {
+  return { taskId: "t1", goal: "fetch page A", attempts: 0, input };
+}
+
+describe("materializeWorker — tool participants (FIX-925)", () => {
+  it("invokes the catalog tool with the task envelope's `input` as its typed args", async () => {
+    const calls: unknown[] = [];
+    const block = await materializeWorker(
+      "fetch",
+      { tool: "httpGet" },
+      deps({ catalog: { httpGet: makeFetchTool(calls) } }),
+    );
+
+    const result = await testBlock(block as never, {
+      input: envelope({ url: "https://a.example" }),
+    });
+
+    expect(result.error).toBeNull();
+    // The tool saw its OWN typed args, not the TaskWorkerInput envelope — this
+    // is what the compositional wrapper buys.
+    expect(calls).toEqual([{ url: "https://a.example" }]);
+    // ...and the tool's native return value is the worker's output, so
+    // `record-result` writes it onto the task unchanged.
+    expect(result.output).toEqual({ body: "body of https://a.example" });
+  });
+
+  it("survives the board's own connectInput, which REPLACES a bare mapper", async () => {
+    // The regression this design exists for: `buildWorkerStep` calls
+    // `worker.connectInput<Task>(...)` on every registered worker, and
+    // connectInput rebuilds a block with the new mapper rather than composing.
+    // A bare `tool.connectInput(env => env.input)` would be overwritten and the
+    // tool would receive the whole envelope. Re-connecting the materialized
+    // worker here stands in for that, and the inner unwrap must still run.
+    const calls: unknown[] = [];
+    const block = await materializeWorker(
+      "fetch",
+      { tool: "httpGet" },
+      deps({ catalog: { httpGet: makeFetchTool(calls) } }),
+    );
+
+    const reconnected = (
+      block as unknown as {
+        connectInput: (fn: (t: { assignee?: string }) => unknown) => unknown;
+      }
+    ).connectInput(() => envelope({ url: "https://b.example" }));
+
+    const result = await testBlock(reconnected as never, {
+      input: { assignee: "fetch" },
+    });
+
+    expect(result.error).toBeNull();
+    expect(calls).toEqual([{ url: "https://b.example" }]);
+  });
+
+  it("throws when the tool key is not in the catalog", async () => {
+    await expect(
+      materializeWorker("fetch", { tool: "ghost" }, deps({ catalog: {} })),
+    ).rejects.toThrow(/tool "ghost"/);
+  });
+
+  // BP-031 / FIX-965: the catalog is a plain object, so an inherited
+  // Object.prototype member is truthy and would sail past a falsity-only guard.
+  it.each(["constructor", "toString", "valueOf"])(
+    "treats prototype-named tool key %j as a catalog miss",
+    async (protoKey) => {
+      await expect(
+        materializeWorker("fetch", { tool: protoKey }, deps({ catalog: {} })),
+      ).rejects.toThrow(new RegExp(`tool "${protoKey}"`));
+    },
+  );
+
+  // The parser rejects the kebab-case forms, but `AgentSpec` is exported and a
+  // persisted/programmatic PatternBinding arrives already camelCase, having
+  // bypassed the parser entirely. Without a guard here, `{ tool, agentRef }`
+  // would take the agentRef branch and silently materialize an AGENT.
+  it.each([
+    ["agentRef", { agentRef: "research-analyst" }],
+    ["promptRef", { promptRef: "./p.md" }],
+    ["prompt", { prompt: "You are a fetcher." }],
+    ["model", { model: "openai/gpt-5.4-mini" }],
+    ["contextSupply", { contextSupply: "conversation" as const }],
+    ["itemVisibility", { itemVisibility: { client: true, history: false } }],
+    ["tools", { tools: ["search"] }],
+    ["agentOverrides", { agentOverrides: { model: "x" } }],
+  ])("throws on a parser-bypassed camelCase `%s` alongside `tool`", async (_name, extra) => {
+    const calls: unknown[] = [];
+    await expect(
+      materializeWorker(
+        "fetch",
+        { tool: "httpGet", ...extra } as AgentSpec,
+        deps({ catalog: { httpGet: makeFetchTool(calls) } }),
+      ),
+    ).rejects.toThrow(/`tool`/);
+  });
+
+  // Decision 7: `tool:` must resolve to a deterministic block, enforced at the
+  // block's directly-detectable surface. A generator would take the model turn
+  // the whole feature exists to remove.
+  it("throws when the tool key resolves to a generator", async () => {
+    const gen = generator({
+      name: "summarize",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "openai/gpt-5.4-mini",
+      prompt: "Summarize.",
+    }) as never;
+    await expect(
+      materializeWorker(
+        "summarize",
+        { tool: "summarize" },
+        deps({ catalog: { summarize: gen } }),
+      ),
+    ).rejects.toThrow(/generator/);
+  });
+
+  it("throws when the tool key resolves to a router branching to a generator", async () => {
+    const gen = generator({
+      name: "gen-branch",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "openai/gpt-5.4-mini",
+      prompt: "Summarize.",
+    });
+    const plain = handler({
+      name: "plain-branch",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      execute: async () => "ok",
+    });
+    const route = utility.keyedRouter({
+      name: "maybe-model",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      blocks: { gen, plain },
+      select: () => "plain",
+    }) as never;
+    await expect(
+      materializeWorker("route", { tool: "route" }, deps({ catalog: { route } })),
+    ).rejects.toThrow(/generator/);
+  });
+
+  it("accepts a router whose routes are all deterministic", async () => {
+    const a = handler({
+      name: "route-a",
+      inputSchema: z.object({ pick: z.string() }),
+      outputSchema: z.string(),
+      execute: async () => "a",
+    });
+    const route = utility.keyedRouter({
+      name: "deterministic-route",
+      inputSchema: z.object({ pick: z.string() }),
+      outputSchema: z.string(),
+      blocks: { a },
+      select: () => "a",
+    }) as never;
+    const block = await materializeWorker(
+      "route",
+      { tool: "route" },
+      deps({ catalog: { route } }),
+    );
+    expect(block).toBeDefined();
   });
 });

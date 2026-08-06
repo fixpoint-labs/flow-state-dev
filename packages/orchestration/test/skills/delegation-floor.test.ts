@@ -462,7 +462,7 @@ describe("delegation floor — guidance", () => {
     const { ctx } = buildDelegationCtx();
     const rendered = await renderGuidance(gen, ctx);
     expect(rendered).toContain("default worker");
-    expect(rendered).not.toContain("Your agents:");
+    expect(rendered).not.toContain("Your team:");
   });
 
   it("roster guidance shows the roster AND the floor advisory", async () => {
@@ -476,7 +476,7 @@ describe("delegation floor — guidance", () => {
     });
     const { ctx } = buildDelegationCtx();
     const rendered = await renderGuidance(gen, ctx);
-    expect(rendered).toContain("Your agents:");
+    expect(rendered).toContain("Your team:");
     expect(rendered).toContain("- briefer:");
     expect(rendered).toContain("default worker");
   });

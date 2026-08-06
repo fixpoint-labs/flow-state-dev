@@ -69,6 +69,7 @@ const AGENT_KNOWN_KEYS = new Set([
   "prompt",
   "prompt-ref",
   "agent-ref",
+  "tool",
   "agent-overrides",
   "tools",
   "visibility",
@@ -79,8 +80,25 @@ const AGENT_KNOWN_KEYS = new Set([
 /** Sub-keys of `agent-overrides`. */
 const AGENT_OVERRIDES_KEYS = new Set(["tools", "model", "visibility"]);
 
-/** Mutually-exclusive agent resolution fields. Exactly one must be set. */
-const AGENT_RESOLUTION_FIELDS = ["prompt", "prompt-ref", "agent-ref"] as const;
+/**
+ * Mutually-exclusive participant resolution fields. Exactly one must be set.
+ * `tool` (FIX-925) joins the three agent kinds as a fourth resolution kind on
+ * the same map — one assignee namespace, not a second registry.
+ */
+const AGENT_RESOLUTION_FIELDS = ["prompt", "prompt-ref", "agent-ref", "tool"] as const;
+
+/**
+ * Fields that only mean something for a prompt-driven agent — every one of them
+ * tunes a model turn a `tool:` participant does not take. Rejected on a tool
+ * spec rather than ignored, mirroring the `agent-ref`-tuning rejection below.
+ */
+const AGENT_ONLY_TUNING_KEYS = [
+  "agent-overrides",
+  "tools",
+  "visibility",
+  "model",
+  "context-supply",
+] as const;
 
 /**
  * Claude-Code fields we silently ignore at runtime but warn about so users
@@ -160,11 +178,12 @@ export function isValidAgentKey(key: string): boolean {
 }
 
 /**
- * Parse the `agents:` frontmatter field into a typed agent map. Declaring
+ * Parse the `agents:` frontmatter field into a typed participant map. Declaring
  * `agents:` is what turns on the delegation surface in `createSkillsLibrary`:
  * the skill assigns work as tasks and drains its board; the board runs the
- * agents. Each entry is one of two shapes — inline (`prompt`/`prompt-ref`) or
- * a registry reference (`agent-ref`).
+ * participants. Each entry is one of three shapes — an inline agent
+ * (`prompt`/`prompt-ref`), a registry agent (`agent-ref`), or a deterministic
+ * tool (`tool`, FIX-925). The keys form ONE assignee namespace.
  */
 function parseAgentsField(v: unknown): Record<string, AgentSpec> {
   if (typeof v !== "object" || v === null || Array.isArray(v)) {
@@ -194,12 +213,15 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
   // `block-ref` was removed in FIX-918 (mirrors the pattern/fork migration
   // throw). An arbitrary app block is a *tool*, not an agent — fail loud rather
   // than silently dropping the field, so an author migrating a PR #854 skill
-  // is pointed at the replacement.
+  // is pointed at the replacement. FIX-918 deferred the direct replacement to
+  // FIX-925; now that `tool:` exists, it is the migration target for a
+  // deterministic block, so name it first.
   if ("block-ref" in obj) {
     throw new Error(
       `SKILL.md agent \`${key}\`: \`block-ref\` was removed (FIX-918). An arbitrary app ` +
-        `block is a tool, not an agent — reference a prompt-driven participant with ` +
-        `\`agent-ref\` (registry) or define one inline with \`prompt\`/\`prompt-ref\`.`,
+        `block is a tool, not an agent — put it on the board with \`tool\` (a catalog ` +
+        `key, run deterministically with no model turn), or, for a prompt-driven ` +
+        `participant, use \`agent-ref\` (registry) or \`prompt\`/\`prompt-ref\` (inline).`,
     );
   }
 
@@ -234,6 +256,23 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
     );
   }
 
+  // FIX-925: a `tool:` participant is deterministic — it is invoked directly
+  // with the task's input and takes no model turn, so every agent tuning field
+  // is inapplicable rather than merely unused. Reject them here, BEFORE the
+  // `agent-overrides`/`agent-ref` checks below, so a tool spec gets the pointed
+  // "tools don't take a model turn" error instead of a generic one.
+  if ("tool" in obj) {
+    const inapplicable = AGENT_ONLY_TUNING_KEYS.filter((k) => k in obj);
+    if (inapplicable.length > 0) {
+      throw new Error(
+        `SKILL.md agent \`${key}\`: ${inapplicable.map((k) => `\`${k}\``).join(", ")} ` +
+          `can't be set alongside \`tool\` — a tool participant is invoked directly with ` +
+          `the task's input and takes no model turn, so there is nothing to tune. Use a ` +
+          `\`prompt\`/\`prompt-ref\`/\`agent-ref\` agent if the node needs one.`,
+      );
+    }
+  }
+
   if ("agent-overrides" in obj && !("agent-ref" in obj)) {
     throw new Error(
       `SKILL.md agent \`${key}\`: \`agent-overrides\` requires \`agent-ref\``,
@@ -259,6 +298,7 @@ function parseAgentSpec(key: string, v: unknown): AgentSpec {
   if (typeof obj["prompt"] === "string") spec.prompt = obj["prompt"];
   if (typeof obj["prompt-ref"] === "string") spec.promptRef = obj["prompt-ref"];
   if (typeof obj["agent-ref"] === "string") spec.agentRef = obj["agent-ref"];
+  if (typeof obj["tool"] === "string") spec.tool = obj["tool"];
 
   if ("agent-overrides" in obj) {
     spec.agentOverrides = parseAgentOverrides(key, obj["agent-overrides"]);
@@ -1021,6 +1061,9 @@ function serializeAgents(
       for (const ln of spec.prompt.split("\n")) lines.push(`      ${ln}`);
     }
     if (spec.agentRef !== undefined) lines.push(`    agent-ref: ${yamlScalar(spec.agentRef)}`);
+    // FIX-925: a tool participant's only field. Without this branch it parses
+    // but does not survive a serialize → re-parse cycle (persisted state).
+    if (spec.tool !== undefined) lines.push(`    tool: ${yamlScalar(spec.tool)}`);
     if (spec.agentOverrides) {
       lines.push("    agent-overrides:");
       if (spec.agentOverrides.tools)

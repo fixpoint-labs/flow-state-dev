@@ -486,6 +486,75 @@ describe("createSkillsLibrary — delegation gating", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Tool participants, build-time validation — FIX-925
+// ---------------------------------------------------------------------------
+
+describe("createSkillsLibrary — tool participants", () => {
+  const toolSkill = (name: string, toolKey: string): InitialSkill => ({
+    name,
+    skillMd: [
+      "---",
+      `description: ${name} skill`,
+      "agents:",
+      "  fetch:",
+      `    tool: ${toolKey}`,
+      "---",
+      "",
+      "addTask then runBoard.",
+    ].join("\n"),
+  });
+
+  const httpGet = handler({
+    name: "httpGet",
+    inputSchema: z.object({ url: z.string() }),
+    outputSchema: z.object({ body: z.string() }),
+    execute: async () => ({ body: "ok" }),
+  }) as never;
+
+  const resolveBinding = (skills: ReturnType<typeof createSkillsLibrary>, active: string[]) =>
+    skills.__configDef!.resolve({ active } as never, {
+      presets: new Set(),
+      blockKind: "generator",
+    });
+
+  it("accepts a tool participant whose key is in the catalog", () => {
+    const skills = createSkillsLibrary({
+      initialSkills: [toolSkill("team", "httpGet")],
+      catalog: { httpGet },
+    });
+    expect(() => resolveBinding(skills, ["team"])).not.toThrow();
+  });
+
+  // Symmetric with the agent-ref / prompt-ref miss, which already throws here.
+  // A silently-dropped participant would leave the roster advertising a node
+  // the board can't route.
+  it("throws at build time when a static tool participant names an unknown catalog key", () => {
+    const skills = createSkillsLibrary({
+      initialSkills: [toolSkill("team", "ghost")],
+      catalog: { httpGet },
+    });
+    expect(() => resolveBinding(skills, ["team"])).toThrow(
+      /declares tool "ghost", which is not in the catalog/,
+    );
+  });
+
+  it("throws at build time when a static tool participant resolves to a generator", () => {
+    const summarize = generator({
+      name: "summarize",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "openai/gpt-5.4-mini",
+      prompt: "Summarize.",
+    }) as never;
+    const skills = createSkillsLibrary({
+      initialSkills: [toolSkill("team", "summarize")],
+      catalog: { summarize },
+    });
+    expect(() => resolveBinding(skills, ["team"])).toThrow(/generator/);
+  });
+});
+
 describe("createSkillsLibrary — explicit activeState", () => {
   it("does not return a no-op scope state schema from the resolver", () => {
     // A config resolver's returned surface reaches only the generator's

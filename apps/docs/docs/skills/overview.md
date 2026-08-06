@@ -46,7 +46,7 @@ Both paths can coexist. See [Activation paths](./activation) for the full breakd
 
 A matched skill is inline instructions. Its substituted body is injected into the parent generator's system prompt on the next step, and the conversation continues in the parent context with the parent's tools. That's the whole model.
 
-A bound skill can additionally **delegate**: if it declares an `agents:` field, the generator gets a private task board, the `taskTools` to plan on it, and `runBoard` — it assigns the work as tasks (assignees, deps, structured input) and runs the whole graph by draining the board. [Authoring a delegating skill](/guides/agents-command-the-board) walks that path end to end; see [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
+A bound skill can additionally **delegate**: if it declares an `agents:` field, the generator gets a private task board, the `taskTools` to plan on it, and `runBoard` — it assigns the work as tasks (assignees, deps, structured input) and runs the whole graph by draining the board. Each assignee is a prompt-driven agent, or a catalog tool that runs without a model turn. [Authoring a delegating skill](/guides/agents-command-the-board) walks that path end to end; see [Delegation](./delegation) for the frontmatter shape and how the skill drives its board.
 
 Fork mode was removed. A skill no longer runs as an isolated sub-agent. For "run this as a sub-agent and get the result back," declare an agent, assign it a single task, and call `runBoard`. For the fork-like case where the sub-agent should inherit the conversation so far and still return only its result, mark it `context-supply: conversation` — see [Context supply](../orchestration/context-supply).
 

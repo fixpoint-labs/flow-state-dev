@@ -17,11 +17,14 @@
  *     whole graph under concurrency and dependency gating in one call.
  *
  * The board's participant registry is built from the skill's `agents:` map:
- * each declared agent materializes into a board worker (inline `prompt`/
+ * each declared participant materializes into a board worker (inline `prompt`/
  * `prompt-ref` agents via `materializeWorker` threading the drain-board
  * `taskTools`; `agent-ref` agents via the library's `agentRegistry`/
- * `materializeAgent`). Nothing drains the board behind the model's back — the
- * skill assigns tasks, then calls `runBoard`.
+ * `materializeAgent`; `tool` participants via the same `materializeWorker`,
+ * adapted from the catalog to run deterministically with no model turn,
+ * FIX-925). One map, one assignee namespace — the drain routes by assignee and
+ * cannot tell the kinds apart. Nothing drains the board behind the model's back
+ * — the skill assigns tasks, then calls `runBoard`.
  */
 
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -361,10 +364,10 @@ function buildRunBoardTool(
   return sequencer({
     name: RUN_BOARD_TOOL_NAME,
     description:
-      "Run your task board: executes every runnable task with its assigned agent — " +
+      "Run your task board: executes every runnable task with its assigned agent or tool — " +
       "independent tasks in parallel, dependency-gated tasks once their deps complete — " +
       "and returns the settled board with each task's output. Assign work first with addTask " +
-      "(assignee optionally names one of your agents — leave it unset to use the default " +
+      "(assignee optionally names one of your agents or tools — leave it unset to use the default " +
       "worker; deps order them; input carries a payload), then call this once.",
     inputSchema: z.object({}),
     outputSchema: runBoardOutputSchema,
@@ -493,7 +496,7 @@ async function resolveBuild(
     // is the shape that lets the model be told about an agent it is then
     // refused for naming, so the invariant is literal here rather than
     // true-by-inspection in two places.
-    const rosterPurposes = buildRosterPurposes(sources);
+    const rosterPurposes = buildRosterPurposes(sources, deps.catalog);
     // ...and ONE install decision, for the same reason. An empty roster means
     // nothing to delegate to, so the surface contributes nothing — unless the
     // binding opted the floor in (`delegation: true`), where the default worker
@@ -518,12 +521,18 @@ async function resolveBuild(
  * is skipped, and a divergent static spec throws the whole build. So every key
  * reachable here maps to exactly the spec the board dispatches to.
  */
-function buildRosterPurposes(sources: DelegationAgentSource[]): Map<string, string> {
+function buildRosterPurposes(
+  sources: DelegationAgentSource[],
+  catalog: ToolCatalog,
+): Map<string, string> {
   const purposes = new Map<string, string>();
   for (const source of sources) {
     for (const [key, spec] of Object.entries(source.agents)) {
       if (purposes.has(key)) continue;
-      purposes.set(key, agentPurpose(withBundledPrompt(spec, source.files), source.files));
+      purposes.set(
+        key,
+        agentPurpose(withBundledPrompt(spec, source.files), source.files, catalog),
+      );
     }
   }
   return purposes;
@@ -713,8 +722,25 @@ async function buildTools(
 // Guidance — the delegation playbook + live roster
 // ---------------------------------------------------------------------------
 
-/** One-line agent purpose for the roster, derived from its declaration. */
-export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
+/**
+ * One-line participant purpose for the roster, derived from its declaration.
+ *
+ * A `tool:` participant (FIX-925) is described from its catalog `description`,
+ * marked as a tool so the coordinator knows to pass structured `input` rather
+ * than expect prose reasoning. `BlockDefinition.description` is optional, so the
+ * fallback is pinned — a roster line must never render empty.
+ */
+export function agentPurpose(
+  spec: AgentSpec,
+  files?: SkillFile[],
+  catalog?: ToolCatalog,
+): string {
+  if (spec.tool) {
+    const described = catalog?.[spec.tool]?.config?.description;
+    return described
+      ? `tool \`${spec.tool}\` (deterministic) — ${described}`
+      : `tool \`${spec.tool}\` (deterministic)`;
+  }
   if (spec.agentRef) return `agent \`${spec.agentRef}\``;
   const body = withBundledPrompt(spec, files).prompt;
   if (body) {
@@ -729,12 +755,15 @@ export function agentPurpose(spec: AgentSpec, files?: SkillFile[]): string {
 
 /** The static delegation playbook, prefixed to the live agent roster. */
 const DELEGATION_PLAYBOOK = [
-  "You can delegate work to a team of agents. You have a private task board and the task tools.",
-  "Assign work as tasks: addTask each unit (assignee optionally names one of your agents — leave it",
+  "You can delegate work to a team of agents and tools. You have a private task board and the task tools.",
+  "Assign work as tasks: addTask each unit (assignee optionally names one of your agents or tools — leave it",
   "unset to use a capable default worker; deps name the task ids that must finish",
   "first; input carries a structured payload), then call runBoard once. The board runs your workers —",
   "independent tasks in parallel, dependency-gated tasks once their deps complete —",
   "and returns each task's result. Synthesize the results into your own answer.",
+  "A participant marked `tool` is deterministic: it runs your input directly with no reasoning step,",
+  "so pass it the tool's own structured arguments in input. It gets dependency ordering from deps but",
+  "cannot read an upstream task's result — when a step must consume one, assign it to an agent.",
   "The board bounds how much work you can queue: if addTask reports",
   "enqueued_task_cap_exceeded, you have too many tasks waiting — call runBoard to drain them,",
   "then add the next wave. total_task_cap_exceeded is the board's lifetime ceiling and does not",
@@ -749,7 +778,7 @@ const DELEGATION_PLAYBOOK = [
  */
 const FLOOR_ADVISORY_WITH_ROSTER =
   "A capable default worker handles any task you leave unassigned. An assignee that does not name " +
-  "one of your agents is rejected when you add the task, so name an agent exactly or leave it unset.";
+  "one of your agents or tools is rejected when you add the task, so name one exactly or leave it unset.";
 
 /**
  * Rosterless advisory (a `delegation: true` board with no declared agents).
@@ -775,7 +804,10 @@ function buildGuidance(rosterPurposes: Map<string, string>): string {
     return `${DELEGATION_PLAYBOOK}\n\n${FLOOR_ADVISORY_ROSTERLESS}`;
   }
   const lines = [...rosterPurposes].map(([key, purpose]) => `- ${key}: ${purpose}`);
-  return `${DELEGATION_PLAYBOOK}\n\nYour agents:\n${lines.join("\n")}\n\n${FLOOR_ADVISORY_WITH_ROSTER}`;
+  // "Your team:" rather than "Your agents:" — the list is mixed now, and a tool
+  // listed under an agents-only heading is a contradiction the model has to
+  // resolve on its own (FIX-925).
+  return `${DELEGATION_PLAYBOOK}\n\nYour team:\n${lines.join("\n")}\n\n${FLOOR_ADVISORY_WITH_ROSTER}`;
 }
 
 /**
