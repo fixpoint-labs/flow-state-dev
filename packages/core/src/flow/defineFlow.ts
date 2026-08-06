@@ -139,6 +139,15 @@ type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
 type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
 type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
 
+function rejectRemovedMiddleware(value: object | undefined, location: string): void {
+  if (value !== undefined && Object.hasOwn(value, "middleware")) {
+    throw new Error(
+      `${location} uses the removed "middleware" option. ` +
+      "Middleware is not executed; move policy checks to the HTTP authentication layer or block logic."
+    );
+  }
+}
+
 function mergeToolsConfig(base: ToolsConfig | undefined, override: ToolsConfig | undefined): ToolsConfig | undefined {
   if (base === undefined && override === undefined) {
     return undefined;
@@ -573,6 +582,9 @@ function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
+  rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
+  rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
+
   const authentication = mergeAuthentication(
     definition.authentication,
     options?.authentication
