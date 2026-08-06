@@ -33,6 +33,7 @@ import type {
   GeneratorTool,
   MaterializeAgentFn,
   SkillFile,
+  SkillState,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import type {
@@ -181,15 +182,19 @@ export interface DelegationSurfaceDeps {
  * live manifest (a skill imported after seeding). Deduped by skill name —
  * static wins.
  */
-/** True when the skill's live manifest carries `disable-model-invocation`. */
-async function isManifestDisabled(
+/** Read the live controls that determine whether a skill may reach the model. */
+async function readLiveSkillState(
   collection: ResourceCollectionRef,
   skillName: string,
-): Promise<boolean> {
+): Promise<SkillState | undefined> {
   const manifest = await collection.getOptional(skillManifestKey(skillName));
+  return manifest?.state as SkillState | undefined;
+}
+
+function allowsModelInvocation(state: SkillState | undefined): boolean {
   return (
-    (manifest?.state as { disableModelInvocation?: boolean } | undefined)
-      ?.disableModelInvocation === true
+    state?.disableModelInvocation !== true &&
+    (state?.contextMode ?? "inline") === "inline"
   );
 }
 
@@ -207,7 +212,12 @@ export async function collectAgentSources(
   // live manifest fall back to their build-time (bundled) truth.
   const sources: DelegationAgentSource[] = [];
   for (const s of deps.staticSources) {
-    if (collection && (await isManifestDisabled(collection, s.skillName))) continue;
+    if (
+      collection &&
+      !allowsModelInvocation(await readLiveSkillState(collection, s.skillName))
+    ) {
+      continue;
+    }
     sources.push(s);
   }
   if (!deps.dynamicEligible) return sources;
@@ -231,13 +241,15 @@ export async function collectAgentSources(
     if (deps.allowedNames && !deps.allowedNames.includes(entry.name)) continue;
     seen.add(entry.name);
 
-    // Honor a live `disable-model-invocation` before the bundled shortcut too.
-    // The static loop and the non-bundled runtime branch already drop disabled
-    // skills; without this read the bundled branch would re-expose a bundled
-    // skill (or a static skill also present in `activeState`) disabled mid-turn.
-    // The memo snapshots this output, so the collector must be disable-correct
-    // on all three paths or the cache would harden the leak (FIX-928, §7.1).
-    if (collection && (await isManifestDisabled(collection, entry.name))) continue;
+    // Read the live manifest before the bundled shortcut. Both disabled skills
+    // and stale, non-inline manifests are non-model routes and must not expose
+    // their agents through the delegation surface.
+    // The memo snapshots this output, so all paths must enforce the same live
+    // model-eligibility controls or the cache would harden the leak.
+    const liveState = collection
+      ? await readLiveSkillState(collection, entry.name)
+      : undefined;
+    if (!allowsModelInvocation(liveState)) continue;
 
     const bundled = deps.bundledAgentIndex.get(entry.name);
     if (bundled) {
@@ -252,12 +264,7 @@ export async function collectAgentSources(
 
     // Not bundled — read the live manifest (imported/edited after seeding).
     if (!collection) continue;
-    const manifest = await collection.getOptional(skillManifestKey(entry.name));
-    const state = manifest?.state as
-      | { agents?: Record<string, AgentSpec>; disableModelInvocation?: boolean }
-      | undefined;
-    if (state?.disableModelInvocation === true) continue;
-    const agents = state?.agents;
+    const agents = liveState?.agents;
     if (agents && Object.keys(agents).length > 0) {
       sources.push({
         skillName: entry.name,
