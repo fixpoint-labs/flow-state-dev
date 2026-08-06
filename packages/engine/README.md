@@ -567,6 +567,43 @@ A `delete` is idempotent at the terminal state: deleting a key that is already a
 
 Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts in one Node process, and does not coordinate two OS processes over one directory.
 
+### The collection-item HTTP routes use it
+
+The two client-facing write routes are the callers that pass a real
+`expectedVersion` today. Both follow one rule: settle the state key first, then
+touch content, so a request that loses a race never reaches `ContentStore`.
+
+- `POST /sessions/:id/resources/:ref` inserts the state row at
+  `expectedVersion: 0` (create-if-absent) and writes content only after that
+  commits. Two clients creating the same topic get one `201` and one `409`, and
+  the stored body belongs to the client that won. The conflict is terminal — a
+  losing create is never retried into an overwrite.
+- `DELETE /sessions/:id/resources/:ref/:topic` reads the row's version, deletes
+  state conditionally on it, and deletes content only after that commits. If
+  the row moves between that read and the delete, the request returns `409` and
+  leaves the item intact in both stores. Deleting an absent topic is still an
+  idempotent `200`. The version is one the **route** observes, not one the
+  client supplied, so the window it closes is the route's own — a `DELETE` from
+  an out-of-date client view still reads the live row and removes it.
+
+Because each route writes two stores, some windows stay open: an item can exist
+with **no content row** after a create whose content write **failed** — the state
+row commits first, so a failed `POST` is not a no-op, and the item is live and
+listable but reads back as `content: null` rather than `""` — a create's body
+can be orphaned by an overlapping delete, an acknowledged `PATCH` can be
+overwritten by an in-flight create, and a recreation can lose its content to a
+delete already in flight. Only the first surfaces as an error; the others are
+silent. A collection whose content comes from `contentTemplate` /
+`contentTemplateRef` loses only the *repair* half of the first — it renders from
+state and never reads the content row, so it stays readable — but the create
+route does not guard its content write on the template config, so the
+half-commit is identical there. These are
+accepted — content is deliberately unversioned, so no state predicate fences a
+write to it, and closing them is cross-record atomicity, which this store does
+not provide. The full contract, with the reasoning and the residual table, is
+in `docs/architecture/resources-and-client-data.md`; client-facing guidance is
+in the resources / client access docs.
+
 ## CheckpointStore
 
 `StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints. Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime reads `latest(...)` to resume after an interruption.

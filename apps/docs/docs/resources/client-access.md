@@ -53,6 +53,40 @@ For collections, two additional permissions control mutations:
 | `update` | Client can modify item content via `PATCH` |
 | `delete` | Client can remove items via `DELETE` |
 
+#### Grant `update` alongside `create`
+
+Creating an item is two writes: the item's state, then its content. The server
+commits the state first, so the client that wins the race for a topic owns it,
+and a client that loses is turned away before it writes any content. That
+ordering is what stops two simultaneous creates from leaving one client's state
+paired with the other's body.
+
+The tradeoff sits at the other end. If the state write succeeds and the content
+write then fails, the item exists with **no content row at all** — reading its
+content gives you `null`, not an empty string. It still appears in listings, so
+nothing is lost quietly, and a `PATCH` to the item's content endpoint fills it
+in. That repair needs `update`.
+
+(If the collection declares `contentTemplate` or `contentTemplateRef`, the
+*repair* part doesn't apply — content is rendered from the item's state, so the
+item reads fine and there's nothing to fill in. The failure itself still
+happens: if you sent `content`, the server still tried to store it, so the
+request still fails and the item still exists.)
+
+A collection granting `create` on its own therefore has a gap: an authorized
+client can end up holding an item it can neither fill nor remove, because
+`PATCH` and `DELETE` are both refused. If your clients create items, grant
+`update` too:
+
+```ts
+client: {
+  content: { read: true, create: true, update: true },
+}
+```
+
+Adding `delete` gives them a second way out. Collections that are read-only, or
+that only your blocks write, are unaffected.
+
 ## Choosing the projection shape
 
 You have four ways to control what state reaches the client. Pick one — they're mutually exclusive.
@@ -390,6 +424,71 @@ Under the hood, these hooks and clients talk to these endpoints:
 All paths are relative to `/api/flows`. Permissions are enforced server-side based on the resource's `client.content` config. Requests for resources without `client` config return 404.
 
 `:topic` is a multi-segment wildcard. Collections whose pattern allows nested keys (e.g. `memos/**` with topics like `p1/fundamentals`) work without special encoding — the client encodes slashes as `%2F` and the server decodes them back into the captured topic. The only restriction: a topic literally named `"content"` is shadowed by the `/:ref/content` route and isn't addressable via the state-get endpoint.
+
+### `POST` and `DELETE` can return 409
+
+Both write endpoints settle the item's state before they change anything else,
+so either can now come back `409 Conflict`.
+
+`POST` returns 409 when the topic already exists. That includes the case where
+two clients create the same topic at once: one gets `201`, the other gets `409`
+and never writes content, so the stored body belongs to the client that won.
+
+`DELETE` returns 409 when the item's state changed while the request was being
+served — between the server reading the item and applying the delete. In
+practice that means something removed and recreated it, or a block wrote to it,
+in that window. Previously `DELETE` always returned `200`. A rejected `DELETE`
+leaves the item completely intact, content included.
+
+Be precise about what this does and doesn't protect. The server reads the
+item's current version as part of handling your request, so **a `DELETE` built
+from a view you fetched a while ago still deletes whatever is live now.** There
+is no way yet for a client to attach its own precondition to the request, so
+the check covers the server's own window, not the age of your data. If you need
+delete-if-unchanged, compare state client-side before you call and accept that
+it races.
+
+A 409 on `DELETE` is worth retrying: re-read the item and decide again, since
+it usually means something else touched the item mid-request. Deleting a topic
+that does not exist is still a `200`, so retrying a delete you already
+completed is safe.
+
+### A create isn't final the moment it returns
+
+Item state and item content are stored separately, and `POST` writes them in
+that order. So there is a brief window where the item is already visible but
+its body hasn't landed yet. Three things follow.
+
+**A failed `POST` doesn't mean nothing was created.** If the content write
+fails, the request comes back as an error — but the state row committed before
+it, so the item is live and listable with **no content row**. Reading its
+content returns `null`, not an empty string; if you branch on `content === ""`
+you'll take the wrong path. Don't treat the error as a no-op either: retrying
+the same topic finds it already there and gets a `409`. Repair it with `PATCH`,
+which needs the collection to grant `client.content.update`. Without that grant
+there's no repair route at all, so grant `create` and `update` together unless
+you have a reason not to.
+
+If the collection declares `contentTemplate` or `contentTemplateRef`, only the
+repair half changes: content is rendered from the item's state and never read
+from the content row, so the item reads fine and there's nothing to fill in. The
+server still attempts the content write when you send `content`, so the request
+still fails and the item still exists — treat the failed create the same way.
+
+The other two are worth knowing precisely because they *don't* show up as an
+error — nothing fails, and a wrong body is simply what you read back:
+
+- If a `DELETE` lands in that window, the create's body can be left behind
+  after the item is gone. A later create of the same topic **that sends no
+  content** will then show the old body as its own.
+- If a `PATCH` lands in that window, it returns `200` and is then overwritten
+  by the create that was still finishing.
+
+Two practical habits cover all three: **send `content` with every `POST`** so a
+new item never inherits an old body, and treat a create as settled only once
+you've read the item back. If a create and a delete of the same topic can
+overlap in your app, serialize them client-side — the server can't order writes
+across two stores for you.
 
 ## Live updates
 

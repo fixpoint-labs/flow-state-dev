@@ -507,6 +507,29 @@ DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic         → delete i
 
 Server enforces declared permissions and rejects operations that exceed them.
 
+#### Write ordering and `409 Conflict`
+
+Item state and item content live in two stores (`ResourceStateStore`, `ContentStore`). Both write routes therefore follow one rule: **settle the state key first, then touch content.** A request that loses the state race returns `409` and never reaches `ContentStore`.
+
+- **`POST`** inserts the state row at `expectedVersion: 0` (create-if-absent) and writes content only after that commits. Two concurrent creates of one topic yield one `201` and one `409`, and the stored body always belongs to the winner. The conflict is terminal — a losing create is never retried into an overwrite.
+- **`DELETE`** reads the row's version, deletes state conditionally on it, and deletes content only after that commits. Deleting an absent topic is still an idempotent `200`.
+
+**What the `DELETE` check covers.** The version is the one the *route* observes while serving the request, not one the caller supplied, so the window it closes is the route's own read→write window. A `DELETE` issued from a client view fetched earlier still reads the live row and removes it. A caller-supplied precondition is separate surface these routes do not accept ([FIX-1006](https://linear.app/fixpoint-labs/issue/FIX-1006)).
+
+**Residuals, because a create is still two writes to two stores.** Between the `POST`'s state insert and its content write the item is *live but its content is not final*, and `ContentStore` is unversioned by decision, so no state predicate can fence a write to it:
+
+| Window | Outcome |
+| --- | --- |
+| The content write fails | **The request fails, but the item exists anyway**, with **no content row**. The state row committed first and the `content.set` is a bare `await`, so the rejection propagates out of the handler — a failed `POST` is not a no-op. The item is live and listable, a retry of the topic gets an honest `409`, and repair is `PATCH` when the collection grants `client.content.update`. Applies to content-storing collections only — see the shape note below |
+| A `DELETE` lands in the window | The create's body is orphaned behind the tombstone; a later create carrying no content revives the row over it, surfacing a deleted generation's content as current. **No error** |
+| A `PATCH` lands in the window | It is acknowledged `200` and then overwritten by the in-flight create. **No error** |
+
+**The shape of a missing body is `null`, not `""`.** A failed content write leaves no content row, and `renderContent` (`packages/engine/src/resources/internal.ts`) returns `null` when `rawContent === undefined`. `handleGetCollectionItemContent` passes that straight through, so the item reads back as `{ content: null }`. Adapter and client code that branches on `content === ""` takes the wrong path — the distinction is between *absent* and *empty*, and only the former occurs here.
+
+**A template-backed collection splits that row rather than escaping it.** `renderContent` checks `contentTemplate` and `contentTemplateRef` *before* it looks at `rawContent` and returns from the template branch without consulting it, so **readability** costs nothing — the item renders from state whether or not a content row exists, and there is nothing to repair with `PATCH`. But the create route writes content whenever the caller sends any, with **no template guard**, so the **partial commit** is exactly as real: the request still fails, the item is still live and listable, and a retry still gets a `409`. Read the first row as two claims — *the body is absent*, which a template answers, and *the create half-committed*, which it does not.
+
+These are accepted, not oversights. A version cannot distinguish a create's own row after a state write (version 2) from a successor generation created after a delete (also version 2) — the counter is per key, not per generation — so no post-hoc fence closes them without a generation-owner token, and a token still cannot fence a write to an unversioned store. Closing them is cross-record atomicity ([FIX-854](https://linear.app/fixpoint-labs/issue/FIX-854)). All three are pinned by tests in `packages/engine/test/resource-collection-routes.test.ts`.
+
 ### React Hooks
 
 ```ts
