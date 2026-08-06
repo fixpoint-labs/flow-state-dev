@@ -1507,10 +1507,7 @@ describe("taskBoard - durable (resource-backed) collection", () => {
     expect(final.get("d1")).toBe("completed");
   });
 
-  it("drains a durable board whose task id contains a slash", async () => {
-    // The durable resource pattern is `<id>/**` (deep), so a task id like
-    // "parent/child" — legal on the request/sequencer backings — round-trips on
-    // a durable board too, rather than being rejected by a single-level `/*`.
+  it("rejects a slash-containing durable task id", async () => {
     const processed: string[] = [];
     const board = taskBoard({
       name: "nested-id-board",
@@ -1522,9 +1519,10 @@ describe("taskBoard - durable (resource-backed) collection", () => {
     });
 
     const result = await testBlock(board.drain, { input: undefined });
-    expect(result.error).toBeNull();
-    expect(processed).toEqual(["uniform:pc"]);
-    expect(lastTaskState(result.items).get("parent/child")).toBe("completed");
+    expect(result.error?.message).toContain(
+      'Key "nested/parent/child" does not match collection pattern "nested/*"'
+    );
+    expect(processed).toEqual([]);
   });
 
   it("re-resolves per call so a read after a mid-run add sees fresh state", async () => {

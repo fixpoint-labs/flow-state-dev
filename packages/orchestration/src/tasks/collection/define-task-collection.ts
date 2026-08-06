@@ -4,7 +4,7 @@
  * `defineScheduleCollection`.
  *
  * A durable board's tasks survive across turns because they live as instances
- * of a parameterized resource collection (`<id>/**`) at `session` / `user` /
+ * of a parameterized resource collection (`<id>/*`) at `session` / `user` /
  * `org` scope, rather than on request or sequencer state. Pass the result to
  * `taskBoard({ collection })` and the board registers + resolves it for you —
  * consumers never touch the resource wiring.
@@ -55,7 +55,7 @@ export interface DefineTaskCollectionOptions<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
 > {
   /**
-   * Literal collection id. Forms the resource pattern (`<id>/**`), the
+   * Literal collection id. Forms the resource pattern (`<id>/*`), the
    * `ctx.resources` lookup key, and the board's `collectionId`. Must be a
    * single plain segment — no `*`/`[param]` pattern tokens, no `/`, no
    * prototype-poisoning names.
@@ -92,11 +92,9 @@ export function defineTaskCollection<
   );
 
   const collection = defineResourceCollection({
-    // `<id>/**` (deep), not `<id>/*`: task ids may contain slashes (a caller can
-    // seed `{ id: "parent/child" }`, which the request/sequencer backings store
-    // fine). A single-level `/*` would reject those keys on a durable board, so
-    // the same tasks must round-trip through the resource pattern too.
-    pattern: `${options.id}/**`,
+    // Keep durable task ids to one path segment so this collection cannot read
+    // or overwrite resources owned by a nested collection with the same prefix.
+    pattern: `${options.id}/*`,
     scope: options.scope,
     stateSchema: envelope,
     ...(options.maxInstances !== undefined

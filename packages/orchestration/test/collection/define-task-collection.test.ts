@@ -16,8 +16,8 @@ describe("defineTaskCollection", () => {
     // … plus the additive marker carrying the id.
     expect(todos.__taskCollection.id).toBe("todos");
     expect(isDefinedTaskCollection(todos)).toBe(true);
-    // Pattern is `<id>/**` (deep — task ids may contain slashes), scope passes through.
-    expect(todos.pattern).toBe("todos/**");
+    // A single-level pattern keeps task storage disjoint from nested resources.
+    expect(todos.pattern).toBe("todos/*");
     expect(todos.scope).toBe("user");
   });
 
