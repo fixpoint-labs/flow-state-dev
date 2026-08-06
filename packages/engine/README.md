@@ -500,7 +500,19 @@ Database adapters can implement `ContentStore` to route content to blob storage,
 
 It shares `ContentStore`'s addressing but **not** its concurrency model. `ContentStore` is last-write-wins, which is right for a document body nothing merges against a prior read. Resource state is read-modify-written by concurrent workers, so the contract is compare-and-swap: every write takes an `expectedVersion` and returns a `SetResult` saying whether it actually landed.
 
-What follows describes that store contract, not the guarantee the flow path gets today. The writers the runtime drives for flow-authored resource mutations all pass `"any"`, so those writes stay last-write-wins until the registry driver threads the observed version through them. A caller holding a `ResourceStateStore` directly gets the compare-and-swap now.
+That guarantee reaches flow-authored mutations, not only callers holding the store directly. The runtime drives every resource write through a CAS retry driver at the registry's read/mutate seam, passing the version the execution context observed: a conflict re-runs the op's mutator against the value that won and retries, so two contexts patching different fields of one resource both land.
+
+Conflicts report what actually happened rather than collapsing into one error:
+
+| Situation | Result |
+|---|---|
+| Key never persisted, write asks for no change | Verified no-op — not an error |
+| Held a live version, row is now a tombstone | `ResourceDeletedError`, terminal |
+| A `create` lost its race | `ResourceAlreadyExistsError`, terminal. `getOrCreate` and `upsert` absorb it and complete as a read / patch |
+| A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
+| Retry budget exhausted | `ConcurrentModificationError` |
+
+The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.work()` tasks keep running and their writes must land.
 
 ```ts
 // branded — see the note under the table below

@@ -41,8 +41,13 @@ import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, ExternalResourceContext, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import { createScopePersist } from "../stores/scope-persist";
-import { toBareState, toBareStates } from "../stores/resource-state-views";
-import type { TraceStore } from "../stores/types";
+import { toBareState, toBareStates, toVersions } from "../stores/resource-state-views";
+import { runResourceCAS, type ResourceCASIntent } from "../stores/resource-cas";
+import {
+  ConcurrentModificationError,
+  ResourceAlreadyExistsError
+} from "../errors/flow-error";
+import type { TraceStore, VersionedResourceState } from "../stores/types";
 import type {
   ContentScopeType,
   OrgRecord,
@@ -57,7 +62,7 @@ import { createRequestWorkPool } from "../execution/request-work-pool";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
-import { deepEqual, getTransientKeys } from "@flow-state-dev/core/helpers";
+import { cloneValue, getTransientKeys } from "@flow-state-dev/core/helpers";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError, displayCause } from "../errors/normalize-error";
 import {
@@ -933,14 +938,14 @@ export async function createExecutionContext<
   const loadScopeStateByBuckets = async (
     scope: "user" | "org",
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
-  ): Promise<Record<string, JsonObject>> => {
+  ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
     const results = await Promise.all(
       [...groups].map(([scopeId, sub]) =>
         loadDeclaredResourceState(stores.resourceState, scope, scopeId, sub)
       )
     );
-    return Object.assign({}, ...results) as Record<string, JsonObject>;
+    return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
   };
 
   const loadScopeContentByBuckets = async (
@@ -988,15 +993,30 @@ export async function createExecutionContext<
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)
-      : Promise.resolve<Record<string, JsonObject>>({})
+      : Promise.resolve<Record<string, VersionedResourceState>>({})
   ]);
 
-  const initialSessionState = normalizeScopeResources(sessionFlowLevelConfigs, sessionStateFromStore);
-  const initialUserState = normalizeScopeResources(userFlowLevelConfigs, userStateFromStore);
+  const initialSessionState = normalizeScopeResources(
+    sessionFlowLevelConfigs,
+    toBareStates(sessionStateFromStore)
+  );
+  const initialUserState = normalizeScopeResources(
+    userFlowLevelConfigs,
+    toBareStates(userStateFromStore)
+  );
   const initialOrgState = normalizeScopeResources(
     orgFlowLevelConfigs,
-    resolvedOrgId !== undefined ? orgStateFromStore : undefined
+    resolvedOrgId !== undefined ? toBareStates(orgStateFromStore) : undefined
   );
+
+  // FIX-992: the version each key was read at, kept beside the state cache and
+  // carried into every write as its `expectedVersion`. A key absent here has no
+  // observed version, which reads as `0` — "no live row" — so a write against
+  // it is create-if-absent rather than a blind overwrite.
+  const initialSessionVersions = toVersions(sessionStateFromStore);
+  const initialUserVersions = toVersions(userStateFromStore);
+  const initialOrgVersions =
+    resolvedOrgId !== undefined ? toVersions(orgStateFromStore) : {};
 
   // FIX-701 Wave 1: record the flow-eager preloads (content + state loaded in
   // the two parallel bursts above). These run before any block dispatch, so
@@ -1071,6 +1091,9 @@ export async function createExecutionContext<
   const sessionStateRef = { current: initialSessionState };
   const userStateRef = { current: initialUserState };
   const orgStateRef = { current: initialOrgState };
+  const sessionVersionRef = { current: initialSessionVersions };
+  const userVersionRef = { current: initialUserVersions };
+  const orgVersionRef = { current: initialOrgVersions };
 
   const readSessionResources = (): Record<string, JsonObject> =>
     sessionStateRef.current;
@@ -1185,6 +1208,8 @@ export async function createExecutionContext<
     scope === "session" ? sessionStateRef : scope === "user" ? userStateRef : orgStateRef;
   const scopeContentRef = (scope: ContentScopeType): { current: Record<string, string> } =>
     scope === "session" ? sessionContentRef : scope === "user" ? userContentRef : orgContentRef;
+  const scopeVersionRef = (scope: ContentScopeType): { current: Record<string, number> } =>
+    scope === "session" ? sessionVersionRef : scope === "user" ? userVersionRef : orgVersionRef;
 
   // FIX-688 Slice 3: per-scope on-demand loaders backing lazy collection
   // accessors. Reuses the same single-flight map and `loadedCollectionPrefixes`
@@ -1193,6 +1218,7 @@ export async function createExecutionContext<
     if (scopeIdentityId(scope) === undefined) return undefined; // scope absent this request (org)
     const stateRef = scopeStateRef(scope);
     const contentRef = scopeContentRef(scope);
+    const versionRef = scopeVersionRef(scope);
     return {
       async getInstance(storageKey: string): Promise<LazyLoadOutcome> {
         if (storageKey in stateRef.current) return { fetched: false, durationMs: 0 }; // already loaded
@@ -1208,14 +1234,18 @@ export async function createExecutionContext<
         await runSingleFlight(`${scope}:key:${storageKey}`, async () => {
           if (storageKey in stateRef.current) return;
           const started = Date.now();
-          const [state, content] = await Promise.all([
-            stores.resourceState.get(scope, scopeId, storageKey).then(toBareState),
+          const [row, content] = await Promise.all([
+            stores.resourceState.get(scope, scopeId, storageKey),
             stores.content.get(scope, scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
+          const state = toBareState(row);
           if (state !== undefined) {
             stateRef.current = { [storageKey]: state, ...stateRef.current };
+            // Record the version this read observed — without it a write to a
+            // lazily-loaded key would have no basis to be conditional on.
+            versionRef.current[storageKey] = row!.version;
           } else {
             // Negatively cache: one round-trip caps repeated reads of an absent key.
             missingResourceKeys[scope].add(storageKey);
@@ -1235,13 +1265,21 @@ export async function createExecutionContext<
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
           if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
           const started = Date.now();
-          const [state, content] = await Promise.all([
-            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix).then(toBareStates),
+          const [rows, content] = await Promise.all([
+            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
             stores.content.getByPrefix(scope, scopeId, keyPrefix)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
+          const state = toBareStates(rows);
           stateRef.current = { ...withoutDeleted(state, deletedStateKeys[scope]), ...stateRef.current };
+          // Versions for the keys this prefix read just brought in. Keys the
+          // cache already held keep the version they were first read at, so a
+          // later bulk load never silently re-bases an in-flight write.
+          for (const [key, version] of Object.entries(toVersions(rows))) {
+            if (deletedStateKeys[scope].has(key)) continue;
+            versionRef.current[key] ??= version;
+          }
           contentRef.current = {
             ...withoutDeleted(content, deletedContentKeys[scope]),
             ...contentRef.current
@@ -1296,6 +1334,7 @@ export async function createExecutionContext<
       const mode = (config as { prefetchMode?: string }).prefetchMode ?? "eager";
       const stateRef = scopeStateRef(scope);
       const contentRef = scopeContentRef(scope);
+      const versionRef = scopeVersionRef(scope);
       // Key the load by the canonical storage key (from the full-map resolution
       // above), so aliased single resources load under the same slot the
       // registry reads. Collections canonicalize to their accessor, so this is
@@ -1308,8 +1347,14 @@ export async function createExecutionContext<
           loadDeclaredResourceState(stores.resourceState, scope, scopeId, subConfig),
           loadDeclaredScopeContent(stores.content, scope, scopeId, subConfig)
         ]);
+        // Same precedence as the state merge below: a key already in the cache
+        // keeps the version it was first observed at.
+        for (const [key, version] of Object.entries(toVersions(stateSeed))) {
+          if (deletedStateKeys[scope].has(key)) continue;
+          versionRef.current[key] ??= version;
+        }
         stateRef.current = {
-          ...normalizeScopeResources(subConfig, stateSeed),
+          ...normalizeScopeResources(subConfig, toBareStates(stateSeed)),
           ...stateRef.current
         };
         contentRef.current = {
@@ -1423,19 +1468,113 @@ export async function createExecutionContext<
   // regardless of which bucket backs it.
   const makeKeyPersisters = (scope: ContentScopeType) => {
     const stateRef = scopeStateRef(scope);
+    const versionRef = scopeVersionRef(scope);
     const contentRef = scopeContentRef(scope);
     return {
-      persistResourceKey: async (key: string, value: JsonObject): Promise<void> => {
+      /**
+       * FIX-992 (D10): the CAS boundary for resource state.
+       *
+       * The driver owns the retry, because only here does the caller's intent
+       * still exist as a mutator — one layer down, at the store call, the next
+       * object has already been materialized and a retry could only overwrite
+       * a concurrent writer's field.
+       *
+       * There is deliberately **no** `deepEqual` short-circuit in front of the
+       * store call: `runResourceCAS` is the only thing that decides a no-op,
+       * and the reason that matters is in its header, not restated here.
+       *
+       * **Cancellation uses `backgroundSignal`, not `options.signal`.** The
+       * spec said `ctx.signal`, which is wrong here for two reasons found in
+       * the code. `options.signal` is the composed transport signal and fires
+       * on client disconnect / SSE teardown, so threading it would abandon the
+       * resource writes of a `.work()` background task the request is still
+       * running — the exact failure FIX-663 exists to prevent. And there is no
+       * per-scope signal available at this seam anyway: persisters and
+       * `ResourceRef`s are built once per context, while `ctx.signal` is
+       * per-execution-scope, so one ref serves foreground and background
+       * callers alike. `backgroundSignal` "fires only on explicit
+       * user-requested abort, not on transport-level teardown", which is
+       * precisely the condition under which a durable write should stop.
+       * Absent for non-server callers, where no cancellation applies.
+       */
+      mutateResourceKey: async (
+        key: string,
+        mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+        opts?: { intent?: ResourceCASIntent; seed?: JsonObject }
+      ): Promise<{ committed: boolean; previousState: JsonObject }> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
-        if (scopeId === undefined) return;
-        if (deepEqual(stateRef.current[key], value)) return;
-        // `"any"` is the pre-conversion posture. Sub-PR b puts the resource
-        // CAS driver in front of this persister and passes the version the
-        // driver is writing against; this function stays a single attempt.
-        await stores.resourceState.set(scope, scopeId, key, value, "any");
-        stateRef.current[key] = value;
+        if (scopeId === undefined) {
+          // Scope absent this request — nothing was read and nothing written.
+          return { committed: false, previousState: opts?.seed ?? {} };
+        }
+        const intent = opts?.intent ?? "mutate";
+
+        // State comes from the registry's own read (which applies a declared
+        // default for a key the store has never held); the version comes from
+        // what this context observed, which is `0` — "no live row" — for a key
+        // it never read.
+        const container = createStateContainer<JsonObject>(
+          opts?.seed ?? stateRef.current[key] ?? {},
+          versionRef.current[key] ?? 0
+        );
+
+        let result: Awaited<ReturnType<typeof runResourceCAS>>;
+        try {
+          result = await runResourceCAS({
+            key,
+            container,
+            mutator,
+            intent,
+            signal: options.backgroundSignal,
+            persist: (next, expectedVersion) =>
+              stores.resourceState.set(scope, scopeId, key, next, expectedVersion),
+            reread: () => stores.resourceState.get(scope, scopeId, key)
+          });
+        } catch (err) {
+          // A lost create still taught us something: the store reported the
+          // winner's row on the conflict. Fold it into the cache before
+          // rethrowing, so `getOrCreate` / `upsert` can turn the refusal into
+          // a read of the real instance rather than a second round trip or a
+          // ref that would serve schema defaults.
+          if (err instanceof ResourceAlreadyExistsError && err.currentValue !== undefined) {
+            // Clone on the way INTO the cache rather than on the way into the
+            // error. Either side breaks the aliasing, but only one of the two
+            // objects carries an invariant: the cache's value must match what
+            // the store holds at the version recorded beside it, because
+            // `ref.state` reads from it and a later patch persists from it. The
+            // error payload is a detached diagnostic the loser may annotate or
+            // mutate freely — and now that this error is exported for
+            // `instanceof`, callers will. So the clone goes where the invariant
+            // is, leaving exactly one owner of the live object.
+            stateRef.current[key] = cloneValue(err.currentValue) as JsonObject;
+            versionRef.current[key] = err.currentVersion;
+          }
+          throw err;
+        }
+
+        // Refresh the cache from EVERY outcome that saw a live row, not only
+        // committed ones. A verified no-op can arrive after the driver refreshed
+        // to a newer row — the caller wrote a value another context had already
+        // committed — and it carries that row's state and version. Skipping the
+        // refresh there leaves this request reading a value the store no longer
+        // holds and, worse, holding a stale version that makes the next
+        // conditional write or delete conflict for no reason.
+        //
+        // `version === 0` is the one outcome with nothing to refresh: the key
+        // has no live row, so writing the seed into the cache would invent a
+        // key the store does not have and change what `exists` means upstream.
+        //
+        // Only NOTIFICATIONS are gated on `committed` (D8), and they are gated
+        // by the registry, not here.
+        if (result.version > 0) {
+          // Mutate the live cache IN PLACE at this key (FIX-744) so concurrent
+          // distinct-key writes still coexist in the in-memory view.
+          stateRef.current[key] = result.state;
+          versionRef.current[key] = result.version;
+        }
+        return { committed: result.committed, previousState: result.previousState };
       },
-      deleteResourceKey: async (key: string): Promise<void> => {
+      deleteResourceKey: async (key: string): Promise<boolean> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         // `!(key in stateRef.current)` is a load-state check, not a
         // correctness guarantee: it scopes the delete to keys present in the
@@ -1444,12 +1583,72 @@ export async function createExecutionContext<
         // exact; for a `prefetchMode: 'lazy'` instance never loaded this
         // request the store row is left untouched — a pre-existing gap, not
         // introduced by the per-key path.
-        if (scopeId === undefined || !(key in stateRef.current)) return;
-        // `"any"` is the pre-conversion posture — sub-PR b gives both registry
-        // delete writers the version they observed and makes conflict terminal.
-        await stores.resourceState.delete(scope, scopeId, key, "any");
+        if (scopeId === undefined || !(key in stateRef.current)) return false;
+        // FIX-992 (D7): carry the version this context observed, so a delete
+        // decided from a stale snapshot conflicts instead of tombstoning the
+        // generation that replaced it. Terminal on conflict — a retry could
+        // only re-delete something it has already been told it does not own.
+        const expectedVersion = versionRef.current[key] ?? 0;
+        const result = await stores.resourceState.delete(
+          scope,
+          scopeId,
+          key,
+          expectedVersion
+        );
+        if (!result.ok) {
+          // Report what actually happened, which is two different things:
+          //
+          //  - a LIVE row at a version we did not expect — the key was deleted
+          //    and recreated under us, which is the ABA this version check
+          //    exists to catch. Nothing was deleted, so `resource_deleted`
+          //    would say the opposite of the truth.
+          //  - no live row — someone else's delete got there first.
+          // Either way the store has just told us, conclusively, what the key
+          // actually holds — so take it before rethrowing. This matches the
+          // create path (which folds the winner's row in off its conflict) and
+          // the no-op refresh: a caller that catches one of these errors must
+          // not then read a generation the store has already superseded.
+          if (result.conflict.currentValue !== undefined) {
+            // A live row at a version we did not expect.
+            //
+            // The clone is deliberate but, unlike the create path's, NOT
+            // falsifiable — and it is worth saying which so nobody later reads
+            // it as a tested guard. There is no second owner to defend against
+            // today: the store deep-copies `currentValue` out of its row (a
+            // documented, conformance-held property), and
+            // `ConcurrentModificationError` carries no payload, so nothing this
+            // caller can reach ever aliases what goes into the cache. It stays
+            // because the cache's one-owner invariant should not depend
+            // silently on the store's copy, and because enriching this error
+            // with the conflict row — exactly what was just done to
+            // `ResourceAlreadyExistsError` — would reintroduce the aliasing
+            // with no test to catch it.
+            stateRef.current[key] = cloneValue(result.conflict.currentValue) as JsonObject;
+            versionRef.current[key] = result.conflict.currentVersion;
+            throw new ConcurrentModificationError(
+              `Resource "${key}" was replaced by another writer (expected version ${expectedVersion}, found ${result.conflict.currentVersion}) — the delete was refused rather than applied to the new generation`,
+              1
+            );
+          }
+          // Unreachable by contract, kept as a guard rather than deleted.
+          // `delete` answers an already-tombstoned key with idempotent SUCCESS
+          // before it ever consults the version — the conformance suite pins
+          // that on all four adapters, in the raced form as well as the
+          // sequential one. So a delete conflict can only come from a LIVE row
+          // at an unexpected version, which always carries a value. (The
+          // `currentValue: undefined` conflict is real, but it belongs to
+          // `set`, not to `delete`.) Reaching here would mean an adapter had
+          // broken that rule, so it says so instead of inventing a story about
+          // a resource that was deleted.
+          throw new ConcurrentModificationError(
+            `Resource "${key}" delete was refused with no current value — the store reported a conflict where the contract requires an idempotent success`,
+            1
+          );
+        }
         delete stateRef.current[key];
+        delete versionRef.current[key];
         deletedStateKeys[scope].add(key);
+        return true;
       },
       persistResourceContentKey: async (key: string, content: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);

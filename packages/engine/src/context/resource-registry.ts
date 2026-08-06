@@ -39,8 +39,18 @@ import type { ResourceLoadRecord } from "@flow-state-dev/core/items";
 import { cloneValue, resolveClientProjection } from "@flow-state-dev/core/helpers";
 import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
-import type { ContentScopeType, ContentStore, ResourceStateStore } from "../stores/types";
-import { toBareState, toBareStates } from "../stores/resource-state-views";
+import type {
+  ContentScopeType,
+  ContentStore,
+  ResourceStateStore,
+  VersionedResourceState
+} from "../stores/types";
+import type { ResourceCASIntent } from "../stores/resource-cas";
+import {
+  ConcurrentModificationError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError
+} from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
@@ -391,13 +401,13 @@ export async function loadDeclaredResourceState(
   scopeType: ContentScopeType,
   scopeId: string,
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
-): Promise<Record<string, JsonObject>> {
+): Promise<Record<string, VersionedResourceState>> {
   const accessors = Object.entries(configs);
   if (accessors.length === 0) return {};
 
   const storageKeys = resourceStorageKeys(configs);
   const fixedKeys = new Set<string>();
-  const collectionReads: Array<Promise<Record<string, JsonObject>>> = [];
+  const collectionReads: Array<Promise<Record<string, VersionedResourceState>>> = [];
 
   for (const [accessor, config] of accessors) {
     // FIX-858: external collections are read-through — skip the store scan.
@@ -405,9 +415,7 @@ export async function loadDeclaredResourceState(
     if (isCollectionConfig(config)) {
       const prefix = getPatternPrefix(config.pattern);
       const keyPrefix = prefix === "" ? "" : `${prefix}/`;
-      collectionReads.push(
-        resourceState.getByPrefix(scopeType, scopeId, keyPrefix).then(toBareStates)
-      );
+      collectionReads.push(resourceState.getByPrefix(scopeType, scopeId, keyPrefix));
     } else {
       fixedKeys.add(storageKeys[accessor]!);
     }
@@ -418,12 +426,12 @@ export async function loadDeclaredResourceState(
     Promise.all(
       [...fixedKeys].map(
         async (key) =>
-          [key, toBareState(await resourceState.get(scopeType, scopeId, key))] as const
+          [key, await resourceState.get(scopeType, scopeId, key)] as const
       )
     )
   ]);
 
-  const seed: Record<string, JsonObject> = {};
+  const seed: Record<string, VersionedResourceState> = {};
   for (const result of collectionResults) {
     Object.assign(seed, result);
   }
@@ -468,15 +476,58 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     readResources: () => Record<string, JsonObject>;
     readResourceContent: () => Record<string, string>;
     /**
-     * Persist a single resource / collection-instance state key (FIX-744).
-     * Commits the one key to the durable store and mutates the live scope
-     * cache IN PLACE (`cache[key] = value`) — never snapshots and replaces the
-     * whole map. This is what lets concurrent distinct-key writes from
-     * parallel branches coexist in the in-memory view instead of clobbering.
+     * Drive one version-checked write to a single resource / collection-instance
+     * state key (FIX-992, D10).
+     *
+     * The registry hands over the op's **real mutator** rather than a finished
+     * value, because that is the only thing a retry can usefully re-run. The
+     * provider seeds a per-key container from the version this context observed,
+     * runs the resource CAS driver, and on commit updates the live scope cache
+     * IN PLACE (`cache[key] = value`) — never snapshotting and replacing the
+     * whole map, so concurrent distinct-key writes still coexist (FIX-744).
+     *
+     * Resolves `committed: false` only for a **verified** no-op: the mutator's
+     * output equalled the stored value at a re-read, confirmed version. Callers
+     * gate change notifications on it.
+     *
+     * Rejects terminally — never after a silent overwrite — when the key was
+     * deleted underneath a `mutate`, or when a `create` lost its race.
      */
-    persistResourceKey: (key: string, value: JsonObject) => Promise<void>;
-    /** Remove a single state key: durable per-key delete plus in-place live-cache delete. */
-    deleteResourceKey: (key: string) => Promise<void>;
+    mutateResourceKey: (
+      key: string,
+      mutator: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+      opts?: {
+        intent?: ResourceCASIntent;
+        /**
+         * The state this context reads for the key, used to seed the mutator's
+         * first attempt. The registry supplies it because only the registry
+         * knows a resource's declared default — a key absent from the durable
+         * store still reads as its default, and a mutator handed a bare `{}`
+         * instead would drop it. Retries ignore the seed and use the refreshed
+         * store value, which needs no default.
+         */
+        seed?: JsonObject;
+      }
+    ) => Promise<{
+      committed: boolean;
+      /**
+       * The state the committed attempt ran against. Differs from what the
+       * caller read exactly when a retry happened, and it is what the change
+       * hooks must report as `prevState` — the pre-race snapshot describes a
+       * transition that never occurred.
+       */
+      previousState: JsonObject;
+    }>;
+    /**
+     * Remove a single state key: version-conditional durable delete plus
+     * in-place live-cache delete. Carries the version this context observed, so
+     * a delete chosen from a stale snapshot conflicts instead of tombstoning a
+     * newer generation (FIX-992, D7). Rejects terminally on conflict.
+     *
+     * @returns `true` when a live row was tombstoned, `false` when there was
+     * nothing to remove. Callers gate delete hooks and change events on it.
+     */
+    deleteResourceKey: (key: string) => Promise<boolean>;
     /** Persist a single resource's content body: durable per-key write plus in-place live-cache set. */
     persistResourceContentKey: (key: string, content: string) => Promise<void>;
     /** Remove a single resource's content body: durable per-key delete plus in-place live-cache delete. */
@@ -607,39 +658,60 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
     }
   };
 
+  /**
+   * Run a single resource's write through the CAS driver.
+   *
+   * `mutate` is the op's intent, not a finished value: it is re-run against
+   * refreshed state on every retry, which is what lets two contexts patching
+   * different fields both land instead of the second clobbering the first.
+   * Normalization happens inside the mutator so a retry re-normalizes too.
+   */
   const persistResourceState = async (
     name: string,
     config: ResourceConfig,
-    next: unknown
-  ): Promise<void> => {
+    mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+    seed: JsonObject
+  ): Promise<{ committed: boolean; previousState: JsonObject }> => {
     if (config.writable === false) {
       throw new Error(`Resource "${name}" is read-only`);
     }
 
-    await options.persistResourceKey(name, normalizeResourceState(config, next));
+    return options.mutateResourceKey(
+      name,
+      async (current) => normalizeResourceState(config, await mutate(current)),
+      { seed }
+    );
   };
 
   // --- Namespace instance persistence helpers ---
   const persistNamespaceInstanceState = async (
     storageKey: string,
     nsConfig: ResourceCollectionConfig,
-    next: unknown
-  ): Promise<void> => {
-    const parsed = nsConfig.stateSchema.safeParse(next);
-    const value = parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
-
-    await options.persistResourceKey(storageKey, value);
+    mutate: (current: JsonObject) => JsonObject | Promise<JsonObject>,
+    seed: JsonObject
+  ): Promise<{ committed: boolean; previousState: JsonObject }> => {
+    return options.mutateResourceKey(
+      storageKey,
+      async (current) => {
+        const parsed = nsConfig.stateSchema.safeParse(await mutate(current));
+        return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
+      },
+      { seed }
+    );
   };
 
+  /** @returns `true` when a live row was actually tombstoned. */
   const deleteNamespaceInstance = async (
     storageKey: string
-  ): Promise<void> => {
-    await options.deleteResourceKey(storageKey);
+  ): Promise<boolean> => {
+    const deleted = await options.deleteResourceKey(storageKey);
+    if (!deleted) return false;
 
     // Also remove content if present
     if (storageKey in options.readResourceContent()) {
       await options.deleteResourceContentKey(storageKey);
     }
+    return true;
   };
 
   /**
@@ -686,41 +758,56 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         let prev!: JsonObject;
         let post!: JsonObject;
+        let committed = false;
         await serializeResourceWrite(storageKey, async () => {
-          prev = readState();
-          await persistNamespaceInstanceState(
+          const seed = readState();
+          ({ committed, previousState: prev } = await persistNamespaceInstanceState(
             storageKey,
             nsConfig,
-            updateObjectState(prev, updates)
-          );
+            (current) => updateObjectState(current, updates),
+            seed
+          ));
           post = readState();
         });
-        await notifyInstanceChange(prev, post);
+        if (committed) await notifyInstanceChange(prev, post);
       },
       async setState(nextState: JsonObject): Promise<void> {
         let prev!: JsonObject;
         let post!: JsonObject;
+        let committed = false;
         await serializeResourceWrite(storageKey, async () => {
-          prev = readState();
-          await persistNamespaceInstanceState(storageKey, nsConfig, nextState);
+          const seed = readState();
+          ({ committed, previousState: prev } = await persistNamespaceInstanceState(
+            storageKey,
+            nsConfig,
+            () => nextState,
+            seed
+          ));
           post = readState();
         });
-        await notifyInstanceChange(prev, post);
+        if (committed) await notifyInstanceChange(prev, post);
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
       ): Promise<void> {
         let prev!: JsonObject;
         let post!: JsonObject;
+        let committed = false;
         await serializeResourceWrite(storageKey, async () => {
-          // Pass the updater a fresh clone so an in-place mutation can't alias
-          // `prev` — `prev` is the pre-mutation state for the hook and reactive payload.
-          prev = readState();
-          const next = await updater(readState());
-          await persistNamespaceInstanceState(storageKey, nsConfig, next);
+          const seed = readState();
+          // The driver hands the updater a clone of the state it is writing
+          // against — refreshed on every retry — so an in-place mutation can
+          // neither alias `prev` nor defeat the driver's no-op comparison, and
+          // `prev` comes back as the basis the write actually landed on.
+          ({ committed, previousState: prev } = await persistNamespaceInstanceState(
+            storageKey,
+            nsConfig,
+            (current) => updater(current),
+            seed
+          ));
           post = readState();
         });
-        await notifyInstanceChange(prev, post);
+        if (committed) await notifyInstanceChange(prev, post);
       },
       getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
         return singleFlightGetOrPatch(storageKey, readState, ref, key, compute);
@@ -986,13 +1073,24 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           const exists = storageKey in resources;
           const replace = createOptions?.replace === true;
 
-          if (exists && !replace) {
-            throw new Error(`Resource instance "${storageKey}" already exists`);
-          }
+          // No pre-read already-exists throw. `exists` is this context's cached
+          // view, which a concurrent creator can invalidate between the check
+          // and the write; the authoritative answer is the store's, and a
+          // non-replace create asks for it by writing at "no live row" and
+          // taking a conflict as terminal. `exists` still drives the advisory
+          // decisions below (instance cap, created-vs-updated hook).
 
           // Check instance limits ONLY when adding a new instance. The replace
           // branch reuses an existing storage slot, so it can't push us over
           // maxInstances.
+          //
+          // The hard-cap refusal is decided here, because it destroys nothing.
+          // The *eviction* is deliberately deferred until after the write
+          // commits: it tombstones a real instance, and a create that loses its
+          // race is terminal, so evicting first would leave the caller with an
+          // exception AND an unrelated instance permanently gone — a net loss
+          // from an operation that did not happen.
+          let evictionNeeded: "lru" | "oldest" | undefined;
           if (!exists) {
             const currentCount = countInstances(nsConfig.pattern, resources);
             if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
@@ -1002,8 +1100,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
                   `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
                 );
               }
-              // Evict one instance — persists the deletion
-              await evictInstance(nsConfig, resources, eviction, lruAccess, options.deleteResourceKey, hookCtx, options.onResourceChanged);
+              evictionNeeded = eviction;
             }
           }
 
@@ -1033,11 +1130,68 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             ? (cloneValue(resources[storageKey] as JsonObject) as JsonObject)
             : undefined;
 
-          await options.persistResourceKey(storageKey, state);
+          // `create` writes at "no live row" and is terminal on conflict, so a
+          // loser raises already-exists instead of overwriting the winner.
+          // `replace` is a deliberate unconditional overwrite.
+          await options.mutateResourceKey(
+            storageKey,
+            () => state,
+            { intent: replace ? "replace" : "create" }
+          );
 
           lruAccess.set(storageKey, Date.now());
 
-          if (exists) {
+          // Whether this was a create or an update is decided by the write, not
+          // by the pre-write cache. A non-replace create commits at "no live
+          // row", so its success PROVES none existed — even when this context
+          // still had the key cached because another context deleted it and the
+          // row it recreated is a new generation. Reading `exists` here would
+          // route that new generation through the update hooks and hand them the
+          // deleted generation's state as `prevState`: a create reported as an
+          // update, with a previous state that is no longer anyone's.
+          //
+          // `replace` is the one case the write cannot answer — it commits at
+          // `"any"` precisely to opt out of version checks — so it keeps the
+          // cached view, which is the posture the caller chose.
+          const wasUpdate = replace && exists;
+
+          // Now that the instance really exists, make room for it. Read the
+          // resource map fresh — it gained this key — and the just-created key
+          // is the most recently accessed, so neither policy selects it.
+          if (evictionNeeded !== undefined) {
+            try {
+              await evictInstance(
+                nsConfig,
+                options.readResources(),
+                evictionNeeded,
+                lruAccess,
+                options.deleteResourceKey,
+                hookCtx,
+                options.onResourceChanged
+              );
+            } catch (err) {
+              // The victim was replaced by another context, so the
+              // version-checked delete refused. The create itself already
+              // committed and is what the caller asked for, so failing here
+              // would report a create that demonstrably happened as a failure
+              // AND still leave the row behind. Eviction is best-effort
+              // capacity management over a cap this design states it does not
+              // close — two concurrent creates of different keys can exceed it
+              // regardless — so the honest outcome is a successful create over
+              // a soft cap, which is the already-documented behaviour. Anything
+              // else (rolling the create back, or hunting another victim)
+              // destroys a legitimate row or loops to enforce an invariant
+              // per-key CAS cannot hold.
+              if (
+                !(err instanceof ConcurrentModificationError) &&
+                !(err instanceof ResourceDeletedError)
+              ) {
+                throw err;
+              }
+            }
+          }
+
+          if (wasUpdate) {
             if (nsConfig.onInstanceUpdated) {
               await nsConfig.onInstanceUpdated(storageKey, state, prevState ?? {}, hookCtx);
             }
@@ -1062,7 +1216,20 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             lruAccess.set(storageKey, Date.now());
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
-          return nsHandle.create(key, initial);
+          try {
+            return await nsHandle.create(key, initial);
+          } catch (err) {
+            // The presence check above is this context's cached view, so a
+            // concurrent creator — or a row this context simply never loaded —
+            // turns the create into a terminal already-exists. For
+            // `getOrCreate` that is the "or get" half of its own contract, not
+            // an error: the instance exists, which is all the caller asked for.
+            // The provider has already folded the winner's state into the cache
+            // off the conflict, so the ref below reads the real instance.
+            if (!(err instanceof ResourceAlreadyExistsError)) throw err;
+            lruAccess.set(storageKey, Date.now());
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          }
         },
 
         async upsert(
@@ -1081,43 +1248,80 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
             );
           }
 
-          const resources = options.readResources();
-          const exists = storageKey in resources;
+          // Patch branch: merge `update` over existing state, validate the
+          // merged shape explicitly, then persist. We validate (rather
+          // than rely on `persistNamespaceInstanceState`'s safeParse-with-
+          // empty-fallback) so a bad `update` throws loudly — matching the
+          // create branch's behavior. Without this, an invalid `update`
+          // would silently overwrite the resource with `{}` on the patch
+          // branch but throw on the create branch — an asymmetry that
+          // makes caller bugs hard to detect.
+          //
+          // The merge runs INSIDE the mutator so a CAS retry re-merges
+          // `update` over the winner's state rather than re-applying a merge
+          // computed against this context's pre-race snapshot.
+          const patchExisting = async (): Promise<ResourceRef<JsonObject>> => {
+            let committed = false;
+            let reported!: JsonObject;
+            let postState: JsonObject = {};
 
-          if (exists) {
-            // Patch branch: merge `update` over existing state, validate the
-            // merged shape explicitly, then persist. We pre-validate (rather
-            // than rely on `persistNamespaceInstanceState`'s safeParse-with-
-            // empty-fallback) so a bad `update` throws loudly — matching the
-            // create branch's behavior. Without this, an invalid `update`
-            // would silently overwrite the resource with `{}` on the patch
-            // branch but throw on the create branch — an asymmetry that
-            // makes caller bugs hard to detect.
-            const rawPrev = resources[storageKey] as JsonObject;
-            const merged = updateObjectState(rawPrev, update);
-            const parseResult = nsConfig.stateSchema.safeParse(merged);
-            if (!parseResult.success) {
-              const issue = parseResult.error.issues[0];
-              const issuePath = issue === undefined ? "" : issue.path.join(".");
-              const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
-              const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
-              throw new Error(
-                `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+            // Enter this key's write chain, like the three per-instance write
+            // ops do. Without it, N concurrent `upsert`s of one key inside a
+            // single context all start from the same cached version, only one
+            // wins per retry round, and a caller can exhaust the retry budget
+            // and surface `ConcurrentModificationError` — raised by writers
+            // this queue exists precisely to stop from contending. The write
+            // is a read-modify-write, so the seed is read INSIDE the chain:
+            // reading it outside would hand the mutator a value from before
+            // the prior write in the queue committed.
+            //
+            // Only the persist is inside. Hooks fire after the slot releases,
+            // matching every other write op here — a reactive block that
+            // patches this same key re-enters `serializeResourceWrite`, and a
+            // chain slot taken while we still hold one could never resolve.
+            await serializeResourceWrite(storageKey, async () => {
+              const seed = (options.readResources()[storageKey] ?? {}) as JsonObject;
+              const result = await persistNamespaceInstanceState(
+                storageKey,
+                nsConfig,
+                (current) => {
+                  const merged = updateObjectState(current, update);
+                  const parseResult = nsConfig.stateSchema.safeParse(merged);
+                  if (!parseResult.success) {
+                    const issue = parseResult.error.issues[0];
+                    const issuePath = issue === undefined ? "" : issue.path.join(".");
+                    const issueMessage =
+                      issue === undefined ? "schema validation failed" : issue.message;
+                    const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+                    throw new Error(
+                      `Namespace "${nsConfig.pattern}" upsert("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+                    );
+                  }
+                  return merged;
+                },
+                seed
               );
-            }
-            // Clone `prev` before passing it to the hook — matches the
-            // defensive copy `readState()` does on the per-instance
-            // `patchState` path. Hook code that caches or mutates `prev`
-            // shouldn't be able to observe stale store internals.
-            const prev = cloneValue(rawPrev) as JsonObject;
-            await persistNamespaceInstanceState(storageKey, nsConfig, merged);
+              committed = result.committed;
+              // The basis the write landed on, which differs from what this
+              // caller read whenever a retry happened. Cloned because hook code
+              // may cache or mutate it.
+              reported = cloneValue(result.previousState) as JsonObject;
+              postState = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
+            });
+
             lruAccess.set(storageKey, Date.now());
-            const postState = (options.readResources()[storageKey] as JsonObject | undefined) ?? {};
-            if (nsConfig.onInstanceUpdated) {
-              await nsConfig.onInstanceUpdated(storageKey, postState, prev, hookCtx);
+            if (!committed) {
+              return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
             }
-            await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState), { state: postState, prevState: prev, evicted: false });
+            if (nsConfig.onInstanceUpdated) {
+              await nsConfig.onInstanceUpdated(storageKey, postState, reported, hookCtx);
+            }
+            await options.onResourceChanged?.(storageKey, "updated", await liveProjection(nsConfig, postState), { state: postState, prevState: reported, evicted: false });
             return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          };
+
+          if (storageKey in options.readResources()) {
+            return patchExisting();
           }
 
           // Create branch: delegate to `create`. Merge `update` over
@@ -1125,7 +1329,19 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
           // the "what I'm trying to express now"; createOnly is the
           // scaffold that only matters at first creation).
           const initial = { ...(createOnly ?? {}), ...update };
-          return nsHandle.create(key, initial);
+          try {
+            return await nsHandle.create(key, initial);
+          } catch (err) {
+            // The absence check above is this context's cached view. A
+            // concurrent creator makes the create terminal, but `upsert`
+            // promised to apply `update` either way — so the loser becomes the
+            // patch it would have been had it seen the row. `createOnly` is
+            // correctly dropped: the instance was not created by this call.
+            // The provider folded the winner's state into the cache off the
+            // conflict, so the merge below runs against the real instance.
+            if (!(err instanceof ResourceAlreadyExistsError)) throw err;
+            return patchExisting();
+          }
         },
 
         async list(prefix?: string): Promise<ResourceRef<JsonObject>[]> {
@@ -1149,16 +1365,22 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
         async delete(key: string | Record<string, string>): Promise<void> {
           const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
-          if (!(storageKey in resources)) {
-            // Idempotent — no-op if instance doesn't exist
-            return;
-          }
 
           // Capture the about-to-be-deleted state before the per-key delete so
           // the reactive `deleted` payload can carry it as `prevState`.
-          const deletedPrevState = cloneValue(resources[storageKey] as JsonObject) as JsonObject;
+          const deletedPrevState = cloneValue(
+            (resources[storageKey] ?? {}) as JsonObject
+          ) as JsonObject;
 
-          await deleteNamespaceInstance(storageKey);
+          // The durable delete is version-conditional and terminal on conflict,
+          // so a delete chosen from this context's snapshot cannot tombstone a
+          // generation that replaced it. `deleted` is false when there was no
+          // row to remove — the idempotent case the old cached
+          // `!(storageKey in resources)` guard was standing in for, now answered
+          // by the store rather than by a cache that a concurrent writer can
+          // invalidate.
+          const deleted = await deleteNamespaceInstance(storageKey);
+          if (!deleted) return;
           lruAccess.delete(storageKey);
 
           if (nsConfig.onInstanceDeleted) {
@@ -1331,26 +1553,34 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       async patchState(updates: Partial<JsonObject>): Promise<void> {
         let prev!: JsonObject;
         let post!: JsonObject;
+        let committed = false;
         await serializeResourceWrite(storageKey, async () => {
-          prev = readState();
-          await persistResourceState(
+          const seed = readState();
+          ({ committed, previousState: prev } = await persistResourceState(
             storageKey,
             config,
-            updateObjectState(prev, updates)
-          );
+            (current) => updateObjectState(current, updates),
+            seed
+          ));
           post = readState();
         });
-        await notifySingleChange(prev, post);
+        if (committed) await notifySingleChange(prev, post);
       },
       async setState(nextState: JsonObject): Promise<void> {
         let prev!: JsonObject;
         let post!: JsonObject;
+        let committed = false;
         await serializeResourceWrite(storageKey, async () => {
-          prev = readState();
-          await persistResourceState(storageKey, config, nextState);
+          const seed = readState();
+          ({ committed, previousState: prev } = await persistResourceState(
+            storageKey,
+            config,
+            () => nextState,
+            seed
+          ));
           post = readState();
         });
-        await notifySingleChange(prev, post);
+        if (committed) await notifySingleChange(prev, post);
       },
       async updateState(
         updater: (
@@ -1359,15 +1589,22 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
       ): Promise<void> {
         let prev!: JsonObject;
         let post!: JsonObject;
+        let committed = false;
         await serializeResourceWrite(storageKey, async () => {
-          // Pass the updater a fresh clone so an in-place mutation can't alias
-          // `prev` — `prev` is the pre-mutation `prevState` for the reactive payload.
-          prev = readState();
-          const next = await updater(readState());
-          await persistResourceState(storageKey, config, next);
+          const seed = readState();
+          // The driver hands the updater a clone of the state it is writing
+          // against — refreshed on every retry — so an in-place mutation can
+          // neither alias `prev` nor defeat the driver's no-op comparison, and
+          // `prev` comes back as the basis the write actually landed on.
+          ({ committed, previousState: prev } = await persistResourceState(
+            storageKey,
+            config,
+            (current) => updater(current),
+            seed
+          ));
           post = readState();
         });
-        await notifySingleChange(prev, post);
+        if (committed) await notifySingleChange(prev, post);
       },
       getOrPatchState(key: string, compute: () => JsonValue | Promise<JsonValue>): Promise<JsonValue> {
         return singleFlightGetOrPatch(storageKey, readState, handles[resourceName] as ResourceRef<JsonObject>, key, compute);
@@ -1469,7 +1706,7 @@ async function evictInstance(
   resources: Record<string, JsonObject>,
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
-  deleteResourceKey: (key: string) => Promise<void>,
+  deleteResourceKey: (key: string) => Promise<boolean>,
   hookCtx: CollectionHookContext,
   // FIX-751: fired after the per-key delete with `evicted: true` so a reactive
   // `deleted` binding can distinguish a capacity eviction from an explicit
@@ -1505,8 +1742,12 @@ async function evictInstance(
   const evictedPrevState = cloneValue(resources[evictKey] as JsonObject) as JsonObject;
 
   // Per-key delete: removes evictKey from the durable store and the live cache
-  // in place, leaving sibling instances untouched.
-  await deleteResourceKey(evictKey);
+  // in place, leaving sibling instances untouched. The eviction target is
+  // chosen from this context's cache, so the delete is version-conditional and
+  // terminal on conflict — an eviction decided from a stale snapshot must not
+  // tombstone the generation that replaced it.
+  const deleted = await deleteResourceKey(evictKey);
+  if (!deleted) return;
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {

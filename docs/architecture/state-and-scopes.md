@@ -79,7 +79,42 @@ Every persisted scope state is versioned. Writes provide an expected version; mi
 
 **Retention is the guarantee.** Versions are never reused, and a tombstone keeps its version, so an observer from before a delete can never match the row that replaces it — at key altitude and at scope altitude alike. Nothing reclaims a tombstone; that is deliberate, and it is why the ABA argument needs no sweep, no timer and no retention window. The cost is one row per deleted key, in every scope.
 
-Resource state will **not** reuse `runWithCAS` when the retry driver is added, and the reason is policy rather than shape: a conflict against a deleted resource, and a losing create-if-absent, are both terminal rather than retryable, where the scope driver treats every conflict as retryable. That driver, and the registry writers that call it, are a separate change — the store contract described here is what exists today, and every in-tree writer currently passes the `"any"` opt-out.
+Resource state does **not** reuse `runWithCAS`, and the reason is policy rather than shape. It has its own driver (`stores/resource-cas.ts`), placed at the registry's read/mutate seam rather than at the persister: the persister is value-only, and by the time a write reaches it the caller's intent has already been materialized into an object, so a retry there could only overwrite a concurrent writer's field. The driver takes each write op's real mutator and re-runs it against refreshed state.
+
+Six of `runWithCAS`'s decisions do not transfer: a conflict against a tombstone and a losing create-if-absent are **terminal** here rather than retryable, cancellation is honoured, a no-op is suppressed only against a re-read version, and nothing on the commutative path is inherited. **The policy table lives in one place — the `stores/resource-cas.ts` module header** — beside the code it governs and with the source citations that go stale the moment `cas.ts` is edited. Read it there rather than a copy; `cas.ts` carries the matching pointer back, so a reader arriving at either driver can see there are two and why.
+
+The trap worth knowing at this altitude: `createScopeStateOps` lives in `state-container.ts` and its ops are named `patchState` / `setState` / `updateState`, the same names as the registry's resource ops. Reaching for it is the natural move and the wrong one. The same goes for `createScopePersist`, which downgrades `expectedVersion` to `"any"` for commutative hints on adapters advertising a delta verb.
+
+**Error taxonomy — the write path reports what actually happened**, which is this epic's whole thesis pointed at its own store. Three distinct states must not collapse into one error:
+
+| Situation | Reported as |
+|---|---|
+| Key never persisted (a declared resource living on its schema default), mutator asks for no change | **Not an error** — a verified no-op. Nothing was written and nothing was taken away |
+| We held a live version and the row is now a tombstone | `ResourceDeletedError`, terminal |
+| A create-if-absent lost its race | `ResourceAlreadyExistsError`, terminal, **carrying the winner's row** so the first-touch APIs can finish as a read |
+| A delete's version check failed against a **live** row (deleted and recreated under us) | `ConcurrentModificationError` — nothing was deleted, so a deletion error would report the opposite |
+| Retry budget exhausted | `ConcurrentModificationError` |
+
+**Which writers carry a version, and which deliberately do not.** The list is a search result rather than a judgement — the store's mutating surface is three methods on one named field, so `grep -a "resourceState[?.]*\.\(set\|delete\|deleteAll\)(" packages/*/src` decides it. (The `-a` matters: `resource-registry.ts` carries a NUL byte, so plain `grep` reports it binary and prints nothing.)
+
+Version-checked, through the driver above:
+
+- every registry write op — single-resource and collection-instance `patchState` / `setState` / `updateState`, plus `upsert`'s patch path
+- `create()` at `expectedVersion: 0`, terminal on conflict
+- both delete writers, `collection.delete()` and `evictInstance`, at the version the context observed
+
+Deliberately unconditional, each for a stated reason rather than because it was missed:
+
+- **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
+- **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
+- **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
+- **scope state** — `request` / `session` / `user` / `org` — is not this driver's at all. It keeps `runWithCAS`, and `createScopePersist` downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
+
+The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
+
+Cancellation uses the request's **background** abort signal, not the transport signal. The transport signal fires on client disconnect, which must not abandon the writes of a `.work()` task the request is still running; and there is no per-scope signal available at this seam anyway, since persisters and `ResourceRef`s are built once per context while `ctx.signal` is per execution scope.
+
+Two orderings are load-bearing and quiet when regressed. `create()` defers its `maxInstances` eviction until **after** the CAS write commits — evicting first lets a create that loses its race still tombstone an unrelated instance, so the caller gets an exception *and* a net loss. And the first-touch APIs translate a terminal already-exists into their own contract rather than surfacing it: `getOrCreate` returns the winner's instance, `upsert` applies its update as a patch.
 
 **What per-key CAS honestly does not close**, recorded so this is not read as full coverage: a create of a *previously-absent* key racing `deleteAll` still lands, because `expectedVersion: 0` is satisfied by a key that never existed and a bulk mark only touches rows that already exist. That is a cross-key invariant, and no per-key predicate expresses one. The `maxInstances` cap is the same shape — a read-then-act on a set.
 

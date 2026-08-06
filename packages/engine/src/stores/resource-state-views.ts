@@ -58,3 +58,22 @@ export function toBareStates<T extends JsonObject = JsonObject>(
   }
   return result;
 }
+
+/**
+ * Keep only the versions from a bulk read — the other half of
+ * {@link toBareStates}.
+ *
+ * An execution context needs both: the state to serve reads from its cache, and
+ * the version each key was read at, so a later write can be conditional on
+ * nothing having moved in between. Splitting them here keeps the pairing
+ * greppable instead of leaving each caller to reach into `.version` inline.
+ */
+export function toVersions(
+  entries: Record<string, VersionedResourceState>
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(entries)) {
+    result[key] = entry.version;
+  }
+  return result;
+}
