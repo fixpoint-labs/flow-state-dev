@@ -164,6 +164,12 @@ a page can come back shorter than `limit`; the alternative is one query per
 allowed kind, which is not worth it for a path that exists only when a
 host-level `resolvePrincipal` is absent.
 
+User-addressed routes cannot be filtered the same way: they act on the
+caller-supplied `:userId` across flows, and interrupted-request detection mutates
+the matching records. In a mixed app they therefore return `401` unless the host
+configures a resolver; with a host resolver, the guard also requires the resolved
+principal's `userId` to match the path.
+
 ### Session creation
 
 `create_session` takes `userId` and `orgId` from the resolved principal, not

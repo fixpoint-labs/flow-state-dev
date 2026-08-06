@@ -490,6 +490,39 @@ describe("request-addressed routes", () => {
   });
 });
 
+describe("user-addressed routes", () => {
+  it("rejects anonymous interrupted-request recovery in a mixed app", async () => {
+    const { router, stores } = buildRouter([secureFlow(), openFlow()]);
+    await seedRequest(stores, {
+      id: "r-victim",
+      flowKind: "secure",
+      userId: "victim"
+    });
+    const now = Date.now();
+    await stores.activeRequests.register({
+      requestId: "r-victim",
+      sessionId: "s-victim",
+      flowKind: "secure",
+      actionName: "run",
+      userId: "victim",
+      source: "http",
+      startedAt: now,
+      lastHeartbeatAt: now
+    });
+
+    const res = await call(
+      router,
+      "POST",
+      ["users", "victim", "check-interrupted"],
+      { query: "staleThresholdMs=-1" }
+    );
+
+    expect(res.status).toBe(401);
+    expect((await stores.request.get("r-victim"))?.status).toBe("in_progress");
+    expect(await stores.activeRequests.get("r-victim")).toBeDefined();
+  });
+});
+
 describe("apps on the framework default resolver", () => {
   it("serves session reads exactly as before", async () => {
     // These apps trust `body.userId` on the action path already, and their GETs

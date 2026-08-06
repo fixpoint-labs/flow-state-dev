@@ -262,9 +262,16 @@ export async function authorizeManagementRoute(
   const resolver = pickPrincipalResolver(ctx.registry, flowKind, ctx.hostResolver);
   if (isDefaultBodyUserIdPrincipalResolver(resolver)) {
     // No authentication governs this route. For a flow-scoped route that means
-    // the flow is genuinely open in this app, so leave it alone. A
-    // user-addressed route (`/users/:userId/...`) acts on one caller's own
-    // records rather than listing across flows, so it is left alone too.
+    // the flow is genuinely open in this app, so leave it alone. A user route
+    // has no governing flow, however, and its path userId is caller-controlled;
+    // in a mixed app it must not mutate or expose authenticated flows' records.
+    if (subject.kind === "user") {
+      return {
+        denied: jsonResponse(401, {
+          error: "Authentication is required for user management routes"
+        })
+      };
+    }
     if (subject.kind !== "host") return ALLOWED;
 
     // A cross-flow listing is different: some other flow may authenticate, and
