@@ -365,14 +365,14 @@ export function createSkillsLibrary(
 
     const dynamic = resolveCtx.presets.has("dynamicActivation");
     const hasActivationPath = dynamic || Boolean(cfg.activeState);
+    const contributesRuntimeTools = dynamic || Boolean(cfg.activeState && cfg.allowed);
 
-    // Whole-catalog mode (activation path + no `allowed`): any bundled inline
-    // skill is loadable/activatable, so validate each one's declared tools —
-    // the `allowed` loop above only covers an explicit list. Skip fork/pattern
-    // skills (can't render/load inline) and `disable-model-invocation` skills
-    // (omitted from the catalog and renderer, so never exposed) — validating
-    // those would fail construction over a skill that can't reach the model.
-    if (hasActivationPath && !cfg.allowed) {
+    // Whole-catalog dynamic mode (no `allowed`): the load tool can select any
+    // bundled inline skill, so validate each one's declared tools. An unscoped
+    // explicit activeState alone intentionally contributes no tools: exposing
+    // an unbounded catalog without a model-controlled activation path would
+    // make every catalog tool callable before any skill is selected.
+    if (dynamic && !cfg.allowed) {
       for (const [name, entry] of index) {
         if (entry.contextMode !== "inline" || entry.disableModelInvocation) continue;
         validateDeclaredTools(name);
@@ -385,7 +385,7 @@ export function createSkillsLibrary(
     // the model softly via the rendered restriction note; registering the
     // superset keeps a live post-seeding edit to that list from pointing the
     // model at an unregistered tool.
-    if (active.length > 0 || hasActivationPath) tools.push(...fullCatalog());
+    if (active.length > 0 || contributesRuntimeTools) tools.push(...fullCatalog());
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
