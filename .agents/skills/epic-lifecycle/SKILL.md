@@ -111,6 +111,31 @@ even if more are queued. State the chosen N and the cap to the user.
 > and only inside each issue's own worktree/branch. A PR whose diff is a board /
 > status / scratch file is a bug — do not open it.
 
+## PR events are wake signals, not work items
+
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR events are
+wake signals, not work items".** Read it, don't re-derive it here. It is a *correctness* rule —
+and the harness's own posture on PRs you opened (they're yours to drive green, so diagnose the
+failure, push the fix, answer the reviewer) is louder than this heading and wins if you let it.
+
+The epic-specific delta:
+
+- **`epic-wake` decides the action; your job is to run the wake.** The script classifies each
+  row's pending action from durable state — which worker, which budget, whether to dispatch at
+  all — and that depends on the row's phase *and* the kind of activity. Don't restate those
+  routes here and don't predict them from the event text; run the wake and let it classify.
+  Don't relay comment text into `args` either — the refresh scouts re-read each PR off the
+  activity cursor themselves, so a pasted copy is only a staler one.
+- **The PR you have to recognize includes the epic PR, which has no row.** It lives in the
+  `epic` handle beside them; its events are the objective sign-off and the epic-spec's own
+  feedback. Drop one as "not mine" and the whole set sits at AWAITING_OBJECTIVE until a
+  heartbeat catches it — the epic gate is a barrier, so a missed approval parks every issue,
+  not one.
+- **The write rule's instance here:** posting an alignment the user just decided
+  ("Cross-spec coherence" → step 4, *Route the alignment*) carries a human's decision, so it is
+  allowed. Answering a reviewer is a technical judgment about a diff you haven't read, so it is
+  not.
+
 ## The loop (each invocation)
 
 1. **Resolve the epic and its set.** Take the epic issue ID, or the issue IDs, from the
@@ -695,7 +720,9 @@ step. So:
 - **A real blocker is the agent's to resolve or sequence, not to punt.** If implementation
   can't proceed because of an open decision or an unlanded prerequisite from another issue,
   that's the coordinator's problem to handle: sequence the prerequisite (run its blocker to merge
-  first), or resolve the decision from the spec/codebase. Surface it to the user **only** when
+  first), or **dispatch a worker to** resolve the decision from the spec/codebase — the answer is
+  in artifacts you don't read (Token discipline: handles and status only), so resolving it here
+  would mean pulling a spec or a diff into this context to do it. Surface it to the user **only** when
   it genuinely needs a human call (a decision the spec doesn't settle) — with the specific
   question, not a vague "should I continue?". A prerequisite that simply needs to land is
   tracked and ordered by the coordinator, never a reason to idle.

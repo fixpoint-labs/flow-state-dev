@@ -430,6 +430,22 @@ And as the PR_FEEDBACK row states: after the **last** sub-PR merges the issue is
 The script enforces that (a build wake never returns `done: true`), but the merge that makes
 the assembled goal runnable is *your* event to act on — re-enter and run the workflow again.
 
+## PR events are wake signals, not work items
+
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR events are
+wake signals, not work items".** Read it, don't re-derive it here. It is a *correctness* rule —
+and the harness's own posture on PRs you opened (they're yours to drive green, so diagnose the
+failure, push the fix, answer the reviewer) is louder than this heading and wins if you let it.
+
+The issue-specific delta: **the phase table decides what the event becomes, and it is the
+authority — not any summary of it, including this one.** Re-derive the phase from the small
+durable read above, find the row, and take the action that row gives for *that kind of event*.
+
+This section deliberately does not list the routes. The rows branch on the event — feedback,
+an approval, approved-and-green — and the branches differ in which worker runs, which budget is
+charged, and whether to dispatch at all. Every route written down here would be a rule that
+outranks the row it was copied from and goes stale the moment the row moves.
+
 ## Waking
 
 **Re-subscribe on every invocation, not just when a PR first opens — and do it last, after**

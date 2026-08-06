@@ -989,15 +989,80 @@ prompt. The coordinator's own cost stays the table plus the epic record, and it 
 the same size regardless of how many issues the wake touched, because the wake returns a
 fixed-shape table rather than N summaries to fold.
 
-Event routing follows the same discipline. The coordinator does **not** read event
-content: on a PR event it maps PR# → owning issue and dispatches that issue's worker,
-which reads the review/CI in its own context. Two reads are the exception, both **small
-and offloaded to `scout`**, not folded into the coordinator: the **spec/epic-PR approval
-check** ("is there an approving comment or GitHub Review from a human?" — the sign-off
-gate — checks both the PR's comments and its reviews) and
-**epic-PR feedback fan-out** ("which aligned issues does this comment touch?"). Scout
-returns the verdict / target list; the coordinator routes on it and, for a detected
-approval, applies the mirror label.
+Event routing follows the same discipline — the coordinator does not read event content. That
+rule is **not** a budget rule, so it does not live here; see
+[PR events are wake signals, not work items](#pr-events-are-wake-signals-not-work-items) below.
+
+## PR events are wake signals, not work items
+
+**This is a correctness rule, not a cost one**, and the distinction is the whole reason it needs
+its own section. Framed as token discipline it reads as negotiable under load — *I'll spend the
+tokens, it's fine* — and a coordinator that reasons that way is not being wasteful, it is
+breaking two mechanisms. Neither failure is expense.
+
+A PR-activity event arrives in the coordinator's *own* session with the comment bodies and CI
+output attached. In the cloud harness, the surrounding system prompt tells that session the PRs
+it opened are its own to drive green: diagnose the failure, push the fix, answer the reviewer.
+The coordinator genuinely does hold those subscriptions — a sub-agent can't — so it reads as the
+owner, and that imperative is louder than anything written here. **Under the lifecycles it does
+not apply.** Waking you was the event's whole job, and it has done it.
+
+So on any PR-activity event — a review comment, a CI failure, a push, an approval:
+
+- **Don't** read the diff, diagnose the failure, write a fix, push a commit, or reply on a
+  thread. Not for a one-line CI fix, and not because the change looks obvious from the event
+  text; "obvious" is what every round nine looked like at round three.
+- **Don't** relay the comment text into whatever you dispatch. The thing that handles the PR
+  next re-reads its comments, reviews and checks off the activity cursor itself, so a pasted
+  copy is a second, staler one.
+- **Do** derive the action from durable state — the phase table row, or the wake script — and
+  take it. Take it from the row itself, **never from a summary of the row**, including any in a
+  skill and including this section. The rows branch on the *kind* of event, and the branches can
+  differ in which worker runs, which budget is charged, and whether to dispatch at all. A summary
+  that flattens them reads as the rule and quietly outranks the row it came from — which is why
+  nothing here lists the routes.
+- **Then end the turn — unless what you just read says not to.** Ending is the *default*, not a
+  rule of its own, and the same source that gave you the action decides whether the turn is over.
+  An epic wake returning `moreWorkNow: true` means something is dispatchable with no external
+  event, so the next wake runs **now**; ending there strands ready work until an unrelated event
+  or a heartbeat happens along.
+
+**What handling a round yourself actually costs:**
+
+- **The round goes uncounted.** A round budget advances only on a worker's *reported* spend, so
+  a round the coordinator handles is invisible to it. The cap then never trips on an issue that
+  is genuinely looping — losing the one signal that says the *approach* is wrong rather than the
+  lines being argued about.
+- **The batch stays `new`.** The activity cursor advances only for actions that consume review
+  activity. A batch answered by hand doesn't advance it, so the next wake dispatches a worker
+  that re-reads the same batch and re-posts replies to comments already answered.
+
+**Writing to a PR: you may carry a human's decision outward, never a technical judgment of your
+own.** Applying a `spec approved` mirror label, or posting an alignment the user just decided in
+a cross-spec walkthrough, carries a decision made somewhere the coordinator can see. Answering a
+reviewer, explaining a design choice, conceding a point, or calling a finding wrong are all
+judgments about a diff it hasn't read, and they belong to the worker that has.
+
+**What stays with the coordinator, because nothing else can hold it:** subscribing to the PR,
+surfacing a gate, recording a human's answer to a blocker, and writing the Linear mirror. None
+of those acts on review content.
+
+Two reads are the exception, both **small and offloaded to `scout`**, never folded into the
+coordinator: the **spec/epic-PR approval check** ("is there an approving comment or GitHub
+Review from a human?" — the sign-off gate — checks both the PR's comments and its reviews) and
+**epic-PR feedback fan-out** ("which aligned issues does this comment touch?"). Scout returns
+the verdict / target list; the coordinator routes on it and, for a detected approval, applies
+the mirror label.
+
+**What the coordinator reports instead.** The worker's status line is what it has, and it is
+what the user gets: the issue, its phase, the PR, and the worker's one line on what it did. One
+line per issue that moved. Don't recap the comments it answered or the fix it wrote — the
+coordinator saw neither, and reconstructing them from the event text is the reading this section
+forbids, done after the fact and less accurately. If a round produced something that needs the
+user, it is a **gate**, a **blocker**, or the **cap**; that gets its own line with the specific
+question. Everything else is one line and an ended turn. The point of a coordinator is that
+nobody has to read the implementation dialog — narrating it back is the same cost with an extra
+hop.
 
 > **Considered and deferred: a dedicated feedback-router sub-agent.** A standing agent that
 > triages every incoming event and decides routing was weighed and **not** adopted for v1:
