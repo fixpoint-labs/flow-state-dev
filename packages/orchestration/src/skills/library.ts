@@ -35,6 +35,7 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
+  BlockContext,
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
@@ -47,17 +48,21 @@ import type {
   PresetDef,
   SkillContextMode,
   SkillFile,
+  SkillState,
   ToolCatalog,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
-import type { ActivationLocation } from "./activation-store";
+import { readActivations, type ActivationLocation } from "./activation-store";
 import { buildSkillBindingReader } from "./binding-reader";
 import {
   defineSkillsCollection,
+  skillManifestKey,
   type DefineSkillsCollectionOptions,
 } from "./collection";
+import { getCollection } from "./internal/get-collection";
 import { buildLoadCatalogContext, createLoadSkillTool } from "./load-tool";
 import { parseSkillMd, validateSkillName } from "./skill-md";
+import { ensureSeeded } from "./seeding";
 import {
   buildDelegationGuidance,
   buildDelegationTools,
@@ -300,13 +305,6 @@ export function createSkillsLibrary(
   };
 
   // Validate a bound skill's declared `allowed-tools` all exist in the catalog.
-  // Author feedback only — it does NOT scope what gets registered. Tool
-  // registration is a safe superset (the whole catalog), like the legacy
-  // capability: the reader renders the LIVE manifest, which an admin can edit
-  // after seeding, so freezing a per-skill tool subset at build time would let
-  // the rendered `allowed-tools` restriction note reference a tool the
-  // generator never registered. The per-skill restriction stays a soft,
-  // prompt-level scope via the rendered note.
   const validateDeclaredTools = (name: string): void => {
     const declared = index.get(name)?.allowedTools;
     if (!declared) return;
@@ -318,8 +316,6 @@ export function createSkillsLibrary(
       }
     }
   };
-
-  const fullCatalog = (): GeneratorTool[] => Object.values(catalog) as GeneratorTool[];
 
   const resolve = (
     cfg: z.output<typeof bindingConfigSchema>,
@@ -379,13 +375,41 @@ export function createSkillsLibrary(
       }
     }
 
-    // Whenever a skill body can render — statically preloaded (`active`) or
-    // activated at runtime (load tool / upstream matcher / code) — register the
-    // whole catalog as a safe superset. The skill's own `allowed-tools` scopes
-    // the model softly via the rendered restriction note; registering the
-    // superset keeps a live post-seeding edit to that list from pointing the
-    // model at an unregistered tool.
-    if (active.length > 0 || hasActivationPath) tools.push(...fullCatalog());
+    // Resolve catalog tools from the LIVE manifests on every model step. This
+    // makes `allowed-tools` an enforced tool boundary while still honoring an
+    // administrator's post-seeding edits without rebuilding the generator.
+    const resolveActiveTools = async (blockCtx: BlockContext): Promise<GeneratorTool[]> => {
+      const collection = getCollection(blockCtx, collectionKey);
+      if (!collection) return [];
+      await ensureSeeded(collection, initialSkills);
+
+      const names = new Set(active);
+      if (hasActivationPath) {
+        for (const entry of readActivations(blockCtx, location)) {
+          if (entry.mode === "inline") names.add(entry.name);
+        }
+      }
+
+      const keys = new Set<string>();
+      for (const name of names) {
+        const manifest = await collection.getOptional(skillManifestKey(name));
+        if (!manifest) continue;
+        const state = manifest.state as unknown as SkillState;
+        if (state.disableModelInvocation || (state.contextMode ?? "inline") !== "inline") continue;
+        if (!state.allowedTools || state.allowedTools.length === 0) {
+          return Object.values(catalog) as GeneratorTool[];
+        }
+        for (const key of state.allowedTools) {
+          if (!(key in catalog)) {
+            throw new Error(
+              `skills: skill "${name}" declares tool "${key}", which is not in the catalog`,
+            );
+          }
+          keys.add(key);
+        }
+      }
+      return [...keys].map((key) => catalog[key]!) as GeneratorTool[];
+    };
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
@@ -574,10 +598,10 @@ export function createSkillsLibrary(
         dynamicEligible: dynamicAgentEligible,
         allowEmptyRoster,
       };
-      // Static tools (catalog superset + load tool) are known now; the
-      // taskTools and runBoard resolve per execution.
+      // Load/delegation tools are additive to the live, allowlisted skill tools.
       const staticTools = [...new Set(tools)];
-      contributions.tools = (async (blockCtx) => [
+      contributions.tools = (async (blockCtx: BlockContext) => [
+        ...(await resolveActiveTools(blockCtx)),
         ...staticTools,
         ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
       ]) as PresetDef["tools"];
@@ -586,10 +610,12 @@ export function createSkillsLibrary(
       if (cfg.guidance !== false) {
         contextEntries.push(buildDelegationGuidance(surfaceDeps) as never);
       }
-    } else if (tools.length > 0) {
-      // De-dupe by identity so a tool declared by both `active` and `allowed`
-      // is contributed once.
-      contributions.tools = [...new Set(tools)];
+    } else if (active.length > 0 || hasActivationPath || tools.length > 0) {
+      const staticTools = [...new Set(tools)];
+      contributions.tools = (async (blockCtx: BlockContext) => [
+        ...(await resolveActiveTools(blockCtx)),
+        ...staticTools,
+      ]) as PresetDef["tools"];
     }
 
     // Group the reader + catalog under a single `<skills>` tag.

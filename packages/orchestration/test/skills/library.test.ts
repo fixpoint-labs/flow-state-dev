@@ -186,11 +186,7 @@ describe("createSkillsLibrary — static active binding", () => {
     expect(outB).not.toContain("ALPHA-BODY-MARKER");
   });
 
-  it("registers the whole catalog as a safe superset for a bound skill", async () => {
-    // Registration is a superset (like the legacy capability): the reader renders
-    // the live manifest, so a per-skill declared-tools subset can't be frozen at
-    // build time. The `allowed-tools` note scopes the model softly. A skill
-    // declaring only `search` still gets the whole catalog registered.
+  it("enforces a bound skill's allowed-tools against the model-facing catalog", async () => {
     const mk = (name: string) =>
       handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
     const ctx = buildReaderCtx(createMockSkillsCollection());
@@ -205,7 +201,28 @@ describe("createSkillsLibrary — static active binding", () => {
       uses: [skills.with({ active: ["narrow"] })],
     });
     const toolNames = (await resolveTools(gen, ctx)).map((t) => t.name);
-    expect(toolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
+    expect(toolNames).toEqual(["search"]);
+  });
+
+  it("re-resolves allowed-tools after a live manifest edit", async () => {
+    const mk = (name: string) =>
+      handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
+    const collection = createMockSkillsCollection();
+    const ctx = buildReaderCtx(collection);
+    const skills = createSkillsLibrary({
+      catalog: { search: mk("search"), fetch: mk("fetch") },
+      initialSkills: [inlineSkill("editable", "body", ["search"])],
+    });
+    const gen = generator({
+      name: "s",
+      model: "openai/gpt-5.4-mini",
+      prompt: "p",
+      uses: [skills.with({ active: ["editable"] })],
+    });
+
+    expect((await resolveTools(gen, ctx)).map((t) => t.name)).toEqual(["search"]);
+    collection._store.get("skills/editable/SKILL.md")!.state.allowedTools = ["fetch"];
+    expect((await resolveTools(gen, ctx)).map((t) => t.name)).toEqual(["fetch"]);
   });
 
   it("validates every bound skill's declared tools, even after an unrestricted one", () => {
@@ -521,9 +538,16 @@ describe("createSkillsLibrary — explicit activeState", () => {
         }),
       ],
     });
-    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
-      (t) => t.name,
-    );
+    const toolNames = (
+      await resolveTools(
+        gen,
+        buildReaderCtx(createMockSkillsCollection(), {
+          session: {
+            state: { activeAnalystSkills: [{ name: "uses-search", mode: "inline" }] },
+          },
+        }),
+      )
+    ).map((t) => t.name);
     // The activated skill's body can reference `search`, so it must be registered.
     expect(toolNames).toContain("search");
     // ...but the load tool is NOT installed (dynamicActivation off).
@@ -545,9 +569,14 @@ describe("createSkillsLibrary — explicit activeState", () => {
       prompt: "p",
       uses: [skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
     });
-    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
-      (t) => t.name,
-    );
+    const toolNames = (
+      await resolveTools(
+        gen,
+        buildReaderCtx(createMockSkillsCollection(), {
+          session: { state: { activeAnalystSkills: [{ name: "s", mode: "inline" }] } },
+        }),
+      )
+    ).map((t) => t.name);
     expect(toolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
     expect(toolNames).not.toContain("loadSkill");
   });
