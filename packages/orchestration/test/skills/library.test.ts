@@ -501,7 +501,7 @@ describe("createSkillsLibrary — explicit activeState", () => {
     expect(resolved.sessionStateSchema).toBeUndefined();
   });
 
-  it("contributes allowed skills' declared tools on the explicit-activeState path (no dynamicActivation)", async () => {
+  it("contributes tools only when an allowed skill is active on the explicit-activeState path", async () => {
     const mk = (name: string) =>
       handler({ name, inputSchema: z.object({}), outputSchema: z.object({}), execute: async () => ({}) });
     const search = mk("search");
@@ -521,13 +521,29 @@ describe("createSkillsLibrary — explicit activeState", () => {
         }),
       ],
     });
-    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
+    const inactiveToolNames = (
+      await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))
+    ).map((t) => t.name);
+    expect(inactiveToolNames).not.toContain("search");
+
+    const activeToolNames = (await resolveTools(
+      gen,
+      buildReaderCtx(createMockSkillsCollection(), {
+        session: {
+          state: {
+            activeAnalystSkills: [
+              { name: "uses-search", mode: "inline", activatedAt: 1 },
+            ],
+          },
+        },
+      }),
+    )).map(
       (t) => t.name,
     );
     // The activated skill's body can reference `search`, so it must be registered.
-    expect(toolNames).toContain("search");
+    expect(activeToolNames).toContain("search");
     // ...but the load tool is NOT installed (dynamicActivation off).
-    expect(toolNames).not.toContain("loadSkill");
+    expect(activeToolNames).not.toContain("loadSkill");
   });
 
   it("registers the full catalog for an unscoped activeState binding (no allowed, no load tool)", async () => {
@@ -545,11 +561,23 @@ describe("createSkillsLibrary — explicit activeState", () => {
       prompt: "p",
       uses: [skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } })],
     });
-    const toolNames = (await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))).map(
-      (t) => t.name,
-    );
-    expect(toolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
-    expect(toolNames).not.toContain("loadSkill");
+    const inactiveToolNames = (
+      await resolveTools(gen, buildReaderCtx(createMockSkillsCollection()))
+    ).map((t) => t.name);
+    expect(inactiveToolNames).toEqual([]);
+
+    const activeToolNames = (await resolveTools(
+      gen,
+      buildReaderCtx(createMockSkillsCollection(), {
+        session: {
+          state: {
+            activeAnalystSkills: [{ name: "s", mode: "inline", activatedAt: 1 }],
+          },
+        },
+      }),
+    )).map((t) => t.name);
+    expect(activeToolNames).toEqual(expect.arrayContaining(["search", "fetch"]));
+    expect(activeToolNames).not.toContain("loadSkill");
   });
 
   it("reader reads dynamic entries from the explicit field, inline only", async () => {

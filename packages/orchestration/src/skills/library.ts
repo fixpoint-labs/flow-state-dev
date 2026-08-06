@@ -35,6 +35,7 @@ import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import { findBundledFile } from "./internal/bundled-files";
 import { specsCollide } from "./internal/agent-key-reconcile";
 import type {
+  BlockContext,
   DeclaredResourceEntry,
   ResourceScope,
 } from "@flow-state-dev/core/types";
@@ -50,7 +51,7 @@ import type {
   ToolCatalog,
 } from "@flow-state-dev/core";
 import { activeSkillsArraySchema } from "./active-skill-state";
-import type { ActivationLocation } from "./activation-store";
+import { readActivations, type ActivationLocation } from "./activation-store";
 import { buildSkillBindingReader } from "./binding-reader";
 import {
   defineSkillsCollection,
@@ -341,6 +342,7 @@ export function createSkillsLibrary(
 
     const contributions: Partial<PresetDef> = {};
     const tools: GeneratorTool[] = [];
+    let activeStateTools: ((ctx: BlockContext) => GeneratorTool[]) | undefined;
     const contextEntries: PresetDef["context"] = [];
 
     // Reader — always contributed (renders static `active` + dynamic activeState).
@@ -379,13 +381,21 @@ export function createSkillsLibrary(
       }
     }
 
-    // Whenever a skill body can render — statically preloaded (`active`) or
-    // activated at runtime (load tool / upstream matcher / code) — register the
-    // whole catalog as a safe superset. The skill's own `allowed-tools` scopes
-    // the model softly via the rendered restriction note; registering the
-    // superset keeps a live post-seeding edit to that list from pointing the
-    // model at an unregistered tool.
-    if (active.length > 0 || hasActivationPath) tools.push(...fullCatalog());
+    // Static and model-loadable skills need their catalog available up front.
+    // An explicit upstream activation instead contributes the catalog only
+    // after an allowed inline skill is actually active, so an unmatched turn
+    // cannot call tools belonging to inactive skills.
+    if (active.length > 0 || dynamic) {
+      tools.push(...fullCatalog());
+    } else if (cfg.activeState) {
+      const allowed = cfg.allowed ? new Set(cfg.allowed) : undefined;
+      activeStateTools = (blockCtx) => {
+        const activeInlineSkill = readActivations(blockCtx, location).some(
+          (entry) => entry.mode === "inline" && (!allowed || allowed.has(entry.name)),
+        );
+        return activeInlineSkill ? fullCatalog() : [];
+      };
+    }
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
@@ -579,6 +589,7 @@ export function createSkillsLibrary(
       const staticTools = [...new Set(tools)];
       contributions.tools = (async (blockCtx) => [
         ...staticTools,
+        ...(activeStateTools ? activeStateTools(blockCtx as never) : []),
         ...(await buildDelegationTools(blockCtx as never, surfaceDeps)),
       ]) as PresetDef["tools"];
       // Guidance context — the "how to delegate" playbook + live roster,
@@ -590,6 +601,8 @@ export function createSkillsLibrary(
       // De-dupe by identity so a tool declared by both `active` and `allowed`
       // is contributed once.
       contributions.tools = [...new Set(tools)];
+    } else if (activeStateTools) {
+      contributions.tools = activeStateTools;
     }
 
     // Group the reader + catalog under a single `<skills>` tag.
