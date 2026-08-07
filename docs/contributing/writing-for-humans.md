@@ -5,7 +5,8 @@ hundredth decision of the day and needs the takeaway. An automated reviewer — 
 picks the thread up in three weeks — needs the evidence. We have been writing for the
 second reader and charging the first for it.
 
-The fix is **not less reasoning**. Tenet 5 holds: an artifact that drops its reasoning is
+The fix is **not less reasoning**. Tenet 6 is explicit that an artifact owes the human the
+tradeoffs and the decisions, not just the outcome — so one that drops its reasoning is
 worse, not shorter. The fix is *ordering* — the same reasoning arranged so a human can
 stop reading the moment they have what they need, with the detail one click below for
 whoever wants it. That ordering is the **fold**.
@@ -53,7 +54,7 @@ under.
 |---|---|
 | PR body, small change | ~50 — usually the whole body; nothing to collapse |
 | PR body, implementation | ~150 |
-| PR body, spec or epic PR | ~400 for the problem, the solution and the focus list — the spec doc holds the full case, the body holds enough to judge whether to open it |
+| PR body, spec or epic PR | ~400 for the problem, the solution and the focus list — the spec doc holds the full case, the body holds enough to judge whether to open it. A diagram or any optional section costs on top, and each has to earn it |
 | PR or review comment | ~100 |
 | A single review finding | ~40 — the trace and the evidence collapse |
 | Linear issue | ~100 — problem, who feels it, outcome |
@@ -108,10 +109,12 @@ applied on a reread rather than while drafting:
    reads as settled fact to its author and as a puzzle to everyone else. Say it plainly
    once, then the shorthand is earned.
 5. **Cut throat-clearing, keep evidence.** *It is worth noting that* goes. The number
-   proving the claim stays — what looks like insider shorthand is often the whole argument.
+   proving the claim stays — what looks like insider shorthand is often the whole argument
+   (two review rounds for a spec PR and twelve for an implementation PR is *why* one triage
+   rule can't govern both).
 
 A rewrite that follows these usually comes out shorter, but that's a side effect and never
-the goal. None of it licenses cutting a reason (tenet 5), and length is what the budgets
+the goal. None of it licenses cutting a reason (tenet 6), and length is what the budgets
 above are for.
 
 **Contract text is carried verbatim.** The reviewer contract in a PR body
