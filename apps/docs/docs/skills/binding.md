@@ -77,11 +77,15 @@ The `loadSkill` tool runs as a child of the generator, so it writes the generato
 Block state is private and request-scoped. When you want an activation to be shared between generators, to survive into the next turn, or to be written by something that runs before the generator, point it at an explicit field:
 
 ```ts
-skills.with({ activeState: { scope: "session", field: "activeAnalystSkills" } });
+skills.with({
+  activeState: { scope: "session", field: "activeAnalystSkills" },
+  allowed: ["detailed-analysis", "cite-sources"],
+});
 ```
 
 - `scope` is `request`, `session`, `user`, or `org`. `session` / `user` / `org` persist across turns; `request` does not.
 - `field` is the state key the activations live under. Two generators that name the same field share their activations — an explicit choice, not an accident.
+- Set `allowed` when skills read from this field need tools. The binding validates those skills and makes the library's tool catalog available to the generator. Without `allowed` or `dynamicActivation`, skill bodies from the field can render, but catalog tools are unavailable.
 
 Declare that field in the scope's state schema where it's **written**. The upstream matcher does this for you (see below). If code or the generator writes it, add the field to the writer's own `sessionStateSchema` (or the matching scope schema) with `activeSkillsArraySchema` as its shape. The reader tolerates an absent field — it just renders nothing — so reads never need the declaration, only writes that must persist do.
 
