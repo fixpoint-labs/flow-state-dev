@@ -42,9 +42,15 @@ A surface may add above-the-fold blocks of its own after these three, never befo
 
 **3. Below the fold, everything else — collapsed, not deleted.** `<details>` blocks, each
 with a `<summary>` naming what's inside, so a reader opens only the one they want. This is
-the default everywhere, and it is **always** the form for a comment — PR, review, or issue
-— because a comment lands in a threaded timeline, where an uncollapsed second half pushes
-every later comment down the page and costs readers who were never its audience.
+the default everywhere HTML renders, and there it is **always** the form for a comment — PR,
+review, or GitHub issue — because a comment lands in a threaded timeline, where an
+uncollapsed second half pushes every later comment down the page and costs readers who were
+never its audience.
+
+**On a surface that doesn't render HTML, the ordering carries the fold instead** — a `---`
+rule, then the detail under a `## Detail` heading. **Linear is the case we hit daily**: its
+documents, issue descriptions and comments all render `<details>` as raw markup, so a Linear
+comment takes the divider form, never the tag. See "Mechanics" below.
 
 > *The test: if the reader stops after the first screen, do they have what they need to
 > decide — and would anything below it surprise them?*
@@ -56,7 +62,7 @@ under.
 
 | Artifact | Above the fold |
 |---|---|
-| PR body, small change | ~50 — usually the whole body; nothing to collapse |
+| PR body, small change | ~50 — usually the whole visible body; often no *detail* worth collapsing, but the reviewer contract is still there (see below) |
 | PR body, implementation | ~150 |
 | PR body, spec or epic PR | ~400 for the problem, the solution and the focus list — the spec doc holds the full case, the body holds enough to judge whether to open it. A diagram or any optional section costs on top, and each has to earn it |
 | PR or review comment | ~100 |
@@ -69,10 +75,20 @@ Over budget is a signal to **cut**, not to collapse more. A 900-word collapsible
 900 words someone eventually reads, and the reflex to move rather than delete is how a
 fold turns into a filing cabinet.
 
+**"Nothing to collapse" never means "no reviewer contract."** Every PR that seeks review
+carries one below the fold no matter how small the change
+([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → "Below the fold"). It states the
+altitude and the provenance, which a one-line diff needs as much as a large one — arguably
+more, since a small change is where a reviewer is most likely to assume the wrong route.
+
 ## What never goes above the fold
 
 - The path to the answer. The conclusion goes up; the derivation goes down.
-- Per-file, per-item, per-decision enumerations.
+- Per-file, per-item, per-decision enumerations — **unless the enumeration *is* the ask.**
+  Where an artifact defines a sign-off surface, every item on it goes above the fold, one
+  line each: a spec's §6 Decisions are what approval certifies, so indexing a subset asks
+  the reader to approve what they can't see. The test is whether the reader is being asked
+  to *decide* on each row or merely informed of it.
 - Verification output, test counts, tool transcripts, quoted evidence.
 - Alternatives weighed and rejected — that a simpler one lost is a clause; the analysis is
   below.
