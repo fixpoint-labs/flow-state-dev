@@ -195,7 +195,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-008 | Keep root README onboarding-first and current |
 | BP-009 | Maintain package-level READMEs for public packages |
 | BP-037 | Author specs as versioned docs (`docs/specs/<ISSUE-ID>.md`), reviewed as a PR, synced with Linear |
-| BP-039 | Specs lead with a plain-language summary (grok before diving deep) |
+| BP-039 | Lead with the problem in plain language, collapse the derivation below the fold (grok before diving deep) |
 | BP-040 | Spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds |
 
 ### [Blocks & Composition](best-practices/blocks.md)

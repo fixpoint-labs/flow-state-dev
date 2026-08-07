@@ -89,15 +89,17 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - **Budget two review rounds**, then declare convergence and go to the approval gate, carrying remaining threads as §13 notes. A third round requires a genuine spec-level finding from round two, stated in one line. Count rounds **actually spent** — a factual-correction-only batch costs zero — and keep the conditional third round reachable rather than stopping on the count alone. The same budget applies to an **epic** PR.
   - **Don't drive spec-PR threads to zero.** The spec PR is never merged, so open threads gate nothing. A bot `CHANGES_REQUESTED` neither trips the gate nor extends the budget.
   - **Below-the-bar spec comments never block implementation** — they're implementer input, not prerequisites.
-  - The spec PR description leads with the reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) — the one lever available on reviewers we can't instruct — followed by a per-PR **"Parts worth reviewing closely"** block. Both are required on every PR we open, at the altitude that PR is reviewed at; canonical in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
+  - The spec PR description leads with the problem, what this does, and what's being asked — then a per-PR **"Parts worth reviewing closely"** block. The reviewer contract from `spec-template.md` (what's in scope to challenge, what's deliberately unsettled) is the one lever available on reviewers we can't instruct, and it sits **collapsed below the fold**, where a bot still reads it and a human skips it. Both blocks are required on every PR we open, at the altitude that PR is reviewed at; canonical in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
 - Why: Spec-PR review comes mostly from automated reviewers tuned for code, pointed at a document that is deliberately not a finished design. Treating every line-level observation as a spec defect turned directionally-sound specs into ten-round grinds, at the altitude where none of that detail can actually be settled. Full rule, with the rationale for why converging is safe: [`../orchestration.md`](../orchestration.md) → "Spec review: the bar and the convergence rule".
 
-### BP-039: Specs lead with a plain-language summary
+### BP-039: Lead with the problem, fold the rest
 
 - Status: Active
-- Date: 2026-06-29
-- Scope: Process — spec authoring (`issue-spec`).
+- Date: 2026-06-29 (scope widened 2026-08-07 from specs to every artifact a human reads)
+- Scope: Process — authoring specs, PR descriptions, Linear issues, and review comments.
 - Rule:
-  - Begin every spec with a 2–4 sentence plain-language summary of the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon).
-  - It leads the TLDR, above the deliverables list and size estimate; the dense detail follows. "Explain it to a teammate in the hallway," not "scan the change list."
-- Why: A reader should get the gist before diving deep; a jargon-dense TLDR forces full attention just to understand the shape.
+  - Begin every artifact with the **problem** in 2–4 plain-language sentences, then the *solution* — what we're doing and why, in terms a multitasking or non-expert reader can grok without the framework vocabulary (no file paths, type names, or block/capability/scope/sequencer jargon). Then what's asked of the reader. "Explain it to a teammate in the hallway," not "scan the change list."
+  - **Nothing precedes the problem** — not a ref, not a label, not a statement of what kind of artifact this is. Nothing that follows can be judged without it.
+  - Everything else goes **below the fold**, collapsed rather than deleted: the derivation, the enumerations, the verification output, the rejected alternatives. A risk, a known gap, or scope that grew never collapses.
+  - The fold, the per-artifact word budgets, the density checks, and the `<details>` mechanics are canonical in [`../writing-for-humans.md`](../writing-for-humans.md); the PR-description layout applies them in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md).
+- Why: A reader should get the gist before diving deep; a jargon-dense opening forces full attention just to understand the shape. Written the other way round, the first screen is derivation and process text, the human skims, and the direction review — the only one they can give and a bot can't — doesn't happen.

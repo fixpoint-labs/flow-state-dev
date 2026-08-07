@@ -28,8 +28,10 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   Don't report the route back either; the coordinator derives it and the schema has no field
   for it.
 - needs a spec → run the issue-spec step, open the spec PR (ready for review), stop (now awaiting spec approval).
-  The PR description carries **both reviewer blocks** — the contract verbatim, then a per-PR
-  *"Parts worth reviewing closely"* ([`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md)).
+  The PR description is **written to the fold** — problem, what this does (with a diagram if
+  it earns one), what's asked of you, *"Parts worth reviewing closely"*, links line; the
+  contract collapsed below
+  ([`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md) → "The layout").
   **If an `issue-spec` Step 4 trigger fires, build the POC in this same step** — under
   `spec-poc/<ISSUE-ID>-<slug>/` on the spec branch, which CI ignores
   ([`spec-poc`](../skills/spec-poc/SKILL.md)). It's part of authoring, not a separate dispatch:
