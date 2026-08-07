@@ -144,7 +144,7 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 | D | **direction artifact** named as the kind covering spec *and* epic PRs, so the review-bar scoring, the `nit` exclusion, the claims fields and the endpoint all reach both; endpoints given as one table (impl→merge · spec→approval · epic→epic close), in-flight epics scored as explicit partials | skill, scoring | makes epic round counts comparable **from the next epic onward** (#993 predates the rule and is labelled raw), and stops an epic's lifetime activity reading as rework |
 | E | the epic-wrap lessons skip is **partial** — ledger rows always append **and always land as a draft rows-only PR**; only the grounding proposal is skippable | skill, wrap | survivor bias: a ledger holding only epics that had findings can't show an improvement — and rows that never leave the wrap worker's worktree are the same bias by another route |
 
-**The fixes for this class took eight rounds to reach all their own writers, and that is the
+**The fixes for this class took nine rounds to reach all their own writers, and that is the
 cycle's sharpest evidence.**
 
 | Round | The fix as written | The writer it missed |
@@ -157,8 +157,9 @@ cycle's sharpest evidence.**
 | 6 | rows always appended for a clean epic | **no landing path existed** for rows without a proposal PR — they'd stay in the wrap worker's worktree; the primary collector line still said "before merge"; and the baseline's own round count was raw, so the new rule would have manufactured an improvement |
 | 7 | rows land as a rows-only PR | the coordinator-state schema still allowed `lessons: skipped`, and the skip paragraph still said "no lessons PR" — a coordinator reading either could record a skip and finish wrap with the row unlanded. **And unifying those two surfaces introduced a third token format**, caught in the same edit |
 | 8 | round 7 recorded in this table | **the sentence introducing this table still said "four rounds"** while the table below it listed seven and the paragraph below that said seven |
+| 9 | endpoint table written for three artifact kinds | it gave implementation PRs only `merge`, though an epic may wrap on issues **dropped** during `PR_FEEDBACK` — a dropped impl PR had no endpoint at all. Separately: the reconciliation rule enumerated surfaces *inside* the epic-spec, while the **PR description** restates decisions too |
 
-Eight rounds, each the same error the fix is about, each caught by review and not by the author.
+Nine rounds, each the same error the fix is about, each caught by review and not by the author.
 
 **Round 8 is the purest instance this cycle will produce, and it should be read as the finding
 rather than as trivia.** The defect was in the sentence that introduces *this table* — the table
@@ -166,6 +167,14 @@ whose entire purpose is counting how many times a correction failed to reach its
 table was extended, the paragraph below it was updated, and the sentence above it kept the old
 number. Nothing about the class was unknown at that moment: it is named in this file, defined in
 the header, formalised in tenet 5, and the author had written all three within the hour.
+
+Round 9 adds the one detail that makes the class fully general: **the PR description is a
+restatement surface too.** Fix B enumerated surfaces inside the epic-spec and stopped at the
+document boundary, but the PR's *"Parts worth reviewing closely"* block names specific decisions
+and costs, and a reviewer acting on a superseded one there is the same defect reaching further.
+Worth noting how this was found: across eight rounds the author kept the PR description current
+**by hand, every round**, and never noticed that the rule being written down didn't require it.
+Doing a thing reliably is not the same as having encoded it.
 
 Round 4 is the purest *mechanical* case — a contract corrected and its one caller left behind — but
 round 8 is the one that constrains the conclusion, because no amount of knowing the rule prevented
@@ -185,13 +194,13 @@ claimed to have enumerated every writer — and still missed the primary collect
 It also introduced a *new* defect: "always append the rows" with no path for the rows to land, so
 a clean epic's row would have died in the wrap worker's worktree — the same survivor bias the fix
 existed to remove, reintroduced by the fix. Enumeration beat patching, and it still wasn't
-sufficient. Rounds 6, 7 and 8 then repeated the shape three more times, each inside a *fix for the shape* —
+sufficient. Rounds 6 through 9 then repeated the shape four more times, each inside a *fix for the shape* —
 and round 8 inside the very table that counts them.
 
-**Eight rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
+**Nine rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
 and it does not say what the fixes claim.** Fix A and fix B were chosen on the theory that naming
 the class in the grounding gets an agent to converge restatements without being told which ones.
-This PR tested that theory on its own author, live, eight times — and the author needed an external
+This PR tested that theory on its own author, live, nine times — and the author needed an external
 reviewer on every single one, including after adopting the enumerate-every-writer procedure that
 was supposed to be the answer. Round 7's finding was generated *by* round 6's fix; the unified
 token in round 7 was itself inconsistent on first write.
@@ -216,7 +225,7 @@ sharper prose closes.
 Cycle 3 still decides formally: if `stale-restatement` does not fall as a share of epic-PR
 findings, reading 2 is confirmed. But the honest recommendation *now* is to rebuild and cost the
 consistency-check this cycle dropped, rather than spend another cycle collecting evidence for a
-conclusion eight rounds already point at. Do not let a third cycle pass on reading 1 by default.
+conclusion nine rounds already point at. Do not let a third cycle pass on reading 1 by default.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.

@@ -88,7 +88,7 @@ produce, don't add ceremony.
 
   | Kind | `rounds-to-approval` ends at | Why not the obvious one |
   |---|---|---|
-  | implementation PR | merge | — |
+  | implementation PR | merge — or **close**, if it was dropped during `PR_FEEDBACK` and never merged | an epic may wrap on issues that were *merged, closed, or dropped*, and the collector records every implementation PR, so "merge" alone leaves a dropped PR with no endpoint at all |
   | spec PR | its approval | spec PRs are never merged |
   | epic PR | **epic close** (the wrap, when this skill runs anyway) | never merges, *and* its objective gate lands near the **start** while direction feedback continues for the epic's whole life — record the gate as a marker, not the endpoint |
 
