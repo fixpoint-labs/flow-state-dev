@@ -1424,62 +1424,64 @@ is a candidate this document proposed one revision ago and now retracts.**
 > serialized-continuation guarantee and says so in the criteria.** It may not keep the guarantee on an
 > unfenced field, a liveness check, or an expiring lock.
 
-### The worker's result must land on a durable surface — cross-scope resource reads are deferred
+### The worker's result — RESOLVED by subtraction, and this section is superseded
 
-DECIDED by the repo owner, interim: *"The request needs to output what the parent needs, or they
-write to a user/org scoped resource for now is probably ok."*
+**Status: the obligation this section imposed is withdrawn.** It is kept rather than deleted because
+FIX-982's spec, FIX-1008, and §5/§7 below were all written against it, and a silently-vanished
+requirement is how a stale constraint gets re-derived a month later.
 
-**This closes a hole in Decision 7.** Parent-side settlement needs the worker's result, and
-`RequestRecord` persists **status and items — not `ExecutionResult.output`**. A structured return
-value held only in memory is gone after a restart, so `collection.complete(taskId, output)` could not
-be reconstructed. The interim rule removes the dependency on that missing surface without adding one:
+**What it said.** Parent-side settlement needs the worker's result, and `RequestRecord` persists
+status and items but **not** `ExecutionResult.output`. A bare return value is gone after a restart,
+so `collection.complete(taskId, output)` could not be reconstructed. The interim rule was therefore:
+*a detached worker's result must be represented on a surface that survives a restart* — an emitted
+item, or a shared task-keyed user/org resource — because a bare return is not durable. That rule then
+had to carry two caveats of its own: the emitted-item option needed N24's attribution fix first, and
+the resource option needed `flowIsolation: false` plus a canonical typed projection that nobody had
+defined (N31).
 
-> **A detached worker's result must be represented on a surface that survives a restart** — an
-> **emitted item** (durable, and what FIX-991's union retrieves — **but see the attribution
-> precondition below**), or a **shared, task-keyed user/org resource**. A bare return value is not
-> durable and must not be what parent-side settlement depends on. Inline workers are unaffected:
-> their return value is passed by reference and never round-trips.
->
-> **The emitted-item option is not usable on the detached path until attribution is fixed, and an
-> earlier draft of this rule asserted the opposite.** It called an emitted item "already
-> `taskId`-attributed"; N24 measures the reverse. `_markTaskScope` has exactly one call site
-> (`task-board/index.ts:700`), inside the worker-body sequencer, and a registry worker run as a
-> **top-level Workstream action never reaches it** — `taskId` in request metadata does not stamp
-> `OutputItem.taskId`, because metadata is on the request and attribution is on the item. So
-> `itemsForTask` returns nothing for a detached task, and a settlement path reading items would
-> reconstruct **no result at all** after a restart, silently. **So the two options are not
-> interchangeable as written:** the emitted item works
-> only once FIX-982 marks the root execution scope or FIX-991 defines an attribution independent of
-> scope marking (N24, already assigned to both). **The shared task-keyed resource is available today as
-> a *storage location*, which is not the same as working** — it names no resource reference and no
-> projection, so it stores a value without defining which resource holds it or what shape settlement
-> reads back. An earlier wording called it the option that "works today"; that is too strong (N31).
-> Both options need the same missing piece: a canonical, typed result projection. If FIX-982 picks the item path, that attribution work
-> is a **precondition of settlement**, not a parallel nicety — and criterion 4b needs it regardless.
->
-> **The resource must be `flowIsolation: false`.** `resolveResourceScopeId` keys an isolated
-> user/org resource `${identityId}:${flowKind}` (`stores/scope-keys.ts:154-160`), so a worker writing
-> under its own flow kind and a coordinator reading under a different one land in different buckets —
-> N13's mechanism, which is correct for boards and fatal here, because this read is deliberately
-> cross-flow. "Any user/org resource" is not sufficient; a *shared* one is.
+**Why it is gone.** Every clause above depends on the result crossing a **request boundary**, and
+Decision 7 was corrected (commit `27a4e86b`) so that it doesn't: the **Workstream settles its own
+task**. The WorkstreamFlow runs the worker and calls `complete(taskId, output)` from a live context,
+holding the return value in hand. Nothing is written down and read back, so there is no surface to
+choose, no projection to define, and no attribution precondition on settlement.
 
-**And this narrows a claim made elsewhere in this document, which should be stated rather than left
-to collide.** §1 asserts that **the same block runs inline or detached with no change** — measured by
-identity in the config POC. That holds for the *block definition*; it does **not** hold for the
-*result contract*. A worker that simply `return`s a value works inline and silently loses its output
-when detached, because `RequestRecord` persists status and items but not `ExecutionResult.output`. So
-disposition is orthogonal to **what the worker is**, and not to **how it must surface its result** —
-detached carries one extra obligation. The alternative that would restore full orthogonality is to
-persist or project `ExecutionResult.output` automatically, which is a framework surface this epic is
-deliberately not adding right now (OQ-A's neighbour). **FIX-982 states the obligation in the worker
-contract, and §1's orthogonality claim is scoped to the block rather than the result.**
+The durable home was already the obvious one and needed nothing built: **`Task.output`**
+(`packages/orchestration/src/tasks/schema/task.ts:47`), written by `complete(id, output, options?)`
+(`tasks/collection/types.ts:159`) — the same field an inline worker's result lands on.
 
-**And it defers the question underneath.** Whether a parent session may read a **sub-session-scoped**
-resource is now **OQ-F**, deliberately open: the interim path (item, or user/org scope) does not need
-it. It returns the moment a Workstream needs to expose something richer than its result — a working
-draft, a scratch artifact — to its parent without promoting it to user or org scope.
+**Consequences, each undoing something this section caused:**
+
+- **FIX-1008 is cancelled** (see N64). It existed to persist `ExecutionResult.output` on the request
+  record precisely so parent-side settlement could recover it. With no boundary crossing there is
+  nothing to recover.
+- **§1's orthogonality claim is restored in full.** This section had narrowed it: the same block runs
+  inline or detached, *but* the result contract diverged, and a detached worker carried one extra
+  obligation. It no longer does. A block behaves the same inline or detached, results included.
+- **Attribution (N24) is no longer a precondition of settlement.** It stays required for criterion 4b
+  and for FIX-991b's accessor union, and FIX-982 still marks the root execution scope — but nothing
+  about settling a task waits on it.
+- **N31's "canonical typed projection" requirement is met by not having a projection.** Both options
+  it faulted are withdrawn along with the rule that needed them.
+- **OQ-F stays open and is unaffected.** Whether a parent may read a *sub-session-scoped* resource was
+  always about exposing something richer than a result — a working draft, a scratch artifact — and
+  that question is untouched by where the result itself lands.
+
+**One thing this leaves genuinely uncovered, deliberately unfiled:** an observer that wants a
+Workstream's result *without* reading the task row. FIX-1008 would have supplied that as a side
+effect of its real purpose. With the purpose gone, no consumer has asked for the read path on its own
+merits, so it is not being re-filed under a new name.
+
+**And a finding worth keeping, because the shortcut looks correct.** A result must never be
+reconstructed from a **block trace**. Block trace output is one of three shapes
+(`engine/src/context/createExecutionContext.ts:3006-3012`): `inline` carries the value, `ref` points
+at another item (resolvable, one hop), and `structure` records **shape only, with the value elided**.
+Reading "the last non-tapped block's output" therefore works in every test anyone would think to
+write and returns a shape-only object wherever `structure` applies — silently, with no error. This is
+the same defect class this epic keeps recording: a path that is right on the cases you test and wrong
+on the case you don't.
 
 ---
+
 
 ## 5. The milestones under this model
 
@@ -1501,8 +1503,10 @@ M1–M5 are the epic description's milestones. **M2 now has an issue — [FIX-10
 - **Claim-safety branch:** `(FIX-995 → FIX-992, external) → FIX-981`. That is FIX-981's *entire*
   upstream — the same set the gate (§7) and Linear's `blocks` relation carry.
 - **M3-prerequisite branch, parallel to it:** `create-if-absent + S1a (the parent-session store
-  filter) + FIX-991a (the result-read surface)`, plus `(FIX-978, elsewhere)`. These are **FIX-982's**
-  blockers, per its row in §7 — none of them is a blocker of FIX-981.
+  filter)`, plus `(FIX-978, elsewhere)`. These are **FIX-982's** blockers, per its row in §7 — none of
+  them is a blocker of FIX-981. **FIX-991a is no longer among them:** the result-read surface was
+  filed as FIX-1008 and then cancelled once Workstream-side settlement removed the boundary crossing
+  (N64), so FIX-991 needs no split and stays one issue, wholly after FIX-982.
 - **Both branches must land before FIX-982**, then `FIX-991b (the accessor fix) → FIX-983 → S1b → S2
   → S3 → S4 → S5`.
 
@@ -1519,10 +1523,13 @@ time after the gate.
 > direction: not a stale summary contradicting a correction, but a compressed notation asserting a
 > constraint no section it summarises actually claims.**
 
-**FIX-991 is split here on purpose** — Decision 7 puts settlement in FIX-982 and
-settlement needs a cross-boundary result read, so the whole of FIX-991 cannot sit after FIX-982
-without making it ship settlement it cannot recover a result for. The `TaskHandle.items()` accessor
-fix genuinely does depend on out-of-request execution and stays after. See §6's cycle note.
+**FIX-991 is NOT split, and an earlier revision of this line said it was.** The split existed because
+Decision 7 then put **parent-side** settlement in FIX-982, and that needed a cross-boundary result
+read — so the result-read half had to land first. Decision 7 was corrected (`27a4e86b`) to
+Workstream-side settlement, which holds the value in a live context and writes `Task.output`
+directly; the result-read half was filed as FIX-1008 and cancelled (N64). FIX-991 is one issue, and
+the `TaskHandle.items()` accessor fix genuinely does depend on out-of-request execution, so the whole
+of it sits **after** FIX-982. See §6's dissolved-cycle note.
 **FIX-995 and FIX-992 lead the chain and are owned elsewhere** (epic FIX-980). FIX-981's entire premise is fencing the durable board, and FIX-992 builds the primitive it fences with — starting M1 first means building the conditional write twice or shipping M1 unfenced. FIX-995 is FIX-992's own blocker: **38 `updateState` call sites across 10 first-party files in 6 packages** capture results outside the callback, and its rule — *an updater may run more than once; reset captured state per invocation* — is load-bearing here, because the claim protocol's callback captures `claimed`. Linear now carries `FIX-995 → FIX-992 → FIX-981`.
 **S1–S5 are in the sequence because OQ-E put them in this epic**, and **S4 gates the wrap**: it is the
 epic's BP-003 evidence path, so "every issue merged" is not "the epic is done" until S4 has run.
@@ -1936,6 +1943,7 @@ with their resolution recorded rather than deleted, so a later reader does not r
 | **N61** | **NEW — M2 was unowned, and both sides believed the other had it.** §5's milestone row read *"reclamation joined to liveness — (none — FIX-978, under FIX-980) — **Consumed, not built**"*, while [FIX-978](https://linear.app/fixpoint-labs/issue/FIX-978)'s **Scope boundaries → Out** reads *"automatic lease reclamation, lease renewal, and durable claim ownership joined to real execution liveness — these are **FIX-939's milestone 2**, which names this issue as what it closes."* Each names the other as owner, so nothing built it. FIX-978's split is the **right** call — it ships only the honest-reporting half deliberately, so the two do not land conflicting mechanisms — which means the recovery half needed its own issue and never got one. **Measured hole:** `reclaim()` has **zero production callers** (implemented at `resource-backed.ts:406` and `sequencer-backed.ts:429`; called only from `collection.test.ts:352,370,380`, `advisory-write.test.ts:239,271,309`, `task-board-drain-containment.test.ts:189`), and `claim` considers only `pending` — so an `in_progress` row with an expired lease is invisible to every future claimer, permanently. The lease exists and expiring it does nothing. **And the fix needs a field the `Task` schema does not have:** the liveness signal already ships at the request layer (`ActiveRequestRegistry.get` / `listStale` / `heartbeat`, `stores/types.ts:471-489`) but a task records no execution coordinate to look up — only `assignee` (who *should* run it) and `status`/`leaseUntil`/`attempts` (exclusivity). Recording `{sessionId, requestId}` as **fact at claim time** makes liveness primary and the lease a backstop, which is what Decision 3 requires: an expired lease is the *normal* state of a healthy 30s-leased worker mid-model-call, so only liveness can tell gone from slow. **This does not reopen OQ-B** — fact (where attempt N ran) is not policy (where work should run); policy stays on board worker config, and a drain that wants only non-detached work already has `ClaimOptions.eligibility`. Filed as **[FIX-1005](https://linear.app/fixpoint-labs/issue/FIX-1005)**, blocked by FIX-981 (CAS claim is what contains a false reclaim). **Fifth instance of the unindexed-prerequisite class, and the first where the prerequisite was disclaimed by both candidate owners in writing rather than merely unnamed.** | **FIX-1005** (new) |
 | **N62** | **NEW — FIX-992 merged, and it half-answers the create-if-absent prerequisite while opening a semantic split.** Verified on `origin/main`, not from the spec. **What shipped:** `ResourceStateStore.set/delete` take `expectedVersion` and return `SetResult`, and **`0` is genuine create-if-absent** — *"succeeds when there is no live row (never existed, or tombstoned) and conflicts against a live one"* (`stores/types.ts:649-651`), implemented in a shared predicate (`resource-state-predicate.ts:109-127`, `expectedVersion === 0 → isLive ? conflict : ok`) used by memory and filesystem, and reproduced natively in SQL by sqlite and postgres with `lifecycle` in the `WHERE` clause. All four adapters. **What did not:** the **scope** stores (session/request/user/org) still route through `casWriteToMap`, which computes `const currentVersion = current?.version ?? 0` (`memory/shared.ts:19`) — so `expectedVersion: 0` is satisfied by a **live row at version 0** as well as by absence. **Consequence for this epic — and an earlier draft of this finding got the mechanism wrong.** It said the remaining work was *a port of a shipped pattern, not a design to invent*. **Refuted during FIX-1007's spec, with a run probe, and verified here against `origin/main`:** the two stores disagree about `0` **structurally**, not by convention. `ResourceStateStore` reserves `0` by starting live versions at **1** (`memory/resource-state-store.ts:77`, `nextVersion = (row?.version ?? 0) + 1`), which is precisely what frees `0` to mean *absent*. The scope stores create records **at** `version: 0` (`createExecutionContext.ts:580,597,660`) and `runWithCAS` passes that `0` back on the first state write of every new session, a behaviour `store-cas-contract.test.ts` pins deliberately. So redefining `0` on the scope stores would break a pinned, load-bearing path — it is not portable at all. The fix is a **distinct `"absent"` sentinel**, and tombstones are the wrong layer (they buy nothing for this race). Honest size **Medium**, not Small. §5's sequencing worry (*"the two must agree on the sentinel rather than discover each other later"*) still resolves safely, but for a different reason than stated: they cannot share a spelling, so the convergence question is deferred to a named follow-up rather than settled by copying. **New hazard, and the reason this is a finding rather than a status update:** `ExpectedVersion = number \| "any"` is now **one type with two meanings for `0`** inside one `StoreRegistry` — create-if-absent on `ResourceStateStore`, plain version-equality on the scope stores. Same parameter name, same type, no discriminator; code moved between them changes meaning silently. Whoever ports N5a must either unify the semantics or name the divergence at both call sites. | **N5a port** + FIX-982 |
 | **N63** | **NEW — FIX-925's stated gate cannot be satisfied, so the "two-member active set" is really one.** §7 said FIX-925 is *"gated on PR #900 merging first"*. #900 is **closed, never merged, labelled `wontfix`** (verified via the GitHub API: `state: closed`, `merged: false`), and `docs/specs/FIX-925.md` is absent from `origin/main`. Its body claims spec PRs are *"never merged — closed unmerged when implementation starts"*, but `origin/main` carries `docs/specs/` entries for FIX-895, 911, 918, 951, 954, 990 and 995, so that is not the convention — the epic PR is the never-merged artifact, not issue spec PRs. Either the body is wrong or the `wontfix` label is, and the epic cannot tell which. **Consequence:** a coordinator releasing the active set at the gate finds FIX-981 startable and FIX-925 blocked on an event that will never occur. Needs an owner decision — revive #900, re-spec, or drop FIX-925 from the epic — and until then the active set is **FIX-981 alone**. | **owner decision** |
+| **N64** | **NEW — FIX-1008 is cancelled, and a whole prerequisite branch dissolves with it.** FIX-1008 ("a settled task's result is not readable across the request boundary", filed as the FIX-991a split) existed to persist `ExecutionResult.output` on `RequestRecord`, because **parent-side** settlement had to recover a worker's return value after its request ended. Decision 7's correction (`27a4e86b`) moved settlement **into the Workstream**, which holds the value in a live context and writes `Task.output` (`tasks/schema/task.ts:47`, via `complete` at `tasks/collection/types.ts:159`) directly — so nothing crosses the boundary and there is nothing to persist. **Owner cancelled it with nothing built**; its `blocks FIX-982` edge is deleted; its spec PR (#1061) closed unmerged. Knock-ons, all applied here: §4's durable-surface obligation is **superseded** (a detached worker carries no extra result obligation, so §1's orthogonality claim is restored in full); attribution (N24) is no longer a **settlement** precondition, only a criterion-4b one; N31's canonical-projection requirement is met by having no projection; **FIX-991 is no longer split** and stays one issue after FIX-982, so §6's cycle is dissolved and the indexed total drops 19 → 18. **Two findings kept:** the JSON round-trip constraint stands on the durable board alone (it applies to inline workers too, so it is not a detached-only rule), and **a result must never be reconstructed from a block trace** — trace output is `inline` \| `ref` \| `structure` (`createExecutionContext.ts:3006-3012`) and `structure` **elides the value**, so reading "the last non-tapped block's output" passes every test anyone would write and silently returns shape-only where it applies. **Left uncovered, deliberately unfiled:** an observer wanting a Workstream's result *without* reading the task row — FIX-1008 would have supplied that as a side effect, and with its purpose gone no consumer has asked for it on its own merits. | §4, §5, §6, §7 |
 | **N57** | **NEW — seven POC suites ship on the default test path, and the protocol says they should not.** `poc-forked-session-history` (835L), `poc-worker-dispatch-config` (741L), `poc-workstream-routing` (590L), `poc-workstream-execution` (454L), `spike-background-isolation` (169L), **`__poc-workspace-concurrency` (~330L, `packages/tools`, added later in the workspace-sharing conversation)** and **`__poc-workstream-schema` (238L, `packages/core`, added later still for the WorkstreamFlow session-schema question)** total **~3,360 lines / 79 tests** inside the normal vitest globs (`packages/engine/vitest.config.ts` sets only `setupFiles`; no `exclude`; `packages/core` runs `vitest run --root .`). `orchestration.md:690-691` is explicit: *"the default is no PR — a verdict and a link are the deliverable, and throwaway code that gets reviewed stopped being throwaway,"* and a POC is kept only when promoted to a durable regression **goal**. **The principle is right and the timing is not.** These POCs are the epic's BP-003 evidence path for Decision 0 — the premise the owner is being asked to approve — and §8 already records what it costs to lose a harness: the `spike/durable-board-claims` numbers *"survive as text"* with nothing re-runnable behind them. Deleting this set **before** the gate repeats that, on the epic's central premise. **The sixth suite is the exception that earns its keep, and it is shaped differently on purpose.** Its Q1 checks pin a **shipped `FileSync` data-loss path** (last-writer-wins, and delete-by-absence destroying a file the flushing workspace never hydrated), so unlike the other five it characterises real behaviour rather than a proposed API. They are written `it.fails` **asserting the DESIRED behaviour**: today the assertion fails so the test passes, and a correct fix flips it to *"expected to fail but passed"* — the signal to drop the marker and keep the assertion. Asserting the bug as *passing* would have made a future fix break CI, which is the trap the polarity avoids (verified with a control run). **The bug is now filed as [FIX-998](https://linear.app/fixpoint-labs/issue/FIX-998) (P2), which owns all three hazards and names those tests as the regressions to promote.** The third arrived from review and is the sharpest of them: **a delete is a write of "absent", so it needs the same base-hash evidence a write does.** Scoping deletion to the hydrated set — which is what fixes delete-by-absence — does *not* cover it; the POC's own proposed mechanism had that hole, and deleting a path whose collection hash moved since hydrate destroyed the other writer's edit with no conflict reported (`B deleted=["a.ts"] conflicts=0 · content=GONE`). Corrected in the POC and measured both ways: the check closes it (`B deleted=[] conflicts=1 · content=A-EDIT`) and a genuine no-op flush still reports zero conflicts, so it adds no false positives. **The general form is worth carrying past this issue** — every mechanism here that gates a write on evidence must gate its *deletions* on the same evidence, or the safety is only half-installed. The same question applies to task settlement and to Workstream resource merge-back** — so this suite's Q1 half has a destination and leaves with that issue rather than at epic implementation. Q2/Q3/Q4 stay throwaway and go under the obligation below. **The seventh suite is FIX-982's, and its two halves fail opposite ways.** `__poc-workstream-schema` measures the WorkstreamFlow typing seam (Decision 7's router), so it belongs to FIX-982's obligation below. Its S4 probe pins *shipped* behaviour — a same-key/different-shape `sessionStateSchema` collision across two routes is silent at declaration, at `tsc`, and at write time (`createScopeStateOps` in `stores/state-container.ts` has no `parse`) — and is the promotion candidate. **But its compile-time half is the inverse defect: `__poc-workstream-schema.test-d.ts` and its `__poc-tsconfig.json` run *nowhere*.** Core's `tsconfig.json` includes only `src/**/*`, and vitest's glob does not match `.test-d.ts` — which is also why core's two *pre-existing* `.test-d.ts` files are unchecked by anything in the repo. So the same trigger applies with the opposite verb: **promote S4 into a real core regression test, delete the rest, and delete the companion tsconfig with it** — an unrun type-assertion file rots exactly like an unrun test, and this one has no glob to rot in. (The pre-existing pair is not this epic's to fix; noted so whoever picks it up knows the gap predates us.) **Obligation, with a trigger rather than a vague later:** when FIX-981 and FIX-982 begin implementation, each promotes the checks that pin *shipped* behaviour (upsert-not-insert, the absent public `BlockContext` members, the six terminal statuses, `set()` dropping `items`, **the silent session-schema collision**) into real regression tests in its own package, and **deletes the rest in the same PR**. Excluding them from the glob instead is rejected: an unrun POC rots silently and then misleads, which is worse than either keeping or deleting. | **FIX-981 + FIX-982** (at implementation) |
 | **N60** | **NEW — the `attempts: 1` fix N41 recommends cannot be expressed per dispatch.** `createWorkerDispatcher` resolves `jobOpts` from `retryConfig` **once at construction** (`bullmq/src/dispatcher.ts:32-33`) and hands that identical object to every `queue.add` (`:61`); `DispatchEnvelope` has no per-job options field. So the recommendation is dispatcher-wide: set it and every unrelated flow on that dispatcher loses transport retries; leave it and detached tasks keep three attempts and the N41 double-settlement. **N41 named a value without naming the seam that carries it.** FIX-982 scopes one: a **dedicated detached-work dispatcher/queue** with its own `retryConfig` (config only, no new surface — the cheaper option), or a **substrate-set per-dispatch override** on the envelope, server-derived not caller-supplied (BP-031). | FIX-982 |
 | **N58** | **NEW — a JSON round-trip validates only the failures that were already loud.** N22 required detached `input`/`metadata` to pass *"a JSON-safe check (schema or **round-trip**)"* — and the same row enumerates the silent cases: a `Date` becomes a string, a `Map` or class instance becomes `{}`, a function is dropped. `JSON.parse(JSON.stringify(v))` **succeeds** on every one of those and throws only on `BigInt` and cycles, so the permitted check catches the two loud failures and none of the four silent ones. A task passes admission and the worker receives corrupted input. **Require a recursive JSON-value validator or a deep-equivalence check against the parsed result**, and apply it to N33's claim-time payload too — dep outputs are typed `unknown` and authored by a different worker, so that is the likelier source. | FIX-982 |
@@ -1993,7 +2001,7 @@ of the epic.
 until then (`orchestration.md` → Gates). **The remaining conditions are no longer OQ-A** — it is answered
 (FIX-992 owns the conditional write). What still holds a lifecycle back is, in order: **(1)** the owner's
 objective-gate approval; **(2)** the **entire unfiled set** having Linear ids — not just the three blockers
-(create-if-absent, S1a, FIX-991a) but **all six consumer-surface rows** (S1a, S1b, S2, S3, S4, S5), because §7
+(create-if-absent, S1a — FIX-991a is withdrawn, N64) but **all six consumer-surface rows** (S1a, S1b, S2, S3, S4, S5), because §7
 makes filing them a prerequisite to releasing execution and **S4 is the epic's own wrap evidence**: release the
 active set without it filed and the epic can reach "every issue merged" with its BP-003 evidence path never
 tracked. An earlier wording named only the three blockers, which is the subset that gates *starting* rather than
@@ -2037,21 +2045,16 @@ pending on FIX-982 even though M1 is not *blocked by* it.
 
 | Issue | M | Title (short) | Blocked by | Spec PR | Impl PR |
 |---|---|---|---|---|---|
-| **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 **+** create-if-absent (**unfiled**) **+** S1a (parent-session store filter, **unfiled**) **+** FIX-991a — the result-read surface (**split not yet filed**; without it FIX-982 ships settlement with no recoverable result, see the cycle note below) | — | — |
+| **FIX-982** | M3 | No out-of-request executor — a leased task can't run outside its request | FIX-981 **+** FIX-978 **+** create-if-absent (**unfiled**) **+** S1a (parent-session store filter, **unfiled**). **FIX-991a is withdrawn** — the result-read surface was filed as FIX-1008 and cancelled (N64); settlement holds the value in a live context, so there is no cycle to break | — | — |
 | **FIX-983** | M4 | Tasks have no blocking/background disposition | FIX-982 | — | — |
 | **FIX-984** | M5 | A detached task can't stream progress — `ctx.emit` doesn't survive | FIX-982 | — | — |
-| **FIX-991** | — | `TaskHandle.items()` returns the wrong request's items once tasks execute out-of-request | **see the note — this row's direction is now wrong** | — | — |
+| **FIX-991** | — | `TaskHandle.items()` returns the wrong request's items once tasks execute out-of-request | FIX-982 | — | — |
 
-**FIX-991 and FIX-982 are recorded as a cycle, and it must be broken before either starts.** This row
-blocks FIX-991 *on* FIX-982, but Decision 7 assigns parent-side settlement to FIX-982 and that
-settlement needs FIX-991's cross-boundary result read to recover the worker's output. As written,
-FIX-982 must either ship settlement with no recoverable result or absorb FIX-991 wholesale. **Split
-FIX-991:** the *result-read surface* (reading a task's items from whichever request produced them)
-is what settlement depends on and must land **before** FIX-982; the *accessor fix* on
-`TaskHandle.items()` — the cross-attempt union and its board-scoped lifetime — depends on
-out-of-request execution existing and stays **after**. Same defect class as the S1a ordering, caught
-the same way: a dependency stated in prose that the indexed row contradicts. **Fourth instance** —
-and it recurred, because the split was written here and the canonical execution sequence in §5 kept
+**The FIX-991 / FIX-982 cycle is dissolved, and the row above is correct as it stands.** An earlier revision recorded a cycle: this row blocks FIX-991 *on* FIX-982, while Decision 7 (as then written) assigned **parent-side** settlement to FIX-982, and that settlement needed FIX-991's cross-boundary result read to recover the worker's output. The prescribed fix was to **split FIX-991** — the result-read half before FIX-982, the `TaskHandle.items()` accessor fix after it.
+
+**Neither half of that is needed now.** Decision 7 was corrected (`27a4e86b`) to **Workstream-side** settlement, which holds the return value in a live context and writes it to `Task.output` directly — so nothing reads a result across a request boundary. The result-read half was filed as **FIX-1008 and then cancelled** (N64). **FIX-991 stays one issue, wholly after FIX-982**, exactly as this row says. Its attribution dependency (N24) is real and unchanged; it is a precondition of criterion 4b, not of settlement.
+
+> The defect-class tally this section kept is unaffected — the cycle was a genuine finding when recorded, and it resolved by a decision changing upstream rather than by anyone noticing the tables. Same lesson, from the other direction: a correction in one section (Decision 7) took three more revisions to reach the sections that depended on it.
 the un-split order for two more revisions. **That recurrence is the fifth instance, and it is the
 argument for freezing this document:** a correction filed in one section does not propagate to the
 summary that contradicts it, and the summaries are what an implementer reads. §5 now carries the
@@ -2076,8 +2079,8 @@ split ordering.
 | **Parented, out of the active set** | 2 | FIX-957, FIX-825 |
 | **External dependency** — owned by FIX-980 | 3 | FIX-978 (blocks FIX-982) · **FIX-992** (blocks FIX-981 — the conditional write; *In Spec Review*) · **FIX-995** (blocks FIX-992 — replay hardening; *Ready to Spec*) |
 | **Unfiled — the consumer surface, in scope per OQ-E** | 6 | *S1a* store filter + adapters · *S1b* route & request metadata · *S2* `client` · *S3* `react` · *S4* kitchen-sink (**the epic's evidence path — gates the wrap**) · *S5* docs |
-| **Unfiled blockers** — must be filed before the gate releases execution | 3 (+1 conditional) | *create-if-absent* (N5a) — a new row · **FIX-991a — the result-read surface, a new row**: FIX-991 is filed as the *accessor* fix, so the half that must land **before** FIX-982 has no issue at all and needs one · *S1a* — **already counted in the consumer surface above, not an additional item**; it is listed here because it must be filed and landed first (N16; **not** get-or-create's lookup, which is a keyed `get` on the derived id) · **conditional:** a batched cursor read (`RequestListOptions.ids`) becomes a fourth blocker **only if** FIX-982 takes REFERENCE forking without accepting the N+1 (N36) |
-| **Indexed rows** = sub-issues (8) + external dependencies (3) + consumer surface (6) + create-if-absent (1) + FIX-991a (1) | **19** | — |
+| **Unfiled blockers** — must be filed before the gate releases execution | 2 (+1 conditional) | *create-if-absent* (N5a) — a new row · ~~*FIX-991a — the result-read surface*~~ — **withdrawn (N64)**: it was filed as FIX-1008 and cancelled; FIX-991 needs no split · *S1a* — **already counted in the consumer surface above, not an additional item**; it is listed here because it must be filed and landed first (N16; **not** get-or-create's lookup, which is a keyed `get` on the derived id) · **conditional:** a batched cursor read (`RequestListOptions.ids`) becomes a fourth blocker **only if** FIX-982 takes REFERENCE forking without accepting the N+1 (N36) |
+| **Indexed rows** = sub-issues (8) + external dependencies (3) + consumer surface (6) + create-if-absent (1) | **18** | *(was 19; FIX-991a's row is withdrawn — N64)* |
 
 > **S1a and S1b are two issues, not one issue in two phases.** S1a lands before FIX-982 and S1b after
 > it, and no issue lifecycle can stay open across another issue's entire lifecycle — it would either
@@ -2086,22 +2089,15 @@ split ordering.
 > combined S1 row and again as a blocker; splitting S1 adds exactly the row the de-duplication
 > removes, so that change alone left the total at 16.
 >
-> **The same argument applies to FIX-991, and the count now carries it.** §5 sequences FIX-991a (the
-> result-read surface) before FIX-982 and FIX-991b (the accessor fix) after it. **FIX-991 as filed is
-> the accessor fix** — that is what its title and description describe — so the half FIX-982 depends
-> on has no Linear issue at all, and an earlier revision of this table indexed only the filed row. A
-> coordinator reading the total would have seen every dependency accounted for while a hard
-> prerequisite of M3 had no lifecycle, no spec and no PR. It is a **new indexed row**, taking the
-> total to **17**, and unlike S1 the split cannot be completed by editing this document — it needs an
-> issue created in Linear.
+> **The FIX-991 split is withdrawn, and the count drops with it.** An earlier revision indexed > FIX-991a (the result-read surface) as a **new row** because FIX-991 as filed is the *accessor* > fix, leaving the half FIX-982 depended on with no Linear issue at all. That reasoning was > right for its premise and the premise is gone: the result-read surface was filed as FIX-1008, > and cancelled once Workstream-side settlement removed the boundary crossing (N64). **FIX-991 > needs no split**, its row is the filed issue, and the indexed total goes back down by one.
 
 > **The create-if-absent blocker is indexed here deliberately, and it is still unfiled.** §5 names it
 > and puts it first in the execution sequence, but until this round it appeared in neither the
 > membership table nor any `blocked-by` relation — so a coordinator reading only the canonical
 > tables would start M3 without it and either duplicate Workstreams (§8) or absorb an unplanned
 > store-wide contract change into FIX-982. **FIX-982's blockers are `FIX-981 + FIX-978 +
-> create-if-absent + S1a + FIX-991a`**, and the last three have no issue to point at yet. Filing them
-> is an owner action, not done here.
+> create-if-absent + S1a`** — FIX-991a is withdrawn (N64) — and the last two have no issue to point
+> at yet. Filing them is an owner action, not done here.
 >
 > **Fourth instance of the defect class this epic keeps recording** — a dependency named in prose
 > and absent from the tables the coordinator actually reads. The prior three were FIX-991's execution
