@@ -149,7 +149,9 @@ The epic-specific delta:
    here because nothing else can hold them across wakes: the epic PR's own review budget
    (**`reviewRounds`** + **`aboveBarFound`**, passed to and returned by each wake) and, at
    wrap, each pass's **disposition**
-   (`lessons: <PR#|skipped: why>` · `docs_polish: <PR#|skipped: why>`).
+   (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
+   clean epic still lands its rows as a rows-only PR; only the proposal inside it is skippable
+   · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
 2. **Run the wake.** Dispatch the **`epic-wake` workflow** with the table from
    `.orchestration/`. It does the refresh, the epic-gate check, the capped worker fan-out, the
    review budgets, the claim dedupe and the verdict routing — see
@@ -590,8 +592,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   *measured* — the ledger's `design-off` trend is the evidence it's earning its cost.
 
   **The skip is partial, and the split is deliberate.** An epic with no rework worth measuring
-  skips the *grounding-proposal* pass — no tenet/BP sharpening, no lessons PR. It does **not**
-  skip the ledger rows: **always append the factual rows, including for a clean epic.** A clean
+  skips the *grounding-proposal* pass — no tenet/BP sharpening, and the lessons PR carries rows
+  only. It does **not** skip the PR, and it does **not** skip the ledger rows: **always append the factual rows, including for a clean epic.** A clean
   epic is the most valuable row the instrument has — dropping it leaves a ledger containing only
   epics that had findings, so `rounds-to-approval` and `design-off` measure a survivor-biased
   sample and a genuine improvement is invisible by construction. Rows are data; the proposal is
@@ -605,8 +607,9 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   is the point — a clean epic's row is the one the trend most needs.
 
   **A skipped proposal is a recorded outcome, not a silent one:** write
-  `lessons: rows appended (PR #<n>); proposal skipped: <why>` to the epic record and report it,
-  so EPIC_WRAP can complete on a PR that exists rather than waiting on one that never opens.
+  `lessons: <PR#> [proposal skipped: <why>]` to the epic record — the same token the coordinator
+  state uses — and report it, so EPIC_WRAP completes on a PR that exists rather than waiting on
+  one that never opens.
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch

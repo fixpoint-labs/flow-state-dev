@@ -155,8 +155,9 @@ cycle's sharpest evidence.**
 | 4 | collector widened to sample epic PRs | its **caller** at epic wrap still passed only the children, so the widened contract would never receive one |
 | 5 | epic PRs given an endpoint | the *other* rules keyed to "spec PR" — review-bar scoring, the `nit` exclusion, the claims fields, the ledger's own declared row scope — still excluded them; and a clean epic skipped the ledger entirely, biasing every trend |
 | 6 | rows always appended for a clean epic | **no landing path existed** for rows without a proposal PR — they'd stay in the wrap worker's worktree; the primary collector line still said "before merge"; and the baseline's own round count was raw, so the new rule would have manufactured an improvement |
+| 7 | rows land as a rows-only PR | the coordinator-state schema still allowed `lessons: skipped`, and the skip paragraph still said "no lessons PR" — a coordinator reading either could record a skip and finish wrap with the row unlanded. **And unifying those two surfaces introduced a third token format**, caught in the same edit |
 
-Six rounds, each the same error the fix is about, each caught by review and not by the author.
+Seven rounds, each the same error the fix is about, each caught by review and not by the author.
 Round 4 is the purest: the contract was corrected and its one caller was not — a convergence
 failure in a change whose entire subject is convergence failures.
 
@@ -174,9 +175,29 @@ claimed to have enumerated every writer — and still missed the primary collect
 It also introduced a *new* defect: "always append the rows" with no path for the rows to land, so
 a clean epic's row would have died in the wrap worker's worktree — the same survivor bias the fix
 existed to remove, reintroduced by the fix. Enumeration beat patching, and it still wasn't
-sufficient. The honest conclusion for fix A is that it raises the floor and does not close the
-class; expect cycle 3 to still find instances, and read a fall in their *rate* as the win rather
-than their absence.
+sufficient. Rounds 6 and 7 then repeated the shape twice more, both times inside a *fix for the shape*.
+
+**Seven rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
+and it does not say what the fixes claim.** Fix A and fix B were chosen on the theory that naming
+the class in the grounding gets an agent to converge restatements without being told which ones.
+This PR tested that theory on its own author, live, seven times — and the author needed an external
+reviewer on every single one, including after adopting the enumerate-every-writer procedure that
+was supposed to be the answer. Round 7's finding was generated *by* round 6's fix; the unified
+token in round 7 was itself inconsistent on first write.
+
+Two readings, and the ledger does not get to pick the flattering one:
+
+1. **The fixes work but slowly** — the floor rises, instances get cheaper to find, and a falling
+   rate across cycle 3 is the thing to watch. This is the reading the fixes assume.
+2. **Written guidance cannot close this class at all**, because the failure is one of *attention
+   at edit time*, not of knowing the rule. Every round here happened with the rule already written
+   down, and in the last three, written down **by the same agent, minutes earlier**. On that
+   reading the real fix is mechanical — a check that enumerates restatement surfaces — which this
+   cycle explicitly dropped on cost.
+
+Cycle 3 decides between them: if `stale-restatement` does not fall as a share of epic-PR findings,
+reading 2 is right and the dropped consistency-check should be rebuilt and costed properly. Do not
+let a third cycle pass on reading 1 by default.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.
