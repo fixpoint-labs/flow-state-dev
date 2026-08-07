@@ -232,8 +232,8 @@ already approved" on a change where nothing was approved suppresses the only rev
 change will ever get. The same is true in the other direction — asserting a brief that
 doesn't exist promises work was small and local when it wasn't.
 
-`issue-implement` routes to the first three. The fourth belongs to passes whose scope came
-from the material rather than from an issue.
+`issue-implement` routes to the first three. The fourth belongs to work no issue constrained
+in advance — a pass scoped from the material, or work whose issue was filed after the fact.
 
 **1. Spec-backed** (Feature · Enhancement · Improvement with an approved spec):
 
@@ -284,24 +284,34 @@ reviewers at a repro that doesn't exist:
 >
 > **In scope to challenge:** the approach, the scope, and whether this earned its place at all.
 
-**4. No upstream contract at all** — an editorial or cleanup pass whose scope came from the
-state of the code or docs rather than from an issue. `polish-docs` at epic wrap is the
-standing case. **Do not paste variant 3 here:** it asserts a brief exists and that the work
-was expected to be small and local, and a corpus-level pass is neither. Claiming provenance
-a change doesn't have is the same defect as claiming an approval it didn't get.
+**4. No upstream contract at all.** Two shapes reach this variant, and what they share is
+that **nothing was written down before the work that constrained it**:
 
-> **How to review this.** This is a **cleanup pass with no upstream contract** — no spec, no
-> brief, no issue defining its scope. What to change was derived from the state of the
-> material itself, so **nothing was signed off anywhere and this PR is the only gate**. It is
-> deliberately broad rather than small and local.
+- **A pass whose scope came from the material** rather than from an issue — `polish-docs` at
+  epic wrap is the standing case.
+- **Work filed retrospectively**, where the issue was written *after* the change to record
+  it — the `adhoc-commit-as-new-issue` route for anything that isn't a bug.
+
+**Do not paste variant 3 here.** It asserts a one-screen brief exists and that the work was
+expected to be small and local. Neither route wrote a brief, and a corpus-level pass isn't
+local. Claiming provenance a change doesn't have is the same defect as claiming an approval
+it didn't get.
+
+> **How to review this.** This change has **no upstream contract** — no spec, no brief, no
+> issue that defined its scope before the work. So **nothing was signed off anywhere and this
+> PR is the only gate**: the approach, the scope, and whether this earned its place at all
+> are in scope alongside the code.
 >
-> **Most valuable here:** whether anything changed meaning rather than presentation — a
-> caveat dropped, an API detail lost, an example quietly altered — and whether the new
-> arrangement is actually easier to navigate than the old one. Both are judgment calls a
-> human makes better than a diff reader.
+> **Most valuable here:** whether the scope is the right scope — a change with nothing
+> upstream constraining it is the one most likely to have grown past what was needed or
+> stopped short of what it implied. Then the second path (the legacy shape, the null
+> boundary, the concurrent case, the cancel path).
 >
-> **In scope to challenge:** the rearrangement itself, anything cut, and whether the pass
-> earned its place at all.
+> **In scope to challenge:** everything. Nothing here was settled upstream.
+
+*On an editorial pass, add one line:* the highest-value question is whether anything changed
+**meaning** rather than presentation — a caveat dropped, an API detail lost, an example
+quietly altered — and whether the new arrangement genuinely navigates better than the old.
 
 Each variant ends there. **"Parts worth reviewing closely" is not part of the contract** —
 it's authored per PR and lives above the fold, at position 4, where a human reaches it.
