@@ -89,9 +89,21 @@ The two rows under it ([#1064](https://github.com/fixpoint-labs/flow-state-dev/p
 
 | PR | Kind | Rounds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
-| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6** (in flight — partial, epic not yet wrapped) | stale-restatement ×11 · docs-miss ×4 (external-state mirroring) · design-off ×3 | 1 / 0 / — | **yes** — one binding rule directed the superseded design; one fix created a correctness defect | The correction re-derives every surface that restates the decision, not just the section that owns it |
+| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6 raw** (in flight; pre-rule count — see note) | stale-restatement ×11 · docs-miss ×4 (external-state mirroring) · design-off ×3 | 1 / 0 / — | **yes** — one binding rule directed the superseded design; one fix created a correctness defect | The correction re-derives every surface that restates the decision, not just the section that owns it |
 | [#1064](https://github.com/fixpoint-labs/flow-state-dev/pull/1064) FIX-925 | impl | 2 | over-engineered ×1 (owner, load-bearing) · nit ×6 | 0 / 0 / — | **yes** — a declaration was re-declaring what the runtime already held twice | Ask what the runtime already knows before adding a declaration kind |
 | [#1061](https://github.com/fixpoint-labs/flow-state-dev/pull/1061) FIX-1008 | spec | 2 | design-off ×1 (premise dissolved upstream) | 0 / 0 / — | **yes** — closed unmerged, issue cancelled | A spec whose motivating premise is owned by another doc re-checks it before round 2 |
+
+**#993's round count is raw and is NOT comparable to later epic rows.** It counts all six
+automated review passes. Fix D's spent-round rule — count only rounds actually *spent*, exclude
+`nit`, treat a third round as the flag — lands *after* this row, so every epic collected under it
+tops out around three. Comparing a post-rule 3 against this raw 6 would manufacture a 50%
+"improvement" out of a definition change while review behaviour was identical. Two honest uses of
+this row, then: **the findings counts (18 total, 11 in the dominant class) are comparable** — they
+were classified, not round-counted — and **the round count is not.** The rounds trend starts at
+the next epic scored under the rule; this row is its provenance, not its baseline. Reconstructing
+#993 under the spent-round rule was the alternative and is rejected: it would mean re-adjudicating
+six rounds of review after the fact, and a baseline invented that way is worse than an honestly
+labelled gap.
 
 **On the claims column.** These were reconstructed from the session, not auto-derived — at
 the time, the collector sampled only spec and implementation PRs, so the epic PR that produced
@@ -129,8 +141,8 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 | A | Tenet 5's convergence clause widened to cover what you *write down*, not only what executes (`docs/philosophy.md`) | philosophy | the dominant class, all 11 |
 | B | `epic-agent` re-derives the surfaces that restate a changed decision before committing, and names the two regressing sub-shapes — a standing rule binding **every** action, not one bullet; `epic-lifecycle` keeps a one-line pointer | subagent, edit-time | the same class, structurally, before review sees it |
 | C | `distill-lessons` collects **epic** PRs alongside spec and implementation PRs, **and `epic-lifecycle`'s wrap dispatch passes the epic PR** | skill, collector + its caller | makes A and B measurable at all — see below |
-| D | **direction artifact** named as the kind covering spec *and* epic PRs, so the review-bar scoring, the `nit` exclusion, the claims fields and the endpoint all reach both; endpoints given as one table (impl→merge · spec→approval · epic→epic close), in-flight epics scored as explicit partials | skill, scoring | keeps epic round counts comparable, and stops an epic's lifetime activity reading as rework |
-| E | the epic-wrap lessons skip is **partial** — ledger rows always append, only the grounding proposal is skippable | skill, wrap | survivor bias: a ledger holding only epics that had findings can't show an improvement |
+| D | **direction artifact** named as the kind covering spec *and* epic PRs, so the review-bar scoring, the `nit` exclusion, the claims fields and the endpoint all reach both; endpoints given as one table (impl→merge · spec→approval · epic→epic close), in-flight epics scored as explicit partials | skill, scoring | makes epic round counts comparable **from the next epic onward** (#993 predates the rule and is labelled raw), and stops an epic's lifetime activity reading as rework |
+| E | the epic-wrap lessons skip is **partial** — ledger rows always append **and always land as a draft rows-only PR**; only the grounding proposal is skippable | skill, wrap | survivor bias: a ledger holding only epics that had findings can't show an improvement — and rows that never leave the wrap worker's worktree are the same bias by another route |
 
 **The fixes for this class took four rounds to reach all their own writers, and that is the
 cycle's sharpest evidence.**
@@ -142,8 +154,9 @@ cycle's sharpest evidence.**
 | 3 | hoisted to a standing rule over all actions | the *dual-sync to Linear* was itself guarded at two of three actions — a reconciled branch doc beside a stale mirror |
 | 4 | collector widened to sample epic PRs | its **caller** at epic wrap still passed only the children, so the widened contract would never receive one |
 | 5 | epic PRs given an endpoint | the *other* rules keyed to "spec PR" — review-bar scoring, the `nit` exclusion, the claims fields, the ledger's own declared row scope — still excluded them; and a clean epic skipped the ledger entirely, biasing every trend |
+| 6 | rows always appended for a clean epic | **no landing path existed** for rows without a proposal PR — they'd stay in the wrap worker's worktree; the primary collector line still said "before merge"; and the baseline's own round count was raw, so the new rule would have manufactured an improvement |
 
-Five rounds, each the same error the fix is about, each caught by review and not by the author.
+Six rounds, each the same error the fix is about, each caught by review and not by the author.
 Round 4 is the purest: the contract was corrected and its one caller was not — a convergence
 failure in a change whose entire subject is convergence failures.
 
@@ -153,8 +166,17 @@ produces "review will keep finding more of them." Round 5 was fixed differently:
 the taxonomy is written down, then converge them in one pass — which surfaced two restatements
 (`epic-lifecycle`'s phase table, and a cross-reference to the old `lessons: skipped:` token) that
 no reviewer had flagged. **The enumeration found what the review queue hadn't.** That is the
-difference between applying the lesson and describing it, and it is the strongest argument in this
-cycle for fix A being at the right altitude.
+difference between applying the lesson and describing it.
+
+Round 6 is the correction to that story, and it belongs here at full strength. The round-5 pass
+claimed to have enumerated every writer — and still missed the primary collector line that defines
+`rounds-to-approval` as "before merge", which is a restatement of exactly the thing being changed.
+It also introduced a *new* defect: "always append the rows" with no path for the rows to land, so
+a clean epic's row would have died in the wrap worker's worktree — the same survivor bias the fix
+existed to remove, reintroduced by the fix. Enumeration beat patching, and it still wasn't
+sufficient. The honest conclusion for fix A is that it raises the floor and does not close the
+class; expect cycle 3 to still find instances, and read a fall in their *rate* as the win rather
+than their absence.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.
@@ -171,4 +193,4 @@ from a fix that worked. A trend the collector cannot see is not a trend.
 
 ### Claim to test next cycle
 
-Stale-restatement findings fall as a share of epic-PR review, and no epic-spec commit whose subject is "propagate correction X" leaves knock-ons behind. **Measurable only because fixes C and D made epic PRs collectable and their rounds comparable** — score it against #993's 11-of-18 baseline, and treat a zero as suspect until you have confirmed the epic PR was actually sampled. Cycle 1's claim (`missed-edge-case` breadth, spec rounds from 12) is still open — this cycle produced one implementation PR (#1064, 2 rounds, no `missed-edge-case`), too small a sample to move it.
+Stale-restatement findings fall as a share of epic-PR review, and no epic-spec commit whose subject is "propagate correction X" leaves knock-ons behind. **Measurable only because fixes C, D and E made epic PRs collectable, their rounds comparable, and a clean epic's row land at all** — score it against #993's **11-of-18 findings** baseline, which is the comparable axis. Do **not** score it against #993's round count: that is raw and pre-rule (see the note under the table). Treat a zero as suspect until you have confirmed the epic PR was actually sampled. Cycle 1's claim (`missed-edge-case` breadth, spec rounds from 12) is still open — this cycle produced one implementation PR (#1064, 2 rounds, no `missed-edge-case`), too small a sample to move it.

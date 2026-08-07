@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Each** wrap pass is either surfaced as a draft PR **or explicitly skipped** — both have documented skip conditions (no rework worth *proposing a fix for* · no docs touched), so "skipped, and why" is a terminal outcome exactly like "surfaced". The lessons skip is **partial**: the ledger rows are always appended, only the grounding proposal is skippable. Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -597,9 +597,16 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   sample and a genuine improvement is invisible by construction. Rows are data; the proposal is
   the judgment call, and only the judgment call is skippable.
 
+  **Rows still need a way to land.** They are written in the wrap worker's worktree, so a run
+  that opens no PR leaves them there and they never reach the default branch — the epic records
+  the collection as complete while the instrument gains nothing. So the skip changes the PR's
+  *contents*, never its existence: when the proposal is skipped, still open the **draft
+  ledger-only PR** carrying just the factual rows. It is small and boring by design, and that
+  is the point — a clean epic's row is the one the trend most needs.
+
   **A skipped proposal is a recorded outcome, not a silent one:** write
-  `lessons: rows appended; proposal skipped: <why>` to the epic record and report it, so
-  EPIC_WRAP can complete instead of waiting forever on a PR that will never open.
+  `lessons: rows appended (PR #<n>); proposal skipped: <why>` to the epic record and report it,
+  so EPIC_WRAP can complete on a PR that exists rather than waiting on one that never opens.
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch

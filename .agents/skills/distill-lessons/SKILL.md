@@ -52,8 +52,9 @@ produce, don't add ceremony.
 - **Auto-derive the ledger** from GitHub + Linear (GitHub MCP `pull_request_read` /
   review + comment endpoints; Linear for issue state history — see CLAUDE.md →
   "Linear access" for the channel). For each recent spec, implementation, **and epic** PR,
-  record: **rounds-to-approval** (distinct review passes
-  before merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
+  record: **rounds-to-approval** (distinct review passes up to that
+  artifact kind's endpoint — see the endpoint table below; *never* assume merge, since
+  neither spec nor epic PRs merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
   `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` ·
   `stale-restatement` · `nit` — the ledger header defines each),
   whether the design was flagged "felt off" (by a reviewer or the challenger), and one
