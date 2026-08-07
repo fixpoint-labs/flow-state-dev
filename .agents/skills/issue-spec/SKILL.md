@@ -436,7 +436,7 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
 1. **Write `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`) with **Part I and Part II** in full, and a **Spec evolution** section carrying one entry: `- **Spec drafted** — <one line: how the problem is framed, the approach chosen, and the build shape>.` This is the canonical reviewable artifact.
 
-   **Spec evolution goes at the bottom**, where [`spec-template.md`](../../../docs/contributing/spec-template.md) puts it — not at the top. It is the change story: the derivation, which never leads (BP-039). Part I §1's problem statement is the first thing in the document, and nothing precedes it.
+   **Spec evolution goes at the bottom**, where [`spec-template.md`](../../../docs/contributing/spec-template.md) puts it — not at the top. It is the change story: the derivation, which never leads (BP-039). Keep the document title and the `Part I` heading — structural navigation is exempt — but Part I §1's problem statement is the first **content** in the document, with no metadata, status block, or timeline above it.
 
 2. **Open the spec PR ready for review.** Get onto `spec/<ISSUE-ID>` — and **which command depends on whether Step 4 already created it for a POC**, because the create form resets the branch:
 

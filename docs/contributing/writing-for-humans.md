@@ -30,8 +30,10 @@ length to show the work is the largest single source of reading debt.
 in this order:
 
 - **The problem** — what hurt, in the reader's terms. Nothing that follows can be judged
-  without it, so nothing precedes it: not a ref, not a label, not what kind of artifact
-  this is.
+  without it, so nothing precedes it: not a ref, not a label, not a status, not what kind
+  of artifact this is, and not the derivation that produced it. *Structural navigation is
+  not content and is exempt* — a document title and the section heading the problem sits
+  under are how a reader finds it, not something they have to read past.
 - **The solution** — what we did about it, in plain terms rather than mechanism.
 - **What's asked of you** — the decision, the recommendation, and what it costs if it goes
   the other way. Or, in as many words: *nothing — this follows the approved spec.*

@@ -69,9 +69,16 @@ Take the single action the dispatch calls for:
   altitude (the objective, whether the set is really N issues or N−1, a cross-cutting
   decision), each naming where · the question · what a wrong answer costs, plus where you're
   unsure. Then the links line. **Budget ~400 words.** Below the fold, collapsed in
-  `<details>`: the contract from `epic-spec-template.md` pasted **verbatim**, then the themes
-  and the running index. Refresh the above-the-fold blocks whenever the objective materially
-  changes; the contract never changes.
+  `<details>`: the contract from `epic-spec-template.md` pasted **verbatim**, then the themes.
+  Refresh the above-the-fold blocks whenever the objective materially changes; the contract
+  never changes.
+
+  **Never copy the running index into the description — link to the epic doc instead.** The
+  index is a live projection of every issue's state and PR links, and it moves whenever any
+  child issue moves. The description refreshes only on a material objective change, so a
+  copied index is stale within a day and quietly shows reviewers obsolete statuses. The
+  branch document and its Linear mirror are the two places it stays current, and both are one
+  click from the links line.
 - **End-state POC** (when the coordinator dispatches one): build it under
   `spec-poc/epic-<name>/` on the epic branch, following
   [`spec-poc`](../skills/spec-poc/SKILL.md) — read it for the kinds, the variant rules and the
