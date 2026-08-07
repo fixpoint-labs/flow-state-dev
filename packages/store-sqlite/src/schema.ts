@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id     TEXT NOT NULL,
   org_id  TEXT,
   tenant_id   TEXT,
+  parent_session_id TEXT,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
@@ -26,6 +27,11 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
+-- FIX-1009: serves one access path — \`{ parentOf: id }\` equality lookups
+-- (enumerating one session's children). The default \`IS NULL\` scan is
+-- low-selectivity and is deliberately not the justification, so a plain btree
+-- is enough and no composite is warranted yet.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
 `;
 
 const REQUESTS_TABLE = `
@@ -138,6 +144,30 @@ function migrateAddTenantId(db: Database.Database): void {
     if (!cols.some((c) => c.name === "tenant_id")) {
       db.exec(`ALTER TABLE ${tableName} ADD COLUMN tenant_id TEXT`);
     }
+  }
+}
+
+/**
+ * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * SQLite has no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info`
+ * first, which also makes a second boot a no-op. Must run BEFORE the index DDL
+ * so `idx_sessions_parent_session_id` finds the column.
+ *
+ * Nullable with no default, and **no backfill is needed or possible**: nothing
+ * writes a parent id yet, so every pre-existing row is genuinely top-level and
+ * NULL is the correct value for all of them.
+ */
+function migrateAddParentSessionId(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('sessions')")
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "parent_session_id")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT");
   }
 }
 
@@ -464,6 +494,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   migrateProjectToOrg(db);
   migrateAddActiveRequestsSource(db);
   migrateAddTenantId(db);
+  migrateAddParentSessionId(db);
   migrateAddSuspensionStatusColumns(db);
   migrateAddResourceStateVersioning(db);
 

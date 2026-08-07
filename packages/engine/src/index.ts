@@ -78,6 +78,7 @@ export type {
   PersistErrorInfo,
   RequestStore,
   SessionListOptions,
+  SessionParentage,
   SessionRecord,
   SessionStore,
   SetResult,

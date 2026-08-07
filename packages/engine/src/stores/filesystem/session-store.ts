@@ -9,7 +9,7 @@ import {
   createFilesystemRecordStore,
   type FilesystemRecordStore
 } from "./shared";
-import { matchesTenantFilter } from "../scope-keys";
+import { matchesParentageFilter, matchesTenantFilter } from "../scope-keys";
 
 export type FilesystemSessionStoreOptions = {
   rootDir: string;
@@ -40,6 +40,10 @@ export class FilesystemSessionStore implements SessionStore {
         }
 
         if (!matchesTenantFilter(listOptions, record.tenantId)) {
+          return false;
+        }
+
+        if (!matchesParentageFilter(listOptions, record.parentSessionId)) {
           return false;
         }
 

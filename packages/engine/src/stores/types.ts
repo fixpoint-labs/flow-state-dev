@@ -36,6 +36,18 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * filtering. Undefined for single-tenant sessions.
    */
   tenantId?: string;
+  /**
+   * Bare id of the session this session belongs to (FIX-1009). Undefined for a
+   * top-level session — one a person started — which is every session that
+   * exists today. A record persisted before this field existed reads back as
+   * `undefined`, and a store that nulls absent keys hands back `null`; both
+   * mean top-level, so readers must guard with `== null` (BP-030).
+   *
+   * Bare, not tenant-namespaced, matching {@link RequestRecord.sessionId}:
+   * isolation comes from conjoining `tenantId` in the list filter, not from
+   * namespacing this field.
+   */
+  parentSessionId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -95,6 +107,19 @@ export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<
   resources?: Record<string, JsonObject>;
 };
 
+/**
+ * Which sessions a listing returns, by parentage (FIX-1009). Three modes, each
+ * a **named** value so none is reachable only by omission or by a sentinel:
+ *
+ * - `"top-level"` — only sessions with no parent, i.e. the ones a person
+ *   started. The default (see {@link SessionListOptions.parentage}).
+ * - `"all"` — every session, parented or not. Reproduces the unrestricted
+ *   behaviour listing had before this option existed; for admin, debug and
+ *   recovery callers that genuinely want everything.
+ * - `{ parentOf }` — only the children of that one session.
+ */
+export type SessionParentage = "top-level" | "all" | { parentOf: string };
+
 export type SessionListOptions = {
   flowKind?: string;
   userId?: string;
@@ -103,6 +128,21 @@ export type SessionListOptions = {
    * present-vs-absent exact-match semantics — they are identical here.
    */
   tenantId?: string;
+  /**
+   * Parentage filter (FIX-1009). **Omitting this narrows to `"top-level"`** —
+   * a caller that asks for nothing gets only the sessions a person started.
+   *
+   * Note the asymmetry with `tenantId` in this same object, which is the thing
+   * a reader pattern-matching the two will get backwards: an absent `tenantId`
+   * **widens** (every record passes), an absent `parentage` **narrows**. It is
+   * deliberate. An un-tenanted list is an admin read, whereas an un-parented
+   * list is the *common* read and has to be safe by default — otherwise every
+   * caller written before parented sessions existed silently starts showing
+   * internal machinery beside the user's own sessions.
+   *
+   * Pass `"all"` to opt back into the unrestricted behaviour explicitly.
+   */
+  parentage?: SessionParentage;
   limit?: number;
   offset?: number;
 };
