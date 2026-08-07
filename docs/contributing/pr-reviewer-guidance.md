@@ -24,7 +24,11 @@ first.
 
 ## The layout
 
-Every PR description, at every altitude, is in this order.
+Every PR that seeks review — spec, epic, implementation, docs-cleanup — is in this order.
+
+The one exception is a PR that seeks **no** review of a direction: a `settle-claim` verdict
+PR, whose body is a compact evidence block and whose only job is to put a finding in front
+of a human. It leads with the claim and why it earned a PR, and stops there.
 
 | | Block | Answers | Authored |
 |---|---|---|---|
