@@ -359,7 +359,7 @@ export async function handleCheckInterruptedRequests(
     stores: ctx.stores,
     userId,
     staleThresholdMs,
-    allowedFlowKinds: ctx.anonymousFlowKinds,
+    anonymousFlowKinds: ctx.anonymousFlowKinds,
     logger: ctx.runtimeConfig.logger
   });
 

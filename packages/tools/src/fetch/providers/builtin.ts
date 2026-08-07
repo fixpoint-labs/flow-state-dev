@@ -1,56 +1,31 @@
 import type { FetchProviderAdapter, FetchResult } from "../types";
 import { htmlToMarkdown } from "../../_internal/html-to-markdown";
 import { httpFetchError, readTruncatedBody, transportFetchError } from "../errors";
-import { assertPublicHttpUrl } from "../../_internal/public-url";
-
-const MAX_REDIRECTS = 5;
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+import { BlockedUrlError } from "../../_internal/public-url";
+import { fetchValidated } from "../../_internal/fetch-validated";
 
 export const builtinFetchAdapter: FetchProviderAdapter = {
   name: "builtin",
   async fetch(url, _options): Promise<FetchResult> {
-    let currentUrl = url;
     let response: Response;
+    let finalUrl: string;
 
-    // Redirects are followed by hand so every hop is validated. `redirect:
-    // "follow"` would let a public URL bounce the socket to a private one
-    // inside a single call, which is the standard way past a front-door check.
-    for (let redirects = 0; ; redirects++) {
-      // Outside the try: a blocked destination is a policy failure, not a
-      // transport one, and must not be reshaped into a retryable fetch error.
-      await assertPublicHttpUrl(currentUrl);
-
-      try {
-        response = await globalThis.fetch(currentUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
-            Accept: "text/html,application/xhtml+xml",
-          },
-          redirect: "manual",
-        });
-      } catch (cause) {
-        throw transportFetchError("builtin", currentUrl, cause);
-      }
-
-      if (!REDIRECT_STATUSES.has(response.status)) break;
-      const location = response.headers.get("location");
-      if (location === null) break;
-      if (redirects === MAX_REDIRECTS) {
-        throw transportFetchError(
-          "builtin",
-          url,
-          new Error(`Too many redirects while fetching ${url}`),
-        );
-      }
-      // Release the redirect body rather than leaving it unread.
-      await response.body?.cancel();
-      currentUrl = new URL(location, currentUrl).href;
+    try {
+      ({ response, finalUrl } = await fetchValidated(url));
+    } catch (cause) {
+      // A blocked destination is a policy refusal: permanent, and retrying just
+      // refuses again, so it stays a bare non-retryable error. Everything else
+      // — the guard's DNS lookup, the socket, an over-long redirect chain — is a
+      // transport failure and keeps the shaping callers already expect, so
+      // `ENOTFOUND`/`EAI_AGAIN` still classify as network and stay retryable.
+      if (cause instanceof BlockedUrlError) throw cause;
+      throw transportFetchError("builtin", url, cause);
     }
 
     if (!response.ok) {
       throw httpFetchError(
         "builtin",
-        currentUrl,
+        finalUrl,
         response,
         await readTruncatedBody(response),
       );
@@ -58,10 +33,10 @@ export const builtinFetchAdapter: FetchProviderAdapter = {
 
     const html = await response.text();
     const contentType = response.headers.get("content-type") ?? "text/html";
-    const parsed = htmlToMarkdown(html, currentUrl);
+    const parsed = htmlToMarkdown(html, finalUrl);
 
     return {
-      url: currentUrl,
+      url: finalUrl,
       title: parsed.title,
       markdown: parsed.markdown,
       metadata: {

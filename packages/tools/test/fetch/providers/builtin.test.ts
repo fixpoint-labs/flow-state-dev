@@ -148,3 +148,41 @@ describe("builtin fetch adapter — network boundary", () => {
     expect(result.title).toBe("Final");
   });
 });
+
+describe("builtin fetch adapter — guard error shaping", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.doUnmock("node:dns/promises");
+  });
+
+  it("keeps a transient DNS failure retryable", async () => {
+    // The guard resolves the hostname before `fetch` gets a chance to, so a
+    // resolver outage must still surface as the retryable network error callers
+    // (and the generator's retry) already expect.
+    const { lookup } = await import("node:dns/promises");
+    vi.mocked(lookup).mockRejectedValueOnce(
+      Object.assign(new Error("getaddrinfo EAI_AGAIN example.com"), {
+        code: "EAI_AGAIN",
+      })
+    );
+    globalThis.fetch = vi.fn();
+
+    await expect(
+      builtinFetchAdapter.fetch("https://example.com/page", { waitForJS: false })
+    ).rejects.toMatchObject({
+      code: "fetch_transport_error",
+      retryable: true,
+      details: { errorType: "network" },
+    });
+  });
+
+  it("keeps a policy refusal non-retryable", async () => {
+    globalThis.fetch = vi.fn();
+
+    await expect(
+      builtinFetchAdapter.fetch("http://10.0.0.1/", { waitForJS: false })
+    ).rejects.toMatchObject({ name: "BlockedUrlError" });
+  });
+});

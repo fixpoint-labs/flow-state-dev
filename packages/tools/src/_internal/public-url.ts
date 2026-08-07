@@ -25,8 +25,24 @@ export type AddressLookup = (
 ) => Promise<{ address: string }[]>;
 
 /**
- * Resolves `value` and throws unless every address it maps to is publicly
- * routable. Returns the parsed URL so callers can use the normalized form.
+ * A URL was refused by policy — a blocked destination, not a failed request.
+ *
+ * Callers use this to tell a policy refusal (permanent; retrying re-refuses)
+ * apart from a resolver failure like `EAI_AGAIN` (transient; worth a retry),
+ * which propagates from the lookup unchanged so it can be classified as the
+ * network error it is.
+ */
+export class BlockedUrlError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BlockedUrlError";
+  }
+}
+
+/**
+ * Resolves `value` and throws {@link BlockedUrlError} unless every address it
+ * maps to is publicly routable. Returns the parsed URL so callers can use the
+ * normalized form. A DNS lookup failure propagates as the resolver threw it.
  */
 export async function assertPublicHttpUrl(
   value: string,
@@ -36,15 +52,15 @@ export async function assertPublicHttpUrl(
   try {
     url = new URL(value);
   } catch {
-    throw new Error("Fetch URL must be an absolute HTTP(S) URL");
+    throw new BlockedUrlError("Fetch URL must be an absolute HTTP(S) URL");
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Fetch URL must use HTTP or HTTPS");
+    throw new BlockedUrlError("Fetch URL must use HTTP or HTTPS");
   }
   // Credentials in the URL are a redirect-laundering trick and never needed here.
   if (url.username !== "" || url.password !== "") {
-    throw new Error("Fetch URL must not contain credentials");
+    throw new BlockedUrlError("Fetch URL must not contain credentials");
   }
 
   // `url.hostname` keeps the brackets on an IPv6 literal and may carry the
@@ -55,7 +71,7 @@ export async function assertPublicHttpUrl(
     .replace(/\.$/, "");
 
   if (hostname === "" || hostname === "localhost" || hostname.endsWith(".localhost")) {
-    throw new Error("Fetch URL must resolve only to public IP addresses");
+    throw new BlockedUrlError("Fetch URL must resolve only to public IP addresses");
   }
 
   const addresses = isIP(hostname)
@@ -68,7 +84,7 @@ export async function assertPublicHttpUrl(
     addresses.length === 0 ||
     addresses.some(({ address }) => !isPublicIp(address))
   ) {
-    throw new Error("Fetch URL must resolve only to public IP addresses");
+    throw new BlockedUrlError("Fetch URL must resolve only to public IP addresses");
   }
 
   return url;
