@@ -574,7 +574,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   size where a recurring rework class becomes visible (three of five issues carrying the
   same `design-off` feedback is a signal one issue alone can't show). At epic wrap, dispatch
   **one bounded sub-agent** (worktree, like `epic-agent`) to run **`distill-lessons` in
-  loop mode** over the epic's spec + impl PRs: append the cycle-ledger rows and open a
+  loop mode** over the epic's spec + impl PRs **and the epic PR itself** — the epic PR is a
+  reviewed artifact with a rework class its children don't have, and a collector handed only
+  the children reports **zero** for that class, which reads as progress. Append the
+  cycle-ledger rows and open a
   **draft** "lessons" PR carrying the ledger rows (factual) plus any *proposed* tenet/BP
   sharpening. Keep it **draft** — `distill-lessons` writes to the grounding only after your
   review, so the PR is a proposal you approve, not auto-landed lessons. It's a fresh PR

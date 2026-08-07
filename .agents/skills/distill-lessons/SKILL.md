@@ -79,6 +79,13 @@ produce, don't add ceremony.
   grounding changes aimed at noise. Implementation PRs keep the ordinary scoring, and
   `rounds-to-approval` for a spec PR ends at its approval, not a merge (spec PRs are never
   merged).
+- **An epic PR needs its own endpoint, because it never merges and its approval comes early.**
+  The objective gate (`epic approved`) lands near the *start* and the artifact keeps taking
+  direction feedback for the epic's whole life, so neither merge nor approval bounds it. Count
+  an epic PR's rounds **to epic close** — the wrap, which is when this skill runs anyway. Record
+  the objective gate as a marker, not the endpoint. An epic still in flight is scored as a
+  **partial** and labelled as one (`6 (in flight)`), never compared against a closed epic's
+  total; a partial read as a total is how an epic that got worse looks like one that improved.
 - **Record `claims-settled` — the flip-flop class and whether settling it worked.** A spec
   round spent re-arguing the *same factual claim* is the most expensive review pattern we have,
   and it now has a designated cure: a POC settlement ([`orchestration.md`](../../../docs/contributing/orchestration.md)

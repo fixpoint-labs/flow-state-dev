@@ -87,7 +87,7 @@ The two rows under it ([#1064](https://github.com/fixpoint-labs/flow-state-dev/p
 
 | PR | Kind | Rounds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
-| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6** (this session) | stale-restatement ×11 · docs-miss ×4 (external-state mirroring) · design-off ×3 | 1 / 0 / — | **yes** — one binding rule directed the superseded design; one fix created a correctness defect | The correction re-derives every surface that restates the decision, not just the section that owns it |
+| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6** (in flight — partial, epic not yet wrapped) | stale-restatement ×11 · docs-miss ×4 (external-state mirroring) · design-off ×3 | 1 / 0 / — | **yes** — one binding rule directed the superseded design; one fix created a correctness defect | The correction re-derives every surface that restates the decision, not just the section that owns it |
 | [#1064](https://github.com/fixpoint-labs/flow-state-dev/pull/1064) FIX-925 | impl | 2 | over-engineered ×1 (owner, load-bearing) · nit ×6 | 0 / 0 / — | **yes** — a declaration was re-declaring what the runtime already held twice | Ask what the runtime already knows before adding a declaration kind |
 | [#1061](https://github.com/fixpoint-labs/flow-state-dev/pull/1061) FIX-1008 | spec | 2 | design-off ×1 (premise dissolved upstream) | 0 / 0 / — | **yes** — closed unmerged, issue cancelled | A spec whose motivating premise is owned by another doc re-checks it before round 2 |
 
@@ -126,15 +126,22 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 |---|---|---|---|
 | A | Tenet 5's convergence clause widened to cover what you *write down*, not only what executes (`docs/philosophy.md`) | philosophy | the dominant class, all 11 |
 | B | `epic-agent` re-derives the surfaces that restate a changed decision before committing, and names the two regressing sub-shapes — a standing rule binding **every** action, not one bullet; `epic-lifecycle` keeps a one-line pointer | subagent, edit-time | the same class, structurally, before review sees it |
-| C | `distill-lessons` collects **epic** PRs alongside spec and implementation PRs | skill, collector | makes A and B measurable at all — see below |
+| C | `distill-lessons` collects **epic** PRs alongside spec and implementation PRs, **and `epic-lifecycle`'s wrap dispatch passes the epic PR** | skill, collector + its caller | makes A and B measurable at all — see below |
+| D | epic PRs get their own `rounds-to-approval` endpoint (to epic close, not merge or objective gate), and an in-flight epic is scored as an explicit partial | skill, scoring | keeps epic round counts comparable across cycles |
 
-**Fix B took three attempts to reach all its writers, and that is the cycle's sharpest evidence.**
-Written first into `epic-lifecycle` — but the coordinator only *dispatches* the fold; `epic-agent`
-performs the edit and never reads the coordinator's skill. Moved there, scoped to the `Update`
-bullet — but **End-state POC** also changes decisions and is dispatched separately. Hoisted to a
-standing rule — and review then found the *dual-sync to Linear* was itself guarded at two of three
-actions, so a reconciled branch doc could still sit beside a stale Linear mirror. Three rounds,
-each one the same error the fix is about, each caught by review and not by the author.
+**The fixes for this class took four rounds to reach all their own writers, and that is the
+cycle's sharpest evidence.**
+
+| Round | The fix as written | The writer it missed |
+|---|---|---|
+| 1 | reconciliation rule in `epic-lifecycle` | the coordinator only *dispatches*; `epic-agent` performs the edit and never reads the coordinator's skill |
+| 2 | moved to `epic-agent`, inside the `Update` bullet | **End-state POC** also changes decisions, and is dispatched separately |
+| 3 | hoisted to a standing rule over all actions | the *dual-sync to Linear* was itself guarded at two of three actions — a reconciled branch doc beside a stale mirror |
+| 4 | collector widened to sample epic PRs | its **caller** at epic wrap still passed only the children, so the widened contract would never receive one |
+
+Four rounds, each the same error the fix is about, each caught by review and not by the author.
+Round 4 is the purest: the contract was corrected and its one caller was not — a convergence
+failure in a change whose entire subject is convergence failures.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.
@@ -151,4 +158,4 @@ from a fix that worked. A trend the collector cannot see is not a trend.
 
 ### Claim to test next cycle
 
-Stale-restatement findings fall as a share of epic-PR review, and no epic-spec commit whose subject is "propagate correction X" leaves knock-ons behind. **Measurable only because fix C widened the collector to epic PRs** — score it against #993's 11-of-18 baseline, and treat a zero as suspect until you have confirmed the epic PR was actually sampled. Cycle 1's claim (`missed-edge-case` breadth, spec rounds from 12) is still open — this cycle produced one implementation PR (#1064, 2 rounds, no `missed-edge-case`), too small a sample to move it.
+Stale-restatement findings fall as a share of epic-PR review, and no epic-spec commit whose subject is "propagate correction X" leaves knock-ons behind. **Measurable only because fixes C and D made epic PRs collectable and their rounds comparable** — score it against #993's 11-of-18 baseline, and treat a zero as suspect until you have confirmed the epic PR was actually sampled. Cycle 1's claim (`missed-edge-case` breadth, spec rounds from 12) is still open — this cycle produced one implementation PR (#1064, 2 rounds, no `missed-edge-case`), too small a sample to move it.
