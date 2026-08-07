@@ -111,8 +111,11 @@ The built-in provider opens a socket from your server to whatever URL the model
 picked, so it reaches publicly routable addresses only. Loopback, link-local
 (including cloud metadata endpoints such as `169.254.169.254`), private, and
 reserved ranges are rejected before the request is made, and every redirect hop
-is checked the same way. A blocked URL throws with `must resolve only to public
-IP addresses`.
+is checked the same way. A blocked URL throws a `FlowError` with code
+`fetch_blocked_url` and `error.details.errorType` of `"blocked"`, never
+retryable — the refusal is a property of the URL, so retrying only refuses
+again. A DNS failure while checking is still a normal retryable `"network"`
+error.
 
 Hosted providers are unaffected — Firecrawl and Jina call a vendor API rather
 than the target, so nothing on your network is reachable through them.

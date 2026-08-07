@@ -92,6 +92,19 @@ describe("isPublicIp — IPv6 forms that bypass a naive prefix check", () => {
     expect(isPublicIp(address)).toBe(true);
   });
 
+  it.each([
+    // Only 2000::/3 is allocated as global unicast. An unrecognized prefix must
+    // not default to public just because it matches no denylist entry.
+    ["discard-only (RFC6666)", "100::1"],
+    ["unassigned", "4000::1"],
+    ["SRv6 (RFC9602)", "5f00::1"],
+    ["documentation (RFC9637)", "3fff::1"],
+    ["2001:db8 documentation", "2001:db8::1"],
+    ["protocol assignments", "2001:1::1"],
+  ])("rejects out-of-global-range %s (%s)", (_label, address) => {
+    expect(isPublicIp(address)).toBe(false);
+  });
+
   it("rejects a malformed literal rather than defaulting to public", () => {
     expect(isPublicIp("not-an-ip")).toBe(false);
     expect(isPublicIp("::ffff::1")).toBe(false);

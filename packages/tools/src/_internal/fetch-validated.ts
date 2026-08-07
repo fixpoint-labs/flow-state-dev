@@ -57,10 +57,13 @@ export async function fetchValidated(url: string): Promise<ValidatedFetchResult>
     }
     const location = response.headers.get("location");
     if (location === null) return { response, finalUrl: currentUrl };
+
+    // Release the redirect body rather than leaving it unread — including the
+    // one that exhausts the budget, or an endless redirect chain would strand a
+    // connection on every attempt.
+    await response.body?.cancel();
     if (redirects === MAX_REDIRECTS) throw new TooManyRedirectsError(url);
 
-    // Release the redirect body rather than leaving it unread.
-    await response.body?.cancel();
     currentUrl = new URL(location, currentUrl).href;
   }
 }

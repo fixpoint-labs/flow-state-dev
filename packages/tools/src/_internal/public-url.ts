@@ -143,13 +143,20 @@ function isPublicIpv6(address: string): boolean {
   // 6to4 `2002::/16` embeds its IPv4 in the next 32 bits.
   if (g0 === 0x2002) return isPublicIpv4(embeddedIpv4(g1, g2));
 
+  // Everything below is an allowlist, not a denylist: `2000::/3` is the only
+  // range IANA has allocated as global unicast, so an address outside it is
+  // unassigned, reserved, or special-purpose — and a network that locally routes
+  // one (SRv6 `5f00::/16`, discard-only `100::/64`, plain unassigned `4000::/3`)
+  // would be reachable if an unrecognized prefix defaulted to public. Unique
+  // local, link-local, site-local and multicast all fall outside `2000::/3`, so
+  // this subsumes them rather than depending on enumerating each.
+  if ((g0 & 0xe000) !== 0x2000) return false;
+
+  // Carve-outs that sit *inside* the global range and still are not routable.
   return !(
-    (g0 & 0xfe00) === 0xfc00 || // fc00::/7 unique local
-    (g0 & 0xffc0) === 0xfe80 || // fe80::/10 link-local
-    (g0 & 0xffc0) === 0xfec0 || // fec0::/10 site-local (deprecated, still routed)
-    (g0 & 0xff00) === 0xff00 || // ff00::/8 multicast
-    (g0 === 0x2001 && g1 === 0x0db8) || // documentation
-    (g0 === 0x2001 && (g1 & 0xfe00) === 0x0000) // 2001::/23 protocol assignments
+    (g0 === 0x2001 && g1 === 0x0db8) || // 2001:db8::/32 documentation
+    (g0 === 0x2001 && (g1 & 0xfe00) === 0x0000) || // 2001::/23 protocol assignments
+    (g0 === 0x3fff && (g1 & 0xf000) === 0x0000) // 3fff::/20 documentation
   );
 }
 

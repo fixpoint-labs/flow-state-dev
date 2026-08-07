@@ -83,7 +83,7 @@ describe("builtin fetch adapter — network boundary", () => {
       builtinFetchAdapter.fetch("http://169.254.169.254/latest/meta-data", {
         waitForJS: false,
       })
-    ).rejects.toThrow("public IP addresses");
+    ).rejects.toMatchObject({ code: "fetch_blocked_url", retryable: false });
 
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
@@ -100,7 +100,7 @@ describe("builtin fetch adapter — network boundary", () => {
 
     await expect(
       builtinFetchAdapter.fetch("https://example.com/redirect", { waitForJS: false })
-    ).rejects.toThrow("public IP addresses");
+    ).rejects.toMatchObject({ code: "fetch_blocked_url" });
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
@@ -183,6 +183,10 @@ describe("builtin fetch adapter — guard error shaping", () => {
 
     await expect(
       builtinFetchAdapter.fetch("http://10.0.0.1/", { waitForJS: false })
-    ).rejects.toMatchObject({ name: "BlockedUrlError" });
+    ).rejects.toMatchObject({
+      code: "fetch_blocked_url",
+      retryable: false,
+      details: { errorType: "blocked" },
+    });
   });
 });
