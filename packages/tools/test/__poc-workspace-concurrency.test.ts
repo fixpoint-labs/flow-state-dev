@@ -267,6 +267,13 @@ class BaseAwareSync {
       const ref = await this.collection.getOrCreate(p, { path: p, hash, updatedAt: "t1" });
       await ref.patchState({ hash, updatedAt: "t1" });
       await ref.writeContent(content);
+      // Advance the baseline to what we just wrote. Without this, the SECOND
+      // flush from the same instance compares the collection's now-current hash
+      // against the hydrate-time one and reports a conflict against our OWN
+      // write — and a path created here stays absent from `base`, so its next
+      // flush takes the "appeared under us" branch. Base means "what we last
+      // agreed on", not "what we first saw".
+      this.base.set(p, hash);
       written.push(p);
     }
 
@@ -289,6 +296,7 @@ class BaseAwareSync {
       }
       deleted.push(p);
       await this.collection.delete(p);
+      this.base.delete(p); // agreed state is now "absent"; see the write path
     }
     return { written, conflicts, deleted };
   }
@@ -397,5 +405,90 @@ describe("Q3/Q4 detect-don't-merge", () => {
     const r = await S.flush();
     console.log(`[q3c] written=${r.written.length} conflicts=${r.conflicts.length} deleted=${r.deleted.length}`);
     expect(r).toEqual({ written: [], conflicts: [], deleted: [] });
+  });
+});
+
+// ─── Q5 — what Q3 did NOT prove, added after review ──────────────────────────
+//
+// Two gaps in Q3, both real:
+//
+//   1. Every Q3 case flushes ONCE per instance, so the baseline was never
+//      exercised across successive flushes and a self-conflict bug sat
+//      undetected (fixed above — `flush` now advances `base`).
+//   2. Every Q3 case serialises `await A.flush(); await B.flush()`, so the
+//      suite named "concurrency" never ran two flushes concurrently. The
+//      check-then-write in `flush` is NOT atomic: both instances can pass
+//      `getOptional` before either writes.
+//
+// 5b pins that second gap as a KNOWN LIMIT rather than pretending otherwise —
+// detect-don't-merge is safe against interleaved *turns*, not against
+// interleaved *flushes*. A real implementation needs the conditional write
+// (FIX-992's `expectedVersion`) at the write, not a read-then-write pair.
+
+describe("Q5 — repeat flushes and real concurrency", () => {
+  it("5a — a second flush from the same instance is not a conflict with itself", async () => {
+    const shared = createCollection([entry("a.ts", "ORIGINAL")]);
+    const sb = createMockSandbox();
+    const S = new BaseAwareSync(sb, shared);
+    await S.hydrate();
+
+    sb.files.set("/w/a.ts", "EDIT-1");
+    const first = await S.flush();
+    sb.files.set("/w/a.ts", "EDIT-2");
+    const second = await S.flush();
+
+    console.log(
+      `[q5a] first=${JSON.stringify(first.written)} second=${JSON.stringify(second.written)} ` +
+        `conflicts=${second.conflicts.length}`,
+    );
+    expect(first.written).toEqual(["a.ts"]);
+    // Before the baseline fix this was `conflicts: 1` — the instance colliding
+    // with its own previous write.
+    expect(second.written).toEqual(["a.ts"]);
+    expect(second.conflicts).toEqual([]);
+  });
+
+  it("5a2 — a file this instance created can be edited on the next flush", async () => {
+    const shared = createCollection([]);
+    const sb = createMockSandbox();
+    const S = new BaseAwareSync(sb, shared);
+    await S.hydrate();
+
+    sb.files.set("/w/new.ts", "V1");
+    await S.flush();
+    sb.files.set("/w/new.ts", "V2");
+    const second = await S.flush();
+
+    console.log(`[q5a2] written=${JSON.stringify(second.written)} conflicts=${second.conflicts.length}`);
+    // Previously took the "appeared under us" branch: created paths never
+    // entered `base`, so the instance treated its own file as a stranger's.
+    expect(second.written).toEqual(["new.ts"]);
+    expect(second.conflicts).toEqual([]);
+  });
+
+  it.fails("5b — KNOWN LIMIT: concurrent flushes both pass the check and one write is lost", async () => {
+    const shared = createCollection([entry("a.ts", "ORIGINAL")]);
+    const sbA = createMockSandbox();
+    const sbB = createMockSandbox();
+    const A = new BaseAwareSync(sbA, shared);
+    const B = new BaseAwareSync(sbB, shared);
+    await A.hydrate();
+    await B.hydrate();
+
+    sbA.files.set("/w/a.ts", "A-EDIT");
+    sbB.files.set("/w/a.ts", "B-EDIT");
+
+    // The distinction Q3 never drew: CONCURRENT, not sequential.
+    const [rA, rB] = await Promise.all([A.flush(), B.flush()]);
+
+    const finalRef = await shared.getOptional("a.ts");
+    const final = finalRef ? await finalRef.readContent() : null;
+    console.log(
+      `[q5b] A.conflicts=${rA.conflicts.length} B.conflicts=${rB.conflicts.length} final=${final}`,
+    );
+    // DESIRED, and currently false: exactly one writer wins and the other is
+    // told. Today both observe ORIGINAL before either writes, so both write and
+    // the loser's edit vanishes with no conflict reported.
+    expect(rA.conflicts.length + rB.conflicts.length).toBe(1);
   });
 });
