@@ -1,6 +1,7 @@
 import type { CrawlProviderAdapter, CrawlResult } from "../types";
 import type { FetchResult } from "../../fetch/types";
 import { htmlToMarkdown } from "../../_internal/html-to-markdown";
+import { assertPublicHttpUrl } from "../../_internal/public-url";
 
 interface QueueEntry {
   url: string;
@@ -38,15 +39,13 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
           await delay(1000);
         }
 
-        const response = await globalThis.fetch(entry.url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
-            Accept: "text/html,application/xhtml+xml",
-          },
-          redirect: "follow",
-        });
+        // Validates the queued URL and every redirect hop. Links come from the
+        // crawled markup, so without this a public page can walk the crawler
+        // into loopback or a metadata service. A blocked URL throws and is
+        // skipped by the surrounding catch, like any other unreachable page.
+        const response = await fetchValidated(entry.url);
 
-        if (!response.ok) continue;
+        if (response === undefined || !response.ok) continue;
 
         const contentType = response.headers.get("content-type") ?? "";
         if (!contentType.includes("text/html")) continue;
@@ -90,6 +89,35 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
     };
   },
 };
+
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * Fetches `url`, validating it and each redirect target against the public-IP
+ * guard before the socket opens. Returns `undefined` when the redirect budget
+ * is exhausted; throws when a hop names a non-public destination.
+ */
+async function fetchValidated(url: string): Promise<Response | undefined> {
+  let currentUrl = url;
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+    await assertPublicHttpUrl(currentUrl);
+    const response = await globalThis.fetch(currentUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      redirect: "manual",
+    });
+
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+    const location = response.headers.get("location");
+    if (location === null) return response;
+    await response.body?.cancel();
+    currentUrl = new URL(location, currentUrl).href;
+  }
+  return undefined;
+}
 
 function normalizeUrl(url: string): string {
   const parsed = new URL(url);

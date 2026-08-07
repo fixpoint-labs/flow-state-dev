@@ -105,6 +105,23 @@ Always works — falls back to built-in when no API keys are set.
 import { firecrawlFetch, jinaFetch, builtinFetch } from "@flow-state-dev/tools/fetch";
 ```
 
+### Public addresses only
+
+The built-in provider opens a socket from your server to whatever URL the model
+picked, so it reaches publicly routable addresses only. Loopback, link-local
+(including cloud metadata endpoints such as `169.254.169.254`), private, and
+reserved ranges are rejected before the request is made, and every redirect hop
+is checked the same way. A blocked URL throws with `must resolve only to public
+IP addresses`.
+
+Hosted providers are unaffected — Firecrawl and Jina call a vendor API rather
+than the target, so nothing on your network is reachable through them.
+
+To fetch an intranet page on purpose, do it in your own handler rather than
+through this tool. One caveat worth knowing: the check resolves the hostname
+before connecting, and the connection resolves it again, so a hostile DNS server
+that answers differently each time is not covered.
+
 ### Error details
 
 When a fetch fails, the tool throws a `FlowError` whose `error.details` carries `errorType` (`"http"` / `"network"` / `"timeout"` / `"abort"` / `"parse"`), plus `httpStatus`, `httpStatusText`, and a truncated `responseBody` for HTTP failures, and the underlying `cause` for transport failures. `retryable` is set per class — 5xx / network / timeout are retryable, 4xx is not — so a generator's built-in retry handles transient failures for you. See [Error handling](https://flow-state.dev/docs/advanced/error-handling).
@@ -138,6 +155,14 @@ Always works — falls back to built-in BFS crawler when no API keys are set.
 ```typescript
 import { firecrawlCrawl, builtinCrawl } from "@flow-state-dev/tools/crawl";
 ```
+
+### Public addresses only
+
+The built-in crawler follows the same rule as the built-in fetch provider, and
+it applies to every link it discovers, not just the root URL — a public page
+linking to `http://127.0.0.1/` will not walk the crawler onto your host. Blocked
+URLs are skipped like any other unreachable page, so a crawl completes with the
+pages it could legitimately read.
 
 ## Bash
 
