@@ -4,6 +4,9 @@ import { tools } from "../../src";
 import type { FetchResult } from "../../src/fetch/types";
 
 import { runForTest } from "@flow-state-dev/testing";
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+}));
 // Mock the providers module to avoid real SDK imports
 vi.mock("../../src/fetch/providers", () => {
   const mockFetchResult: FetchResult = {
@@ -91,6 +94,14 @@ describe("fetch tool factory", () => {
 
     expect(result.url).toBe("https://example.com");
     expect(result.source).toBe("builtin");
+  });
+
+  it("rejects private network URLs before invoking a provider", async () => {
+    const tool = fetch();
+
+    await expect(
+      runForTest(tool, { url: "http://169.254.169.254/latest/meta-data" }, {} as any)
+    ).rejects.toThrow("Fetch URL must resolve to a public network address");
   });
 
   it("executes fetch with firecrawl when key available", async () => {

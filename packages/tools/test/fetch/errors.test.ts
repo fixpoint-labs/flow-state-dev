@@ -6,6 +6,10 @@ import {
   readTruncatedBody,
 } from "../../src/fetch/errors";
 
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+}));
+
 describe("classifyFetchFailure", () => {
   it("classifies an aborted request", () => {
     expect(classifyFetchFailure(Object.assign(new Error("x"), { name: "AbortError" }))).toBe(

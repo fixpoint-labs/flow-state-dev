@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { builtinFetchAdapter } from "../../../src/fetch/providers/builtin";
 
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+}));
+
 describe("builtin fetch adapter", () => {
   const originalFetch = globalThis.fetch;
 
@@ -64,7 +68,36 @@ describe("builtin fetch adapter", () => {
         headers: expect.objectContaining({
           "User-Agent": expect.stringContaining("FlowStateDev"),
         }),
+        redirect: "manual",
       })
     );
+  });
+
+  it("rejects loopback URLs before making a request", async () => {
+    globalThis.fetch = vi.fn();
+
+    await expect(
+      builtinFetchAdapter.fetch("http://127.0.0.1/admin", {
+        waitForJS: false,
+      })
+    ).rejects.toThrow("Fetch URL must resolve to a public network address");
+
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects redirects to private network addresses", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: "http://169.254.169.254/latest/meta-data" }),
+    });
+
+    await expect(
+      builtinFetchAdapter.fetch("https://example.com/redirect", {
+        waitForJS: false,
+      })
+    ).rejects.toThrow("Fetch URL must resolve to a public network address");
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

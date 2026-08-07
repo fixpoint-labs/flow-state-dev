@@ -7,6 +7,7 @@ import {
   type FetchResult,
 } from "./types";
 import { resolveProvider } from "./resolver";
+import { assertPublicHttpUrl } from "./url-safety";
 
 /**
  * Creates a fetch tool for use in generator blocks.
@@ -24,8 +25,9 @@ export function fetch(config: FetchConfig = {}) {
     inputSchema: fetchInputSchema,
     outputSchema: fetchResultSchema,
     execute: async (input: FetchInput): Promise<FetchResult> => {
+      const url = await assertPublicHttpUrl(input.url);
       const { adapter, apiKey } = resolveProvider(config);
-      return adapter.fetch(input.url, {
+      return adapter.fetch(url.href, {
         waitForJS: config.waitForJS ?? false,
         apiKey,
       });
