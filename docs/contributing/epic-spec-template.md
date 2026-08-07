@@ -10,7 +10,7 @@ What it is, where it lives, and how it's gated is canonical in
 | | |
 |---|---|
 | **The epic** | A Linear parent issue carrying the `Epic` label (Kind group); the work is its sub-issues |
-| **Where** | `docs/specs/_epics/<name>.md` on branch `epic/<name>`, mirrored to the Epic issue's Linear document |
+| **Where** | `spec/_epics/<name>.md` on branch `epic/<name>`, mirrored to the Epic issue's Linear document |
 | **The PR** | Never merged, never deleted. Open for the life of the epic; closes unmerged at wrap |
 | **Author** | `epic-agent`, one bounded update per dispatch. It **never starts over** — the doc is the state |
 | **The gate** | An approving human comment or review on the epic PR signs off §1 only. Everything else flows continuously and blocks nothing |

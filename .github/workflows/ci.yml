@@ -47,6 +47,32 @@ jobs:
       - name: Test
         run: pnpm test
 
+  guards:
+    name: Process guards
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history so the changeset guard can diff against the base branch.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # A spec PR carries the in-flight spec by design and is never merged, so
+      # it is exempt by label. Every other PR — and main itself — is checked.
+      - name: Spec folder is clear
+        if: >-
+          github.event_name == 'push' ||
+          !contains(github.event.pull_request.labels.*.name, 'spec')
+        run: node scripts/validate-spec-folder.mjs
+
+      - name: Changesets name their Linear issue
+        if: github.event_name == 'pull_request'
+        run: node scripts/validate-changeset-refs.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest

@@ -16,7 +16,7 @@
  * `ALPHAVANTAGE_DAILY_LIMIT` knob (`0` = unlimited, for a paid plan). The guard
  * is process-scoped and best-effort — a process restart or serverless
  * cold-start resets it; AV's server-side throttle (→ Note body → throw) is the
- * real-exhaustion backstop. See `docs/specs/FIX-798.md`.
+ * real-exhaustion backstop.
  *
  * `alphaVantageRequest` ALSO runs per-minute admission pacing (FIX-801 Decision
  * 5, §8 step 0), governed by `ALPHAVANTAGE_MINUTE_LIMIT` (`0` = unlimited, same

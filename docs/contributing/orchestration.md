@@ -181,7 +181,7 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
 
 **Conventions:**
 
-- **Branch `epic/<name>`**; the doc lives at `docs/specs/_epics/<name>.md` on that branch.
+- **Branch `epic/<name>`**; the doc lives at `spec/_epics/<name>.md` on that branch.
 - **Never-merged epic PR** — the reviewable + commentable surface. Stays open for the life
   of the *epic*; closes **unmerged** when the epic wraps.
 - **The epic branch is never deleted** (issue spec branches are; the epic branch is not) —

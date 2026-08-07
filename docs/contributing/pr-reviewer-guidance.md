@@ -101,7 +101,7 @@ the only review that change will ever get.
 > Decisions in its §6 are already signed off by a human, so please review the **code against
 > that direction**, not the direction itself. The spec lives on the issue's **Linear document**
 > (the durable copy) and on the **closed spec PR** ([link](#)), which keeps its review history.
-> Don't expect `docs/specs/<ISSUE-ID>.md` to be in *this* diff — the spec PR closes unmerged
+> Don't expect `spec/<ISSUE-ID>.md` to be in *this* diff — the spec PR closes unmerged
 > and its branch is deleted before implementation starts (BP-037).
 >
 > **Most valuable here:** correctness on the second path (the legacy shape, the null
