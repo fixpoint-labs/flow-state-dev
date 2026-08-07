@@ -6,8 +6,10 @@
 
 Scope stores can now require that a record does not exist. `set(id, record,
 "absent")` writes only when nothing is stored at that id and returns the ordinary
-conflict — carrying the winner's record — when something is. It works the same
-way on all four adapters: in-memory, filesystem, SQLite, and Postgres.
+conflict — carrying the winner's record — when something is. All four adapters
+accept it and mean the same thing by it: in-memory, filesystem, SQLite, and
+Postgres. How strongly each one can hold the line differs, which matters here —
+see the caveat below.
 
 This closes a create race on `POST /sessions`. The route used to read the id,
 find nothing, and write unconditionally, so two requests arriving together both
@@ -16,6 +18,14 @@ first, and each caller believed it had created the session. **Concurrent
 duplicate creates now resolve to one `201` and one `409`**, matching what a
 sequential duplicate has always returned. Picking a session id derived from your
 own data — a customer id, a topic, a date — is now safe to do concurrently.
+
+**On SQLite and Postgres that holds across processes**, because the backend
+decides the race. **On the filesystem store it holds within one process only.**
+That store serializes writes on an in-memory per-id lock, so two Node processes
+pointed at the same `rootDir` can still both find the id absent and both write.
+This is the same limitation the store contract already carries for
+compare-and-swap generally, and it is unchanged here — the create path simply
+inherits it. For a multi-process deployment, reach for SQLite or Postgres.
 
 `"absent"` is a new value on `ExpectedVersion`, alongside the version numbers and
 `"any"`. **If you use the bundled stores, nothing you call changes.** In
