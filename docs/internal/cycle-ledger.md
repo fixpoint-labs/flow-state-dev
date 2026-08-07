@@ -8,7 +8,13 @@ top recurring class, both trending **down** across cycles. Flat or rising means 
 upstream fixes landed at the wrong altitude — move them, don't add more.
 
 **Feedback classes:** `design-off` · `missed-edge-case` · `over-engineered` ·
-`spec-ambiguity` · `philosophy-drift` · `docs-miss` · `nit`.
+`spec-ambiguity` · `philosophy-drift` · `docs-miss` · `stale-restatement` · `nit`.
+
+`stale-restatement` (added cycle 2) is the document-surface sibling of
+`missed-edge-case`: a decision was corrected where it is *owned* and the surfaces
+that **restate** it — a table, an index, a diagram, a completion criterion — still
+carry the old answer. Kept separate because the fix differs: `missed-edge-case`
+wants the case handled, `stale-restatement` wants the restatements converged.
 
 ---
 
@@ -75,7 +81,9 @@ rounds-to-approval falls from 12. No trend exists yet — this cycle is the base
 
 ## Cycle 2 — durable-jobs epic-spec (2026-08)
 
-Scoped to **one artifact**, the epic-spec on [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993), across six automated review rounds in a single session. Not a full-cycle sweep — the epic's implementation PRs haven't run yet — so this row measures the *coordination artifact*, which is where the session's rework actually was.
+Not a full-cycle sweep — the durable-jobs epic's implementation PRs mostly haven't run yet — so the **class analysis below is scoped to one artifact**: the epic-spec on [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993), 18 findings across six automated review rounds in a single session. That is where the session's rework actually was.
+
+The two rows under it ([#1064](https://github.com/fixpoint-labs/flow-state-dev/pull/1064), [#1061](https://github.com/fixpoint-labs/flow-state-dev/pull/1061)) are recorded for cross-cycle continuity — they are the only non-epic PRs this session closed — but they are **not** in the dominant-class denominator. Read the trend off #993's 18.
 
 | PR | Kind | Rounds | Feedback classes | Design felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|
@@ -108,7 +116,9 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 | # | Fix | Altitude | Targets |
 |---|---|---|---|
 | A | Tenet 5's convergence clause widened to cover what you *write down*, not only what executes (`docs/philosophy.md`) | philosophy | the dominant class, all 15 |
-| B | `epic-lifecycle` fold step re-derives every restating surface from a changed decision, and names the two regressing sub-shapes | skill, fold-time | the same class, structurally, before review sees it |
+| B | `epic-agent`'s **Update** action re-derives the surfaces that restate a changed decision before committing, and names the two regressing sub-shapes; `epic-lifecycle` keeps a one-line pointer | subagent, edit-time | the same class, structurally, before review sees it |
+
+Fix B was **first written into `epic-lifecycle` and moved** — review caught that the coordinator only *dispatches* the fold while `epic-agent` performs the edit, and a sub-agent never reads the coordinator's skill. The fix had landed on the surface that describes the work rather than the one that does it, which is the same convergence error this cycle is about. Logged rather than quietly corrected: the fix reaching the wrong writer on its first attempt is evidence about how the class generalises.
 
 ### Dropped
 

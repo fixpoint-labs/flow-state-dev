@@ -561,17 +561,12 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   PR (sub-agents can't), so epic-PR feedback arrives here. The **folding** is the wake's:
   it dispatches `epic-agent` to triage against the bar, fold above-the-bar items into the
   epic-spec, refresh the running index from your table's PR handles (one update pass, not a
-  separate mode), and return `fanOut` — the issues an above-the-bar item touches.
-  **A fold that changes a decision is not done when the owning section is edited** (tenet 5):
-  the epic-spec restates every decision across its milestone table, membership, execution
-  sequence, blocked/lifecycle table, proposed-scope table, running index, open-question index,
-  diagrams, binding rules, and the objective's **completion criteria** — so the fold re-derives
-  those from the changed decision rather than editing around it. Two shapes regress most: a
-  **deferral rendered as a dependency** (an accepted deferral and "blocked by X" look identical
-  in a dependency column and mean opposite things — one starts when X lands, the other doesn't
-  start at all), and a **gate added to a rule but not to the index that governs it**. You route
-  those as **implementer notes**; a comment about a single issue's internals never goes into
-  that issue's spec. Nothing here pulls epic-comment *content* into the coordinator's context.
+  separate mode), and return `fanOut` — the issues an above-the-bar item touches. You route
+  those `fanOut` issues as **implementer notes**; a comment about a single issue's internals
+  never goes into that issue's spec. A fold that changes a decision must satisfy tenet 5 —
+  every surface of the epic-spec restating that decision moves with it — and `epic-agent` owns
+  that check at edit time, so don't re-derive it here.
+  Nothing here pulls epic-comment *content* into the coordinator's context.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.
