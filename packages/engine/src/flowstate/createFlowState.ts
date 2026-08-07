@@ -81,6 +81,13 @@ class InternalFlowState<TSettings extends object>
   #workerHandle: WorkerHandle | undefined;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
+    if (Object.hasOwn(options, "middleware")) {
+      throw new FlowStateConfigError(
+        "createFlowState: the removed `middleware` option is not executed. " +
+          "Move policy checks to the HTTP authentication layer or block logic."
+      );
+    }
+
     this.#options = options;
     this.#profileKeys = Object.keys(options.stores);
 

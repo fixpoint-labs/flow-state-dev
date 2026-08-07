@@ -144,6 +144,13 @@ export function buildBlock<
   const { kind, config } = options;
   const internalExecute = options.execute ?? config.execute;
 
+  if (Object.hasOwn(config, "middleware")) {
+    throw new Error(
+      `Block "${String(config.name)}" uses the removed "middleware" option. ` +
+      "Middleware is not executed; move policy checks to the HTTP authentication layer or block logic."
+    );
+  }
+
   if (typeof config.name !== "string" || config.name.trim().length === 0) {
     throw new Error(`Cannot build "${kind}" block without a non-empty "name"`);
   }

@@ -490,6 +490,108 @@ describe("request-addressed routes", () => {
   });
 });
 
+describe("user-addressed routes", () => {
+  async function registerActive(
+    stores: StoreRegistry,
+    init: { requestId: string; flowKind: string; userId: string }
+  ): Promise<void> {
+    const now = Date.now();
+    await stores.activeRequests.register({
+      requestId: init.requestId,
+      sessionId: `s-${init.requestId}`,
+      flowKind: init.flowKind,
+      actionName: "run",
+      userId: init.userId,
+      source: "http",
+      startedAt: now,
+      lastHeartbeatAt: now
+    });
+  }
+
+  it("does not sweep an authenticated flow's requests for an anonymous caller", async () => {
+    // `check-interrupted` mutates: it flips in-flight requests to `interrupted`
+    // and deregisters them. The userId comes from the path, so without scoping,
+    // anyone who can reach the port can disrupt an authenticated flow's runs.
+    const { router, stores } = buildRouter([secureFlow(), openFlow()]);
+    await seedRequest(stores, { id: "r-victim", flowKind: "secure", userId: "victim" });
+    await registerActive(stores, {
+      requestId: "r-victim",
+      flowKind: "secure",
+      userId: "victim"
+    });
+
+    const res = await call(router, "POST", ["users", "victim", "check-interrupted"], {
+      query: "staleThresholdMs=-1"
+    });
+    const body = (await res.json()) as { interrupted: { requestId: string }[] };
+
+    expect(res.status).toBe(200);
+    expect(body.interrupted).toEqual([]);
+    // Untouched, not merely omitted from the response.
+    expect((await stores.request.get("r-victim"))?.status).toBe("in_progress");
+    expect(await stores.activeRequests.get("r-victim")).toBeDefined();
+  });
+
+  it("still sweeps an unauthenticated flow's requests in that same mixed app", async () => {
+    // The route is scoped, not refused — the open flow it was built for keeps
+    // working alongside the authenticated one.
+    const { router, stores } = buildRouter([secureFlow(), openFlow()]);
+    await seedRequest(stores, { id: "r-open", flowKind: "open", userId: "alice" });
+    await registerActive(stores, {
+      requestId: "r-open",
+      flowKind: "open",
+      userId: "alice"
+    });
+
+    const res = await call(router, "POST", ["users", "alice", "check-interrupted"], {
+      query: "staleThresholdMs=-1"
+    });
+    const body = (await res.json()) as { interrupted: { requestId: string }[] };
+
+    expect(res.status).toBe(200);
+    expect(body.interrupted.map((e) => e.requestId)).toEqual(["r-open"]);
+    expect((await stores.request.get("r-open"))?.status).toBe("interrupted");
+  });
+
+  it("sweeps normally in an app where nothing authenticates", async () => {
+    // Every kind is unauthenticated, so scoping withholds nothing. This is the
+    // posture that a blanket 401 on user routes would have broken.
+    const { router, stores } = buildRouter([openFlow()]);
+    await seedRequest(stores, { id: "r-solo", flowKind: "open", userId: "alice" });
+    await registerActive(stores, {
+      requestId: "r-solo",
+      flowKind: "open",
+      userId: "alice"
+    });
+
+    const res = await call(router, "POST", ["users", "alice", "check-interrupted"], {
+      query: "staleThresholdMs=-1"
+    });
+    const body = (await res.json()) as { interrupted: { requestId: string }[] };
+
+    expect(res.status).toBe(200);
+    expect(body.interrupted.map((e) => e.requestId)).toEqual(["r-solo"]);
+  });
+
+  it("scopes the sweep to the caller's own requests once a host resolver is configured", async () => {
+    const { router, stores } = buildRouterWithHostResolver([secureFlow()]);
+    await seedRequest(stores, { id: "r-victim", flowKind: "secure", userId: "victim" });
+    await registerActive(stores, {
+      requestId: "r-victim",
+      flowKind: "secure",
+      userId: "victim"
+    });
+
+    const res = await call(router, "POST", ["users", "victim", "check-interrupted"], {
+      query: "staleThresholdMs=-1",
+      headers: { "x-verified-user": "attacker" }
+    });
+
+    expect(res.status).toBe(403);
+    expect((await stores.request.get("r-victim"))?.status).toBe("in_progress");
+  });
+});
+
 describe("apps on the framework default resolver", () => {
   it("serves session reads exactly as before", async () => {
     // These apps trust `body.userId` on the action path already, and their GETs

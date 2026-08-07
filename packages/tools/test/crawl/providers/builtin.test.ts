@@ -247,3 +247,57 @@ describe("globMatch", () => {
     expect(globMatch("/about-us", "/about")).toBe(false);
   });
 });
+
+describe("builtin crawl adapter — network boundary", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("does not request a private root URL", async () => {
+    globalThis.fetch = vi.fn();
+
+    const result = await builtinCrawlAdapter.crawl("http://169.254.169.254/", {
+      maxPages: 5,
+      maxDepth: 1,
+      includePatterns: [],
+      excludePatterns: [],
+    });
+
+    expect(result.pages).toEqual([]);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not follow an extracted link that points at a private address", async () => {
+    // The crawler's queue is filled from page markup, so a public page that
+    // links to loopback must not walk it there.
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url === "http://127.0.0.1/") {
+        throw new Error("crawler opened a socket to a private address");
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(
+            `<html><head><title>Root</title></head><body><p>Root page body text</p>` +
+              `<a href="http://127.0.0.1/">internal</a></body></html>`
+          ),
+        headers: new Headers({ "content-type": "text/html" }),
+      });
+    });
+
+    const result = await builtinCrawlAdapter.crawl("https://example.com/", {
+      maxPages: 5,
+      maxDepth: 2,
+      includePatterns: [],
+      excludePatterns: [],
+    });
+
+    expect(result.pages.map((p) => p.url)).toEqual(["https://example.com/"]);
+    for (const call of (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[0]).not.toContain("127.0.0.1");
+    }
+  });
+});
