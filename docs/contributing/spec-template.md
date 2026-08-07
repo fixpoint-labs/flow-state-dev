@@ -48,12 +48,15 @@ of it. What the example is for is showing what a section *looks like when it's d
 
 ---
 
-## For reviewers — what this document is
+## How to review this
 
-*(Paste this block verbatim at the top of the spec PR description — `issue-spec` Step 6.
-It is the one lever we have on automated reviewers we can't instruct. It is the **static**
-half; the description also carries a **per-PR** "Parts worth reviewing closely" block —
-see [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), canonical for both.)*
+*(Paste this block verbatim into the spec PR description's collapsed `<details>` block —
+`issue-spec` Step 6. It is the one lever we have on automated reviewers we can't instruct,
+and it says the same thing on every spec PR, which is why it sits **below the fold**: a bot
+reads collapsed markdown normally, a human skips it in one line. The description's visible
+half — the problem, what this does, what's asked of you, and "Parts worth reviewing
+closely" — is authored per PR. Layout and rules:
+[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), canonical.)*
 
 This is a **direction document**, not an implementation. Reviewing it well means
 answering one question: **is this the right approach?**
@@ -108,8 +111,9 @@ not line-level and is treated like any other above-the-bar finding.
 
 ## Parts worth reviewing closely
 
-*(Authored fresh for every spec PR, directly below the contract. 1–3 items, each with
-where · the question · what a wrong answer costs — plus where the author is unsure and
+*(Authored fresh for every spec PR, above the fold, after the problem / what this does /
+what's asked of you — a reviewer can't aim at a Decision they haven't met. 1–3 items, each
+with where · the question · what a wrong answer costs — plus where the author is unsure and
 what is deliberately absent. Rules and failure modes:
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
