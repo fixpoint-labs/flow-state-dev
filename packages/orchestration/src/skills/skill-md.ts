@@ -134,16 +134,28 @@ export function validateSkillName(name: string): void {
 // Delegation agents parser (FIX-918)
 // ---------------------------------------------------------------------------
 
-/** Pattern an agent key must match. Kebab/snake-case, ASCII alphanumeric. */
-const AGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+/**
+ * Pattern an assignee key must match. Kebab/snake/camel-case, ASCII
+ * alphanumeric.
+ *
+ * Uppercase is admitted (FIX-925) because this predicate no longer gates only
+ * hand-authored `agents:` keys: the board's tool seats are catalog keys, and a
+ * tool catalog is app code whose keys are camelCase by convention (`httpGet`,
+ * `webSearch`). A lowercase-only pattern would filter exactly those out of the
+ * worker registry, leaving the coordinator a tool it was told about and can't
+ * assign to.
+ */
+const AGENT_KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 
 /**
- * True when `key` is a legal agent key. The leading-`[a-z0-9]` requirement is
- * load-bearing beyond tidiness: the delegation board reserves underscore-led
- * names for routes an author must never be able to claim — the floor's worker
- * key (`__floor__`) and the absent-assignee sentinel (`__no_assignee__`,
- * `task-board/blocks/worker-step.ts`). It also keeps prototype-poisoning names
- * (`__proto__`, `toString`, `valueOf`) out of the plain-object worker registry.
+ * True when `key` is a legal assignee key — a declared agent's, or a catalog
+ * tool's. The leading-alphanumeric requirement is load-bearing beyond tidiness:
+ * the delegation board reserves underscore-led names for routes nothing may
+ * claim — the floor's worker key (`__floor__`) and the absent-assignee sentinel
+ * (`__no_assignee__`, `task-board/blocks/worker-step.ts`). The same anchor keeps
+ * `__proto__` out of the plain-object worker registry, where it would hit the
+ * prototype setter instead of creating an own key. Widening the character class
+ * (as FIX-925 did for uppercase) is safe; dropping the anchor is not.
  *
  * Exported because this parser is NOT the only way an agent map reaches the
  * board: `delegation-surface.ts` also reads `agents` off a live skill manifest,

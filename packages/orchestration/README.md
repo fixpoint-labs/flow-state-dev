@@ -218,15 +218,22 @@ with `delegation: true` even with no `agents:`). An agent is a prompt-driven
 teammate — defined inline (`prompt` / `prompt-ref`) inside the skill, or referenced
 from the registry (`agent-ref`).
 
+The board's other seats are the skill's **tools**, and nothing declares them: every
+key in its `allowed-tools` (or the whole catalog, when it declares none) is
+assignable by that key. The board calls the tool directly with the task's `input`
+as its arguments — no model turn — and records what it returns. A tool task gets
+dependency ordering from `deps` but not an upstream task's output; a step that must
+read one is an agent.
+
 Every delegation board also gets an on-demand **default worker**: it materializes on
 demand and runs any task whose assignee is unset, so a task with no named agent still
 runs, and an empty roster still delegates.
 
 Every tool that writes an `assignee` checks it: `addTask`, `assignTask`,
-and `updateTask` reject a name that isn't one of the declared agents, returning the
-available agents so the caller can correct it, instead of letting a mistyped name
-fall through to the default worker at drain time. A board with no declared agents
-has no roster to check and accepts any assignee.
+and `updateTask` reject a name that is neither a declared agent nor an assignable
+tool, returning the available ones so the caller can correct it, instead of letting a
+mistyped name fall through to the default worker at drain time. A board with no
+agents and an empty catalog has no roster to check and accepts any assignee.
 
 Binding the skill installs a private
 task board (own-state, scoped to that generator), the eight `taskTools` (`addTask`,

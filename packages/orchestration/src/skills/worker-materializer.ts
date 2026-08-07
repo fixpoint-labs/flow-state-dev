@@ -1,21 +1,25 @@
 /**
- * Agent → board-worker materialization for delegation skills (FIX-918).
+ * Participant → board-worker materialization for delegation skills (FIX-918).
  *
- * Given a parsed `AgentSpec` (one of `prompt`, `promptRef`, `agentRef`), build a
- * `BlockDefinition` the delegation board dispatches by `task.assignee`. Every
- * declared agent becomes a **board worker**: its `inputSchema` is the
- * substrate's `workerInputSchema` (`taskId`/`goal`/`attempts`/…) and its name is
- * namespaced (`skillWorker_<skill>_<key>`), matching what the board drain feeds.
- * There is no direct-call (host-tool) mode — work reaches an agent only by being
- * assigned as a task and drained (see `delegation-surface.ts`).
+ * Two kinds of participant reach the delegation board, and this module builds
+ * both into the SAME worker shape — `inputSchema` is the substrate's
+ * `workerInputSchema` (`taskId`/`goal`/`attempts`/…), name namespaced
+ * `skillWorker_<skill>_<key>` — so the board can't tell them apart. It routes by
+ * assignee and records the result. There is no direct-call (host-tool) mode:
+ * work reaches a participant only by being assigned as a task and drained (see
+ * `delegation-surface.ts`).
  *
- * Inline agents (`prompt`/`prompt-ref`) build a generator with the substituted
- * body as the system prompt; the `agentRef` branch resolves a registered Agent
- * through the injected registry + `materializeAgent`.
+ *   - **Agents**, from a parsed `AgentSpec` (`materializeWorker`). Inline
+ *     (`prompt`/`prompt-ref`) builds a generator with the substituted body as
+ *     the system prompt; `agentRef` resolves a registered Agent through the
+ *     injected registry + `materializeAgent`.
+ *   - **Tools**, from the skill's catalog (`materializeToolSeat`, FIX-925).
+ *     Nothing declares these — every tool the skill allows is already a seat.
  */
 
 import {
   generator,
+  sequencer,
   warnOnceDev,
   type GeneratorTool,
 } from "@flow-state-dev/core";
@@ -101,6 +105,50 @@ type WorkerInput = TaskWorkerInput;
  * not their size.
  */
 export const CONVERSATION_HISTORY_TURNS = 8;
+
+/**
+ * Adapt a catalog tool into a board worker — a **tool seat** (FIX-925).
+ *
+ * Nothing declares a tool seat. Every tool the skill allows is one, keyed by its
+ * catalog key, because the board already routes on `registry[task.assignee]` and
+ * a catalog tool already IS a `BlockDefinition`. All this function supplies is
+ * the envelope unwrap.
+ *
+ * That unwrap must be **compositional**, not a bare `tool.connectInput(...)`:
+ * the board feeds every worker a `TaskWorkerInput` envelope, but a tool declares
+ * its own typed argument schema, and `buildWorkerStep` applies its own
+ * `connectInput<Task>(packWorkerInput)` to every registered worker.
+ * `connectInput` REBUILDS a block with the new mapper rather than composing with
+ * the old one — so a bare unwrap would be clobbered and the tool would receive
+ * the whole envelope, failing its own `inputSchema`.
+ *
+ * Wrapping in a one-step sequencer keeps the unwrap on an INNER block the board
+ * never re-connects: the board connects the outer sequencer
+ * (`Task → TaskWorkerInput`), the inner tool keeps its own
+ * (`TaskWorkerInput → tool args`). This is why the substrate needs no edit
+ * (BP-011: compose as a sequencer, not a handler calling a block; BP-013:
+ * `connectInput` on the inner step).
+ *
+ * BP-025: no `outputSchema` is declared on the wrapper deliberately — the
+ * sequencer tracks its last step's schema, so the tool's NATIVE output schema
+ * propagates to `record-result` unchanged. Declaring one here would only create
+ * a second shape that could drift from the tool's.
+ *
+ * Synchronous, unlike `materializeWorker`: a seat resolves no registry and reads
+ * no file, so there is nothing to await.
+ */
+export function materializeToolSeat(
+  toolKey: string,
+  tool: GeneratorTool,
+  skillName: string,
+): BlockDefinition {
+  return sequencer({
+    name: `skillWorker_${skillName}_${toolKey}`,
+    inputSchema: workerInputSchema,
+  }).step(
+    (tool as unknown as BlockDefinition).connectInput<WorkerInput>((env) => env.input),
+  ) as unknown as BlockDefinition;
+}
 
 /**
  * Build the executable board worker for one agent entry.

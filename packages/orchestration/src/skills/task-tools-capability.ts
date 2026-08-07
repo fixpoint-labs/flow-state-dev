@@ -9,8 +9,9 @@
  *
  * The board is a **ledger** these tools plan on — `addTask` records a row and
  * returns its id; nothing executes it by itself. The executive runs delegated
- * work by assigning tasks (`addTask` with an `assignee` naming an agent) and
- * then calling `runBoard`, the delegation surface's drain over this same ledger.
+ * work by assigning tasks (`addTask` with an `assignee` naming a participant —
+ * an agent or, since FIX-925, a deterministic tool) and then calling `runBoard`,
+ * the delegation surface's drain over this same ledger.
  *
  * Board resolution goes through an injectable resolver (FIX-918). The default
  * reads the host generator's own-state board via `ctx.parent` (each handler
@@ -122,23 +123,26 @@ const taskNotFoundError = (id: string) => ({ ok: false as const, error: "task_no
 // Assignee validation (FIX-924)
 // ---------------------------------------------------------------------------
 /**
- * The declared agents a delegation board can be assigned to, plus a
- * human-readable rendering for error messages. Supplied by the delegation
- * surface so assignment is checked against the board's real participant
- * registry — the same list the executive's guidance advertises as "Your
- * agents:", so context and validation cannot disagree.
+ * The declared participants a delegation board can be assigned to — agents and
+ * tools alike, one namespace — plus a human-readable rendering for error
+ * messages. Supplied by the delegation surface so assignment is checked against
+ * the board's real participant registry — the same list the executive's guidance
+ * advertises as "Your team:", so context and validation cannot disagree.
  */
 export interface WorkerRoster {
-  /** True when `assignee` names a declared agent on this board. */
+  /**
+   * True when `assignee` names a participant on this board — a declared agent
+   * or one of its tool seats (FIX-925). Both live on one namespace.
+   */
   has(assignee: string): boolean;
-  /** Roster rendered for an error message, e.g. `researcher (…), writer (…)`. */
+  /** Roster rendered for an error message, e.g. `researcher (…), fetch (tool)`. */
   describe(): string;
 }
 
 const unknownAssigneeError = (assignee: string, roster: WorkerRoster) => ({
   ok: false as const,
   error:
-    `unknown_assignee: "${assignee}" is not an agent on this board. ` +
+    `unknown_assignee: "${assignee}" is not on this board's team. ` +
     `Available: ${roster.describe()}. Name one of these exactly, or leave ` +
     `assignee unset to run the task on the default worker.`,
 });
@@ -439,9 +443,11 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     name: "addTask",
     description:
       "Add a new task to your delegation board. Returns the new task id. " +
-      "assignee optionally names one of your agents; leave it unset to run the task " +
+      "assignee optionally names one of your agents or tools; leave it unset to run the task " +
       "on a capable default worker. Set deps to task ids that must finish first, and input " +
-      "to a structured payload for the worker. This records the task on the board; it does " +
+      "to a structured payload for the worker — when the assignee is a tool that payload is " +
+      "the tool's own arguments, and it is all the tool receives (deps order it, but it " +
+      "cannot read an upstream task's result). This records the task on the board; it does " +
       "not run it. The board may bound how many tasks wait at once and how many it may hold " +
       "in total: enqueued_task_cap_exceeded means too many tasks are already waiting to run, " +
       "and total_task_cap_exceeded is the lifetime ceiling, which draining does not reset.",
