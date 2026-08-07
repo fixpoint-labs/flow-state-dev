@@ -4,6 +4,8 @@ Use this template for Linear issue bodies that an AFK agent is expected to pick 
 
 When `issue-spec` produces a full spec document, the issue body is the *what / why* and the spec is the *how* — different shape entirely. This template is for the **lightweight path**: the issue body IS the implementation contract.
 
+The template below is already fold-shaped — the problem leads, and nothing precedes it. Two things from [`writing-for-humans.md`](writing-for-humans.md) still apply and aren't restated here: the **~100-word ceiling** on a Linear issue's above-the-fold half, and the fact that **Linear renders neither `<details>` nor collapsed blocks** — so detail goes below a `---` under a `## Detail` heading, in that order, rather than in a collapsed block.
+
 ## Principles
 
 ### Durability over precision

@@ -443,19 +443,13 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
    Then commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>` **ready for review** (not a draft) with `create_pull_request`. **Label the PR `spec`** so spec PRs stay filterable and the orchestrators can find them by label (create the `spec` label in the repo if it doesn't exist yet).
 
-   **Write the PR description to the fold**, per [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) and [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout" (canonical for both — follow them there rather than re-deriving). The order is fixed, and **nothing precedes the problem** — not a ref, not a label, not a sentence about what kind of document this is:
+   **Write the PR description per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to a **spec** PR is the mapping:
 
-   1. **The problem** — condense Part I §1. Two to four sentences plus *why now*, in words that don't require the codebase.
-   2. **What this does** — condense Part I §2, plus what it deliberately doesn't do. **Add one mermaid diagram if the change is a race, a path through layers, a DAG, or a state machine** — before/after is the highest-value shape. Skip it if prose already carries it.
-   3. **What's asked of you** — a 3–5 row table indexing Part I §6: the Decision in words (never the bare number), and what a wrong answer costs.
-   4. **Parts worth reviewing closely** — 1–3 items, authored fresh. It comes *after* 1–3 because a reviewer can't aim at a Decision they haven't met.
-   5. **Links line** — spec doc, Linear, epic, what this consumes, and that the PR is never merged.
-
-   **Budget ~400 words for 1–5.** Over budget means cut, not collapse more.
-
-   Then, collapsed in `<details>` blocks with labelled summaries: the **reviewer contract** (`## How to review this`, pasted **verbatim** from [`spec-template.md`](../../../docs/contributing/spec-template.md) — smoothing it weakens the only instruction an external bot receives, and never ship a spec PR without it), then **the rest of Part I** — §3 tradeoffs, §4 focus practices, §5 examples, §6 in full. Blocks 1–3 above are §1, §2 and the §6 index, so the collapsed case picks up where they stop and nothing is said twice. **If a Step 4 POC was built, add a collapsed POC block too** (one runnable command per artifact, the question it answers, and that it's throwaway).
-
-   **A known gap, a risk, or scope that grew never collapses** — it goes above the fold, short. Burying it costs a round explaining it was on purpose.
+   - **Block 1 (the problem)** ← Part I §1 condensed. **Block 2 (what this does)** ← §2, plus what it deliberately doesn't do. **Block 3 (what's asked of you)** ← a 3–5 row index of §6, each Decision carried **in words** rather than by bare number.
+   - **First collapsed block: the contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it.
+   - **Second collapsed block: the rest of Part I** — §3 tradeoffs, §4 focus practices, §5 examples, §6 in full. Blocks 1–3 already carry §1, §2 and the §6 index, so it picks up where they stop and nothing is said twice.
+   - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets.
+   - **If a Step 4 POC was built**, add a collapsed POC block: one runnable command per artifact, the question it answers, and that it's throwaway.
 
    Part II (the directional Build Plan) is reviewed via the committed doc diff, not pasted into the body. The PR is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the design *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as collapsed PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
 

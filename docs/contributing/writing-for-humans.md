@@ -36,6 +36,10 @@ in this order:
 - **What's asked of you** — the decision, the recommendation, and what it costs if it goes
   the other way. Or, in as many words: *nothing — this follows the approved spec.*
 
+A surface may add above-the-fold blocks of its own after these three, never before them. A
+**PR description** adds two — where to aim attention, and the links line — per
+[`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → "The layout".
+
 **3. Below the fold, everything else — collapsed, not deleted.** `<details>` blocks, each
 with a `<summary>` naming what's inside, so a reader opens only the one they want. This is
 the default everywhere, and it is **always** the form for a comment — PR, review, or issue

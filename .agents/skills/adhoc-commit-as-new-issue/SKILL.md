@@ -83,18 +83,9 @@ Scope: the primary affected package (e.g., `server`, `core`, `cli`, `thought-fab
 1. Push branch: `git push -u origin <branch>`
 2. Create PR with `gh pr create`:
    - Title: concise (under 70 characters)
-   - Body format:
-     ```
-     ## Summary
-     - <bullet points of what changed>
-
-     ## Test plan
-     - [x] <tests that were run>
-
-     Fixes FIX-{number}
-
-     🤖 Generated with [Claude Code](https://claude.com/claude-code)
-     ```
+   - Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout" like any other PR — the problem first, then what this does, then what's asked of you, with **nothing preceding the problem** (not `Fixes FIX-N`, not a summary heading). Most work on this route is small, so the whole body is often one paragraph and a links line with nothing to collapse; the budget is the small-change row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets.
+   - This route has **no spec and no gate upstream**, so paste the bug or brief-backed contract variant from `pr-reviewer-guidance.md` into a collapsed `<details>`, and put the test plan there too.
+   - The links line carries `Fixes FIX-{number}`.
 
 ### Step 7: Update Linear
 

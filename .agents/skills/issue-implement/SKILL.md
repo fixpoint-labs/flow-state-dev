@@ -343,19 +343,13 @@ Once approved:
 2. Push: `git push -u origin fix/{ISSUE-ID}`
 3. Open PR with `gh pr create`:
    - Title: concise description (under 70 characters)
-   - **Body: write it to the fold**, per [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) and [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout" (canonical — don't re-derive their rules here). The order is fixed, and **nothing precedes the problem** — not `Fixes FIX-N`, not a label, not a summary of what kind of change this is:
+   - **Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to an **implementation** PR is the mapping:
 
-     1. **The problem** — what broke, for whom, in words that don't require the codebase. On a spec-backed change this is the spec's §1, condensed.
-     2. **What this does** — the mechanism in plain terms, plus what it deliberately doesn't do. **Add one mermaid diagram if the change is a race, a path through layers, a DAG, or a state machine**; before/after is the highest-value shape. Skip it if prose already carries it.
-     3. **What's asked of you** — the **Key Decisions & Ramifications (top 5)** compiled in Step 7, one line each with what a wrong one costs, so reviewers evaluate the direction and not only the diff. On a spec-backed change where nothing new was decided, say exactly that in one line — its absence reads as an omission.
-     4. **Parts worth reviewing closely** — 1–3 items authored fresh for *this* diff, after 1–3 because a reviewer can't aim at a decision they haven't met. **Name your own weak spot here** (below).
-     5. **Links line** — `Fixes FIX-{number}`, the Linear document and the closed spec PR when there is one, and the **goal verdict** in a clause (goal-check command + PASS; or the documented no-goal-check justification; or diagnose's real-path confirmation for a bug).
-
-     **Budget ~150 words for 1–5.** Over budget means cut, not collapse more. A small change is often 50 words with nothing to collapse at all.
-
-     Then, collapsed in `<details>` blocks with labelled summaries: the **implementation-PR contract** for this issue's route, pasted **verbatim** (smoothing it weakens the only instruction an external bot receives); then the verification output — full typecheck/test runs and the red/green evidence; then file-by-file changes, if there are enough to be a list rather than a sentence.
-
-     **A risk, a regression, a known gap, a migration, or scope that grew beyond the spec never collapses** — it goes above the fold, short. Bad news buried in a `<details>` is worse than the long description it replaced.
+     - **Block 1 (the problem)** ← the spec's §1 condensed on the spec route, or the reported failure on a bug. **Block 3 (what's asked of you)** ← the **Key Decisions & Ramifications (top 5)** compiled in Step 7, one line each with what a wrong one costs, so reviewers evaluate the direction and not only the diff. Where the spec already settled everything and nothing new was decided, **say exactly that in one line** — its absence reads as an omission.
+     - **Block 5 (links line)** carries `Fixes FIX-{number}`, the Linear document and the closed spec PR when there is one, and the **goal verdict** in a clause: goal-check command + PASS, or the documented no-goal-check justification, or diagnose's real-path confirmation for a bug.
+     - **Collapsed, in order:** the implementation-PR contract for this issue's route, pasted **verbatim** (below); the verification output — full typecheck/test runs and the red/green evidence; then file-by-file changes, if there are enough to be a list rather than a sentence.
+     - **Budget:** the implementation-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets. A small change is often the whole body with nothing to collapse at all.
+     - **Scope that grew beyond the approved spec never collapses.** It is the one piece of news a reviewer of a spec-backed change cannot get from the diff.
 
      **Pick the contract by what backs this change** — there are three, they are not interchangeable, and the wrong one inverts the review you get:
      - **Spec-backed** → the approach and every §6 Decision are already human-approved, so review the code against that direction rather than re-arguing it, and a genuine spec-level finding gets folded back instead of litigated inline. **Link the Linear document and the closed spec PR — not `docs/specs/<ISSUE-ID>.md`**, which Step 3 already closed-and-deleted the branch for, so it isn't in this diff.
