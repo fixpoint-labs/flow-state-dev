@@ -111,10 +111,15 @@ Rules, all cheap to check:
 
 ## 3. What's asked of you
 
-The decisions and their consequences — **3–5, one line each**, with what a wrong one
-costs. On a spec PR this is the §6 index (the full text stays in the collapsed case); on
-an implementation PR it's the Key Decisions & Ramifications list; on an epic PR it's the
-cross-cutting decisions.
+The decisions and their consequences — **one line each**, with what a wrong one costs. On
+an implementation PR that's the Key Decisions & Ramifications list, capped at five; on an
+epic PR, the cross-cutting decisions.
+
+**Where the artifact defines a sign-off surface, the cap doesn't apply — show all of it.**
+A spec's §6 allows up to eight Decisions and every one of them is what approval certifies
+(`spec-template.md` → §6). Indexing five of eight asks a reviewer to approve three they
+can't see, which is worse than a slightly longer table. Eight one-liners still fits a
+screen; the full text stays in the collapsed case.
 
 Carry the substance alongside the number, never the number alone — a bare "Decision 3"
 makes the reader rebuild a map they don't have.
@@ -216,14 +221,19 @@ same review is the mistake this table exists to prevent.
 - **Epic PR** — authored by the `epic-agent` when it opens or refreshes the epic PR;
   contract from [`epic-spec-template.md`](epic-spec-template.md).
 - **Implementation PR** — authored in `issue-implement` Step 9; contract is one of the
-  three variants below, picked by what backs the change.
+  four variants below, picked by what backs the change.
 
-### Implementation-PR contract — three variants, picked by what backs the change
+### Implementation-PR contract — four variants, picked by what backs the change
 
-An implementation PR reaches review with one of three things behind it, and they need
-**different** review. Getting this wrong is a real defect, not a cosmetic one: telling
-reviewers "the approach is already approved" on a change where nothing was approved
-suppresses the only review that change will ever get.
+An implementation PR reaches review with one of four things behind it — an approved spec, a
+diagnosis, a one-screen brief, or nothing at all — and they need **different** review.
+Getting this wrong is a real defect, not a cosmetic one: telling reviewers "the approach is
+already approved" on a change where nothing was approved suppresses the only review that
+change will ever get. The same is true in the other direction — asserting a brief that
+doesn't exist promises work was small and local when it wasn't.
+
+`issue-implement` routes to the first three. The fourth belongs to passes whose scope came
+from the material rather than from an issue.
 
 **1. Spec-backed** (Feature · Enhancement · Improvement with an approved spec):
 
@@ -273,6 +283,25 @@ reviewers at a repro that doesn't exist:
 > legacy shape, the null boundary, the concurrent case, the cancel path).
 >
 > **In scope to challenge:** the approach, the scope, and whether this earned its place at all.
+
+**4. No upstream contract at all** — an editorial or cleanup pass whose scope came from the
+state of the code or docs rather than from an issue. `polish-docs` at epic wrap is the
+standing case. **Do not paste variant 3 here:** it asserts a brief exists and that the work
+was expected to be small and local, and a corpus-level pass is neither. Claiming provenance
+a change doesn't have is the same defect as claiming an approval it didn't get.
+
+> **How to review this.** This is a **cleanup pass with no upstream contract** — no spec, no
+> brief, no issue defining its scope. What to change was derived from the state of the
+> material itself, so **nothing was signed off anywhere and this PR is the only gate**. It is
+> deliberately broad rather than small and local.
+>
+> **Most valuable here:** whether anything changed meaning rather than presentation — a
+> caveat dropped, an API detail lost, an example quietly altered — and whether the new
+> arrangement is actually easier to navigate than the old one. Both are judgment calls a
+> human makes better than a diff reader.
+>
+> **In scope to challenge:** the rearrangement itself, anything cut, and whether the pass
+> earned its place at all.
 
 Each variant ends there. **"Parts worth reviewing closely" is not part of the contract** —
 it's authored per PR and lives above the fold, at position 4, where a human reaches it.
@@ -343,7 +372,9 @@ sequenceDiagram
 
 ## What's asked of you
 
-Approve the direction, or push back on one of these three:
+Approve the direction, or push back on any of these. *(Three of §6's seven rows are shown
+here to keep the example short — a real spec PR indexes **every** Decision, because §6 is
+the sign-off surface.)*
 
 | # | Decision | If it's wrong |
 |---|---|---|

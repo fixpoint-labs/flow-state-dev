@@ -445,7 +445,7 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
    **Write the PR description per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to a **spec** PR is the mapping:
 
-   - **Block 1 (the problem)** ← Part I §1 condensed. **Block 2 (what this does)** ← §2, plus what it deliberately doesn't do. **Block 3 (what's asked of you)** ← a 3–5 row index of §6, each Decision carried **in words** rather than by bare number.
+   - **Block 1 (the problem)** ← Part I §1 condensed. **Block 2 (what this does)** ← §2, plus what it deliberately doesn't do. **Block 3 (what's asked of you)** ← an index of §6 with **one row per Decision — every one of them**, each carried **in words** rather than by bare number. §6 is the sign-off surface, so a Decision left out of the index is one the reviewer is asked to approve without seeing.
    - **First collapsed block: the contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it.
    - **Second collapsed block: the rest of Part I** — §3 tradeoffs, §4 focus practices, §5 examples, §6 in full. Blocks 1–3 already carry §1, §2 and the §6 index, so it picks up where they stop and nothing is said twice.
    - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets.

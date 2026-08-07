@@ -4,7 +4,7 @@ Use this template for Linear issue bodies that an AFK agent is expected to pick 
 
 When `issue-spec` produces a full spec document, the issue body is the *what / why* and the spec is the *how* — different shape entirely. This template is for the **lightweight path**: the issue body IS the implementation contract.
 
-The template below is already fold-shaped — the problem leads, and nothing precedes it. Two things from [`writing-for-humans.md`](writing-for-humans.md) still apply and aren't restated here: the **~100-word ceiling** on a Linear issue's above-the-fold half, and the fact that **Linear renders neither `<details>` nor collapsed blocks** — so detail goes below a `---` under a `## Detail` heading, in that order, rather than in a collapsed block.
+The template below carries the fold from [`writing-for-humans.md`](writing-for-humans.md): the problem leads, nothing precedes it, and a `---` plus a `## Detail` heading divide what a human triaging the queue reads from what the implementing agent needs. That form rather than `<details>` because **Linear renders neither `<details>` nor collapsed blocks**. Keep the two sections above the rule within the **~100-word ceiling** for a Linear issue; the detail below it is unbudgeted.
 
 ## Principles
 
@@ -49,6 +49,14 @@ change builds on.
 What should happen after the change is in. Be specific about edge cases,
 error conditions, and observable outcomes through the stream / state /
 return values.
+
+---
+
+## Detail
+
+Everything below the rule is for the implementing agent. A human triaging
+the queue stops here. Linear renders neither `<details>` nor collapsed
+blocks, so the rule and this heading are what carry the fold.
 
 ## Key surfaces
 
@@ -113,6 +121,10 @@ A reconnecting client provides its last seen sequence via either
 with `sequence_number <= last_seen` and resume from the next emitted
 item. No item is delivered twice; no item is silently skipped.
 
+---
+
+## Detail
+
 ## Key surfaces
 
 - `createSSEStream` in `@flow-state-dev/engine` — accept resume cursor,
@@ -159,6 +171,10 @@ across versions of the capability.
 When present, every context entry produced by the capability is prefixed
 with that string at emission time. Existing capabilities without
 `contextPrefix` behave unchanged.
+
+---
+
+## Detail
 
 ## Key surfaces
 
