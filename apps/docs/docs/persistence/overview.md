@@ -170,19 +170,25 @@ Note the shape of `resolveSession` above: it lists, finds nothing, then creates.
 
 When the natural identity of a session is something you already have, you can use it as the session id directly rather than looking it up.
 
+The id has to carry everything that tells one session from another. Session storage keys off the tenant and the session id, nothing else: `userId` and `flowKind` are fields on the record, not part of the key. So inside one tenant, two users deriving the same ticker and date land on the same session, and so do two flows. The second caller gets a `409` for a session that isn't theirs, and reading that session back returns the other user's or the other flow's record, or a `403` in an app that configures authentication. Derive the id from enough to keep them apart:
+
 ```ts
+const sessionId = [flowKind, userId, key.ticker, key.date].join("-");
+
 const created = await sessions.createSession({
   flowKind,
   userId,
-  sessionId: `${key.ticker}-${key.date}`,
+  sessionId,
 });
 ```
+
+Pick a separator your components can't contain, or hash them, so that two different component sets can't join into the same string.
 
 Creating a session that already exists returns `409 Conflict`. On SQLite and Postgres that holds under concurrency: if two requests create the same id at the same moment, one gets `201` and the other `409`, with no window where both succeed and the second quietly overwrites the first. Treat the `409` as "someone else got there" and read the existing session.
 
 The filesystem store gives you that inside a single process. Two processes pointed at the same directory can both find the id free and both write, so one record overwrites the other and both callers see a `201`. It's the same in-process limit that applies to its compare-and-swap, laid out in [Concurrency by store](#concurrency-by-store). The in-memory store is a single process by definition, so the multi-process case never comes up.
 
-The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, but you still want the id to be stable and unique within a tenant — and you cannot change it later without creating a new session.
+The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, and you cannot change an id later without creating a new session.
 
 The trading-desk example uses this pattern end-to-end — see the [walkthrough](/guides/trading-desk-walkthrough#session-lifecycle-and-persistence).
 
