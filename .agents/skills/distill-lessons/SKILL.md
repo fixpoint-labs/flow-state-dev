@@ -92,9 +92,11 @@ produce, don't add ceremony.
   | spec PR | its approval | spec PRs are never merged |
   | epic PR | **epic close** (the wrap, when this skill runs anyway) | never merges, *and* its objective gate lands near the **start** while direction feedback continues for the epic's whole life — record the gate as a marker, not the endpoint |
 
-  **Epic wrap is the universal fallback endpoint.** If an artifact's kind-specific endpoint
-  never occurred — a spec PR still unapproved, an implementation PR neither merged nor closed —
-  score it at wrap. This is not hypothetical: `epic-wake` treats a cancelled or dropped Linear
+  **When a kind-specific endpoint never occurred, fall back to the moment of collection.**
+  Concretely: **epic wrap** when this runs at epic wrap, and **collection time** when it runs in
+  periodic or per-PR mode outside an epic — those runs have no wrap event, and an endpoint
+  defined only for the epic-scoped path silently drops every standalone artifact. Either way the
+  case is the same: a spec PR still unapproved, an implementation PR neither merged nor closed. This is not hypothetical: `epic-wake` treats a cancelled or dropped Linear
   state as terminal and stops holding `mayWrap`, without requiring that issue's PRs be closed
   first, so an epic can legitimately wrap over open PRs belonging to abandoned work. Those
   artifacts still get rows; an endpoint that only fires on the happy path silently drops exactly

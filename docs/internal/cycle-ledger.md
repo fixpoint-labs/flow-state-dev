@@ -79,6 +79,13 @@ layer.
 `missed-edge-case (invariant breadth)` falls as a share of findings, and spec
 rounds-to-approval falls from 12. No trend exists yet — this cycle is the baseline.
 
+> **Superseded on the rounds axis.** The `12` here is a raw pass count. Cycle 2's
+> spent-round rule (count only rounds actually spent, exclude `nit`, treat a third round as
+> the flag) caps a spec PR near three, so any post-rule spec compared against this 12 shows
+> a ~75% "improvement" from the definition change alone. **The `missed-edge-case`-share
+> half of this claim still stands** — findings were classified, not round-counted. The
+> rounds half does not; that trend restarts at the first spec scored under the rule.
+
 ---
 
 ## Cycle 2 — durable-jobs epic-spec (2026-08)
@@ -144,7 +151,7 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 | D | **direction artifact** named as the kind covering spec *and* epic PRs, so the review-bar scoring, the `nit` exclusion, the claims fields and the endpoint all reach both; endpoints given as one table (impl→merge · spec→approval · epic→epic close), in-flight epics scored as explicit partials | skill, scoring | makes epic round counts comparable **from the next epic onward** (#993 predates the rule and is labelled raw), and stops an epic's lifetime activity reading as rework |
 | E | the epic-wrap lessons skip is **partial** — ledger rows always append **and always land as a draft rows-only PR**; only the grounding proposal is skippable | skill, wrap | survivor bias: a ledger holding only epics that had findings can't show an improvement — and rows that never leave the wrap worker's worktree are the same bias by another route |
 
-**The fixes for this class took ten rounds to reach all their own writers, and that is the
+**The fixes for this class took eleven rounds to reach all their own writers, and that is the
 cycle's sharpest evidence.**
 
 | Round | The fix as written | The writer it missed |
@@ -159,8 +166,9 @@ cycle's sharpest evidence.**
 | 8 | round 7 recorded in this table | **the sentence introducing this table still said "four rounds"** while the table below it listed seven and the paragraph below that said seven |
 | 9 | endpoint table written for three artifact kinds | it gave implementation PRs only `merge`, though an epic may wrap on issues **dropped** during `PR_FEEDBACK` — a dropped impl PR had no endpoint at all. Separately: the reconciliation rule enumerated surfaces *inside* the epic-spec, while the **PR description** restates decisions too |
 | 10 | `close` added as the impl-PR endpoint | patched the *named* case and missed the family: `epic-wake` treats a cancelled Linear state as terminal **without closing that issue's PRs**, so an epic can wrap over open PRs whose endpoint still doesn't exist. Fixed as a universal fallback (score at wrap) rather than a fourth case |
+| 11 | "universal" fallback = epic wrap | not universal — this skill also runs **periodic / per-PR outside an epic**, where no wrap event exists, so standalone abandoned artifacts still had none. Separately: **cycle 1's claim still compared spec rounds against a raw pre-rule 12** — the identical defect fixed for #993 five rounds earlier, one section up in the same file |
 
-Ten rounds, each the same error the fix is about, each caught by review and not by the author.
+Eleven rounds, each the same error the fix is about, each caught by review and not by the author.
 
 **Round 8 is the purest instance this cycle will produce, and it should be read as the finding
 rather than as trivia.** The defect was in the sentence that introduces *this table* — the table
@@ -195,13 +203,13 @@ claimed to have enumerated every writer — and still missed the primary collect
 It also introduced a *new* defect: "always append the rows" with no path for the rows to land, so
 a clean epic's row would have died in the wrap worker's worktree — the same survivor bias the fix
 existed to remove, reintroduced by the fix. Enumeration beat patching, and it still wasn't
-sufficient. Rounds 6 through 10 then repeated the shape five more times, each inside a *fix for the shape* —
+sufficient. Rounds 6 through 11 then repeated the shape six more times, each inside a *fix for the shape* —
 and round 8 inside the very table that counts them.
 
-**Ten rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
+**Eleven rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
 and it does not say what the fixes claim.** Fix A and fix B were chosen on the theory that naming
 the class in the grounding gets an agent to converge restatements without being told which ones.
-This PR tested that theory on its own author, live, ten times — and the author needed an external
+This PR tested that theory on its own author, live, eleven times — and the author needed an external
 reviewer on every single one, including after adopting the enumerate-every-writer procedure that
 was supposed to be the answer. Round 7's finding was generated *by* round 6's fix; the unified
 token in round 7 was itself inconsistent on first write.
@@ -226,7 +234,7 @@ sharper prose closes.
 Cycle 3 still decides formally: if `stale-restatement` does not fall as a share of epic-PR
 findings, reading 2 is confirmed. But the honest recommendation *now* is to rebuild and cost the
 consistency-check this cycle dropped, rather than spend another cycle collecting evidence for a
-conclusion ten rounds already point at. Do not let a third cycle pass on reading 1 by default.
+conclusion eleven rounds already point at. Do not let a third cycle pass on reading 1 by default.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.
@@ -243,4 +251,4 @@ from a fix that worked. A trend the collector cannot see is not a trend.
 
 ### Claim to test next cycle
 
-Stale-restatement findings fall as a share of epic-PR review, and no epic-spec commit whose subject is "propagate correction X" leaves knock-ons behind. **Measurable only because fixes C, D and E made epic PRs collectable, their rounds comparable, and a clean epic's row land at all** — score it against #993's **11-of-18 findings** baseline, which is the comparable axis. Do **not** score it against #993's round count: that is raw and pre-rule (see the note under the table). Treat a zero as suspect until you have confirmed the epic PR was actually sampled. Cycle 1's claim (`missed-edge-case` breadth, spec rounds from 12) is still open — this cycle produced one implementation PR (#1064, 2 rounds, no `missed-edge-case`), too small a sample to move it.
+Stale-restatement findings fall as a share of epic-PR review, and no epic-spec commit whose subject is "propagate correction X" leaves knock-ons behind. **Measurable only because fixes C, D and E made epic PRs collectable, their rounds comparable, and a clean epic's row land at all** — score it against #993's **11-of-18 findings** baseline, which is the comparable axis. Do **not** score it against #993's round count: that is raw and pre-rule (see the note under the table). Treat a zero as suspect until you have confirmed the epic PR was actually sampled. Cycle 1's claim is **half open, half retired**: the `missed-edge-case`-breadth share is still open (this cycle produced one implementation PR — #1064, 2 rounds, no `missed-edge-case` — too small a sample to move it), while its *spec rounds from 12* half is retired as incomparable for the same reason #993's count is: 12 is a raw pre-rule number and the rule now caps a spec near three. Two baselines have now been invalidated by the same definition change; check for a third before trusting any rounds trend in this file.
