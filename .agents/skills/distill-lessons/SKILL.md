@@ -68,28 +68,38 @@ produce, don't add ceremony.
 - **The metric that matters:** rounds-to-approval and `design-off` frequency trending
   **down** across cycles. That downward trend *is* the proof the harness is improving.
   Flat or rising means the upstream fixes aren't landing where the rework actually is.
-- **Score spec PRs against the review bar, not against comment volume.** A spec PR is a
-  direction check on a budget of two rounds, and most of its feedback is *expected* to be
-  below the bar — recorded as implementer notes, not folded in (see
-  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review"). So for
-  a spec PR: count a round only where a round was actually *spent*, class a below-the-bar
-  comment as `nit` and **exclude `nit` from the rework signal**, and treat a **third round**
-  — which by rule requires a genuine spec-level finding — as the real flag. Ten notes on a
-  two-round spec is a healthy review, not rework; reading it as rework would produce
-  grounding changes aimed at noise. Implementation PRs keep the ordinary scoring, and
-  `rounds-to-approval` for a spec PR ends at its approval, not a merge (spec PRs are never
-  merged).
-- **An epic PR needs its own endpoint, because it never merges and its approval comes early.**
-  The objective gate (`epic approved`) lands near the *start* and the artifact keeps taking
-  direction feedback for the epic's whole life, so neither merge nor approval bounds it. Count
-  an epic PR's rounds **to epic close** — the wrap, which is when this skill runs anyway. Record
-  the objective gate as a marker, not the endpoint. An epic still in flight is scored as a
-  **partial** and labelled as one (`6 (in flight)`), never compared against a closed epic's
-  total; a partial read as a total is how an epic that got worse looks like one that improved.
+- **Score direction artifacts against the review bar, not against comment volume.** A
+  **direction artifact** is a PR whose job is to settle an approach rather than ship code —
+  **spec PRs and epic PRs both**. Each runs on a budget of two rounds, and most of its
+  feedback is *expected* to be below the bar — recorded as implementer notes, not folded in
+  (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review").
+  So for **either kind**: count a round only where a round was actually *spent*, class a
+  below-the-bar comment as `nit` and **exclude `nit` from the rework signal**, and treat a
+  **third round** — which by rule requires a genuine direction-level finding — as the real
+  flag. Ten notes on a two-round spec is a healthy review, not rework; reading it as rework
+  would produce grounding changes aimed at noise. Implementation PRs keep the ordinary
+  scoring.
+
+  This matters most for an epic PR, which stays open for the epic's whole life: without the
+  `nit` exclusion and the spent-round rule, its total measures **lifetime activity** rather
+  than review rework, and every bot pass and issue-local comment inflates it.
+- **Each artifact kind ends its count somewhere different — use the right endpoint.**
+
+  | Kind | `rounds-to-approval` ends at | Why not the obvious one |
+  |---|---|---|
+  | implementation PR | merge | — |
+  | spec PR | its approval | spec PRs are never merged |
+  | epic PR | **epic close** (the wrap, when this skill runs anyway) | never merges, *and* its objective gate lands near the **start** while direction feedback continues for the epic's whole life — record the gate as a marker, not the endpoint |
+
+  An epic still in flight is scored as a **partial** and labelled as one (`6 (in flight)`),
+  never compared against a closed epic's total; a partial read as a total is how an epic that
+  got worse looks like one that improved.
 - **Record `claims-settled` — the flip-flop class and whether settling it worked.** A spec
   round spent re-arguing the *same factual claim* is the most expensive review pattern we have,
   and it now has a designated cure: a POC settlement ([`orchestration.md`](../../../docs/contributing/orchestration.md)
-  → "Settling a disputed claim"). So the ledger carries, per spec PR: `claims-looped` (distinct
+  → "Settling a disputed claim"). So the ledger carries, **per direction artifact — spec PR or
+  epic PR** (an epic PR loops claims too, and `epic-agent` can request the same settlement):
+  `claims-looped` (distinct
   behavioral claims argued in **two or more** rounds), `claims-settled` (how many went to a POC),
   and each verdict (`CONFIRMED` / `REFUTED` / `INCONCLUSIVE`). Two things to read off it, and
   they cut in opposite directions:

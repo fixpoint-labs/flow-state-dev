@@ -1,7 +1,9 @@
 # Cycle ledger
 
 Measurement instrument for the development loop, maintained by the `distill-lessons`
-skill. One row per spec or implementation PR, derived from GitHub review data.
+skill. One row per **spec, implementation, or epic** PR, derived from GitHub review data.
+Epic PRs are rows in their own right — they carry a rework class their child specs
+don't, and a ledger that samples only children reports zero for it.
 
 **The metric that matters:** rounds-to-approval and the share of findings in the
 top recurring class, both trending **down** across cycles. Flat or rising means the
@@ -127,7 +129,8 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 | A | Tenet 5's convergence clause widened to cover what you *write down*, not only what executes (`docs/philosophy.md`) | philosophy | the dominant class, all 11 |
 | B | `epic-agent` re-derives the surfaces that restate a changed decision before committing, and names the two regressing sub-shapes — a standing rule binding **every** action, not one bullet; `epic-lifecycle` keeps a one-line pointer | subagent, edit-time | the same class, structurally, before review sees it |
 | C | `distill-lessons` collects **epic** PRs alongside spec and implementation PRs, **and `epic-lifecycle`'s wrap dispatch passes the epic PR** | skill, collector + its caller | makes A and B measurable at all — see below |
-| D | epic PRs get their own `rounds-to-approval` endpoint (to epic close, not merge or objective gate), and an in-flight epic is scored as an explicit partial | skill, scoring | keeps epic round counts comparable across cycles |
+| D | **direction artifact** named as the kind covering spec *and* epic PRs, so the review-bar scoring, the `nit` exclusion, the claims fields and the endpoint all reach both; endpoints given as one table (impl→merge · spec→approval · epic→epic close), in-flight epics scored as explicit partials | skill, scoring | keeps epic round counts comparable, and stops an epic's lifetime activity reading as rework |
+| E | the epic-wrap lessons skip is **partial** — ledger rows always append, only the grounding proposal is skippable | skill, wrap | survivor bias: a ledger holding only epics that had findings can't show an improvement |
 
 **The fixes for this class took four rounds to reach all their own writers, and that is the
 cycle's sharpest evidence.**
@@ -138,10 +141,20 @@ cycle's sharpest evidence.**
 | 2 | moved to `epic-agent`, inside the `Update` bullet | **End-state POC** also changes decisions, and is dispatched separately |
 | 3 | hoisted to a standing rule over all actions | the *dual-sync to Linear* was itself guarded at two of three actions — a reconciled branch doc beside a stale mirror |
 | 4 | collector widened to sample epic PRs | its **caller** at epic wrap still passed only the children, so the widened contract would never receive one |
+| 5 | epic PRs given an endpoint | the *other* rules keyed to "spec PR" — review-bar scoring, the `nit` exclusion, the claims fields, the ledger's own declared row scope — still excluded them; and a clean epic skipped the ledger entirely, biasing every trend |
 
-Four rounds, each the same error the fix is about, each caught by review and not by the author.
+Five rounds, each the same error the fix is about, each caught by review and not by the author.
 Round 4 is the purest: the contract was corrected and its one caller was not — a convergence
 failure in a change whose entire subject is convergence failures.
+
+Round 5 is the instructive one, because it shows *how* the loop was being run wrong. Rounds 1–4
+each patched the one writer the reviewer named, which is precisely the behaviour tenet 5 warns
+produces "review will keep finding more of them." Round 5 was fixed differently: grep every place
+the taxonomy is written down, then converge them in one pass — which surfaced two restatements
+(`epic-lifecycle`'s phase table, and a cross-reference to the old `lessons: skipped:` token) that
+no reviewer had flagged. **The enumeration found what the review queue hadn't.** That is the
+difference between applying the lesson and describing it, and it is the strongest argument in this
+cycle for fix A being at the right altitude.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.

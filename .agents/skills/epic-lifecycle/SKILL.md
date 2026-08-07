@@ -36,7 +36,7 @@ ends the turn:
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
 | **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Each** wrap pass is either surfaced as a draft PR **or explicitly skipped** — both passes have documented skip conditions (no rework worth measuring · no docs touched), so "skipped, and why" is a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Each** wrap pass is either surfaced as a draft PR **or explicitly skipped** — both have documented skip conditions (no rework worth *proposing a fix for* · no docs touched), so "skipped, and why" is a terminal outcome exactly like "surfaced". The lessons skip is **partial**: the ledger rows are always appended, only the grounding proposal is skippable. Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -546,7 +546,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   2. **Record it in the epic record, or it re-dispatches every wake.** `AWAITING_OBJECTIVE` wakes
      on every bot review and CI event, and the trigger is judgment — so it re-fires unless the
      answer is written down. Write `spec_poc: <path> · showed: <one line>` — or
-     `spec_poc: skipped: <why>` — the same way `lessons: skipped:` makes a wrap terminate. **A
+     `spec_poc: skipped: <why>` — the same way `lessons: … proposal skipped:` makes a wrap
+     terminate. **A
      skip is a recorded outcome, not a silent one.**
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
@@ -586,11 +587,19 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   the lessons itself. **Spec-review rounds are ledger signal too** — an epic whose specs each
   needed a third round is telling you something about the spec-authoring altitude, and the
   ledger is where that becomes visible. This is also where the Fable-escalation trial is
-  *measured* — the ledger's `design-off` trend is the evidence it's earning its cost. Skip for
-  an epic with no rework worth measuring — this is the loop-measurement payoff, not
-  ceremony for every run. **A skip is a recorded outcome, not a silent one:** write
-  `lessons: skipped: <why>` to the epic record and report it, so EPIC_WRAP can complete
-  instead of waiting forever on a PR that will never open.
+  *measured* — the ledger's `design-off` trend is the evidence it's earning its cost.
+
+  **The skip is partial, and the split is deliberate.** An epic with no rework worth measuring
+  skips the *grounding-proposal* pass — no tenet/BP sharpening, no lessons PR. It does **not**
+  skip the ledger rows: **always append the factual rows, including for a clean epic.** A clean
+  epic is the most valuable row the instrument has — dropping it leaves a ledger containing only
+  epics that had findings, so `rounds-to-approval` and `design-off` measure a survivor-biased
+  sample and a genuine improvement is invisible by construction. Rows are data; the proposal is
+  the judgment call, and only the judgment call is skippable.
+
+  **A skipped proposal is a recorded outcome, not a silent one:** write
+  `lessons: rows appended; proposal skipped: <why>` to the epic record and report it, so
+  EPIC_WRAP can complete instead of waiting forever on a PR that will never open.
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch
