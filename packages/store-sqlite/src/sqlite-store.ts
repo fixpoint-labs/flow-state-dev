@@ -142,9 +142,12 @@ export function createSQLiteRecordStore<
     // an existing record, so "absent" is a call-site error rather than a lost
     // race, and it must never reach the `expectedVersion + 1` below or the
     // numeric bind parameter beside it.
-    if (expectedVersion === "absent") {
+    //
+    // Refused by shape rather than by name, so a future member of
+    // `ExpectedVersion` cannot reach that arithmetic either.
+    if (typeof expectedVersion !== "number" && expectedVersion !== "any") {
       throw new TypeError(
-        `${verb} cannot take expectedVersion "absent": delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+        `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
       );
     }
     if (path.length < 1 || path.length > 2) {

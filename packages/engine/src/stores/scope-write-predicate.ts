@@ -82,19 +82,25 @@ export function checkScopeWriteVersion<TRecord extends { version: number }>(
  * Mirrored in both SQL adapters' delta paths and pinned across all four by the
  * scope-store conformance suite.
  *
- * The assertion signature carries the refusal into the type system: after this
- * runs, `expectedVersion` narrows to `number | "any"`, so the `expectedVersion
- * + 1` in every delta path is checked rather than trusted. That arithmetic is
- * where `"absent"` would otherwise have become the version string `"absent1"`
- * — silently, since nothing about it is a type error on its own.
+ * The assertion signature narrows `expectedVersion` to `number | "any"` for
+ * the rest of the caller, which is what lets the `expectedVersion + 1` in
+ * every delta path stand — that arithmetic is where a string sentinel would
+ * otherwise become a version like `"absent1"`, silently, since nothing about
+ * it is a type error on its own.
+ *
+ * **So the check must be an allowlist, not a denylist.** An `asserts`
+ * signature is a promise the compiler takes on trust: it narrows a future
+ * fifth member of `ExpectedVersion` away without a word, and a guard that
+ * named only the members it knew would hand that member straight to the
+ * arithmetic. Refusing everything that is not `number | "any"` is what makes
+ * the promise true, and it is why this rejects by shape rather than by name.
  */
 export function assertDeltaExpectedVersion(
   expectedVersion: ExpectedVersion,
   verb: string
 ): asserts expectedVersion is number | "any" {
-  if (expectedVersion === "absent") {
-    throw new TypeError(
-      `${verb} cannot take expectedVersion "absent": delta verbs update an existing record. Use set(id, record, "absent") to create one.`
-    );
-  }
+  if (typeof expectedVersion === "number" || expectedVersion === "any") return;
+  throw new TypeError(
+    `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+  );
 }

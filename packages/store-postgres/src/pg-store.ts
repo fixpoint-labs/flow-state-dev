@@ -137,16 +137,20 @@ export function createPgRecordStore<
    * `expectedVersion + 1` (which would yield the string `"absent1"`) and bind
    * `expectedVersion` to an `int` parameter. Those are the two places a string
    * fails silently rather than loudly.
+   *
+   * Refused by shape rather than by name, matching the engine module: the
+   * `asserts` signature narrows any future member of `ExpectedVersion` away
+   * without a compile error, so a guard naming only the members it knew would
+   * hand that member to the arithmetic below.
    */
   const assertDeltaExpectedVersion: (
     expectedVersion: ExpectedVersion,
     verb: string
   ) => asserts expectedVersion is number | "any" = (expectedVersion, verb) => {
-    if (expectedVersion === "absent") {
-      throw new TypeError(
-        `${verb} cannot take expectedVersion "absent": delta verbs update an existing record. Use set(id, record, "absent") to create one.`
-      );
-    }
+    if (typeof expectedVersion === "number" || expectedVersion === "any") return;
+    throw new TypeError(
+      `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+    );
   };
 
   /**

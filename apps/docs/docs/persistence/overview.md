@@ -162,6 +162,24 @@ async function resolveSession(flowKind: string, userId: string, key: RunKey) {
 
 Server-side `metadata` filtering on `GET /api/flows/sessions` is not yet available; the route returns the full list for `(flowKind, userId)` and the client filters in memory. That's fine for local development and small-tenant use. Apps that expect hundreds of sessions per user should treat this as a deliberate ceiling and revisit when a server-side filter lands.
 
+Note the shape of `resolveSession` above: it lists, finds nothing, then creates. Two calls that overlap both find nothing and both create, so you end up with two sessions for one key. If that matters, use the derived id instead.
+
+### Deriving the session id from your data
+
+When the natural identity of a session is something you already have, you can use it as the session id directly rather than looking it up.
+
+```ts
+const created = await sessions.createSession({
+  flowKind,
+  userId,
+  sessionId: `${key.ticker}-${key.date}`,
+});
+```
+
+Creating a session that already exists returns `409 Conflict`, and that holds under concurrency: if two requests create the same id at the same moment, one gets `201` and the other `409`. The server decides it, so there is no window where both succeed and the second quietly overwrites the first. Treat the `409` as "someone else got there" and read the existing session.
+
+The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, but you still want the id to be stable and unique within a tenant — and you cannot change it later without creating a new session.
+
 The trading-desk example uses this pattern end-to-end — see the [walkthrough](/guides/trading-desk-walkthrough#session-lifecycle-and-persistence).
 
 ## Choosing a store

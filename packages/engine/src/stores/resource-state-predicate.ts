@@ -89,10 +89,15 @@ export function resourceStateConflict(
  *
  * The assertion signature carries the refusal into the type system: after this
  * runs, `expectedVersion` narrows to `number | "any"`, so every downstream body
- * that does arithmetic on it or binds it to a SQL parameter is checked rather
- * than trusted. Adding a fourth member to `ExpectedVersion` will surface as a
- * compile error in each of those bodies instead of a silent wrong answer —
- * `"absent" !== 5` is, after all, a perfectly good comparison.
+ * that does arithmetic on it or binds it to a SQL parameter can rely on that
+ * without restating the check.
+ *
+ * The narrowing is a promise the compiler takes on trust, which is why the
+ * check below is an allowlist. `Number.isInteger` plus the `"any"` early
+ * return refuses every non-numeric value including ones this union does not
+ * have yet — a guard that named only the members it knew would narrow a
+ * future member away silently and hand it to that arithmetic. `"absent" !== 5`
+ * is, after all, a perfectly good comparison.
  *
  * The rule is stated here and mirrored in the two SQL adapters, which cannot
  * import runtime engine code (see {@link resourceStateConflict}); the shared
@@ -107,6 +112,9 @@ export function assertExpectedVersion(
   expectedVersion: ExpectedVersion
 ): asserts expectedVersion is number | "any" {
   if (expectedVersion === "any") return;
+  // Named ahead of the numeric check purely for the message: `Number.isInteger`
+  // already refuses it, but "must be a non-negative integer" is unhelpful
+  // advice for a caller who reached for the scope stores' create-if-absent.
   if (expectedVersion === "absent") {
     throw new TypeError(
       'expectedVersion "absent" is not supported by ResourceStateStore; use 0, which means "no live row" here'

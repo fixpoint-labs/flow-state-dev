@@ -143,11 +143,11 @@ export function createSQLiteResourceStateStore(
    * It is equally what keeps `"absent"` out of the numeric bind parameter
    * below, where a string would fail silently rather than loudly.
    *
-   * The assertion signature is what makes that second guarantee the
-   * compiler's rather than a comment's: once this has run, `expectedVersion`
-   * narrows to `number | "any"`, so the `expectedVersion + 1` and the numeric
-   * binds further down stop type-checking the moment someone routes a new
-   * non-numeric sentinel past here.
+   * The assertion signature lets the `expectedVersion + 1` and the numeric
+   * binds further down rely on that without restating the check. The narrowing
+   * is a promise the compiler takes on trust, so the check is an allowlist:
+   * `Number.isInteger` refuses every non-numeric value, including members this
+   * union does not have yet.
    */
   const assertExpectedVersion: (
     expectedVersion: ExpectedVersion
