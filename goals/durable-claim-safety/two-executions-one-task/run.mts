@@ -46,7 +46,6 @@ import {
 } from "@flow-state-dev/orchestration/task-board";
 import {
   loadFixture,
-  registryFor,
   runGoal,
   silentLogger,
   stripIntentOverrides,
@@ -95,12 +94,57 @@ const board = taskBoard({
 });
 
 /** A promise plus its resolver — the deterministic interleaving primitive. */
-function gate(): { reached: Promise<void>; open(): void } {
+interface Gate {
+  readonly reached: Promise<void>;
+  open(): void;
+}
+function gate(): Gate {
   let open!: () => void;
   const reached = new Promise<void>((resolve) => {
     open = resolve;
   });
   return { reached, open };
+}
+
+/**
+ * Await a gate, or fail naming it.
+ *
+ * Every handoff in this check crosses executions, and `runAction` CAPTURES a
+ * body's throw rather than propagating it — so a racer that dies during
+ * hydration or inside `claim()` never opens the gate the other side is parked
+ * on, and a bare `await` then blocks forever. A goal that hangs produces no
+ * verdict at all, and takes any `goal:all` sweep containing it down with it:
+ * the one outcome this artifact exists to prevent is the one it would then
+ * report least. The budget only has to beat a human's patience, never be tight
+ * enough to go flaky on a loaded machine.
+ *
+ * Deliberately a local copy of the integration suite's helper
+ * (`packages/integration-tests/src/scenarios/task-board-durable-claim-safety.test.ts`)
+ * rather than a shared one — `goals/README.md` puts the bar for a `goals/lib`
+ * helper at a *third* consumer, and a test package cannot import from `goals/`.
+ */
+const GATE_TIMEOUT_MS = 10_000;
+async function reach(g: Gate, what: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      g.reached,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `gate "${what}" was never opened — the other execution did not reach it, ` +
+                  `so this scenario never happened`
+              )
+            ),
+          GATE_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 /** One execution: a flow with a single handler running `body` on the board. */
@@ -135,7 +179,6 @@ await runGoal(async (): Promise<GoalResult> => {
   /** Launch one real execution over the shared SQLite stores and session. */
   const run = async (name: string, body: (tasks: Board) => Promise<unknown>) => {
     const flow = execution(name, body);
-    registryFor(flow);
     const result = await runAction({
       flow: flow as never,
       actionName: "run",
@@ -193,22 +236,30 @@ await runGoal(async (): Promise<GoalResult> => {
     const racerRuns = ["racer-a", "racer-b"].map((name) =>
       run(name, async (tasks) => {
         arrive();
-        await bothReady.reached;
+        await reach(bothReady, "both racers arrived at the barrier");
         // The `status` clause is NOT redundant with narrowing to one id: a
         // custom `eligibility` REPLACES the substrate's default (pending +
         // deps satisfied), and readiness is what the claim's re-check inside
         // the atomic write consults to decide it lost the race. Narrow by id
         // alone and every racer's re-check passes on an already-claimed task,
         // so the board hands the same task out twice — measured, not assumed.
-        const mine = await tasks.claim(name, {
-          eligibility: (t) => t.id === fixture.contendedTask && t.status === "pending",
-        });
-        decide();
+        //
+        // `decide()` runs in a `finally`: a claim that THROWS still has to
+        // release the barrier, or the run below it waits on a decision that
+        // will never come and the whole check hangs instead of failing.
+        let mine: Task<{ goal: string }, unknown> | null;
+        try {
+          mine = await tasks.claim(name, {
+            eligibility: (t) => t.id === fixture.contendedTask && t.status === "pending",
+          });
+        } finally {
+          decide();
+        }
         if (mine === null) return { claimed: false };
         // The winner KEEPS HOLDING its task across the stranger's write. A
         // task already settled would be refused by the terminal guard, which
         // would prove nothing about ownership.
-        await strangerDone.reached;
+        await reach(strangerDone, "the stranger finished its write");
         return {
           claimed: true,
           attempt: mine.attempts,
@@ -229,7 +280,7 @@ await runGoal(async (): Promise<GoalResult> => {
     // whose siblings are already running. See goal.md's anti-game note: on the
     // opposite ordering the write is refused by an unrelated guard arm and the
     // check would pass without proving anything.
-    await claimsDecided.reached;
+    await reach(claimsDecided, "both racers decided their claim");
 
     const stranger = await run("stranger", async (tasks) => {
       const mine = await tasks.claim("stranger", {

@@ -27,7 +27,6 @@ import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 import {
   durableStores,
   loadFixture,
-  registryFor,
   runGoal,
   stripIntentOverrides,
 } from "../../lib/index.mts";
@@ -106,7 +105,6 @@ await runGoal(async () => {
   })({ id: "default" });
 
   const { stores, runtimeConfig } = durableStores();
-  registryFor(flow);
 
   const result = await runAction({
     flow: flow as never,

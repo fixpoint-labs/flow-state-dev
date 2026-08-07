@@ -345,7 +345,16 @@ describe("durable task board: two executions contending for one task", () => {
     // MEASURED: already delivered by FIX-992's CAS driver. The loser's claim
     // re-checks eligibility against refreshed state after its write conflicts,
     // sees the winner's row, and stands down.
-    const { stores, sessionId } = await seedBoard(["solo"]);
+    //
+    // The board is seeded with TWO tasks and the racers narrow to one, rather
+    // than racing for a lone task on default eligibility. That is the same
+    // setup the goal check runs (`goals/durable-claim-safety/`), which needs
+    // two tasks because its binding property needs a second one to hold — and
+    // two spellings of one scenario is how the pair silently drifts apart.
+    // It also buys an assertion the solo board could not make: a racer
+    // narrowed to "a" must not be handed "b", so an implementation that
+    // ignores the predicate outright is caught here rather than passing.
+    const { stores, sessionId } = await seedBoard(["a", "b"]);
 
     const bothReady = gate();
     let arrived = 0;
@@ -363,7 +372,17 @@ describe("durable task board: two executions contending for one task", () => {
         run(stores, sessionId, `racer-${i}`, async (tasks) => {
           arrive();
           await reach(bothReady, "both racers arrived at the barrier");
-          const claimed = await tasks.claim(workerId);
+          // The `status` clause is NOT redundant with narrowing to one id: a
+          // custom `eligibility` REPLACES the substrate's default (pending +
+          // deps satisfied) rather than narrowing it, and readiness is what
+          // the claim's re-check inside the atomic write consults to decide
+          // it lost the race. Drop it and both racers' re-checks pass on an
+          // already-claimed task, so the board hands "a" out twice and this
+          // test fails for a reason that has nothing to do with the code
+          // under test.
+          const claimed = await tasks.claim(workerId, {
+            eligibility: (t) => t.id === "a" && t.status === "pending",
+          });
           return claimed === null
             ? null
             : { id: claimed.id, attempts: claimed.attempts };
@@ -377,11 +396,17 @@ describe("durable task board: two executions contending for one task", () => {
     // fixed once.
     for (const c of claims) expect(c.error).toBeUndefined();
     const winners = claims.map((c) => c.output).filter((o) => o !== null);
-    expect(winners).toEqual([{ id: "solo", attempts: 1 }]);
+    expect(winners).toEqual([{ id: "a", attempts: 1 }]);
 
-    const durable = await durableTask(stores, sessionId, "solo");
+    const durable = await durableTask(stores, sessionId, "a");
     expect(durable?.status).toBe("in_progress");
     expect(durable?.attempts).toBe(1);
+
+    // The task neither racer was eligible for is untouched — the predicate was
+    // honoured, not ignored in favour of "any pending task".
+    const other = await durableTask(stores, sessionId, "b");
+    expect(other?.status).toBe("pending");
+    expect(other?.attempts).toBe(0);
   });
 
   it("a displaced worker's settlement is refused, and the new holder's stands", async () => {
