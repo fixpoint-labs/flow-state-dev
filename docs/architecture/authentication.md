@@ -164,6 +164,15 @@ a page can come back shorter than `limit`; the alternative is one query per
 allowed kind, which is not worth it for a path that exists only when a
 host-level `resolvePrincipal` is absent.
 
+User-addressed routes (`/users/:userId/...`) take the same treatment, and it
+matters more there because one of them writes. `check-interrupted` sweeps stale
+in-flight requests to `interrupted` and deregisters them, and its `userId` comes
+from the path, so in a mixed app an anonymous caller could otherwise disrupt an
+authenticated flow's runs by naming its user. The sweep is therefore restricted
+to the same unauthenticated flow kinds; entries belonging to any other flow are
+skipped rather than reported-but-mutated. An app where nothing authenticates
+gets every kind back and is unaffected.
+
 ### Session creation
 
 `create_session` takes `userId` and `orgId` from the resolved principal, not

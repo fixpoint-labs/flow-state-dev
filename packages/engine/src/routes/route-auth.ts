@@ -262,11 +262,17 @@ export async function authorizeManagementRoute(
   const resolver = pickPrincipalResolver(ctx.registry, flowKind, ctx.hostResolver);
   if (isDefaultBodyUserIdPrincipalResolver(resolver)) {
     // No authentication governs this route. For a flow-scoped route that means
-    // the flow is genuinely open in this app, so leave it alone. A
-    // user-addressed route (`/users/:userId/...`) acts on one caller's own
-    // records rather than listing across flows, so it is left alone too.
-    if (subject.kind !== "host") return ALLOWED;
+    // the flow is genuinely open in this app, so leave it alone.
+    if (subject.kind !== "host" && subject.kind !== "user") return ALLOWED;
 
+    // A user-addressed route (`/users/:userId/...`) takes its userId from the
+    // path, so an anonymous caller can name anyone. That is harmless while every
+    // flow is open, but `check-interrupted` *mutates* — it sweeps in-flight
+    // requests to `interrupted` — so in a mixed app it would let an anonymous
+    // caller disrupt an authenticated flow's runs. Scope it the same way as the
+    // cross-flow listing below rather than refusing the route: an app where
+    // nothing authenticates gets every kind back and is unaffected.
+    //
     // A cross-flow listing is different: some other flow may authenticate, and
     // serving its sessions here would hand them out through the back door.
     // Withhold those rows rather than refusing the route — refusing would take
