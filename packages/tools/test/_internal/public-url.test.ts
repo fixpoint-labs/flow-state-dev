@@ -88,6 +88,8 @@ describe("isPublicIp — IPv6 forms that bypass a naive prefix check", () => {
     ["2606:2800:220:1:248:1893:25c8:1946"],
     ["2001:4860:4860::8888"],
     ["::ffff:93.184.216.34"],
+    // NAT64 well-known prefix embedding a genuinely public IPv4.
+    ["64:ff9b::5db8:d822"],
   ])("accepts public %s", (address) => {
     expect(isPublicIp(address)).toBe(true);
   });
@@ -99,6 +101,10 @@ describe("isPublicIp — IPv6 forms that bypass a naive prefix check", () => {
     ["unassigned", "4000::1"],
     ["SRv6 (RFC9602)", "5f00::1"],
     ["documentation (RFC9637)", "3fff::1"],
+    // Matches the `64:ff9b` head but sits outside the /96 allocation, so it
+    // must not be judged on its last 32 bits alone.
+    ["NAT64 head outside the /96", "64:ff9b:dead:beef::5db8:d822"],
+    ["NAT64 local-use /48 (RFC8215)", "64:ff9b:1::5db8:d822"],
     ["2001:db8 documentation", "2001:db8::1"],
     ["protocol assignments", "2001:1::1"],
   ])("rejects out-of-global-range %s (%s)", (_label, address) => {

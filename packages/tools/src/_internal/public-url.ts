@@ -136,8 +136,14 @@ function isPublicIpv6(address: string): boolean {
   if (isZeroPrefix96 && (g5 === 0xffff || g5 === 0)) {
     return isPublicIpv4(embeddedIpv4(g6, g7));
   }
-  // NAT64 `64:ff9b::/96` and `64:ff9b:1::/48`.
-  if (g0 === 0x0064 && g1 === 0xff9b) {
+  // NAT64 well-known prefix, `64:ff9b::/96` exactly — the whole /96 must be
+  // zero, not just the `64:ff9b` head. Matching the wider `64:ff9b::/32` would
+  // judge an address like `64:ff9b:dead:beef::5db8:d822` on its last 32 bits
+  // alone and wave it through on a public-looking suffix, even though it falls
+  // outside the allocation and would otherwise be rejected below. The local-use
+  // `64:ff9b:1::/48` gets no exemption: it is local by definition, so it falls
+  // through and is refused.
+  if (g0 === 0x0064 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
     return isPublicIpv4(embeddedIpv4(g6, g7));
   }
   // 6to4 `2002::/16` embeds its IPv4 in the next 32 bits.
