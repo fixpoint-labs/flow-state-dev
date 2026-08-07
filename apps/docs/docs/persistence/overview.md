@@ -74,11 +74,11 @@ How much compare-and-swap safety each store actually gives you differs, and it i
 | Store | Scope state | Resource state |
 |---|---|---|
 | In-memory | Serialized per container | Real compare-and-swap (single process by definition) |
-| Filesystem | Serialized per container | Compared under a per-key lock, **within one process only** |
+| Filesystem | Serialized per container | Compared under a per-key lock, **per store instance** |
 | SQLite | Real compare-and-swap | Real compare-and-swap |
 | Postgres | Real compare-and-swap | Real compare-and-swap |
 
-The filesystem row is the one to read twice. Two contexts inside one Node process are protected. Two separate processes pointed at the same directory are not — the lock lives in process memory, not on disk. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
+The filesystem row is the one to read twice. The lock lives on the store instance, in memory rather than on disk, so it covers every write that goes through that instance and nothing past it. A second store pointed at the same directory races with the first, whether the two sit in one Node process or two. Most apps build one store and hand it to `createFlowState`, so in practice the boundary falls at the process; the instance is what actually draws it. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
 
 The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.sessionResources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 
@@ -186,7 +186,7 @@ Pick a separator your components can't contain, or hash them, so that two differ
 
 Creating a session that already exists returns `409 Conflict`. On SQLite and Postgres that holds under concurrency: if two requests create the same id at the same moment, one gets `201` and the other `409`, with no window where both succeed and the second quietly overwrites the first. Treat the `409` as "someone else got there" and read the existing session.
 
-The filesystem store gives you that inside a single process. Two processes pointed at the same directory can both find the id free and both write, so one record overwrites the other and both callers see a `201`. It's the same in-process limit that applies to its compare-and-swap, laid out in [Concurrency by store](#concurrency-by-store). The in-memory store is a single process by definition, so the multi-process case never comes up.
+The filesystem store gives you that among writes through one store instance. Point a second store at the same directory and both can find the id free and both write, so one record overwrites the other and both callers see a `201`. That happens whether the two stores sit in one Node process or two. It's the same per-instance limit that applies to its compare-and-swap, laid out in [Concurrency by store](#concurrency-by-store). The in-memory store holds its data in the instance, so two of them are two separate datasets rather than a race.
 
 The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, and you cannot change an id later without creating a new session.
 

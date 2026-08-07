@@ -567,7 +567,7 @@ A `delete` is idempotent at the terminal state: deleting a key that is already a
 
 ### Per-adapter guarantee
 
-Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts in one Node process, and does not coordinate two OS processes over one directory.
+Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts that share that instance, and does not coordinate two instances over one directory, whether they sit in one Node process or two.
 
 ### The collection-item HTTP routes use it
 
@@ -579,8 +579,9 @@ touch content, so a request that loses a race never reaches `ContentStore`.
   `expectedVersion: 0` (create-if-absent) and writes content only after that
   commits. Two clients creating the same topic get one `201` and one `409`, and
   the stored body belongs to the client that won; on the filesystem adapter that
-  holds within one process only, per the per-adapter guarantee above. The
-  conflict is terminal — a losing create is never retried into an overwrite.
+  holds only among writes through one store instance, per the per-adapter
+  guarantee above. The conflict is terminal — a losing create is never retried
+  into an overwrite.
 - `DELETE /sessions/:id/resources/:ref/:topic` reads the row's version, deletes
   state conditionally on it, and deletes content only after that commits. If
   the row moves between that read and the delete, the request returns `409` and
