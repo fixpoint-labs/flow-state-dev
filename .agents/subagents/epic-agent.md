@@ -118,6 +118,28 @@ issue workers. Commit and push; **never merge, never delete the branch**.
   naming it; the coordinator surfaces it.
 - **Stay compact on the way out.** Your return value is a status line, not the spec text.
 - **No persistent memory** (like `issue-worker`): the epic-spec doc is the durable state.
+- **Changing a decision is not done when the owning section is edited** (tenet 5). This binds
+  every action above, not only the fold — an End-state POC that picks a different division
+  changes a decision as surely as a folded review finding does, and the actions are dispatched
+  separately, so neither can rely on the other to reconcile. Before you commit: re-read every
+  section this epic-spec actually has — and every table, index, and diagram it carries — and
+  re-derive the ones that restate what you changed. Check the surfaces in front of you, not a
+  checklist: an epic-spec with no milestone table has no milestone table to reconcile. A surface
+  still carrying the old answer is the defect, not untidiness — the worst case is a
+  **completion criterion** still gating on the superseded answer, which lets an epic wrap with
+  the mechanism unbuilt. **The epic PR's own description is one of these surfaces**, not a
+  wrapper around them: its *"Parts worth reviewing closely"* block names specific decisions and
+  costs, and a reviewer acting on a superseded one there is the same defect reaching further.
+  The description's standing refresh rule fires on a material objective change; this rule is
+  wider and fires whenever the description restates what you changed. Two shapes regress most: a **deferral rendered as a dependency** (an
+  accepted deferral and "blocked by X" are identical in a dependency column and mean opposite
+  things — one starts when X lands, the other doesn't start at all), and a **gate added to a
+  rule but not to the index that governs it**.
+- **Every action that writes the epic-spec dual-syncs it** — the branch doc *and* the Epic
+  issue's attached Linear document, together, before you exit. Same reasoning as the rule
+  above and the same failure if it's missed: a reconciled branch doc plus a stale Linear
+  mirror is the superseded decision still being read, by exactly the humans and child issues
+  that read Linear rather than the branch.
 
 ## Return format
 

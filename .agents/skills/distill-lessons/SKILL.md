@@ -45,36 +45,72 @@ expected outcome.
 
 ### Measuring the loop — the cycle-ledger (auto-derived)
 
-The loop's dominant cost is **review rework**: spec and implementation PRs that take
-many rounds to converge. That cost is the signal — measure it from data you already
+The loop's dominant cost is **review rework**: spec, implementation, and **epic** PRs that
+take many rounds to converge. That cost is the signal — measure it from data you already
 produce, don't add ceremony.
 
 - **Auto-derive the ledger** from GitHub + Linear (GitHub MCP `pull_request_read` /
   review + comment endpoints; Linear for issue state history — see CLAUDE.md →
-  "Linear access" for the channel). For each recent spec and implementation PR, record: **rounds-to-approval** (distinct review passes
-  before merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
-  `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` · `nit`),
+  "Linear access" for the channel). For each recent spec, implementation, **and epic** PR,
+  record: **rounds-to-approval** (distinct review passes up to that
+  artifact kind's endpoint — see the endpoint table below; *never* assume merge, since
+  neither spec nor epic PRs merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
+  `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` ·
+  `stale-restatement` · `nit` — the ledger header defines each),
   whether the design was flagged "felt off" (by a reviewer or the challenger), and one
   line: "what upstream change would have prevented this." Append to
   `docs/internal/cycle-ledger.md` (create it if absent; one row per PR).
+- **Sample the epic PR, not only its children.** An epic-spec is a coordination artifact
+  reviewed on its own PR, and it carries a rework class its child specs don't (cycle 2's
+  `stale-restatement`, 11 of 18 findings, was entirely epic-PR review). Collect the epic PR
+  itself alongside the children — at epic wrap that means the epic's own PR plus the child
+  spec/implementation PRs. A collector that samples only children reports **zero** for a
+  class that is alive, which reads as progress and is not.
 - **The metric that matters:** rounds-to-approval and `design-off` frequency trending
   **down** across cycles. That downward trend *is* the proof the harness is improving.
   Flat or rising means the upstream fixes aren't landing where the rework actually is.
-- **Score spec PRs against the review bar, not against comment volume.** A spec PR is a
-  direction check on a budget of two rounds, and most of its feedback is *expected* to be
-  below the bar — recorded as implementer notes, not folded in (see
-  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review"). So for
-  a spec PR: count a round only where a round was actually *spent*, class a below-the-bar
-  comment as `nit` and **exclude `nit` from the rework signal**, and treat a **third round**
-  — which by rule requires a genuine spec-level finding — as the real flag. Ten notes on a
-  two-round spec is a healthy review, not rework; reading it as rework would produce
-  grounding changes aimed at noise. Implementation PRs keep the ordinary scoring, and
-  `rounds-to-approval` for a spec PR ends at its approval, not a merge (spec PRs are never
-  merged).
+- **Score direction artifacts against the review bar, not against comment volume.** A
+  **direction artifact** is a PR whose job is to settle an approach rather than ship code —
+  **spec PRs and epic PRs both**. Each runs on a budget of two rounds, and most of its
+  feedback is *expected* to be below the bar — recorded as implementer notes, not folded in
+  (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review").
+  So for **either kind**: count a round only where a round was actually *spent*, class a
+  below-the-bar comment as `nit` and **exclude `nit` from the rework signal**, and treat a
+  **third round** — which by rule requires a genuine direction-level finding — as the real
+  flag. Ten notes on a two-round spec is a healthy review, not rework; reading it as rework
+  would produce grounding changes aimed at noise. Implementation PRs keep the ordinary
+  scoring.
+
+  This matters most for an epic PR, which stays open for the epic's whole life: without the
+  `nit` exclusion and the spent-round rule, its total measures **lifetime activity** rather
+  than review rework, and every bot pass and issue-local comment inflates it.
+- **Each artifact kind ends its count somewhere different — use the right endpoint.**
+
+  | Kind | `rounds-to-approval` ends at | Why not the obvious one |
+  |---|---|---|
+  | implementation PR | merge — or **close**, if it was dropped during `PR_FEEDBACK` and never merged | an epic may wrap on issues that were *merged, closed, or dropped*, and the collector records every implementation PR, so "merge" alone leaves a dropped PR with no endpoint at all |
+  | spec PR | its approval | spec PRs are never merged |
+  | epic PR | **epic close** (the wrap, when this skill runs anyway) | never merges, *and* its objective gate lands near the **start** while direction feedback continues for the epic's whole life — record the gate as a marker, not the endpoint |
+
+  **When a kind-specific endpoint never occurred, fall back to the moment of collection.**
+  Concretely: **epic wrap** when this runs at epic wrap, and **collection time** when it runs in
+  periodic or per-PR mode outside an epic — those runs have no wrap event, and an endpoint
+  defined only for the epic-scoped path silently drops every standalone artifact. Either way the
+  case is the same: a spec PR still unapproved, an implementation PR neither merged nor closed. This is not hypothetical: `epic-wake` treats a cancelled or dropped Linear
+  state as terminal and stops holding `mayWrap`, without requiring that issue's PRs be closed
+  first, so an epic can legitimately wrap over open PRs belonging to abandoned work. Those
+  artifacts still get rows; an endpoint that only fires on the happy path silently drops exactly
+  the abandoned work a rework metric should be counting.
+
+  Anything scored at the fallback — and any epic still in flight — is a **partial** and labelled
+  as one (`6 (in flight)`), never compared against a completed total; a partial read as a total
+  is how an epic that got worse looks like one that improved.
 - **Record `claims-settled` — the flip-flop class and whether settling it worked.** A spec
   round spent re-arguing the *same factual claim* is the most expensive review pattern we have,
   and it now has a designated cure: a POC settlement ([`orchestration.md`](../../../docs/contributing/orchestration.md)
-  → "Settling a disputed claim"). So the ledger carries, per spec PR: `claims-looped` (distinct
+  → "Settling a disputed claim"). So the ledger carries, **per direction artifact — spec PR or
+  epic PR** (an epic PR loops claims too, and `epic-agent` can request the same settlement):
+  `claims-looped` (distinct
   behavioral claims argued in **two or more** rounds), `claims-settled` (how many went to a POC),
   and each verdict (`CONFIRMED` / `REFUTED` / `INCONCLUSIVE`). Two things to read off it, and
   they cut in opposite directions:

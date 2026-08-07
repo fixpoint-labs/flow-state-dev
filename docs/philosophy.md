@@ -155,6 +155,14 @@ through, and a check is only as strong as the producers it rules out. If you can
 find that convergence point, you haven't found the owning layer — you're patching
 call sites, and review will keep finding more of them.
 
+**The same arithmetic governs what you write down.** A decision restated in ten places
+is corrected in none of them until every restatement moves, and a coordination
+document's tables, indexes, diagrams, and completion criteria *are* restatements — they
+are what a reader acts on, not decoration around the section that owns the decision. So
+the change is the edit plus every surface carrying the old answer. The tell is the same
+one: if review keeps finding another place the old answer survived, you corrected a site
+rather than the thing.
+
 *Derives:* BP-028.
 
 ### 6. Readability is an output
