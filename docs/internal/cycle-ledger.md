@@ -87,11 +87,11 @@ The two rows under it ([#1064](https://github.com/fixpoint-labs/flow-state-dev/p
 
 | PR | Kind | Rounds | Feedback classes | Design felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|
-| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6** (this session) | stale-restatement ×15 · design-off ×3 | **yes** — one binding rule directed the superseded design; one fix created a correctness defect | The correction re-derives every surface that restates the decision, not just the section that owns it |
+| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6** (this session) | stale-restatement ×11 · docs-miss ×4 (external-state mirroring) · design-off ×3 | **yes** — one binding rule directed the superseded design; one fix created a correctness defect | The correction re-derives every surface that restates the decision, not just the section that owns it |
 | [#1064](https://github.com/fixpoint-labs/flow-state-dev/pull/1064) FIX-925 | impl | 2 | over-engineered ×1 (owner, load-bearing) · nit ×6 | **yes** — a declaration was re-declaring what the runtime already held twice | Ask what the runtime already knows before adding a declaration kind |
 | [#1061](https://github.com/fixpoint-labs/flow-state-dev/pull/1061) FIX-1008 | spec | 2 | design-off ×1 (premise dissolved upstream) | **yes** — closed unmerged, issue cancelled | A spec whose motivating premise is owned by another doc re-checks it before round 2 |
 
-### The dominant class: 15 of 18 findings
+### The dominant class: 11 of 18 findings
 
 **A decision was corrected in the section that owns it, and the surfaces that restate it were not.** Every one was caught by review, never by the author — including three consecutive commits *whose entire subject was propagating a correction*, and one case where a gate added to a binding rule was missing from the index it governed **one commit later**.
 
@@ -103,7 +103,7 @@ That last one is the reason this matters beyond tidiness. Clause C3 (non-strandi
 - **A deferral rendered as a dependency** (3 instances). An accepted deferral and "blocked by X" are identical in a dependency column and mean opposite things: one starts when X lands, the other doesn't start at all.
 - **A gate added to a rule but not to the index that governs it** (2 instances).
 
-**Competing explanation, tested and rejected.** The doc also mirrors mutable external state (Linear issue status, PR status), which goes stale on its own. Real, but 4 of 15 — internal restatement drift beats it 10:4, and `epic-lifecycle` already tells the coordinator to refresh the index from PR handles each wake. That mechanism exists; it didn't fire because the edits were hand-made outside a wake.
+**Competing explanation, tested and rejected — and classed out of the count.** The doc also mirrors mutable external state (Linear issue status, PR status), which goes stale on its own. That is a different failure: nothing was *corrected*, the world moved, so it does not meet the `stale-restatement` definition and is classed `docs-miss`. Four findings, against eleven of internal restatement drift — 11:4, and the eleven are the class. Keeping the four inside it would have inflated the baseline with cases fix B does not target, which is how a measurement instrument stops measuring. `epic-lifecycle` already tells the coordinator to refresh the index from PR handles each wake; that mechanism exists, and it didn't fire because the edits were hand-made outside a wake.
 
 ### Same shape as cycle 1, different surface
 
@@ -115,7 +115,7 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 
 | # | Fix | Altitude | Targets |
 |---|---|---|---|
-| A | Tenet 5's convergence clause widened to cover what you *write down*, not only what executes (`docs/philosophy.md`) | philosophy | the dominant class, all 15 |
+| A | Tenet 5's convergence clause widened to cover what you *write down*, not only what executes (`docs/philosophy.md`) | philosophy | the dominant class, all 11 |
 | B | `epic-agent`'s **Update** action re-derives the surfaces that restate a changed decision before committing, and names the two regressing sub-shapes; `epic-lifecycle` keeps a one-line pointer | subagent, edit-time | the same class, structurally, before review sees it |
 
 Fix B was **first written into `epic-lifecycle` and moved** — review caught that the coordinator only *dispatches* the fold while `epic-agent` performs the edit, and a sub-agent never reads the coordinator's skill. The fix had landed on the surface that describes the work rather than the one that does it, which is the same convergence error this cycle is about. Logged rather than quietly corrected: the fix reaching the wrong writer on its first attempt is evidence about how the class generalises.

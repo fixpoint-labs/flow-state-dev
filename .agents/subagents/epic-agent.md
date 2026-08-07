@@ -81,18 +81,6 @@ Take the single action the dispatch calls for:
   is no separate "refresh" mode. Keep the branch doc and the Epic issue's Linear document in
   sync. Commit and push.
 
-  **A fold that changes a decision is not done when the owning section is edited** (tenet 5).
-  Before you commit, re-read every section this epic-spec actually has — and every table,
-  index, and diagram it carries — and re-derive the ones that restate the changed decision.
-  Check the surfaces in front of you, not a checklist: an epic-spec that has no milestone
-  table has no milestone table to reconcile. A surface still carrying the old answer is the
-  defect, not untidiness — the worst case is a **completion criterion** that still gates on
-  the superseded answer, which lets an epic wrap with the mechanism unbuilt. Two shapes
-  regress most: a **deferral rendered as a dependency** (an accepted deferral and "blocked by
-  X" are identical in a dependency column and mean opposite things — one starts when X lands,
-  the other doesn't start at all), and a **gate added to a rule but not to the index that
-  governs it**.
-
   **Fold only what's above the bar.** The epic-spec is a direction artifact, so the same
   spec-review bar applies to it ([`orchestration.md`](../../docs/contributing/orchestration.md)
   → "Spec review: the bar and the convergence rule"): fold feedback that changes the epic's
@@ -130,6 +118,19 @@ issue workers. Commit and push; **never merge, never delete the branch**.
   naming it; the coordinator surfaces it.
 - **Stay compact on the way out.** Your return value is a status line, not the spec text.
 - **No persistent memory** (like `issue-worker`): the epic-spec doc is the durable state.
+- **Changing a decision is not done when the owning section is edited** (tenet 5). This binds
+  every action above, not only the fold — an End-state POC that picks a different division
+  changes a decision as surely as a folded review finding does, and the actions are dispatched
+  separately, so neither can rely on the other to reconcile. Before you commit: re-read every
+  section this epic-spec actually has — and every table, index, and diagram it carries — and
+  re-derive the ones that restate what you changed. Check the surfaces in front of you, not a
+  checklist: an epic-spec with no milestone table has no milestone table to reconcile. A surface
+  still carrying the old answer is the defect, not untidiness — the worst case is a
+  **completion criterion** still gating on the superseded answer, which lets an epic wrap with
+  the mechanism unbuilt. Two shapes regress most: a **deferral rendered as a dependency** (an
+  accepted deferral and "blocked by X" are identical in a dependency column and mean opposite
+  things — one starts when X lands, the other doesn't start at all), and a **gate added to a
+  rule but not to the index that governs it**.
 
 ## Return format
 
