@@ -19,6 +19,11 @@ import {
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
+import {
+  OrgBindingMismatchError,
+  TenantBindingMismatchError,
+  UserBindingMismatchError
+} from "../../context/binding-errors";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
@@ -233,30 +238,35 @@ export function createInboundTransportHost(
         // starts, so flip the stub to a terminal failure rather than leaving a
         // phantom `in_progress` the client can never resolve.
         const ts = Date.now();
-        const materialized = Promise.all([
-          stores.activeRequests.register({
-            requestId,
-            flowKind: dispatchEnvelope.flowKind,
-            actionName: dispatchEnvelope.actionName,
-            sessionId: dispatchEnvelope.sessionId,
-            userId: dispatchEnvelope.userId,
-            orgId: dispatchEnvelope.orgId,
-            tenantId: dispatchEnvelope.tenantId,
-            source: dispatchEnvelope.source ?? "http",
-            input: dispatchEnvelope.input,
-            metadata: dispatchEnvelope.metadata,
-            startedAt: ts,
-            lastHeartbeatAt: ts
-          }),
-          stores.request.set(
-            requestId,
-            createInitialRequestRecord(dispatchEnvelope, ts),
-            "any"
-          )
-        ]).catch(async (error: unknown) => {
-          await terminateUnenqueuedRequest(stores, requestId);
-          throw error;
-        });
+        const materialized = (async () => {
+          if ((await stores.request.get(requestId)) !== undefined) {
+            throw new Error(`Request ${requestId} already exists.`);
+          }
+          const initialRecord = createInitialRequestRecord(dispatchEnvelope, ts);
+          const created = await stores.request.set(requestId, initialRecord, 0);
+          if (!created.ok) {
+            throw new Error(`Request ${requestId} already exists.`);
+          }
+          try {
+            await stores.activeRequests.register({
+              requestId,
+              flowKind: dispatchEnvelope.flowKind,
+              actionName: dispatchEnvelope.actionName,
+              sessionId: dispatchEnvelope.sessionId,
+              userId: dispatchEnvelope.userId,
+              orgId: dispatchEnvelope.orgId,
+              tenantId: dispatchEnvelope.tenantId,
+              source: dispatchEnvelope.source ?? "http",
+              input: dispatchEnvelope.input,
+              metadata: dispatchEnvelope.metadata,
+              startedAt: ts,
+              lastHeartbeatAt: ts
+            });
+          } catch (error) {
+            await terminateUnenqueuedRequest(stores, requestId);
+            throw error;
+          }
+        })();
         finished = materialized.then(() =>
           gateStart(startRun).catch(async (error: unknown) => {
             if (error instanceof ConcurrencyQueueTimeoutError) {
@@ -403,12 +413,34 @@ export function createInboundTransportHost(
     if (flow === undefined) {
       throw new Error(`Unknown flow "${envelope.flowKind}"`);
     }
-    if (!flow.requiresOrg) return;
-    if ((envelope.orgId ?? envelope.principal.orgId) !== undefined) return;
+    const requestedOrgId = envelope.orgId ?? envelope.principal.orgId;
     if (envelope.sessionId !== undefined) {
       const existing = await stores.session.get(
         resolveSessionStorageKey(envelope.sessionId, envelope.tenantId)
       );
+      if (existing !== undefined) {
+        if (existing.userId !== envelope.principal.userId) {
+          throw new UserBindingMismatchError(
+            envelope.sessionId,
+            existing.userId,
+            envelope.principal.userId
+          );
+        }
+        if (!tenantMatches(existing.tenantId, envelope.tenantId)) {
+          throw new TenantBindingMismatchError(
+            envelope.sessionId,
+            existing.tenantId,
+            envelope.tenantId
+          );
+        }
+        if (requestedOrgId !== undefined && requestedOrgId !== existing.orgId) {
+          throw new OrgBindingMismatchError(
+            envelope.sessionId,
+            existing.orgId ?? "<unbound>",
+            requestedOrgId
+          );
+        }
+      }
       // Only honor the loaded session's org binding when its stored tenant
       // matches this request's — guards the `:`-delimited key collision so a
       // crafted sessionId can't borrow another tenant's org (FIX-682).
@@ -419,6 +451,7 @@ export function createInboundTransportHost(
         return;
       }
     }
+    if (!flow.requiresOrg || requestedOrgId !== undefined) return;
     throw new OrgRequiredError(envelope.flowKind);
   };
 

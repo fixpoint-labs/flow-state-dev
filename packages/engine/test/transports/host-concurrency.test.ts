@@ -17,6 +17,7 @@ import {
   defaultBodyUserIdPrincipalResolver
 } from "../../src";
 import { ConcurrencyRejectedError } from "../../src/transports/errors";
+import { UserBindingMismatchError } from "../../src/context/binding-errors";
 import type { ConcurrencyConfig } from "@flow-state-dev/core";
 
 /**
@@ -150,6 +151,41 @@ describe("host concurrency — reject", () => {
 });
 
 describe("host concurrency — queue", () => {
+  it("rejects a different user before materializing a queued request", async () => {
+    const h = buildHost("queue");
+    const victim = h.host.dispatch(envelope("victim"));
+    await tick();
+
+    const attackerEnvelope = {
+      ...envelope("attacker"),
+      requestId: "attacker-request",
+      principal: { userId: "attacker" }
+    };
+    await expect(h.host.validateDispatch(attackerEnvelope)).rejects.toBeInstanceOf(
+      UserBindingMismatchError
+    );
+    expect(await h.stores.request.get("attacker-request")).toBeUndefined();
+
+    h.releaseAll();
+    await victim.finished;
+  });
+
+  it("does not overwrite an existing record when a queued request id collides", async () => {
+    const h = buildHost("queue");
+    const first = h.host.dispatch({ ...envelope("first"), requestId: "same-id" });
+    await tick();
+    h.releaseAll();
+    await first.finished;
+    const existing = await h.stores.request.get("same-id");
+
+    const collision = h.host.dispatch({
+      ...envelope("collision"),
+      requestId: "same-id"
+    });
+    await expect(collision.finished).rejects.toThrow("already exists");
+    expect(await h.stores.request.get("same-id")).toEqual(existing);
+  });
+
   it("serializes two dispatches on one key in submission order with no overlap", async () => {
     const h = buildHost("queue");
     const env1 = envelope("first");
