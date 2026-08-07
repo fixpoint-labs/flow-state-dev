@@ -32,12 +32,14 @@ sub-issues — so it reads end to end. Copy the shape, not the content.
 
 ---
 
-## For reviewers — what this document is
+## How to review this
 
-*(Paste verbatim at the top of the epic PR description, the same way a spec PR carries
-its own contract. Most epic-PR review is automated reviewers we can't instruct. This is the
-**static** half; the description also carries a **per-PR** "Parts worth reviewing closely"
-block — see [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), canonical for both.)*
+*(Paste verbatim into the epic PR description's collapsed `<details>` block, the same way a
+spec PR carries its own contract. Most epic-PR review is automated reviewers we can't
+instruct, and this text is identical on every epic PR — so it sits **below the fold**, where
+a bot still reads it and a human skips it in one line. The visible half — the objective, the
+set, what's asked of you, and "Parts worth reviewing closely" — is authored per PR. Layout
+and rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md), canonical.)*
 
 This is an **epic-spec**: the shared objective and cross-cutting decisions for a *set* of
 issues. It is not an implementation plan and it is not any one issue's design.
@@ -67,9 +69,10 @@ not folded in here.
 
 ## Parts worth reviewing closely
 
-*(Authored fresh each time the epic PR is opened or its objective materially changes. 1–3
-items at **epic altitude** — the objective, the set's composition, a cross-cutting decision.
-Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
+*(Authored fresh each time the epic PR is opened or its objective materially changes. Above
+the fold, after the objective and the set — a reviewer can't judge the composition they
+haven't seen. 1–3 items at **epic altitude** — the objective, the set's composition, a
+cross-cutting decision. Rules: [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
 > **1. §1 — whether this is three issues or two.** FIX-777 (backoff defaults) is the one I'd
 > cut. It's kept and scoped down, and the reasoning is in §1. The question: does shipping a

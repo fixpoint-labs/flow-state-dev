@@ -206,6 +206,12 @@ Update when integration patterns change — server setup, React hooks usage, tes
 
 **Route this prose through the `docs-writer` agent, then `docs-editor`.** Don't write it inline while you're holding the spec and the diff: implementation rationale leaks into published pages in a predictable way (design defense, defect narrative, before/after framing), and knowing the rules doesn't prevent it. The writer runs in a fresh context on a surface brief — the symbols a user touches, what a caller sees including failures, and the limits — and derives the rest from the public API. The standard both agents work to is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md). The same applies to the API sections of `packages/*/README.md`.
 
+**Artifacts a human reads** (PR descriptions, Linear issues, review comments, specs):
+
+Lead with the **problem** in plain language, then the solution, then what's being asked of the reader. **Nothing precedes the problem** — not a ref, not a label, not a statement of what kind of artifact it is. Everything else goes below the fold, collapsed rather than deleted, except news the reader wouldn't think to look for: a decision, a risk, a known gap, anything hard to reverse, or scope that grew. That goes above the fold, short.
+
+The rule, the per-artifact word budgets, and the density checks are canonical in [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039); the PR-description layout applies them in [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md). Don't re-derive either — a skill or template restating them is how the two copies drift.
+
 **Root files**:
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
 - Update `CLAUDE.md` when project orientation, key constraints, or package roles change.

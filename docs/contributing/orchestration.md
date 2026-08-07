@@ -482,18 +482,21 @@ So the discipline is ours, not theirs:
   reviews are explicitly excluded. A bot leaving `CHANGES_REQUESTED` on a spec PR does
   **not** hold the gate, and does not extend the round budget.
 - **The spec PR description carries reviewer guidance** (`issue-spec` Step 6) — the static
-  contract (what this document is, what to challenge, what is out of scope) plus a per-PR
-  *"Parts worth reviewing closely"*. It's the one lever we have on an uninstructable
-  reviewer, it costs nothing, and it measurably raises the altitude of what comes back. The
-  rules, the three altitudes, and the failure modes are canonical in
-  [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).
+  contract (what this document is, what to challenge, what is out of scope), collapsed below
+  the fold, plus a per-PR *"Parts worth reviewing closely"* above it. The contract is the one
+  lever we have on an uninstructable reviewer, it costs nothing, and it measurably raises the
+  altitude of what comes back; collapsing it costs a bot nothing and buys the human the first
+  screen back. The layout, the rules, the three altitudes, and the failure modes are canonical
+  in [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).
 
 ### How this shows up in the artifacts
 
 - **`spec-template.md`** — the reviewer contract and the *Parts worth reviewing closely*
   block, and *Review notes for the implementer* (§13) as the home for below-the-bar feedback.
-- **`pr-reviewer-guidance.md`** — the two audiences, the three PR altitudes, and what makes a
-  *Parts worth reviewing closely* block useful rather than decorative.
+- **`pr-reviewer-guidance.md`** — the two audiences, the PR-description layout, the three PR
+  altitudes, and what makes a *Parts worth reviewing closely* block useful rather than
+  decorative. Its general half — the fold, the word budgets, the density rules — is
+  [`writing-for-humans.md`](writing-for-humans.md).
 - **`issue-spec`** Step 6 (reviewer contract in the PR description) and Step 6.5 (the
   triage loop that applies the bar and the budget).
 - **`issue-lifecycle`** / **`epic-lifecycle`** — the round counters live in the handle cache

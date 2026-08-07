@@ -106,8 +106,15 @@ Restructuring breaks links and moves anchors — prove it didn't:
   merged, what got cut*, so a human can sanity-check the restructuring at a glance (not a line diff).
   Then let the user review before it lands.
 - **Dispatched by `epic-lifecycle` at epic wrap:** open a **draft** docs-cleanup PR against the default
-  branch, carrying the same summary. Keep it **draft** — bold rearrangement is exactly the kind of
-  change a human should eyeball before merge. Never auto-merge.
+  branch. Its description follows
+  [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout" like
+  any other PR — **the problem leads** (which docs had drifted, and how a reader hit it), then what
+  the pass did, then what's asked of the reader, then where to look closely. The move/merge/cut
+  summary below is *detail*: it belongs in a collapsed block, not at the top. Use the
+  **no-upstream-contract** variant (variant 4) — not the brief-backed one, which would assert a
+  brief that doesn't exist and promise work that was small and local, when this pass is
+  deliberately broad. Keep it **draft** — bold rearrangement is exactly the kind of change a human
+  should eyeball before merge. Never auto-merge.
 
 The summary always answers: which pages moved/merged/split, which concept now has a single home,
 what was cut, and anything you **flagged as possibly inaccurate** rather than edited.

@@ -24,18 +24,26 @@ const SPEC_DIR = join(ROOT, "spec");
 const ALLOWED = new Set(["README.md"]);
 
 /** Trees worth scanning for dangling spec citations. */
-const SCAN_ROOTS = ["packages", "apps", "labs", "examples", "scripts", "docs"];
+const SCAN_ROOTS = ["packages", "apps", "labs", "examples", "scripts", "docs", ".agents", ".changeset"];
 const SCAN_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|md|mdx|json|yml|yaml)$/;
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".next", ".turbo", "coverage"]);
 
 /**
- * Matches a citation of a spec file by repo path — `spec/FIX-123.md` or the
- * retired `docs/specs/FIX-123.md`. Deliberately narrow: it wants a concrete
- * spec filename, not a mention of the folder itself.
+ * Two patterns, two bars, because they are wrong for different reasons.
+ *
+ * The retired `docs/specs/` tree no longer exists at all, so *any* mention of a
+ * file in it is stale — including in the process docs that describe the
+ * convention, which is exactly where the last few survived a rename. Only this
+ * script (which must name it to match it) and the historical record under
+ * `docs/internal/` are exempt.
+ *
+ * A `spec/FIX-123.md` citation is a dangling pointer in code, but the docs that
+ * define the convention have to name the shape, so they are exempt from that one.
  */
-const SPEC_CITATION = /(?:docs\/specs|spec)\/[A-Z]{2,6}-\d+(?:[^\s`"')]*)?\.md/g;
+const RETIRED_PATH = /docs\/specs\/[^\s`"')]*/g;
+const RETIRED_EXEMPT = ["scripts/validate-spec-folder.mjs", "docs/internal/"];
 
-/** Paths that describe the convention and therefore name these paths on purpose. */
+const SPEC_CITATION = /(?<!docs\/)\bspec\/[A-Z]{2,6}-\d+(?:[^\s`"')]*)?\.md/g;
 const CITATION_EXEMPT = [
   "spec/README.md",
   "docs/contributing/",
@@ -72,27 +80,45 @@ function checkSpecFolderEmpty() {
 
 function checkDanglingCitations() {
   const hits = [];
+  const retired = [];
   for (const root of SCAN_ROOTS) {
     for (const file of walk(join(ROOT, root))) {
       const rel = relative(ROOT, file);
-      if (CITATION_EXEMPT.some((prefix) => rel.startsWith(prefix))) continue;
       const lines = readFileSync(file, "utf8").split("\n");
+      const skipRetired = RETIRED_EXEMPT.some((prefix) => rel.startsWith(prefix));
+      const skipCitation = CITATION_EXEMPT.some((prefix) => rel.startsWith(prefix));
       lines.forEach((line, i) => {
-        for (const match of line.matchAll(SPEC_CITATION)) {
-          hits.push({ file: rel, line: i + 1, text: match[0] });
+        if (!skipRetired) {
+          for (const match of line.matchAll(RETIRED_PATH)) {
+            retired.push({ file: rel, line: i + 1, text: match[0] });
+          }
+        }
+        if (!skipCitation) {
+          for (const match of line.matchAll(SPEC_CITATION)) {
+            hits.push({ file: rel, line: i + 1, text: match[0] });
+          }
         }
       });
     }
   }
-  return hits;
+  return { hits, retired };
 }
 
 const stray = checkSpecFolderEmpty();
-const citations = checkDanglingCitations();
+const { hits: citations, retired } = checkDanglingCitations();
 
-if (stray.length === 0 && citations.length === 0) {
+if (stray.length === 0 && citations.length === 0 && retired.length === 0) {
   console.log("✓ spec/ is clear and no spec paths are cited");
   process.exit(0);
+}
+
+if (retired.length > 0) {
+  console.error(`\n✗ ${retired.length} reference(s) to the retired docs/specs/ tree:\n`);
+  for (const hit of retired) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
+  console.error(
+    `\n  That directory no longer exists. Specs live at spec/<ISSUE-ID>.md on their` +
+      `\n  spec branch, and in Linear after it closes. Update the path.\n`,
+  );
 }
 
 if (stray.length > 0) {
