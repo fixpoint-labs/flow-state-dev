@@ -144,7 +144,7 @@ Cycle 1's fix was tenet 5's convergence clause — and that clause **already pre
 | D | **direction artifact** named as the kind covering spec *and* epic PRs, so the review-bar scoring, the `nit` exclusion, the claims fields and the endpoint all reach both; endpoints given as one table (impl→merge · spec→approval · epic→epic close), in-flight epics scored as explicit partials | skill, scoring | makes epic round counts comparable **from the next epic onward** (#993 predates the rule and is labelled raw), and stops an epic's lifetime activity reading as rework |
 | E | the epic-wrap lessons skip is **partial** — ledger rows always append **and always land as a draft rows-only PR**; only the grounding proposal is skippable | skill, wrap | survivor bias: a ledger holding only epics that had findings can't show an improvement — and rows that never leave the wrap worker's worktree are the same bias by another route |
 
-**The fixes for this class took nine rounds to reach all their own writers, and that is the
+**The fixes for this class took ten rounds to reach all their own writers, and that is the
 cycle's sharpest evidence.**
 
 | Round | The fix as written | The writer it missed |
@@ -158,8 +158,9 @@ cycle's sharpest evidence.**
 | 7 | rows land as a rows-only PR | the coordinator-state schema still allowed `lessons: skipped`, and the skip paragraph still said "no lessons PR" — a coordinator reading either could record a skip and finish wrap with the row unlanded. **And unifying those two surfaces introduced a third token format**, caught in the same edit |
 | 8 | round 7 recorded in this table | **the sentence introducing this table still said "four rounds"** while the table below it listed seven and the paragraph below that said seven |
 | 9 | endpoint table written for three artifact kinds | it gave implementation PRs only `merge`, though an epic may wrap on issues **dropped** during `PR_FEEDBACK` — a dropped impl PR had no endpoint at all. Separately: the reconciliation rule enumerated surfaces *inside* the epic-spec, while the **PR description** restates decisions too |
+| 10 | `close` added as the impl-PR endpoint | patched the *named* case and missed the family: `epic-wake` treats a cancelled Linear state as terminal **without closing that issue's PRs**, so an epic can wrap over open PRs whose endpoint still doesn't exist. Fixed as a universal fallback (score at wrap) rather than a fourth case |
 
-Nine rounds, each the same error the fix is about, each caught by review and not by the author.
+Ten rounds, each the same error the fix is about, each caught by review and not by the author.
 
 **Round 8 is the purest instance this cycle will produce, and it should be read as the finding
 rather than as trivia.** The defect was in the sentence that introduces *this table* — the table
@@ -194,13 +195,13 @@ claimed to have enumerated every writer — and still missed the primary collect
 It also introduced a *new* defect: "always append the rows" with no path for the rows to land, so
 a clean epic's row would have died in the wrap worker's worktree — the same survivor bias the fix
 existed to remove, reintroduced by the fix. Enumeration beat patching, and it still wasn't
-sufficient. Rounds 6 through 9 then repeated the shape four more times, each inside a *fix for the shape* —
+sufficient. Rounds 6 through 10 then repeated the shape five more times, each inside a *fix for the shape* —
 and round 8 inside the very table that counts them.
 
-**Nine rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
+**Ten rounds is no longer an anecdote about this change; it is the cycle's primary measurement,
 and it does not say what the fixes claim.** Fix A and fix B were chosen on the theory that naming
 the class in the grounding gets an agent to converge restatements without being told which ones.
-This PR tested that theory on its own author, live, nine times — and the author needed an external
+This PR tested that theory on its own author, live, ten times — and the author needed an external
 reviewer on every single one, including after adopting the enumerate-every-writer procedure that
 was supposed to be the answer. Round 7's finding was generated *by* round 6's fix; the unified
 token in round 7 was itself inconsistent on first write.
@@ -225,7 +226,7 @@ sharper prose closes.
 Cycle 3 still decides formally: if `stale-restatement` does not fall as a share of epic-PR
 findings, reading 2 is confirmed. But the honest recommendation *now* is to rebuild and cost the
 consistency-check this cycle dropped, rather than spend another cycle collecting evidence for a
-conclusion nine rounds already point at. Do not let a third cycle pass on reading 1 by default.
+conclusion ten rounds already point at. Do not let a third cycle pass on reading 1 by default.
 
 Logged rather than quietly corrected. A guidance fix has writers exactly as code does, and this is
 the measured cost of not enumerating them: the class does not spare the fix aimed at it.

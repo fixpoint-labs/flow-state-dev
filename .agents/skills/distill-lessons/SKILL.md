@@ -92,9 +92,17 @@ produce, don't add ceremony.
   | spec PR | its approval | spec PRs are never merged |
   | epic PR | **epic close** (the wrap, when this skill runs anyway) | never merges, *and* its objective gate lands near the **start** while direction feedback continues for the epic's whole life — record the gate as a marker, not the endpoint |
 
-  An epic still in flight is scored as a **partial** and labelled as one (`6 (in flight)`),
-  never compared against a closed epic's total; a partial read as a total is how an epic that
-  got worse looks like one that improved.
+  **Epic wrap is the universal fallback endpoint.** If an artifact's kind-specific endpoint
+  never occurred — a spec PR still unapproved, an implementation PR neither merged nor closed —
+  score it at wrap. This is not hypothetical: `epic-wake` treats a cancelled or dropped Linear
+  state as terminal and stops holding `mayWrap`, without requiring that issue's PRs be closed
+  first, so an epic can legitimately wrap over open PRs belonging to abandoned work. Those
+  artifacts still get rows; an endpoint that only fires on the happy path silently drops exactly
+  the abandoned work a rework metric should be counting.
+
+  Anything scored at the fallback — and any epic still in flight — is a **partial** and labelled
+  as one (`6 (in flight)`), never compared against a completed total; a partial read as a total
+  is how an epic that got worse looks like one that improved.
 - **Record `claims-settled` — the flip-flop class and whether settling it worked.** A spec
   round spent re-arguing the *same factual claim* is the most expensive review pattern we have,
   and it now has a designated cure: a POC settlement ([`orchestration.md`](../../../docs/contributing/orchestration.md)
