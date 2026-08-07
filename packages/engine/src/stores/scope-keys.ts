@@ -23,6 +23,8 @@
  * was isolated. The opt-out direction is now honored.
  */
 
+import type { SessionParentage } from "./types";
+
 /** Minimal flow shape carrying the scope-isolation flags plus its own `kind`. */
 export interface IsolationFlow {
   kind: string;
@@ -149,7 +151,7 @@ export function matchesTenantFilter(
  * store that nulls absent keys, both read as top-level (BP-030).
  */
 export function matchesParentageFilter(
-  options: { parentage?: "top-level" | "all" | { parentOf: string } } | undefined,
+  options: { parentage?: SessionParentage } | undefined,
   recordParentSessionId: string | undefined
 ): boolean {
   const parentage = options?.parentage ?? "top-level";
