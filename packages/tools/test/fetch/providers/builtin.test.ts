@@ -1,4 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+}));
+
 import { builtinFetchAdapter } from "../../../src/fetch/providers/builtin";
 
 describe("builtin fetch adapter", () => {
@@ -14,7 +19,7 @@ describe("builtin fetch adapter", () => {
       status: 200,
       text: () =>
         Promise.resolve(
-          `<html><head><title>Test</title></head><body><p>Hello world content here</p></body></html>`
+          `<html><head><title>Test</title></head><body><p>Hello world content here</p></body></html>`,
         ),
       headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
     });
@@ -42,7 +47,7 @@ describe("builtin fetch adapter", () => {
     await expect(
       builtinFetchAdapter.fetch("https://example.com/missing", {
         waitForJS: false,
-      })
+      }),
     ).rejects.toThrow("builtin fetch failed: 404 Not Found");
   });
 
@@ -64,7 +69,37 @@ describe("builtin fetch adapter", () => {
         headers: expect.objectContaining({
           "User-Agent": expect.stringContaining("FlowStateDev"),
         }),
-      })
+      }),
     );
+  });
+
+  it("rejects private addresses before making a request", async () => {
+    globalThis.fetch = vi.fn();
+
+    await expect(
+      builtinFetchAdapter.fetch("http://169.254.169.254/latest/meta-data", {
+        waitForJS: false,
+      }),
+    ).rejects.toMatchObject({
+      code: "fetch_transport_error",
+      retryable: false,
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("validates redirect destinations before following them", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 302,
+      headers: new Headers({ location: "http://127.0.0.1/secret" }),
+    });
+
+    await expect(
+      builtinFetchAdapter.fetch("https://example.com", { waitForJS: false }),
+    ).rejects.toMatchObject({
+      code: "fetch_transport_error",
+      retryable: false,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 });

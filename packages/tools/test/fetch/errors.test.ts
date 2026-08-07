@@ -1,4 +1,8 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
+
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
+}));
 import { FlowError } from "@flow-state-dev/core";
 import { builtinFetchAdapter } from "../../src/fetch/providers/builtin";
 import {
