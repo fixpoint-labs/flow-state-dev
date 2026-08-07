@@ -7,21 +7,18 @@ import { getRepository } from "@/db/portfolio-db";
 // holdings row is gone; the dividends were still earned). Ticker-less rows are
 // account-level income (interest, MMF sweeps).
 //
-// AUTH POSTURE (dev-only): `userId` is client-asserted, exactly as the lab's
-// other read routes and flow routes are (single-user lab, USER_ID = "devuser").
-// A real multi-user deployment MUST resolve the caller identity server-side and
-// ignore a client-supplied `userId` before trusting it — otherwise it is an IDOR.
+// This is a single-user lab, so its principal is fixed server-side rather than
+// accepted from the request. A multi-user deployment must replace this with its
+// authenticated server-side principal.
 export const dynamic = "force-dynamic";
+
+const USER_ID = "devuser";
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
-  const userId = params.get("userId");
-  if (!userId) {
-    return NextResponse.json({ error: "userId query param is required" }, { status: 400 });
-  }
   const accountId = params.get("accountId") ?? undefined;
 
   const repo = await getRepository();
-  const income = await repo.getIncomeSummary(userId, { accountId });
+  const income = await repo.getIncomeSummary(USER_ID, { accountId });
   return NextResponse.json({ income });
 }

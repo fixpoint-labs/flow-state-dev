@@ -1,6 +1,5 @@
 "use client";
 
-import { useFlowContext } from "@flow-state-dev/react";
 import { useApiQuery } from "@/lib/use-api-query";
 import type { IncomeSummaryRow } from "@/db/repository";
 
@@ -15,10 +14,8 @@ export function useIncome(): {
   income: IncomeSummaryRow[];
   refetch: () => void;
 } {
-  const { userId } = useFlowContext();
-  const uid = userId ?? "devuser";
   const { data, refetch } = useApiQuery<{ income: IncomeSummaryRow[] }>(
-    `/api/portfolio/income?userId=${encodeURIComponent(uid)}`,
+    "/api/portfolio/income",
   );
   return { income: data?.income ?? [], refetch };
 }
