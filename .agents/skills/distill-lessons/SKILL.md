@@ -45,19 +45,26 @@ expected outcome.
 
 ### Measuring the loop — the cycle-ledger (auto-derived)
 
-The loop's dominant cost is **review rework**: spec and implementation PRs that take
-many rounds to converge. That cost is the signal — measure it from data you already
+The loop's dominant cost is **review rework**: spec, implementation, and **epic** PRs that
+take many rounds to converge. That cost is the signal — measure it from data you already
 produce, don't add ceremony.
 
 - **Auto-derive the ledger** from GitHub + Linear (GitHub MCP `pull_request_read` /
   review + comment endpoints; Linear for issue state history — see CLAUDE.md →
-  "Linear access" for the channel). For each recent spec and implementation PR, record: **rounds-to-approval** (distinct review passes
+  "Linear access" for the channel). For each recent spec, implementation, **and epic** PR,
+  record: **rounds-to-approval** (distinct review passes
   before merge), the **feedback classes** present (`design-off` · `missed-edge-case` ·
   `over-engineered` · `spec-ambiguity` · `philosophy-drift` · `docs-miss` ·
   `stale-restatement` · `nit` — the ledger header defines each),
   whether the design was flagged "felt off" (by a reviewer or the challenger), and one
   line: "what upstream change would have prevented this." Append to
   `docs/internal/cycle-ledger.md` (create it if absent; one row per PR).
+- **Sample the epic PR, not only its children.** An epic-spec is a coordination artifact
+  reviewed on its own PR, and it carries a rework class its child specs don't (cycle 2's
+  `stale-restatement`, 11 of 18 findings, was entirely epic-PR review). Collect the epic PR
+  itself alongside the children — at epic wrap that means the epic's own PR plus the child
+  spec/implementation PRs. A collector that samples only children reports **zero** for a
+  class that is alive, which reads as progress and is not.
 - **The metric that matters:** rounds-to-approval and `design-off` frequency trending
   **down** across cycles. That downward trend *is* the proof the harness is improving.
   Flat or rising means the upstream fixes aren't landing where the rework actually is.

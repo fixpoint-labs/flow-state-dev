@@ -131,6 +131,11 @@ issue workers. Commit and push; **never merge, never delete the branch**.
   accepted deferral and "blocked by X" are identical in a dependency column and mean opposite
   things — one starts when X lands, the other doesn't start at all), and a **gate added to a
   rule but not to the index that governs it**.
+- **Every action that writes the epic-spec dual-syncs it** — the branch doc *and* the Epic
+  issue's attached Linear document, together, before you exit. Same reasoning as the rule
+  above and the same failure if it's missed: a reconciled branch doc plus a stale Linear
+  mirror is the superseded decision still being read, by exactly the humans and child issues
+  that read Linear rather than the branch.
 
 ## Return format
 
