@@ -54,6 +54,13 @@ rule, then the detail under a `## Detail` heading. **Linear is the case we hit d
 documents, issue descriptions and comments all render `<details>` as raw markup, so a Linear
 comment takes the divider form, never the tag. See "Mechanics" below.
 
+**A transactional reply is exempt from the problem-first opening.** *"Fixed in `<sha>` — the
+guard moved to the router"*, or a one-line decline with its reason, answers a comment
+directly above it and inherits that comment's context; a reader is never dropped into it
+cold, which is the condition the opening exists for. Restating the problem there is noise.
+The rest still applies: keep it short, and collapse the evidence — the red/green output, the
+trace, the quoted lines. An exemption from *framing* is not an exemption from the fold.
+
 > *The test: if the reader stops after the first screen, do they have what they need to
 > decide — and would anything below it surprise them?*
 
