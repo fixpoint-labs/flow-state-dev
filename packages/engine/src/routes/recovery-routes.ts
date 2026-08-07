@@ -352,10 +352,14 @@ export async function handleCheckInterruptedRequests(
     return jsonResponse(400, { error: "staleThresholdMs must be a number" });
   }
 
+  // Reached anonymously in a mixed app, `ctx.anonymousFlowKinds` carries only
+  // the flows that nothing authenticates, so the sweep leaves an authenticated
+  // flow's in-flight requests untouched. Undefined means unrestricted.
   const swept = await detectInterruptedRequests({
     stores: ctx.stores,
     userId,
     staleThresholdMs,
+    anonymousFlowKinds: ctx.anonymousFlowKinds,
     logger: ctx.runtimeConfig.logger
   });
 

@@ -478,7 +478,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleCheckInterruptedRequests(request, route, {
           registry: options.registry,
           stores,
-          runtimeConfig
+          runtimeConfig,
+          anonymousFlowKinds
         });
       }
 

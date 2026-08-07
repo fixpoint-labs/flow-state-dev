@@ -26,6 +26,11 @@ export type InterruptedRequestInfo = {
  * processed — the rest are left untouched. This is the safe surface for the
  * client-driven recovery endpoint, which sweeps on behalf of a single user.
  *
+ * When `anonymousFlowKinds` is provided, entries belonging to any other flow are
+ * skipped entirely — not marked interrupted and not deregistered. An anonymous
+ * caller in a mixed app reaches this with the app's open flows only, so it
+ * cannot sweep an authenticated flow's in-flight requests.
+ *
  * Returns the list of interrupted requests for optional retry.
  */
 export async function detectInterruptedRequests(options: {
@@ -34,15 +39,19 @@ export async function detectInterruptedRequests(options: {
   staleThresholdMs?: number;
   /** Restrict the sweep to entries owned by this userId. */
   userId?: string;
+  /** Restrict the sweep to these flow kinds. Undefined means unrestricted. */
+  anonymousFlowKinds?: Set<string>;
   logger?: RuntimeLogger;
 }): Promise<InterruptedRequestInfo[]> {
-  const { stores, userId, logger = DEFAULT_RUNTIME_LOGGER } = options;
+  const { stores, userId, anonymousFlowKinds, logger = DEFAULT_RUNTIME_LOGGER } = options;
   const staleThresholdMs = options.staleThresholdMs ?? 30_000;
 
   const allStale = await stores.activeRequests.listStale(staleThresholdMs);
-  const stale = userId === undefined
-    ? allStale
-    : allStale.filter((entry) => entry.userId === userId);
+  const stale = allStale.filter(
+    (entry) =>
+      (userId === undefined || entry.userId === userId) &&
+      (anonymousFlowKinds === undefined || anonymousFlowKinds.has(entry.flowKind))
+  );
   const results: InterruptedRequestInfo[] = [];
 
   for (const entry of stale) {
