@@ -3,6 +3,10 @@ import path from "node:path";
 import { applyOffsetLimit } from "../shared";
 import { sortByUpdatedAtDesc } from "../../utils/sort";
 import type { ExpectedVersion, SetResult } from "../types";
+import {
+  assertDeltaExpectedVersion,
+  checkScopeWriteVersion
+} from "../scope-write-predicate";
 
 function toFileName(id: string): string {
   return `${encodeURIComponent(id)}.json`;
@@ -182,12 +186,17 @@ export type FilesystemRecordStore<
    * `update` (which always writes), `casUpdate` aborts with a conflict when
    * the record is missing or its version doesn't match `expectedVersion`
    * (unless `"any"`). Returns the standard `SetResult`. Backs the delta verbs.
+   *
+   * `expectedVersion: "absent"` throws — this path updates an existing
+   * record. `verb` names the delta verb that called in, so the error points
+   * at the real call site rather than at this helper.
    */
   casUpdate<T extends TRecord>(
     id: string,
     expectedVersion: ExpectedVersion,
     mutate: CasUpdateMutator<TRecord>,
-    updatedAt: number
+    updatedAt: number,
+    verb: string
   ): Promise<SetResult<T>>;
   /** Replace a single depth-1 field inside the record's `state` slice (CAS). */
   patchField<T extends TRecord>(
@@ -283,12 +292,16 @@ export function createFilesystemRecordStore<
     ): Promise<SetResult<TRecord>> =>
       withLock(id, async () => {
         if (expectedVersion !== "any") {
+          // The read and the decision both sit inside the per-id lock, which
+          // is what makes `"absent"` atomic here — but only within this
+          // process. Two processes over one directory still race; the
+          // limitation is stated on the store contract and unchanged by this.
           const current = await readRecord<TRecord>(rootDir, id);
-          const currentVersion = current?.version ?? 0;
-          if (currentVersion !== expectedVersion) {
+          const refused = checkScopeWriteVersion(current, expectedVersion);
+          if (refused !== undefined) {
             return {
               ok: false,
-              conflict: { currentValue: current, currentVersion }
+              conflict: { currentValue: current, currentVersion: refused.currentVersion }
             };
           }
         }
@@ -315,9 +328,14 @@ export function createFilesystemRecordStore<
       id: string,
       expectedVersion: ExpectedVersion,
       mutate: CasUpdateMutator<TRecord>,
-      updatedAt: number
-    ): Promise<SetResult<T>> =>
-      withLock(id, async () => {
+      updatedAt: number,
+      verb: string
+    ): Promise<SetResult<T>> => {
+      // Ahead of the lock, and ahead of the `+ 1` below: `"absent"` would
+      // otherwise reach that arithmetic and produce the string "absent1" as a
+      // version. Throws rather than conflicts — see `assertDeltaExpectedVersion`.
+      assertDeltaExpectedVersion(expectedVersion, verb);
+      return withLock(id, async () => {
         const current = await readRecord<TRecord>(rootDir, id);
         if (current === undefined) {
           return {
@@ -341,7 +359,8 @@ export function createFilesystemRecordStore<
         } as TRecord;
         await writeRecord(rootDir, id, nextRecord);
         return { ok: true, version: newVersion, record: nextRecord as T };
-      }),
+      });
+    },
 
     patchField: <T extends TRecord>(
       id: string,
@@ -368,7 +387,8 @@ export function createFilesystemRecordStore<
             state: { ...currentState, [path[0]]: value }
           };
         },
-        updatedAt
+        updatedAt,
+        "patchField"
       );
     },
 
@@ -393,7 +413,8 @@ export function createFilesystemRecordStore<
             state: { ...(current.state ?? {}), [path[0]]: baseline + delta }
           };
         },
-        updatedAt
+        updatedAt,
+        "incField"
       );
     },
 
@@ -418,7 +439,8 @@ export function createFilesystemRecordStore<
             state: { ...(current.state ?? {}), [path[0]]: [...baseline, ...values] }
           };
         },
-        updatedAt
+        updatedAt,
+        "pushToArray"
       );
     },
 
@@ -443,7 +465,8 @@ export function createFilesystemRecordStore<
           }
           return { ...current, state: currentState };
         },
-        updatedAt
+        updatedAt,
+        "deleteField"
       );
     },
 

@@ -22,6 +22,11 @@ export {
   type CreateResourceStateStoreConformanceTestsOptions
 } from "./stores/testing/resource-store-conformance";
 export {
+  createScopeStoreConformanceTests,
+  type CreateScopeStoreConformanceTestsOptions,
+  type ScopeStoreUnderTest
+} from "./stores/testing/scope-store-conformance";
+export {
   gateNextStateRead,
   StateReadGateTimeoutError,
   type StateReadGate

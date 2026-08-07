@@ -533,7 +533,9 @@ interface ResourceStateStore {
 - **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
 - **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
 
-A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
+A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any" | "absent"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
+
+**`"absent"` throws here too.** It is the scope stores' create-if-absent sentinel, and this store keeps spelling create-if-absent `0`. Accepting it as an alias would be cheap on `set` and incoherent on `delete`, where `0` has a meaning ("no live row, so the terminal state already holds") and "delete only if absent" has none. One sentinel with a verb-dependent meaning on the subtlest predicate in these adapters is worse than two spellings that each mean one thing. Converging them — moving these callers to `"absent"` and retiring this store's `0` — is a later change that removes a spelling rather than adding one.
 
 ### Versions, deletes and retention
 

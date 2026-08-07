@@ -128,17 +128,36 @@ export function createSQLiteResourceStateStore(
    * Mirrors `assertExpectedVersion` in the engine's
    * `stores/resource-state-predicate` module — restated for the same reason as
    * {@link conflictFrom} below, and pinned across all four adapters by the
-   * shared conformance suite. `ExpectedVersion` is `number | "any"`, so a
-   * caller can legally pass a number the contract has no meaning for: `0` means
-   * "no live row" and real versions start at `1`. Refused loudly, because that
-   * is a programming error and not a lost race — reporting it as a conflict
-   * would name a concurrency outcome this store never observed.
+   * shared conformance suite. `ExpectedVersion` is `number | "any" | "absent"`,
+   * so a caller can legally pass a value the contract has no meaning for: `0`
+   * means "no live row" and real versions start at `1`. Refused loudly, because
+   * that is a programming error and not a lost race — reporting it as a
+   * conflict would name a concurrency outcome this store never observed.
+   *
+   * `"absent"` is the scope stores' create-if-absent sentinel and is refused
+   * here rather than aliased onto this store's `0` — the two agree on `set`
+   * but not on `delete`, where "delete only if absent" has no meaning.
    *
    * This is also what keeps the `-1` sentinel in `delete` sound: without it,
    * `delete(…, -1)` matched the sentinel branch and tombstoned any live row.
+   * It is equally what keeps `"absent"` out of the numeric bind parameter
+   * below, where a string would fail silently rather than loudly.
+   *
+   * The assertion signature is what makes that second guarantee the
+   * compiler's rather than a comment's: once this has run, `expectedVersion`
+   * narrows to `number | "any"`, so the `expectedVersion + 1` and the numeric
+   * binds further down stop type-checking the moment someone routes a new
+   * non-numeric sentinel past here.
    */
-  const assertExpectedVersion = (expectedVersion: ExpectedVersion): void => {
+  const assertExpectedVersion: (
+    expectedVersion: ExpectedVersion
+  ) => asserts expectedVersion is number | "any" = (expectedVersion) => {
     if (expectedVersion === "any") return;
+    if (expectedVersion === "absent") {
+      throw new TypeError(
+        'expectedVersion "absent" is not supported by ResourceStateStore; use 0, which means "no live row" here'
+      );
+    }
     if (!Number.isInteger(expectedVersion) || expectedVersion < 0) {
       throw new TypeError(
         `expectedVersion must be a non-negative integer or "any", received ${String(expectedVersion)}`
