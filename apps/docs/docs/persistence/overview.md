@@ -67,7 +67,9 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
-How much of that each store actually gives you differs, and it is worth knowing before you pick one:
+### Concurrency by store
+
+How much compare-and-swap safety each store actually gives you differs, and it is worth knowing before you pick one:
 
 | Store | Scope state | Resource state |
 |---|---|---|
@@ -176,7 +178,9 @@ const created = await sessions.createSession({
 });
 ```
 
-Creating a session that already exists returns `409 Conflict`, and that holds under concurrency: if two requests create the same id at the same moment, one gets `201` and the other `409`. The server decides it, so there is no window where both succeed and the second quietly overwrites the first. Treat the `409` as "someone else got there" and read the existing session.
+Creating a session that already exists returns `409 Conflict`. On SQLite and Postgres that holds under concurrency: if two requests create the same id at the same moment, one gets `201` and the other `409`, with no window where both succeed and the second quietly overwrites the first. Treat the `409` as "someone else got there" and read the existing session.
+
+The filesystem store gives you that inside a single process. Two processes pointed at the same directory can both find the id free and both write, so one record overwrites the other and both callers see a `201`. It's the same in-process limit that applies to its compare-and-swap, laid out in [Concurrency by store](#concurrency-by-store). The in-memory store is a single process by definition, so the multi-process case never comes up.
 
 The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, but you still want the id to be stable and unique within a tenant — and you cannot change it later without creating a new session.
 
