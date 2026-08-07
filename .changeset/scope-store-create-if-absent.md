@@ -19,13 +19,14 @@ duplicate creates now resolve to one `201` and one `409`**, matching what a
 sequential duplicate has always returned. Picking a session id derived from your
 own data — a customer id, a topic, a date — is now safe to do concurrently.
 
-**On SQLite and Postgres that holds across processes**, because the backend
-decides the race. **On the filesystem store it holds within one process only.**
-That store serializes writes on an in-memory per-id lock, so two Node processes
-pointed at the same `rootDir` can still both find the id absent and both write.
-This is the same limitation the store contract already carries for
-compare-and-swap generally, and it is unchanged here — the create path simply
-inherits it. For a multi-process deployment, reach for SQLite or Postgres.
+**On SQLite and Postgres that holds across processes**, because the database
+decides the race. **On the filesystem store it holds only among writes that go
+through the same store instance.** That store serializes on a per-id lock kept in
+its own memory, so two registries pointed at one `rootDir` still race — whether
+they sit in two Node processes or in the same one. This is the limitation the
+store contract already carries for compare-and-swap generally, and the create
+path simply inherits it. For anything beyond a single store instance, reach for
+SQLite or Postgres.
 
 `"absent"` is a new value on `ExpectedVersion`, alongside the version numbers and
 `"any"`. **If you use the bundled stores, nothing you call changes.** In
