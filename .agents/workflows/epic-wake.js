@@ -1990,11 +1990,26 @@ if (discovered.length) {
  * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, so a
  * blocker outside the epic is unresolvable here and is kept. That fails closed: a stale block
  * costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
+ *
+ * FINISHED, not merely terminal. `TERMINAL_LINEAR` also matches cancelled / duplicate / dropped —
+ * states where the work is GONE rather than done. Clearing those would admit a dependent whose
+ * prerequisite never landed, which is the opposite failure and a worse one. A cancelled blocker
+ * keeps blocking and is logged, because it can never merge on its own: somebody has to decide
+ * whether the dependent still needs it, and a silent permanent stall is how that decision gets
+ * missed.
  */
+const cancelledBlockers = new Set()
 const openBlockers = (ids) =>
   (ids || []).filter((b) => {
     const bs = linearById.get(b)
-    return !(bs && TERMINAL_LINEAR.test((bs.state || '').trim()))
+    if (!bs) return true
+    const state = (bs.state || '').trim()
+    if (!TERMINAL_LINEAR.test(state)) return true
+    if (CANCELLED_LINEAR.test(state)) {
+      cancelledBlockers.add(`${b} (${state})`)
+      return true
+    }
+    return false
   })
 
 const refreshed = [...rows, ...discovered].map((row) => {
@@ -2266,6 +2281,16 @@ if (!epicApproved) {
 }
 for (const row of plan.blocked) {
   log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked, not admitted to the active set.`)
+}
+if (cancelledBlockers.size) {
+  // A cancelled prerequisite can never merge, so the rows behind it are blocked until a human
+  // either drops the relation or revives the work. Said out loud because the alternative — a
+  // dependent that simply never runs again, with nothing in the output explaining why — is the
+  // failure mode this whole filter exists to remove.
+  log(
+    `Blocker(s) cancelled, not completed: ${[...cancelledBlockers].join(', ')} — still blocking, because cancelled work never landed. ` +
+      `Whoever owns the epic decides whether the dependents still need it; nothing here can clear it.`,
+  )
 }
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)

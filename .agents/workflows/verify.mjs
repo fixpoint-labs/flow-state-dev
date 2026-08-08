@@ -340,6 +340,45 @@ check('epic gate unmet holds every issue and dispatches no worker', async () => 
   assert.match(logs.join('\n'), /Epic objective not signed off — holding 2 issue\(s\)/)
 })
 
+check('a finished prerequisite stops blocking; a cancelled one does not', async () => {
+  // A scout that keeps reporting a prerequisite after it merged blocks the dependent PERMANENTLY:
+  // `pendingAction` refuses any row with a `blockedBy`, and the refresh overwrites the carried
+  // value, so the coordinator cannot correct it from args either. Observed live — an issue came
+  // back blocked by three already-Done prerequisites.
+  const done = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' }), row('FIX-3', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(done.result.blocked, [], 'a prerequisite that landed must stop blocking its dependents')
+  assert.ok(
+    workerLabels(done.calls).some((l) => l.endsWith('FIX-3')),
+    'the dependent must actually be dispatched once its blocker is done',
+  )
+
+  // The opposite error, and the worse one: cancelled/duplicate/dropped work never landed, so
+  // clearing it would admit a dependent whose prerequisite does not exist. It keeps blocking and
+  // is said out loud, since nothing in the loop can ever clear it on its own.
+  // FIX-2 must be a KNOWN child here, not merely referenced: an unknown blocker is kept by the
+  // unresolvable-blocker branch, which would make this pass for the wrong reason and prove nothing
+  // about cancellation.
+  const cancelled = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' }), row('FIX-3', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': 'Canceled', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(
+    cancelled.result.blocked.map((b) => b.issueId),
+    ['FIX-3'],
+    'a cancelled prerequisite never landed, so its dependent stays blocked',
+  )
+  assert.match(cancelled.logs.join('\n'), /cancelled, not completed/, 'and the dead-end is logged rather than silent')
+})
+
 check('args are read identically whether delivered as a JSON string or an object', async () => {
   // The Workflow tool delivers `args` as a JSON string; ad-hoc harness runs pass an object. The
   // scripts normalize both, and BOTH branches need coverage: the suite runs on the string shape,
