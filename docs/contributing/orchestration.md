@@ -284,16 +284,29 @@ implementation instead of at spec.
 not certify is the subject of the next section; read it before treating an open review
 thread as something that has to be closed before a gate can pass.
 
-**Why a comment or review, not a label — either drives; label and Linear mirror.** A
-`labeled` webhook is **not** in the PR-activity stream the coordinator subscribes to
-(comments, CI, and reviews are), so a label a human applies never wakes the session —
-it's only noticed on the next heartbeat poll. A **comment or a review submission is
-delivered**, so either wakes the coordinator immediately. The two sign-off gates
-therefore run on **either an approving comment or an approving GitHub Review from a
-human**, and the coordinator **mirrors it to the `spec approved` / `epic approved`
-label** — a durable, filterable record — the moment it detects one. The label is
-written by the coordinator now, not applied by the human; it records the gate, it no
-longer triggers it.
+**Three channels sign off, and the label is one of them.** A comment, an approving GitHub
+Review, or the `spec approved` / `epic approved` **label** — any of the three passes the
+gate. The coordinator still *mirrors* an approval it detects to the label, so the label is
+both an input and a record.
+
+**The difference between them is latency, not authority.** A `labeled` webhook is **not**
+in the PR-activity stream the coordinator subscribes to (comments, CI and reviews are), so
+a label never wakes the session — it is picked up on the next wake or heartbeat poll. A
+comment or review submission is delivered, so either wakes the coordinator immediately.
+Labelling therefore signs off just as validly; it is simply quieter, and the work starts on
+the next wake rather than within seconds.
+
+**A label does not expire on a push, and that is deliberate.** A spec or epic PR takes
+commits for its whole life — every folded review round is one — so invalidating the label
+whenever a commit lands after it would revoke the approval on the next edit and re-hold the
+set. A label is *standing state the owner can remove*, so **removal is the revocation** —
+a control neither a comment nor a review offers. An approving review, by contrast, keeps its
+own staleness rule: a later push supersedes it, exactly as GitHub treats it.
+
+> This corrected an earlier rule that read *"the gate is the fresh approval the wake
+> re-derived, never the label."* Under it, an epic whose owner had signed the objective off
+> by label read as unapproved and its entire set was held indefinitely, with no way for the
+> coordinator to assert the gate — a live scan overrides the carried value by design.
 
 **What counts as approval.** Either signal, from a human:
 

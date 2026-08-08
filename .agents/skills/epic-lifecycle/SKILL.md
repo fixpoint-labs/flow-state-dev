@@ -305,8 +305,12 @@ The epic-specific delta:
    (they opened the PR); you set it for the ones the wake *detected* — a spec/epic approval, a
    merge — and for a detected approval also apply the `spec approved` / `epic approved` label
    as the durable, filterable record. Idempotent: skip if the issue is already in the target
-   state and the label is already present. **The gate is the fresh approval the wake
-   re-derived, never the label** — the label can go stale behind a later push.
+   state and the label is already present. **The label is an approval channel in its own
+   right, not only a mirror** — the owner signs off with it as well as by comment, so the
+   wake reads it and it passes the gate on its own. It does **not** expire on a push (a spec
+   or epic PR takes commits for its whole life; expiring would revoke the approval on the
+   next fold); **removing the label is the revocation.** An approving *review* keeps its own
+   staleness rule — a later push supersedes it.
 
    **Route the epic-PR feedback the wake handed you — both channels, or it is lost.** Neither
    is optional, because the coordinator never reads epic-PR content itself and nothing else will
