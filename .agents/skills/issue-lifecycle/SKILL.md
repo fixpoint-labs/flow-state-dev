@@ -475,8 +475,9 @@ approval signal rather than trusting a webhook arrived: in AWAITING_SPEC_APPROVA
 is an approving human comment, an approving review, **or the `spec approved` label** — check
 comments, reviews *and* labels, all small reads. The label needs checking precisely because it
 never wakes the session, so it is only ever found by looking. **A human `CHANGES_REQUESTED`
-outranks all three**: the label is also the coordinator's approval mirror, so it outlives a
-later change request and would otherwise carry the issue past feedback nobody addressed.
+outranks all three**: the label is the owner's standing signal, revoked only by removal, so it
+outlives a later change request and would otherwise carry the issue past feedback nobody
+addressed.
 Never poll with `sleep`.
 
 **Both `subscribe_pr_activity` and `send_later` are cloud-only** — neither works in a local

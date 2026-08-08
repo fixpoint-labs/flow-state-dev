@@ -1574,7 +1574,7 @@ const GATE_SCHEMA = {
     humanChangesRequested: {
       type: 'boolean',
       description:
-        "A human's LATEST review state on the epic PR is CHANGES_REQUESTED. Outranks the label, which the coordinator mirrors on approval and which therefore survives a later change request. Bots never count.",
+        "A human's LATEST review state on the epic PR is CHANGES_REQUESTED. Outranks the label, which is standing state the owner revokes by removing and which therefore survives a later change request. Bots never count.",
     },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
@@ -1648,7 +1648,7 @@ const PR_STATE_SCHEMA = {
     humanChangesRequested: {
       type: 'boolean',
       description:
-        "A human's LATEST review state on the spec PR is CHANGES_REQUESTED. Reported separately because it must outrank the label: the coordinator mirrors approvals to `spec approved`, so a stale mirror would otherwise carry an issue past a change request nobody addressed. Bots never count.",
+        "A human's LATEST review state on the spec PR is CHANGES_REQUESTED. Reported separately because it must outrank the label: `spec approved` is standing state revoked only by removal, so a label the owner applied and then left in place would otherwise carry an issue past a change request nobody addressed. Bots never count.",
     },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
@@ -1927,7 +1927,7 @@ const [gate, linear, ...prStates] = await parallel([
             : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
           `SEPARATELY report specApprovedByLabel:true whenever the spec PR currently carries the \`spec approved\` LABEL. PRESENCE IS THE WHOLE TEST — do not check when it was applied and do not treat a later push as invalidating it. The owner signs specs off with this label as well as by comment, and a spec PR takes commits while review is folded, so expiring it would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n` +
-          `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: an approval already mirrored to the label stays on the PR after a change request lands, so without this a stale mirror carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
+          `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: the label is standing state that stays on the PR after a change request lands, so without this it carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
           `Also report whether CI is failing.`,
         { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
@@ -2595,7 +2595,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
 // and the documented rule is that a push after approval re-opens the gate. The next wake's scan
 // re-locks correctly — but the gates emitted BELOW, in this wake, were computed from the pre-fold value,
 // so a child spec approval or a merge would be invited against an objective nobody has signed off. Those
-// approvals are durable (mirrored to a label), so accepting one releases implementation with no second
+// approvals are durable (the owner's label is standing state), so accepting one releases implementation with no second
 // alignment gate — the exact defect already fixed for the unapproved case, in its other direction.
 //
 // `heldForFold` does not cover this: it defers WORK, and only when there is work to defer. A wake whose
@@ -2890,7 +2890,7 @@ const epicOut = {
     // `epic.headSha` and are told not to re-fetch it, so a stale one aligns their specs and
     // implementations to a superseded objective. This is not the review cursor.
     headSha: epicHead,
-    // A previously recorded approval is DURABLE (the coordinator mirrors it to a label), so a
+    // A previously recorded approval is DURABLE (the owner's label is standing state), so a
     // dead scout must not re-lock an epic that was already signed off — that would stall every
     // sub-issue on an infrastructure failure. A live scan still revokes it (a push after
     // approval re-opens the gate), which is the case failing closed actually protects.

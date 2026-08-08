@@ -382,10 +382,10 @@ check('the `epic approved` label signs the objective off, and only its removal r
 })
 
 check('a human change request outranks an approval label on both gates', async () => {
-  // The coordinator MIRRORS an approval to the label, so the label is normally present the moment
-  // an approval has ever happened. Without this, a later CHANGES_REQUESTED flips `specApproved`
-  // false while its own mirror carries the issue into implementation past feedback nobody
-  // addressed — a bypass the label channel introduces precisely because it is also a mirror.
+  // The owner's label is STANDING state — it sits on the PR until they remove it. Without this,
+  // a later CHANGES_REQUESTED flips `specApproved` false while the label carries the issue into
+  // implementation past feedback nobody addressed — a bypass the label channel introduces
+  // precisely because presence, not recency, is its whole test.
   const spec = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
     respond: epicResponder({

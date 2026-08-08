@@ -160,7 +160,7 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 ```
 epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (doc attached to epic issue: yes/added)
-objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
+objective: <one line — the why/outcome>   approved: <yes (approving comment, review, or the owner's epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs) | end-state POC>
 spec_poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>
     (`spec_poc:`, never `poc:` — `issue-lifecycle` already uses `poc:` for a settlement verdict,

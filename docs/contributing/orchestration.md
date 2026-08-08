@@ -360,8 +360,8 @@ standing: without it, a change request would sit unanswered behind an approval n
 retracted.
 
 The epic *issue's* Linear state is a second human-facing mirror of the objective gate, not
-the trigger — the **coordinator writes that mirror** when the approving comment or review
-lands, so it doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
+the trigger — the **coordinator writes that mirror** when approval lands on any of the three
+channels, so it doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
 "Kind" group** — that's what marks a Linear issue as an epic and keeps it filterable off the
 working board.)
 
