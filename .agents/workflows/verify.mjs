@@ -340,7 +340,7 @@ check('epic gate unmet holds every issue and dispatches no worker', async () => 
   assert.match(logs.join('\n'), /Epic objective not signed off — holding 2 issue\(s\)/)
 })
 
-check('the `epic approved` label signs the objective off, and a stale one does not', async () => {
+check('the `epic approved` label signs the objective off, and only its removal revokes that', async () => {
   // The owner marks the objective approved with the LABEL as well as by comment. Reading only
   // comments held a fully-approved epic's entire set indefinitely while the label sat on the PR —
   // and the coordinator cannot assert the gate from `args`, because a live scan overrides the
@@ -353,16 +353,30 @@ check('the `epic approved` label signs the objective off, and a stale one does n
   assert.deepEqual(byLabel.result.held, [], 'and releases the set')
   assert.ok(workerLabels(byLabel.calls).length > 0, 'so work is actually dispatched')
 
-  // Both channels carry the same staleness rule, or the label would be the weaker signal and the
-  // easier one to leave lying around: a push after the label was applied invalidates it exactly as
-  // it invalidates a superseded review approval. The scout reports that; the gate must honour it.
-  const stale = await run('epic-wake.js', {
+  // The label does NOT expire on a push. An epic-spec PR takes commits for the whole life of the
+  // epic — every fold is one — so a staleness rule would revoke the objective on the next edit and
+  // re-hold the set, which is the stall this exists to remove. Removing the label is the revocation,
+  // so absence, and only absence, holds the gate.
+  const noLabel = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
     respond: epicResponder({ approved: false, approvedByLabel: false, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } } }),
   })
-  assert.equal(stale.result.epicApproved, false, 'a label invalidated by a later push does not')
-  assert.deepEqual(stale.result.held, ['FIX-2'], 'and the set stays held')
-  assert.deepEqual(stale.result.gates, [{ kind: 'epic-objective', pr: 100 }], 'with the gate surfaced')
+  assert.equal(noLabel.result.epicApproved, false, 'no label and no approving comment holds the gate')
+  assert.deepEqual(noLabel.result.held, ['FIX-2'], 'and the set stays held')
+  assert.deepEqual(noLabel.result.gates, [{ kind: 'epic-objective', pr: 100 }], 'with the gate surfaced')
+
+  // Fold activity must not disturb it: the label still approves on a wake that is folding new
+  // epic-PR feedback, which is exactly the wake a commit-based staleness rule would have broken.
+  const whileFolding = await run('epic-wake.js', {
+    args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0 }, issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      approved: false,
+      approvedByLabel: true,
+      epicReviewEvents: true,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(whileFolding.result.epicApproved, true, 'a labelled epic stays approved while its spec is being folded')
 })
 
 check('a finished prerequisite stops blocking; a cancelled one does not', async () => {

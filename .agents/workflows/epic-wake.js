@@ -1546,7 +1546,7 @@ const GATE_SCHEMA = {
     approvedByLabel: {
       type: 'boolean',
       description:
-        'The `epic approved` label is present AND no commit landed after it was applied. The owner signs the objective off this way as well as by comment, so it satisfies the gate — but a label applied before a later push is stale, exactly like a superseded review approval.',
+        'The `epic approved` label is present on the PR. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
     },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
@@ -1852,7 +1852,7 @@ const [gate, linear, ...prStates] = await parallel([
   () =>
     agent(
       `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
-        `SEPARATELY, report approvedByLabel:true when the PR carries the \`epic approved\` LABEL and no commit has landed since it was applied — compare the label event's timestamp against the current head commit's date. The owner signs the objective off with this label as well as by comment, so it is a real approval channel and not merely a mirror; check the labels even when you find no approving comment. A label applied before a later push is STALE and must report false, on the same rule that invalidates a superseded review approval. Report it independently of \`approved\` — do not fold one into the other, and do not infer the label from body text claiming approval.\n` +
+        `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL. PRESENCE IS THE WHOLE TEST: do not check when it was applied, do not compare it against the head commit, do not treat a later push as invalidating it. The owner signs the objective off with this label as well as by comment, and an epic-spec PR takes commits continuously as feedback is folded — so a staleness rule would revoke the approval on the next edit and hold the entire set. A label is standing state the owner can REMOVE; removal is the revocation. Check the labels even when you find no approving comment. Report it independently of \`approved\` — do not fold one into the other, and do not infer it from body text claiming approval.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
@@ -1936,9 +1936,11 @@ if (scanned && !gate.headSha) {
 // while the label sat on the PR — the coordinator has no way to assert the gate from `args`, because
 // a live scan's answer overrides the carried one by design.
 //
-// Both channels carry the SAME staleness rule, which is what keeps the label from being a weaker
-// signal than a review: the scout reports `approvedByLabel` false once a commit lands after the label
-// was applied, exactly as a push invalidates a superseded review approval.
+// The label does NOT expire on a push, and that difference from a review approval is deliberate. An
+// epic-spec PR takes commits for the life of the epic — every fold is one, #993 carries 94 — so a
+// staleness rule would revoke the objective on the next edit and re-hold the whole set, which is the
+// stall this change exists to remove. A label is standing state the owner can remove at any time, so
+// REMOVAL is the revocation, and it is a control a comment does not have.
 const epicApproved = scanned && gateUsable && (!!gate.approved || !!gate.approvedByLabel)
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.approved) {
