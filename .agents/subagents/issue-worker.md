@@ -85,6 +85,15 @@ with sibling workers. Commit and push your branch; do not merge.
   needs a human (spec awaiting approval, an ambiguous review call, a challenger-
   surfaced spec blind spot, a blocking dependency), do NOT stall — return a status
   that names the blocker and what decision is needed. The coordinator surfaces it.
+- **A blocker carries the ask, not just the question.** You are the only one who read the
+  code; the coordinator has a status table and cannot reconstruct a decision from a phrase.
+  So return every part it needs to put the fork to a **product owner** — all six, in the
+  `blocker` block below. Same discipline as the `settle_requested` slice: the dispatcher owes
+  substance, not a topic. Write it in observable behaviour with no paths or symbols; the shape
+  and a worked example are
+  [`asking-for-decisions.md`](../../docs/contributing/asking-for-decisions.md). A blocker that
+  arrives as *"needs a decision on retry semantics"* costs a full round-trip before the human
+  can even read it.
 - **Stay compact on the way out.** Your return value is a status line, not a
   transcript: `<ISSUE> · <phase now> · <spec PR#/impl PR#> · <gate pending? / blocker> · <one-line what you did>`. The coordinator holds only this.
 - **No persistent memory (deliberate).** This agent has no `memory:` scope — many
@@ -105,6 +114,17 @@ issue: <ID>
 phase: <NEEDS_SPEC | AWAITING_SPEC_APPROVAL | NEEDS_IMPLEMENTATION | PR_FEEDBACK | DONE>
 spec_pr: <#/none>   impl_pr: <#/none>   branch: <name>
 gate_or_blocker: <none | awaiting-spec-approval | ready-to-merge | blocked: ...>
+blocker: none | <ONE string. The labels below are what the prose must cover, not keys —
+         unlike settle_requested, the schema field is a plain string, because the
+         same field also carries INCONCLUSIVE verdicts and open questions.>
+         fork: <plain-language either/or>
+         terms: <the observable behaviour — no paths, no symbols>
+         tradeoff: <what picking one costs, and who outside the room feels it>
+         rec: <your recommendation, argued in consequences>
+         changes-my-mind: <the fact you don't have and the user might>
+         if-wrong: <what being wrong costs — how much attention this warrants.
+                    NOT the same as tradeoff: that prices the choice, this
+                    prices the mistake.>
 spec_review: <rounds spent this dispatch> · spec_level_found: <yes/no/n-a>
 spec_poc: none | <spec-poc/ path> · showed: <one line, or "unfinished — load-bearing"> (advisory: no schema field)
 settle_requested: none | claim: <X does/does not Y> · load: <what depends on it> · falsify: <what would disprove it> · threads: <url(s)>

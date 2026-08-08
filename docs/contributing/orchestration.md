@@ -7,10 +7,13 @@ agents — the roles, the artifacts, and the gates. The orchestration skills
 `epic-agent`, `poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc**
 instead of each restating the shared concepts. When a concept here changes, it changes here.
 
-One companion doc sits beside this one:
+Two companion docs sit beside this one.
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) is canonical for what a PR description
 owes its two audiences — the static reviewer contract, and the per-PR *"Parts worth reviewing
 closely"* block. Every PR we open carries both.
+[`asking-for-decisions.md`](asking-for-decisions.md) is canonical for what an **ask** contains
+— the engineer/product-owner contract and the six-part shape. Every gate, every escalated
+blocker, and every fork put to the user is written to it.
 
 ## The pieces at a glance
 
@@ -283,6 +286,16 @@ implementation instead of at spec.
 **Both gates sign off a *direction*, not a finished design.** What each gate does and does
 not certify is the subject of the next section; read it before treating an open review
 thread as something that has to be closed before a gate can pass.
+
+**Both are asked of a product owner, so both are written as business decisions.** A gate
+surfaced as *"the spec PR is open, please approve"* pushes the whole framing job onto the
+person least equipped to do it — they have to open the document, find the direction, and work
+out what approving costs. Surface instead what they are signing off in their own terms: the
+outcome it buys, the calls that are hard to reverse, your recommendation, and what they might
+know that would change it. [`asking-for-decisions.md`](asking-for-decisions.md) is the shape;
+the lifecycles apply it when they surface a gate, and the same rule governs an **escalated
+blocker** — a worker that can't settle a fork returns the parts of the ask, and the
+coordinator (which never read the code) surfaces them without re-deriving.
 
 **Why a comment or review, not a label — either drives; label and Linear mirror.** A
 `labeled` webhook is **not** in the PR-activity stream the coordinator subscribes to

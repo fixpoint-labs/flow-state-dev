@@ -128,7 +128,12 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 - **One action, then exit.** The coordinator is the event loop; you are not.
 - **Never prompt the user.** You have no `AskUserQuestion`. If a cross-cutting decision
   genuinely needs a human, record it in the epic-spec's open-questions and return a status
-  naming it; the coordinator surfaces it.
+  naming it; the coordinator surfaces it. **Record it as an ask, not a topic** — all six parts,
+  per [`asking-for-decisions.md`](../../docs/contributing/asking-for-decisions.md). You read the
+  specs; the coordinator holds a status table and cannot reconstruct any of that. A
+  cross-cutting question almost always arrives phrased in mechanism (two issues disagreeing
+  about internals) and the person who settles it is deciding about the product — translating it
+  is your job, not theirs.
 - **Stay compact on the way out.** Your return value is a status line, not the spec text.
 - **No persistent memory** (like `issue-worker`): the epic-spec doc is the durable state.
 - **Changing a decision is not done when the owning section is edited** (tenet 5). This binds

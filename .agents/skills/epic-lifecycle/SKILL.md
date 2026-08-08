@@ -369,7 +369,17 @@ The epic-specific delta:
    contract every other epic-level answer uses — and leave the `unsettled` entry in place. `epic-agent`
    folds it into the epic-spec and the entry retires with the fold, which is what makes the record and the
    decision move together.
-4. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
+4. **Surface gates.** **Write every gate and every blocker as a decision put to a product
+   owner** — all six parts, per
+   [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical).
+   Batch the turn's asks under one `Need your sign-off` heading, numbered, hardest first. "The
+   spec PR is open, please approve" is not a gate surfaced — it pushes the framing job onto the
+   person least able to do it. You hold links and status lines, not the code, so build the ask
+   from what the workers returned (a row's `blocker` carries its parts) rather than re-deriving
+   it; where a worker gave you a bare phrase, say what you have and name what's missing instead
+   of inventing the substance.
+
+   If the epic is awaiting its objective sign-off, surface the epic
    PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
    releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
    for any issue **awaiting spec approval** (its spec PR is open, Part I + II), surface the
@@ -378,7 +388,8 @@ The epic-specific delta:
    human other than the PR's author — the label is applied by the coordinator, not the human).
    **Say what they're signing off: the direction** — the problem framing, the approach, and the
    numbered Decisions — and, for a converged spec, that remaining open threads are carried as
-   implementer notes rather than blockers. **If a POC settlement is in flight on that issue,
+   implementer notes rather than blockers. State the outcome the epic buys and the calls that
+   are hard to reverse; the numbered Decisions live on the PR, so index them, don't recite them. **If a POC settlement is in flight on that issue,
    say so in one line** (the claim, and that the verdict will land on the PR) — approval isn't
    blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The
    returned `gates` array carries this for you: each `spec-approval` entry names the PR and its
@@ -701,8 +712,12 @@ Once both hold:
    cheaper to trigger than a two-round review loop, so this is where a POC fleet would come from
    if anywhere.
 3. **Walk you through the remaining decisions.** For each conflict the report marks *decision-needed*,
-   surface it with the trade-off (`AskUserQuestion`) — the coordinator owns all user interaction;
-   the review sub-agent never prompts. Conflicts the docs already settle are applied without
+   surface it as a decision they can make, in full — all six parts, per
+   [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (the report
+   hands up the substance, you do the framing). `AskUserQuestion` gets the crisp choice. A
+   conflict relayed as "spec A and spec B disagree about X" is two specs' words, not an ask —
+   the user is deciding about the product, not refereeing two documents. The coordinator owns all
+   user interaction; the review sub-agent never prompts. Conflicts the docs already settle are applied without
    a prompt (noted, not asked). For a conflict the report marks **`fable-candidate`**, the
    walkthrough asks two things, not one: the decision itself, **and** whether to spend a
    **Fable** adjudication on it first (`AskUserQuestion`, with the rough cost). Only on an

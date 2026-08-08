@@ -192,6 +192,13 @@ issue can answer. Each: the question, who raised it, what it blocks (usually not
 and the resolution once it lands. **Resolved ones stay, with their answer** — that's what
 stops a third issue reopening them.
 
+**One that needs *the user's* call is an ask, not a list entry.** Keep the entry here as the
+durable record, and put the decision to them properly — all six parts, per
+[`asking-for-decisions.md`](asking-for-decisions.md). A cross-cutting question is exactly
+the shape that arrives phrased in mechanism and has to be translated: it reached this section
+*because* two issues disagreed about internals, and the person who can settle it is deciding
+about the product.
+
 > - **Do heartbeat frames consume sequence numbers?** Raised by FIX-776's spec,
 >   commenting up. It changes FIX-775's filter, so neither issue can settle it
 >   alone. Blocks nothing — both proceed on "no" and fold if the POC in flight

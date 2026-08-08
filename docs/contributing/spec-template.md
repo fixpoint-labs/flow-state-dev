@@ -2,9 +2,12 @@
 
 A spec has two readers with opposite needs, so it has two parts and a hard divider.
 
-- **Part I — The Case** is for the **human decision-maker.** They review by pattern,
-  smell, and direction, not by absorbing density (philosophy tenet 6). Scannable in a
-  few minutes. It is also the spec-PR description and the Linear lead.
+- **Part I — The Case** is for the **human decision-maker** — the product owner, not a peer
+  engineer. They review by pattern, smell, and direction, not by absorbing density
+  (philosophy tenet 6), and what they can judge that nobody else can is whether this serves
+  the objective. So Part I is written in observable behaviour and priced in consequences;
+  every ask inside it follows [`asking-for-decisions.md`](asking-for-decisions.md).
+  Scannable in a few minutes. It is also the spec-PR description and the Linear lead.
 - **Part II — The Build Plan** is for the **implementing agent.** *Directional*, not a
   blueprint: which modules and layers are involved, how they fit, the order to build
   them. Exact signatures and line-level choices are the implementer's, settled in the
@@ -239,6 +242,20 @@ Numbered, ≤ 8, only the calls that **shape the outcome** — some interpretati
 the implementer is expected. Each: the decision, the alternative rejected, the
 ramification. Part II must not introduce a decision that isn't here.
 
+**Write *Locks in* as a consequence, not a mechanism.** It is the only line that tells a
+product owner what signing this off costs them, so it names what we can no longer change
+cheaply, who is affected, and when the bill arrives — never just which code would have to
+move. "Changing it later is a breaking change to a string we don't validate" prices the
+decision; "both entry points would need updating" asks the reader to price it themselves.
+
+**Most of these are being ratified, not decided.** The human is confirming the direction is
+the one they want, which is why eight one-liners is a reasonable ask. **A row that is a genuine
+live fork** — you can't settle it alone, and the answer turns on something they know — is
+**pulled out and asked properly** in the spec PR description (block 3) using the six-part
+shape in [`asking-for-decisions.md`](asking-for-decisions.md), with the row itself left in
+place so §6 stays the complete sign-off surface. Zero to two per spec; more than that and the
+direction isn't ready for review.
+
 > 1. **Resume filters server-side by sequence number.**
 >    *Rejected:* client-side dedupe.
 >    *Locks in:* every transport we add later needs a monotonic per-request sequence.
@@ -472,7 +489,15 @@ explicit "no docs changes required" with justification. Never a vague "update th
 ### 12. Dependencies, open questions & follow-ups
 
 Blocking issues/PRs and external dependencies. Open questions that need a decision
-*before* implementation, each with options and trade-offs.
+*before* implementation.
+
+**An open question here is always a live fork, so it always gets the full ask** — all six
+parts, per [`asking-for-decisions.md`](asking-for-decisions.md). Listing options with no
+recommendation is the failure mode this section attracts: it reads as thorough and it hands
+the reader an unpriced menu, which costs a round while they ask you what you think.
+
+A question you'd answer the same way whatever they said isn't open. Decide it, make it a §6
+Decision, and move on.
 
 > **Dependencies:** none. Sequence numbers already ship.
 >

@@ -174,7 +174,18 @@ tradeoffs, and the decisions, *before* the deep detail. Density is a cost we pay
 deliberately where it buys precision (the agent-facing half of a spec, a contract
 definition), never by default.
 
-*Derives:* BP-039 (specs lead with plain language), the spec's two-part structure.
+**Altitude is also *whose chair they sit in.*** The human decides as the product
+owner — they hold the objective and know things about the business we don't. So an
+ask is translated into the decision they are actually making: what it costs in
+promises, customers, timing, and reversibility, not the mechanism that produced it.
+They may well be technical, which makes handing them the mechanism easy and still
+wrong — every paragraph they spend re-deriving a call we already made is attention
+not spent on the objective only they are tracking. Dropping them into the engineer's
+chair is sometimes necessary and should be rare; when it is, say so rather than
+letting it happen by default.
+
+*Derives:* BP-039 (specs lead with plain language), BP-041 (frame every ask as a
+business decision), the spec's two-part structure.
 
 ### 7. Prove the goal, not the mock
 
