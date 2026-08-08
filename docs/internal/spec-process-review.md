@@ -277,7 +277,8 @@ detectable rather than gradual.
 - Make §11 of the template answer *"which architecture doc does this change, or why none"*, and
   have the `review` completeness lens check it.
 - **Rescue FIX-954 first** — 41KB, repo-only, no Linear document. The only genuine data-loss
-  risk on the board.
+  risk on the board. *(Done — pushed to Linear before the deletion, all 24 headers verified
+  present. The code that cites `FIX-954 §N` resolves against the Linear document.)*
 - Fix the two dangling code citations.
 - Then delete the 8 spec files from `main`; keep `README.md`, rewritten to say where specs live
   and how to find a historical one.
