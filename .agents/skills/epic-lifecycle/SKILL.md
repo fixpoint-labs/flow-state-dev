@@ -713,9 +713,8 @@ Once both hold:
    cheaper to trigger than a two-round review loop, so this is where a POC fleet would come from
    if anywhere.
 3. **Walk you through the remaining decisions.** For each conflict the report marks *decision-needed*,
-   surface it as a decision they can make — the fork in plain terms, the trade-off, **a
-   recommendation**, and what would change it
-   ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md); the report
+   surface it as a decision they can make, in full — all six parts, per
+   [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (the report
    hands up the substance, you do the framing). `AskUserQuestion` gets the crisp choice. A
    conflict relayed as "spec A and spec B disagree about X" is two specs' words, not an ask —
    the user is deciding about the product, not refereeing two documents. The coordinator owns all

@@ -491,9 +491,8 @@ explicit "no docs changes required" with justification. Never a vague "update th
 Blocking issues/PRs and external dependencies. Open questions that need a decision
 *before* implementation.
 
-**An open question here is always a live fork, so it always gets the full ask** — the fork as
-a heading, plain terms, the trade-off, **your recommendation**, and what would change your
-mind ([`asking-for-decisions.md`](asking-for-decisions.md)). Listing options with no
+**An open question here is always a live fork, so it always gets the full ask** — all six
+parts, per [`asking-for-decisions.md`](asking-for-decisions.md). Listing options with no
 recommendation is the failure mode this section attracts: it reads as thorough and it hands
 the reader an unpriced menu, which costs a round while they ask you what you think.
 

@@ -198,7 +198,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-037 | Specs live on their spec PR (`spec/<ISSUE-ID>.md`) and in Linear — never on `main` |
 | BP-039 | Lead with the problem in plain language, collapse the derivation below the fold (grok before diving deep) |
 | BP-040 | Spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds |
-| BP-041 | Frame every ask as a business decision — the fork, plain terms, the trade-off, a recommendation, what would change your mind |
+| BP-041 | Frame every ask as a business decision — the fork, plain terms, the trade-off, a recommendation, what would change your mind, what being wrong costs |
 
 ### [Blocks & Composition](best-practices/blocks.md)
 

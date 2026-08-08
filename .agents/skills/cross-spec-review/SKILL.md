@@ -152,8 +152,9 @@ where:    <the section/decision/API in each spec that collides>
 recommend: <the resolution, and which spec(s) should change to land it>
 decision-needed?: NO (docs settle it — <which doc>) | YES (<the fork as a plain-language either/or>
                   terms: <the observable behaviour each option produces — no paths, no symbols>
-                  cost:  <what picking one costs, and who outside the room feels it>
-                  changes-my-mind: <the fact you don't have and the user might>)
+                  tradeoff: <what picking one costs, and who outside the room feels it>
+                  changes-my-mind: <the fact you don't have and the user might>
+                  if-wrong: <what being wrong costs — prices the mistake, not the choice>)
 poc-candidate: NO | YES (claim: <X does/does not Y> · load: <what depends on it in each spec> · falsify: <what would disprove it>)
 fable-candidate: NO | YES (<the self-contained slice — excerpts, the decision, tenets in tension>)
 ```

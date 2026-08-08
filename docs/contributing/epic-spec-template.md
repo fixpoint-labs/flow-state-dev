@@ -193,9 +193,8 @@ and the resolution once it lands. **Resolved ones stay, with their answer** — 
 stops a third issue reopening them.
 
 **One that needs *the user's* call is an ask, not a list entry.** Keep the entry here as the
-durable record, and put the decision to them properly — the fork, plain terms, the trade-off,
-**your recommendation**, and what would change your mind
-([`asking-for-decisions.md`](asking-for-decisions.md)). A cross-cutting question is exactly
+durable record, and put the decision to them properly — all six parts, per
+[`asking-for-decisions.md`](asking-for-decisions.md). A cross-cutting question is exactly
 the shape that arrives phrased in mechanism and has to be translated: it reached this section
 *because* two issues disagreed about internals, and the person who can settle it is deciding
 about the product.

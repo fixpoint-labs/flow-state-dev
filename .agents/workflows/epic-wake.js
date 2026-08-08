@@ -1695,7 +1695,7 @@ const WORKER_SCHEMA = {
           blocker: {
             type: ['string', 'null'],
             description:
-              'This slice needs a human decision. Same shape as the row-level blocker: the fork, the observable behaviour, the cost, your recommendation, what would change your mind.',
+              'This slice needs a human decision. Same shape as the row-level blocker: all six parts of the ask, per docs/contributing/asking-for-decisions.md.',
           },
           answerApplied: {
             type: 'boolean',
@@ -1751,7 +1751,7 @@ const WORKER_SCHEMA = {
     blocker: {
       type: ['string', 'null'],
       description:
-        'Needs a human decision — the coordinator surfaces it. Carry the ASK, not a topic: the fork as a plain-language either/or, the observable behaviour (no paths or symbols), what picking one costs, your recommendation, and what fact would change your mind. The coordinator holds only status lines and cannot reconstruct any of that. See docs/contributing/asking-for-decisions.md.',
+        'Needs a human decision — the coordinator surfaces it. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
     },
     readyToMerge: { type: 'boolean' },
     status: { type: 'string', description: 'One compact status line' },
