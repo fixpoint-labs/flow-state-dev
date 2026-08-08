@@ -33,7 +33,7 @@ import {
   flowPolicy as builtinFlowPolicy,
   type ObservationLedger,
   type ObservationLedgerView,
-  type Task,
+  type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskFlowPolicy,
 } from "../tasks";
@@ -82,10 +82,10 @@ function getRequestResolverBag(ctx: BlockContext): Record<string, unknown> {
  * Both setup and teardown read it; the worker-step resolver reads it to
  * pick up the current ledger / policy.
  *
- * Per-worker state (the current task id) is tracked via AsyncLocalStorage
- * on `workerTaskIdStore`, NOT on this bag — a single shared field would
- * race under `concurrency > 1`, with Worker B's `stampCurrentTaskId`
- * clobbering Worker A's id mid-await and misattributing A's cache writes
+ * Per-worker state (the current claim) is tracked via AsyncLocalStorage
+ * on `workerClaimStore`, NOT on this bag — a single shared field would
+ * race under `concurrency > 1`, with Worker B's `stampCurrentClaim`
+ * clobbering Worker A's claim mid-await and misattributing A's cache writes
  * and observation entries to B.
  */
 export interface BoardRunFlowState {
@@ -96,14 +96,20 @@ export interface BoardRunFlowState {
 }
 
 /**
- * Per-worker task id, scoped via Node's `AsyncLocalStorage`. Each
+ * Per-worker **claim ticket**, scoped via Node's `AsyncLocalStorage`. Each
  * forEach iteration runs in its own async context tree (Node propagates
  * the store through `await` boundaries automatically). The worker
- * body's leading tap calls `enterWith(task.id)` so every subsequent
+ * body's leading tap calls `enterWith(ticket)` so every subsequent
  * step in that worker — including any cacheable tool call inside a
- * generator — reads its own task id, not a sibling's.
+ * generator — reads its own claim, not a sibling's.
+ *
+ * It carried a bare task id until FIX-981. Widening it to the whole ticket
+ * gives the model-facing task tools an ownership token to present without
+ * threading anything new through `BlockContext`, and reuses the argument this
+ * seam already won: a shared field races under `concurrency > 1`, and the
+ * default concurrency is 4.
  */
-const workerTaskIdStore = new AsyncLocalStorage<string>();
+const workerClaimStore = new AsyncLocalStorage<TaskClaimTicket>();
 
 /** Resolve a user-supplied `flowPolicy` value to a concrete `TaskFlowPolicy`. */
 export function resolveFlowPolicyValue(
@@ -209,7 +215,7 @@ export function createInstallBoardFlowState(
         // Read taskId from the AsyncLocalStorage scope of the calling
         // worker — never from a shared bag field, which would race under
         // concurrency > 1.
-        const taskId = workerTaskIdStore.getStore();
+        const taskId = workerClaimStore.getStore()?.taskId;
         runState.ledger?.append({
           collectionId,
           ...(taskId !== undefined ? { taskId } : {}),
@@ -226,7 +232,7 @@ export function createInstallBoardFlowState(
       // the in-progress task id so later cross-task hits can attribute
       // back via `sourceTask`. Same per-worker isolation via ALS.
       state[SLOT_CACHE_SOURCE_TASK_RESOLVER] = () => {
-        const taskId = workerTaskIdStore.getStore();
+        const taskId = workerClaimStore.getStore()?.taskId;
         return taskId !== undefined ? { collectionId, taskId } : undefined;
       };
     },
@@ -289,13 +295,34 @@ export function createFlowPolicyResolver(runState: BoardRunFlowState) {
 
 /**
  * Helper for the worker body's leading `.tap()` — enters the
- * AsyncLocalStorage scope with this worker's task id so every
+ * AsyncLocalStorage scope with this worker's claim ticket so every
  * subsequent step in the same async chain (cache writes, observation
- * appends) reads the right id. `enterWith` mutates the *current*
- * async resource so all downstream `await` chains in this worker
+ * appends, task-tool calls) reads the right claim. `enterWith` mutates the
+ * *current* async resource so all downstream `await` chains in this worker
  * iteration inherit the value; sibling worker iterations have their
  * own resource and never see it.
+ *
+ * **The one stamp site.** This is the only place a claim enters the seam, which
+ * is what makes the tool surface's posture a rule rather than a choice: inside
+ * a claimed-worker scope there is always a ticket, and outside one there is
+ * never a stamp to read. "No ticket presented" and "not a claimed worker" are
+ * the same condition and cannot drift apart.
  */
-export function stampCurrentTaskId(task: Task): void {
-  workerTaskIdStore.enterWith(task.id);
+export function stampCurrentClaim(ticket: TaskClaimTicket): void {
+  workerClaimStore.enterWith(ticket);
+}
+
+/**
+ * The claim ticket of the worker whose async chain this call is running in, or
+ * `undefined` outside a claimed-worker scope — a coordinator, a directly-wired
+ * consumer, a board resolved by hand.
+ *
+ * Read by `taskTools` so a model-facing write presents ownership without the
+ * model ever seeing a token: the model still names a task id, and the substrate
+ * refuses when that id is not the one the caller holds. `undefined` means no
+ * ownership question is asked, which is the correct posture for a coordinator
+ * settling a task it never claimed.
+ */
+export function currentWorkerClaim(): TaskClaimTicket | undefined {
+  return workerClaimStore.getStore();
 }

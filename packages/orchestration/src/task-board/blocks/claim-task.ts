@@ -5,13 +5,19 @@
  * task to `in_progress` against the calling worker. Outputs a typed
  * `ClaimResult` describing whether something was claimed and (if so)
  * the claimed task. Side-channels the claim outcome onto the worker's
- * sequencer state (`currentTaskId`, `lastClaimed`) so downstream
- * `recordSuccess` / `recordError` / `checkBoard` can read it without
- * threading the value through `.stepIf` branches.
+ * sequencer state (`lastClaimed`) so downstream `checkBoard` can read
+ * it without threading the value through `.stepIf` branches; the claim
+ * ticket the recorders present is stamped one level deeper, by the
+ * worker body's leading tap.
  *
- * The substrate's CAS retry inside `collection.claim` guarantees
- * exactly-once dispatch under contention; this block simply surfaces
- * that semantic to the pattern layer.
+ * The substrate's conditional write inside `collection.claim` decides
+ * the contention: the loser's eligibility re-check runs against
+ * refreshed state and resolves to **no task**, not to an error. That is
+ * "at most one holder at a time", not exactly-once dispatch — a lease
+ * reclaim deliberately hands an abandoned task to a second worker, and
+ * the guarantee is scoped to one process on a filesystem store. This
+ * block surfaces the claim outcome to the pattern layer; it adds no
+ * arbitration of its own.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";

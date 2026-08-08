@@ -20,10 +20,20 @@
  *   4. Loop until a claim succeeds or the candidate list is exhausted.
  *
  * Two concurrent workers attempting to claim the same id flow through
- * the same updater. The updater serializes through the underlying scope
- * state's persistence pipeline, so the second worker reads the now-
- * `in_progress` task and skips it. Result: at most one worker claims any
- * given task.
+ * the same updater. Since FIX-992 that updater runs under a conditional
+ * write: a version conflict **re-runs the mutator against refreshed
+ * state**, so the loser's re-check sees the winner's `in_progress` row
+ * and skips the candidate. A lost race therefore resolves to *no task*,
+ * never to an error and never to a second holder.
+ *
+ * **What that guarantee is scoped to.** At most one holder at a time,
+ * for concurrent executions **in one process** — which every adapter
+ * satisfies, the filesystem store via a per-key mutex on the store
+ * instance. It is not exactly-once dispatch (a lease reclaim
+ * deliberately re-dispatches an abandoned task), and it does not hold
+ * across two OS processes on the filesystem store, which compares under
+ * that in-process lock only. Use SQLite or Postgres where two processes
+ * share a board.
  *
  * Async construction + sync mirror: `ResourceCollectionRef` read methods
  * (`get`/`getOptional`/`list`/`count`) are uniformly async. To keep the
@@ -121,7 +131,7 @@ import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
  * no window — and leaves both backings silent on a declined write.
  *
  * Both write paths use this same mechanism: the transition wrapper for an
- * advisory `ifAllowed` / `expectAttempt` decline, and the patch helper for the
+ * advisory `ifAllowed` / `claim` decline, and the patch helper for the
  * assignment terminal guard.
  */
 class WriteDeclined extends Error {
@@ -387,7 +397,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     try {
       committed = await updateStateWith(ref, (current) => {
         const task = current as unknown as Task<TInput, TOutput>;
-        const reason = transitionDeclineReason(task as Task, targetStatus, guards);
+        const reason = transitionDeclineReason(
+          task as Task,
+          targetStatus,
+          guards,
+          options.collectionId
+        );
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
         }
@@ -608,32 +623,47 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
       );
     },
 
-    async block(id, reason) {
-      await transitionRef(id, "blocked", "blocked", () =>
-        reason !== undefined ? { error: reason } : {}
+    async block(id, reason, options) {
+      return transitionRef(
+        id,
+        "blocked",
+        "blocked",
+        () => (reason !== undefined ? { error: reason } : {}),
+        options
       );
     },
 
-    async unblock(id) {
-      await transitionRef(id, "pending", "unblocked", () => ({
-        error: undefined,
-      }));
-    },
-
-    async awaitReview(id, feedback) {
-      await transitionRef(id, "awaiting_review", "review_requested", () =>
-        feedback !== undefined ? { feedback } : {}
+    async unblock(id, options) {
+      return transitionRef(
+        id,
+        "pending",
+        "unblocked",
+        () => ({ error: undefined }),
+        options
       );
     },
 
-    async resumeFromReview(id, feedback) {
-      await transitionRef(id, "pending", "resumed", () => ({
-        feedback: feedback ?? undefined,
-        leaseUntil: undefined,
-      }));
+    async awaitReview(id, feedback, options) {
+      return transitionRef(
+        id,
+        "awaiting_review",
+        "review_requested",
+        () => (feedback !== undefined ? { feedback } : {}),
+        options
+      );
     },
 
-    async cancel(id, reason) {
+    async resumeFromReview(id, feedback, options) {
+      return transitionRef(
+        id,
+        "pending",
+        "resumed",
+        () => ({ feedback: feedback ?? undefined, leaseUntil: undefined }),
+        options
+      );
+    },
+
+    async cancel(id, reason, options) {
       // The decline is now REPORTED (FIX-976) — behaviour is unchanged, but the
       // caller learns the cancel did nothing instead of reading silence as
       // success. Substrate write-backs discard this and stay silent.
@@ -645,9 +675,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           reason !== undefined
             ? { error: reason, completedAt: now(), leaseUntil: undefined }
             : { completedAt: now(), leaseUntil: undefined },
-        // Unchanged behaviour: cancelling an already-settled task is a no-op.
-        // It no longer emits a `resource_change` for the write it skipped.
-        { ifAllowed: true }
+        // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
+        // a caller's ticket must reach the guard, but "advisory by
+        // construction" is this method's contract and a caller cannot switch it
+        // off. Unchanged behaviour: cancelling an already-settled task is a
+        // no-op, and it emits no `resource_change` for the write it skipped.
+        { ...options, ifAllowed: true }
       );
     },
 

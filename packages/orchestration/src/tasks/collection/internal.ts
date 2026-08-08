@@ -6,6 +6,7 @@
  * task shape that ends up on the emitted `task-change` component item.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
+import { ticketNamesTask } from "../claim-ticket";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
@@ -254,7 +255,7 @@ export function retryBudgetExhaustedError(
 }
 
 /**
- * True when `expectAttempt` still owns `task` (FIX-951).
+ * True when the ticket's attempt still owns `task` (FIX-951).
  *
  * Ownership is the counter **and** the status, not the counter alone.
  * `reclaim()` returns a task to `pending` without touching `attempts` — it
@@ -263,55 +264,103 @@ export function retryBudgetExhaustedError(
  * counter by construction. `attempts` is a claim counter, and only
  * incidentally an ownership token while the task sits in a status an
  * attempt holds.
+ *
+ * This asks only *"is my attempt still the live one on this task"*. Whether
+ * this is even the right task is {@link ticketNamesTask}'s question, asked
+ * first — see {@link transitionDeclineReason}.
  */
-function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
-  return task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status);
+function attemptOwnsTask(task: Task, attempt: number): boolean {
+  return task.attempts === attempt && ATTEMPT_OWNED_STATUSES.has(task.status);
 }
 
 /**
- * Decide whether an advisory write-back should decline, and say **why**
- * (FIX-951; reason reporting added by FIX-976).
+ * Refuse a removed option loudly rather than ignoring it (BP-030).
  *
- * Called from inside each backing's transition wrapper — i.e. inside the
- * atomic write — so the status it reads is authoritative and no caller has
- * to re-derive the state machine from outside the lock. Single-sourced here
- * because the two backings carry separately maintained copies of the
- * wrapper itself, and the *rules* must not drift between them.
+ * `expectAttempt` was replaced by `claim` in FIX-981. TypeScript catches the
+ * migration for a typed caller, but an untyped one — plain JS, a `as any`, an
+ * options object assembled from config — would otherwise have its guard
+ * silently dropped and its write proceed unguarded. Silence is the exact shape
+ * of the defect the ticket exists to close, so a leftover key throws.
  *
- * Returns the reason to no-op the write, or `undefined` to proceed. Which
- * calls decline is **unchanged** from FIX-951 — the return type carries the
- * condition that fired so the wrapper can report it without re-deriving the
- * state machine after the fact.
+ * `in` rather than a value check on purpose: `{ expectAttempt: undefined }` is
+ * still a caller that thinks it is passing this guard.
+ */
+function assertNoRemovedGuards(options: TaskTransitionOptions): void {
+  if ("expectAttempt" in options) {
+    throw new Error(
+      `[tasks] "expectAttempt" was removed — pass "claim" instead. A bare attempt ` +
+        `number names no task, so it is satisfied by any task on the same attempt. ` +
+        `Mint a ticket from the task \`claim()\` returned: ` +
+        `\`ticketForClaim(collection.collectionId, claimedTask)\`.`
+    );
+  }
+}
+
+/**
+ * Decide whether an advisory write should decline, and say **why**
+ * (FIX-951; reason reporting added by FIX-976; target binding by FIX-981).
  *
- * The evaluation order *is* the documented precedence (`terminal` →
- * `disallowed` → `lost-claim`, see `TaskWriteDeclineReason`), which is the
- * order this predicate already evaluated in.
+ * **The one convergence point for the ownership guard.** Called from inside
+ * each backing's transition wrapper — i.e. inside the atomic write — so the
+ * status it reads is the committed one and no caller has to re-derive the state
+ * machine from outside the lock. Single-sourced here because the two backings
+ * carry separately maintained copies of the wrapper itself, and the *rules*
+ * must not drift between them. Every worker-callable transition on both
+ * backings passes through this function; a guard added at a call site instead
+ * is a guard the next call site will not have.
+ *
+ * Returns the reason to no-op the write, or `undefined` to proceed.
  *
  * `undefined` says nothing about legality: the wrapper still runs
- * `assertTransitionAllowed`, so a caller that passed no guards (or only
- * `expectAttempt`) keeps today's throwing contract.
+ * `assertTransitionAllowed`, so a caller that passed no guards (or only a
+ * `claim`) keeps today's throwing contract.
+ *
+ * ## The evaluation order is the contract
+ *
+ * It *is* the documented precedence (`terminal` → `not-my-task` → `disallowed`
+ * → `lost-claim`, see `TaskWriteDeclineReason`), and the middle two are ordered
+ * deliberately rather than incidentally.
+ *
+ * A decline aborts the write **before** it is attempted, so the conditional
+ * write never conflicts, never refreshes, and never re-runs this predicate.
+ * "Inside the atomic write" therefore buys freshness against *other writers
+ * mid-flight*, not against a basis the caller resolved minutes ago. Two arms
+ * are sound under a stale basis anyway — `not-my-task` reads no mutable task
+ * state, and terminality is absorbing, so a task observed terminal on any basis
+ * is terminal on every later one. `disallowed` is not: a stale `pending` makes
+ * an ordinary `in_progress → completed` settlement look illegal. Leaving the
+ * ownership arm last would therefore report `disallowed` for one interleaving
+ * of a cross-task write and `not-my-task` for another — the same defect refused
+ * for a reason that happens to be available, which no caller can act on and no
+ * model can correct itself from.
+ *
+ * The terminal and disallowed arms remain separate for the FIX-951 reason:
+ * `isTransitionAllowed` treats same-status as allowed, so `cancelled →
+ * cancelled` is legal *and* terminal, and letting it through would clobber the
+ * reason and timestamp of the settlement already recorded.
  *
  * This is the **transition** hook. The assignment terminal guard is a separate
  * patch-hook on the patch helper (FIX-976 / epic constraint A1) and deliberately
- * not a fourth arm here: `setAssignee` never travels this path.
+ * not a further arm here: `setAssignee` never travels this path.
+ *
+ * @param collectionId The board this write is happening on — compared against
+ *   the ticket's, because two boards may both hold a task id.
  */
 export function transitionDeclineReason(
   task: Task,
   targetStatus: TaskStatus,
-  options: TaskTransitionOptions | undefined
+  options: TaskTransitionOptions | undefined,
+  collectionId: string
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
-  // Two arms, both load-bearing. `isTransitionAllowed` treats same-status as
-  // allowed, so the disallowed arm does not subsume the terminal one:
-  // `cancelled → cancelled` is legal *and* terminal, and letting it through
-  // would clobber the reason and timestamp of the settlement already recorded.
-  if (options.ifAllowed === true) {
-    if (isTerminalStatus(task.status)) return "terminal";
-    if (!isTransitionAllowed(task.status, targetStatus)) return "disallowed";
+  assertNoRemovedGuards(options);
+  const claim = options.claim;
+  if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
+  if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
+  if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
+    return "disallowed";
   }
-  if (options.expectAttempt !== undefined && !attemptOwnsTask(task, options.expectAttempt)) {
-    return "lost-claim";
-  }
+  if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   return undefined;
 }
 

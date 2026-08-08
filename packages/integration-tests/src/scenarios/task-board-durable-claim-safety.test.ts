@@ -3,24 +3,23 @@
  * whose write-back is allowed to land (FIX-981, M1 of the durable-jobs epic
  * FIX-939).
  *
- * This is a **characterization**, not a fix. It is written first, against
- * unmodified code, and it is the falsification baseline the rest of the
- * milestone is measured against. Three of its five assertions describe
- * behaviour we intend to keep unchanged. The other two are written to today's
- * behaviour and **must be flipped deliberately** when the bound claim ticket
- * lands — a characterization that only asserted the good half would let the
- * bug ship again unnoticed, and one that hid its own flip points would be the
- * same hazard one level up. Both are named here so neither is a surprise:
+ * This began as a **characterization** written against unmodified code — the
+ * falsification baseline the milestone was measured against. Three of its five
+ * assertions describe behaviour that was already correct and is unchanged. The
+ * other two were written to the broken behaviour, named as flip points so
+ * neither would be a surprise, and **have now been flipped by the bound claim
+ * ticket**. What each was, and what it is:
  *
- *   - **"TODAY'S DEFECT"** asserts `{ outcome: "recorded" }` on a cross-task
- *     write. Post-fix it must decline with `not-my-task`, and "b" must be
- *     untouched. This flip is unconditional — it is the milestone.
- *   - **"a stale basis can refuse ... for the WRONG reason"** asserts
- *     `reason: "disallowed"`. Post-fix that becomes `not-my-task` **if** the
- *     target-binding arm is evaluated before the `ifAllowed` arms, which that
- *     test's own comment argues for. Conditional on that ordering: if the
- *     ticket arm is left last, this assertion stands as written and the
- *     model-facing message in §5 of the spec cannot be produced here.
+ *   - **the cross-task write** asserted `{ outcome: "recorded" }` — a token
+ *     issued for one task settling another. It now declines with
+ *     `not-my-task`, and "b" is untouched. That is the milestone.
+ *   - **the stale-basis write** asserted `reason: "disallowed"`. It now reports
+ *     `not-my-task` too, because the target-binding arm is evaluated ahead of
+ *     the `ifAllowed` arms. That ordering is the contract, not an incidental
+ *     result: the same cross-task write must be refused for the same reason on
+ *     *either* interleaving, or neither the model-facing message nor a
+ *     programmatic caller can be built on the verdict. The pair of tests below
+ *     is what pins it — one runs each interleaving.
  *
  * ## Why the epic's own numbers are not inherited
  *
@@ -34,9 +33,10 @@
  *   - the `attempts` lost-update is **already closed** (assertion 5),
  *   - a displaced worker's stale settlement is **already refused** (assertion 3).
  *
- * What remains is the token itself, and it is a real hole: `expectAttempt` is
- * a bare integer that names no task, so it is satisfied by an unrelated task
- * that happens to sit on the same attempt (assertion 1).
+ * What remained was the token itself, and it was a real hole: the old
+ * `expectAttempt` was a bare integer that named no task, so it was satisfied by
+ * an unrelated task that happened to sit on the same attempt (assertion 1).
+ * The ticket names its target, and closes it.
  *
  * ## Why two `testFlow` calls and not two workers on one drain
  *
@@ -67,6 +67,7 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
+  ticketForClaim,
   type Task,
   type TaskCollectionRef,
   type TaskWriteOutcome,
@@ -252,19 +253,17 @@ async function seedBoard(ids: string[]) {
 }
 
 describe("durable task board: two executions contending for one task", () => {
-  it("TODAY'S DEFECT — a token issued for one task settles a different task", async () => {
-    // THE PRIMARY ASSERTION, and the one no existing test covers.
-    // `advisory-write.test.ts` covers the same-id cases (a stale token on the
-    // task it was issued for, after a reclaim). It never asks whether a token
-    // issued for task "a" can settle task "b", because `expectAttempt` is a
-    // bare integer with nothing in it that names a task.
+  it("a ticket issued for one task cannot settle a different task", async () => {
+    // THE PRIMARY ASSERTION, and the one no other test covers.
+    // `advisory-write.test.ts` covers this at the collection; here it runs
+    // across two real executions with their own resource caches, which is the
+    // shape the defect was reported in.
     //
     // Attempt numbers are small and collide constantly across a board — two
-    // freshly claimed tasks are both on attempt 1 — so the guard is satisfied
-    // by an unrelated task sitting on the same counter.
-    //
-    // After the ticket lands this must decline with `not-my-task` and "b" must
-    // be untouched. Flipping it is a deliberate edit, which is the point.
+    // freshly claimed tasks are both on attempt 1 — so a token that is only a
+    // counter is satisfied by an unrelated task sitting on the same one. That
+    // is what this used to demonstrate, as a passing assertion on
+    // `{ outcome: "recorded" }`.
     const { stores, sessionId } = await seedBoard(["a", "b"]);
 
     const bClaimed = gate();
@@ -297,7 +296,7 @@ describe("durable task board: two executions contending for one task", () => {
         targetAttempt: tasks.get("b")!.attempts,
         outcome: await tasks.complete("b", STRANGER_OUTPUT, {
           ifAllowed: true,
-          expectAttempt: mine!.attempts,
+          claim: ticketForClaim(tasks.collectionId, mine!),
         }),
       };
     });
@@ -317,16 +316,23 @@ describe("durable task board: two executions contending for one task", () => {
     // would be measuring nothing.
     expect(observed.heldAttempt).toBe(observed.targetAttempt);
 
-    // TODAY: the write is accepted and lands on a task the caller never held.
-    expect(observed.outcome).toEqual({ outcome: "recorded" });
+    // Refused as a VALUE naming the mismatch — not a throw, so a caller that
+    // discards the verdict keeps the containment behaviour it had.
+    expect(observed.outcome).toEqual({
+      outcome: "declined",
+      reason: "not-my-task",
+      status: "in_progress",
+    });
+    // The durable row is untouched. Asserting the payload and not only the
+    // status is what stops a hollow pass: a write that landed on the wrong task
+    // still produces a plausible-looking `completed`, and only the payload says
+    // who wrote it.
     const b = await durableTask(stores, sessionId, "b");
-    expect(b?.status).toBe("completed");
-    expect(b?.output).toBe(STRANGER_OUTPUT);
+    expect(b?.status).toBe("in_progress");
+    expect(b?.output).toBeUndefined();
 
-    // ...and "a" — the task the caller actually holds — was never settled. The
-    // board is now left with one task finished by a stranger and one abandoned
-    // mid-flight, which is the user-visible damage: duplicate model spend on
-    // "b" and silent starvation of "a".
+    // ...and "a" — the task the caller actually holds — is still its own,
+    // in flight and unaffected by the refusal of its holder's stray write.
     const a = await durableTask(stores, sessionId, "a");
     expect(a?.status).toBe("in_progress");
     expect(a?.output).toBeUndefined();
@@ -434,7 +440,7 @@ describe("durable task board: two executions contending for one task", () => {
       await reach(displacedMayWrite, "the winner re-claimed the task");
       const outcome = await tasks.complete("t", STRANGER_OUTPUT, {
         ifAllowed: true,
-        expectAttempt: mine!.attempts,
+        claim: ticketForClaim(tasks.collectionId, mine!),
       });
       staleWriteDone.open();
       return outcome;
@@ -457,7 +463,7 @@ describe("durable task board: two executions contending for one task", () => {
         attempt: mine!.attempts,
         outcome: await tasks.complete("t", WINNER_OUTPUT, {
           ifAllowed: true,
-          expectAttempt: mine!.attempts,
+          claim: ticketForClaim(tasks.collectionId, mine!),
         }),
       };
     });
@@ -490,29 +496,26 @@ describe("durable task board: two executions contending for one task", () => {
     expect(durable?.output).toBe(WINNER_OUTPUT);
   });
 
-  it("a stale basis can refuse a cross-task write for the WRONG reason", async () => {
-    // Why assertion 1 orders its executions the way it does, pinned as
-    // behaviour so nobody "simplifies" that ordering away and silently turns
-    // the primary assertion into a test of something else.
+  it("refuses a cross-task write as not-my-task on a STALE basis too", async () => {
+    // The ordering assertion, and the reason the guard's arm order is a
+    // contract rather than an implementation detail. A test that only asserted
+    // "the write was refused" would pass against the broken code and be worth
+    // nothing here.
     //
-    // Same cross-task write, opposite ordering: the stranger resolves the
-    // collection BEFORE "b" is claimed, so its mirror holds "b" as `pending`.
-    // The guard short-circuits on `ifAllowed` (pending -> completed is an
-    // illegal transition) and throws out of the mutator BEFORE the write is
-    // attempted — so the CAS never conflicts, never refreshes, and the
-    // ownership arm is never reached.
+    // Same cross-task write as the test above, opposite interleaving: the
+    // stranger resolves the collection BEFORE "b" is claimed, so its mirror
+    // holds "b" as `pending`. A decline aborts the write before it is
+    // attempted, so the CAS never conflicts, never refreshes, and never re-runs
+    // the guard — the stale mirror IS the basis every arm reads.
     //
-    // The write is refused, but for a reason unrelated to ownership, computed
-    // against a view of the board that was already wrong. That is accidental
-    // protection, not a guarantee: it depends entirely on when the caller
-    // happened to resolve the collection.
-    //
-    // The implementer's consequence (FIX-981 PR b): the target-binding check
-    // is the only arm whose verdict cannot be an artifact of a stale basis —
-    // it compares the ticket's task id against the write's target, and reads
-    // no task state at all. Evaluating it BEFORE the `ifAllowed` arms is what
-    // makes `not-my-task` reportable here instead of `disallowed`, which
-    // PR e's model-facing message depends on.
+    // `pending -> completed` is illegal, so the `disallowed` arm would fire
+    // here. Left last, the ownership arm would therefore report `disallowed` on
+    // this ordering and `not-my-task` on the other: the same defect refused for
+    // whichever reason happened to be available, which is accidental
+    // protection rather than a guarantee, and a verdict no caller can act on.
+    // The target-binding arm reads no mutable task state at all, so it is the
+    // only one whose answer cannot be a stale-basis artifact — and it runs
+    // first.
     const { stores, sessionId } = await seedBoard(["a", "b"]);
 
     const strangerLoaded = gate();
@@ -528,7 +531,7 @@ describe("durable task board: two executions contending for one task", () => {
       await reach(bClaimed, "the late sibling claimed b");
       return await tasks.complete("b", STRANGER_OUTPUT, {
         ifAllowed: true,
-        expectAttempt: mine!.attempts,
+        claim: ticketForClaim(tasks.collectionId, mine!),
       });
     });
 
@@ -545,16 +548,15 @@ describe("durable task board: two executions contending for one task", () => {
     expect(sibling.error).toBeUndefined();
     expect(strangerResult.error).toBeUndefined();
 
-    // Refused — but as an illegal transition off a stale `pending`, not as a
-    // write to a task the caller does not hold.
+    // Refused for ownership, not for a legality accident — even though the
+    // status the guard saw was the stale `pending` that would have produced
+    // `disallowed`. Same defect, same reason, either ordering.
     expect(strangerResult.output).toEqual({
       outcome: "declined",
-      reason: "disallowed",
+      reason: "not-my-task",
       status: "pending",
     });
 
-    // "b" is untouched here, which is the right outcome reached by the wrong
-    // route. Assertion 1 is the same call on the other ordering, and it lands.
     const b = await durableTask(stores, sessionId, "b");
     expect(b?.status).toBe("in_progress");
     expect(b?.output).toBeUndefined();
