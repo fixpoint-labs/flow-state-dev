@@ -229,18 +229,11 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 **You are the engineer. The user is the product owner** — they set the objectives and track the process as a whole. They have technical knowledge, but that is a trap, not a licence: every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening.
 
-**Translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts, hardest ask first, batched under one `Need your sign-off` heading:
-
-1. **The fork, as the heading** — a plain-language either/or ("fix it, or document it as best-effort?"), answerable from the heading alone.
-2. **Plain terms** — the observable behaviour, no paths / symbols / framework jargon. Test: *could they explain it back to a customer?*
-3. **The trade-off** — what picking one costs, and who outside the room feels it.
-4. **My recommendation** — always. A neutral fork spends a round extracting the view you already had.
-5. **What would change my mind** — the specific fact you don't have and they might. The part that goes missing, and the one that makes the question theirs to answer.
-6. **What being wrong costs** — calibration, so a cheap call doesn't steal attention from an expensive one.
+**Translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts, hardest ask first, batched under one `Need your sign-off` heading: **the fork as a plain-language heading** ("fix it, or document it as best-effort?") · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **my recommendation, always** · **what would change my mind** · **what being wrong costs**.
 
 **Don't ask when you shouldn't:** the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line. Under-asking hides a call that shapes the product; over-asking trains them to skim.
 
-Canonical, with a worked example: [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041). It governs conversation, a spec's §6/§12, a PR's *What's asked of you*, a gate, and an escalated blocker alike.
+**Read [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) before putting any fork, gate, or sign-off to the user** — it is canonical for what each part means and carries the worked example. It governs conversation, a spec's §6/§12, a PR's *What's asked of you*, a gate, and an escalated blocker alike.
 
 ## Capabilities
 

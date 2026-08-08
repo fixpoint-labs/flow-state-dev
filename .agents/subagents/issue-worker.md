@@ -115,7 +115,10 @@ issue: <ID>
 phase: <NEEDS_SPEC | AWAITING_SPEC_APPROVAL | NEEDS_IMPLEMENTATION | PR_FEEDBACK | DONE>
 spec_pr: <#/none>   impl_pr: <#/none>   branch: <name>
 gate_or_blocker: <none | awaiting-spec-approval | ready-to-merge | blocked: ...>
-blocker: none | fork: <plain-language either/or>
+blocker: none | <ONE string. The labels below are what the prose must cover, not keys —
+         unlike settle_requested, the schema field is a plain string, because the
+         same field also carries INCONCLUSIVE verdicts and open questions.>
+         fork: <plain-language either/or>
          terms: <the observable behaviour — no paths, no symbols>
          cost: <what picking one costs, and who outside the room feels it>
          rec: <your recommendation, argued in consequences>

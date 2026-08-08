@@ -53,14 +53,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 **You are the engineer; the user is the product owner.** They set the objectives and track the process as a whole. Their attention is the scarce resource, and every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. They are technical — that makes handing them the mechanism easy, and it is still the wrong move. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening and why the business framing doesn't decide it.
 
-So **translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts, canonical in [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) with a worked example:
-
-1. **The fork, as the heading** — a plain-language either/or, answerable from the heading alone.
-2. **Plain terms** — the observable behaviour. No paths, no symbols, no framework jargon. Test: could they explain it back to a customer?
-3. **The trade-off** — what picking one costs, and who outside the room feels it.
-4. **My recommendation** — always. A neutral fork you already have a view on spends a round extracting the view.
-5. **What would change my mind** — the specific fact you don't have and they might. This is the part that goes missing, and it's the one that converts a technical question into one they're uniquely able to answer.
-6. **What being wrong costs** — calibration, so a cheap call doesn't steal attention from an expensive one.
+So **translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts: **the fork as a plain-language heading** · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **your recommendation, always** · **what would change your mind** · **what being wrong costs**. Each part, why it exists, and a worked example are canonical in [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) — read it before putting any fork, gate, or sign-off to the user.
 
 This applies in **conversation** as much as in artifacts. Batch a turn's asks under one `Need your sign-off` heading, numbered, hardest first; two to four is normal. And **don't ask when you shouldn't**: the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line.
 

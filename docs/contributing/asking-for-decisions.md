@@ -161,6 +161,11 @@ Group the asks for one turn under a single **`Need your sign-off`** heading, num
 first. Two to four is a normal batch. Past four, either some of them aren't asks or the work
 went too long without checking in.
 
+That count is a **turn's batch**, and it is not the per-artifact cap. A spec or a PR surfaces
+**zero to two live forks** — the ones that get the full six-part shape — while everything else
+in its §6 is being ratified at one line each. A turn can carry four asks because they come from
+four different places; one artifact asking four times means its direction isn't settled.
+
 Each item is self-contained — they will answer #3 without re-reading #1.
 
 ## Where this applies

@@ -131,13 +131,12 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 ## Surfacing to the user (every "surface" above means this)
 
 Four things in the table reach the user — the spec-approval gate, a worker's blocker, the
-PR-feedback cap, and "ready to merge". All four are **decisions put to a product owner**, and
-all four are written to
-[`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), which is
-canonical: the fork in plain terms, the trade-off, **your recommendation**, and what they might
-know that would change it. Batch a turn's asks under one `Need your sign-off` heading, numbered.
+PR-feedback cap, and "ready to merge". All four are **decisions put to a product owner**, written
+per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical for
+the shape, the batching, and when not to ask at all) and batched under one `Need your sign-off`
+heading.
 
-Three things this rules out, all of which look like doing your job:
+Two failure modes are specific to this lifecycle, because they come from what a coordinator holds:
 
 - **"The spec PR is open, please approve."** That is a link, not an ask — it hands the framing
   to the person least able to do it. Say what the direction buys, which calls are hard to
@@ -147,9 +146,6 @@ Three things this rules out, all of which look like doing your job:
   (`.agents/subagents/issue-worker.md` → Return format). Surface those. Where a worker gave you
   only a phrase, say what you have and name what's missing — never invent the substance, and
   never reconstruct it from the event text (see "PR events are wake signals").
-- **Asking at all when the call isn't theirs.** Implementer-level choices, anything derivable
-  from the spec or a decision they already made, and coin flips with near-zero cost either way
-  get decided and noted in a line. Over-asking trains them to skim the one that mattered.
 
 ## The spec-review round budget (why AWAITING_SPEC_APPROVAL terminates)
 
