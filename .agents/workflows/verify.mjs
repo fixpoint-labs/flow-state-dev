@@ -841,19 +841,48 @@ check('both scouts must attribute an approval label to a human before it passes 
   // the sign-off the gate exists to require (BP-031: never derive an auth decision from an actor nobody
   // verified). The WHEN half stays deliberately unchecked — that is the staleness rule the owner rejected,
   // and it is a different question from WHO.
-  const { calls } = await run('epic-wake.js', {
+  const withOwner = await run('epic-wake.js', {
+    args: { ...epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }), owner: 'the-owner' },
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  for (const label of ['gate:epic', 'refresh:FIX-2']) {
+    const scout = withOwner.calls.find((c) => c.label === label)
+    assert.ok(scout, `${label} scout ran`)
+    assert.match(scout.prompt, /`the-owner` applied it/, `${label} names the owner, not "a human"`)
+    assert.match(scout.prompt, /timeline/i, `${label} says where provenance is read`)
+    assert.match(scout.prompt, /report (it )?FALSE/i, `${label} fails closed on an unattributable label`)
+    // ...and the staleness rule stays OUT. Re-adding it here is what broke the gate before.
+    assert.match(scout.prompt, /do not treat a later push as invalidating it/, `${label} keeps presence-not-recency`)
+  }
+
+  // No owner configured → the label channel is OFF rather than widened to any human. Fail-closed,
+  // because a label nobody can be held to is not a sign-off at all.
+  const noOwner = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
   })
   for (const label of ['gate:epic', 'refresh:FIX-2']) {
-    const scout = calls.find((c) => c.label === label)
+    const scout = noOwner.calls.find((c) => c.label === label)
     assert.ok(scout, `${label} scout ran`)
-    assert.match(scout.prompt, /HUMAN applied it/, `${label} requires a human applier`)
-    assert.match(scout.prompt, /labeled\b.*event|timeline/i, `${label} names where provenance is read`)
-    assert.match(scout.prompt, /report FALSE|report it FALSE/i, `${label} fails closed on unattributable`)
-    // ...and the staleness rule stays OUT. Re-adding it here is what broke the gate before.
-    assert.match(scout.prompt, /do not treat a later push as invalidating it/, `${label} keeps presence-not-recency`)
+    assert.match(scout.prompt, /LABEL channel is OFF/, `${label} turns the label channel off`)
+    assert.doesNotMatch(scout.prompt, /require its actor/, `${label} asks for no provenance it cannot check`)
   }
+})
+
+check('an owner-applied label still passes both gates', async () => {
+  // The provenance check must not break the channel it guards — the whole point of reading the label
+  // is that an epic sitting behind an unread `epic approved` is an epic stalled on bookkeeping.
+  const { result } = await run('epic-wake.js', {
+    args: {
+      ...epicArgs({ approved: false, issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+      owner: 'the-owner',
+    },
+    respond: epicResponder({
+      approvedByLabel: true,
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApprovedByLabel: true } },
+    }),
+  })
+  assert.equal(result.epicApproved, true, 'the owner label releases the epic')
 })
 
 check('GATE: implementation waits for the cross-spec coherence pass', async () => {

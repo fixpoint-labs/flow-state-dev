@@ -302,7 +302,12 @@ Review, or the `spec approved` / `epic approved` **label** — any of the three 
 gate. The difference between them is *latency, not authority*: a `labeled` webhook is not in
 the PR-activity stream the coordinator subscribes to (comments, CI, and reviews are), so a
 label is picked up on the next wake rather than waking the session immediately. **The label
-is the owner's alone: the coordinator never writes it.** It used to mirror detected approvals
+is the owner's alone: the coordinator never writes it, and the scan verifies who did.**
+GitHub labels are writable by every collaborator and every bot with write access, so presence
+is only half the test — the wake reads the most recent `labeled` event and requires its actor
+to be the configured owner login, failing closed when it can't attribute one. Checking *who*
+applied it is a different question from checking *when*, and only the first is asked; the
+second is the staleness rule that would revoke an approval on the next fold. It used to mirror detected approvals
 there, and that is exactly what could not stand once the label became an input — a mirrored
 review approval outlives the review it recorded, so a push that correctly reopened the gate
 left the mirror holding it open against content nobody approved. One label cannot be both a

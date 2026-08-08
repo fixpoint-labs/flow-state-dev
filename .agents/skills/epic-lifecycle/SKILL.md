@@ -166,6 +166,7 @@ The epic-specific delta:
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
                 verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
+       owner: <the GitHub login authorized to sign off by LABEL>,
        issues: [ { id, route, phase, specPr, implPr, specReviewRounds, specLevelFound,
                    prFeedbackRounds, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
@@ -178,6 +179,16 @@ The epic-specific delta:
    Everything in `args` comes straight out of `.orchestration/` — the script has no
    filesystem, so **you are its memory**. Four groups of fields are load-bearing for exactly
    that reason, and each fails in its own way if you drop it:
+
+   - **`owner`** — the GitHub login whose `spec approved` / `epic approved` label passes a gate.
+     Labels are writable by every collaborator and every bot with write access, so the scan
+     verifies **who applied it** against this login before the label counts; "a human applied
+     it" is not the test, because an agent with write access is not a human and a passing
+     collaborator is not the owner. Omit it and the **label channel is simply off** — the
+     scouts report it false whatever labels a PR carries, and only comment/review approval
+     works. That is fail-closed by design: a label nobody can be held to is not a sign-off.
+     The *timing* half stays unchecked either way — presence, not recency, once the applier
+     is right.
 
    - **`issues[].route`** (`spec | direct`) — which route the issue takes into
      implementation ([`orchestration.md`](../../../docs/contributing/orchestration.md) →
