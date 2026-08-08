@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
-import { scanFiles, scanRoots, scanSources } from "../../../scripts/validate-spec-folder.mjs";
+import {
+  ephemeralDirs,
+  scanFiles,
+  scanRoots,
+  scanSources,
+} from "../../../scripts/validate-spec-folder.mjs";
 
 type Hit = { file: string; line: number; text: string };
 type Result = { hits: Hit[]; retired: Hit[] };
@@ -44,9 +49,24 @@ describe("spec citations — concrete paths are dangling, placeholders are not",
   });
 });
 
-describe("exempt lists — the docs that define the convention may name it", () => {
-  it("lets docs/contributing/ cite a spec path", () => {
-    expect(scan("write it to spec/FIX-123.md", "docs/contributing/orchestration.md").hits).toEqual(
+/**
+ * The exempt list stays short because the placeholder does the work: a doc that
+ * describes the convention writes `<ISSUE-ID>`, which never matches, so it needs
+ * no carve-out. Only a file that must quote a concrete path to match it is exempt.
+ */
+describe("exempt lists — narrow, because placeholders need no exemption", () => {
+  it("does NOT exempt docs/contributing/ — a concrete path there is dangling too", () => {
+    expect(
+      scan("write it to spec/FIX-123.md", "docs/contributing/orchestration.md").hits,
+    ).toHaveLength(1);
+  });
+
+  it("does NOT exempt .agents/ — a skill citing a real spec path is a dead link", () => {
+    expect(scan("see spec/FIX-999.md", ".agents/skills/issue-spec/SKILL.md").hits).toHaveLength(1);
+  });
+
+  it("still lets docs/contributing/ write the placeholder form", () => {
+    expect(scan("write it to spec/<ISSUE-ID>.md", "docs/contributing/orchestration.md").hits).toEqual(
       [],
     );
   });
@@ -73,5 +93,9 @@ describe("scanned surface", () => {
 
   it("includes .github, where the workflows describe the spec convention", () => {
     expect(scanRoots).toContain(".github");
+  });
+
+  it("guards spec-poc/ as well as spec/ — both die with the spec PR", () => {
+    expect(ephemeralDirs).toEqual(expect.arrayContaining(["spec", "spec-poc"]));
   });
 });

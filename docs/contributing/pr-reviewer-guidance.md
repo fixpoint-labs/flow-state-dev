@@ -396,7 +396,7 @@ the sign-off surface.)*
 
 > **1. Decision 7 — the premise that FIX-992 already closed part of this.** …
 
-**Spec doc:** [`spec/FIX-981.md`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
+**Spec doc:** [`spec/<ISSUE-ID>.md`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
 · Docs-only, never merged — closed unmerged when implementation starts.
 
 <details>

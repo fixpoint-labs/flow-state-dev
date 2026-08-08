@@ -2,8 +2,9 @@
 /**
  * Guards the two ways a point-in-time spec leaks into `main`.
  *
- * 1. `spec/` carries the in-flight spec on a spec branch and must be empty
- *    (README only) everywhere else. Spec and epic PRs legitimately carry one,
+ * 1. `spec/` carries the in-flight spec on a spec branch, and `spec-poc/` the
+ *    throwaway POC backing it. Both die with the spec PR, so both must be empty
+ *    (README only) everywhere else. Spec and epic PRs legitimately carry them,
  *    so CI skips this script for them by BRANCH name (`spec/*`, `epic/*` — see
  *    `.github/workflows/ci.yml`, which explains why the `spec` label can't be
  *    the key); every other PR and `main` itself is checked.
@@ -21,9 +22,15 @@ import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
-const SPEC_DIR = join(ROOT, "spec");
 
-/** Files allowed to live in `spec/` on a non-spec branch. */
+/**
+ * The never-merged directories, per `spec/README.md`: the spec itself, and the
+ * throwaway POC that backs it. Both are point-in-time artifacts that die with
+ * the spec PR, so both leak onto `main` the same way and are checked together.
+ */
+const EPHEMERAL_DIRS = ["spec", "spec-poc"];
+
+/** The only file allowed to live in those directories on a non-spec branch. */
 const ALLOWED = new Set(["README.md"]);
 
 /** Trees worth scanning for dangling spec citations. */
@@ -58,8 +65,11 @@ const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".next", ".turbo", "
  * script and its test (both of which must name a pattern to match it) and the
  * historical record under `docs/internal/` are exempt.
  *
- * A `spec/FIX-123.md` citation is a dangling pointer in code, but the docs that
- * define the convention have to name the shape, so they are exempt from that one.
+ * A `spec/FIX-123.md` citation is a dangling pointer in code. The docs that
+ * define the convention need no exemption for it — they write the *placeholder*,
+ * which neither pattern matches, so the distinction does the work an exempt list
+ * would otherwise have to. Only the two files that must quote a concrete path to
+ * match it (this script and its test) are exempt.
  *
  * Both spec shapes are dangling for the same reason — an epic PR (`epic/<name>`,
  * carrying `spec/_epics/<name>.md`) is never merged either, so a link to it dies
@@ -78,12 +88,9 @@ const RETIRED_EXEMPT = [
 const SPEC_CITATION =
   /(?<!docs\/)\bspec\/(?:[A-Z]{2,6}-\d+(?:[^\s`"')]*)?|_epics\/[^\s<>`"')]+)\.md/g;
 const CITATION_EXEMPT = [
-  "spec/README.md",
-  "docs/contributing/",
   "docs/internal/",
   "scripts/validate-spec-folder.mjs",
   "packages/core/test/spec-folder-check.test.ts",
-  ".agents/",
 ];
 
 function walk(dir, out = []) {
@@ -102,14 +109,20 @@ function walk(dir, out = []) {
   return out;
 }
 
-function checkSpecFolderEmpty() {
-  let entries;
-  try {
-    entries = readdirSync(SPEC_DIR);
-  } catch {
-    return []; // No spec/ at all is fine — nothing to leak.
+function checkEphemeralDirsEmpty() {
+  const stray = [];
+  for (const dir of EPHEMERAL_DIRS) {
+    let entries;
+    try {
+      entries = readdirSync(join(ROOT, dir));
+    } catch {
+      continue; // Absent entirely is fine — nothing to leak.
+    }
+    for (const name of entries) {
+      if (!ALLOWED.has(name)) stray.push(`${dir}/${name}`);
+    }
   }
-  return entries.filter((name) => !ALLOWED.has(name));
+  return stray;
 }
 
 /**
@@ -158,11 +171,11 @@ function checkDanglingCitations() {
 }
 
 function main() {
-  const stray = checkSpecFolderEmpty();
+  const stray = checkEphemeralDirsEmpty();
   const { hits: citations, retired } = checkDanglingCitations();
 
   if (stray.length === 0 && citations.length === 0 && retired.length === 0) {
-    console.log("✓ spec/ is clear and no spec paths are cited");
+    console.log("✓ spec/ and spec-poc/ are clear and no spec paths are cited");
     process.exit(0);
   }
 
@@ -176,10 +189,12 @@ function main() {
   }
 
   if (stray.length > 0) {
-    console.error(`\n✗ spec/ must hold nothing but README.md here. Found ${stray.length}:\n`);
-    for (const name of stray) console.error(`    spec/${name}`);
     console.error(
-      `\n  A spec lives on its own spec PR and in Linear — it never reaches main.` +
+      `\n✗ spec/ and spec-poc/ must hold nothing but README.md here. Found ${stray.length}:\n`,
+    );
+    for (const name of stray) console.error(`    ${name}`);
+    console.error(
+      `\n  A spec and its POC live on the spec PR and in Linear — never on main.` +
         `\n  CI skips this check on a spec branch (spec/*) or an epic branch (epic/*).` +
         `\n  Adding the "spec" label will NOT skip it — the exemption is the branch name.` +
         `\n  Otherwise remove the file; the Linear document is the durable copy.\n`,
@@ -202,6 +217,9 @@ function main() {
 /** The scanned surface, exported so a test can assert it still reaches the root docs. */
 export const scanRoots = SCAN_ROOTS;
 export const scanFiles = SCAN_FILES;
+
+/** The never-merged directories, exported so a test can assert both are covered. */
+export const ephemeralDirs = EPHEMERAL_DIRS;
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
