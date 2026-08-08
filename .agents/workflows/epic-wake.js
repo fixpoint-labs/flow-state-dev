@@ -1692,7 +1692,11 @@ const WORKER_SCHEMA = {
           branch: { type: ['string', 'null'] },
           stackedOn: { type: ['string', 'null'] },
           dependsOn: { type: 'array', items: { type: 'string' }, description: 'Only if the plan itself changed — omit to keep the carried edges' },
-          blocker: { type: ['string', 'null'], description: 'This slice needs a human decision' },
+          blocker: {
+            type: ['string', 'null'],
+            description:
+              'This slice needs a human decision. Same shape as the row-level blocker: the fork, the observable behaviour, the cost, your recommendation, what would change your mind.',
+          },
           answerApplied: {
             type: 'boolean',
             description:
@@ -1744,7 +1748,11 @@ const WORKER_SCHEMA = {
         'Set ONLY by a direct-route (bug) worker that refused to build: the issue has no reproduction and an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). One line saying which and why. A design decision found mid-diagnosis is NOT this — that ships with the fix and is surfaced on the PR.',
     },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
-    blocker: { type: ['string', 'null'], description: 'Needs a human decision — the coordinator surfaces it' },
+    blocker: {
+      type: ['string', 'null'],
+      description:
+        'Needs a human decision — the coordinator surfaces it. Carry the ASK, not a topic: the fork as a plain-language either/or, the observable behaviour (no paths or symbols), what picking one costs, your recommendation, and what fact would change your mind. The coordinator holds only status lines and cannot reconstruct any of that. See docs/contributing/asking-for-decisions.md.',
+    },
     readyToMerge: { type: 'boolean' },
     status: { type: 'string', description: 'One compact status line' },
   },

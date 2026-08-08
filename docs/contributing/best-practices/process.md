@@ -102,3 +102,16 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Everything else goes **below the fold**, collapsed rather than deleted — except news the reader wouldn't think to look for (a decision, a risk, a known gap, anything hard to reverse, scope that grew), which stays above it, short.
   - The full rule — the fold, the per-artifact word budgets, the density checks, the `<details>` mechanics — is canonical in [`../writing-for-humans.md`](../writing-for-humans.md), and the PR-description layout applies it in [`../pr-reviewer-guidance.md`](../pr-reviewer-guidance.md). Read them there; this BP is the index entry, not a third copy.
 - Why: A reader should get the gist before diving deep; a jargon-dense opening forces full attention just to understand the shape. Written the other way round, the first screen is derivation and process text, the human skims, and the direction review — the only one they can give and a bot can't — doesn't happen.
+
+### BP-041: Frame every ask as a business decision
+
+- Status: Active
+- Date: 2026-08-08
+- Scope: Process — anything that asks the user to sign off, choose, or unblock: a conversation turn, a spec's §6/§12, a PR's *What's asked of you*, a gate, an escalated blocker.
+- Rule:
+  - You are the engineer; the user is the **product owner**. Translate the call into the decision *they* are making — what it costs in customers, promises, timing, and reversibility — not the mechanism that produced it. They are technical, which makes handing them the mechanism easy and still wrong.
+  - Six parts: **the fork as the heading** (a plain-language either/or) · **plain terms** (observable behaviour, no paths, symbols, or framework jargon) · **the trade-off** (in their currency) · **my recommendation** (always — a neutral fork spends a round extracting the view you already have) · **what would change my mind** (the fact you don't have and they might) · **what being wrong costs** (calibration).
+  - **Not every decision is an ask.** A spec's §6 rows the human is merely ratifying stay one line each with a cost column; the full shape is for the one or two genuinely open forks, plus §12. Don't ask at all when the call is the implementer's, the answer is derivable, or it's a coin flip with near-zero cost either way — decide it and note it.
+  - Engineering detail is the ask only when no business framing survives the translation (usually a coherence fork). Rare — say out loud that it's happening, give the minimum vocabulary, and keep the rest of the shape.
+  - Canonical: [`../asking-for-decisions.md`](../asking-for-decisions.md), with a worked example. This BP is the index entry, not a second copy.
+- Why: The product owner's job is the objective and the process as a whole, and attention spent re-deriving a call the engineer already made is attention not spent there. An ask written in mechanism gets a clarifying question back, or a rubber stamp — both worse than a decision.

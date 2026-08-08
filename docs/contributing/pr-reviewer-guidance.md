@@ -53,6 +53,13 @@ serves is asking them to review a number. On a change that follows an approved s
 block 3 is one line — *nothing is being decided here; this implements the approved
 direction* — and that line is worth writing, because its absence reads as an omission.
 
+**Blocks 1–3 are written for a product owner, not a peer engineer.** The human reviewing
+this holds the roadmap; what they can judge and a bot can't is direction, scope, and whether
+this was worth building. So the problem is stated in observable behaviour and each decision
+is priced in consequences — customers, promises, timing, reversibility — rather than in
+mechanism. The full contract is [`asking-for-decisions.md`](asking-for-decisions.md); §3
+below applies it.
+
 **The contract moved below the fold; it did not go away.** It is the one lever we have on
 reviewers we can't instruct, and it measurably raises what comes back. But it says the
 same thing on every PR of its kind, which is exactly what a `<details>` is for.
@@ -111,9 +118,16 @@ Rules, all cheap to check:
 
 ## 3. What's asked of you
 
-The decisions and their consequences — **one line each**, with what a wrong one costs. On
-an implementation PR that's the Key Decisions & Ramifications list, capped at five; on an
-epic PR, the cross-cutting decisions.
+This block has **two registers**, and mixing them is the common failure. Most decisions the
+human is *ratifying* — the direction is settled and they're confirming it's the direction
+they want. One or two might be *live forks* the author genuinely can't settle alone. Ratified
+rows get a line; a live fork gets the full ask.
+
+### The ratified rows — one line each
+
+The decisions and their consequences, with what a wrong one costs. On an implementation PR
+that's the Key Decisions & Ramifications list, capped at five; on an epic PR, the
+cross-cutting decisions.
 
 **Where the artifact defines a sign-off surface, the cap doesn't apply — show all of it.**
 A spec's §6 allows up to eight Decisions and every one of them is what approval certifies
@@ -132,8 +146,28 @@ A table works well, because the cost column is the part that gets dropped when i
 | 1 | The ticket **replaces** `expectAttempt` rather than joining it | A permanently ambiguous public guard surface, or a migration third parties didn't need |
 ```
 
-Where you have a recommendation, give it. A decision presented as a neutral fork, when the
-author already has a view, spends a round extracting the view.
+**Write the cost column in consequences, not mechanism.** "A permanently ambiguous public
+guard surface, or a migration third parties didn't need" is a cost a product owner can price.
+"The two guards would both have to be maintained" is a fact about our code, and it asks them
+to work out for themselves why that's bad.
+
+### The live forks — the full ask, under the table
+
+A decision the author can't settle alone isn't a table row. It gets the six-part shape from
+[`asking-for-decisions.md`](asking-for-decisions.md): the fork as a heading, plain terms, the
+trade-off, **your recommendation**, what would change your mind, and what being wrong costs.
+Canonical there; don't re-derive it here.
+
+Two rules keep this from swallowing the block:
+
+- **Zero to two per PR.** Three is a signal the change went too long without checking in.
+  A fork the whole PR rests on should have been raised before the PR existed.
+- **Never present a fork as neutral when you have a view.** That spends a round extracting
+  the view, and it isn't neutrality — it's asking the reader to build a position from less
+  information than you have.
+
+A PR where nothing is open says so in one line — *nothing is being decided here; this
+implements the approved direction* — and its absence reads as an omission.
 
 ## 4. Parts worth reviewing closely
 
@@ -155,6 +189,12 @@ Then, separately and explicitly:
   description and the one most likely to go missing, because writing it feels like
   admitting weakness. It is the opposite: it's the only way a reviewer knows which of your
   confident sentences was a coin flip.
+
+  **Not the same as block 3's *what would change my mind*, though they read alike.** This
+  one is about *you* — which of your own claims you'd bet least on — and it aims a
+  reviewer at the code. That one is about *them* — the business fact you don't have that
+  would flip your recommendation — and it tells a product owner which of their knowledge to
+  check. A PR can carry both, and usually should.
 - **What is deliberately not here** — a deferred deliverable, a known gap, a decision
   parked for a follow-up.
 
@@ -391,6 +431,20 @@ the sign-off surface.)*
 | 1 | The ticket **replaces** `expectAttempt` rather than joining it | A permanently ambiguous public guard surface, or a migration third parties didn't need |
 | 4 | `taskTools` outside a claimed-worker scope has no ticket, so nothing is checked | We claim a guarantee we don't have — the exact failure FIX-980 exists to eliminate |
 | 7 | The first deliverable is a characterization against merged `main`, not a fix | We build a second fence beside one FIX-992 already put there |
+
+### One live fork — replace the old guard, or keep both?
+
+**Plain terms.** Decision 1 retires a guard we already shipped and published an error for.
+Anyone who wrote code branching on that specific error would see different behaviour.
+Keeping both means two overlapping guards with slightly different meanings, forever.
+
+**My recommendation: replace it.** Two guards that answer almost the same question is how a
+public surface stops being explainable, and we're pre-1.0 with essentially nobody depending
+on that error. This is the cheapest this change will ever be — deferring doesn't shrink it,
+it turns it into a breaking change later.
+
+**What would change my mind:** if a design partner is branching on that error today, or
+we've told anyone this surface is stable. Then we keep both and retire the old one at 1.0.
 
 ## Parts worth reviewing closely
 
