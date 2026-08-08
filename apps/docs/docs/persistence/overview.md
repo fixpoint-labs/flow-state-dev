@@ -67,16 +67,18 @@ On Vercel, use `vercelPostgresStores()` from `@flow-state-dev/vercel/store` inst
 
 Postgres provides the concurrency safety that compare-and-swap relies on. Compare-and-swap means a write carries the version it expects to find, and the store applies it only if that version is still current — so a write built on a stale read is refused instead of silently overwriting someone else's.
 
-How much of that each store actually gives you differs, and it is worth knowing before you pick one:
+### Concurrency by store
+
+How much compare-and-swap safety each store actually gives you differs, and it is worth knowing before you pick one:
 
 | Store | Scope state | Resource state |
 |---|---|---|
 | In-memory | Serialized per container | Real compare-and-swap (single process by definition) |
-| Filesystem | Serialized per container | Compared under a per-key lock, **within one process only** |
+| Filesystem | Serialized per container | Compared under a per-key lock, **per store instance** |
 | SQLite | Real compare-and-swap | Real compare-and-swap |
 | Postgres | Real compare-and-swap | Real compare-and-swap |
 
-The filesystem row is the one to read twice. Two contexts inside one Node process are protected. Two separate processes pointed at the same directory are not — the lock lives in process memory, not on disk. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
+The filesystem row is the one to read twice. The lock lives on the store instance, in memory rather than on disk, so it covers every write that goes through that instance and nothing past it. A second store pointed at the same directory races with the first, whether the two sit in one Node process or two. Most apps build one store and hand it to `createFlowState`, so in practice the boundary falls at the process; the instance is what actually draws it. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
 
 The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.sessionResources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 
@@ -171,6 +173,32 @@ async function resolveSession(flowKind: string, userId: string, key: RunKey) {
 ```
 
 Server-side `metadata` filtering on `GET /api/flows/sessions` is not yet available; the route returns the full list for `(flowKind, userId)` and the client filters in memory. That's fine for local development and small-tenant use. Apps that expect hundreds of sessions per user should treat this as a deliberate ceiling and revisit when a server-side filter lands.
+
+Note the shape of `resolveSession` above: it lists, finds nothing, then creates. Two calls that overlap both find nothing and both create, so you end up with two sessions for one key. If that matters, use the derived id instead.
+
+### Deriving the session id from your data
+
+When the natural identity of a session is something you already have, you can use it as the session id directly rather than looking it up.
+
+The id has to carry everything that tells one session from another. Session storage keys off the tenant and the session id, nothing else: `userId` and `flowKind` are fields on the record, not part of the key. So inside one tenant, two users deriving the same ticker and date land on the same session, and so do two flows. The second caller gets a `409` for a session that isn't theirs, and reading that session back returns the other user's or the other flow's record, or a `403` in an app that configures authentication. Derive the id from enough to keep them apart:
+
+```ts
+const sessionId = [flowKind, userId, key.ticker, key.date].join("-");
+
+const created = await sessions.createSession({
+  flowKind,
+  userId,
+  sessionId,
+});
+```
+
+Pick a separator your components can't contain, or hash them, so that two different component sets can't join into the same string.
+
+Creating a session that already exists returns `409 Conflict`. On SQLite and Postgres that holds under concurrency: if two requests create the same id at the same moment, one gets `201` and the other `409`, with no window where both succeed and the second quietly overwrites the first. Treat the `409` as "someone else got there" and read the existing session.
+
+The filesystem store gives you that among writes through one store instance. Point a second store at the same directory and both can find the id free and both write, so one record overwrites the other and both callers see a `201`. That happens whether the two stores sit in one Node process or two. It's the same per-instance limit that applies to its compare-and-swap, laid out in [Concurrency by store](#concurrency-by-store). The in-memory store holds its data in the instance, so two of them are two separate datasets rather than a race.
+
+The tradeoff against the metadata approach is that the id becomes part of your data model. Session ids are namespaced per tenant, so two tenants using the same derived id stay separate, and you cannot change an id later without creating a new session.
 
 The trading-desk example uses this pattern end-to-end — see the [walkthrough](/guides/trading-desk-walkthrough#session-lifecycle-and-persistence).
 

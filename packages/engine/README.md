@@ -533,7 +533,9 @@ interface ResourceStateStore {
 - **`0` means "no live row"** — create-if-absent. A tombstoned key satisfies it just as a never-existed one does.
 - **Some conflicts are terminal.** A conflict against a deleted resource must not be retried into a resurrection, and a losing create must not be retried into an overwrite.
 
-A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
+A number outside that domain — negative, fractional, `NaN`, `Infinity` — throws. TypeScript's `number | "any" | "absent"` admits it, but the contract has no meaning for it, so it is a mistake at the call site rather than a lost race. It is not reported as a conflict: that would name a concurrency outcome the store never observed, and send the caller into a retry loop that can never converge.
+
+**`"absent"` throws here too.** It is the scope stores' create-if-absent sentinel, and this store keeps spelling create-if-absent `0`. Accepting it as an alias would be cheap on `set` and incoherent on `delete`, where `0` has a meaning ("no live row, so the terminal state already holds") and "delete only if absent" has none. One sentinel with a verb-dependent meaning on the subtlest predicate in these adapters is worse than two spellings that each mean one thing. Converging them — moving these callers to `"absent"` and retiring this store's `0` — is a later change that removes a spelling rather than adding one.
 
 ### Versions, deletes and retention
 
@@ -565,7 +567,7 @@ A `delete` is idempotent at the terminal state: deleting a key that is already a
 
 ### Per-adapter guarantee
 
-Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts in one Node process, and does not coordinate two OS processes over one directory.
+Real compare-and-swap on in-memory, SQLite and Postgres. The filesystem adapter compares under a per-key mutex held on the store **instance**: it closes the race between two execution contexts that share that instance, and does not coordinate two instances over one directory, whether they sit in one Node process or two.
 
 ### The collection-item HTTP routes use it
 
@@ -576,8 +578,10 @@ touch content, so a request that loses a race never reaches `ContentStore`.
 - `POST /sessions/:id/resources/:ref` inserts the state row at
   `expectedVersion: 0` (create-if-absent) and writes content only after that
   commits. Two clients creating the same topic get one `201` and one `409`, and
-  the stored body belongs to the client that won. The conflict is terminal — a
-  losing create is never retried into an overwrite.
+  the stored body belongs to the client that won; on the filesystem adapter that
+  holds only among writes through one store instance, per the per-adapter
+  guarantee above. The conflict is terminal — a losing create is never retried
+  into an overwrite.
 - `DELETE /sessions/:id/resources/:ref/:topic` reads the row's version, deletes
   state conditionally on it, and deletes content only after that commits. If
   the row moves between that read and the delete, the request returns `409` and

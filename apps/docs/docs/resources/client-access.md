@@ -430,9 +430,20 @@ All paths are relative to `/api/flows`. Permissions are enforced server-side bas
 Both write endpoints settle the item's state before they change anything else,
 so either can now come back `409 Conflict`.
 
-`POST` returns 409 when the topic already exists. That includes the case where
-two clients create the same topic at once: one gets `201`, the other gets `409`
-and never writes content, so the stored body belongs to the client that won.
+`POST` returns 409 when the topic already exists. On SQLite and Postgres that
+covers the case where two clients create the same topic at once: one gets
+`201`, the other gets `409` and never writes content, so the stored body
+belongs to the client that won.
+
+The filesystem store settles that race among writes through one store
+instance. Point a second store at the same directory and both can find the
+topic free and both write, so one body overwrites the other and both clients
+see a `201`. That happens whether the two stores sit in one Node process or
+two. It's the same per-instance limit that applies to its compare-and-swap,
+laid out in
+[Concurrency by store](/docs/persistence/overview#concurrency-by-store). The
+in-memory store holds its data in the instance, so two of them are two
+separate datasets rather than a race.
 
 `DELETE` returns 409 when the item's state changed while the request was being
 served — between the server reading the item and applying the delete. In

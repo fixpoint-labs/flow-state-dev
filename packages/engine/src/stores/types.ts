@@ -202,8 +202,39 @@ export type OrgListOptions = {
  * - A number means "only write if the current stored version equals this"
  * - "any" means "write unconditionally" (used for creates, migrations, and
  *   system writes that fall outside the CAS retry loop)
+ * - "absent" means "only write if no record exists at this id" — create-if-
+ *   absent. An existing record at **any** version, including `0`, is a
+ *   conflict carrying that record.
+ *
+ * ## `"absent"` is a distinct sentinel, not a re-use of `0`
+ *
+ * This union is shared by two store families that mean different things by
+ * `0`, so create-if-absent needs a spelling that cannot be confused with a
+ * version:
+ *
+ *  - **Scope stores** (`SessionStore`, `RequestStore`, `UserStore`,
+ *    `OrgStore`) create records **at version `0`**, so `0` is a real, live
+ *    version there and a stored v0 record is live rather than absent.
+ *    `expectedVersion: 0` means "the stored version is exactly 0."
+ *  - **`ResourceStateStore`** starts its versions at `1`, which leaves its
+ *    `0` free to mean "no live row" — create-if-absent, satisfied by a
+ *    tombstone as well as a never-existed key.
+ *
+ * Because the scope stores' `0` is taken, create-if-absent could not be
+ * ported to them as a number. `"absent"` means the same thing in both
+ * families and collides with neither. `ResourceStateStore` **refuses** it
+ * (`assertExpectedVersion`) rather than aliasing it onto its `0`, so
+ * `"absent"` never acquires a second, verb-dependent meaning on the resource
+ * side's delete predicate.
+ *
+ * Two consequences for anyone branching on this type:
+ *  - `expectedVersion !== "any"` no longer implies `typeof === "number"`.
+ *    Narrow with `typeof expectedVersion === "number"` wherever the body
+ *    does arithmetic or binds the value to a SQL parameter.
+ *  - The CAS delta verbs read-modify-write an existing record, so `"absent"`
+ *    is meaningless there and **throws** rather than conflicting.
  */
-export type ExpectedVersion = number | "any";
+export type ExpectedVersion = number | "any" | "absent";
 
 /**
  * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than
@@ -235,6 +266,12 @@ export type SetResult<TRecord> =
  * the current stored version equals `expectedVersion` (or always when
  * `"any"`). Returns the new version on success, or the current record/
  * version on conflict.
+ *
+ * One exception: every verb here read-modify-writes an **existing** record,
+ * so `expectedVersion: "absent"` is meaningless and **throws** rather than
+ * conflicting. A conflict would send the caller into a retry loop that can
+ * never converge; a throw names the programming error at the call site.
+ * `set(id, record, "absent")` is how a record is created.
  *
  * `updatedAt` is caller-supplied (matching `set`, where it travels inside
  * the record). Adapters MUST write it as given so the caller's local cache
@@ -301,6 +338,25 @@ export interface SessionStore extends DeltaStoreOps<SessionRecord> {
    * Write `value` when the stored record's version matches `expectedVersion`.
    * Returns the new version on success or the current stored value/version on
    * conflict. The `version` field on `value` is the NEW version to persist.
+   *
+   * `expectedVersion` accepts three things, and the scope stores' reading of
+   * `0` is the one that differs from `ResourceStateStore` (see
+   * {@link ExpectedVersion}):
+   *
+   * | Value | Writes when |
+   * |---|---|
+   * | `"any"` | Always. Last write wins |
+   * | a number | The stored version equals it. **`0` means "stored at version 0"** — scope records are *created* at `0`, so a v0 record is live, not absent |
+   * | `"absent"` | No record exists at this id. An existing record at any version, `0` included, is a conflict carrying it |
+   *
+   * `"absent"` is how a caller wins or loses a create race rather than
+   * silently overwriting: a `get`-then-`set` cannot, because nothing stops a
+   * second writer between the two calls.
+   *
+   * `delete` is a hard delete with no tombstone, so a recreated id may reuse
+   * versions. An observer holding a pre-delete version can therefore match
+   * the record that replaces it — stated rather than defended, and the reason
+   * this store's versions are not a substitute for identity.
    */
   set(
     id: string,

@@ -124,6 +124,36 @@ export function createPgRecordStore<
   }
 
   /**
+   * Refuse `"absent"` on a CAS delta verb.
+   *
+   * Mirrors `assertDeltaExpectedVersion` in the engine's
+   * `stores/scope-write-predicate` module — restated rather than imported
+   * because this package depends on `@flow-state-dev/engine` type-only, and
+   * pinned across all four adapters by the shared scope-store conformance
+   * suite. Delta verbs read-modify-write an existing record, so `"absent"` is
+   * a programming error at the call site and not a lost race.
+   *
+   * It has to be refused before the delta SQL is built: both delta paths do
+   * `expectedVersion + 1` (which would yield the string `"absent1"`) and bind
+   * `expectedVersion` to an `int` parameter. Those are the two places a string
+   * fails silently rather than loudly.
+   *
+   * Refused by shape rather than by name, matching the engine module: the
+   * `asserts` signature narrows any future member of `ExpectedVersion` away
+   * without a compile error, so a guard naming only the members it knew would
+   * hand that member to the arithmetic below.
+   */
+  const assertDeltaExpectedVersion: (
+    expectedVersion: ExpectedVersion,
+    verb: string
+  ) => asserts expectedVersion is number | "any" = (expectedVersion, verb) => {
+    if (typeof expectedVersion === "number" || expectedVersion === "any") return;
+    throw new TypeError(
+      `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+    );
+  };
+
+  /**
    * Common shape for all three delta UPDATEs. The new `data` JSONB is built
    * by applying `valueExpr` at the targeted path, then merging the new
    * `version` / `updatedAt` at the top level via `||` (shallow merge,
@@ -148,8 +178,10 @@ export function createPgRecordStore<
     valueExpr: string,
     operandParams: unknown[],
     expectedVersion: ExpectedVersion,
-    updatedAt: number
+    updatedAt: number,
+    verb: string
   ): Promise<SetResult<TRecord>> {
+    assertDeltaExpectedVersion(expectedVersion, verb);
     // Param layout: $1 = path text[]; $2..$M = operand params; then
     // updatedAt, id; and either (newVersion, expectedVersion) for CAS or
     // nothing for "any" (the SQL computes version + 1 in-place).
@@ -239,6 +271,27 @@ export function createPgRecordStore<
         return { ok: true, version: value.version };
       }
 
+      // "absent" is create-if-absent: no CAS update attempt at all, because
+      // any existing row is a conflict regardless of its version. The
+      // `ON CONFLICT (id) DO NOTHING` insert is the predicate, so the race is
+      // decided atomically by the database across connections — a
+      // read-then-insert would pass every in-process test and still lose it
+      // in production.
+      if (expectedVersion === "absent") {
+        const insertResult = await executor.query(casInsertSQL, [
+          id,
+          ...scalarValues,
+          value.version,
+          value.createdAt,
+          value.updatedAt,
+          data
+        ]);
+        if (insertResult.rowCount === 0) {
+          return loadConflict(id);
+        }
+        return { ok: true, version: value.version };
+      }
+
       // Try the CAS update first — the common case.
       const updateResult = await executor.query(casUpdateSQL, [
         ...scalarValues,
@@ -285,7 +338,8 @@ export function createPgRecordStore<
         "$2::jsonb",
         [JSON.stringify(value ?? null)],
         expectedVersion,
-        updatedAt
+        updatedAt,
+        "patchField"
       );
     },
 
@@ -305,7 +359,8 @@ export function createPgRecordStore<
         "to_jsonb(CASE WHEN jsonb_typeof(data #> $1::text[]) = 'number' THEN (data #>> $1::text[])::numeric ELSE 0 END + $2::numeric)",
         [delta],
         expectedVersion,
-        updatedAt
+        updatedAt,
+        "incField"
       );
     },
 
@@ -325,7 +380,8 @@ export function createPgRecordStore<
         "COALESCE(data #> $1::text[], '[]'::jsonb) || $2::jsonb",
         [JSON.stringify(values)],
         expectedVersion,
-        updatedAt
+        updatedAt,
+        "pushToArray"
       );
     },
 
@@ -335,6 +391,7 @@ export function createPgRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
+      assertDeltaExpectedVersion(expectedVersion, "deleteField");
       const pgPath = statePath(path);
       const updatedAtParam = "$2";
       const idParam = "$3";

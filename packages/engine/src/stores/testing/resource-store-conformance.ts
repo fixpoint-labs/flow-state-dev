@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
   ContentStore,
+  ExpectedVersion,
   ResourceStateStore,
   ContentScopeType
 } from "../types";
@@ -655,22 +656,37 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
-    it("rejects a numeric expectedVersion that is not a version, rather than treating it as a conflict or a wildcard", async () => {
+    it("rejects an expectedVersion that is not a version, rather than treating it as a conflict or a wildcard", async () => {
       await withStore(async (store) => {
         await seed(store, "k", makeState(1));
 
-        // `ExpectedVersion` is `number | "any"`, so every one of these is
-        // statically legal at a call site while none of them can name a
-        // stored version: `0` means "no live row" and real versions start at
-        // `1`. That is a programming error, not a lost race, so it is
-        // refused loudly rather than folded into a `SetResult` conflict —
+        // `ExpectedVersion` is `number | "any" | "absent"`, so every one of
+        // these is statically legal at a call site while none of them can
+        // name a stored version: `0` means "no live row" and real versions
+        // start at `1`. That is a programming error, not a lost race, so it
+        // is refused loudly rather than folded into a `SetResult` conflict —
         // a conflict would invite a retry loop that can never converge, and
         // would report a concurrency outcome the store never observed.
         //
         // `-1` is the sharp one: the SQL adapters carry it as the in-band
         // "any" sentinel inside the delete predicate, so before this guard a
         // direct `delete(…, -1)` tombstoned any live row.
-        const notVersions = [-1, -5, 1.5, Number.NaN, Number.POSITIVE_INFINITY];
+        //
+        // `"absent"` is the scope stores' create-if-absent sentinel. This
+        // store keeps spelling create-if-absent `0`, and refuses the word
+        // rather than aliasing it: the two agree on `set` and not on
+        // `delete`, where `0` means "no live row, so the terminal state
+        // already holds" and "delete only if absent" means nothing. Pinning
+        // it here is what keeps the three restated copies of this guard —
+        // one shared, one per SQL adapter — from drifting apart.
+        const notVersions: ExpectedVersion[] = [
+          -1,
+          -5,
+          1.5,
+          Number.NaN,
+          Number.POSITIVE_INFINITY,
+          "absent"
+        ];
         for (const invalid of notVersions) {
           await expect(store.delete("session", "s1", "k", invalid)).rejects.toThrow(
             /expectedVersion/
@@ -689,14 +705,21 @@ export function createResourceStateStoreConformanceTests(
         // Also refused on the keys a delete answers without ever consulting
         // the version — absent, and already tombstoned. Those return early on
         // some adapters, so a guard placed behind the version check would
-        // leave both paths unreached and this rule unpinned.
-        await expect(store.delete("session", "s1", "never", -1)).rejects.toThrow(
-          /expectedVersion/
-        );
+        // leave both paths unreached and this rule unpinned. `"absent"` is
+        // checked on the same two paths deliberately: they are precisely
+        // where an alias onto `0` would have had to invent a meaning for
+        // "delete only if absent".
+        for (const invalid of [-1, "absent"] as ExpectedVersion[]) {
+          await expect(
+            store.delete("session", "s1", "never", invalid)
+          ).rejects.toThrow(/expectedVersion/);
+        }
         await store.delete("session", "s1", "k", 1);
-        await expect(store.delete("session", "s1", "k", -1)).rejects.toThrow(
-          /expectedVersion/
-        );
+        for (const invalid of [-1, "absent"] as ExpectedVersion[]) {
+          await expect(store.delete("session", "s1", "k", invalid)).rejects.toThrow(
+            /expectedVersion/
+          );
+        }
       });
     });
 

@@ -133,8 +133,23 @@ export function createSQLiteRecordStore<
     path: string[],
     expectedVersion: ExpectedVersion,
     updatedAt: number,
+    verb: string,
     mutate: (current: unknown, record: DeltaRecord, path: string[]) => void
   ): SetResult<TRecord> {
+    // Mirrors `assertDeltaExpectedVersion` in the engine's
+    // `stores/scope-write-predicate` module (restated, not imported — this
+    // package depends on the engine type-only). Delta verbs read-modify-write
+    // an existing record, so "absent" is a call-site error rather than a lost
+    // race, and it must never reach the `expectedVersion + 1` below or the
+    // numeric bind parameter beside it.
+    //
+    // Refused by shape rather than by name, so a future member of
+    // `ExpectedVersion` cannot reach that arithmetic either.
+    if (typeof expectedVersion !== "number" && expectedVersion !== "any") {
+      throw new TypeError(
+        `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
+      );
+    }
     if (path.length < 1 || path.length > 2) {
       throw new Error(
         `sqlite delta verbs support depth-1 or depth-2 paths; got [${path.join(", ")}]`
@@ -189,6 +204,29 @@ export function createSQLiteRecordStore<
         return { ok: true, version: value.version };
       }
 
+      // "absent" is create-if-absent: no CAS update attempt at all, because
+      // any existing row is a conflict regardless of its version. The bare
+      // INSERT is the predicate — SQLite's primary key decides the race
+      // atomically, so two concurrent creates cannot both land even across
+      // connections. A read-then-insert here would pass every in-process test
+      // and still lose the race in production.
+      if (expectedVersion === "absent") {
+        try {
+          casInsertStmt.run(
+            id,
+            ...scalarValues,
+            value.version,
+            value.createdAt,
+            value.updatedAt,
+            data
+          );
+          return { ok: true, version: value.version };
+        } catch (error) {
+          if (!isPrimaryKeyConflict(error)) throw error;
+          return loadConflict<TRecord>(getStmt, id);
+        }
+      }
+
       // Try the CAS update first — the common case when a row already exists
       // at the expected version.
       const info = casUpdateStmt.run(
@@ -234,7 +272,7 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "patchField", (_current, record, p) => {
         if (p.length === 2) {
           if (record.state[p[0]] == null || typeof record.state[p[0]] !== "object") {
             record.state[p[0]] = {};
@@ -256,7 +294,7 @@ export function createSQLiteRecordStore<
       if (path.length !== 1) {
         throw new Error(`incField supports depth-1 paths only; got [${path.join(", ")}]`);
       }
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "incField", (_current, record, p) => {
         const existing = record.state[p[0]];
         record.state[p[0]] = (typeof existing === "number" ? existing : 0) + delta;
       });
@@ -272,7 +310,7 @@ export function createSQLiteRecordStore<
       if (path.length !== 1) {
         throw new Error(`pushToArray supports depth-1 paths only; got [${path.join(", ")}]`);
       }
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "pushToArray", (_current, record, p) => {
         const existing = record.state[p[0]];
         record.state[p[0]] = Array.isArray(existing) ? [...existing, ...values] : [...values];
       });
@@ -284,7 +322,7 @@ export function createSQLiteRecordStore<
       expectedVersion: ExpectedVersion,
       updatedAt: number
     ): Promise<SetResult<TRecord>> {
-      return runDelta(id, path, expectedVersion, updatedAt, (_current, record, p) => {
+      return runDelta(id, path, expectedVersion, updatedAt, "deleteField", (_current, record, p) => {
         if (p.length === 2) {
           const parent = record.state[p[0]];
           if (parent != null && typeof parent === "object") {

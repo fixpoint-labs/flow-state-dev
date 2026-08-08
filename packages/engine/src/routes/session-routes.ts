@@ -134,12 +134,6 @@ export async function handleCreateSession(
   const now = Date.now();
   const sessionId = getString(body.sessionId) ?? generateId("sess");
   const sessionKey = resolveSessionStorageKey(sessionId, ctx.tenantId);
-  const existing = await ctx.stores.session.get(sessionKey);
-  if (existing !== undefined) {
-    return jsonResponse(409, {
-      error: `Session "${sessionId}" already exists`
-    });
-  }
 
   // Pre-apply the session state schema's defaults (`z.string().default("...")`,
   // `z.record(...).default({})`, etc.) so a brand-new session's `state`
@@ -190,7 +184,17 @@ export async function handleCreateSession(
     journal: []
   };
 
-  await ctx.stores.session.set(record.id, record, "any");
+  // The store decides the create race, not a `get`-then-`set` above it: two
+  // concurrent requests for one session id both passed an existence check and
+  // both wrote, and the loser silently overwrote the winner. "absent" makes
+  // the loser fail, so exactly one caller gets the 201.
+  const created = await ctx.stores.session.set(record.id, record, "absent");
+  if (!created.ok) {
+    return jsonResponse(409, {
+      error: `Session "${sessionId}" already exists`
+    });
+  }
+
   return jsonResponse(201, {
     session: { ...record, id: sessionId }
   });

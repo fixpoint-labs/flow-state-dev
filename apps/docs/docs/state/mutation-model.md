@@ -82,7 +82,7 @@ A resource write can exhaust its retry budget under sustained contention and rai
 
 Deleting a resource leaves a small marker behind rather than removing the row, and that marker keeps the version. It is what makes delete-then-recreate safe: a worker holding a version from before the delete can never match the resource that replaced it, because versions are never reused. Markers are kept indefinitely — nothing sweeps them — which costs one row per deleted key.
 
-One limit stated plainly: on the filesystem store the comparison is held per key within a single process. That covers two contexts in one Node process. It does not coordinate two operating-system processes pointed at the same directory. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
+One limit stated plainly: on the filesystem store the comparison is held per key on the store instance. That covers every write through that instance, two contexts sharing it included. It does not coordinate two stores pointed at the same directory, whether they sit in one Node process or two. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
 
 ## Writing an updater that may run twice
 
