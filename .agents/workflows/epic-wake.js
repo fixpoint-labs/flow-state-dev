@@ -1828,12 +1828,16 @@ const POC_SCHEMA = {
 // The wake
 // ---------------------------------------------------------------------------
 
-const epic = args.epic
-const rows = args.issues || []
+// The Workflow tool delivers `args` as a JSON string at runtime, while `verify.mjs` passes
+// an object. Normalize so the script reads the same either way — reading `args.x` off a
+// string silently yields `undefined` for every field, which fails far from the cause.
+const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const epic = input.epic
+const rows = input.issues || []
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
-const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
-const requests = args.settleRequests || []
+const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
+const requests = input.settleRequests || []
 
 phase('Refresh')
 
@@ -2217,7 +2221,7 @@ const crossSpecComing = crossSpecRows.filter(
 // which is exactly the order the gate exists to prevent. What it takes is a SET: two specs that exist or
 // are still coming. One spec has nothing to be incoherent with, and holding for a pass that can never be
 // asked is the deadlock again by a different route.
-crossSpecHold = !args.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
+crossSpecHold = !input.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
 // The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
 // open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
 // No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
