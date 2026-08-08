@@ -1,7 +1,14 @@
 # Spec process review — OpenSpec comparison and where our loop actually leaks
 
-**Date:** 2026-08-07 · **Status:** proposal, not adopted · **Scope:** the spec artifact, its
-storage, and the approval gate
+**Date:** 2026-08-07 · **Scope:** the spec artifact, its storage, and the approval gate
+
+**Status: partly adopted.** §6.3 is enacted — specs left the repo for `spec/` on the spec
+branch, Linear is the only durable copy, and CI enforces both. Architecture promotion was
+scoped out of that change and is still a proposal. §6.1 (At-a-glance block), §6.2 (Part I
+length cap), and §6.4 (`validate-specs.mjs`) are **deferred, not rejected** — they address
+the reading load at the approval gate, which is a separate problem from where specs live.
+Everything below is the original review as written; it argues for the whole set, so read it
+as the reasoning behind §6.3 rather than as a description of current process.
 
 Three questions were asked: adopt OpenSpec or keep ours; keep specs in the repo or move them
 to Linear; split the spec into multiple documents. This reviews all three against evidence
