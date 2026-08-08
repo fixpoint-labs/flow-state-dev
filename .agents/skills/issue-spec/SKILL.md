@@ -540,7 +540,12 @@ three outcomes. Read it. Four things are this step's:
      changed>, because the run showed <what>.` Costs **one round outside the budget**; say so
      in one line.
    - **INCONCLUSIVE** → don't retry and don't pick a side. Surface it to the user as a
-     direction fork with the trade-off (`AskUserQuestion`).
+     direction fork asked **in full** (`AskUserQuestion`) — all six parts, per
+     [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). You ran the
+     POC and they didn't, so say what it did and did **not** settle, and still give a
+     recommendation where the direction has one that doesn't rest on the unsettled claim. If it
+     genuinely has none, say that outright — "no recommendation, and the POC is why" is an honest
+     answer here and is not the same as quietly leaving the part out.
 
 #### 6.5.4 Converge — two rounds, then hand to the human
 
