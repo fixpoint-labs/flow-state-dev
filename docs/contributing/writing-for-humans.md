@@ -190,7 +190,7 @@ mostly *for* the bot without weakening it.
 **Where a surface doesn't render HTML, the ordering still carries the fold.** Linear
 documents and issue descriptions are the cases we hit: same above-the-fold content first,
 then a `---`, then the detail under a `## Detail` heading. This is why `<details>` belongs
-in a **PR body** and not in a spec doc — `docs/specs/<ISSUE-ID>.md` is mirrored verbatim
+in a **PR body** and not in a spec doc — `spec/<ISSUE-ID>.md` is mirrored verbatim
 to a Linear document (BP-037), and a collapsed block there renders as raw HTML. The spec's
 own Part I / Part II split is already its fold. Check what a surface renders before
 relying on it collapsing; the ordering never needs checking.

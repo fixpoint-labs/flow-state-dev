@@ -29,7 +29,7 @@ them.
 
 **Do not read, and do not ask for:**
 
-- Linear issues, spec documents (`docs/specs/*`), or agent briefs.
+- Linear issues, spec documents (`spec/*`, or the Linear document), or agent briefs.
 - PR bodies, commit messages, review comments, changesets, `docs/internal/*`.
 - The implementation diff.
 

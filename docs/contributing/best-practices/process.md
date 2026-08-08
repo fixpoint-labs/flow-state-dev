@@ -12,7 +12,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-02-15 (updated 2026-06-28: spec-driven)
 - Scope: Process — scoping and tracking a change.
 - Rule:
-  - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a full `docs/specs/*` spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
+  - Every implementation change maps to a tracked unit of intent. Which unit depends on the route ([`../orchestration.md`](../orchestration.md) → "Which issues get a spec"): a **feature / enhancement** gets a full `spec/*` spec per BP-037; a **bug** gets none — the Linear issue is the contract and the fix is reviewed on its implementation PR.
   - Each spec carries explicit deliverables and verification steps.
   - Between the two: small, local work can use a one-screen agent brief on the issue (`agent-brief-template.md`) instead of a full spec doc. A bug returns to the spec route on the three overrides in [`../orchestration.md`](../orchestration.md) → "Which issues get a spec" — don't re-enumerate them here, since a count that drifts from the router's reads as a contradiction.
 - Why: Ties every change to a reviewable unit of intent with its own acceptance criteria, so execution stays accountable to a tracked requirement.
@@ -65,18 +65,20 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
   - Update a package README in the same change set when that package's exported surface, runtime behavior, or setup scripts materially change.
 - Why: Docs next to the code that owns each contract reduce integration friction and drift.
 
-### BP-037: Author specs as versioned docs, reviewed as a PR, synced with Linear
+### BP-037: Specs live on their spec PR and in Linear — never on `main`
 
 - Status: Active
-- Date: 2026-06-29 (updated 2026-07-28: review bar + convergence budget)
+- Date: 2026-06-29 (updated 2026-08-07: `spec/` + CI guard; Linear is the only durable copy)
 - Scope: Process — spec authoring (`issue-spec`).
 - Rule:
-  - Write each spec to `docs/specs/<ISSUE-ID>.md` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written. Applies to issues **on the spec route** — a bug has no spec and no spec PR by design (BP-002).
+  - Write the spec to `spec/<ISSUE-ID>.md` on branch `spec/<ISSUE-ID>` and open a spec PR for it (separate from the implementation PR) so the project's automated reviewers critique the design before any code is written. Applies to issues **on the spec route** — a bug has no spec and no spec PR by design (BP-002).
   - Follow [`../spec-template.md`](../spec-template.md), whose every section is a worked example of that section filled in. An epic's coordination artifact follows [`../epic-spec-template.md`](../epic-spec-template.md) the same way.
-  - The repo spec and the Linear spec document are the same content — keep them in sync; any edit to one mirrors to the other in the same change.
-  - The spec PR is never merged: `issue-implement` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR; the Linear document is the durable copy from then on. Merging would accumulate point-in-time spec docs on main that go stale as implementation deviates.
+  - **The spec never reaches `main`, and this is enforced, not asked.** `scripts/validate-spec-folder.mjs` fails CI on any PR carrying a file in `spec/`; the spec PR itself is exempt **by its branch name** (`spec/*`, and `epic/*` for an epic), not by its `spec` label — the label is applied after the PR is created, and `labeled` is not a default `pull_request` event type, so a label-keyed exemption would fail on the opening run and never re-run. Do not "land the approved spec on the implementation branch" — that was the old workaround and it is now a red check.
+  - The spec PR is never merged: `issue-implement` closes it (unmerged, branch deleted) when implementation starts. Review history stays on the closed PR.
+  - **Linear is the durable copy — the only one.** The repo keeps no spec after the PR closes, so there is no sync obligation and no second copy to drift. Mirror the spec to the issue's Linear document when it is published, and make any post-approval edit there.
+  - **Nothing in the repo cites a spec by path.** A spec file does not exist on `main`, so such a reference is dangling the moment it is written; CI rejects one. A comment states its reason; durable design decisions are promoted into `docs/architecture/*`, and the changeset names the issue (BP-022) so a released change traces back to Linear.
   - Because it never merges, the spec PR is also where a **POC** belongs when the design rests on something unverified — throwaway code under `spec-poc/<ISSUE-ID>-<slug>/` that reviewers can actually run ([`spec-poc`](../../../.agents/skills/spec-poc/SKILL.md)). Triggered, not default; costs no review rounds; never lands on `main`. Cite the PR rather than the branch, since closing deletes the branch.
-- Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite.
+- Why: Reviewing the spec before implementation catches design problems when they're cheapest to fix — a doc edit, not a code rewrite. Keeping the spec out of the repo keeps a point-in-time plan from being read as current truth, and removes the two-copy sync rule that a prose obligation could never hold.
 
 ### BP-040: Spec review is a direction check — converge, don't grind
 
