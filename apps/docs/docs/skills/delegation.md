@@ -268,6 +268,18 @@ The middle sentence names what won't change. `cancelTask` would have moved the s
 
 Leave `assignee` out and `updateTask` writes to a finished task: priority, metadata, and labels all apply. Recording *why* a task failed, after it failed, is a normal thing to do.
 
+**An agent running as a board worker can only settle the task it was given.** A worker holds one task for the duration of its turn, and `completeTask`, `failTask`, `blockTask`, and `cancelTask` are scoped to it. Naming a sibling's task instead comes back refused, saying which task is the caller's own so it can retry on the right one:
+
+```
+completeTask({ taskId: "t_2", output: "…" })
+→ { ok: false,
+    taskId: "t_2",
+    error: 'task_write_declined: you hold task "t_5", not "t_2". You can only
+            settle the task you are working on — call this on "t_5" instead.' }
+```
+
+A coordinator is not holding a task, so nothing scopes its calls: it plans, drains, and settles across its whole board. The scoping applies to a worker's own tool calls, and only to the four status-changing tools — `updateTask` still labels and re-prioritizes anything on the board.
+
 Only a refused transition or a refused write comes back as a result. Storage failures, concurrent-write conflicts, and ordinary bugs throw. Driving a `TaskCollection` directly from your own code gets those two differently: a refused transition throws an `IllegalTaskTransitionError`, and a refused write resolves to a `declined` verdict. See [the status state machine](../orchestration/task-substrate.md#the-status-state-machine) and [what a write reports](../orchestration/task-substrate.md#what-a-write-reports).
 
 **`runBoard` — the execution path.** One call drains the board: every runnable task is dispatched to its assigned agent (independent tasks in parallel, dependency-gated tasks once their deps complete), and the settled board comes back with each task's output. The drain claims `pending` tasks only, so planning more work and calling `runBoard` again on the same board runs just the new tasks. An agent that declares `tools: [taskTools]` can enqueue more tasks mid-drain (a discoverer fanning out one analyzer per thing it found), and the drain keeps going until everything settles.

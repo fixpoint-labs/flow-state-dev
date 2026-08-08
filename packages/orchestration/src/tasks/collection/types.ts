@@ -7,23 +7,45 @@
  * the underlying storage directly.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { TaskClaimTicket } from "../claim-ticket";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 
 /**
- * Why a write was refused (FIX-976). Resolved in a **fixed precedence order** —
- * `terminal` → `disallowed` → `lost-claim` — so a decline where two conditions
- * hold always reports the same one, and two callers cannot render two different
- * messages for the same refusal.
+ * Why a write was refused (FIX-976; `not-my-task` added by FIX-981). Resolved
+ * in a **fixed precedence order** — `terminal` → `not-my-task` → `disallowed` →
+ * `lost-claim` — so a decline where two conditions hold always reports the same
+ * one, and two callers cannot render two different messages for the same
+ * refusal.
  *
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
+ * - `not-my-task` — the presented `claim` names a different board, a different
+ *   task, or a task since recreated under the same id. The write targets a row
+ *   the caller never held.
  * - `disallowed` — the state machine rejects the move from a **non**-terminal
  *   status (`pending → errored`, `blocked → errored`).
- * - `lost-claim` — `expectAttempt` no longer owns the task: it was reclaimed,
- *   re-queued, or parked while the caller was working.
+ * - `lost-claim` — the presented `claim` names this task but no longer owns it:
+ *   it was reclaimed, re-queued, or parked while the caller was working.
+ *
+ * **Why `not-my-task` sits above `disallowed`, and below `terminal`.** The
+ * guard runs inside the atomic write, but a decline aborts that write *before*
+ * it is attempted, so the conditional write never conflicts, never refreshes,
+ * and never re-runs the guard. Whatever basis the caller resolved the
+ * collection on is therefore the basis the arms read. Two of the four arms are
+ * safe under that: `not-my-task` reads no mutable task state at all, and
+ * terminality is absorbing, so a task observed terminal on *any* basis is
+ * terminal. `disallowed` is not — it compares two statuses, and a stale
+ * `pending` makes an ordinary settlement look illegal. Left last, the ownership
+ * arm would report `disallowed` on one interleaving and `not-my-task` on
+ * another for the same cross-task write: accidental protection, not a
+ * guarantee, and a reason no caller can act on.
  */
-export type TaskWriteDeclineReason = "terminal" | "disallowed" | "lost-claim";
+export type TaskWriteDeclineReason =
+  | "terminal"
+  | "not-my-task"
+  | "disallowed"
+  | "lost-claim";
 
 /**
  * What a write actually did (FIX-976).
@@ -83,7 +105,8 @@ export interface ClaimOptions {
 }
 
 /**
- * Opt-in guards for the `complete` / `fail` write-backs (FIX-951).
+ * Opt-in guards for the lifecycle write-backs (FIX-951; widened to every
+ * worker-callable transition by FIX-981).
  *
  * Both guards are evaluated **inside** the same atomic write that performs
  * the transition, so there is no window between checking and writing. Both
@@ -123,18 +146,30 @@ export interface TaskTransitionOptions {
    */
   ifAllowed?: boolean;
   /**
-   * Record the outcome only if the caller still **owns** the task.
+   * Record the outcome only if the caller still **owns** the task it is
+   * writing to.
    *
-   * Declines unless `task.attempts` equals the attempt the caller claimed
-   * under *and* the task is still `in_progress` or `awaiting_review`.
+   * The ticket is minted by the substrate at claim time (`ticketForClaim`) and
+   * names the board, the task, the attempt, and the task's `createdAt`. It
+   * answers two questions the write cannot answer for itself:
    *
-   * The status half is not belt-and-braces. `reclaim()` returns a task to
-   * `pending` without advancing `attempts`, so between a reclaim and the
-   * next claim a displaced worker matches the counter by construction — and
-   * since `blocked` is reachable only from `pending`, a counter-only guard
-   * would let a stale worker silently unblock work a coordinator parked.
+   * - **Is this the task I claimed?** Declines `not-my-task` when the ticket
+   *   names another board, another task, or a task since recreated under the
+   *   same id. This is the question a bare attempt number could not ask, which
+   *   is why it replaced one.
+   * - **Do I still hold it?** Declines `lost-claim` unless `task.attempts`
+   *   equals the ticket's attempt *and* the task is still `in_progress` or
+   *   `awaiting_review`. The status half is not belt-and-braces: `reclaim()`
+   *   returns a task to `pending` without advancing `attempts`, so between a
+   *   reclaim and the next claim a displaced worker matches the counter by
+   *   construction — and since `blocked` is reachable only from `pending`, a
+   *   counter-only guard would let a stale worker silently unblock work a
+   *   coordinator parked.
+   *
+   * Omit it and no ownership question is asked, which is the correct posture
+   * for a coordinator writing to a board it never claimed from.
    */
-  expectAttempt?: number;
+  claim?: TaskClaimTicket;
 }
 
 /**
@@ -189,16 +224,18 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  * this is a real extension point for an external or custom store — not just
  * the shape the two built-in backings happen to return.
  *
- * If you write one, `complete` and `fail` **must** accept and honour the
- * optional `TaskTransitionOptions` third argument. The type system cannot
- * hold you to this: an implementation taking only `(id, output)` structurally
- * satisfies the interface, and JavaScript discards the extra argument in
- * silence. A ref that ignores the options throws on a task someone else
- * already settled, and that throw escapes the task board's per-worker rescue
- * and abandons every sibling task on the board — the exact failure the
- * options exist to contain. See `TaskTransitionOptions` for the two guards,
- * and evaluate both inside your atomic write so the check cannot race the
- * write it guards.
+ * If you write one, every worker-callable transition — `complete`, `fail`,
+ * `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — **must**
+ * accept and honour the optional `TaskTransitionOptions` argument. The type
+ * system cannot hold you to this: an implementation taking only `(id, output)`
+ * structurally satisfies the interface, and JavaScript discards the extra
+ * argument in silence. A ref that ignores the options throws on a task someone
+ * else already settled, and that throw escapes the task board's per-worker
+ * rescue and abandons every sibling task on the board — the exact failure the
+ * options exist to contain. It also leaves ownership unchecked, so a worker's
+ * write lands on whichever task the caller named. See `TaskTransitionOptions`
+ * for the two guards, and evaluate both inside your atomic write so the check
+ * cannot race the write it guards.
  */
 export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */
@@ -267,10 +304,24 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
     error: string,
     options?: TaskTransitionOptions
   ): Promise<TaskWriteOutcome>;
-  block(id: string, reason?: string): Promise<void>;
-  unblock(id: string): Promise<void>;
-  awaitReview(id: string, feedback?: string): Promise<void>;
-  resumeFromReview(id: string, feedback?: string): Promise<void>;
+  // The four parking/review transitions. Each takes the same optional
+  // `TaskTransitionOptions` the settlement methods take (FIX-981) — a worker
+  // parking or resuming its own task is as much an ownership-dependent write as
+  // completing it, and before the ticket these four had no parameter to carry
+  // one. All four report a {@link TaskWriteOutcome}; discarding it behaves
+  // exactly as the previous `void` return did.
+  block(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  unblock(id: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
+  awaitReview(
+    id: string,
+    feedback?: string,
+    options?: TaskTransitionOptions
+  ): Promise<TaskWriteOutcome>;
+  resumeFromReview(
+    id: string,
+    feedback?: string,
+    options?: TaskTransitionOptions
+  ): Promise<TaskWriteOutcome>;
   /**
    * Cancel the task (terminal).
    *
@@ -279,8 +330,13 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * {@link TaskWriteOutcome} is `declined` with reason `terminal`, instead of
    * returning silently and leaving the caller to infer success. Discard the
    * verdict and behaviour is exactly as before.
+   *
+   * `options.ifAllowed` is forced on regardless of what you pass, which is what
+   * "advisory by construction" means here. `options.claim` is honoured, so a
+   * worker cancelling through this method is held to the same ownership check
+   * as one completing through `complete` (FIX-981).
    */
-  cancel(id: string, reason?: string): Promise<TaskWriteOutcome>;
+  cancel(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one

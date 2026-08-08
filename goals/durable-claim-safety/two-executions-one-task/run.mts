@@ -36,6 +36,7 @@ import { runAction } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import {
   defineTaskCollection,
+  ticketForClaim,
   type Task,
   type TaskCollectionRef,
   type TaskWriteOutcome,
@@ -266,7 +267,7 @@ await runGoal(async (): Promise<GoalResult> => {
           outcome: await tasks.complete(
             fixture.contendedTask,
             fixture.holderOutput,
-            { ifAllowed: true, expectAttempt: mine.attempts }
+            { ifAllowed: true, claim: ticketForClaim(tasks.collectionId, mine) }
           ),
         };
       })
@@ -292,7 +293,7 @@ await runGoal(async (): Promise<GoalResult> => {
         outcome: await tasks.complete(
           fixture.contendedTask,
           fixture.strangerOutput,
-          { ifAllowed: true, expectAttempt: mine!.attempts }
+          { ifAllowed: true, claim: ticketForClaim(tasks.collectionId, mine!) }
         ),
       };
     });
@@ -328,6 +329,16 @@ await runGoal(async (): Promise<GoalResult> => {
       failures.push(
         `the stranger holds "${fixture.otherTask}" but its write to "${fixture.contendedTask}" was ` +
           `"${s.outcome.outcome}" — a token issued for one task settled another`
+      );
+    } else if (s.outcome.reason !== "not-my-task") {
+      // Refused for the RIGHT reason, not merely refused. `disallowed` here
+      // would mean the write was stopped by a legality accident computed
+      // against a stale view of the target — the right outcome by the wrong
+      // route, which depends on when the caller happened to resolve the board
+      // and would not hold on the other interleaving.
+      failures.push(
+        `the stranger's cross-task write was declined as "${s.outcome.reason}" rather than ` +
+          `"not-my-task" — refused, but for a reason unrelated to ownership`
       );
     }
 

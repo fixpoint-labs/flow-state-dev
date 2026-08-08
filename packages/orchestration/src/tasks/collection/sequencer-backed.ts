@@ -267,14 +267,19 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         // Choosing the target is pure — it reads the ledger and writes nothing —
         // so running it here does not weaken the ordering the decline check
         // below depends on. NOTHING may be recorded before that check: the
-        // board's failure write-back passes `{ ifAllowed, expectAttempt }` so a
+        // board's failure write-back passes `{ ifAllowed, claim }` so a
         // displaced worker's late failure is discarded, and a retry grant or a
         // denial marker written ahead of the decline would let that stale
         // failure spend another task's retry allowance, or mark the board
         // "retry-budget-exhausted" when nothing was ever refused. Both are
         // invisible to a test that only checks the task's status.
         const { targetStatus, kind, patch } = derive(task, tasks);
-        const reason = transitionDeclineReason(task as Task, targetStatus, guards);
+        const reason = transitionDeclineReason(
+          task as Task,
+          targetStatus,
+          guards,
+          collectionId
+        );
         if (reason !== undefined) {
           return {
             state: undefined,
@@ -505,32 +510,47 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       );
     },
 
-    async block(id, reason) {
-      await transitionTo(id, "blocked", "blocked", () =>
-        reason !== undefined ? { error: reason } : {}
+    async block(id, reason, options) {
+      return transitionTo(
+        id,
+        "blocked",
+        "blocked",
+        () => (reason !== undefined ? { error: reason } : {}),
+        options
       );
     },
 
-    async unblock(id) {
-      await transitionTo(id, "pending", "unblocked", () => ({
-        error: undefined,
-      }));
-    },
-
-    async awaitReview(id, feedback) {
-      await transitionTo(id, "awaiting_review", "review_requested", () =>
-        feedback !== undefined ? { feedback } : {}
+    async unblock(id, options) {
+      return transitionTo(
+        id,
+        "pending",
+        "unblocked",
+        () => ({ error: undefined }),
+        options
       );
     },
 
-    async resumeFromReview(id, feedback) {
-      await transitionTo(id, "pending", "resumed", () => ({
-        feedback: feedback ?? undefined,
-        leaseUntil: undefined,
-      }));
+    async awaitReview(id, feedback, options) {
+      return transitionTo(
+        id,
+        "awaiting_review",
+        "review_requested",
+        () => (feedback !== undefined ? { feedback } : {}),
+        options
+      );
     },
 
-    async cancel(id, reason) {
+    async resumeFromReview(id, feedback, options) {
+      return transitionTo(
+        id,
+        "pending",
+        "resumed",
+        () => ({ feedback: feedback ?? undefined, leaseUntil: undefined }),
+        options
+      );
+    },
+
+    async cancel(id, reason, options) {
       // The decline is now REPORTED (FIX-976) — behaviour is unchanged, but the
       // caller learns the cancel did nothing instead of reading silence as
       // success. Substrate write-backs discard this and stay silent.
@@ -542,10 +562,13 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           reason !== undefined
             ? { error: reason, completedAt: now(), leaseUntil: undefined }
             : { completedAt: now(), leaseUntil: undefined },
-        // Unchanged behaviour: cancelling an already-settled task is a no-op.
-        // The widened condition adds a disallowed arm, which for a `cancelled`
-        // target can only fire where the terminal arm already did.
-        { ifAllowed: true }
+        // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
+        // a caller's ticket must reach the guard, but "advisory by
+        // construction" is this method's contract and a caller cannot switch it
+        // off. Unchanged behaviour: cancelling an already-settled task is a
+        // no-op; the disallowed arm, for a `cancelled` target, can only fire
+        // where the terminal arm already did.
+        { ...options, ifAllowed: true }
       );
     },
 

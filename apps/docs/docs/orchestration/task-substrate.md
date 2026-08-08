@@ -93,7 +93,7 @@ Set `maxAttempts` and, while `attempts < maxAttempts`, a call to `fail` is a *so
 
 ## TaskCollection
 
-A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is compare-and-set, so two workers claiming at the same moment never both win the same task. You get a `TaskCollectionRef` from `getOrCreateTaskCollection`, which needs the block context and a backing choice.
+A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is compare-and-set, so two workers claiming at the same moment do not both win the same task — see [what a durable board guarantees](#what-a-durable-board-guarantees-about-ownership) for the scope of that. You get a `TaskCollectionRef` from `getOrCreateTaskCollection`, which needs the block context and a backing choice.
 
 The mutation surface:
 
@@ -104,7 +104,7 @@ The mutation surface:
 
 Nothing calls `reclaim` for you. If you want expired leases returned to `pending`, call it yourself from a block that runs alongside the work.
 
-`complete`, `fail`, `cancel`, and the five **Mutate** methods resolve to a verdict describing what the write did — see [what a write reports](#what-a-write-reports). `block`, `unblock`, `awaitReview`, and `resumeFromReview` resolve to nothing.
+Every mutation method except `claim` and `reclaim` resolves to a verdict describing what the write did — see [what a write reports](#what-a-write-reports).
 
 ### Reading tasks back
 
@@ -152,30 +152,46 @@ export const seedResearchPlan = handler({
 
 ### Recording a result that may no longer apply
 
-`complete` and `fail` take an optional third argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
+Every lifecycle method — `complete`, `fail`, `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel` — takes an optional trailing options argument. It exists for a specific situation: you claimed a task, went away to do the work, and by the time you came back somebody else had already decided the task's fate. Maybe a coordinator cancelled it. Maybe the worker marked it done itself partway through. Maybe the claim expired and another worker picked it up. Recording your result now would either be refused by the state machine, or overwrite the outcome someone else recorded.
 
-Passing the option makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
+Passing options makes the write *advisory*: record this only if it still makes sense, otherwise do nothing.
 
 ```ts
+const task = await tasks.claim("worker-1");
+const claim = ticketForClaim(tasks.collectionId, task);
+
+// … minutes of model work …
+
 await tasks.complete(task.id, output, {
-  ifAllowed: true,              // skip if the state machine won't take it
-  expectAttempt: task.attempts, // skip if this is no longer my claim
+  ifAllowed: true, // skip if the state machine won't take it
+  claim,           // skip unless this is still my task
 });
 ```
 
-`ifAllowed` asks whether the transition is legal, and also declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else already recorded. `expectAttempt` asks a different question: do I still hold this task? It catches a stale result that would be a perfectly legal transition, which `ifAllowed` lets through.
+`ifAllowed` asks whether the transition is legal, and declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded.
 
-The task cannot change between the check and the write. Only a refused transition and a lost claim go quiet. A missing task, a store failure, or any other error still throws. Omit the argument and both methods throw on an illegal transition.
+`claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `awaiting_review`). Two refusals come out of it, and they mean different things:
+
+- The ticket names a different task, a different board, or an id that has since been reused for a new task: `not-my-task`. Nothing about the target's state can make that write legal.
+- The ticket names the right task but a claim that has moved on — reclaimed, re-queued, parked: `lost-claim`. Another worker holds it now.
+
+Pass the ticket rather than the attempt number on its own. Attempt numbers collide constantly across a board (two freshly claimed tasks both sit on attempt 1), so a check against the number alone is satisfied by whichever task the call happened to name.
+
+The task cannot change between the check and the write. Only these refusals go quiet. A missing task, a store failure, or any other error throws. Omit the options and the methods throw on an illegal transition.
 
 A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
 
 
 ### What a write reports
 
-`complete`, `fail`, `cancel`, `setAssignee`, `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` all resolve to the same shape, so one check reads the whole write surface:
+Every lifecycle and field-mutation method resolves to the same shape, so one check reads the whole write surface:
 
 ```ts
-type TaskWriteDeclineReason = "terminal" | "disallowed" | "lost-claim";
+type TaskWriteDeclineReason =
+  | "terminal"
+  | "not-my-task"
+  | "disallowed"
+  | "lost-claim";
 
 type TaskWriteOutcome =
   | { outcome: "recorded" }
@@ -186,10 +202,11 @@ type TaskWriteOutcome =
 `recorded` means a field changed and a `task-change` item went out. `unchanged` means the task already held the state you asked for, so nothing was written and no item was emitted. `declined` means the write was refused: `status` is the status the task was in when it was refused, and `reason` says which condition stopped it.
 
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
+- `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
-- `lost-claim` — `expectAttempt` no longer holds. The task was reclaimed, re-queued, or blocked while you were working on it.
+- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it.
 
-When more than one condition applies, `reason` reports the first of those three that holds.
+When more than one condition applies, `reason` reports the first that holds in that order: `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract — a cross-task write gets `not-my-task` whatever state the target happens to be in.
 
 A decline is a value, not an error. Nothing throws, nothing is written, and discarding the return value compiles:
 
@@ -205,13 +222,13 @@ if (outcome.outcome === "declined") {
 }
 ```
 
-`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. `complete` and `fail` decline only when you pass the guards above; without them an illegal transition throws.
+`cancel` needs no guards to be advisory: cancelling a task that already settled declines with reason `terminal`, and the first settlement's reason and timestamps are left alone. Pass it a `claim` and that is honoured too. The other lifecycle methods decline only when you pass the guards above; without them an illegal transition throws.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to a terminal task, which is how a post-drain audit labels what went wrong, so those four answer only `recorded` or `unchanged`. `patchMetadata` merges the patch rather than comparing it, so it answers `recorded` even for a patch that changes nothing.
 
 `unchanged` is a statement about the task record: no field written, no `task-change` item. On a resource-backed collection the write reaches the resource either way, so a `resource_change` event can fire for a write that reported `unchanged`.
 
-A missing task throws on every one of these methods; those three reasons are the whole set of refusals.
+A missing task throws on every one of these methods; those four reasons are the whole set of refusals.
 
 If you hand `taskBoard` a `TaskCollectionRef` of your own, callers see whatever your methods return. One whose methods resolve to nothing gives no verdict, and the framework won't invent one.
 
@@ -243,9 +260,31 @@ The sequencer backing expects the sequencer's state schema to hold a `Record<str
 
 `getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous in all three cases.
 
+### What a durable board guarantees about ownership
+
+A `resource`-backed board is the one two things can reach at the same time, so it is the one where "who owns this task" needs an answer. Three facts describe it.
+
+**One holder at a time.** Two executions racing to claim the same task: one gets the task, the other gets `null`. The loser is not an error and does not retry into a second claim; it simply has nothing to run and moves on. This is not exactly-once dispatch. `reclaim` exists to return an abandoned task to `pending` so somebody else can pick it up, and a task that runs twice because its first worker died is the intended behaviour, not a failure of the claim.
+
+**A ticket, not a promise.** A worker's write is checked against the ticket it presents, not against who it says it is. Present no ticket and no ownership check runs — which is what a coordinator wants when it settles, cancels, or parks a task on its own board, having never claimed anything. The check is opt-in at the call, and the substrate has no notion of "coordinator" to test against.
+
+**The limit.** The guarantee covers concurrent executions inside one process. Every store backend satisfies that. Two separate OS processes over a filesystem-backed store do not: comparison there happens under an in-process lock, so each process compares against its own view. Use SQLite or Postgres for a board two processes share.
+
 ## Dispatchers
 
-A dispatcher decides which ready task gets claimed next. Five ship with the package. Each one picks and claims in a single atomic step, so under contention exactly one worker wins the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
+A dispatcher decides which ready task gets claimed next. Five ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
+
+A custom `eligibility` predicate **replaces** the default (pending, with dependencies satisfied) rather than narrowing it, and it is the predicate the commit re-checks. Narrowing to a task id alone drops the readiness test, and both racers then pass the re-check on a task one of them has already claimed:
+
+```ts
+// Both workers get this task.
+collection.claim(workerId, { eligibility: (t) => t.id === picked });
+
+// One worker gets it.
+collection.claim(workerId, {
+  eligibility: (t) => t.id === picked && t.status === "pending",
+});
+```
 
 | Dispatcher | Picks | Eligibility |
 |------------|-------|-------------|

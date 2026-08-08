@@ -5,8 +5,12 @@
  * The factory takes a user-supplied `classify` callback that, given
  * the ready candidate set and the runtime context, returns the id of
  * the task to claim (or `null` to back off). The dispatcher then
- * narrows `eligibility` to that single id so the substrate's CAS-claim
- * still arbitrates if a parallel worker won it first.
+ * narrows `eligibility` to that id **and keeps the readiness test**, so
+ * the claim's re-check inside the conditional write still arbitrates if
+ * a parallel worker won it first. Narrowing by id alone would drop that
+ * test and hand the same task to both workers — the candidate scan here
+ * runs well before the write, and the model call in between makes the
+ * window wide.
  *
  * The classifier sees only `pending` tasks with deps satisfied; review-
  * gated tasks are filtered before the callback runs.

@@ -27,11 +27,14 @@
  * worker block runs as a first-class step in the sequencer — it is
  * NOT invoked from inside another block's `execute` (BP-011).
  *
- * `recordSuccess` reads `currentTaskId` from the worker's own
+ * `recordSuccess` reads `currentClaim` from the worker's own
  * sequencer state and calls `collection.complete`. `recordError` runs
  * via `.rescue()` and calls `collection.fail` against the same
- * per-state `currentTaskId` — so a thrown error fails exactly one
- * task, never a sibling's concurrently-claimed work.
+ * per-state `currentClaim` — so a thrown error fails exactly one
+ * task, never a sibling's concurrently-claimed work. The claim is
+ * presented to the substrate as well as read from, so the guarantee
+ * holds against a task the worker no longer owns, not just against
+ * one it never named.
  *
  * ## Termination
  *
@@ -77,6 +80,7 @@ import {
   isDefinedTaskCollection,
   onTaskChangeFor,
   resolveTaskCapDefaults,
+  ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
   type TaskCollectionRef,
@@ -116,7 +120,7 @@ import {
   createFlowPolicyResolver,
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
-  stampCurrentTaskId,
+  stampCurrentClaim,
   type BoardRunFlowState,
 } from "./flow-policy-wiring";
 
@@ -195,6 +199,7 @@ export {
   type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
+export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
 
 // ---------------------------------------------------------------------------
@@ -392,7 +397,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    *   the parent forEach rejects, the board fails.
    *
    * Fails the offending task only — siblings concurrently in-progress
-   * are unaffected because each worker tracks its own `currentTaskId`
+   * are unaffected because each worker tracks its own `currentClaim`
    * in worker state.
    */
   onError?: "skip" | "fail";
@@ -667,10 +672,10 @@ export function taskBoard<
 
   // Worker body: the worker block runs directly (BP-011 conformance —
   // no handler wrapping). The body sequencer owns its own state with
-  // `currentTaskId`; the leading `.tap()` stamps the claimed task's
-  // id so `recordSuccess` (success path) and `recordError`
+  // `currentClaim`; the leading `.tap()` stamps the claimed task's
+  // ticket so `recordSuccess` (success path) and `recordError`
   // (`.rescue()` path) can both read the same scoped value via
-  // `ctx.sequencer`. Per-iteration scoping prevents stale ids from
+  // `ctx.sequencer`. Per-iteration scoping prevents stale claims from
   // leaking across loop turns.
   const workerBody = sequencer({
     name: `${name}-worker-body`,
@@ -683,14 +688,25 @@ export function taskBoard<
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
     .tap(async (task: Task, ctx) => {
-      // `attempts` is stamped alongside the id so both recorders can scope
-      // their write-back to the attempt that produced it (FIX-951). The
-      // claim already incremented it, so this is this worker's attempt
-      // number, not the pre-claim one.
-      await ctx.sequencer!.patchState({
-        currentTaskId: task.id,
-        currentAttempt: task.attempts,
-      });
+      // The ONE mint site for this board's claim tickets (FIX-981). `task` is
+      // what `claim()` returned, so `attempts` is already incremented and this
+      // is this worker's attempt, not the pre-claim one.
+      //
+      // The board id comes from the RESOLVED ref, never from this closure's
+      // `collectionId`. They are not always the same string: a board handed a
+      // caller-supplied `(ctx) => TaskCollectionRef` factory reports
+      // `"factory-supplied"` here while the ref carries its own id, and the
+      // guard compares against the ref's. Minting from the wrong one refuses
+      // every write-back the board makes, so the board never drains.
+      const ticket = ticketForClaim(
+        (await collectionFactory(ctx)).collectionId,
+        task
+      );
+      // Stamped onto the body state so both recorders can scope their
+      // write-back to the claim that produced it (FIX-951, retargeted by
+      // FIX-981): a displaced attempt declines, and so does a write aimed at
+      // any task other than this one.
+      await ctx.sequencer!.patchState({ currentClaim: ticket });
       // FIX-658: mark this worker-body scope so every item the worker emits
       // (messages, tool calls, sources, reasoning) is stamped with the task
       // id at emit time. This makes per-task attribution correct under
@@ -698,10 +714,12 @@ export function taskBoard<
       // this task's render window — and across sequential `loopBack` turns,
       // where the execution path repeats but each turn is a fresh scope.
       ctx._markTaskScope?.(task.id);
-      // FIX-610: also stamp the active task id onto the shared
-      // run-state bag so any cacheable tool the worker invokes attributes
-      // cache writes to this task (later hits get `sourceTask`).
-      stampCurrentTaskId(task);
+      // FIX-610: also stamp the claim onto the per-worker AsyncLocalStorage
+      // seam, so any cacheable tool the worker invokes attributes cache writes
+      // to this task (later hits get `sourceTask`) — and, since FIX-981, so any
+      // task tool the worker calls presents this ticket without the model ever
+      // seeing it.
+      stampCurrentClaim(ticket);
     })
     .step(workerStep)
     .tap(recordSuccess)
