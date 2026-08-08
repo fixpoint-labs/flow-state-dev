@@ -76,7 +76,7 @@ filesystem. So the division is fixed:
 | Per-issue refresh via `scout` (Linear parent→children in one query; PR comments/reviews/checks/meta) | **Resolving the set** and confirming it with you (loop step 1) |
 | Deciding each issue's pending action, and the **review round budget** for issue specs *and* the epic PR | **`.orchestration/` reads and writes** — the script gets the table via `args`, returns the new one |
 | Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
-| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror**, and the `spec approved` / `epic approved` labels |
+| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror** (the approval labels are the owner's — never written here) |
 | Routing a POC verdict to its issues the moment that POC finishes | **Ending the turn**, the heartbeat, and re-entry |
 
 **A workflow runs in the background**, so a wake is: call `epic-wake` → end the turn → the
@@ -303,10 +303,9 @@ The epic-specific delta:
    wake surfaced (Linear auto-status is off; the mapping + state IDs live in `issue-lifecycle`
    → "Linear status is a mirror you own"). Workers set the mirror for transitions they effect
    (they opened the PR); you set it for the ones the wake *detected* — a spec/epic approval, a
-   merge — and for a detected approval also apply the `spec approved` / `epic approved` label
-   as the durable, filterable record. Idempotent: skip if the issue is already in the target
-   state and the label is already present. **The label is an approval channel in its own
-   right, not only a mirror** — the owner signs off with it as well as by comment, so the
+   merge. **Do not apply the `spec approved` / `epic approved` label** — it is the owner's
+   signal, not a record you write. Idempotent: skip if the issue is already in the target
+   state. **The label is the OWNER's approval channel, never written by the coordinator** — the owner signs off with it as well as by comment, so the
    wake reads it and it passes the gate on its own. It does **not** expire on a push (a spec
    or epic PR takes commits for its whole life; expiring would revoke the approval on the
    next fold); **removing the label is the revocation.** An approving *review* keeps its own

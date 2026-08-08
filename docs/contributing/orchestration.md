@@ -286,8 +286,11 @@ thread as something that has to be closed before a gate can pass.
 
 **Three channels sign off, and the label is one of them.** A comment, an approving GitHub
 Review, or the `spec approved` / `epic approved` **label** — any of the three passes the
-gate. The coordinator still *mirrors* an approval it detects to the label, so the label is
-both an input and a record.
+gate. **The label is the owner's alone: the coordinator never writes it.** It used to mirror
+detected approvals there, and that is exactly what could not stand once the label became an
+input — a mirrored review approval outlives the review it recorded, so a push that correctly
+reopened the gate left the mirror holding it open against content nobody approved. One label
+cannot be both a standing sign-off and the record of a channel that expires.
 
 **The difference between them is latency, not authority.** A `labeled` webhook is **not**
 in the PR-activity stream the coordinator subscribes to (comments, CI and reviews are), so
