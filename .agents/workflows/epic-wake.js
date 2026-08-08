@@ -2077,6 +2077,7 @@ if (discovered.length) {
  * missed.
  */
 const cancelledBlockers = new Set()
+const unmergedBlockers = new Set()
 const openBlockers = (ids) =>
   (ids || []).filter((b) => {
     const bs = linearById.get(b)
@@ -2085,6 +2086,18 @@ const openBlockers = (ids) =>
     if (!TERMINAL_LINEAR.test(state)) return true
     if (CANCELLED_LINEAR.test(state)) {
       cancelledBlockers.add(`${b} (${state})`)
+      return true
+    }
+    // Terminal-and-not-cancelled in Linear normally MEANS merged, because the coordinator writes Done
+    // off the merge it observed. But Linear state is a mirror a human can move by hand, and the contract
+    // is that blocked work waits for its blocker to LAND — so where we hold a live observation of the
+    // blocker's own PR, that observation outranks the mirror. Only for blockers we actually carry as
+    // rows: for anything outside the set we have no PR to look at, and Linear is the only evidence there
+    // is. A carried blocker with no impl PR at all (docs, a dropped row) has nothing to contradict, so
+    // Done still clears it.
+    const blockerScan = freshById.get(b)
+    if (blockerScan && blockerScan.implPr && !blockerScan.merged) {
+      unmergedBlockers.add(`${b} (Linear ${state}, but #${blockerScan.implPr} is not merged)`)
       return true
     }
     return false
@@ -2367,6 +2380,15 @@ if (cancelledBlockers.size) {
   log(
     `Blocker(s) cancelled, not completed: ${[...cancelledBlockers].join(', ')} — still blocking, because cancelled work never landed. ` +
       `Whoever owns the epic decides whether the dependents still need it; nothing here can clear it.`,
+  )
+}
+if (unmergedBlockers.size) {
+  // Same no-silent-stop rule, different cause: Linear says done, the PR says otherwise. Worth saying
+  // out loud because this one looks like a bug from the outside — the prerequisite reads Done on the
+  // board while its dependent sits still — and the resolution is a person's, not this script's.
+  log(
+    `Blocker(s) marked done in Linear but not merged: ${[...unmergedBlockers].join(', ')} — still blocking. ` +
+      `Linear state is a mirror; the merge is the fact. Merge the PR, or drop the relation if the dependent no longer needs it.`,
   )
 }
 for (const row of plan.converged) {

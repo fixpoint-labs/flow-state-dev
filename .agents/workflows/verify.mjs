@@ -516,6 +516,39 @@ check('a finished prerequisite stops blocking; a cancelled one does not', async 
     'a cancelled prerequisite never landed, so its dependent stays blocked',
   )
   assert.match(cancelled.logs.join('\n'), /cancelled, not completed/, 'and the dead-end is logged rather than silent')
+
+  // Third case: Linear says Done, the PR says otherwise. Linear state is a mirror a human can move by
+  // hand, and the contract is that blocked work waits for its blocker to LAND — so a live observation
+  // of the blocker's own PR outranks the mirror, and the dependent is not built against code that is
+  // still sitting in review.
+  const notMerged = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 7 }), row('FIX-3', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': { phase: 'PR_FEEDBACK', implPr: 7, merged: false },
+        'FIX-3': { phase: 'NEEDS_SPEC' },
+      },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(
+    notMerged.result.blocked.map((b) => b.issueId),
+    ['FIX-3'],
+    'a prerequisite marked Done by hand has not landed, so its dependent stays blocked',
+  )
+  assert.match(notMerged.logs.join('\n'), /marked done in Linear but not merged/, 'and it says so rather than stalling silently')
+
+  // ...but the override needs a PR to contradict the mirror. A carried blocker with no impl PR at all
+  // (docs, a dropped row) has nothing to check, so Done still clears it — otherwise this hardening would
+  // block every dependent of every PR-less prerequisite forever.
+  const noPr = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE' }), row('FIX-3', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'DONE' }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(noPr.result.blocked, [], 'a PR-less prerequisite marked Done still clears its dependent')
 })
 
 check('args are read identically whether delivered as a JSON string or an object', async () => {
