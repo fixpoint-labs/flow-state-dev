@@ -76,7 +76,11 @@ On each invocation, reconstruct the phase from a **small** read:
     the spec PR (unmerged).
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
-  ID, **`route`** (`spec | direct` — see "Two routes in"), spec PR#, impl PR#, branch,
+  ID, **`route`** (`spec | direct` — see "Two routes in"), **`owner`** (the GitHub login whose
+  approval *label* passes the gate — establish it on the first wake, ask if you don't know it,
+  and never infer it from a PR author or a commit trailer, since this one authorizes work;
+  without it the label channel is off and only comment/review approval works), spec PR#, impl
+  PR#, branch,
   worktree path, current phase, the last action
   taken, the **spec-review round count** (see the convergence budget below), the
   **PR-feedback round count** (`prFeedbackRounds` — see the cap below), and any
@@ -499,10 +503,13 @@ never wakes the session, so it is only ever found by looking.
 **Attribute the label before you accept it.** A GitHub label is writable by every collaborator
 and by every bot with write access, so its presence is only half the test — read the PR
 timeline's `labeled` events for `spec approved`, take the **most recent**, and require its
-actor's login to be the **owner's**. Not "a human": an agent with write access is not a human,
+actor's login to be the **owner's** — the `owner` in this issue's handle cache, established on
+the first wake. Not "a human": an agent with write access is not a human,
 and a passing collaborator is not the owner. If you have no configured owner login, if the
 timeline is unreadable, or if the most recent `labeled` event names anyone else, **treat the
-label as absent** and fall back to the comment/review channels — an approval you cannot
+label as absent** and fall back to the comment/review channels — and if it was the *owner
+login* you were missing, say so once rather than silently, since someone signing off by label
+alone is otherwise waiting on a channel nothing reads — an approval you cannot
 attribute is not an approval, and this gate is what stands between a label and closing the spec
 PR to start building. Checking *who* applied it is a different question from checking *when*:
 the second is not asked, because a spec PR takes commits while review is folded and expiring
