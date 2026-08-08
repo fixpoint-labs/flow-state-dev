@@ -297,6 +297,7 @@ const row = (id, over = {}) => ({ id, phase: 'NEEDS_SPEC', specReviewRounds: 0, 
 const freshRow = (over = {}) => ({
   phase: 'NEEDS_SPEC',
   specApproved: false,
+  specApprovedByLabel: false,
   newSpecReviewEvents: false,
   newPrEvents: false,
   readyToMerge: false,
@@ -377,6 +378,26 @@ check('the `epic approved` label signs the objective off, and only its removal r
     }),
   })
   assert.equal(whileFolding.result.epicApproved, true, 'a labelled epic stays approved while its spec is being folded')
+})
+
+check('the `spec approved` label passes an issue spec gate too', async () => {
+  // The contract advertises the label as an approval channel for BOTH gates. Wiring only the epic
+  // one left every per-issue spec able to stall the identical way — labelled approved, read as
+  // unapproved, parked in AWAITING_SPEC_APPROVAL forever.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: false, specApprovedByLabel: true, headSha: 'abc' } },
+      worker: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 11 } },
+    }),
+  })
+  // A satisfied gate is a release, not a stop: the approved spec chains straight into implementation
+  // rather than being offered back to the human as a second "ok to implement?".
+  assert.deepEqual(workerLabels(calls), ['implement:FIX-2'], 'a label-approved spec goes straight to implementation')
+  assert.ok(
+    !(result.gates || []).some((g) => g.kind === 'spec-approval'),
+    'and is not re-offered for an approval it already has',
+  )
 })
 
 check('a finished prerequisite stops blocking; a cancelled one does not', async () => {

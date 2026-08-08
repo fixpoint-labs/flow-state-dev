@@ -1596,7 +1596,7 @@ const PR_STATE_SCHEMA = {
   // rule for any field an action depends on — and the epic gate's own schema has always required it.
   // `['string','null']` still lets a scout say "did not observe"; what it can no longer do is stay
   // silent and have the approval accepted anyway.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
+  required: ['issueId', 'phase', 'specApproved', 'specApprovedByLabel', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
@@ -1612,6 +1612,11 @@ const PR_STATE_SCHEMA = {
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
+    specApprovedByLabel: {
+      type: 'boolean',
+      description:
+        'The `spec approved` label is present on the spec PR. Presence alone — the owner signs off this way too, and a label is standing state whose removal is the revocation, so it does not expire on a push.',
+    },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
@@ -1887,6 +1892,7 @@ const [gate, linear, ...prStates] = await parallel([
             ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
             : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+          `SEPARATELY report specApprovedByLabel:true whenever the spec PR currently carries the \`spec approved\` LABEL. PRESENCE IS THE WHOLE TEST — do not check when it was applied and do not treat a later push as invalidating it. The owner signs specs off with this label as well as by comment, and a spec PR takes commits while review is folded, so expiring it would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
           `Also report whether CI is failing.`,
         { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
@@ -2035,7 +2041,8 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
   const scanApproved =
-    (refreshedLive ? !!(fresh.specApproved && fresh.headSha) : false) || approvedInSessionFor(row, fresh, refreshedLive)
+    (refreshedLive ? !!(fresh.specApproved && fresh.headSha) || !!fresh.specApprovedByLabel : false) ||
+    approvedInSessionFor(row, fresh, refreshedLive)
   // Hoisted for the same reason `scanApproved` is: the route depends on the RESOLVED spec handle
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.

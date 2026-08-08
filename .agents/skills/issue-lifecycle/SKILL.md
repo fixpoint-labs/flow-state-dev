@@ -58,14 +58,19 @@ On each invocation, reconstruct the phase from a **small** read:
     require no outstanding `CHANGES_REQUESTED`, and confirm the approving review's `commit_id`
     is the current head — a push after an approval re-opens the gate. The full detection rule is
     in [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A comment or a
-    review submission is the gate because either *wakes* the lifecycle — a `labeled` webhook
-    doesn't arrive, but both of these do. On detecting either, **mirror it to the
-    `spec approved` label** (a durable, filterable record) in the same step. **The gate is the
-    fresh evidence — a current-head approving comment/review, re-derived by this scan each
-    wake — not the label.** The `spec approved` label is a mirror only; it can go stale (it was
-    applied at an earlier commit, then a push or a later `CHANGES_REQUESTED` landed), so
-    **never advance from the label alone** — re-confirm approval against the current head every
-    wake. That fresh approval is what advances to NEEDS_IMPLEMENTATION and authorizes closing
+    review submission wakes the lifecycle immediately — a `labeled` webhook doesn't arrive, but
+    both of these do. On detecting either, **mirror it to the `spec approved` label** (a
+    durable, filterable record) in the same step. **The label is also an approval channel in
+    its own right**: the owner signs specs off by applying it, so the scan reads it and it
+    passes the gate alone. The difference between the channels is *latency, not authority* — a
+    label is picked up on the next wake rather than waking the session.
+
+    **A label does not expire on a push; removing it is the revocation.** A spec PR takes
+    commits while review is folded, so expiring the label would revoke the approval on the next
+    round. An approving **review** keeps its own staleness rule — re-confirm a
+    comment/review approval against the current head each wake, and a later
+    `CHANGES_REQUESTED` from any human still withholds the gate. Approval by any channel is
+    what advances to NEEDS_IMPLEMENTATION and authorizes closing
     the spec PR (unmerged).
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
