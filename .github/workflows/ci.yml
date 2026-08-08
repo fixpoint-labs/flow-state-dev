@@ -47,6 +47,37 @@ jobs:
       - name: Test
         run: pnpm test
 
+  guards:
+    name: Process guards
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history so the changeset guard can diff against the base branch.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # A spec PR (branch `spec/<ISSUE-ID>`) and an epic PR (branch
+      # `epic/<name>`, carrying `spec/_epics/<name>.md`) hold the in-flight spec
+      # by design and are never merged, so they are exempt. Keyed on the BRANCH,
+      # not the `spec` label: the label is applied after the PR is created, and
+      # `labeled` is not a default `pull_request` event type — a label-keyed
+      # exemption would fail on the opening run and never re-run.
+      # Every other PR — and main itself — is checked.
+      - name: Spec folder is clear
+        if: >-
+          github.event_name == 'push' ||
+          !(startsWith(github.head_ref, 'spec/') || startsWith(github.head_ref, 'epic/'))
+        run: node scripts/validate-spec-folder.mjs
+
+      - name: Changesets name their Linear issue
+        if: github.event_name == 'pull_request'
+        run: node scripts/validate-changeset-refs.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest

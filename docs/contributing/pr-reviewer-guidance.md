@@ -241,7 +241,7 @@ in advance — a pass scoped from the material, or work whose issue was filed af
 > Decisions in its §6 are already signed off by a human, so please review the **code against
 > that direction**, not the direction itself. The spec lives on the issue's **Linear document**
 > (the durable copy) and on the **closed spec PR** ([link](#)), which keeps its review history.
-> Don't expect `docs/specs/<ISSUE-ID>.md` to be in *this* diff — the spec PR closes unmerged
+> Don't expect `spec/<ISSUE-ID>.md` to be in *this* diff — the spec PR closes unmerged
 > and its branch is deleted before implementation starts (BP-037).
 >
 > **Most valuable here:** correctness on the second path (the legacy shape, the null
@@ -396,7 +396,7 @@ the sign-off surface.)*
 
 > **1. Decision 7 — the premise that FIX-992 already closed part of this.** …
 
-**Spec doc:** [`docs/specs/FIX-981.md`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
+**Spec doc:** [`spec/<ISSUE-ID>.md`](#) · **Linear:** [FIX-981](#) · **Epic:** [FIX-939](#) (M1 of 5)
 · Docs-only, never merged — closed unmerged when implementation starts.
 
 <details>

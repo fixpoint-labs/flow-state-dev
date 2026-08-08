@@ -1,6 +1,6 @@
 ---
 name: issue-spec
-description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, then publish the spec as a versioned doc at docs/specs/<ISSUE-ID>.md opened as a spec PR for automated review and mirrored to the Linear issue (repo and Linear kept in sync).
+description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, then publish the spec at spec/<ISSUE-ID>.md on its own spec branch, opened as a spec PR for automated review and mirrored to the Linear issue (which is the durable copy — the spec never lands on main).
 argument-hint: "<Linear issue ID or identifier, e.g. FSD-142> [--interactive]"
 ---
 
@@ -20,7 +20,7 @@ You are a specification research and authoring agent. Given a Linear issue, your
 
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
 
-**The spec lives in two synced places.** It is authored as a versioned doc at `docs/specs/<ISSUE-ID>.md` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. The two copies are the same content and must be kept in sync — see Step 6. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. The spec PR is never merged — `issue-implement` closes it (unmerged, branch deleted) when implementation starts, and the Linear document carries the spec from then on.
+**The spec is reviewed in the repo and kept in Linear.** It is authored at `spec/<ISSUE-ID>.md` on branch `spec/<ISSUE-ID>` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. **The spec never reaches `main`** — `issue-implement` closes the PR (unmerged, branch deleted) when implementation starts, and Linear is the durable copy from then on. CI enforces this (`scripts/validate-spec-folder.mjs`); the spec PR is exempt by its **branch name** (`spec/*`, and `epic/*` for an epic spec), so the exemption is automatic — nothing to remember.
 
 This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
 
@@ -434,7 +434,7 @@ Address any issues the validators surface. If there are unresolvable questions, 
 
 Publish the **full spec (Part I + Part II)** in two places that must hold identical content: a versioned doc in the repo (the reviewable artifact) and the Linear document (the issue-attached copy).
 
-1. **Write `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`) with **Part I and Part II** in full, and a **Spec evolution** section carrying one entry: `- **Spec drafted** — <one line: how the problem is framed, the approach chosen, and the build shape>.` This is the canonical reviewable artifact.
+1. **Write `spec/<ISSUE-ID>.md`** — substituting the issue's own ID for the placeholder — with **Part I and Part II** in full, and a **Spec evolution** section carrying one entry: `- **Spec drafted** — <one line: how the problem is framed, the approach chosen, and the build shape>.` This is the canonical reviewable artifact.
 
    **Spec evolution goes at the bottom**, where [`spec-template.md`](../../../docs/contributing/spec-template.md) puts it — not at the top. It is the change story: the derivation, which never leads (BP-039). Keep the document title and the `Part I` heading — structural navigation is exempt — but Part I §1's problem statement is the first **content** in the document, with no metadata, status block, or timeline above it.
 
@@ -455,7 +455,7 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
    Part II (the directional Build Plan) is reviewed via the committed doc diff, not pasted into the body. The PR is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the design *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as collapsed PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
 
-   **`<details>` belongs in the PR body, not in the spec doc.** `docs/specs/<ISSUE-ID>.md` is mirrored verbatim to a Linear document, which renders the tag as raw HTML; the spec's own Part I / Part II split is already its fold.
+   **`<details>` belongs in the PR body, not in the spec doc.** `spec/<ISSUE-ID>.md` is mirrored verbatim to a Linear document, which renders the tag as raw HTML; the spec's own Part I / Part II split is already its fold.
 
 3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc (the full spec).
 
@@ -464,7 +464,7 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
    - Add a publishing comment, **problem first** per [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) — not a status label. One or two sentences on what's broken and the approach taken, then the ask (approve the direction, or raise a Decision), then any open questions. Keep that opening within the Linear-issue budget. **Linear renders neither `<details>` nor collapsed blocks**, so the detail — the **Decisions & rules** block from Part I §6 verbatim, and the link to the **spec PR** — goes below a `---` under a `## Detail` heading. The durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
    - If open questions exist, flag the issue for discussion.
 
-5. **Keep the two copies in sync.** `docs/specs/<ISSUE-ID>.md` and the Linear document are the same content. Any later edit to either — most often from spec-PR review (Step 6.5) — is mirrored to the other in the same change set. Never let them drift.
+5. **Mirror every change to Linear.** `spec/<ISSUE-ID>.md` is the review surface and dies with the PR; the Linear document is what survives. Any later edit — most often from spec-PR review (Step 6.5) — is mirrored to Linear in the same change set, so the durable copy is never the stale one.
 
 6. **Move the issue to "In Spec Review"** with `save_issue`, *after* the repo doc, PR, Linear document, and publishing comment are all in place. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the comment.
 
