@@ -270,8 +270,8 @@ out-of-band chat approval:
 
 | Gate | Signal | Meaning | Blocks |
 |---|---|---|---|
-| **Spec approval** | an approving comment or GitHub Review from a human on the spec PR | The full spec (Part I + Part II) is directionally signed off | implementing that issue |
-| **Epic objective** | an approving comment or GitHub Review from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
+| **Spec approval** | an approving comment, an approving GitHub Review, **or the owner's `spec approved` label** on the spec PR | The full spec (Part I + Part II) is directionally signed off | implementing that issue |
+| **Epic objective** | an approving comment, an approving GitHub Review, **or the owner's `epic approved` label** on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
 
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
 feedback, upward comments) flows continuously and never blocks. The spec-approval gate is
@@ -311,7 +311,7 @@ own staleness rule: a later push supersedes it, exactly as GitHub treats it.
 > by label read as unapproved and its entire set was held indefinitely, with no way for the
 > coordinator to assert the gate — a live scan overrides the carried value by design.
 
-**What counts as approval.** Either signal, from a human:
+**What counts as approval.** Any of these three, from a human:
 
 - **A comment** that (a) expresses approval — its body says "approved" — **and** (b) is
   authored by a human: not a bot account, and not a comment whose body marks it as
@@ -342,11 +342,22 @@ own staleness rule: a later push supersedes it, exactly as GitHub treats it.
   push naturally drops the gate back to pending on the next refresh; the rule here is just that
   the check is "is the *current head* approved," not "was anything ever approved."
 
-Both clauses are load-bearing — they exclude the coordinator's own footer-signed
-comments and every review bot, so only a genuine human sign-off — by comment or by
-review — trips the gate. **A substantive push after a comment-based approval re-opens the
-gate too** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
-as approving the state at that moment; new work needs fresh sign-off).
+- **The `spec approved` / `epic approved` label**, applied by the owner. Presence is the
+  whole test: it does not expire on a push, because a spec or epic PR takes commits for its
+  whole life and expiring it would revoke the approval on the next fold. **Removal is the
+  revocation.** The coordinator never writes these labels — see above.
+
+Both clauses on the comment and review paths are load-bearing — they exclude the
+coordinator's own footer-signed comments and every review bot, so only a genuine human
+sign-off trips the gate. **A substantive push after a comment-based approval re-opens the
+gate** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
+as approving the state at that moment; new work needs fresh sign-off). That staleness rule
+is the comment/review path's alone — a label is standing state, not a point-in-time act.
+
+**A human `CHANGES_REQUESTED` outranks all three channels.** It is the one signal that
+withholds the gate no matter how approval arrived, and it exists because the label is
+standing: without it, a change request would sit unanswered behind an approval nobody
+retracted.
 
 The epic *issue's* Linear state is a second human-facing mirror of the objective gate, not
 the trigger — the **coordinator writes that mirror** when the approving comment or review
