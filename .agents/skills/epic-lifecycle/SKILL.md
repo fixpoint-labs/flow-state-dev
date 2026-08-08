@@ -592,9 +592,11 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
   until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*
-  epic-level gate — direction stays ungated. When an
-  approving human comment or review lands on the epic PR, **the coordinator writes the Linear
-  mirror only** — it moves the Epic *issue's* state to reflect "objective approved". **It does
+  epic-level gate — direction stays ungated. When approval lands on the epic PR **by any of the
+  three channels — comment, review, or the owner's label** — **the coordinator writes the Linear
+  mirror only**: it moves the Epic *issue's* state to reflect "objective approved". Include the
+  label case or the mirror silently disagrees with the gate, leaving the Epic issue reading
+  unapproved while its children implement. **It does
   not touch the `epic approved` label**, which is the owner's own signal: a coordinator-written
   label would outlive the review it recorded and keep the gate open past a later push.
 - **Own the subscription; fan feedback down.** Only the coordinator can subscribe to the epic
