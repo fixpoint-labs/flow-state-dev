@@ -158,6 +158,8 @@ Passing options makes the write *advisory*: record this only if it still makes s
 
 ```ts
 const task = await tasks.claim("worker-1");
+if (task === null) return; // nothing eligible, or another worker got there first
+
 const claim = ticketForClaim(tasks.collectionId, task);
 
 // … minutes of model work …
@@ -206,7 +208,7 @@ type TaskWriteOutcome =
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
 - `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it.
 
-When more than one condition applies, `reason` reports the first that holds in that order: `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract — a cross-task write gets `not-my-task` whatever state the target happens to be in.
+When more than one condition applies, `reason` reports the first that holds in that order: `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
 A decline is a value, not an error. Nothing throws, nothing is written, and discarding the return value compiles:
 

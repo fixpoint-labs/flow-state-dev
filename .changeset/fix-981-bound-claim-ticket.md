@@ -16,6 +16,8 @@ await tasks.complete(task.id, output, { ifAllowed: true, expectAttempt: task.att
 import { ticketForClaim } from "@flow-state-dev/orchestration";
 
 const task = await tasks.claim("worker-1");
+if (task === null) return; // `claim()` returns `Task | null`
+
 const claim = ticketForClaim(tasks.collectionId, task);
 await tasks.complete(task.id, output, { ifAllowed: true, claim });
 ```
