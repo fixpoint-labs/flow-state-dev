@@ -1486,6 +1486,29 @@ function approvedInSessionFor(row, fresh, refreshedLive) {
   return false
 }
 
+/**
+ * THE spec-approval decision. Every channel and every veto lives here, and nothing outside computes
+ * approval from parts.
+ *
+ * Approval arrives three ways — an approving human comment/review on the current head, the
+ * `spec approved` label, or an in-session go-ahead the coordinator recorded — and a human
+ * `CHANGES_REQUESTED` vetoes all of them.
+ *
+ * It is one function because it was three expressions, and a rule added to a scattered OR has to be
+ * remembered at every branch. It wasn't: the change-request veto was added to the comment/review and
+ * label branches and missed on the in-session one, which let a spec enter implementation past a
+ * change request. Review had caught the same shape one round earlier on a different branch. Composing
+ * the channels in one place makes the next rule impossible to half-apply.
+ */
+function specApprovalFor(row, fresh, refreshedLive) {
+  // A veto needs a live observation to be trusted. Without one there is nothing to veto WITH, and the
+  // channels below already refuse to release on a dead scout.
+  if (refreshedLive && fresh.humanChangesRequested) return false
+  const byReview = refreshedLive && !!(fresh.specApproved && fresh.headSha)
+  const byLabel = refreshedLive && !!fresh.specApprovedByLabel
+  return byReview || byLabel || approvedInSessionFor(row, fresh, refreshedLive)
+}
+
 function bindByPosition(results, ids, onMismatch) {
   const byId = new Map()
   results.forEach((res, i) => {
@@ -2052,10 +2075,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
   const li = linearById.get(row.id) || {}
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
-  const scanApproved =
-    (refreshedLive
-      ? !fresh.humanChangesRequested && (!!(fresh.specApproved && fresh.headSha) || !!fresh.specApprovedByLabel)
-      : false) || approvedInSessionFor(row, fresh, refreshedLive)
+  const scanApproved = specApprovalFor(row, fresh, refreshedLive)
   // Hoisted for the same reason `scanApproved` is: the route depends on the RESOLVED spec handle
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.

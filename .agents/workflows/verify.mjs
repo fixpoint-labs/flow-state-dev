@@ -432,6 +432,33 @@ check('a human change request outranks an approval label on both gates', async (
   assert.deepEqual(epicBlocked.result.held, ['FIX-2'], 'and the set is held')
 })
 
+check('a change request vetoes an in-session approval too', async () => {
+  // The veto has to sit over the COMBINED decision, not per channel. It was added to the
+  // comment/review and label branches and missed on this one, so an in-session go-ahead carried a
+  // spec into implementation past a change request. Now that all three compose in one function,
+  // this is the case that proves the veto is not per-branch.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, approvedInSession: 'abc' })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 8,
+          specApproved: false,
+          specApprovedByLabel: false,
+          humanChangesRequested: true,
+          headSha: 'abc',
+        },
+      },
+    }),
+  })
+  assert.deepEqual(
+    workerLabels(calls).filter((l) => l.startsWith('implement:')),
+    [],
+    'an in-session approval does not survive a human change request',
+  )
+})
+
 check('the `spec approved` label passes an issue spec gate too', async () => {
   // The contract advertises the label as an approval channel for BOTH gates. Wiring only the epic
   // one left every per-issue spec able to stall the identical way — labelled approved, read as
