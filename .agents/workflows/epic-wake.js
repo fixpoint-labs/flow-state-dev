@@ -2078,6 +2078,8 @@ if (discovered.length) {
  */
 const cancelledBlockers = new Set()
 const unmergedBlockers = new Set()
+// Carried rows only — `discovered` rows are new this wake and carry no handles to fall back on.
+const carriedById = new Map(rows.map((r) => [r.id, r]))
 const openBlockers = (ids) =>
   (ids || []).filter((b) => {
     const bs = linearById.get(b)
@@ -2090,15 +2092,25 @@ const openBlockers = (ids) =>
     }
     // Terminal-and-not-cancelled in Linear normally MEANS merged, because the coordinator writes Done
     // off the merge it observed. But Linear state is a mirror a human can move by hand, and the contract
-    // is that blocked work waits for its blocker to LAND — so where we hold a live observation of the
-    // blocker's own PR, that observation outranks the mirror. Only for blockers we actually carry as
-    // rows: for anything outside the set we have no PR to look at, and Linear is the only evidence there
-    // is. A carried blocker with no impl PR at all (docs, a dropped row) has nothing to contradict, so
-    // Done still clears it.
-    const blockerScan = freshById.get(b)
-    if (blockerScan && blockerScan.implPr && !blockerScan.merged) {
-      unmergedBlockers.add(`${b} (Linear ${state}, but #${blockerScan.implPr} is not merged)`)
-      return true
+    // is that blocked work waits for its blocker to LAND — so where we know the blocker has an impl PR,
+    // only a LIVE `merged: true` clears it. Only for blockers we actually carry as rows: for anything
+    // outside the set we have no PR to look at, and Linear is the only evidence there is. A blocker with
+    // no impl PR anywhere (docs, a dropped row) has nothing to contradict, so Done still clears it.
+    const carriedBlocker = carriedById.get(b)
+    if (carriedBlocker) {
+      const blockerScan = freshById.get(b)
+      // The handle comes from the scan when it observed one and from the carried row otherwise — the
+      // same "null means NOT OBSERVED, keep what we had" rule the row refresh below applies. Reading
+      // only the scan meant a dead scout (no entry) or a partial one (`implPr: null`) looked exactly
+      // like "this blocker has no PR", which cleared the relation on an infrastructure failure —
+      // precisely the invariant that a null agent result must never advance anything.
+      const knownPr = (blockerScan && blockerScan.implPr) || carriedBlocker.implPr
+      if (knownPr && !(blockerScan && blockerScan.merged === true)) {
+        unmergedBlockers.add(
+          `${b} (Linear ${state}, but #${knownPr} is ${blockerScan ? 'not merged' : 'unobserved — its refresh did not return'})`,
+        )
+        return true
+      }
     }
     return false
   })

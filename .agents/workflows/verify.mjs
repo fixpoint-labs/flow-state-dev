@@ -549,6 +549,27 @@ check('a finished prerequisite stops blocking; a cancelled one does not', async 
     }),
   })
   assert.deepEqual(noPr.result.blocked, [], 'a PR-less prerequisite marked Done still clears its dependent')
+
+  // ...and the handle has to come from the CARRIED row when the scan didn't observe one. A dead or
+  // partial refresh returns no `implPr`, which is indistinguishable from "has no PR" if you read only
+  // the scan — so an infrastructure failure would clear the relation and dispatch the dependent. Same
+  // rule as everywhere else here: a null agent result means nothing happened, never "it's fine".
+  // FIX-2 stays in `fresh` so it is still a KNOWN Linear child — dropping it there would remove it from
+  // the Linear response too and the unresolvable-blocker branch would hold FIX-3 for the wrong reason.
+  // `nulls` is what actually kills the refresh.
+  const deadScout = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 7 }), row('FIX-3', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      nulls: ['refresh:FIX-2'],
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 7 }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(
+    deadScout.result.blocked.map((b) => b.issueId),
+    ['FIX-3'],
+    'an unobserved prerequisite is not evidence that it merged',
+  )
 })
 
 check('args are read identically whether delivered as a JSON string or an object', async () => {
