@@ -84,10 +84,12 @@ function schemaViolations(value, schema, path = '') {
  * the body runs inside an async function so its top-level `return` is the script's result.
  *
  * @param {string} name script filename under this directory
- * @param {object} opts `args` for the script and `respond(prompt, opts)` for each agent() call
+ * @param {object} opts `args` for the script, `respond(prompt, opts)` for each agent() call, and
+ *   `argsShape` — `'string'` (default, the shape the Workflow tool actually delivers) or
+ *   `'object'` to exercise the normalizer's other branch.
  * @returns {Promise<{result: unknown, calls: object[], logs: string[], phases: string[], meta: object}>}
  */
-async function run(name, { args, respond }) {
+async function run(name, { args, respond, argsShape = 'string' }) {
   // Hoist `meta` out the way the harness does, and capture it as the declaration executes —
   // no second parse of the source, so reformatting the object literal can't break this.
   const capture = {}
@@ -146,7 +148,17 @@ async function run(name, { args, respond }) {
     `return (async () => {\n${src}\n})()`,
   )
 
-  const result = await body(agent, parallel, pipeline, log, phase, args, budget, workflow, capture)
+  // Inject `args` the way the Workflow tool actually delivers it — as a JSON string — by default.
+  // Fixtures stay readable plain objects and only this boundary changes, so the whole suite
+  // exercises the same parse the runtime does. Injecting the object directly is what let a
+  // production-fatal bug pass 266 tests: the scripts read `args.epic` off a string, got `undefined`
+  // for every field, and died before spawning an agent. A harness on a different shape than
+  // production tests nothing about production.
+  //
+  // `argsShape: 'object'` keeps the normalizer's other branch covered — ad-hoc harness runs and
+  // any future object delivery take it, so it should not rot untested either.
+  const injectedArgs = argsShape === 'object' ? args : JSON.stringify(args)
+  const result = await body(agent, parallel, pipeline, log, phase, injectedArgs, budget, workflow, capture)
 
   // A fixture the real harness would reject makes whatever this test asserts meaningless.
   assert.equal(
@@ -326,6 +338,26 @@ check('epic gate unmet holds every issue and dispatches no worker', async () => 
   assert.deepEqual(workerLabels(calls), [], 'no issue-worker may be dispatched before the objective gate')
   assert.deepEqual(result.held, ['FIX-2', 'FIX-3'])
   assert.match(logs.join('\n'), /Epic objective not signed off — holding 2 issue\(s\)/)
+})
+
+check('args are read identically whether delivered as a JSON string or an object', async () => {
+  // The Workflow tool delivers `args` as a JSON string; ad-hoc harness runs pass an object. The
+  // scripts normalize both, and BOTH branches need coverage: the suite runs on the string shape,
+  // so without this the object branch would rot untested, and a normalizer that dropped it would
+  // still be green. Same fixture, same responder, both shapes, identical decisions.
+  const fixture = () => ({
+    args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
+    respond: epicResponder({ approved: false, fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' }, 'FIX-3': { phase: 'NEEDS_SPEC' } } }),
+  })
+  const asString = await run('epic-wake.js', { ...fixture(), argsShape: 'string' })
+  const asObject = await run('epic-wake.js', { ...fixture(), argsShape: 'object' })
+
+  assert.deepEqual(asObject.result.held, asString.result.held, 'object-delivered args must hold the same issues')
+  assert.deepEqual(asObject.result.gates, asString.result.gates, 'object-delivered args must surface the same gates')
+  assert.equal(asObject.result.epicApproved, asString.result.epicApproved)
+  // The failure this guards against is silent: reading `args.epic` off a string yields `undefined`
+  // for every field, so the wake looks like it ran against an empty table rather than crashing.
+  assert.ok(asString.result.held.length > 0, 'the string shape must actually reach the rows, not read an empty table')
 })
 
 check('epic-PR review still folds while the objective is unapproved', async () => {

@@ -1978,6 +1978,25 @@ if (discovered.length) {
   )
 }
 
+/**
+ * Drop blocked-by relations whose prerequisite has already finished.
+ *
+ * The scout schema calls this field "Open blocked-by relations", but nothing enforces it, and a
+ * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` refuses a
+ * row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
+ * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
+ * rest of the epic.
+ *
+ * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, so a
+ * blocker outside the epic is unresolvable here and is kept. That fails closed: a stale block
+ * costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
+ */
+const openBlockers = (ids) =>
+  (ids || []).filter((b) => {
+    const bs = linearById.get(b)
+    return !(bs && TERMINAL_LINEAR.test((bs.state || '').trim()))
+  })
+
 const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
   const refreshedLive = freshById.has(row.id)
@@ -2065,7 +2084,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
     // skipped it, so the carried relation stands. Getting this backwards either un-blocks an
     // issue on a failed refresh or blocks it forever after its prerequisite merged.
-    blockedBy: linearById.has(row.id) ? li.blockedBy || [] : row.blockedBy || [],
+    blockedBy: openBlockers(linearById.has(row.id) ? li.blockedBy : row.blockedBy),
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
