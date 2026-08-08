@@ -436,7 +436,10 @@ the sign-off surface.)*
 
 **Plain terms.** Decision 1 retires a guard we already shipped and published an error for.
 Anyone who wrote code branching on that specific error would see different behaviour.
-Keeping both means two overlapping guards with slightly different meanings, forever.
+
+**The trade-off.** Replacing it is a one-time break for anyone reading that error today.
+Keeping both means two overlapping guards with slightly different meanings, forever — and
+every guard question after this one gets answered twice.
 
 **My recommendation: replace it.** Two guards that answer almost the same question is how a
 public surface stops being explainable, and we're pre-1.0 with essentially nobody depending
@@ -445,6 +448,11 @@ it turns it into a breaking change later.
 
 **What would change my mind:** if a design partner is branching on that error today, or
 we've told anyone this surface is stable. Then we keep both and retire the old one at 1.0.
+
+**Cost of being wrong: moderate, and it runs one way.** Replace it when someone did depend on
+it and they get a broken build and a changelog line — annoying, recoverable, fixable in a
+patch. Keep both when we didn't need to and the ambiguity outlives 1.0, where removing it
+stops being cheap and becomes a breaking change we've promised not to make.
 
 ## Parts worth reviewing closely
 
