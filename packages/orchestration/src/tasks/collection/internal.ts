@@ -269,8 +269,8 @@ export function retryBudgetExhaustedError(
  * this is even the right task is {@link ticketNamesTask}'s question, asked
  * first — see {@link transitionDeclineReason}.
  */
-function attemptOwnsTask(task: Task, expectAttempt: number): boolean {
-  return task.attempts === expectAttempt && ATTEMPT_OWNED_STATUSES.has(task.status);
+function attemptOwnsTask(task: Task, attempt: number): boolean {
+  return task.attempts === attempt && ATTEMPT_OWNED_STATUSES.has(task.status);
 }
 
 /**
