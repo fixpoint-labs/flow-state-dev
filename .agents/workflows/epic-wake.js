@@ -1540,9 +1540,14 @@ const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
-  required: ['approved', 'newReviewEvents', 'headSha', 'latestActivityAt'],
+  required: ['approved', 'approvedByLabel', 'newReviewEvents', 'headSha', 'latestActivityAt'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
+    approvedByLabel: {
+      type: 'boolean',
+      description:
+        'The `epic approved` label is present AND no commit landed after it was applied. The owner signs the objective off this way as well as by comment, so it satisfies the gate — but a label applied before a later push is stale, exactly like a superseded review approval.',
+    },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
     newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
@@ -1847,6 +1852,7 @@ const [gate, linear, ...prStates] = await parallel([
   () =>
     agent(
       `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+        `SEPARATELY, report approvedByLabel:true when the PR carries the \`epic approved\` LABEL and no commit has landed since it was applied — compare the label event's timestamp against the current head commit's date. The owner signs the objective off with this label as well as by comment, so it is a real approval channel and not merely a mirror; check the labels even when you find no approving comment. A label applied before a later push is STALE and must report false, on the same rule that invalidates a superseded review approval. Report it independently of \`approved\` — do not fold one into the other, and do not infer the label from body text claiming approval.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
@@ -1925,7 +1931,15 @@ if (scanned && !gate.headSha) {
 // The cost is one wake of held work whenever the scout flakes, and the next usable scan releases it. The
 // alternative is children authoring specs and PRs against an objective that may have just changed, which
 // costs their rework. This is the gate the file says everywhere must not be bypassable.
-const epicApproved = scanned && gateUsable && !!gate.approved
+// Either channel signs the objective off. The owner marks approval with the `epic approved` LABEL as
+// well as by comment, and reading only comments held a fully-approved epic's entire set indefinitely
+// while the label sat on the PR — the coordinator has no way to assert the gate from `args`, because
+// a live scan's answer overrides the carried one by design.
+//
+// Both channels carry the SAME staleness rule, which is what keeps the label from being a weaker
+// signal than a review: the scout reports `approvedByLabel` false once a commit lands after the label
+// was applied, exactly as a push invalidates a superseded review approval.
+const epicApproved = scanned && gateUsable && (!!gate.approved || !!gate.approvedByLabel)
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.approved) {
   log(
@@ -2840,7 +2854,7 @@ const epicOut = {
     // approval re-opens the gate), which is the case failing closed actually protects.
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
-    approved: gateUsable ? !!gate.approved : !!epic.approved,
+    approved: gateUsable ? !!gate.approved || !!gate.approvedByLabel : !!epic.approved,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)
