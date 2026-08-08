@@ -3,7 +3,7 @@
 "@flow-state-dev/patterns": patch
 ---
 
-A task write can now prove which task it owns. `TaskTransitionOptions.expectAttempt` is replaced by `claim`, which takes a `TaskClaimTicket` naming the collection, the task, the attempt, and the task's `createdAt`. A write presenting a ticket for a different task is refused with the new `TaskWriteDeclineReason` member `not-my-task` instead of being applied.
+A task write can now prove which task it owns (FIX-981). `TaskTransitionOptions.expectAttempt` is replaced by `claim`, which takes a `TaskClaimTicket` naming the collection, the task, the attempt, and the task's `createdAt`. A write presenting a ticket for a different task is refused with the new `TaskWriteDeclineReason` member `not-my-task` instead of being applied.
 
 **Migration — `expectAttempt` is removed.** A bare attempt number names no task, and attempt numbers collide constantly across a board (two freshly claimed tasks both sit on attempt 1), so the guard was satisfied by whichever task the call happened to name. Mint a ticket from the task `claim()` returned:
 
