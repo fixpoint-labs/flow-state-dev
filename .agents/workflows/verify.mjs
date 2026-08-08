@@ -570,6 +570,56 @@ check('a finished prerequisite stops blocking; a cancelled one does not', async 
     ['FIX-3'],
     'an unobserved prerequisite is not evidence that it merged',
   )
+
+  // A multi-PR prerequisite has no row-level `implPr` — its handles are in `subPrs[].pr` — so a
+  // single-handle check reads it as PR-less and clears it while slices are still open. Asked via
+  // `multiPrPhase`, the same predicate that decides the row's own DONE.
+  const multiOpen = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          subPrs: [
+            { id: 'a', status: 'merged', pr: 7 },
+            { id: 'b', status: 'open', pr: 8 },
+          ],
+          assembledGoal: { passed: true, evidence: 'ran it' },
+        }),
+        row('FIX-3', { phase: 'NEEDS_SPEC' }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(
+    multiOpen.result.blocked.map((b) => b.issueId),
+    ['FIX-3'],
+    'an unmerged slice keeps the dependent blocked even though the row has no implPr',
+  )
+
+  // ...and a genuinely finished PR plan still clears it — every slice merged AND the goal proven.
+  const multiDone = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'DONE',
+          subPrs: [
+            { id: 'a', status: 'merged', pr: 7 },
+            { id: 'b', status: 'merged', pr: 8 },
+          ],
+          assembledGoal: { passed: true, evidence: 'ran it' },
+        }),
+        row('FIX-3', { phase: 'NEEDS_SPEC' }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'DONE' }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.deepEqual(multiDone.result.blocked, [], 'a finished PR plan clears its dependent')
 })
 
 check('args are read identically whether delivered as a JSON string or an object', async () => {

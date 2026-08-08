@@ -2099,11 +2099,30 @@ const openBlockers = (ids) =>
     const carriedBlocker = carriedById.get(b)
     if (carriedBlocker) {
       const blockerScan = freshById.get(b)
-      // The handle comes from the scan when it observed one and from the carried row otherwise — the
-      // same "null means NOT OBSERVED, keep what we had" rule the row refresh below applies. Reading
-      // only the scan meant a dead scout (no entry) or a partial one (`implPr: null`) looked exactly
-      // like "this blocker has no PR", which cleared the relation on an infrastructure failure —
-      // precisely the invariant that a null agent result must never advance anything.
+      // A multi-PR blocker has no row-level `implPr` at all — its handles live in `subPrs[].pr` and
+      // `assembledGoal.fixPr` — so a single-handle check reads it as "no PR" and clears it while
+      // slices are still open. `multiPrPhase` is already the one definition of when such a row is
+      // finished (every slice merged AND the goal proven); asking it here rather than re-deriving the
+      // test keeps a second, drifting answer from existing. It reads CARRIED statuses, so a blocker
+      // whose slices merged during this very wake holds one wake longer — the safe direction, and the
+      // next wake has the updated handles.
+      const multi = multiPrPhase(carriedBlocker)
+      if (multi) {
+        if (multi !== 'DONE') {
+          const open = (carriedBlocker.subPrs || []).filter((s) => s.status !== 'merged').map((s) => s.id)
+          unmergedBlockers.add(
+            `${b} (Linear ${state}, but its PR plan is unfinished${open.length ? ` — ${open.join(', ')} not merged` : ' — goal not yet proven'})`,
+          )
+          return true
+        }
+        return false
+      }
+      // Single-PR: the handle comes from the scan when it observed one and from the carried row
+      // otherwise — the same "null means NOT OBSERVED, keep what we had" rule the row refresh below
+      // applies. Reading only the scan meant a dead scout (no entry) or a partial one
+      // (`implPr: null`) looked exactly like "this blocker has no PR", which cleared the relation on
+      // an infrastructure failure — precisely the invariant that a null agent result must never
+      // advance anything.
       const knownPr = (blockerScan && blockerScan.implPr) || carriedBlocker.implPr
       if (knownPr && !(blockerScan && blockerScan.merged === true)) {
         unmergedBlockers.add(

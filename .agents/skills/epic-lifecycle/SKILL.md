@@ -145,8 +145,18 @@ The epic-specific delta:
    per-issue handle-cache pointers), **and the epic handle alongside it** (epic issue ID ·
    name · `epic/<name>` branch · epic PR#), so it survives across wakes — the next refresh
    needs it to re-check the epic PR for its approving comment or review, keep the epic PR
-   subscribed, and pass the branch/SHA to workers. Two more coordinator-owned fields live
-   here because nothing else can hold them across wakes: the epic PR's own review budget
+   subscribed, and pass the branch/SHA to workers.
+
+   **Establish the `owner` login here too** — the GitHub account whose approval *label* passes a gate. It is the product owner you are
+   reporting to, so ask them once if you don't already know it, and persist it beside the epic
+   handle; a login you inferred from a PR author or a commit trailer is a guess, and this one
+   authorizes work. If you cannot establish it, say so and carry on without it: the wake turns
+   the label channel off rather than trusting an unattributable label, and the owner's comment
+   or review still passes every gate. What you must not do is leave the field out silently —
+   an owner who signs off by label alone would then wait forever on a channel nothing reads.
+
+   Two more coordinator-owned fields live here for the same reason — nothing else holds them
+   across wakes: the epic PR's own review budget
    (**`reviewRounds`** + **`aboveBarFound`**, passed to and returned by each wake) and, at
    wrap, each pass's **disposition**
    (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
