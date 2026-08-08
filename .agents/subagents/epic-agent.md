@@ -57,7 +57,8 @@ Take the single action the dispatch calls for:
   (dual-synced, exactly as a spec attaches to a work issue). Return the epic issue ID + epic
   PR link. Do **not** approve the objective yourself — you surface it; the coordinator takes
   it to the human for the sign-off, which is an **approving comment or GitHub Review** on the
-  epic PR (the coordinator mirrors it to the `epic approved` label).
+  epic PR, **or the owner's own `epic approved` label**. Nobody but the owner applies that
+  label — not you, not the coordinator.
 
   **Write the epic PR description to the fold** —
   [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md) → "The layout"

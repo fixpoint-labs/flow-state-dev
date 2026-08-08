@@ -1057,8 +1057,10 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   that re-reads the same batch and re-posts replies to comments already answered.
 
 **Writing to a PR: you may carry a human's decision outward, never a technical judgment of your
-own.** Applying a `spec approved` mirror label, or posting an alignment the user just decided in
-a cross-spec walkthrough, carries a decision made somewhere the coordinator can see. Answering a
+own.** Posting an alignment the user just decided in a cross-spec walkthrough carries a decision
+made somewhere the coordinator can see. (Applying an approval label is *not* an example of this
+and never was — see above: the label is the owner's signal, and a coordinator-written one would
+manufacture the sign-off it purports to record.) Answering a
 reviewer, explaining a design choice, conceding a point, or calling a finding wrong are all
 judgments about a diff it hasn't read, and they belong to the worker that has.
 
@@ -1070,8 +1072,8 @@ Two reads are the exception, both **small and offloaded to `scout`**, never fold
 coordinator: the **spec/epic-PR approval check** ("is there an approving comment or GitHub
 Review from a human?" — the sign-off gate — checks both the PR's comments and its reviews) and
 **epic-PR feedback fan-out** ("which aligned issues does this comment touch?"). Scout returns
-the verdict / target list; the coordinator routes on it and, for a detected approval, applies
-the mirror label.
+the verdict / target list, including whether the owner's approval label is present; the
+coordinator routes on it and writes the Linear mirror. It never writes the label.
 
 **What the coordinator reports instead.** The worker's status line is what it has, and it is
 what the user gets: the issue, its phase, the PR, and the worker's one line on what it did. One

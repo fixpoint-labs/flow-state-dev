@@ -558,11 +558,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
   until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*
   epic-level gate — direction stays ungated. When an
-  approving human comment or review lands on the epic PR, **the coordinator writes both mirrors**
-  — it applies the `epic approved` label (durable, filterable record) *and* moves the Epic
-  *issue's* Linear state to reflect "objective approved" (the comment or review is the
-  trigger; the label and Linear state are human-facing mirrors, and the coordinator owns keeping
-  them in step so they don't drift).
+  approving human comment or review lands on the epic PR, **the coordinator writes the Linear
+  mirror only** — it moves the Epic *issue's* state to reflect "objective approved". **It does
+  not touch the `epic approved` label**, which is the owner's own signal: a coordinator-written
+  label would outlive the review it recorded and keep the gate open past a later push.
 - **Own the subscription; fan feedback down.** Only the coordinator can subscribe to the epic
   PR (sub-agents can't), so epic-PR feedback arrives here. The **folding** is the wake's:
   it dispatches `epic-agent` to triage against the bar, fold above-the-bar items into the
@@ -723,6 +722,15 @@ Once both hold:
    issue. An alignment edit is a *spec-level* change by construction — a cross-spec conflict
    is never below the bar — so it earns a fresh round outside the two-round budget, and the
    issue returns to spec review before it implements.
+
+   **`crossSpecCleared` is what holds it, not the approval label — and that distinction is
+   load-bearing.** An owner's label is standing: it survives a push, so an alignment edit
+   landing at a new head does *not* retract it, and a gate reading the label alone would
+   report the spec approved against text the alignment just changed. `crossSpecCleared` is
+   coordinator state you own precisely so a mechanical edit cannot clear a human gate: leave
+   it `false` until every aligned spec has cleared approval **again**, which means the owner
+   re-confirming — not the old label still being present. Never remove the owner's label to
+   force this; hold on your own flag and ask.
 
 Run this once per epic when the set stabilizes; re-run only if a later approved spec joins
 the set or an alignment edit could ripple.
