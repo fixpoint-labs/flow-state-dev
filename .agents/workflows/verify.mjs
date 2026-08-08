@@ -834,6 +834,28 @@ check("the issue scout is told a human's CHANGES_REQUESTED beats another's appro
   assert.match(scout.prompt, /even when the same person approved earlier/)
 })
 
+check('both scouts must attribute an approval label to a human before it passes a gate', async () => {
+  // The label is the OWNER'S authorization channel, so "the label is present" is only half the test.
+  // Labels are writable by any collaborator and by every bot with write access — so a scan that reads
+  // presence alone lets a bot release an epic's whole child set, or one issue's implementation, without
+  // the sign-off the gate exists to require (BP-031: never derive an auth decision from an actor nobody
+  // verified). The WHEN half stays deliberately unchecked — that is the staleness rule the owner rejected,
+  // and it is a different question from WHO.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
+  })
+  for (const label of ['gate:epic', 'refresh:FIX-2']) {
+    const scout = calls.find((c) => c.label === label)
+    assert.ok(scout, `${label} scout ran`)
+    assert.match(scout.prompt, /HUMAN applied it/, `${label} requires a human applier`)
+    assert.match(scout.prompt, /labeled\b.*event|timeline/i, `${label} names where provenance is read`)
+    assert.match(scout.prompt, /report FALSE|report it FALSE/i, `${label} fails closed on unattributable`)
+    // ...and the staleness rule stays OUT. Re-adding it here is what broke the gate before.
+    assert.match(scout.prompt, /do not treat a later push as invalidating it/, `${label} keeps presence-not-recency`)
+  }
+})
+
 check('GATE: implementation waits for the cross-spec coherence pass', async () => {
   // An epic's specs are authored in isolation, so each can be locally excellent while the SET claims the
   // same surface twice. `epic-lifecycle` runs one coherence pass before any of it is built — and moving the

@@ -383,12 +383,14 @@ The epic-specific delta:
    of inventing the substance.
 
    If the epic is awaiting its objective sign-off, surface the epic
-   PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
-   releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
+   PR (its purpose/objective) and note that an **approving comment or review on the epic PR —
+   or their own `epic approved` label** releases the epic's issues to start — until then they
+   hold at NEEDS_SPEC. Then, per issue:
    for any issue **awaiting spec approval** (its spec PR is open, Part I + II), surface the
-   **spec PR link** for review and note that **an approving comment or review on the spec PR**
+   **spec PR link** for review and note that **an approving comment or review on the spec PR,
+   or their own `spec approved` label,**
    is the go-ahead to implement (a plain "approved" comment, or an Approve-state review, from a
-   human other than the PR's author — the label is applied by the coordinator, not the human).
+   human other than the PR's author — or the label, which only they apply).
    **Say what they're signing off: the direction** — the problem framing, the approach, and the
    numbered Decisions — and, for a converged spec, that remaining open threads are carried as
    implementer notes rather than blockers. State the outcome the epic buys and the calls that
@@ -414,10 +416,11 @@ The epic-specific delta:
    must wake the coordinator, not wait for the heartbeat, and epic PR activity must too (so feedback
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
-   delivered PR-activity events, so a spec- or epic-PR approval (either form) wakes the coordinator
-   immediately (the reason the gates moved off labels, whose webhook never arrives). The
-   transitions webhooks *don't* cover — CI success and merge/close — are caught on the wake's
-   scout refresh (step 2). Schedule one check-in
+   delivered PR-activity events, so a spec- or epic-PR approval in either of those forms wakes
+   the coordinator immediately. The owner's **label** is the third channel and the slow one: a
+   `labeled` webhook never arrives, so it is found only by the wake's scout refresh. The
+   transitions webhooks *don't* cover — CI success and merge/close — are caught on that same
+   refresh (step 2). Schedule one check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. **Move to EPIC_WRAP only when the wake returns `mayWrap: true`.**
 
