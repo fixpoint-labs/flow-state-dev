@@ -251,13 +251,13 @@ function product(spec) {
 // ---------------------------------------------------------------------------
 
 /** Build an epic-wake responder from per-issue fresh PR state and per-issue worker results. */
-function epicResponder({ approved = true, approvedByLabel = false, gateHeadSha = 'abc', epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, linear = {}, nulls = [] } = {}) {
+function epicResponder({ approved = true, approvedByLabel = false, gateChangesRequested = false, gateHeadSha = 'abc', epicReviewEvents = false, fresh = {}, worker = {}, poc = {}, fold = {}, linear = {}, nulls = [] } = {}) {
   return (prompt, opts) => {
     const label = opts.label || ''
     // `nulls` names labels whose agent "died" — the harness returns null for those.
     if (nulls.includes(label)) return null
     if (label === 'gate:epic') {
-      return { approved, approvedByLabel, approver: approved ? 'jake' : null, headSha: gateHeadSha, newReviewEvents: epicReviewEvents, latestActivityAt: '2026-07-05T00:00:00Z' }
+      return { approved, approvedByLabel, humanChangesRequested: gateChangesRequested, approver: approved ? 'jake' : null, headSha: gateHeadSha, newReviewEvents: epicReviewEvents, latestActivityAt: '2026-07-05T00:00:00Z' }
     }
     if (label === 'fold:epic') return { roundsSpent: 1, aboveBar: false, folded: 'tightened the objective', fanOut: [], ...fold }
     if (label === 'route:epic-notes') return { notes: [] }
@@ -298,6 +298,7 @@ const freshRow = (over = {}) => ({
   phase: 'NEEDS_SPEC',
   specApproved: false,
   specApprovedByLabel: false,
+  humanChangesRequested: false,
   newSpecReviewEvents: false,
   newPrEvents: false,
   readyToMerge: false,
@@ -378,6 +379,57 @@ check('the `epic approved` label signs the objective off, and only its removal r
     }),
   })
   assert.equal(whileFolding.result.epicApproved, true, 'a labelled epic stays approved while its spec is being folded')
+})
+
+check('a human change request outranks an approval label on both gates', async () => {
+  // The coordinator MIRRORS an approval to the label, so the label is normally present the moment
+  // an approval has ever happened. Without this, a later CHANGES_REQUESTED flips `specApproved`
+  // false while its own mirror carries the issue into implementation past feedback nobody
+  // addressed — a bypass the label channel introduces precisely because it is also a mirror.
+  const spec = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {
+          phase: 'AWAITING_SPEC_APPROVAL',
+          specPr: 8,
+          specApproved: false,
+          specApprovedByLabel: true,
+          humanChangesRequested: true,
+          headSha: 'abc',
+        },
+      },
+    }),
+  })
+  assert.deepEqual(
+    workerLabels(spec.calls).filter((l) => l.startsWith('implement:')),
+    [],
+    'a labelled spec with an open change request must not implement',
+  )
+
+  // Same rule at the epic altitude, where the blast radius is every child issue at once.
+  const epic = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      approved: false,
+      approvedByLabel: true,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+    argsShape: 'string',
+  })
+  assert.equal(epic.result.epicApproved, true, 'sanity: the label alone still approves')
+
+  const epicBlocked = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })] }),
+    respond: epicResponder({
+      approved: false,
+      approvedByLabel: true,
+      gateChangesRequested: true,
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(epicBlocked.result.epicApproved, false, 'but a human change request withholds it')
+  assert.deepEqual(epicBlocked.result.held, ['FIX-2'], 'and the set is held')
 })
 
 check('the `spec approved` label passes an issue spec gate too', async () => {
@@ -477,7 +529,7 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') {
         return {
           issues: [
@@ -694,7 +746,7 @@ check('two verdicts on one issue both survive to be folded', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK' }) }
       if (label === 'poc:claim one') return { claim: 'claim one', verdict: 'CONFIRMED', evidence: 'a' }
@@ -727,7 +779,7 @@ check('a present Linear row clears a resolved blocker', async () => {
     args: epicArgs({ issues: [row('FIX-2', { blockedBy: ['FIX-9'] })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       // A present row is authoritative and CLEARS a resolved relation — but it has to SAY it has no
       // blockers. This fixture used to omit the field and assert the omission meant "none", which is
       // precisely the reading that admitted a still-blocked issue alongside its prerequisite.
@@ -1032,7 +1084,7 @@ check('converged epic feedback is actually routed, not just claimed', async () =
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' }
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'route:epic-notes') return { notes: [{ summary: 'rename the helper', fanOut: ['FIX-2'] }] }
       return null
@@ -1081,7 +1133,7 @@ check('GATE: a stale specApproved can never survive a live refresh', async () =>
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
       // Schema-valid, reports the pushed head, omits nothing required — but says NOT approved.
       if (label.startsWith('refresh:')) {
@@ -1145,7 +1197,7 @@ check('a newly discovered epic child enters the table at NEEDS_SPEC', async () =
     args: epicArgs({ issues: [row('FIX-2')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       // issue-manager parented FIX-7 under the epic mid-run; the Linear scan is where it appears.
       if (label === 'linear:epic-children') {
         return {
@@ -1522,7 +1574,7 @@ check('the epic itself is never added as one of its own children', async () => {
     args: epicArgs({ issues: [] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-1', state: 'Todo', blockedBy: [] }] }
       return null
     },
@@ -1547,7 +1599,7 @@ check('a converged epic folds only the verdict while routing ordinary feedback',
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: 'new' }
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'fold:epic') return { roundsSpent: 0, aboveBar: false, folded: 'recorded the verdict', fanOut: [] }
       if (label === 'route:epic-notes') return { notes: [{ summary: 'rename the helper', fanOut: ['FIX-2'] }] }
@@ -1908,7 +1960,7 @@ check('a refresh scan echoing a sibling id is discarded, not bound to the wrong 
     // land that approval on FIX-2 and start implementing a spec the human approved for FIX-3.
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
       if (label === 'linear:epic-children') return { issues: [] }
       if (label === 'refresh:FIX-2') return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) }
       if (label === 'refresh:FIX-3') return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, specPr: 8 }) }
@@ -1927,7 +1979,7 @@ check('a worker echoing a sibling id is discarded and its settle request does no
     args: epicArgs({ issues: [row('FIX-2'), row('FIX-3')] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
       if (label === 'linear:epic-children') return { issues: [] }
       if (label.startsWith('refresh:')) return { issueId: label.slice('refresh:'.length), ...freshRow() }
       // FIX-3's worker reports FIX-2's id, and raises a claim while it's at it.
@@ -2859,7 +2911,7 @@ check('a headless live epic scan holds work even when the epic was already appro
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
       return { issueId: 'FIX-2', ...workerRes() }
@@ -3022,7 +3074,7 @@ check('a parked row is never offered for merge', async () => {
       args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, ...park })] }),
       respond: (prompt, opts) => {
         const label = opts.label || ''
-        if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+        if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
         if (label === 'linear:epic-children') return { issues: [] }
         if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', readyToMerge: true, implPr: 9 }) }
         return workerRes({ issueId: 'FIX-2' })
@@ -4081,7 +4133,7 @@ check('converged epic feedback is not re-routed when the cursor cannot move', as
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [] }
       return { notes: [] }
     },
@@ -4097,7 +4149,7 @@ check('epic activity reported without a timestamp is not folded and lost', async
     args: epicArgs({ epic: { issueId: 'FIX-1', branch: 'epic/t', prNumber: 100, reviewRounds: 0, lastSeenActivityAt: 'old' }, issues: [] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: true, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [] }
       return {}
     },
@@ -4113,7 +4165,7 @@ check('a terminal issue stops asking the human to approve its spec', async () =>
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) }
       return workerRes({ issueId: 'FIX-2' })
@@ -4904,7 +4956,7 @@ check('an answered decision on a completed issue is still applied', async () => 
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
@@ -4921,7 +4973,7 @@ check('an answered decision on a completed issue is still applied', async () => 
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
       return workerRes({ issueId: 'FIX-2' })
@@ -5130,7 +5182,7 @@ check("a cancelled row's open question is dropped, out loud", async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
       return workerRes({ issueId: 'FIX-2' })
@@ -5189,7 +5241,7 @@ check('a cancelled row does not strand the epic short of wrap', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
       return workerRes({ issueId: 'FIX-2' })
@@ -5215,7 +5267,7 @@ check('a carried epic verdict blocks wrap', async () => {
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
       if (label === 'fold:epic') return null // the fold died, so the verdict is still carried
@@ -5329,7 +5381,7 @@ check('an epic with an unanswered question may not wrap', async () => {
       args: epicArgs({ issues: [doneRow(over)] }),
       respond: (prompt, opts) => {
         const label = opts.label || ''
-        if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+        if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
         if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
         if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
         return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
@@ -5352,7 +5404,7 @@ check('an epic with an unanswered question may not wrap', async () => {
     args: epicArgs({ issues: [doneRow({ verdicts: [{ claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it' }] })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
       return null // the folding worker died, so the verdict is still owed
@@ -6620,7 +6672,7 @@ check('a POC verdict that lands after the issue completed is still folded', asyn
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
@@ -6635,7 +6687,7 @@ check('a POC verdict that lands after the issue completed is still folded', asyn
     }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
       return workerRes({ issueId: 'FIX-2' })
@@ -7100,7 +7152,7 @@ check('a terminal Linear issue stops asking the human to merge it', async () => 
     args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9 })] }),
     respond: (prompt, opts) => {
       const label = opts.label || ''
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }) }
       return { issueId: 'FIX-2', ...workerRes() }
@@ -7123,7 +7175,7 @@ check('an approval with no current head holds work for the wake', async () => {
     respond: (prompt, opts) => {
       const label = opts.label || ''
       // Schema-valid but headSha null: we cannot align workers to the approved objective.
-      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
+      if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo', blockedBy: [] }] }
       if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
       return { issueId: 'FIX-2', ...workerRes() }
@@ -7917,7 +7969,7 @@ check('INVARIANT: an agent-reported id never decides which row a result lands on
           args: epicArgs({ issues: ids.map((id) => row(id, { phase, specPr: ownPr[id] })) }),
           respond: (prompt, opts) => {
             const label = opts.label || ''
-            if (label === 'gate:epic') return { approved: true, approvedByLabel: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
+            if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
             if (label === 'linear:epic-children') return { issues: [] }
             if (label.startsWith('refresh:')) {
               const self = label.slice('refresh:'.length)

@@ -1540,13 +1540,18 @@ const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
-  required: ['approved', 'approvedByLabel', 'newReviewEvents', 'headSha', 'latestActivityAt'],
+  required: ['approved', 'approvedByLabel', 'humanChangesRequested', 'newReviewEvents', 'headSha', 'latestActivityAt'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
     approvedByLabel: {
       type: 'boolean',
       description:
         'The `epic approved` label is present on the PR. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
+    },
+    humanChangesRequested: {
+      type: 'boolean',
+      description:
+        "A human's LATEST review state on the epic PR is CHANGES_REQUESTED. Outranks the label, which the coordinator mirrors on approval and which therefore survives a later change request. Bots never count.",
     },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
@@ -1596,7 +1601,7 @@ const PR_STATE_SCHEMA = {
   // rule for any field an action depends on — and the epic gate's own schema has always required it.
   // `['string','null']` still lets a scout say "did not observe"; what it can no longer do is stay
   // silent and have the approval accepted anyway.
-  required: ['issueId', 'phase', 'specApproved', 'specApprovedByLabel', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
+  required: ['issueId', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
@@ -1616,6 +1621,11 @@ const PR_STATE_SCHEMA = {
       type: 'boolean',
       description:
         'The `spec approved` label is present on the spec PR. Presence alone — the owner signs off this way too, and a label is standing state whose removal is the revocation, so it does not expire on a push.',
+    },
+    humanChangesRequested: {
+      type: 'boolean',
+      description:
+        "A human's LATEST review state on the spec PR is CHANGES_REQUESTED. Reported separately because it must outrank the label: the coordinator mirrors approvals to `spec approved`, so a stale mirror would otherwise carry an issue past a change request nobody addressed. Bots never count.",
     },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
@@ -1858,6 +1868,7 @@ const [gate, linear, ...prStates] = await parallel([
     agent(
       `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
         `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL. PRESENCE IS THE WHOLE TEST: do not check when it was applied, do not compare it against the head commit, do not treat a later push as invalidating it. The owner signs the objective off with this label as well as by comment, and an epic-spec PR takes commits continuously as feedback is folded — so a staleness rule would revoke the approval on the next edit and hold the entire set. A label is standing state the owner can REMOVE; removal is the revocation. Check the labels even when you find no approving comment. Report it independently of \`approved\` — do not fold one into the other, and do not infer it from body text claiming approval.\n` +
+        `ALSO report humanChangesRequested:true when any human's LATEST review state is CHANGES_REQUESTED. It outranks the label, which the coordinator applies on approval and which therefore survives a later change request. Bots never count.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
@@ -1893,6 +1904,7 @@ const [gate, linear, ...prStates] = await parallel([
             : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
           `SEPARATELY report specApprovedByLabel:true whenever the spec PR currently carries the \`spec approved\` LABEL. PRESENCE IS THE WHOLE TEST — do not check when it was applied and do not treat a later push as invalidating it. The owner signs specs off with this label as well as by comment, and a spec PR takes commits while review is folded, so expiring it would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n` +
+          `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: an approval already mirrored to the label stays on the PR after a change request lands, so without this a stale mirror carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
           `Also report whether CI is failing.`,
         { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
@@ -1947,7 +1959,7 @@ if (scanned && !gate.headSha) {
 // staleness rule would revoke the objective on the next edit and re-hold the whole set, which is the
 // stall this change exists to remove. A label is standing state the owner can remove at any time, so
 // REMOVAL is the revocation, and it is a control a comment does not have.
-const epicApproved = scanned && gateUsable && (!!gate.approved || !!gate.approvedByLabel)
+const epicApproved = scanned && gateUsable && !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel)
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.approved) {
   log(
@@ -2041,8 +2053,9 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
   const scanApproved =
-    (refreshedLive ? !!(fresh.specApproved && fresh.headSha) || !!fresh.specApprovedByLabel : false) ||
-    approvedInSessionFor(row, fresh, refreshedLive)
+    (refreshedLive
+      ? !fresh.humanChangesRequested && (!!(fresh.specApproved && fresh.headSha) || !!fresh.specApprovedByLabel)
+      : false) || approvedInSessionFor(row, fresh, refreshedLive)
   // Hoisted for the same reason `scanApproved` is: the route depends on the RESOLVED spec handle
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.
@@ -2863,7 +2876,7 @@ const epicOut = {
     // approval re-opens the gate), which is the case failing closed actually protects.
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
-    approved: gateUsable ? !!gate.approved || !!gate.approvedByLabel : !!epic.approved,
+    approved: gateUsable ? !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel) : !!epic.approved,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)
