@@ -39,7 +39,9 @@ import type {
 import { z, type ZodTypeAny } from "zod";
 import {
   getOrCreateTaskCollection,
+  ticketForClaim,
   type Task,
+  type TaskClaimTicket,
   type TaskCollectionRef,
 } from "@flow-state-dev/orchestration";
 import {
@@ -378,7 +380,7 @@ export function routedSpecialists<
       const nextIteration = state.iteration + 1;
 
       let currentTaskId: string | undefined;
-      let currentAttempt: number | undefined;
+      let currentClaim: TaskClaimTicket | undefined;
       if (!input.done && input.specialist) {
         const collection = await getCollection(ctx, collectionId);
         const task = await collection.addTask({
@@ -395,11 +397,12 @@ export function routedSpecialists<
           eligibility: (t) => t.id === task.id,
         });
         currentTaskId = task.id;
-        // Read `attempts` off the CLAIM, not off `task` — `addTask` returns
-        // the pre-claim task, whose `attempts` is still 0 (FIX-951). Left
-        // undefined if the claim somehow lost, which skips the attempt guard
-        // rather than declining every write with a mismatched number.
-        currentAttempt = claimed?.attempts;
+        // Mint from the CLAIM, not from `task` — `addTask` returns the
+        // pre-claim task, whose `attempts` is still 0 (FIX-951/FIX-981). Left
+        // undefined if the claim somehow lost, which skips the ownership guard
+        // rather than declining every write with a ticket nobody holds.
+        currentClaim =
+          claimed === null ? undefined : ticketForClaim(collection.collectionId, claimed);
       }
 
       // Always overwrite `currentTaskId` (including clearing it when no task
@@ -410,7 +413,7 @@ export function routedSpecialists<
         currentSpecialist: input.specialist ?? undefined,
         done: input.done,
         currentTaskId,
-        currentAttempt,
+        currentClaim,
       });
 
       if (input.done) {
@@ -442,7 +445,7 @@ export function routedSpecialists<
         const collection = await getCollection(ctx, collectionId);
         await collection.fail(state.currentTaskId, message, {
           ifAllowed: true,
-          expectAttempt: state.currentAttempt,
+          ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
         });
       }
       // Recovery is signalled out-of-band via `ctx.wasRescued(dispatch)`, so
@@ -471,7 +474,7 @@ export function routedSpecialists<
         const collection = await getCollection(ctx, collectionId);
         await collection.complete(state.currentTaskId, input, {
           ifAllowed: true,
-          expectAttempt: state.currentAttempt,
+          ...(state.currentClaim !== undefined ? { claim: state.currentClaim } : {}),
         });
       }
     },

@@ -101,22 +101,27 @@ Removals reconcile when you resolve. A task the running request removed (an expl
 from the next resolution onward. A ref you are already holding keeps reporting such
 a task until it resolves again.
 
-`complete` and `fail` take an optional `TaskTransitionOptions` argument that makes
-a write-back advisory — `ifAllowed` skips the write when the state machine rejects
-it or the task is already settled, `expectAttempt` skips it when the caller no
-longer holds the claim. A guard cannot be raced: the task cannot change between the
-check and the write. A declined write is skipped and never throws; the call reports
-it on the returned `TaskWriteOutcome`. Omit the argument and both methods throw on
-an illegal transition.
+Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
+`resumeFromReview`, `cancel` — takes an optional trailing `TaskTransitionOptions`
+argument that makes the write advisory. `ifAllowed` skips the write when the state
+machine rejects it or the task is already settled. `claim` takes a
+`TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
+skips the write unless the task in front of it is the one that ticket was issued
+for, still on that attempt. A guard cannot be raced: the task cannot change between
+the check and the write. A declined write is skipped and never throws; the call
+reports it on the returned `TaskWriteOutcome`. Omit the argument and the methods
+throw on an illegal transition.
 
-`complete`, `fail`, `cancel` and the five field mutators resolve to a
+Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
 emitted), `unchanged` (the task already held the state asked for, nothing written),
-or `declined` with a `reason` (`terminal` / `disallowed` / `lost-claim`, resolved in
-that precedence order) and the `status` the task was in when the write was refused.
-A decline never throws, and discarding the return value is supported. `cancel` is
-advisory with no options to pass: cancelling a settled task declines with reason
-`terminal`.
+or `declined` with a `reason` (`terminal` / `not-my-task` / `disallowed` /
+`lost-claim`, resolved in that precedence order) and the `status` the task was in
+when the write was refused. `not-my-task` means the ticket names a different task,
+a different collection, or an id since reused; `lost-claim` means it names the
+right task but a claim that has moved on. A decline never throws, and discarding
+the return value is supported. `cancel` is advisory whether or not options are
+passed: cancelling a settled task declines with reason `terminal`.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a
 terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to

@@ -11,15 +11,14 @@
  * record — different key, additional fields — pass `stateKey` on the
  * collection spec or call `getOrCreateTaskCollection` directly.
  *
- * `taskBoardWorkerStateSchema` carries per-worker scratch: the id of
- * the task currently being processed and a `lastClaimed` flag the
- * checker reads to decide whether to idle-sleep. Each worker has its
- * own state container, so two workers can never collide on
- * `currentTaskId`.
+ * `taskBoardWorkerStateSchema` carries per-worker scratch: a `lastClaimed`
+ * flag the checker reads to decide whether to idle-sleep. The claim itself
+ * lives one level deeper, on the worker-body state. Each worker has its own
+ * state container, so two workers can never collide on either.
  */
 import { z, type ZodTypeAny } from "zod";
 import { transientSlot } from "@flow-state-dev/core";
-import { type Task } from "../tasks";
+import { taskClaimTicketSchema, type Task } from "../tasks";
 
 /**
  * Default outer-sequencer state shape: a `tasks` record under the default key.
@@ -52,7 +51,7 @@ export type TaskBoardState = { tasks: Record<string, Task> };
  * every idle poll dominates the SSE stream when many workers are idle
  * (FIX-477).
  *
- * The currently-claimed task id lives one level deeper, on the
+ * The currently-held claim lives one level deeper, on the
  * worker-body sequencer's state (`taskBoardWorkerBodyStateSchema`),
  * because `recordSuccess` and `recordError` run inside the body's
  * `.rescue()` scope and need their own state container they can read
@@ -67,24 +66,30 @@ export type TaskBoardWorkerState = z.infer<typeof taskBoardWorkerStateSchema>;
 /**
  * Worker-body sequencer state.
  *
- * `currentTaskId`: set by the worker-body's leading `.tap()` step
- * (which receives the claimed `Task`), consumed by `recordSuccess`
- * (success path) and `recordError` (rescue path). Per-instance — each
- * iteration of the worker loop creates a fresh body invocation, so
- * stale values from a previous iteration cannot leak in.
+ * `currentClaim`: the ticket for the task this worker holds — board, task,
+ * attempt, and the task's `createdAt` — stamped by the worker-body's leading
+ * `.tap()` step (which receives the claimed `Task`) and consumed by
+ * `recordSuccess` (success path) and `recordError` (rescue path). Per-instance:
+ * each iteration of the worker loop creates a fresh body invocation, so stale
+ * values from a previous iteration cannot leak in.
  *
- * `currentAttempt`: the claimed task's `attempts` at claim time, stamped
- * by the same `.tap()` (FIX-951). Both recorders pass it as
- * `expectAttempt` so their write-back declines if the attempt was
- * displaced while the worker ran — a lease reclaim followed by another
- * worker claiming the task makes the stale write-back a *legal*
- * transition onto someone else's live attempt. Optional so a body state
- * checkpointed before this field existed still runs: the guard is simply
- * not applied, leaving the pre-FIX-951 behaviour for that one iteration.
+ * Both recorders present it as `claim` so their write-back declines if the
+ * attempt was displaced while the worker ran — a lease reclaim followed by
+ * another worker claiming the task makes the stale write-back a *legal*
+ * transition onto someone else's live attempt — and so a write can only ever
+ * land on the task this worker actually claimed.
+ *
+ * It replaced the separate `currentTaskId` / `currentAttempt` slots in FIX-981;
+ * one ticket carries what two loose fields used to, and the target it is valid
+ * for travels with it rather than being supplied by the call site. BP-030
+ * consequence, for the narrow case of a body state checkpointed under the old
+ * shape and resumed under this one: `currentClaim` reads absent, so the
+ * recorders write nothing and the task is recovered by the ordinary lease
+ * reclaim. That is the containment-safe direction — the alternative is a
+ * write-back that cannot prove which task it owns, which is the defect.
  */
 export const taskBoardWorkerBodyStateSchema = z.object({
-  currentTaskId: transientSlot(z.string().optional()),
-  currentAttempt: transientSlot(z.number().optional()),
+  currentClaim: transientSlot(taskClaimTicketSchema.optional()),
 });
 
 export type TaskBoardWorkerBodyState = z.infer<

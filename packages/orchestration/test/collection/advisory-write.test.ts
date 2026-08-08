@@ -2,7 +2,7 @@
  * Advisory write-back guards on `complete` / `fail` (FIX-951), and the write
  * verdict every guarded path now reports (FIX-976).
  *
- * The substrate's own write-backs opt into `{ ifAllowed, expectAttempt }` so
+ * The substrate's own write-backs opt into `{ ifAllowed, claim }` so
  * a result that arrives after its task was settled by someone else is
  * dropped instead of throwing. The throw is what used to escape the task
  * board's per-worker rescue and abandon every sibling task on the board.
@@ -18,13 +18,16 @@
  *
  * The guards answer different questions and are tested separately.
  * `ifAllowed` asks whether the state machine will take the move.
- * `expectAttempt` asks whether the caller still owns the task, which is
- * often a *legal* transition and so invisible to the first guard.
+ * `claim` asks whether this is the caller's task at all, and then whether the
+ * caller still owns it — both often *legal* transitions and so invisible to the
+ * first guard.
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   createSequencerBackedTaskCollection,
   createResourceBackedTaskCollection,
+  ticketForClaim,
+  type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskChangeEvent,
   type TaskStatus,
@@ -93,71 +96,188 @@ const ADVISORY = { ifAllowed: true } as const;
 
 /**
  * Tested directly, not only through the backings, because the *precedence* is
- * the contract and only two of the three reasons are reachable through a
- * verdict-returning method: `cancel`'s target is legal from every non-terminal
+ * the contract and not every reason is reachable through a verdict-returning
+ * method on every path: `cancel`'s target is legal from every non-terminal
  * status, so `disallowed` and `lost-claim` come from `complete`/`fail`. Pinning
- * the predicate here keeps all three reasons and their order asserted
+ * the predicate here keeps all four reasons and their order asserted
  * regardless of which methods are widened.
  */
 describe("transitionDeclineReason — which condition fired", () => {
-  const task = (status: TaskStatus, attempts = 1): Task =>
+  const BOARD = "tasks";
+  const task = (status: TaskStatus, attempts = 1, createdAt = 0): Task =>
     ({
       id: "t",
       goal: "t",
       status,
       attempts,
-      createdAt: 0,
+      createdAt,
       updatedAt: 0,
     }) as Task;
 
+  /** A ticket for `t` on this board, at attempt 1, created at 0. */
+  const mine: TaskClaimTicket = {
+    collectionId: BOARD,
+    taskId: "t",
+    attempt: 1,
+    createdAt: 0,
+  };
+
   it("returns undefined with no options, so an unguarded caller still throws downstream", () => {
-    expect(transitionDeclineReason(task("pending"), "errored", undefined)).toBeUndefined();
+    expect(
+      transitionDeclineReason(task("pending"), "errored", undefined, BOARD),
+    ).toBeUndefined();
   });
 
   it("reports terminal for a settled task", () => {
     for (const status of ["completed", "errored", "cancelled"] as const) {
-      expect(transitionDeclineReason(task(status), "cancelled", ADVISORY)).toBe("terminal");
+      expect(transitionDeclineReason(task(status), "cancelled", ADVISORY, BOARD)).toBe(
+        "terminal",
+      );
     }
   });
 
   it("reports disallowed for a NONTERMINAL illegal move", () => {
     // The reason a two-reason contract could not describe this surface: these
     // declines are live today and are not about terminality at all.
-    expect(transitionDeclineReason(task("pending"), "errored", ADVISORY)).toBe("disallowed");
-    expect(transitionDeclineReason(task("blocked"), "errored", ADVISORY)).toBe("disallowed");
+    expect(transitionDeclineReason(task("pending"), "errored", ADVISORY, BOARD)).toBe(
+      "disallowed",
+    );
+    expect(transitionDeclineReason(task("blocked"), "errored", ADVISORY, BOARD)).toBe(
+      "disallowed",
+    );
   });
 
   it("reports lost-claim when the attempt no longer owns the task", () => {
     // Legal transition, matching counter, but the task is back to `pending` —
     // ownership is the counter AND the status.
     expect(
-      transitionDeclineReason(task("pending"), "completed", { expectAttempt: 1 }),
+      transitionDeclineReason(task("pending"), "completed", { claim: mine }, BOARD),
     ).toBe("lost-claim");
+  });
+
+  it("reports not-my-task for a ticket naming another task", () => {
+    // The defect this guard exists for, at the predicate: the ticket's attempt
+    // MATCHES the target's, exactly as two freshly claimed tasks do.
+    expect(
+      transitionDeclineReason(
+        task("in_progress"),
+        "completed",
+        { claim: { ...mine, taskId: "somebody-elses" } },
+        BOARD,
+      ),
+    ).toBe("not-my-task");
+  });
+
+  it("reports not-my-task for a ticket naming another board", () => {
+    // Two boards may both hold a task id; a coordinator may legitimately file
+    // the same id on both.
+    expect(
+      transitionDeclineReason(
+        task("in_progress"),
+        "completed",
+        { claim: { ...mine, collectionId: "some-other-board" } },
+        BOARD,
+      ),
+    ).toBe("not-my-task");
+  });
+
+  it("reports not-my-task when the id was recycled by a delete and recreate", () => {
+    // The ABA case. Same id, same board, and `attempts` reset to 0 by the
+    // recreate — so `attempt` alone would have to match a fresh claim's 1 and
+    // the ONLY field that distinguishes the two tasks is `createdAt`. Drop it
+    // from the ticket and this test is the one that goes red.
+    const recreated = task("in_progress", 1, 5_000);
+    expect(
+      transitionDeclineReason(recreated, "completed", { claim: mine }, BOARD),
+    ).toBe("not-my-task");
   });
 
   it("reports terminal when terminal AND disallowed both hold — fixed precedence", () => {
     // `completed → errored` is both. Leaving the order undefined is what lets
     // two implementers emit two different messages for one refusal.
-    expect(transitionDeclineReason(task("completed"), "errored", ADVISORY)).toBe("terminal");
+    expect(transitionDeclineReason(task("completed"), "errored", ADVISORY, BOARD)).toBe(
+      "terminal",
+    );
   });
 
   it("reports terminal ahead of lost-claim when both guards would fire", () => {
-    // attempts 2 vs expectAttempt 1, on a settled task.
+    // attempts 2 vs the ticket's 1, on a settled task.
     expect(
-      transitionDeclineReason(task("completed", 2), "completed", {
-        ...ADVISORY,
-        expectAttempt: 1,
-      }),
+      transitionDeclineReason(
+        task("completed", 2),
+        "completed",
+        { ...ADVISORY, claim: mine },
+        BOARD,
+      ),
     ).toBe("terminal");
   });
 
-  it("permits the write when neither guard fires", () => {
+  it("reports not-my-task AHEAD of disallowed — the ordering, not just the outcome", () => {
+    // The load-bearing ordering assertion, and the one a test phrased as
+    // "the write was refused" cannot make.
+    //
+    // A caller whose basis for the target is stale sees `pending`, and
+    // `pending → completed` is illegal, so the disallowed arm WOULD fire here.
+    // Left last, the ownership arm would report `disallowed` on this
+    // interleaving and `not-my-task` on the other — the same cross-task write
+    // refused for two different reasons depending on when the caller happened
+    // to resolve the collection. Neither the model-facing message nor a
+    // programmatic caller can be built on that.
     expect(
-      transitionDeclineReason(task("in_progress"), "completed", {
-        ...ADVISORY,
-        expectAttempt: 1,
-      }),
+      transitionDeclineReason(
+        task("pending"),
+        "completed",
+        { ...ADVISORY, claim: { ...mine, taskId: "somebody-elses" } },
+        BOARD,
+      ),
+    ).toBe("not-my-task");
+
+    // ...and the same write against a FRESH basis, where the target is
+    // `in_progress` and `disallowed` could not have fired. Both interleavings,
+    // one answer.
+    expect(
+      transitionDeclineReason(
+        task("in_progress"),
+        "completed",
+        { ...ADVISORY, claim: { ...mine, taskId: "somebody-elses" } },
+        BOARD,
+      ),
+    ).toBe("not-my-task");
+  });
+
+  it("permits the write when no guard fires", () => {
+    expect(
+      transitionDeclineReason(
+        task("in_progress"),
+        "completed",
+        { ...ADVISORY, claim: mine },
+        BOARD,
+      ),
     ).toBeUndefined();
+  });
+
+  it("throws on the removed expectAttempt key rather than dropping the guard", () => {
+    // BP-030. TypeScript catches this for a typed caller; an untyped one would
+    // otherwise have its ownership check silently discarded and its write
+    // proceed — the exact silence the ticket exists to remove.
+    expect(() =>
+      transitionDeclineReason(
+        task("in_progress"),
+        "completed",
+        { ifAllowed: true, expectAttempt: 1 } as never,
+        BOARD,
+      ),
+    ).toThrow(/"expectAttempt" was removed/);
+
+    // Present-but-undefined is still a caller that thinks it is passing a guard.
+    expect(() =>
+      transitionDeclineReason(
+        task("in_progress"),
+        "completed",
+        { expectAttempt: undefined } as never,
+        BOARD,
+      ),
+    ).toThrow(/"expectAttempt" was removed/);
   });
 });
 
@@ -185,6 +305,15 @@ describe.each([
     if (task === null) throw new Error("fixture failed to claim");
     return task;
   }
+
+  /**
+   * The ticket the substrate mints for a claim — built the same way the board
+   * builds it, from the task `claim()` returned. Tests that want a *wrong*
+   * ticket derive one from this rather than hand-assembling a literal, so a
+   * change to what a ticket contains cannot leave them silently asserting less.
+   */
+  const ticket = (task: Task): TaskClaimTicket =>
+    ticketForClaim(collection.collectionId, task);
 
   describe("the guard is off by default — direct callers still throw", () => {
     // BP-035: the off state of a new flag is a path, and it is the one that
@@ -345,12 +474,12 @@ describe.each([
     });
   });
 
-  describe("expectAttempt — ownership, not a matching counter", () => {
+  describe("claim — ownership, not a matching counter", () => {
     it("declines a stale write after the task was reclaimed and re-claimed", async () => {
       // Worker A holds attempt 1. The lease expires, the task returns to
       // pending, worker B claims it (attempts → 2). A's late write-back is a
       // perfectly *legal* `in_progress → completed`, so `ifAllowed` waves it
-      // through and only `expectAttempt` can stop it settling B's live work.
+      // through and only the ticket can stop it settling B's live work.
       const a = await claimed({ id: "t" });
       expect(a.attempts).toBe(1);
       await collection.reclaim(Number.MAX_SAFE_INTEGER);
@@ -360,7 +489,7 @@ describe.each([
 
       await collection.complete("t", "stale output", {
         ...ADVISORY,
-        expectAttempt: a.attempts,
+        claim: ticket(a),
       });
 
       const task = collection.get("t");
@@ -371,7 +500,7 @@ describe.each([
       // ...and the same for the failure write-back.
       await collection.fail("t", "stale error", {
         ...ADVISORY,
-        expectAttempt: a.attempts,
+        claim: ticket(a),
       });
       expect(collection.get("t")?.status).toBe("in_progress");
       expect(events).toHaveLength(0);
@@ -385,7 +514,7 @@ describe.each([
       // displaced worker matches the counter by construction. With retry
       // budget the fail takes the *retry* branch to `pending`, and
       // `blocked → pending` is legal — so `ifAllowed` passes AND a
-      // counter-only `expectAttempt` passes, and the stale worker silently
+      // counter-only ticket passes, and the stale worker silently
       // unblocks work a coordinator deliberately parked.
       //
       // Both `maxAttempts` and the absence of a second claim are
@@ -398,7 +527,7 @@ describe.each([
 
       await collection.fail("t", "stale worker finally failed", {
         ...ADVISORY,
-        expectAttempt: a.attempts,
+        claim: ticket(a),
       });
 
       const task = collection.get("t");
@@ -412,7 +541,7 @@ describe.each([
       const a = await claimed({ id: "t" });
       events.length = 0;
 
-      await collection.complete("t", "ok", { ...ADVISORY, expectAttempt: a.attempts });
+      await collection.complete("t", "ok", { ...ADVISORY, claim: ticket(a) });
 
       expect(collection.get("t")?.status).toBe("completed");
       expect(events.at(-1)?.kind).toBe("completed");
@@ -423,18 +552,160 @@ describe.each([
       await collection.awaitReview("t");
       events.length = 0;
 
-      await collection.fail("t", "rejected", { ...ADVISORY, expectAttempt: a.attempts });
+      await collection.fail("t", "rejected", { ...ADVISORY, claim: ticket(a) });
 
       expect(collection.get("t")?.status).toBe("errored");
     });
 
-    it("is skipped entirely when no attempt is supplied", async () => {
-      // Back-compat path: a worker body checkpointed before the attempt was
-      // stamped carries no value, and must still record its result rather
-      // than declining every write.
+    it("is skipped entirely when no ticket is supplied", async () => {
+      // The unguarded posture, asserted rather than assumed (BP-035, and the
+      // coordinator contract). A caller with no claim — a coordinator, a
+      // directly-wired consumer, a worker body checkpointed before the ticket
+      // was stamped — must still record its result rather than declining every
+      // write.
       await claimed({ id: "t" });
-      await collection.complete("t", "ok", { ...ADVISORY, expectAttempt: undefined });
+      await collection.complete("t", "ok", { ...ADVISORY, claim: undefined });
       expect(collection.get("t")?.status).toBe("completed");
+    });
+
+    it("declines a write to a task the caller does not hold, leaving it untouched", async () => {
+      // THE defect. Two tasks, both freshly claimed, so both sit on attempt 1 —
+      // which is the ordinary state of a board, not a contrivance. Before the
+      // ticket, `a`'s token satisfied a write to `b` and settled a stranger's
+      // live work.
+      const a = await claimed({ id: "a" });
+      const b = await claimed({ id: "b" });
+      expect(a.attempts).toBe(b.attempts); // the collision is real
+      events.length = 0;
+
+      const outcome = await collection.complete("b", "written by a's holder", {
+        ...ADVISORY,
+        claim: ticket(a),
+      });
+
+      expect(outcome).toEqual({
+        outcome: "declined",
+        reason: "not-my-task",
+        status: "in_progress",
+      });
+      // Asserting the payload, not just the status: a write that landed on the
+      // wrong task still produces a plausible-looking `completed`, and only the
+      // output says who wrote it.
+      expect(collection.get("b")?.status).toBe("in_progress");
+      expect(collection.get("b")?.output).toBeUndefined();
+      expect(events).toHaveLength(0);
+
+      // ...and `a` — the task the caller actually holds — still settles.
+      expect(await collection.complete("a", "ok", { ...ADVISORY, claim: ticket(a) })).toEqual(
+        { outcome: "recorded" },
+      );
+    });
+
+    it("declines a ticket minted for a different board", async () => {
+      const a = await claimed({ id: "a" });
+      const foreign = { ...ticket(a), collectionId: "some-other-board" };
+
+      expect(
+        await collection.complete("a", "cross-board write", { ...ADVISORY, claim: foreign }),
+      ).toMatchObject({ outcome: "declined", reason: "not-my-task" });
+      expect(collection.get("a")?.status).toBe("in_progress");
+    });
+
+    // The ABA case — a stale ticket matching a task recreated under a recycled
+    // id — is asserted at the predicate above, not here. `TaskCollectionRef`
+    // exposes no `delete`, so it cannot be staged through this interface at
+    // all; it is reachable only through the underlying resource collection and
+    // capacity eviction. Staging it by reaching around the ref would test the
+    // fixture rather than the contract.
+  });
+
+  /**
+   * The four parking/review transitions had no options parameter at all before
+   * FIX-981, so nothing a worker did through them could be guarded. `cancel`
+   * had one but hard-coded it and dropped the caller's.
+   *
+   * Tested as a group because the failure mode is partial coverage: "claim and
+   * settlement" is the phrasing this substrate has already been burned by, and
+   * a fix applied to `complete`/`fail` alone passes every test above.
+   */
+  describe("every worker-callable transition honours the ticket", () => {
+    it("refuses a cross-task write on each of the five, writing nothing", async () => {
+      const a = await claimed({ id: "a" });
+      const stranger = { ...ADVISORY, claim: ticket(a) };
+
+      // Three targets, each parked in a status the write in question is legal
+      // from, so no refusal below can be produced by `ifAllowed` standing in
+      // for the ownership arm.
+      await claimed({ id: "b" }); // in_progress
+      await collection.addTask({ id: "c", goal: "c" });
+      await collection.block("c", "parked by a coordinator"); // pending → blocked
+      await claimed({ id: "d" });
+      await collection.awaitReview("d", "queued for review"); // → awaiting_review
+
+      expect(await collection.awaitReview("b", "not yours", stranger)).toMatchObject({
+        outcome: "declined",
+        reason: "not-my-task",
+      });
+      expect(await collection.cancel("b", "not yours", stranger)).toMatchObject({
+        outcome: "declined",
+        reason: "not-my-task",
+      });
+      // `block` from `in_progress` is ALSO illegal, so this one pins the
+      // ordering as well as the coverage: it must report `not-my-task`, not
+      // `disallowed`.
+      expect(await collection.block("b", "not yours", stranger)).toMatchObject({
+        outcome: "declined",
+        reason: "not-my-task",
+      });
+      expect(collection.get("b")?.status).toBe("in_progress");
+      expect(collection.get("b")?.error).toBeUndefined();
+
+      expect(await collection.unblock("c", stranger)).toMatchObject({
+        outcome: "declined",
+        reason: "not-my-task",
+      });
+      expect(collection.get("c")?.status).toBe("blocked");
+      expect(collection.get("c")?.error).toBe("parked by a coordinator");
+
+      expect(await collection.resumeFromReview("d", "not yours", stranger)).toMatchObject({
+        outcome: "declined",
+        reason: "not-my-task",
+      });
+      expect(collection.get("d")?.status).toBe("awaiting_review");
+    });
+
+    it("permits the five for the task's own holder", async () => {
+      // The control. A guard that refused everything would pass the case above.
+      const t = await claimed({ id: "t" });
+      const own = { ...ADVISORY, claim: ticket(t) };
+
+      expect(await collection.awaitReview("t", "look at this", own)).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("t")?.status).toBe("awaiting_review");
+      expect(await collection.resumeFromReview("t", "looks fine", own)).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("t")?.status).toBe("pending");
+
+      const u = await claimed({ id: "u" });
+      expect(await collection.cancel("u", "no longer needed", { claim: ticket(u) })).toEqual({
+        outcome: "recorded",
+      });
+      expect(collection.get("u")?.status).toBe("cancelled");
+    });
+
+    it("keeps cancel advisory by construction even when a caller passes options", async () => {
+      // `ifAllowed` is forced on AFTER the caller's options are spread. A
+      // caller cannot switch off the terminal arm and clobber a settlement.
+      await claimed({ id: "t" });
+      await collection.complete("t", "worker output");
+      const before = JSON.stringify(collection.get("t"));
+
+      expect(
+        await collection.cancel("t", "too late", { ifAllowed: false } as never),
+      ).toMatchObject({ outcome: "declined", reason: "terminal" });
+      expect(JSON.stringify(collection.get("t"))).toBe(before);
     });
   });
 
@@ -681,7 +952,7 @@ describe.each([
 
     it("declines a stale write with reason lost-claim on a legal transition", async () => {
       // `in_progress → completed` is perfectly legal, so `ifAllowed` waves it
-      // through and only `expectAttempt` stops it. The reason has to say so, or a
+      // through and only the ticket stops it. The reason has to say so, or a
       // caller reads "terminal" about a task that is actively running.
       const a = await claimed({ id: "t" });
       await collection.reclaim(Number.MAX_SAFE_INTEGER);
@@ -690,7 +961,7 @@ describe.each([
 
       const outcome = await collection.complete("t", "stale output", {
         ...ADVISORY,
-        expectAttempt: a.attempts,
+        claim: ticket(a),
       });
 
       expect(outcome).toEqual({
@@ -734,7 +1005,7 @@ describe.each([
  * A declined `fail()` must record NOTHING — including the retry facts.
  *
  * The board's failure write-back passes both guards
- * (`{ ifAllowed: true, expectAttempt }`) precisely so a worker's failure
+ * (`{ ifAllowed: true, claim }`) precisely so a worker's failure
  * arriving after its lease was reclaimed, or after a newer attempt claimed the
  * task, is discarded. FIX-948 added two writes to that same path: a retry grant
  * and a denial marker. If either lands before the decline, a stale failure
@@ -780,17 +1051,21 @@ describe("retry budget — a declined stale failure records nothing (FIX-948)", 
     await collection.claim("w2", { eligibility: (t) => t.id === "subject" });
 
     captured.events.length = 0;
-    return { collection, events: captured.events, staleAttempt: first.attempts };
+    return {
+      collection,
+      events: captured.events,
+      staleClaim: ticketForClaim(collection.collectionId, first),
+    };
   }
 
   for (const budget of ["available", "spent"] as const) {
     it(`writes no status, no grant, no denial and no event with the budget ${budget}`, async () => {
-      const { collection, events, staleAttempt } = await displacedAttempt(budget);
+      const { collection, events, staleClaim } = await displacedAttempt(budget);
       const before = collection.get("subject");
 
       const outcome = await collection.fail("subject", "late failure from a displaced worker", {
         ifAllowed: true,
-        expectAttempt: staleAttempt,
+        claim: staleClaim,
       });
 
       expect(outcome).toEqual({
@@ -814,8 +1089,8 @@ describe("retry budget — a declined stale failure records nothing (FIX-948)", 
   it("leaves the board's budget intact, so a legitimate later failure still retries", async () => {
     // The consequence the four invariants above exist to protect: a budget of 1
     // that a declined write silently consumed would settle this failure instead.
-    const { collection, staleAttempt } = await displacedAttempt("available");
-    await collection.fail("subject", "stale", { ifAllowed: true, expectAttempt: staleAttempt });
+    const { collection, staleClaim } = await displacedAttempt("available");
+    await collection.fail("subject", "stale", { ifAllowed: true, claim: staleClaim });
 
     await collection.addTask({ id: "later", goal: "later", maxAttempts: 5 });
     await collection.claim("w3", { eligibility: (t) => t.id === "later" });

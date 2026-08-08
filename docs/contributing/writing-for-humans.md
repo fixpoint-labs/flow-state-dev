@@ -19,6 +19,11 @@ templates that produce artifacts — [`pr-reviewer-guidance.md`](pr-reviewer-gui
 [`agent-brief-template.md`](agent-brief-template.md) — apply these rules and don't restate
 them.
 
+**This file governs ordering; it does not govern what an ask contains.** That is
+[`asking-for-decisions.md`](asking-for-decisions.md) — the engineer/product-owner contract
+and the six-part shape of a decision put to the user. The fold decides *where* the ask
+goes; that file decides *what it says*.
+
 ## The rule
 
 **1. Size to the change, not to the effort.** Length tracks the size of the decision the
@@ -36,7 +41,9 @@ in this order:
   under are how a reader finds it, not something they have to read past.
 - **The solution** — what we did about it, in plain terms rather than mechanism.
 - **What's asked of you** — the decision, the recommendation, and what it costs if it goes
-  the other way. Or, in as many words: *nothing — this follows the approved spec.*
+  the other way, **framed as the business call rather than the mechanism**
+  ([`asking-for-decisions.md`](asking-for-decisions.md)). Or, in as many words: *nothing —
+  this follows the approved spec.*
 
 A surface may add above-the-fold blocks of its own after these three, never before them. A
 **PR description** adds two — where to aim attention, and the links line — per
@@ -79,10 +86,17 @@ under.
 | Linear issue | ~100 — problem, who feels it, outcome |
 | Issue spec, Part I (The Case) | ~400 |
 | Epic spec, §1 (objective) | ~500 |
+| A live decision ask, per fork | ~200 — the six parts ([`asking-for-decisions.md`](asking-for-decisions.md)). Decisions the reader is only ratifying stay one line each |
 
 Over budget is a signal to **cut**, not to collapse more. A 900-word collapsible is still
 900 words someone eventually reads, and the reflex to move rather than delete is how a
 fold turns into a filing cabinet.
+
+**The ask is the exception to "cut", and only the ask.** A fork that genuinely needs the
+user's call is the content the budget exists to protect, so when a batch of asks pushes an
+artifact over, **cut the number of asks — not the shape of each one.** A stripped ask reads
+as a rubber stamp and comes back as a clarifying question, which costs a round instead of
+saving one.
 
 **"Nothing to collapse" never means "no reviewer contract."** Every PR that seeks review
 carries one below the fold no matter how small the change

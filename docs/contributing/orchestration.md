@@ -7,10 +7,13 @@ agents — the roles, the artifacts, and the gates. The orchestration skills
 `epic-agent`, `poc-agent`, `scout`, `spec-implementer`, `issue-manager`) **reference this doc**
 instead of each restating the shared concepts. When a concept here changes, it changes here.
 
-One companion doc sits beside this one:
+Two companion docs sit beside this one.
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) is canonical for what a PR description
 owes its two audiences — the static reviewer contract, and the per-PR *"Parts worth reviewing
 closely"* block. Every PR we open carries both.
+[`asking-for-decisions.md`](asking-for-decisions.md) is canonical for what an **ask** contains
+— the engineer/product-owner contract and the six-part shape. Every gate, every escalated
+blocker, and every fork put to the user is written to it.
 
 ## The pieces at a glance
 
@@ -284,13 +287,26 @@ implementation instead of at spec.
 not certify is the subject of the next section; read it before treating an open review
 thread as something that has to be closed before a gate can pass.
 
+**Both are asked of a product owner, so both are written as business decisions.** A gate
+surfaced as *"the spec PR is open, please approve"* pushes the whole framing job onto the
+person least equipped to do it — they have to open the document, find the direction, and work
+out what approving costs. Surface instead what they are signing off in their own terms: the
+outcome it buys, the calls that are hard to reverse, your recommendation, and what they might
+know that would change it. [`asking-for-decisions.md`](asking-for-decisions.md) is the shape;
+the lifecycles apply it when they surface a gate, and the same rule governs an **escalated
+blocker** — a worker that can't settle a fork returns the parts of the ask, and the
+coordinator (which never read the code) surfaces them without re-deriving.
+
 **Three channels sign off, and the label is one of them.** A comment, an approving GitHub
 Review, or the `spec approved` / `epic approved` **label** — any of the three passes the
-gate. **The label is the owner's alone: the coordinator never writes it.** It used to mirror
-detected approvals there, and that is exactly what could not stand once the label became an
-input — a mirrored review approval outlives the review it recorded, so a push that correctly
-reopened the gate left the mirror holding it open against content nobody approved. One label
-cannot be both a standing sign-off and the record of a channel that expires.
+gate. The difference between them is *latency, not authority*: a `labeled` webhook is not in
+the PR-activity stream the coordinator subscribes to (comments, CI, and reviews are), so a
+label is picked up on the next wake rather than waking the session immediately. **The label
+is the owner's alone: the coordinator never writes it.** It used to mirror detected approvals
+there, and that is exactly what could not stand once the label became an input — a mirrored
+review approval outlives the review it recorded, so a push that correctly reopened the gate
+left the mirror holding it open against content nobody approved. One label cannot be both a
+standing sign-off and the record of a channel that expires.
 
 **The difference between them is latency, not authority.** A `labeled` webhook is **not**
 in the PR-activity stream the coordinator subscribes to (comments, CI and reviews are), so

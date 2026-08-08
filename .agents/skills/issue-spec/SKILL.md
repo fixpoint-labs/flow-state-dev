@@ -447,7 +447,7 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
 
    **Write the PR description per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to a **spec** PR is the mapping:
 
-   - **Block 1 (the problem)** ← Part I §1 condensed. **Block 2 (what this does)** ← §2, plus what it deliberately doesn't do. **Block 3 (what's asked of you)** ← an index of §6 with **one row per Decision — every one of them**, each carried **in words** rather than by bare number. §6 is the sign-off surface, so a Decision left out of the index is one the reviewer is asked to approve without seeing.
+   - **Block 1 (the problem)** ← Part I §1 condensed. **Block 2 (what this does)** ← §2, plus what it deliberately doesn't do. **Block 3 (what's asked of you)** ← an index of §6 with **one row per Decision — every one of them**, each carried **in words** rather than by bare number. §6 is the sign-off surface, so a Decision left out of the index is one the reviewer is asked to approve without seeing. Price the *If it's wrong* column in consequences, not mechanism — it is the only column that tells a product owner what signing this off costs them. **Any §6 row that is a genuine live fork, plus every §12 open question, is *also* asked in full below the table** — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md); zero to two per spec. **Its one-line row stays in the index** — §6 is the sign-off surface, and dropping the row would hide the one decision still genuinely open (same rule as [`spec-template.md`](../../../docs/contributing/spec-template.md) → §6). The full ask carries its own *what being wrong costs* because the row's *If it's wrong* cell is sized for ratification — one line, too compressed to calibrate a call the human is actually making. The rest of §6 the human is ratifying, and one line each is what keeps eight of them on a screen.
    - **First collapsed block: the contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it.
    - **Second collapsed block: the rest of Part I** — §3 tradeoffs, §4 focus practices, §5 examples, §6 in full. Blocks 1–3 already carry §1, §2 and the §6 index, so it picks up where they stop and nothing is said twice.
    - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets.
@@ -494,7 +494,7 @@ Two instincts to override, because both run the wrong way:
 - **A note is not a deferral.** §13 is *how* a good observation gets acted on — at the altitude where it can be judged against real code. The implementer reads it as input.
 - **Volume is not signal.** Ten below-the-bar comments don't add up to one spec-level problem. Ten notes is a normal review of a directional document. A reviewer restating a below-the-bar point hasn't promoted it — reply once; the repeat needs no new answer.
 
-**Escalate genuinely debatable feedback to the user.** When a suggestion is *spec-level* and both the reviewer's and the spec's positions are defensible — a scope change, a reversed decision — don't silently accept it: surface it with the trade-off (`AskUserQuestion` for a crisp choice) and let the user decide. This is for direction forks only; a below-the-bar comment is never worth a user prompt.
+**Escalate genuinely debatable feedback to the user.** When a suggestion is *spec-level* and both the reviewer's and the spec's positions are defensible — a scope change, a reversed decision — don't silently accept it: surface it as a decision they can make, in full — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). **Recommend**; you have researched this and they haven't. `AskUserQuestion` gets a crisp choice; the framing still has to be there. Relaying the reviewer's wording is not an ask — it hands them a debate instead of a decision. This is for direction forks only; a below-the-bar comment is never worth a user prompt.
 
 #### 6.5.2 On a spec-level pivot, re-draft — do not append (anti-addenda rule)
 
@@ -540,7 +540,12 @@ three outcomes. Read it. Four things are this step's:
      changed>, because the run showed <what>.` Costs **one round outside the budget**; say so
      in one line.
    - **INCONCLUSIVE** → don't retry and don't pick a side. Surface it to the user as a
-     direction fork with the trade-off (`AskUserQuestion`).
+     direction fork asked **in full** (`AskUserQuestion`) — all six parts, per
+     [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). You ran the
+     POC and they didn't, so say what it did and did **not** settle, and still give a
+     recommendation where the direction has one that doesn't rest on the unsettled claim. If it
+     genuinely has none, say that outright — "no recommendation, and the POC is why" is an honest
+     answer here and is not the same as quietly leaving the part out.
 
 #### 6.5.4 Converge — two rounds, then hand to the human
 
@@ -615,7 +620,9 @@ The full spec (Part I + Part II) is published as a ready spec PR. Present it to 
 8. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
 9. **Links**: the Linear issue, the spec document, and the spec PR
 
-If there are open questions, ask the user to resolve them. Once resolved, update the spec document with the decisions.
+**Write this for a product owner, not a peer engineer.** You are the engineer; they set the objectives and track the process as a whole. Items 3, 4 and 8 get stated in observable behaviour and priced in consequences — customers, promises, timing, reversibility — not in files, symbols, or framework vocabulary.
+
+If there are open questions, **ask them properly** — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical, with a worked example). Batch them under one `Need your sign-off` heading, numbered, hardest first — zero to two is normal; more than that and the direction isn't ready for review. Once resolved, update the spec document with the decisions.
 
 ## Guidelines
 
@@ -629,6 +636,6 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 - **Non-goals matter.** Explicitly stating what you're NOT doing prevents scope creep and sets expectations.
 - **Documentation is part of the spec, not an afterthought.** Every spec must include the Documentation Plan (Part II §11) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
 - **Reframing the issue is part of the spec workflow, not a post-script.** Step 7 is required. The moment the spec is published, any solution detail still living in the issue is duplicate or stale. Removing it preserves the issue/spec separation and prevents future readers from following the wrong source. Do not skip it because the issue "looks fine" — re-read it through the PM/business lens and prune.
-- **Open questions are OK.** It's better to flag uncertainty than to make a wrong assumption. Present options with trade-offs and let the project owner decide.
+- **Open questions are OK — but never neutral.** It's better to flag uncertainty than to make a wrong assumption. Present the fork in full ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md)), **recommendation included**: options and trade-offs alone hand the owner an unpriced menu and cost a round while they ask what you think. You did the research; they didn't. See [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). And a question you'd answer the same way whatever they said isn't open — decide it and make it a §6 Decision.
 - **Dependency accuracy is critical.** If you say "no dependencies," an agent will start building immediately. If there's actually a dependency, the work gets thrown away. Be thorough.
 - **Push back when you should.** Your job is not to produce a spec on every issue; it is to produce specs for the issues that warrant them. When Step 3.5 surfaces a wrapper-over-primitive shape, single-vendor leakage into framework surface, or a precedent-mirror that doesn't transfer semantically, the right deliverable is a concise case for *not* shipping and one or more proposed alternatives. The user can override — but you have to actually present the case. A spec the user later cancels is more expensive than five minutes of "should we even build this?"

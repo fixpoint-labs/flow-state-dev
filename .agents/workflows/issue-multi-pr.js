@@ -265,7 +265,11 @@ const BUILD_SCHEMA = {
     status: { type: 'string', enum: ['open', 'pending', 'failed'] },
     pr: { type: ['number', 'null'] },
     branch: { type: ['string', 'null'] },
-    blocker: { type: ['string', 'null'] },
+    blocker: {
+      type: ['string', 'null'],
+      description:
+        'Needs a human decision — lifted to the row and surfaced by the coordinator. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
+    },
     summary: { type: 'string', description: 'One compact line' },
   },
 }
@@ -325,7 +329,11 @@ const FIX_SCHEMA = {
     // A repair can hit an architectural fork it must escalate rather than guess. Without this the
     // only way to say so was `pr: null`, which reads as "incomplete" and re-dispatches the worker
     // at the same undecided fork every wake.
-    blocker: { type: ['string', 'null'], description: 'Needs a human decision — parks the repair and is surfaced' },
+    blocker: {
+      type: ['string', 'null'],
+      description:
+        'Needs a human decision — parks the repair and is surfaced. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
+    },
     summary: { type: 'string' },
   },
 }
@@ -396,7 +404,7 @@ const resolutionNote = (nodeId) => {
   return (
     `\n${mine.length === 1 ? 'A decision' : `${mine.length} decisions`} this slice escalated ${mine.length === 1 ? 'has' : 'have'} been ANSWERED by the human:\n` +
     mine.map((r) => `  - ${r.answer}`).join('\n') +
-    `\nImplement as given — do not re-derive the choice and do not escalate the same fork again. If one does not answer the fork you actually hit, report a new blocker naming precisely what is still open.\n`
+    `\nImplement as given — do not re-derive the choice and do not escalate the same fork again. If one does not answer the fork you actually hit, report a new blocker naming precisely what is still open, written as a full ask (all six parts, per docs/contributing/asking-for-decisions.md) — you read the code, the coordinator did not.\n`
   )
 }
 
@@ -645,7 +653,7 @@ const built = await parallel(
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) stopped on a decision only a human could make, and it has now been ANSWERED.\n` +
           `Fetch and check out ${item.node.branch} first — your worktree is fresh and starts on the lifecycle's checkout, NOT on this sub-PR.\n` +
           `Apply the decision to that EXISTING PR: update the implementation, run \`review\`, push. Do not open a new PR and do not merge it. Report status: open.\n` +
-          `If the answer does not resolve the fork you actually hit, leave the PR as it is and report a new blocker naming precisely what is still open.` +
+          `If the answer does not resolve the fork you actually hit, leave the PR as it is and report a new blocker naming precisely what is still open, written as a full ask (all six parts, per docs/contributing/asking-for-decisions.md) — you read the code, the coordinator did not.` +
           resolutionNote(item.node.id)
         : item.action === 'rebase'
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged.\n` +

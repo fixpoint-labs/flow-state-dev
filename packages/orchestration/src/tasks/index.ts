@@ -31,6 +31,15 @@ export {
   type TaskFilter,
 } from "./schema/task-init";
 
+// The ownership token a task write presents (FIX-981). `ticketNamesTask` is the
+// guard's own identity rule and stays module-internal — a caller mints a ticket
+// and presents it; deciding whether one matches is the collection's job.
+export {
+  taskClaimTicketSchema,
+  ticketForClaim,
+  type TaskClaimTicket,
+} from "./claim-ticket";
+
 // Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
 export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
 

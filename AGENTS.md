@@ -49,6 +49,14 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 > **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Two rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`), and **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds.
 
+## Asking the user for a decision
+
+**You are the engineer; the user is the product owner.** They set the objectives and track the process as a whole. Their attention is the scarce resource, and every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. They are technical — that makes handing them the mechanism easy, and it is still the wrong move. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening and why the business framing doesn't decide it.
+
+So **translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts: **the fork as a plain-language heading** · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **your recommendation, always** · **what would change your mind** · **what being wrong costs**. Each part, why it exists, and a worked example are canonical in [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) — read it before putting any fork, gate, or sign-off to the user.
+
+This applies in **conversation** as much as in artifacts. Batch a turn's asks under one `Need your sign-off` heading, numbered, hardest first; two to four is normal. And **don't ask when you shouldn't**: the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line.
+
 ## Model tiering — match the model to where judgment lives
 
 We front-load architectural judgment (spec authoring, the coherence / Philosophy-Skeptic review lens, the challenger). Once the decisions are made, execution and fetching are the token-heavy, low-judgment bulk — run those on cheaper models. The rule:
@@ -210,7 +218,7 @@ Update when integration patterns change — server setup, React hooks usage, tes
 
 Lead with the **problem** in plain language, then the solution, then what's being asked of the reader. **Nothing precedes the problem** — not a ref, not a label, not a statement of what kind of artifact it is. Everything else goes below the fold, collapsed rather than deleted, except news the reader wouldn't think to look for: a decision, a risk, a known gap, anything hard to reverse, or scope that grew. That goes above the fold, short.
 
-The rule, the per-artifact word budgets, and the density checks are canonical in [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039); the PR-description layout applies them in [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md). Don't re-derive either — a skill or template restating them is how the two copies drift.
+The rule, the per-artifact word budgets, and the density checks are canonical in [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md) (BP-039); the PR-description layout applies them in [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md); what the *"what's being asked"* part contains is [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041, above). Don't re-derive any of them — a skill or template restating them is how the copies drift.
 
 **Root files**:
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).

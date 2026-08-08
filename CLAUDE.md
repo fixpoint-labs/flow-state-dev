@@ -13,7 +13,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 Before implementing:
 
 - State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
+- If multiple interpretations exist, present them - don't pick silently. Present them **with your recommendation** — see "Asking for sign-off" below; a neutral fork you already have a view on isn't neutrality.
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
@@ -109,6 +109,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
+- `docs/contributing/asking-for-decisions.md` — **Read before putting any fork, gate, or sign-off to the user.** The engineer/product-owner contract, the six-part shape, and a worked example.
 - `docs/contributing/best-practices.md` — Universal BPs + the situational index; per-category situational BPs live in `docs/contributing/best-practices/<category>.md` (open the category file for the area you're touching). Universal BPs are mirrored in this file's "Best practices" section.
 - Per-package `CHANGELOG.md` files and `docs/contributing/release-notes-workflow.md` — what shipped and how new changes get recorded
 - `packages/*/README.md` — Per-package API docs
@@ -208,7 +209,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `cross-spec-review`       | Review an epic's SET of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the coordinator |
 | `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local epic/issue lifecycle's webhook stand-in |
 
-> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), **which issues get a spec at all** (features do; bugs go straight to the fix), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it. Its companion, [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), is canonical for what **every** PR description owes its two audiences — the layout (problem → what this does → what's asked of you → *"Parts worth reviewing closely"*, with the static reviewer contract collapsed below the fold), and when a diagram earns its place. The general rule it applies — **the fold**: lead with the problem, collapse the derivation, and the per-artifact word budgets and density checks that go with it — is [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md), which governs specs, Linear issues, and review comments too.
+> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), **which issues get a spec at all** (features do; bugs go straight to the fix), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it. Its companion, [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), is canonical for what **every** PR description owes its two audiences — the layout (problem → what this does → what's asked of you → *"Parts worth reviewing closely"*, with the static reviewer contract collapsed below the fold), and when a diagram earns its place. The general rule it applies — **the fold**: lead with the problem, collapse the derivation, and the per-artifact word budgets and density checks that go with it — is [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md), which governs specs, Linear issues, and review comments too. The fold decides *where* an ask goes; [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) decides *what it says* — every gate, fork, and escalated blocker is written to it.
 
 
 ### Development skills
@@ -223,6 +224,16 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `add-store-adapter` | Create a new persistence store adapter package                                 |
 | `add-docs-page`     | Add a page to the Docusaurus documentation site                                |
 
+
+## Asking for sign-off
+
+**You are the engineer. The user is the product owner** — they set the objectives and track the process as a whole. They have technical knowledge, but that is a trap, not a licence: every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening.
+
+**Translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts, hardest ask first, batched under one `Need your sign-off` heading: **the fork as a plain-language heading** ("fix it, or document it as best-effort?") · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **my recommendation, always** · **what would change my mind** · **what being wrong costs**.
+
+**Don't ask when you shouldn't:** the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line. Under-asking hides a call that shapes the product; over-asking trains them to skim.
+
+**Read [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) before putting any fork, gate, or sign-off to the user** — it is canonical for what each part means and carries the worked example. It governs conversation, a spec's §6/§12, a PR's *What's asked of you*, a gate, and an escalated blocker alike.
 
 ## Capabilities
 
@@ -329,7 +340,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
-- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a tracked unit of intent — a spec for a feature, the issue itself for a bug) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs live on their spec PR (`spec/<ISSUE-ID>.md`) and in Linear, never on `main` (CI-enforced) · BP-039 lead with the problem in plain language and fold the derivation below it (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds.
+- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a tracked unit of intent — a spec for a feature, the issue itself for a bug) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs live on their spec PR (`spec/<ISSUE-ID>.md`) and in Linear, never on `main` (CI-enforced) · BP-039 lead with the problem in plain language and fold the derivation below it (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds · BP-041 frame every ask as a business decision.
 
 **Document new and changed user-facing functionality** (always)
 

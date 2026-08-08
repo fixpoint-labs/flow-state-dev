@@ -19,6 +19,26 @@
  * per-call scope — reaches the generator's ledger). An injected resolver
  * targets a shared board instead. With no board resolvable, every tool returns
  * `{ ok: false, error: "no_delegation_board" }` rather than throwing.
+ *
+ * ## Ownership (FIX-981)
+ *
+ * The four status-changing tools present the caller's claim ticket, read from
+ * the board's per-worker seam. A worker holding task "a" that calls
+ * `completeTask({ taskId: "b" })` is refused, and told which task it holds. The
+ * model never sees a token: it names a task id, and that id is the target of
+ * the check rather than the authority for it.
+ *
+ * **A call with no ticket is unguarded, and that is the contract rather than a
+ * gap.** The seam has exactly one stamp site — the board's worker body — so
+ * "no ticket presented" and "not a claimed worker" are the same condition and
+ * cannot drift apart. A coordinator settling a task it never claimed is not a
+ * stale owner and is not guarded; failing closed there would break the shipped
+ * default `taskTools` instance, which a coordinator holds against its own board
+ * with no claim of any kind.
+ *
+ * `assignTask` and `updateTask` present nothing, deliberately: they travel the
+ * patch path, not the transition path, and a live block relabelling tasks it
+ * does not hold is a supported thing to do.
  */
 
 import { defineCapability, handler, type DefinedCapability } from "@flow-state-dev/core";
@@ -32,10 +52,16 @@ import {
   taskSchema,
   TaskCapExceededError,
   type Task,
+  type TaskClaimTicket,
   type TaskCollectionRef,
   type TaskStatus,
+  type TaskTransitionOptions,
   type TaskWriteOutcome,
 } from "../tasks";
+// The board's per-worker claim seam. A deep import for the same reason
+// `shouldRetryOnFail` is one: this surface consumes the seam, it does not widen
+// the task-board's public API to advertise it.
+import { currentWorkerClaim } from "../task-board/flow-policy-wiring";
 // `shouldRetryOnFail` is the collection's own routing predicate for `fail()`.
 // Imported from the module rather than the package barrel so the recovery
 // composer stays in step with `fail()` without widening the public surface —
@@ -328,15 +354,26 @@ const illegalTransitionToolError = (err: IllegalTaskTransitionError, task: Task 
  * `clause` names what the attempted write would not have changed, so the model
  * is told about the operation it actually called.
  *
- * The non-terminal branch is unreachable from today's eight tools — none passes
- * `expectAttempt`, and `cancelled` is a legal target from every non-terminal
- * status, so `terminal` is the only reason that can arrive here. It exists so
- * that if one ever does, the decline is not mis-attributed to terminality.
+ * **`not-my-task` gets its own branch, like `terminal` does** (FIX-981). The
+ * generic path below cannot express it: it receives only the *target* id, the
+ * reason and the status, and the one fact that makes this refusal correctable
+ * is the task the caller actually **holds**. A model told "the write was
+ * refused (not-my-task)" learns nothing it can act on; a model told which task
+ * is its own retries against the right id.
+ *
+ * `heldTaskId` is present exactly when a ticket was presented, which is exactly
+ * when `not-my-task` can be reported — so the branch never renders an empty
+ * name.
+ *
+ * The remaining generic branch covers `disallowed` and `lost-claim`. Both are
+ * now reachable: a worker's own ticket goes stale when a lease reclaim hands
+ * its task on mid-call.
  */
 const declinedWriteToolError = (
   taskId: string,
   declined: Extract<TaskWriteOutcome, { outcome: "declined" }>,
   clause: string,
+  heldTaskId?: string,
 ) => {
   if (declined.reason === "terminal") {
     return terminalWriteToolError({
@@ -345,6 +382,16 @@ const declinedWriteToolError = (
       status: declined.status,
       clause,
     });
+  }
+  if (declined.reason === "not-my-task" && heldTaskId !== undefined) {
+    return {
+      ok: false as const,
+      taskId,
+      error:
+        `task_write_declined: you hold task "${heldTaskId}", not "${taskId}". ` +
+        `You can only settle the task you are working on — call this on ` +
+        `"${heldTaskId}" instead.`,
+    };
   }
   return {
     ok: false as const,
@@ -363,6 +410,24 @@ const okOrError = z.union([
 
 const parentStateSchema = z.object({ [DELEGATION_BOARD_FIELD]: delegationBoardSchema });
 
+/**
+ * The options a status-changing tool passes to the substrate (FIX-981).
+ *
+ * `undefined` when the caller holds no claim, rather than `{ claim: undefined }`
+ * — so a coordinator context calls the collection with exactly the arguments it
+ * called with before this change, and "unguarded behaves byte for byte as
+ * today" is a property of the call, not of the guard's tolerance for an empty
+ * options object.
+ *
+ * `ifAllowed` is deliberately NOT set. These tools rely on
+ * `IllegalTaskTransitionError` propagating so `illegalTransitionToolError` can
+ * tell the model which calls are available from the task's current status;
+ * declining silently instead would trade that for a worse message.
+ */
+const claimGuard = (
+  claim: TaskClaimTicket | undefined,
+): TaskTransitionOptions | undefined => (claim === undefined ? undefined : { claim });
+
 // ---------------------------------------------------------------------------
 // Tool factory — closes over the resolver so a capability instance targets a
 // specific board (own-state default or an injected shared board).
@@ -378,18 +443,28 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
    * The mutator **carries the substrate's verdict out** (FIX-976). Its declared
    * return is `TaskWriteOutcome | void`, not `unknown`: widening it to `unknown`
    * would silence the type errors while throwing the verdict away, which is the
-   * bug this change exists to fix. `void` is in the union because `blockTask`'s
-   * `block()` is not one of the widened methods.
+   * bug this change exists to fix. `void` stays in the union for `updateTask`,
+   * whose composed mutator returns nothing on the paths that cannot decline.
    *
    * `options.declineClause` is what the attempted write would not have changed,
    * for a tool whose write can decline (`assignTask`, `cancelTask`,
    * `updateTask`). It defaults to the status clause, which is right for every
    * transition-shaped write on this surface.
+   *
+   * **The claim ticket is read here, never from the model** (FIX-981). The
+   * mutator receives whatever the caller's worker scope holds — `undefined`
+   * outside one — and forwards it to the collection, so the ownership question
+   * is answered at the substrate's one guard rather than re-asked per tool. The
+   * model's input is unchanged: it names a task id, and that id is the *target*
+   * of the check, never the authority for it (BP-031).
    */
   async function withTask(
     ctx: BlockContext,
     taskId: string,
-    mutator: (collection: TaskCollectionRef) => Promise<TaskWriteOutcome | void>,
+    mutator: (
+      collection: TaskCollectionRef,
+      claim: TaskClaimTicket | undefined,
+    ) => Promise<TaskWriteOutcome | void>,
     options?: { assignee?: string; declineClause?: string },
   ): Promise<{ ok: true } | { ok: false; error: string; taskId?: string }> {
     const collection = await resolve(ctx);
@@ -397,17 +472,21 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     if (!collection.get(taskId)) return taskNotFoundError(taskId);
     const bad = checkAssignee(options?.assignee, roster);
     if (bad) return bad;
+    // Read once, so the ticket the write presented is the ticket the refusal is
+    // rendered against even if the scope somehow changed mid-call.
+    const claim = currentWorkerClaim();
     try {
       // Typed as nullable at this boundary on purpose (BP-030): a custom
       // `TaskCollectionRef` written before the widening — or one reached through
       // a cast — returns nothing, and `== null` carries that past rather than
       // reading silence as a decline.
-      const outcome: TaskWriteOutcome | undefined | void = await mutator(collection);
+      const outcome: TaskWriteOutcome | undefined | void = await mutator(collection, claim);
       if (outcome != null && outcome.outcome === "declined") {
         return declinedWriteToolError(
           taskId,
           outcome,
           options?.declineClause ?? STATUS_CLAUSE,
+          claim?.taskId,
         );
       }
     } catch (err) {
@@ -525,7 +604,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.complete(input.taskId, input.output)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.complete(input.taskId, input.output, claimGuard(claim)),
+      ),
   });
 
   const failTask = handler({
@@ -535,7 +616,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.fail(input.taskId, input.error)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.fail(input.taskId, input.error, claimGuard(claim)),
+      ),
   });
 
   const blockTask = handler({
@@ -545,7 +628,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.block(input.taskId, input.reason)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.block(input.taskId, input.reason, claimGuard(claim)),
+      ),
   });
 
   const cancelTask = handler({
@@ -558,7 +643,9 @@ function buildTaskTools(resolve: TaskCollectionResolver, roster?: WorkerRoster) 
     outputSchema: okOrError,
     parentStateSchema,
     execute: (input, ctx) =>
-      withTask(ctx, input.taskId, (c) => c.cancel(input.taskId, input.reason)),
+      withTask(ctx, input.taskId, (c, claim) =>
+        c.cancel(input.taskId, input.reason, claimGuard(claim)),
+      ),
   });
 
   const updateTask = handler({
