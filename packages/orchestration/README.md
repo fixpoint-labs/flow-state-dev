@@ -156,7 +156,7 @@ import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/
 ```
 
 `taskBoard({ name, collection, workers, ... })` returns
-`{ drain, collectionId, capability, backing, hasIdlessInitialTasks, caps }`.
+`{ drain, collectionId, capability, backing, boardId, detachedWorkers, hasIdlessInitialTasks, caps }`.
 Mount `board.drain` in a sequencer. `hasIdlessInitialTasks` is `true` when any
 `initialTasks` entry omits an `id`; an idless seed re-adds on every drain, which is
 why `goalSeekLoop` rejects such a board when `maxIterations > 1`. `workers` is a
@@ -182,6 +182,40 @@ budget the failing task settles terminal `errored` and the board's completion it
 reports `terminationReason: "retry-budget-exhausted"` alongside `counts.retries` and
 the limit in force. See the
 [Task board guide](https://flow-state.dev/docs/orchestration/task-board).
+
+#### Declaring detached work
+
+A registry value may be a `{ worker, dispatch }` entry instead of a bare block.
+`dispatch: { mode: "detached" }` marks that worker's tasks as work that runs
+outside the request which claimed them; a bare block still means inline, so no
+existing board changes.
+
+```ts
+const board = taskBoard({
+  name: "issue-work",
+  boardId: "issue-work",             // required once anything is detached
+  collection: workBoardCollection,   // must be a defineTaskCollection()
+  workers: {
+    summarize: summarizeBlock,       // bare value = inline
+    implement: { worker: implementBlock, dispatch: { mode: "detached" } },
+  },
+});
+```
+
+A board whose `workers` is a single uniform block declares the same thing with a
+board-level `dispatch` field, and `defaultWorker` accepts an entry too.
+
+`boardId` is explicit and required as soon as any worker is detached: it is
+hashed into the child session's id, so renaming it re-keys work already in
+flight. Detachment also requires a durable collection — a `defineTaskCollection()`
+resource backing. The request, sequencer, and caller-supplied factory backings
+are refused at construction, by name, because a detached worker outlives the
+request and those backings do not. A detached worker declaring `sessionStateSchema`
+is refused for the same reason: detached workers share one execution flow, where
+two of them choosing the same state key would overwrite each other silently.
+
+> Detached execution itself is not wired yet. This release ships the declaration
+> and its guards; a worker marked detached still runs inline until the spawn lands.
 
 ### goalSeekLoop
 

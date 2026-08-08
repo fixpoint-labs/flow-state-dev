@@ -123,6 +123,14 @@ import {
   stampCurrentClaim,
   type BoardRunFlowState,
 } from "./flow-policy-wiring";
+import {
+  assertDetachedBoardSupported,
+  resolveWorkerSlots,
+  type ResolvedWorkerSlot,
+  type TaskWorkerDispatch,
+  type TaskWorkerSlot,
+  type TaskWorkerSlotRegistry,
+} from "./detached";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -201,6 +209,19 @@ export {
 } from "./capability";
 export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
+export {
+  assertDetachedBoardSupported,
+  isTaskWorkerEntry,
+  resolveWorkerSlot,
+  resolveWorkerSlots,
+} from "./detached";
+export type {
+  ResolvedWorkerSlot,
+  TaskWorkerDispatch,
+  TaskWorkerEntry,
+  TaskWorkerSlot,
+  TaskWorkerSlotRegistry,
+} from "./detached";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -264,6 +285,34 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   name: string;
 
   /**
+   * Explicit, stable identifier for this board. **Required when any worker
+   * declares `dispatch: { mode: "detached" }`**, optional otherwise (FIX-982).
+   *
+   * A detached worker runs in a Workstream whose session id is derived by
+   * hashing `(parentSessionId, boardId, coordinate, topic)`, so this value
+   * lands in a persisted key. It cannot be derived from `name` (unique per
+   * flow, not per session) or from `collectionId` (the literal
+   * `"factory-supplied"` for every factory board), which is why it is
+   * declared rather than inferred.
+   *
+   * Renaming it is a **breaking re-key**: live Workstreams keyed on the old
+   * value are orphaned.
+   */
+  boardId?: string;
+
+  /**
+   * Dispatch mode for a **uniform** worker — a board whose `workers` is a
+   * single block (FIX-982). Omitted means inline, which is what every board
+   * does today.
+   *
+   * Registry boards declare this per worker instead, as
+   * `{ worker, dispatch }` values under `workers`; passing this field
+   * alongside a registry is a construction error, because it would not say
+   * which worker it meant.
+   */
+  dispatch?: TaskWorkerDispatch;
+
+  /**
    * Where the collection lives — a once-chosen internal detail. Optional; an
    * omitted collection is request-backed with `collectionId` = `name`. One of:
    *
@@ -289,8 +338,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * every claimed task; a registry routes by `task.assignee`. Workers
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
+   *
+   * A registry **value** may also be a `{ worker, dispatch }` entry, which is
+   * how a board declares that worker detached (FIX-982). A bare block still
+   * means inline, so no existing board needs editing.
    */
-  workers: TaskWorker<TInput, TOutput> | TaskWorkerRegistry;
+  workers: TaskWorker<TInput, TOutput> | TaskWorkerSlotRegistry;
 
   /**
    * Optional default worker — the **delegation floor** (FIX-940).
@@ -300,8 +353,11 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * declared workers are never routed through it (reached only on a
    * genuine miss). Non-delegation consumers (blackboard, patterns) leave
    * it unset.
+   *
+   * Accepts a `{ worker, dispatch }` entry to detach the floor itself
+   * (FIX-982); a bare block still means inline.
    */
-  defaultWorker?: TaskWorker;
+  defaultWorker?: TaskWorkerSlot;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -510,6 +566,21 @@ export interface TaskBoardHandle<
    */
   backing: TaskBoardBacking;
   /**
+   * The board's declared `boardId` (FIX-982), or `undefined` when it declared
+   * none. Always present on a board with detached workers — that is what
+   * `assertDetachedBoardSupported` enforces — so P2's routing-coordinate
+   * derivation can read it off the handle without re-deriving from config.
+   */
+  boardId?: string;
+  /**
+   * The workers that declared `dispatch: { mode: "detached" }`, in declaration
+   * order (FIX-982). Empty on every board that ships today.
+   *
+   * Surfaced so the registry bubble-up (P2) reads one resolved list rather
+   * than re-walking the raw `workers` config and re-deciding what an entry is.
+   */
+  detachedWorkers: readonly ResolvedWorkerSlot[];
+  /**
    * Whether the board's own `initialTasks` seed carries any task without a
    * stable `id` (FIX-910). An idless initial task is re-added on every drain
    * re-entry (`createSeedCollection` only dedups stable ids), so a multi-drain
@@ -554,9 +625,11 @@ export function taskBoard<
 ): TaskBoardHandle<TInput, TOutput, TName> {
   const {
     name,
+    boardId,
     collection: collectionConfig,
-    workers,
-    defaultWorker,
+    workers: workersConfig,
+    defaultWorker: defaultWorkerConfig,
+    dispatch: uniformDispatch,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -587,6 +660,27 @@ export function taskBoard<
     );
   }
 
+  // FIX-982: flatten `{ worker, dispatch }` entries down to the bare shapes the
+  // drain already composes, and note which asked to be detached. A board with
+  // no entries produces exactly the values it was handed.
+  const isUniform = typeof (workersConfig as { run?: unknown }).run === "function";
+  if (uniformDispatch !== undefined && !isUniform) {
+    throw new Error(
+      `[task-board] "${name}" passes a board-level \`dispatch\` alongside a worker registry — ` +
+        `it would not say which worker it meant. Declare dispatch per worker instead: ` +
+        `\`workers: { <assignee>: { worker, dispatch } }\`.`
+    );
+  }
+  const resolvedWorkers = resolveWorkerSlots({
+    workers: workersConfig,
+    ...(defaultWorkerConfig !== undefined
+      ? { defaultWorker: defaultWorkerConfig }
+      : {}),
+    ...(uniformDispatch !== undefined ? { dispatch: uniformDispatch } : {}),
+  });
+  const workers = resolvedWorkers.workers;
+  const defaultWorker = resolvedWorkers.defaultWorker;
+
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
@@ -595,6 +689,18 @@ export function taskBoard<
   );
   const { collectionFactory, collectionId, capability, backing, drainUses } =
     binding;
+
+  // FIX-982 decision 11 — a detached board is refused here, loudly and by
+  // name, never degraded with a warning. Runs after the binding so the
+  // once-chosen backing is known. Two of the spec's six refusals are NOT here
+  // because the fact they test does not exist yet at construction; see the
+  // module doc on `./detached`.
+  assertDetachedBoardSupported({
+    name,
+    boardId,
+    backing,
+    detached: resolvedWorkers.detached,
+  });
 
   // Seed-inspectability for construction-time guards (FIX-910): an initial task
   // without a stable id is re-added on every drain re-entry, so a multi-drain
@@ -855,7 +961,16 @@ export function taskBoard<
   // once-chosen backing onto every downstream wiring, so no call site restates
   // it. `board.capability` is always defined; `uses: [board.capability]` gets a
   // typed `ctx.cap.<name>` accessor regardless of backing.
-  return { drain, collectionId, capability, backing, hasIdlessInitialTasks, caps };
+  return {
+    drain,
+    collectionId,
+    capability,
+    backing,
+    ...(boardId !== undefined ? { boardId } : {}),
+    detachedWorkers: resolvedWorkers.detached,
+    hasIdlessInitialTasks,
+    caps,
+  };
 }
 
 // ---------------------------------------------------------------------------
