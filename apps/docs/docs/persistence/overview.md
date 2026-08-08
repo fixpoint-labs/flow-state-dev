@@ -109,6 +109,16 @@ The session store key becomes `${tenantId}:${sessionId}`; request records keep a
 
 The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/engine`. A custom store isolates by tenant the same way the built-ins do: namespace records by their `id` (already tenant-prefixed for sessions) and honor the `tenantId` field on `SessionListOptions` / `RequestListOptions` (present means exact-match, including `undefined`; absent means no filter).
 
+A custom store also has to honor session parentage. A session can belong to another session instead of to a person — `SessionRecord.parentSessionId` carries the parent's id, and is undefined on a session someone started directly. `SessionListOptions.parentage` picks which of those a listing returns:
+
+| `parentage` | Returns |
+|---|---|
+| omitted, or `"top-level"` | Only sessions with no parent |
+| `"all"` | Every session, parented or not |
+| `{ parentOf: sessionId }` | Only that session's children |
+
+Omitting `parentage` narrows to `"top-level"`, which is the reverse of how an omitted `tenantId` behaves in the same object. A store that ignores the field hands back child sessions to a caller that asked for top-level ones, and nothing in the type system catches it — the field is optional. Treat a parent id of `null` the same as an absent one, and conjoin `parentage` with the other filters rather than letting it widen past them.
+
 ### Live tail
 
 `RequestStore` exposes `subscribeToEvents(requestId, options)` so the SSE wire can serve a request started on any instance. Stores choose their own delivery mechanism:

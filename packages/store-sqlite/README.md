@@ -115,6 +115,8 @@ The store auto-applies schema changes on connection open via `initializeSchema`.
 
 The `request_items` table was added for incremental item persistence: instead of rewriting the whole request blob on every item boundary, the store upserts one row per changed item keyed by `(request_id, item_id)`. Existing databases upgrade transparently — items written to the old `requests.data` blob are read via a fallback merge, and new items go to the table.
 
+`sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
+
 ## Individual Store Constructors
 
 For advanced use cases, individual store constructors are also exported:

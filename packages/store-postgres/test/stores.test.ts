@@ -193,7 +193,10 @@ describe("PostgreSQL store adapter", () => {
       await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2", { updatedAt: 300 }), "any");
       await s.session.set("sess_3", makeSessionRecord("sess_3", "flow-a", "user_1", { updatedAt: 200 }), "any");
 
-      const all = await s.session.list();
+      // FIX-1009: re-pointed from `list()` at `parentage: "all"`. The
+      // assertions below are unchanged — that is the claim: `"all"` reproduces
+      // the result set this query returned before parentage existed.
+      const all = await s.session.list({ parentage: "all" });
       expect(all).toHaveLength(3);
       expect(all[0]!.id).toBe("sess_2");
       expect(all[1]!.id).toBe("sess_3");

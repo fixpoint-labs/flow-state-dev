@@ -133,6 +133,10 @@ The schema uses:
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
 | `request_items` | `(request_id, item_id)` | Output items produced by a request (one row per item) |
 
+### Session parentage
+
+`sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
+
 ### Resource state carries a version, and deletes leave a row behind
 
 `resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.

@@ -14,7 +14,7 @@ import {
   patchFieldInMap,
   pushToArrayInMap
 } from "./shared";
-import { matchesTenantFilter } from "../scope-keys";
+import { matchesParentageFilter, matchesTenantFilter } from "../scope-keys";
 
 export class InMemorySessionStore implements SessionStore {
   private readonly records = new Map<string, SessionRecord>();
@@ -86,6 +86,10 @@ export class InMemorySessionStore implements SessionStore {
       }
 
       if (!matchesTenantFilter(options, record.tenantId)) {
+        return false;
+      }
+
+      if (!matchesParentageFilter(options, record.parentSessionId)) {
         return false;
       }
 
