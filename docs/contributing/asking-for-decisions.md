@@ -187,7 +187,10 @@ ones; applying it to none leaves them to be found.
 ## Worked example
 
 Three asks from one turn. They're deliberately different lengths — the shape scales down, and
-the third one is mostly its calibration line.
+the third one is mostly its calibration line. Read the three calibrations together
+(*moderate* · *the expensive one* · *near zero*): that contrast is the part doing the work,
+because it tells the reader where to spend their attention before they've read a word of the
+detail.
 
 ---
 
@@ -213,6 +216,11 @@ the third one is mostly its calibration line.
 > partner building against these error codes today. Then we document the gap and fix it at the
 > 1.0 boundary.
 >
+> **Cost of being wrong: moderate, and it lands quietly.** If I'm wrong about nobody depending
+> on that ordering, someone's error handling changes behaviour on upgrade — recoverable, but
+> found in production rather than in tests. Worth thirty seconds on "have we promised anyone
+> anything here?"
+>
 > ### 2. Retry semantics: replay the old job, or re-run against current config?
 >
 > **Plain terms.** When a background job fails and retries, we need "how to re-run this." Two
@@ -231,6 +239,10 @@ the third one is mostly its calibration line.
 > **What would change my mind:** if you see FSD used where a retry has to be provably identical
 > to what was accepted — regulated workloads, billing, anything where "we re-ran it
 > differently" is a problem.
+>
+> **Cost of being wrong: this is the expensive one.** Both designs decide what we persist when
+> a job is accepted, so switching later isn't a code change — it's a migration of every job
+> record already in flight. This is the ask in this batch that deserves your real attention.
 >
 > ### 3. Epic close-out: drop a gate, or reopen deferred work?
 >

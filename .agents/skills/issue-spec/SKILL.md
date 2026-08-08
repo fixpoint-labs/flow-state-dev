@@ -617,7 +617,7 @@ The full spec (Part I + Part II) is published as a ready spec PR. Present it to 
 
 **Write this for a product owner, not a peer engineer.** You are the engineer; they set the objectives and track the process as a whole. Items 3, 4 and 8 get stated in observable behaviour and priced in consequences — customers, promises, timing, reversibility — not in files, symbols, or framework vocabulary.
 
-If there are open questions, **ask them properly**: the fork as a plain-language either/or, plain terms, the trade-off, **your recommendation**, and what fact would change your mind ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), canonical, with a worked example). Batch them under one `Need your sign-off` heading, numbered, hardest first — zero to two is normal; more than that and the direction isn't ready for review. Once resolved, update the spec document with the decisions.
+If there are open questions, **ask them properly** — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical, with a worked example). Batch them under one `Need your sign-off` heading, numbered, hardest first — zero to two is normal; more than that and the direction isn't ready for review. Once resolved, update the spec document with the decisions.
 
 ## Guidelines
 

@@ -128,10 +128,8 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 - **One action, then exit.** The coordinator is the event loop; you are not.
 - **Never prompt the user.** You have no `AskUserQuestion`. If a cross-cutting decision
   genuinely needs a human, record it in the epic-spec's open-questions and return a status
-  naming it; the coordinator surfaces it. **Record it as an ask, not a topic** — the fork as a
-  plain-language either/or, the observable behaviour, what picking one costs, **your
-  recommendation**, and what fact would change your mind
-  ([`asking-for-decisions.md`](../../docs/contributing/asking-for-decisions.md)). You read the
+  naming it; the coordinator surfaces it. **Record it as an ask, not a topic** — all six parts,
+  per [`asking-for-decisions.md`](../../docs/contributing/asking-for-decisions.md). You read the
   specs; the coordinator holds a status table and cannot reconstruct any of that. A
   cross-cutting question almost always arrives phrased in mechanism (two issues disagreeing
   about internals) and the person who settles it is deciding about the product — translating it

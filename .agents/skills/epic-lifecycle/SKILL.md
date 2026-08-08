@@ -370,9 +370,8 @@ The epic-specific delta:
    folds it into the epic-spec and the entry retires with the fold, which is what makes the record and the
    decision move together.
 4. **Surface gates.** **Write every gate and every blocker as a decision put to a product
-   owner** — the fork in plain terms, what it costs, **your recommendation**, and what they
-   might know that would change it
-   ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), canonical).
+   owner** — all six parts, per
+   [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical).
    Batch the turn's asks under one `Need your sign-off` heading, numbered, hardest first. "The
    spec PR is open, please approve" is not a gate surfaced — it pushes the framing job onto the
    person least able to do it. You hold links and status lines, not the code, so build the ask

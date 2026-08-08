@@ -76,10 +76,9 @@ Agent tool (Plan) — keep on the default (Opus) judgment tier; the challenger i
 
 ## Acting on a BLIND SPOT verdict
 
-- **Human available:** surface it as a decision they can make — what the code turned out
-  to do in plain terms, what changing direction costs, **your recommendation**, and what
-  they might know that would change it
-  ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md)).
+- **Human available:** surface it as a decision they can make — all six parts, per
+  [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md), with the
+  fork stated as what the code turned out to do.
   `AskUserQuestion` for the crisp choice. Do not proceed on a changed direction without
   the call.
 - **Autonomous / AFK:** take the **best-judgment path**, fold the correction into the
