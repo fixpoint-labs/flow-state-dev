@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
 import {
   ephemeralDirs,
+  scanExtensions,
   scanFiles,
   scanRoots,
   scanSources,
@@ -97,5 +98,12 @@ describe("scanned surface", () => {
 
   it("guards spec-poc/ as well as spec/ — both die with the spec PR", () => {
     expect(ephemeralDirs).toEqual(expect.arrayContaining(["spec", "spec-poc"]));
+  });
+
+  it("reads every TypeScript module variant, not just .ts", () => {
+    const matches = (name: string) => (scanExtensions as RegExp).test(name);
+    for (const name of ["a.ts", "a.mts", "a.cts", "a.js", "a.mjs", "a.cjs"]) {
+      expect(matches(name), name).toBe(true);
+    }
   });
 });

@@ -53,7 +53,7 @@ const SCAN_ROOTS = [
  */
 const SCAN_FILES = ["README.md", "CLAUDE.md", "AGENTS.md"];
 
-const SCAN_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|md|mdx|json|yml|yaml)$/;
+const SCAN_EXTENSIONS = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|md|mdx|json|yml|yaml)$/;
 const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".next", ".turbo", "coverage"]);
 
 /**
@@ -220,6 +220,9 @@ export const scanFiles = SCAN_FILES;
 
 /** The never-merged directories, exported so a test can assert both are covered. */
 export const ephemeralDirs = EPHEMERAL_DIRS;
+
+/** The extension filter, exported so a test can assert the module variants are read. */
+export const scanExtensions = SCAN_EXTENSIONS;
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
