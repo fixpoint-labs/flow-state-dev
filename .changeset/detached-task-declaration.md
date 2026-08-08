@@ -2,7 +2,7 @@
 "@flow-state-dev/orchestration": minor
 ---
 
-Task boards can declare a worker as detached — work that runs outside the request that claimed its task.
+Task boards can declare a worker as detached — work that runs outside the request that claimed its task (FIX-982).
 
 A registry value may now be a `{ worker, dispatch }` entry instead of a bare block; `dispatch: { mode: "detached" }` marks that worker's tasks as detached work. A bare block still means inline, so no existing board changes. A uniform-worker board declares the same thing through a board-level `dispatch` field, and `defaultWorker` accepts an entry.
 
