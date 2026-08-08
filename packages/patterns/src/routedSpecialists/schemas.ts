@@ -49,9 +49,22 @@ const tasksRecordSchema: ZodTypeAny = z
  * claim's return value, not from `addTask`'s: the claim is what
  * increments `attempts`, so the pre-claim task reads `0` where the
  * claimed one reads `1`, and a ticket built from the wrong one would
- * decline every normal completion. Optional, so a run resumed from a
- * checkpoint taken before this field existed still completes its tasks —
- * unguarded for that one iteration, exactly as it was then.
+ * decline every normal completion.
+ *
+ * Optional, so a run resumed from a checkpoint taken before this field
+ * existed still completes its tasks — but note that iteration runs
+ * **unguarded**, which is weaker than it was then, not equivalent. The
+ * pre-FIX-981 state carried `currentAttempt`, and the write-back passed
+ * it as `expectAttempt`; a legacy record therefore had an attempt guard
+ * that the ticket path cannot reconstruct, because `TaskClaimTicket`
+ * also needs the task's `createdAt` and no legacy state carries it.
+ *
+ * The exposure is a rollout-window one: a legacy checkpoint resumed
+ * after upgrade, whose task was reclaimed and re-claimed by a second
+ * attempt, would let attempt 1's late completion overwrite attempt 2.
+ * Reaching it requires `reclaim()`, which today has no callers (see
+ * FIX-1023). Tracked as FIX-1025 — do not read this slot's optionality
+ * as "no guard was lost."
  */
 export const routedSpecialistsControlSchema: ZodTypeAny = z.object({
   iteration: z.number().default(0),
