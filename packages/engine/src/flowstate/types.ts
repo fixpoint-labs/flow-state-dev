@@ -181,7 +181,9 @@ export interface CreateFlowStateOptions<
    * How long an externally-queued request may sit unclaimed before a sweep
    * treats it as lost (ms). A queued request has no heartbeat, so
    * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
-   * backlog can outlast the default. Default 600000 (10 minutes).
+   * backlog can outlast the default. Must be finite and non-negative — it is the
+   * only bound on a queued entry, so a value nothing can exceed would leave a
+   * lost job reported live indefinitely. Default 600000 (10 minutes).
    */
   queuedGraceMs?: number;
 

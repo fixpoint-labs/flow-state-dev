@@ -157,6 +157,10 @@ export type CreateFlowApiRouterOptions = {
    * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
    * backlog can exceed the default; too low and a valid queued job is marked
    * `interrupted` and re-dispatched while the queue still holds it.
+   * Must be finite and non-negative; the host throws at construction otherwise.
+   * This is the only bound on a queued entry — a value nothing can exceed would
+   * leave a lost job reported live indefinitely. `0` reaps a queued request as
+   * soon as it is stale.
    * Default: 600000 (10 minutes).
    */
   queuedGraceMs?: number;
