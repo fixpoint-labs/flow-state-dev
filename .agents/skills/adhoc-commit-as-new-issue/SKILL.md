@@ -83,18 +83,12 @@ Scope: the primary affected package (e.g., `server`, `core`, `cli`, `thought-fab
 1. Push branch: `git push -u origin <branch>`
 2. Create PR with `gh pr create`:
    - Title: concise (under 70 characters)
-   - Body format:
-     ```
-     ## Summary
-     - <bullet points of what changed>
+   - Body: follow [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout" like any other PR — the problem first, then what this does, then what's asked of you, with **nothing preceding the problem** (not `Fixes FIX-N`, not a summary heading). Most work on this route is small, so the visible half is often one paragraph and a links line with no *detail* worth collapsing; the budget is the small-change row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets. **The reviewer contract is not detail and is never dropped** — a small change is exactly where a reviewer is most likely to assume the wrong route.
+   - This route has **no spec and no gate upstream**, so paste a contract variant from `pr-reviewer-guidance.md` into a collapsed `<details>`, and put the test plan there too. **Pick it truthfully, and the default here is variant 4, no upstream contract.** This skill is logistics — it infers what and why from a diff that already exists, and changes no code — so on this route the issue is filed *after* the work, nothing upstream constrained it, and the whole change is in scope. Two variants are wrong by default:
 
-     ## Test plan
-     - [x] <tests that were run>
-
-     Fixes FIX-{number}
-
-     🤖 Generated with [Claude Code](https://claude.com/claude-code)
-     ```
+     - **Brief-backed** would assert a one-screen agent brief. Step 3 writes a 2–3 sentence issue description, which is not one.
+     - **The direct-route (bug) variant** asks reviewers to check a repro → cause → fix → regression-test chain. Label alone doesn't create that chain: this skill runs no reproduction and no root-cause analysis. Use it **only when the diagnosis actually exists and is visible** — the work came from a `diagnose` run, and the repro and its regression test are in the diff. If you're inferring "this looks like a bug fix" from the changes, the diagnosis is not there and variant 4 is the honest contract.
+   - The links line carries `Fixes FIX-{number}`.
 
 ### Step 7: Update Linear
 

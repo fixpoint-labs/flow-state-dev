@@ -11,6 +11,18 @@ dispatch that only framework code (not flow/block config) can populate.
 
 **Prerequisites:** [Execution and Errors](./execution-and-errors.md).
 
+## Removed `middleware` option
+
+`middleware` is not a supported configuration property. Passing it to
+`createFlowState(...)`, a `defineFlow(...)` definition or instance call, or a
+block factory throws synchronously at construction time. This also protects
+JavaScript callers and TypeScript callers that bypass static checking: the
+property is rejected rather than ignored.
+
+Move authentication and policy checks to the HTTP layer or explicit block
+logic. For other former middleware use cases, use the public alternatives
+listed below.
+
 ## Why there's no block middleware
 
 A public middleware contract shipped early during Phase 1 with three

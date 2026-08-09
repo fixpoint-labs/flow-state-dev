@@ -106,7 +106,11 @@ export async function handleExecuteAction(
     userId: principal.userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    orgId: getString(body.orgId) ?? principal.orgId,
+    // Org identity comes from the resolved principal only — never re-read
+    // `body.orgId` here, which would let a caller override a verified org
+    // (BP-031). Unauthenticated apps are unaffected: the default resolver
+    // reads `body.orgId` itself. See `docs/architecture/authentication.md`.
+    orgId: principal.orgId,
     tenantId,
     metadata: {
       ...ctx.bootstrapMetadata,

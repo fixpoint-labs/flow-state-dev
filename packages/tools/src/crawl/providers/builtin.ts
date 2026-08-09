@@ -1,6 +1,7 @@
 import type { CrawlProviderAdapter, CrawlResult } from "../types";
 import type { FetchResult } from "../../fetch/types";
 import { htmlToMarkdown } from "../../_internal/html-to-markdown";
+import { fetchValidated } from "../../_internal/fetch-validated";
 
 interface QueueEntry {
   url: string;
@@ -38,13 +39,11 @@ export const builtinCrawlAdapter: CrawlProviderAdapter = {
           await delay(1000);
         }
 
-        const response = await globalThis.fetch(entry.url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; FlowStateDev/1.0)",
-            Accept: "text/html,application/xhtml+xml",
-          },
-          redirect: "follow",
-        });
+        // Validates the queued URL and every redirect hop. Links come from the
+        // crawled markup, so without this a public page can walk the crawler
+        // into loopback or a metadata service. A blocked URL throws and is
+        // skipped by the surrounding catch, like any other unreachable page.
+        const { response } = await fetchValidated(entry.url);
 
         if (!response.ok) continue;
 

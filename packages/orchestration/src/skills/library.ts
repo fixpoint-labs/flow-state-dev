@@ -365,14 +365,14 @@ export function createSkillsLibrary(
 
     const dynamic = resolveCtx.presets.has("dynamicActivation");
     const hasActivationPath = dynamic || Boolean(cfg.activeState);
+    const contributesRuntimeTools = dynamic || Boolean(cfg.activeState && cfg.allowed);
 
-    // Whole-catalog mode (activation path + no `allowed`): any bundled inline
-    // skill is loadable/activatable, so validate each one's declared tools —
-    // the `allowed` loop above only covers an explicit list. Skip fork/pattern
-    // skills (can't render/load inline) and `disable-model-invocation` skills
-    // (omitted from the catalog and renderer, so never exposed) — validating
-    // those would fail construction over a skill that can't reach the model.
-    if (hasActivationPath && !cfg.allowed) {
+    // Whole-catalog dynamic mode (no `allowed`): the load tool can select any
+    // bundled inline skill, so validate each one's declared tools. An unscoped
+    // explicit activeState alone intentionally contributes no tools: exposing
+    // an unbounded catalog without a model-controlled activation path would
+    // make every catalog tool callable before any skill is selected.
+    if (dynamic && !cfg.allowed) {
       for (const [name, entry] of index) {
         if (entry.contextMode !== "inline" || entry.disableModelInvocation) continue;
         validateDeclaredTools(name);
@@ -385,7 +385,7 @@ export function createSkillsLibrary(
     // the model softly via the rendered restriction note; registering the
     // superset keeps a live post-seeding edit to that list from pointing the
     // model at an unregistered tool.
-    if (active.length > 0 || hasActivationPath) tools.push(...fullCatalog());
+    if (active.length > 0 || contributesRuntimeTools) tools.push(...fullCatalog());
 
     // `dynamicActivation` preset → install the load tool + catalog listing.
     if (dynamic) {
@@ -567,6 +567,10 @@ export function createSkillsLibrary(
             skillName: name,
             agents: entry.agents!,
             ...(entry.files ? { files: entry.files } : {}),
+            // The skill's tool seats (FIX-925). `validateDeclaredTools` has
+            // already failed the build on a key that isn't in the catalog, so
+            // every entry reaching the board here resolves.
+            ...(entry.allowedTools ? { allowedTools: entry.allowedTools } : {}),
           }),
         ),
         bundledAgentIndex: buildBundledAgentIndex(index),
@@ -620,17 +624,28 @@ export function createSkillsLibrary(
 /**
  * Project the bundled index down to agent-declaring skills, so a runtime
  * activation of a bundled skill materializes without a manifest read.
+ *
+ * `allowedTools` rides along because it is the skill's **tool seats**
+ * (FIX-925), not only the rendered restriction note — a bundled activation must
+ * carry the same seat scope a manifest read would give it.
  */
 function buildBundledAgentIndex(
   index: Map<string, IndexedSkill>,
-): Map<string, { agents: Record<string, AgentSpec>; files?: SkillFile[] }> {
-  const out = new Map<string, { agents: Record<string, AgentSpec>; files?: SkillFile[] }>();
+): Map<string, BundledAgentEntry> {
+  const out = new Map<string, BundledAgentEntry>();
   for (const [name, entry] of index) {
     if (!entry.agents || Object.keys(entry.agents).length === 0) continue;
     out.set(name, {
       agents: entry.agents,
       ...(entry.files ? { files: entry.files } : {}),
+      ...(entry.allowedTools ? { allowedTools: entry.allowedTools } : {}),
     });
   }
   return out;
 }
+
+/** What `buildBundledAgentIndex` projects per skill — the surface's own shape. */
+type BundledAgentEntry = Pick<
+  DelegationAgentSource,
+  "agents" | "files" | "allowedTools"
+>;

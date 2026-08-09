@@ -14,7 +14,15 @@ Identify which question is being answered — from the user's prompt, the surrou
 - **"Does this block / pattern / capability / state shape feel right?"** → [LOGIC.md](LOGIC.md). Build a throwaway flow in `apps/kitchen-sink/flows/_prototypes/<name>/` whose action drives the candidate construct through cases that are hard to reason about on paper. Inspect the NDJSON stream from `fsdev run` to see every state change and item emitted.
 - **"What should this look like?"** → [UI.md](UI.md). Generate several radically different UI variants on a single route (devtool, kitchen-sink page, or item-type renderer), switchable via a `?variant=` URL param and a floating bottom bar.
 
-**Not this skill: a *contested* claim.** A prototype is exploratory and it's yours — you're undecided, and you build to learn. When the question is instead a factual claim about system behavior that a *review* is arguing over ("a router can't do that", "the store won't preserve ordering there"), the job isn't exploration, it's adjudication: a check designed so PASS and FAIL both mean something, returning a verdict with evidence. That's [`settle-claim`](../settle-claim/SKILL.md). Same throwaway rules (this file's "Rules that apply to both" still govern the code), different contract — a prototype answers *what should we do*, a settlement answers *who is right*.
+**Not this skill — two neighbours, told apart by who reads the answer.** A prototype is *yours*: you're undecided, you build to learn, and the only durable output is the answer. This file's "Rules that apply to both" governs the throwaway code in all three cases; what differs is the contract.
+
+| The question | Skill |
+|---|---|
+| *What should we do?* — yours, private, answer captured in `NOTES.md` | **this one** |
+| *Is this direction right?* — published on a never-merged spec/epic PR so reviewers and the human at the gate can run it | [`spec-poc`](../spec-poc/SKILL.md) |
+| *Who is right?* — a factual claim a review has argued twice ("a router can't do that"), adjudicated by a check where PASS and FAIL both mean something | [`settle-claim`](../settle-claim/SKILL.md) |
+
+The practical tell: a spec POC has to be runnable by someone who isn't you, and a prototype doesn't.
 
 The two branches produce very different artifacts — getting this wrong wastes the whole prototype. If the question is genuinely ambiguous and the user isn't reachable, default to whichever branch better matches the surrounding code: a new block / pattern / capability / scope-shape question → logic; a renderer / devtool / kitchen-sink page question → UI. State the assumption at the top of the prototype.
 

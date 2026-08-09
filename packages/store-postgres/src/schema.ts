@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id     TEXT NOT NULL,
   org_id  TEXT,
   tenant_id   TEXT,
+  parent_session_id TEXT,
   version     INTEGER NOT NULL,
   created_at  BIGINT NOT NULL,
   updated_at  BIGINT NOT NULL,
@@ -24,7 +25,12 @@ const SESSIONS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_id     ON sessions(user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_flow_user   ON sessions(flow_kind, user_id)",
   "CREATE INDEX IF NOT EXISTS idx_sessions_user_tenant ON sessions(user_id, tenant_id)",
-  "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at)"
+  "CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at)",
+  // FIX-1009: serves one access path — `{ parentOf: id }` equality lookups
+  // (enumerating one session's children). The default `IS NULL` scan is
+  // low-selectivity and is deliberately not the justification, so a plain btree
+  // is enough and no composite is warranted yet.
+  "CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id)"
 ];
 
 const REQUESTS_TABLE = `
@@ -148,6 +154,31 @@ BEGIN
 END $$;
 `;
 
+/**
+ * Add the `parent_session_id` column to a pre-FIX-1009 `sessions` table.
+ * Idempotent — wrapped in a DO block so absence of the column adds it and
+ * presence is a no-op. Must run BEFORE the index DDL so
+ * `idx_sessions_parent_session_id` finds the column.
+ *
+ * Nullable with no default, and **no backfill is needed or possible**: nothing
+ * writes a parent id yet, so every pre-existing row is genuinely top-level and
+ * NULL is the correct value for all of them.
+ */
+const ADD_PARENT_SESSION_ID_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'sessions'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'sessions' AND column_name = 'parent_session_id'
+  ) THEN
+    EXECUTE 'ALTER TABLE sessions ADD COLUMN parent_session_id TEXT';
+  END IF;
+END $$;
+`;
+
 const ACTIVE_REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_active_requests_heartbeat  ON active_requests(last_heartbeat_at)",
   "CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(user_id)",
@@ -174,6 +205,8 @@ CREATE TABLE IF NOT EXISTS resource_state (
   scope_id      TEXT NOT NULL,
   resource_key  TEXT NOT NULL,
   state         JSONB NOT NULL,
+  version       BIGINT NOT NULL DEFAULT 1,
+  lifecycle     TEXT NOT NULL DEFAULT 'live',
   PRIMARY KEY (scope_type, scope_id, resource_key)
 );
 `;
@@ -310,6 +343,31 @@ BEGIN
 END $$;
 `;
 
+/**
+ * Add `version` and `lifecycle` to a pre-CAS `resource_state` table.
+ *
+ * Purely additive: `ADD COLUMN IF NOT EXISTS ... DEFAULT`, no `DROP NOT NULL`,
+ * no table rewrite, indexes untouched. `state` stays `JSONB NOT NULL` — a
+ * tombstone stores `{}` rather than a null state precisely so this stays a
+ * pure `ADD COLUMN`.
+ *
+ * The defaults are the legacy contract: an existing row becomes **live at
+ * version 1**, never absent, so a reader that predates versioning keeps seeing
+ * its data and an `expectedVersion: 0` create against it correctly conflicts.
+ */
+const ADD_RESOURCE_STATE_VERSIONING_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'resource_state'
+  ) THEN
+    EXECUTE 'ALTER TABLE resource_state ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 1';
+    EXECUTE 'ALTER TABLE resource_state ADD COLUMN IF NOT EXISTS lifecycle TEXT NOT NULL DEFAULT ''live''';
+  END IF;
+END $$;
+`;
+
 const SUSPENSION_RECORDS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_request_id ON suspension_records(request_id)",
   "CREATE INDEX IF NOT EXISTS idx_suspension_records_created_at ON suspension_records(created_at)",
@@ -386,9 +444,18 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // `requests`, and `active_requests` tables. Existing rows read back as
   // no-tenant. Idempotent — no-op once the column exists.
   ADD_TENANT_ID_MIGRATION,
+
+  // FIX-1009: add the nullable `parent_session_id` column to pre-parentage
+  // `sessions`. Existing rows read back as top-level; no backfill is needed
+  // because nothing writes a parent id yet. Idempotent — no-op once present.
+  ADD_PARENT_SESSION_ID_MIGRATION,
   // FIX-141: ensure `suspension_records.status` / `resolved_at` exist on
   // pre-FIX-141 schemas. Idempotent on fresh databases.
-  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION
+  ADD_SUSPENSION_STATUS_COLUMNS_MIGRATION,
+
+  // FIX-992: add `version` / `lifecycle` to a pre-CAS `resource_state`.
+  // Purely additive; existing rows become live at version 1.
+  ADD_RESOURCE_STATE_VERSIONING_MIGRATION
 ];
 
 /**

@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError, runWithCAS } from "./cas";
+import { ResourceAlreadyExistsError, ResourceDeletedError } from "./resource-cas";
 import { createFilesystemActiveRequestRegistry } from "./filesystem/active-request-registry";
 import { createFilesystemCheckpointStore } from "./filesystem/checkpoint-store";
 import { createFilesystemContentStore } from "./filesystem/content-store";
@@ -17,6 +18,11 @@ import { createInMemoryActiveRequestRegistry } from "./memory/active-request-reg
 import { createInMemoryCheckpointStore } from "./memory/checkpoint-store";
 import { createInMemoryContentStore } from "./memory/content-store";
 import { createInMemoryResourceStateStore } from "./memory/resource-state-store";
+import { toBareState, toBareStates } from "./resource-state-views";
+export type {
+  ResourceStateConflict,
+  ResourceStateRow
+} from "./resource-state-predicate";
 import { createInMemoryProjectStore } from "./memory/org-store";
 import { createInMemoryRequestStore } from "./memory/request-store";
 import { createInMemorySessionStore } from "./memory/session-store";
@@ -40,6 +46,7 @@ export type {
   ContentStore,
   LeaseStore,
   ResourceStateStore,
+  VersionedResourceState,
   ExpectedVersion,
   OrgListOptions,
   OrgRecord,
@@ -52,6 +59,7 @@ export type {
   RequestStore,
   ScopeRecordBase,
   SessionListOptions,
+  SessionParentage,
   SessionRecord,
   SessionStore,
   SetResult,
@@ -80,6 +88,8 @@ export type {
 
 export {
   ConcurrentModificationError,
+  ResourceAlreadyExistsError,
+  ResourceDeletedError,
   ScopeMutationTimeoutError,
   createScopeStateOps,
   createStateContainer,
@@ -98,6 +108,8 @@ export {
   createInMemoryCheckpointStore,
   createInMemoryContentStore,
   createInMemoryResourceStateStore,
+  toBareState,
+  toBareStates,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,

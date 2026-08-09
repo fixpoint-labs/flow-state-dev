@@ -102,6 +102,10 @@ anyone who can reach the port. It throws for a non-loopback `host` unless
 `allowUnauthenticated` is `true`. Loopback hosts pass unconditionally.
 `isLoopbackHost(host)` is the loopback predicate it uses.
 
+The guard pairs with the engine's route-level authorization: a flow that
+satisfies it has its whole `/api/flows` surface protected — session, state,
+resource, and request-control routes included — not just its action routes.
+
 ```ts
 import { serve, assertNetworkBindIsAuthenticated } from "@flow-state-dev/node";
 import flowstate from "./fsdev.config";

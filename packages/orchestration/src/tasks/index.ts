@@ -31,6 +31,15 @@ export {
   type TaskFilter,
 } from "./schema/task-init";
 
+// The ownership token a task write presents (FIX-981). `ticketNamesTask` is the
+// guard's own identity rule and stays module-internal — a caller mints a ticket
+// and presents it; deciding whether one matches is the collection's job.
+export {
+  taskClaimTicketSchema,
+  ticketForClaim,
+  type TaskClaimTicket,
+} from "./claim-ticket";
+
 // Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
 export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
 
@@ -47,18 +56,23 @@ export type {
   ClaimOptions,
   TaskHandle,
   TaskTransitionOptions,
+  TaskWriteOutcome,
+  TaskWriteDeclineReason,
 } from "./collection/types";
 export { createSequencerBackedTaskCollection } from "./collection/sequencer-backed";
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";
 export type { ResourceBackedOptions } from "./collection/resource-backed";
-// Creation caps (FIX-931) — the two bounds a collection enforces on insertion.
+// Collection caps — the two creation bounds (FIX-931) and the cumulative retry
+// budget (FIX-948).
 export {
   TaskCapExceededError,
   validateTaskCaps,
   resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
   DEFAULT_MAX_TOTAL_TASKS,
   DEFAULT_MAX_ENQUEUED_TASKS,
+  DEFAULT_MAX_TOTAL_RETRIES,
   type TaskCapKind,
   type TaskCapOptions,
 } from "./collection/task-caps";

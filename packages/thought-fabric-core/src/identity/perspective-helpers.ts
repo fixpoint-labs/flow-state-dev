@@ -8,7 +8,7 @@
  */
 
 import type { ResourceContext } from '@flow-state-dev/core'
-import { shortId } from '@flow-state-dev/core/helpers'
+import { shortId, updateStateWith } from '@flow-state-dev/core/helpers'
 import type {
   PerspectiveInstance,
   PerspectiveSalience,
@@ -213,23 +213,32 @@ export async function addPerspectiveObservation(
   ref: PerspectiveObservationsRef,
   input: AddPerspectiveObservationInput,
 ): Promise<PerspectiveObservation> {
-  const state = ref.state
+  // Generated once, so the id is stable across CAS retries; only `addedAt` is
+  // derived from the state each invocation receives.
+  const id = `pobs_${shortId()}`
 
-  const observation: PerspectiveObservation = {
-    id: `pobs_${shortId()}`,
-    content: input.content,
-    category: input.category ?? 'observation',
-    confidence: input.confidence ?? 0.7,
-    source: input.source,
-    addedAt: state.turnCounter,
+  const added = await updateStateWith(ref, (s) => {
+    // Stamped from the state this invocation received, so a replayed write
+    // returns — and commits — the turn counter that actually won.
+    const observation: PerspectiveObservation = {
+      id,
+      content: input.content,
+      category: input.category ?? 'observation',
+      confidence: input.confidence ?? 0.7,
+      source: input.source,
+      addedAt: s.turnCounter,
+    }
+
+    return {
+      state: { ...s, observations: [...s.observations, observation] },
+      result: observation,
+    }
+  })
+
+  if (added === undefined) {
+    throw new Error('[perspective] addPerspectiveObservation: the updater never ran')
   }
-
-  await ref.updateState((s) => ({
-    ...s,
-    observations: [...s.observations, observation],
-  }))
-
-  return observation
+  return added
 }
 
 /**
@@ -239,19 +248,14 @@ export async function removePerspectiveObservation(
   ref: PerspectiveObservationsRef,
   id: string,
 ): Promise<boolean> {
-  let removed = false
-
-  await ref.updateState((s) => {
+  return (await updateStateWith(ref, (s) => {
     const idx = s.observations.findIndex((o) => o.id === id)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
-    removed = true
     const observations = [...s.observations]
     observations.splice(idx, 1)
-    return { ...s, observations }
-  })
-
-  return removed
+    return { state: { ...s, observations }, result: true }
+  })) ?? false
 }
 
 /**
@@ -332,26 +336,33 @@ export async function addPerspectivePosition(
   input: AddPerspectivePositionInput,
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<PerspectivePosition> {
-  const addedAt = observationsRef
-    ? observationsRef.state.turnCounter
-    : ref.state.positions.length
+  // Generated once, so the id is stable across CAS retries.
+  const id = `ppos_${shortId()}`
 
-  const position: PerspectivePosition = {
-    id: `ppos_${shortId()}`,
-    claim: input.claim,
-    reasoning: input.reasoning,
-    confidence: input.confidence ?? 0.7,
-    supportingObservations: input.supportingObservations ?? [],
-    challenges: [],
-    addedAt,
+  const added = await updateStateWith(ref, (s) => {
+    // The positional fallback is derived from the state this invocation
+    // received — it indexes the very array a conflict would have changed.
+    // The `observationsRef` branch reads a DIFFERENT resource, which this
+    // callback does not receive, so it stays an outer read by necessity.
+    const addedAt = observationsRef ? observationsRef.state.turnCounter : s.positions.length
+
+    const position: PerspectivePosition = {
+      id,
+      claim: input.claim,
+      reasoning: input.reasoning,
+      confidence: input.confidence ?? 0.7,
+      supportingObservations: input.supportingObservations ?? [],
+      challenges: [],
+      addedAt,
+    }
+
+    return { state: { ...s, positions: [...s.positions, position] }, result: position }
+  })
+
+  if (added === undefined) {
+    throw new Error('[perspective] addPerspectivePosition: the updater never ran')
   }
-
-  await ref.updateState((s) => ({
-    ...s,
-    positions: [...s.positions, position],
-  }))
-
-  return position
+  return added
 }
 
 /**
@@ -368,22 +379,18 @@ export async function challengePerspectivePosition(
   observationsRef?: PerspectiveObservationsRef,
 ): Promise<boolean> {
   const addedAt = observationsRef ? observationsRef.state.turnCounter : 0
-  let challenged = false
 
-  await ref.updateState((s) => {
+  return (await updateStateWith(ref, (s) => {
     const idx = s.positions.findIndex((p) => p.id === positionId)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
-    challenged = true
     const positions = [...s.positions]
     positions[idx] = {
       ...positions[idx],
       challenges: [...positions[idx].challenges, { evidence, addedAt }],
     }
-    return { ...s, positions }
-  })
-
-  return challenged
+    return { state: { ...s, positions }, result: true }
+  })) ?? false
 }
 
 /**
@@ -393,19 +400,14 @@ export async function removePerspectivePosition(
   ref: PerspectivePositionsRef,
   id: string,
 ): Promise<boolean> {
-  let removed = false
-
-  await ref.updateState((s) => {
+  return (await updateStateWith(ref, (s) => {
     const idx = s.positions.findIndex((p) => p.id === id)
-    if (idx < 0) return s
+    if (idx < 0) return { state: s, result: false }
 
-    removed = true
     const positions = [...s.positions]
     positions.splice(idx, 1)
-    return { ...s, positions }
-  })
-
-  return removed
+    return { state: { ...s, positions }, result: true }
+  })) ?? false
 }
 
 /** Read all positions in insertion order. */

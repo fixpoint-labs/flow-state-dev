@@ -91,16 +91,152 @@ describe("SQLite resource durability across restart", () => {
 
   it("resource state survives close and reopen", async () => {
     const first = createSQLiteStores({ filename: tmpFile });
-    await first.resourceState.set("session", "sess_1", "counter", { count: 42 });
-    await first.resourceState.set("session", "sess_1", "items/a", { label: "a", nested: { ok: true } });
+    await first.resourceState.set("session", "sess_1", "counter", { count: 42 }, 0);
+    await first.resourceState.set(
+      "session",
+      "sess_1",
+      "items/a",
+      { label: "a", nested: { ok: true } },
+      0
+    );
     first.close();
 
     const second = createSQLiteStores({ filename: tmpFile, skipSchemaInit: true });
-    expect(await second.resourceState.get("session", "sess_1", "counter")).toEqual({ count: 42 });
+    expect(await second.resourceState.get("session", "sess_1", "counter")).toEqual({
+      state: { count: 42 },
+      version: 1
+    });
     expect(await second.resourceState.get("session", "sess_1", "items/a")).toEqual({
-      label: "a",
-      nested: { ok: true }
+      state: { label: "a", nested: { ok: true } },
+      version: 1
     });
     second.close();
+  });
+});
+
+/**
+ * Migration and retention behaviour specific to the SQL adapter: the columns
+ * are added to an existing table rather than rebuilt into a new one, and the
+ * retained tombstone survives a real close/reopen — which is the only place
+ * "retention is the guarantee" can actually be observed durably.
+ */
+describe("SQLite resource_state versioning migration", () => {
+  let tmpFile: string;
+  beforeEach(() => {
+    tmpFile = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "fsd-sqlite-migrate-")),
+      "store.db"
+    );
+  });
+  afterEach(() => {
+    fs.rmSync(path.dirname(tmpFile), { recursive: true, force: true });
+  });
+
+  /** Create the table exactly as it existed before versioning. */
+  function seedPreMigrationTable(db: Database.Database): void {
+    db.exec(`
+      CREATE TABLE resource_state (
+        scope_type    TEXT NOT NULL,
+        scope_id      TEXT NOT NULL,
+        resource_key  TEXT NOT NULL,
+        state         TEXT NOT NULL,
+        PRIMARY KEY (scope_type, scope_id, resource_key)
+      );
+    `);
+    db.prepare(
+      "INSERT INTO resource_state (scope_type, scope_id, resource_key, state) VALUES (?,?,?,?)"
+    ).run("session", "s1", "legacy", JSON.stringify({ hello: "world" }));
+  }
+
+  it("adds the columns to the existing table without rebuilding it, and a legacy row reads live at version 1", async () => {
+    const raw = new Database(tmpFile);
+    seedPreMigrationTable(raw);
+    raw.close();
+
+    const stores = createSQLiteStores({ filename: tmpFile });
+    // An existing row must never read as absence.
+    expect(await stores.resourceState.get("session", "s1", "legacy")).toEqual({
+      state: { hello: "world" },
+      version: 1
+    });
+    // …so create-if-absent against it conflicts.
+    const created = await stores.resourceState.set(
+      "session",
+      "s1",
+      "legacy",
+      { x: 1 },
+      0
+    );
+    expect(created.ok).toBe(false);
+    stores.close();
+
+    // `state` is still NOT NULL and the table was never rebuilt — that is what
+    // makes this migration purely additive, and it is what a `{}` tombstone
+    // payload buys instead of a nullable state column.
+    const check = new Database(tmpFile);
+    const cols = check
+      .prepare("SELECT name, [notnull] FROM pragma_table_info('resource_state')")
+      .all() as Array<{ name: string; notnull: number }>;
+    const state = cols.find((c) => c.name === "state");
+    expect(state?.notnull).toBe(1);
+    expect(cols.map((c) => c.name)).toEqual(
+      expect.arrayContaining(["state", "version", "lifecycle"])
+    );
+    check.close();
+  });
+
+  it("is idempotent across two boots", async () => {
+    const raw = new Database(tmpFile);
+    seedPreMigrationTable(raw);
+    raw.close();
+
+    const first = createSQLiteStores({ filename: tmpFile });
+    await first.resourceState.set("session", "s1", "legacy", { hello: "again" }, 1);
+    first.close();
+
+    // Second boot re-runs the same DDL — the column probes make it a no-op
+    // rather than an error, and no data is disturbed.
+    const second = createSQLiteStores({ filename: tmpFile });
+    expect(await second.resourceState.get("session", "s1", "legacy")).toEqual({
+      state: { hello: "again" },
+      version: 2
+    });
+    second.close();
+  });
+
+  it("retains a tombstone across a close and reopen, so a pre-delete version still conflicts", async () => {
+    const first = createSQLiteStores({ filename: tmpFile });
+    await first.resourceState.set("session", "s1", "k", { v: 1 }, 0); // version 1
+    await first.resourceState.delete("session", "s1", "k", 1);
+    first.close();
+
+    const second = createSQLiteStores({ filename: tmpFile, skipSchemaInit: true });
+    // The tombstone reads as absent…
+    expect(await second.resourceState.get("session", "s1", "k")).toBeUndefined();
+    // …but its version survived the restart, so a recreate does not reuse it
+    const recreated = await second.resourceState.set("session", "s1", "k", { v: 2 }, 0);
+    expect(recreated).toEqual({ ok: true, version: 2 });
+    // …and a straggler holding the pre-delete version still conflicts.
+    const straggler = await second.resourceState.set("session", "s1", "k", { v: 9 }, 1);
+    expect(straggler.ok).toBe(false);
+    second.close();
+  });
+
+  it("stores a tombstone as an empty object rather than the last value", async () => {
+    const stores = createSQLiteStores({ filename: tmpFile });
+    await stores.resourceState.set("session", "s1", "k", { secret: "value" }, 0);
+    await stores.resourceState.delete("session", "s1", "k", 1);
+    stores.close();
+
+    const check = new Database(tmpFile);
+    const row = check
+      .prepare(
+        "SELECT state, version, lifecycle FROM resource_state WHERE resource_key = 'k'"
+      )
+      .get() as { state: string; version: number; lifecycle: string };
+    expect(row.lifecycle).toBe("deleted");
+    expect(row.version).toBe(1); // retained
+    expect(JSON.parse(row.state)).toEqual({}); // payload dropped
+    check.close();
   });
 });

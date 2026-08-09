@@ -40,7 +40,7 @@ export const meta = {
   whenToUse:
     'Dispatched by the epic-lifecycle skill as steps 2–4 of its loop, once per wake. Not run standalone — it expects the coordinator status table as args and returns the updated one.',
   phases: [
-    { title: 'Refresh', detail: 'epic gate + Linear states + per-issue PR state (scout)' },
+    { title: 'Refresh', detail: 'epic gate + Linear states + one batched PR scan over the rows a fresh read can still move' },
     { title: 'Advance', detail: 'one bounded issue-worker per pending issue, up to the cap' },
     { title: 'Settle', detail: 'dedupe disputed claims, run POCs, route verdicts' },
   ],
@@ -110,6 +110,58 @@ function cappedAwaitingDirection(row) {
   return (
     row.phase === 'PR_FEEDBACK' && atPrFeedbackCap(row.prFeedbackRounds) && !row.linearTerminal && !row.merged
   )
+}
+
+/**
+ * The category label that opens the direct route. Anchored, so "Debug" is not a bug — the only
+ * path to implementation with no human sign-off in front of it should not turn on a substring.
+ */
+const BUG_CATEGORY = /^bugs?$/i
+
+/**
+ * Which route an issue takes into implementation.
+ * → orchestration.md § "Which issues get a spec" (canonical).
+ *
+ * A **bug** takes the `direct` route: no spec, no spec PR, and NO spec-approval gate — its only
+ * human gate is the merge. Everything else takes the `spec` route and is unchanged.
+ *
+ * Three things override the label, and all three live HERE rather than being re-tested at each
+ * consumer — a route decided in two places is a row that is `direct` to the dispatcher and `spec`
+ * to the gate filter, which is either ungated code or a gate nobody can satisfy:
+ *
+ * 1. **A spec PR exists.** Someone specced it deliberately; honour that rather than stranding a
+ *    reviewed document. This also covers the bug that was already mid-spec when it got relabelled.
+ * 2. **A worker promoted it** (`specRequired`) — it found no reproduction, or found the "bug" is
+ *    really a feature. Sticky, because the label still says Bug and the next refresh would
+ *    otherwise re-derive `direct` and undo the promotion every wake.
+ * 3. **The scout DIED.** No observation at all, so the carried route stands (defaulting to `spec`).
+ *    This is the only case that carries a route forward, and the distinction from case 4 is the
+ *    whole point: "we did not look" is not the same answer as "we looked and there is no label."
+ * 4. **Observed with NO category.** Fails closed to `spec` — never to the carried route. The scan
+ *    prompt asks for the label verbatim and `null` only when the issue genuinely carries none, so
+ *    a null is evidence the issue is uncategorized, not evidence it is still whatever it was.
+ *    Preserving `direct` here would leave a row ungated after its Bug label was *removed* — the
+ *    one mutation a human makes precisely to re-gate it — and it contradicts the contract that
+ *    every refresh re-routes from the current category. Failing closed costs one unnecessary
+ *    document; failing open ships code through the one route with no gate in front of it.
+ *
+ * @param row       the carried record (its `route` is the fallback, never the authority)
+ * @param li        this wake's Linear read for the issue
+ * @param observed  did the Linear scan actually report this issue?
+ * @param specPr    the RESOLVED spec PR handle (carried or freshly scanned), not `row.specPr`
+ */
+function routeFor(row, li, observed, specPr) {
+  if (specPr) return 'spec'
+  if (row.specRequired) return 'spec'
+  if (!observed) return row.route || 'spec'
+  const category = ((li && li.category) || '').trim()
+  if (!category) return 'spec'
+  return BUG_CATEGORY.test(category) ? 'direct' : 'spec'
+}
+
+/** A pure field read, deliberately: `routeFor` is the only thing that decides this. */
+function isDirectRoute(row) {
+  return row.route === 'direct'
 }
 
 /**
@@ -215,6 +267,12 @@ function pendingAction(row) {
       return null
 
     case 'NEEDS_IMPLEMENTATION':
+      // A DIRECT-route row (a bug) reaches implementation with no spec and no approval, by design
+      // — this is the phase it enters at. Both guards below are about the spec-approval gate, and
+      // neither has anything to hold: there is no spec to approve, and no spec to be incoherent
+      // with the rest of the set. Applying them anyway parks every bug in the epic forever, on a
+      // gate the coordinator is explicitly told never to surface for these rows.
+      if (isDirectRoute(row)) return { action: 'implement', why: 'bug — direct route, no spec required' }
       // The phase NAME asserts approval; only `specApproved` establishes it, and the schema validates
       // the two independently — so a scout that derives the phase wrongly would dispatch
       // implementation on a spec no human ever approved. This is the one gate that must never be
@@ -280,6 +338,61 @@ function pendingAction(row) {
     return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
   }
   return null
+}
+
+/**
+ * Rows that get NO refresh scout this wake, because a fresh read of their PR cannot change what the
+ * wake does with them.
+ *
+ * `pendingAction` parks a row carrying an unresolved human decision, and it parks a terminal one with
+ * nothing left to apply — in both cases BEFORE it reads a single scan-derived field. One real wake
+ * dispatched twelve agents and spent five of them refreshing rows it then refused to dispatch, all
+ * five parked behind a `blocker`: ~40% of the spend, by construction, on answers nothing could act on.
+ * These rows are carried forward verbatim instead.
+ *
+ * Decided from the CARRIED row alone, because the decision has to be made before the scan barrier: the
+ * Linear children query runs in the same `parallel()` as the scouts, so this wake's Linear state does
+ * not exist yet. Every input here is coordinator state or the previous wake's Linear read.
+ *
+ * `linearTerminal`, deliberately, rather than `phase === 'DONE'`. Only a scan can move a phase off
+ * DONE, so keying on the phase would make the skip self-sustaining: a human reopening a finished issue
+ * mid-epic would never be looked at again. `linearTerminal` is refreshed every wake by the children
+ * query, which is not per-row and stays — so a reopened issue drops out of this set and is scanned on
+ * the next wake. The cost is that a row whose merge the coordinator has not yet mirrored to Linear
+ * keeps its scan for a wake or two, which is the safe direction.
+ *
+ * Three things deliberately keep their scan:
+ *
+ * 1. **A `closedBlocker`.** That blocker is a scan OBSERVATION (the impl PR was closed unmerged), not a
+ *    durable escalation — `foldMultiPrScan` clears it as soon as a scan sees the handle open again.
+ *    Skipping the scan would make the recovery its own blocker text advertises unreachable.
+ * 2. **A terminal row with a landed verdict or an answered decision.** `pendingAction` dispatches those
+ *    (`apply-verdict` / `apply-decision`), so the row is not parked at all.
+ * 3. **Anything another row is blocked by.** `openBlockers` clears a blocked-by relation only on LIVE
+ *    merge evidence — Linear state is a mirror, the merge is the fact — and reads a missing scan as
+ *    "unobserved", which keeps the dependent blocked. Since the terminal skip would never lift on its
+ *    own, that block would be permanent. One extra scan per prerequisite, and only while something is
+ *    actually waiting on it.
+ *
+ * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks on it too: that
+ * relation can go away in this very wake's children query, and the row becomes dispatchable
+ * immediately — with no fresh read of its PR to dispatch from.
+ *
+ * @param row            the carried record
+ * @param prerequisites  ids named by any carried row's `blockedBy`
+ */
+function noScanNeeded(row, prerequisites) {
+  if (prerequisites.has(row.id)) return false
+  // Checked BEFORE the terminal branch, not inside the non-terminal one. The three exceptions above are a
+  // flat list, and reading `closedBlocker` only on one path made a row that is both terminal in Linear and
+  // carrying a closed-PR observation skippable forever — the recovery its own blocker text advertises is
+  // a scan, so it became unreachable. That is the defect this file keeps producing: two predicates over
+  // the same state, disagreeing.
+  if (row.closedBlocker) return false
+  if (row.linearTerminal) {
+    return !(row.verdicts || []).length && !(row.blockerResolutions || []).length && !row.blockerResolution
+  }
+  return !!row.blocker
 }
 
 /**
@@ -562,6 +675,11 @@ function cursorUsable(row) {
  * is no spec to approve and it needs authoring.
  */
 function approvalGatedPhase(row) {
+  // A direct-route row is UNAPPROVED BY CONSTRUCTION — a bug has no spec to approve. Without this
+  // exemption the correction fires on every bug sitting at NEEDS_IMPLEMENTATION and knocks it back
+  // to NEEDS_SPEC, where `pendingAction` dispatches `issue-spec`: the exact document the route
+  // exists to skip, authored on a loop, since the next refresh re-derives `direct` and does it again.
+  if (isDirectRoute(row)) return null
   if (row.phase !== 'NEEDS_IMPLEMENTATION' || row.specApproved) return null
   return row.specPr ? 'AWAITING_SPEC_APPROVAL' : 'NEEDS_SPEC'
 }
@@ -571,6 +689,23 @@ function approvalGatedPhase(row) {
 const PRE_APPROVAL_PHASES = new Set(['NEEDS_SPEC', 'AWAITING_SPEC_APPROVAL'])
 /** Phases that assert the spec IS signed off. */
 const POST_SPEC_PHASES = new Set(['NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE'])
+
+/**
+ * A direct-route row's entry phase is NEEDS_IMPLEMENTATION, not NEEDS_SPEC.
+ *
+ * Nothing sets it there directly, and that is deliberate — a row is created (or discovered) before
+ * anything has read its category, so the route is derived on the refresh that first sees the Linear
+ * label and the phase is corrected here, in the same pass. That covers all three ways a row can
+ * arrive at a spec phase it does not belong in: a newly discovered bug entering the table, a carried
+ * row created before this rule existed, and an issue relabelled Bug mid-epic.
+ *
+ * Only the two PRE-approval phases are corrected. A direct row that has already reached
+ * PR_FEEDBACK or DONE is exactly where it should be.
+ */
+function directRoutePhase(row) {
+  if (!isDirectRoute(row) || !PRE_APPROVAL_PHASES.has(row.phase)) return null
+  return 'NEEDS_IMPLEMENTATION'
+}
 
 /**
  * Does this worker-reported phase jump ACROSS the approval gate?
@@ -595,15 +730,25 @@ const POST_SPEC_PHASES = new Set(['NEEDS_IMPLEMENTATION', 'PR_FEEDBACK', 'DONE']
  * implementation PR is open makes the next wake dispatch `issue-spec` and open a second spec PR for work
  * already under review. Re-gating a row is a decision, and no scan gets to make it.
  */
-function scoutPhaseFor(row, reportedPhase, scanApproved) {
+function scoutPhaseFor(row, reportedPhase, scanApproved, route) {
   if (!reportedPhase) return row.phase
-  if (jumpsTheApprovalGate({ ...row, specApproved: scanApproved }, reportedPhase)) return row.phase
+  // `route` is passed in for the same reason `scanApproved` is: both are derived from THIS wake's
+  // scan, and the carried row does not have them yet. Reading `row.route` here instead would leave
+  // the gate exemption unreachable on the first wake that classifies an issue as a bug — which is
+  // exactly the wake a bug with an already-open PR needs it, since refusing that report as a
+  // "bypass" sends the row back to `implement` and opens a second PR for the same fix.
+  if (jumpsTheApprovalGate({ ...row, specApproved: scanApproved, route }, reportedPhase)) return row.phase
   const regresses = POST_SPEC_PHASES.has(row.phase) && PRE_APPROVAL_PHASES.has(reportedPhase)
   if (regresses && (row.implPr || (row.subPrs || []).length)) return row.phase
   return reportedPhase
 }
 
 function jumpsTheApprovalGate(row, reportedPhase) {
+  // There is no gate to jump on the direct route. A bug carried at NEEDS_SPEC (it has not been
+  // corrected yet — see `directRoutePhase`) whose worker legitimately opened an impl PR would
+  // otherwise have that report refused as a bypass, and the row would report progress it made and
+  // then be told it did not make it.
+  if (isDirectRoute(row)) return false
   if (!reportedPhase || row.specApproved) return false
   return PRE_APPROVAL_PHASES.has(row.phase) && POST_SPEC_PHASES.has(reportedPhase)
 }
@@ -972,6 +1117,13 @@ function nextRow(row, { worker, action, landed, folded }) {
           ? !!row.specLevelFound
           : !!worker.specLevelFound,
     readyToMerge: !!worker.readyToMerge,
+    // A direct-route worker refusing to build (no reproduction, or not really a bug) promotes its
+    // row back to the spec route. STICKY, and that is the whole reason it is a persisted field
+    // rather than an immediate phase change: the Linear label still says Bug, so the next refresh
+    // would re-derive `direct` and undo the promotion — every wake, forever. `routeFor` reads it
+    // first for exactly that reason. Never cleared here; only a human relabelling the issue, or a
+    // spec PR actually existing, ends it.
+    specRequired: worker.specRequired || row.specRequired || null,
     blocker: worker.blocker || unsettledBlocker || null,
     // CONSUMED by this dispatch, which carried it in the prompt. A one-shot handoff, not durable
     // state: left set, every later worker on this row would be told an already-implemented decision
@@ -1389,6 +1541,29 @@ function approvedInSessionFor(row, fresh, refreshedLive) {
   return false
 }
 
+/**
+ * THE spec-approval decision. Every channel and every veto lives here, and nothing outside computes
+ * approval from parts.
+ *
+ * Approval arrives three ways — an approving human comment/review on the current head, the
+ * `spec approved` label, or an in-session go-ahead the coordinator recorded — and a human
+ * `CHANGES_REQUESTED` vetoes all of them.
+ *
+ * It is one function because it was three expressions, and a rule added to a scattered OR has to be
+ * remembered at every branch. It wasn't: the change-request veto was added to the comment/review and
+ * label branches and missed on the in-session one, which let a spec enter implementation past a
+ * change request. Review had caught the same shape one round earlier on a different branch. Composing
+ * the channels in one place makes the next rule impossible to half-apply.
+ */
+function specApprovalFor(row, fresh, refreshedLive) {
+  // A veto needs a live observation to be trusted. Without one there is nothing to veto WITH, and the
+  // channels below already refuse to release on a dead scout.
+  if (refreshedLive && fresh.humanChangesRequested) return false
+  const byReview = refreshedLive && !!(fresh.specApproved && fresh.headSha)
+  const byLabel = refreshedLive && !!fresh.specApprovedByLabel
+  return byReview || byLabel || approvedInSessionFor(row, fresh, refreshedLive)
+}
+
 function bindByPosition(results, ids, onMismatch) {
   const byId = new Map()
   results.forEach((res, i) => {
@@ -1443,9 +1618,19 @@ const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
-  required: ['approved', 'newReviewEvents', 'headSha', 'latestActivityAt'],
+  required: ['approved', 'approvedByLabel', 'humanChangesRequested', 'newReviewEvents', 'headSha', 'latestActivityAt'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
+    approvedByLabel: {
+      type: 'boolean',
+      description:
+        'The `epic approved` label is present on the PR. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
+    },
+    humanChangesRequested: {
+      type: 'boolean',
+      description:
+        "A human's LATEST review state on the epic PR is CHANGES_REQUESTED. Outranks the label, which is standing state the owner revokes by removing and which therefore survives a later change request. Bots never count.",
+    },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
     newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
@@ -1471,6 +1656,14 @@ const LINEAR_SCHEMA = {
           id: { type: 'string' },
           state: { type: 'string' },
           blockedBy: { type: 'array', items: { type: 'string' }, description: 'Open blocked-by relations; [] when there are none' },
+          // The ROUTE's input → orchestration.md § "Which issues get a spec". Deliberately NOT
+          // required: an omission (or a null) keeps the carried route and otherwise defaults to
+          // `spec`, which is the safe direction. Requiring it would make a scout that cannot read
+          // labels fail the whole scan, which costs a wake of every issue rather than one document.
+          category: {
+            type: ['string', 'null'],
+            description: 'The Linear category label (Bug / Feature / Enhancement / Improvement). "Bug" routes the issue straight to implementation with no spec.',
+          },
         },
       },
     },
@@ -1486,9 +1679,20 @@ const PR_STATE_SCHEMA = {
   // rule for any field an action depends on — and the epic gate's own schema has always required it.
   // `['string','null']` still lets a scout say "did not observe"; what it can no longer do is stay
   // silent and have the approval accepted anyway.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
+  // `observed` is REQUIRED and it is what makes batching safe. With one scout per issue, a dead
+  // scout was a null result and invariant 1 handled it; in ONE scan covering ten issues there is no
+  // per-row null to return. A scan that ran out of room after six issues would otherwise report the
+  // last four as quiet — which reads as four confirmed-unchanged rows, advances four cursors past
+  // feedback nobody read, and clears four sets of flags. So every entry says whether it was actually
+  // looked at, and an unobserved one is discarded exactly as a dead scout's result was.
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
   properties: {
     issueId: { type: 'string' },
+    observed: {
+      type: 'boolean',
+      description:
+        'Did you ACTUALLY read this issue\'s PRs on this pass? false for any issue you did not reach — ran out of room, the read failed, anything. Everything else in the entry is then ignored. "Nothing changed" is `true` with the flags false; `false` means "I did not look", and reporting the second as the first advances a cursor past feedback nobody has read.',
+    },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
     // A PR CLOSED WITHOUT MERGING was unreportable: the scout reads PR metadata, but the only outcomes it
     // could express were merged / ready / not-ready. A single-PR row then sat in PR_FEEDBACK forever —
@@ -1502,6 +1706,16 @@ const PR_STATE_SCHEMA = {
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
+    specApprovedByLabel: {
+      type: 'boolean',
+      description:
+        'The `spec approved` label is present on the spec PR. Presence alone — the owner signs off this way too, and a label is standing state whose removal is the revocation, so it does not expire on a push.',
+    },
+    humanChangesRequested: {
+      type: 'boolean',
+      description:
+        "A human's LATEST review state on the spec PR is CHANGES_REQUESTED. Reported separately because it must outrank the label: `spec approved` is standing state revoked only by removal, so a label the owner applied and then left in place would otherwise carry an issue past a change request nobody addressed. Bots never count.",
+    },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
@@ -1540,6 +1754,28 @@ const PR_STATE_SCHEMA = {
         'ISO timestamp of the newest comment/review seen. REQUIRED to be non-null whenever newSpecReviewEvents or newPrEvents is true — without it the cursor cannot advance past the batch a worker just consumed, and the same events are rediscovered every wake.',
     },
     headSha: { type: ['string', 'null'], description: 'Current head SHA of the open PR this row is waiting on' },
+  },
+}
+
+/**
+ * The whole refresh, from ONE scan.
+ *
+ * `issues` is ORDERED to match the list the prompt gives, and each entry names its issue. Both,
+ * deliberately: the order is what binds a result to a row (→ `bindByPosition`), and the name is only
+ * a cross-check that discards a shifted or misattributed entry. Keying on the reported name instead
+ * would let one issue's approval land on another row, which is the one thing the refresh has an
+ * invariant against.
+ */
+const PR_SCAN_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['issues'],
+  properties: {
+    issues: {
+      type: 'array',
+      description: 'One entry per issue in the list, in the same order — including any you could not read (`observed: false`).',
+      items: PR_STATE_SCHEMA,
+    },
   },
 }
 
@@ -1587,7 +1823,11 @@ const WORKER_SCHEMA = {
           branch: { type: ['string', 'null'] },
           stackedOn: { type: ['string', 'null'] },
           dependsOn: { type: 'array', items: { type: 'string' }, description: 'Only if the plan itself changed — omit to keep the carried edges' },
-          blocker: { type: ['string', 'null'], description: 'This slice needs a human decision' },
+          blocker: {
+            type: ['string', 'null'],
+            description:
+              'This slice needs a human decision. Same shape as the row-level blocker: all six parts of the ask, per docs/contributing/asking-for-decisions.md.',
+          },
           answerApplied: {
             type: 'boolean',
             description:
@@ -1629,8 +1869,21 @@ const WORKER_SCHEMA = {
         'Did this dispatch spend a PR-feedback round? 1 for a normal pass over the batch, 0 for a batch that was only acknowledgements and process chatter. Never more than 1, however many PR handles the pass touched. Omit and you are charged 1.',
     },
     specLevelFound: { type: 'boolean', description: 'Did this round surface a genuine spec-level finding? Authorizes the third round.' },
+    // A direct-route (bug) worker promoting its row BACK to the spec route. The reason, not a
+    // boolean: it is logged and it is what tells the human why a bug is suddenly being specced.
+    // Sticky once set (see `routeFor`), because the Linear label still says Bug and the next
+    // refresh would otherwise re-derive `direct` and undo the promotion on every wake.
+    specRequired: {
+      type: ['string', 'null'],
+      description:
+        'Set ONLY by a direct-route (bug) worker that refused to build: the issue has no reproduction and an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). One line saying which and why. A design decision found mid-diagnosis is NOT this — that ships with the fix and is surfaced on the PR.',
+    },
     settleRequested: SETTLE_REQUESTED_SCHEMA,
-    blocker: { type: ['string', 'null'], description: 'Needs a human decision — the coordinator surfaces it' },
+    blocker: {
+      type: ['string', 'null'],
+      description:
+        'Needs a human decision — the coordinator surfaces it. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
+    },
     readyToMerge: { type: 'boolean' },
     status: { type: 'string', description: 'One compact status line' },
   },
@@ -1714,59 +1967,129 @@ const POC_SCHEMA = {
 // The wake
 // ---------------------------------------------------------------------------
 
-const epic = args.epic
-const rows = args.issues || []
+// The Workflow tool delivers `args` as a JSON string at runtime, while `verify.mjs` passes
+// an object. Normalize so the script reads the same either way — reading `args.x` off a
+// string silently yields `undefined` for every field, which fails far from the cause.
+const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const epic = input.epic
+const rows = input.issues || []
+// The GitHub login authorized to sign off by LABEL. The label is the owner's channel by contract,
+// and a label is writable by every collaborator and every bot with write access — so "a human
+// applied it" is not the test, "the owner applied it" is. Absent, the label channel is simply OFF
+// (the scouts are told to report it false); comment and review approval are unaffected. Fail-closed
+// on purpose: widening to any human here is the same class of bug as reading the label at all was.
+const approvalOwner = typeof input.owner === 'string' && input.owner.trim() ? input.owner.trim() : null
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
-const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
-const requests = args.settleRequests || []
+const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
+const requests = input.settleRequests || []
 
 phase('Refresh')
 
+// THREE states, not two, and the last two mean opposite things. Naming them apart is the whole
+// safety of this cut:
+//
+//   · scanned and returned       → `freshById.has(id)`; the live observation is authoritative.
+//   · CARRIED FORWARD on purpose → `carriedForward.has(id)`; no scout was dispatched, nothing was
+//     contradicted, and the row's own state is the best evidence there is.
+//   · the scout DIED             → in neither set. NOTHING happened (invariant 1): no cursor moves,
+//     no blocker clears, and scan-derived fields fall back to their fail-closed defaults.
+//
+// The `fresh = {}` path in the refresh below serves the third case: it CLEARS `readyToMerge`,
+// `ciFailed`, `specApproved` and the per-handle states, because a scan that failed is not evidence
+// those are still true. Applying it to the second case would be wrong in the opposite direction — it
+// would erase state this wake never looked at, on a row that is parked precisely so nothing acts on
+// it. So a carried-forward row takes its own branch there and never touches that path.
+const prerequisites = new Set(rows.flatMap((r) => r.blockedBy || []))
+const carriedForward = new Set(rows.filter((r) => noScanNeeded(r, prerequisites)).map((r) => r.id))
+const scannedRows = rows.filter((r) => !carriedForward.has(r.id))
+if (carriedForward.size) {
+  // No silent economies: a row nobody looked at says so, the same way a capped or deferred one does.
+  log(
+    `Refreshing ${scannedRows.length} of ${rows.length} row(s): ${[...carriedForward].join(', ')} carried forward without a PR scan — each is parked on an unresolved decision or already terminal, so a ` +
+      `fresh read could not change what this wake does with it. Their Linear state, blocked-ness and route still refresh from the children query, which is one agent for the whole set.`,
+  )
+}
+
 // Barrier, and justified: the epic gate holds EVERY issue, and the cap is a decision
 // across the whole set — nothing can be dispatched before all rows are known.
-const [gate, linear, ...prStates] = await parallel([
+const [gate, linear, prScan] = await parallel([
   () =>
     agent(
       `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+        (approvalOwner
+          ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
+            `  · WHO — verify provenance. Read the PR's timeline for \`labeled\` events naming \`epic approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\`. Not "a human" — this label is that account's authorization channel specifically, and a label is writable by every collaborator and every bot with write access, so accepting it from anyone else releases every child issue without the sign-off the gate exists to require. If the timeline is unreadable, or no \`labeled\` event can be found for a label that is present, or the most recent one was applied by anybody else, report FALSE — an approval you cannot attribute to \`${approvalOwner}\` is not an approval.\n` +
+            `  · WHEN — do NOT check. Once the actor is \`${approvalOwner}\`, presence is the whole test: do not compare the label against the head commit and do not treat a later push as invalidating it. An epic-spec PR takes commits continuously as feedback is folded, so a staleness rule would revoke the approval on the next edit and hold the entire set. A label is standing state the owner can REMOVE; removal is the revocation.\n` +
+            `Check the labels even when you find no approving comment. Report it independently of \`approved\` — do not fold one into the other, and do not infer it from body text claiming approval.\n`
+          : `The \`epic approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report approvedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
+        `ALSO report humanChangesRequested:true when any human's LATEST review state is CHANGES_REQUESTED. It outranks the label, which is standing state that survives a later change request until the owner removes it. Bots never count.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
   () =>
     agent(
-      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's id, current state name, and the ids of any open blocked-by relations. Do not fetch them individually.\n` +
+      `In ONE Linear query, fetch epic issue ${epic.issueId}, all of its sub-issues (parent→children), AND these issues already tracked under this epic: ${rows.map((r) => r.id).join(', ') || '(none)'}. Return each one's id, current state name, its CATEGORY label, and the ids of any open blocked-by relations. Do not fetch them individually.\n` +
+        `The category is what ROUTES the issue: "Bug" sends it straight to implementation with no spec. Report the label verbatim; report null if the issue genuinely carries no category label, and never infer one from the title — an unread category safely keeps the issue on the spec route, an invented one can send a feature to implementation ungated.\n` +
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
     ),
-  ...rows.map(
-    (row) => () =>
-      agent(
-        `Derive the current lifecycle phase of Linear issue ${row.id} from durable state only. Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
-          // A multi-PR issue has NO single `implPr` — the real handles are the sub-PR table. Told
-          // only "Impl PR: none", the scout has nothing to read, so a subscribed sub-PR event wakes
-          // the coordinator and the row still reports no activity: stuck in PR_FEEDBACK for good.
-          (row.subPrs && row.subPrs.length
-            ? `This issue implements as a DAG of sub-PRs; there is no single impl PR. Treat these as its implementation PRs and report activity, CI and merge state across ALL of them: ${row.subPrs
-                .map((s) => `${s.id}=${s.pr ? `#${s.pr}` : 'not opened'}${s.status ? ` (${s.status})` : ''}`)
-                .join(', ')}.\n` +
-              // An AGGREGATE readyToMerge cannot be acted on: a merge gate needs a PR NUMBER, and
-              // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
-              // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
-              // stops at its first merge-ready slice.
-              `Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
-            : '') +
-          // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
-          // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
-          // forever because nothing else can ever set `fixMerged`.
-          (row.assembledGoal && row.assembledGoal.fixPr
-            ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
-            : '') +
-          `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
-          `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
-          `Also report whether CI is failing.`,
-        { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
-      ),
-  ),
+  // ONE scan for the whole set, not one per issue. Ten agents each reading one PR is the same
+  // information as one agent reading ten, at ten times the overhead — and the rules below are the
+  // bulk of the prompt, so stating them once instead of copying them per row makes the batched
+  // prompt SMALLER than the ones it replaces, not larger.
+  //
+  // What batching costs is that failure stops being per-row: a dead scan means NOTHING was observed
+  // for ANY of these issues. That is what invariant 1 already requires, and it is the direction the
+  // rest of the wake is built to survive — every unbound row falls back to its carried state and
+  // advances no cursor. The failure this must never become is the other one: a scan that came back
+  // half-done being read as a set of quiet rows. `observed` is what keeps those apart.
+  ...(scannedRows.length
+    ? [
+        () =>
+          agent(
+            `Scan ${scannedRows.length} issue(s) in this repo and derive each one's current lifecycle phase from durable state only.\n` +
+              `Return \`issues\`: ONE entry per issue below, IN THE SAME ORDER, each carrying its own issueId. Order is what binds your answer to the right issue, so never reorder, merge or drop an entry — if you could not read an issue, still return its entry with observed:false. Report observed:true only for an issue whose PRs you actually read on this pass; "nothing has changed" is observed:true with the flags false, and reporting an issue you never reached that way advances its cursor past feedback nobody has read.\n\n` +
+              scannedRows
+                .map(
+                  (row, i) =>
+                    `[${i + 1}] ${row.id} — Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
+                    // A multi-PR issue has NO single `implPr` — the real handles are the sub-PR table. Told
+                    // only "Impl PR: none", the scan has nothing to read, so a subscribed sub-PR event wakes
+                    // the coordinator and the row still reports no activity: stuck in PR_FEEDBACK for good.
+                    (row.subPrs && row.subPrs.length
+                      ? `    This issue implements as a DAG of sub-PRs; there is no single impl PR. Treat these as its implementation PRs and report activity, CI and merge state across ALL of them: ${row.subPrs
+                          .map((s) => `${s.id}=${s.pr ? `#${s.pr}` : 'not opened'}${s.status ? ` (${s.status})` : ''}`)
+                          .join(', ')}.\n` +
+                        // An AGGREGATE readyToMerge cannot be acted on: a merge gate needs a PR NUMBER, and
+                        // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
+                        // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
+                        // stops at its first merge-ready slice.
+                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
+                      : '') +
+                    // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
+                    // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
+                    // forever because nothing else can ever set `fixMerged`.
+                    (row.assembledGoal && row.assembledGoal.fixPr
+                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
+                      : '') +
+                    // PER ISSUE, and it has to stay that way. The cursor is how this issue tells new
+                    // feedback from feedback a worker already handled; one cursor shared across the batch
+                    // would re-deliver one row's handled batch every time another row saw activity.
+                    `    ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n`,
+                )
+                .join('') +
+              `\nFor EVERY issue above:\n` +
+              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+              (approvalOwner
+                ? `SEPARATELY report specApprovedByLabel:true whenever that issue's spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
+                : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
+              `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: the label is standing state that stays on the PR after a change request lands, so without this it carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
+              `Also report whether CI is failing.`,
+            { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
+          ),
+      ]
+    : []),
 ])
 
 // The epic gate holds every sub-issue at NEEDS_SPEC until the objective is signed off — but it
@@ -1806,7 +2129,17 @@ if (scanned && !gate.headSha) {
 // The cost is one wake of held work whenever the scout flakes, and the next usable scan releases it. The
 // alternative is children authoring specs and PRs against an objective that may have just changed, which
 // costs their rework. This is the gate the file says everywhere must not be bypassable.
-const epicApproved = scanned && gateUsable && !!gate.approved
+// Either channel signs the objective off. The owner marks approval with the `epic approved` LABEL as
+// well as by comment, and reading only comments held a fully-approved epic's entire set indefinitely
+// while the label sat on the PR — the coordinator has no way to assert the gate from `args`, because
+// a live scan's answer overrides the carried one by design.
+//
+// The label does NOT expire on a push, and that difference from a review approval is deliberate. An
+// epic-spec PR takes commits for the life of the epic — every fold is one, #993 carries 94 — so a
+// staleness rule would revoke the objective on the next edit and re-hold the whole set, which is the
+// stall this change exists to remove. A label is standing state the owner can remove at any time, so
+// REMOVAL is the revocation, and it is a control a comment does not have.
+const epicApproved = scanned && gateUsable && !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel)
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.approved) {
   log(
@@ -1822,11 +2155,43 @@ const epicHead = (gate && gate.headSha) || epic.headSha || null
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
 const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
+// The batch, unpacked into the same per-row map the per-issue scouts used to produce — so every
+// reader downstream is unchanged, and the batching is invisible past this line.
+//
+// Bound BY POSITION against the rows that were actually dispatched, with the reported id as a
+// cross-check. Keying on the reported id would be the natural thing to do with an array that names
+// its entries, and it is precisely what the refresh has an invariant against: `issueId` is a
+// free-form string, so one issue's approval could land on another row's gate. Position decides; the
+// name only ever discards.
+const scanEntries = (prScan && prScan.issues) || []
+if (!prScan && scannedRows.length) {
+  // Batching's one real cost, said out loud. One dead scan is now every row's dead scout — which is
+  // the SAFE failure (nothing observed, nothing advanced) and not the dangerous one (rows read as
+  // quiet). The wake still does its Linear-derived work and the next wake retries the reads.
+  log(
+    `The batched PR refresh did not return — NOTHING was observed for any of the ${scannedRows.length} row(s) it covered this wake. Each keeps its carried state, no cursor advances, and no blocker clears; the next wake retries.`,
+  )
+}
+if (prScan && scanEntries.length !== scannedRows.length) {
+  log(
+    `The batched PR refresh returned ${scanEntries.length} entr${scanEntries.length === 1 ? 'y' : 'ies'} for ${scannedRows.length} issue(s) — the positional bind below keeps only the entries whose issueId still matches, so a dropped or reordered entry costs those rows their refresh rather than landing on the wrong one.`,
+  )
+}
+const unobserved = scanEntries.filter((e) => e && !e.observed).map((e) => e.issueId || '(unnamed)')
+if (unobserved.length) {
+  log(
+    `The batched PR refresh reported ${unobserved.join(', ')} as NOT observed — it did not reach ${unobserved.length === 1 ? 'that issue' : 'those issues'}. Treated exactly as a dead scout: carried state stands, no cursor advances.`,
+  )
+}
 const freshById = bindByPosition(
-  prStates,
-  rows.map((r) => r.id),
+  // An unobserved entry is discarded HERE rather than downstream, because "I did not look" and "a
+  // scout died" have to be the same thing to every reader: `refreshedLive` is what voids the
+  // scan-derived fields, and an entry that reached it with `observed: false` would have its empty
+  // flags read as a live, quiet observation.
+  scanEntries.map((e) => (e && e.observed ? e : null)),
+  scannedRows.map((r) => r.id),
   (id, reported) =>
-    log(`refresh:${id} reported issueId ${reported} — discarding the scan rather than binding another issue's read (and its approval) to this row.`),
+    log(`The batched PR refresh reported issueId ${reported} in ${id}'s position — discarding that entry rather than binding another issue's read (and its approval) to this row.`),
 )
 
 // Sub-issues Linear knows about that the carried table doesn't: `issue-manager` parented work
@@ -1853,21 +2218,157 @@ for (const row of rows) {
 }
 
 if (discovered.length) {
-  log(`Discovered ${discovered.length} new sub-issue(s) under the epic: ${discovered.map((d) => d.id).join(', ')} — entering at NEEDS_SPEC.`)
+  log(
+    `Discovered ${discovered.length} new sub-issue(s) under the epic: ${discovered.map((d) => d.id).join(', ')} — entering at their route's entry phase ` +
+      `(NEEDS_SPEC, or NEEDS_IMPLEMENTATION for a bug, which the refresh below corrects from the Linear category).`,
+  )
 }
+
+/**
+ * Drop blocked-by relations whose prerequisite has already finished.
+ *
+ * The scout schema calls this field "Open blocked-by relations", but nothing enforces it, and a
+ * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` refuses a
+ * row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
+ * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
+ * rest of the epic.
+ *
+ * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, so a
+ * blocker outside the epic is unresolvable here and is kept. That fails closed: a stale block
+ * costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
+ *
+ * FINISHED, not merely terminal. `TERMINAL_LINEAR` also matches cancelled / duplicate / dropped —
+ * states where the work is GONE rather than done. Clearing those would admit a dependent whose
+ * prerequisite never landed, which is the opposite failure and a worse one. A cancelled blocker
+ * keeps blocking and is logged, because it can never merge on its own: somebody has to decide
+ * whether the dependent still needs it, and a silent permanent stall is how that decision gets
+ * missed.
+ */
+const cancelledBlockers = new Set()
+const unmergedBlockers = new Set()
+// Carried rows only — `discovered` rows are new this wake and carry no handles to fall back on.
+const carriedById = new Map(rows.map((r) => [r.id, r]))
+const openBlockers = (ids) =>
+  (ids || []).filter((b) => {
+    const bs = linearById.get(b)
+    if (!bs) return true
+    const state = (bs.state || '').trim()
+    if (!TERMINAL_LINEAR.test(state)) return true
+    if (CANCELLED_LINEAR.test(state)) {
+      cancelledBlockers.add(`${b} (${state})`)
+      return true
+    }
+    // Terminal-and-not-cancelled in Linear normally MEANS merged, because the coordinator writes Done
+    // off the merge it observed. But Linear state is a mirror a human can move by hand, and the contract
+    // is that blocked work waits for its blocker to LAND — so where we know the blocker has an impl PR,
+    // only a LIVE `merged: true` clears it. Only for blockers we actually carry as rows: for anything
+    // outside the set we have no PR to look at, and Linear is the only evidence there is. A blocker with
+    // no impl PR anywhere (docs, a dropped row) has nothing to contradict, so Done still clears it.
+    const carriedBlocker = carriedById.get(b)
+    if (carriedBlocker) {
+      const blockerScan = freshById.get(b)
+      // A multi-PR blocker has no row-level `implPr` at all — its handles live in `subPrs[].pr` and
+      // `assembledGoal.fixPr` — so a single-handle check reads it as "no PR" and clears it while
+      // slices are still open. `multiPrPhase` is already the one definition of when such a row is
+      // finished (every slice merged AND the goal proven); asking it here rather than re-deriving the
+      // test keeps a second, drifting answer from existing. It reads CARRIED statuses, so a blocker
+      // whose slices merged during this very wake holds one wake longer — the safe direction, and the
+      // next wake has the updated handles.
+      const multi = multiPrPhase(carriedBlocker)
+      if (multi) {
+        if (multi !== 'DONE') {
+          const open = (carriedBlocker.subPrs || []).filter((s) => s.status !== 'merged').map((s) => s.id)
+          unmergedBlockers.add(
+            `${b} (Linear ${state}, but its PR plan is unfinished${open.length ? ` — ${open.join(', ')} not merged` : ' — goal not yet proven'})`,
+          )
+          return true
+        }
+        return false
+      }
+      // Single-PR: the handle comes from the scan when it observed one and from the carried row
+      // otherwise — the same "null means NOT OBSERVED, keep what we had" rule the row refresh below
+      // applies. Reading only the scan meant a dead scout (no entry) or a partial one
+      // (`implPr: null`) looked exactly like "this blocker has no PR", which cleared the relation on
+      // an infrastructure failure — precisely the invariant that a null agent result must never
+      // advance anything.
+      const knownPr = (blockerScan && blockerScan.implPr) || carriedBlocker.implPr
+      if (knownPr && !(blockerScan && blockerScan.merged === true)) {
+        unmergedBlockers.add(
+          // Three reasons there is no live merge, and the human acts on each differently.
+          // `noScanNeeded` scans every id named by a carried `blockedBy`, so the middle case only
+          // arises for a relation that appeared for the FIRST time in this wake's children query —
+          // the prerequisite was not yet a prerequisite when the skip set was computed. It corrects
+          // itself on the next wake, once the dependent carries the relation.
+          `${b} (Linear ${state}, but #${knownPr} is ${
+            blockerScan
+              ? 'not merged'
+              : carriedForward.has(b)
+                ? 'unobserved — it was carried forward without a scan, and is scanned again next wake now that something depends on it'
+                : 'unobserved — its refresh did not return'
+          })`,
+        )
+        return true
+      }
+    }
+    return false
+  })
 
 const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
   const refreshedLive = freshById.has(row.id)
   const li = linearById.get(row.id) || {}
+  const observedInLinear = linearById.has(row.id)
+  // Cancellation is read in ONE place for both branches below, so a carried-forward row and a
+  // scanned one cannot disagree about whether a question on cancelled work is still owed.
+  const cancelledNow = observedInLinear && CANCELLED_LINEAR.test((li.state || '').trim())
+  const dropQuestionsOnCancel =
+    cancelledNow && (row.blocker || (row.unsettled || []).length) ? { blocker: null, blockerFor: null, unsettled: [] } : {}
+
+  // CARRIED FORWARD ON PURPOSE — no scout was dispatched for this row (see `noScanNeeded`). Its own
+  // state is applied verbatim, and only what this wake genuinely re-observed is layered on top: the
+  // children query is not per-row, so Linear state, blocked-ness, cancellation and the route are as
+  // fresh here as on any scanned row.
+  //
+  // It must NOT fall through to the object below. That path treats every scan-derived field as void
+  // unless a live scan re-established it — right for a scout that DIED, and exactly wrong here. It
+  // would drop `specApproved`, which decides membership of the cross-spec set (whose two halves
+  // deadlock the epic when they disagree about who is still coming), and void the per-handle merge
+  // states — on a row nothing looked at and nothing contradicted.
+  if (carriedForward.has(row.id)) {
+    return {
+      ...row,
+      route: routeFor(row, li, observedInLinear, row.specPr),
+      linearState: li.state || row.linearState,
+      linearTerminal: observedInLinear ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+      ...dropQuestionsOnCancel,
+      blockedBy: openBlockers(observedInLinear ? li.blockedBy : row.blockedBy),
+      // The coordinator's own counters and the legacy-shape normalizations still run: they read the
+      // carried row, never a scan, so skipping them would leave a resumed epic's snake_case fields
+      // normalized on scanned rows and not on these.
+      specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
+      specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
+      prFeedbackRounds: carriedCount(row, 'prFeedbackRounds', 'pr_feedback_rounds'),
+      blockerResolutions: normalizeResolutions(row),
+      blockerResolution: null,
+      blockerResolutionFor: null,
+    }
+  }
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
-  const scanApproved =
-    (refreshedLive ? !!(fresh.specApproved && fresh.headSha) : false) || approvedInSessionFor(row, fresh, refreshedLive)
+  const scanApproved = specApprovalFor(row, fresh, refreshedLive)
+  // Hoisted for the same reason `scanApproved` is: the route depends on the RESOLVED spec handle
+  // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
+  // literal cannot read its own fields.
+  const resolvedSpecPr = fresh.specPr == null ? row.specPr : fresh.specPr
+  const route = routeFor(row, li, observedInLinear, resolvedSpecPr)
   return {
     ...row,
     ...fresh,
     id: row.id,
+    // Re-derived from the Linear category every wake, so relabelling an issue re-routes it —
+    // and never taken from the carried row alone, which would freeze a mislabel forever.
+    // → orchestration.md § "Which issues get a spec".
+    route,
     // Durable handles survive a scan that reports them as null. Both are declared `['number','null']`,
     // so a scout omitting or nulling one was schema-valid and the spread destroyed it: an
     // AWAITING_SPEC_APPROVAL row would emit an approval gate with no PR to approve, and a PR_FEEDBACK
@@ -1876,7 +2377,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // shape, and treat null as "did not observe" rather than "no longer exists". The cost is a closed
     // spec PR staying on the row until a worker replaces it, which is visible; the alternative was a
     // gate pointing at nothing, which is not.
-    specPr: fresh.specPr == null ? row.specPr : fresh.specPr,
+    specPr: resolvedSpecPr,
     implPr: fresh.implPr == null ? row.implPr : fresh.implPr,
     // Two channels satisfy this gate, and they need opposite handling.
     //
@@ -1898,7 +2399,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // refresh is an INDEPENDENT producer of `phase`: a scan reporting `PR_FEEDBACK` with an impl handle on a
     // row still awaiting approval walked straight past it, and `approvalGatedPhase` only repairs the one
     // intermediate phase. Same rule, other channel.
-    phase: scoutPhaseFor(row, fresh.phase, scanApproved),
+    phase: scoutPhaseFor(row, fresh.phase, scanApproved, route),
     // Same rule: a push or a new review invalidates merge-readiness, so a live scan is the only
     // source. A stale `true` would surface a merge gate for a PR that is no longer mergeable.
     readyToMerge: refreshedLive ? !!fresh.readyToMerge : false,
@@ -1919,22 +2420,20 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // confirmed current. The last thing we actually saw is better evidence than nothing.
     headSha: (fresh && fresh.headSha) || row.headSha || null,
     linearState: li.state || row.linearState,
-    linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+    linearTerminal: observedInLinear ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // CANCELLED work carries no unanswered question. `pendingAction` already refuses to dispatch it, so a
     // blocker left on the row could never be cleared by anything — and it kept the surfaced blockers list
     // non-empty, which held the whole epic short of wrap while a human was asked to answer a question about
     // work that no longer exists. Cleared here, in the one place cancellation is observed, so the blockers
     // list and `mayWrap` cannot disagree about it. Logged below, never silent — the same rule cancelled
     // verdicts already follow.
-    ...(linearById.has(row.id) && CANCELLED_LINEAR.test((li.state || '').trim()) && (row.blocker || (row.unsettled || []).length)
-      ? { blocker: null, blockerFor: null, unsettled: [] }
-      : {}),
+    ...dropQuestionsOnCancel,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
     // skipped it, so the carried relation stands. Getting this backwards either un-blocks an
     // issue on a failed refresh or blocks it forever after its prerequisite merged.
-    blockedBy: linearById.has(row.id) ? li.blockedBy || [] : row.blockedBy || [],
+    blockedBy: openBlockers(observedInLinear ? li.blockedBy : row.blockedBy),
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
@@ -1952,7 +2451,11 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // Derived AFTER the fold, because it reads the freshly-merged sub-PRs and the folded goal. A
   // scout naming this phase either finishes the issue without its assembled goal or stalls it.
   .map((row) => {
-    const derived = multiPrPhase(row) || approvalGatedPhase(row) || mergeDerivedPhase(row)
+    // `directRoutePhase` BEFORE `approvalGatedPhase`, and the latter exempts direct rows too. Both,
+    // because the ordering alone is a rule the next edit can quietly reverse, and getting it wrong
+    // is a bug loop rather than a stall: the correction knocks the row to NEEDS_SPEC and the wake
+    // authors the spec this route exists to skip.
+    const derived = multiPrPhase(row) || directRoutePhase(row) || approvalGatedPhase(row) || mergeDerivedPhase(row)
     return derived && derived !== row.phase ? { ...row, phase: derived } : row
   })
 
@@ -2054,8 +2557,30 @@ const crossSpecEligible = (r) => r.specApproved || POST_SPEC_PHASES.has(r.phase)
 //    has a spec is in the set as normal; the exclusion is about what can still arrive, not about who is
 //    admitted to work.
 const crossSpecCancelled = (r) => CANCELLED_LINEAR.test((r.linearState || '').trim())
-const crossSpecSet = refreshed.filter((r) => crossSpecEligible(r) && !crossSpecCancelled(r))
-const crossSpecComing = refreshed.filter(
+// A THIRD exclusion, and it has to apply to both halves: a row with NO SPEC DOCUMENT cannot be
+// cross-reviewed. Left in `crossSpecSet` it hands the reviewer a row with nothing to read and
+// invites a conflict report about a document that does not exist; left in `crossSpecComing` it is
+// a spec that will never arrive, so the pass is never askable and every feature in the epic is
+// held behind it — a deadlock, and the one this file has produced twice before by defining the
+// two halves apart.
+//
+// Keyed on the ROUTE, and deliberately not on "does this row have a spec handle" — review
+// proposed widening it to `POST_SPEC_PHASES.has(phase) && !specPr`, to also catch a bug relabelled
+// Feature *after* its fix was built (it re-routes to `spec` but no spec was ever written, so it
+// joins the set as a phantom member). That widening is REFUSED because it collides with a stronger
+// invariant pinned one test over: a spec-route sibling that is already implementing has a CLOSED
+// spec PR and, in the shape that test fixes, no observable handle either — excluding it would hand
+// the reviewer a subset while reporting coherence over the whole set, which is the worse of the two
+// failures by a distance. Distinguishing the two states needs a durable "was ever direct" field,
+// and a relabel-mid-review is not worth one: the residual cost is a wasted read on a row with no
+// document, bounded and gating nothing.
+//
+// (`pendingAction` separately refuses to let `crossSpecHold` park a direct row, so a bug keeps
+// implementing while its sibling features wait on the pass. Both are needed: this keeps the bug
+// out of the question, that keeps the question from stopping the bug.)
+const crossSpecRows = refreshed.filter((r) => !isDirectRoute(r))
+const crossSpecSet = crossSpecRows.filter((r) => crossSpecEligible(r) && !crossSpecCancelled(r))
+const crossSpecComing = crossSpecRows.filter(
   (r) => !crossSpecEligible(r) && !crossSpecCancelled(r) && !(r.blockedBy && r.blockedBy.length),
 )
 // The HOLD is the whole rule: `epic-lifecycle` runs one coherence pass "before any of them is built", so a
@@ -2064,7 +2589,7 @@ const crossSpecComing = refreshed.filter(
 // which is exactly the order the gate exists to prevent. What it takes is a SET: two specs that exist or
 // are still coming. One spec has nothing to be incoherent with, and holding for a pass that can never be
 // asked is the deadlock again by a different route.
-crossSpecHold = !args.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
+crossSpecHold = !input.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
 // The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
 // open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
 // No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
@@ -2084,12 +2609,31 @@ const plan = allocate(refreshed, claims, cap, foldEpicWanted, epicApproved)
 // No silent caps — say what was held back and why.
 if (!epicApproved) {
   log(
-    `Epic objective not signed off — holding ${plan.held.length} issue(s) at NEEDS_SPEC` +
+    `Epic objective not signed off — holding ${plan.held.length} issue(s) before their first action` +
       `${plan.foldEpic ? ', but still folding epic-PR review so the objective can be revised' : ''}.`,
   )
 }
 for (const row of plan.blocked) {
   log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked, not admitted to the active set.`)
+}
+if (cancelledBlockers.size) {
+  // A cancelled prerequisite can never merge, so the rows behind it are blocked until a human
+  // either drops the relation or revives the work. Said out loud because the alternative — a
+  // dependent that simply never runs again, with nothing in the output explaining why — is the
+  // failure mode this whole filter exists to remove.
+  log(
+    `Blocker(s) cancelled, not completed: ${[...cancelledBlockers].join(', ')} — still blocking, because cancelled work never landed. ` +
+      `Whoever owns the epic decides whether the dependents still need it; nothing here can clear it.`,
+  )
+}
+if (unmergedBlockers.size) {
+  // Same no-silent-stop rule, different cause: Linear says done, the PR says otherwise. Worth saying
+  // out loud because this one looks like a bug from the outside — the prerequisite reads Done on the
+  // board while its dependent sits still — and the resolution is a person's, not this script's.
+  log(
+    `Blocker(s) marked done in Linear but not merged: ${[...unmergedBlockers].join(', ')} — still blocking. ` +
+      `Linear state is a mirror; the merge is the fact. Merge the PR, or drop the relation if the dependent no longer needs it.`,
+  )
 }
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
@@ -2122,6 +2666,16 @@ for (const item of plan.advance) {
     log(`${item.row.id}: spending the authorized third review round — round two surfaced a spec-level finding.`)
   }
 }
+// No silent routing. Both directions are worth saying out loud: a bug reaching implementation with no
+// spec-approval gate is the one place work is built without a human having seen a plan first, and a
+// promotion is a bug that has just become a feature — the human should learn that from the log, not
+// from a spec PR appearing for an issue they filed as a bug.
+for (const item of plan.advance.filter((i) => i.action === 'implement' && isDirectRoute(i.row))) {
+  log(`${item.row.id}: bug — direct route, implementing with no spec. Its only human gate is the merge; the fix is reviewed on its PR.`)
+}
+for (const r of refreshed.filter((r) => r.specRequired && !isDirectRoute(r))) {
+  log(`${r.id}: promoted back to the spec route — ${r.specRequired}`)
+}
 
 // A claim in flight or queued for this issue, at DISPATCH time. (`contestedClaimFor` below is the
 // richer disclosure view, but it is built after the workers have run.)
@@ -2139,6 +2693,35 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
         `Advance ${item.row.id} to its next external wait, in your own worktree. Reason it is pending: ${item.why}.\n` +
           `Epic: ${epic.issueId} on branch ${epic.branch} (head ${epicHead || 'fetch it'}) — align to the epic-spec without re-fetching the epic.\n` +
           `A satisfied gate is NOT a wait — chain through it: a just-approved spec goes close-spec-PR → implement → open the impl PR in this one run.\n` +
+          // The route has to travel: the worker is a fresh sub-agent that cannot read the coordinator's
+          // table, so an unrouted bug worker looks for a spec, finds none, and reports the absence as a
+          // readiness problem — the stall the direct route exists to remove.
+          (isDirectRoute(item.row)
+            // Deliberately does NOT ask the worker to echo the route back. `WORKER_SCHEMA` is
+            // `additionalProperties: false` and declares no `route`, so a worker obeying such an
+            // instruction fails structured-result validation AFTER doing the implementation — losing
+            // the impl PR handle for work that actually happened. The coordinator derives the route
+            // from the Linear category every refresh anyway, so there is nothing to echo.
+            ? `ROUTE: direct (this is a BUG). No spec-approval gate applies — the impl PR is the review. Diagnose, fix, regression-test, open the impl PR.\n` +
+              // The one lookup a direct worker still owes. The routing here is OPTIMISTIC about the
+              // absence of a spec: a row discovered this wake was not in the PR-state scout batch (that
+              // was built from the carried rows), so its spec handle is UNKNOWN rather than known-absent
+              // — and a Bug-labelled issue that already has a spec PR must stay gated. Rather than defer
+              // every discovered bug a wake, the check lands where the damage would be done: the worker
+              // is the only thing that writes code, and it is already in the repo with `gh` to hand.
+              `FIRST, confirm no spec PR exists for this issue (one cheap \`gh pr list --search "spec(<ISSUE>) in:title" --state open\`). If one does, STOP and return specRequired: existing spec PR #N is awaiting approval — the router did not know about it. Do not implement past an open spec gate.\n` +
+              `Otherwise the only two things that send it back are yours to decide BEFORE building: no reproduction with an ambiguous symptom, or it is not really a bug (the fix is a new capability or a contract change). Return specRequired: <which and why> instead of building. A design DECISION you hit mid-diagnosis is not one of those — ship your best-judgment fix and surface the decision on the PR with the alternative named.\n`
+            : `ROUTE: spec (this issue's approach is gated on a human-approved spec).\n` +
+              // A PROMOTED row carries why it left the direct route, and the reason has to travel with
+              // it. `issue-spec` shapes a bug's spec differently per override (no-reproduction → the
+              // spec is mostly the repro shape and the regression seam; not-really-a-bug → an ordinary
+              // feature spec that says so up front). Sending only the generic line makes the fresh
+              // worker redo the diagnosis that produced the promotion — and it may well conclude the
+              // issue is a clear-repro bug and refuse the spec route, which cycles the row between
+              // promotion and reclassification forever. Same handoff rule as a blocker resolution.
+              (item.row.specRequired
+                ? `This bug was PROMOTED to the spec route by an earlier worker. Its reason, verbatim: "${item.row.specRequired}". Shape the spec around that override (see issue-spec → "Who gets a spec") and do not re-litigate the promotion.\n`
+                : '')) +
           (item.action === 'apply-verdict'
             ? // SETTLED ones only get the "record as resolved" instruction. An INCONCLUSIVE verdict resolves
               // nothing — `nextRow` turns it into a human decision AFTER this worker returns, so telling
@@ -2299,7 +2882,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
 // and the documented rule is that a push after approval re-opens the gate. The next wake's scan
 // re-locks correctly — but the gates emitted BELOW, in this wake, were computed from the pre-fold value,
 // so a child spec approval or a merge would be invited against an objective nobody has signed off. Those
-// approvals are durable (mirrored to a label), so accepting one releases implementation with no second
+// approvals are durable (the owner's label is standing state), so accepting one releases implementation with no second
 // alignment gate — the exact defect already fixed for the unapproved case, in its other direction.
 //
 // `heldForFold` does not cover this: it defers WORK, and only when there is work to defer. A wake whose
@@ -2594,13 +3177,13 @@ const epicOut = {
     // `epic.headSha` and are told not to re-fetch it, so a stale one aligns their specs and
     // implementations to a superseded objective. This is not the review cursor.
     headSha: epicHead,
-    // A previously recorded approval is DURABLE (the coordinator mirrors it to a label), so a
+    // A previously recorded approval is DURABLE (the owner's label is standing state), so a
     // dead scout must not re-lock an epic that was already signed off — that would stall every
     // sub-issue on an infrastructure failure. A live scan still revokes it (a push after
     // approval re-opens the gate), which is the case failing closed actually protects.
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
-    approved: gateUsable ? !!gate.approved : !!epic.approved,
+    approved: gateUsable ? !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel) : !!epic.approved,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)
@@ -2739,7 +3322,17 @@ return {
     issues.some(
       (r) =>
         (r.multiPrPending || (r.verdicts || []).length || (r.blockerResolutions || []).length) && pendingAction(r) !== null,
-    ),
+    ) ||
+    // A ROUTE PROMOTION is the fourth internal trigger. A direct worker that refused to build
+    // returns `specRequired` and leaves the row at NEEDS_SPEC — spec authoring is runnable
+    // immediately, and the row has no PR, so nothing external will ever wake it. Same reasoning as
+    // a cap-deferred NEEDS_SPEC row, which this list already covers.
+    //
+    // Keyed on the TRANSITION (set now, absent on the carried row), not on `specRequired` being
+    // present: the field is sticky by design, so testing presence would keep re-asserting
+    // "work now" for the rest of the row's life. `issues` is a 1:1 map of `refreshed`, so the
+    // index is the carried counterpart.
+    issues.some((r, i) => r.specRequired && !refreshed[i].specRequired && pendingAction(r) !== null),
   // SAFE TO WRAP: every row is terminal, nothing is dispatchable, and no human decision is outstanding.
   // The blockers list is the authority on the last of those, because it is exactly what gets surfaced —
   // so "nothing left to show the human" and "safe to close the surface" cannot disagree. Cancelled rows

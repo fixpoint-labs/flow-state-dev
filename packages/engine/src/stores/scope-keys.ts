@@ -23,6 +23,8 @@
  * was isolated. The opt-out direction is now honored.
  */
 
+import type { SessionParentage } from "./types";
+
 /** Minimal flow shape carrying the scope-isolation flags plus its own `kind`. */
 export interface IsolationFlow {
   kind: string;
@@ -130,6 +132,32 @@ export function matchesTenantFilter(
 ): boolean {
   if (options === undefined || !("tenantId" in options)) return true;
   return recordTenantId === options.tenantId;
+}
+
+/**
+ * Parentage list-filter predicate (FIX-1009). The canonical definition of the
+ * three modes; the memory and filesystem session stores call it directly, and
+ * the SQLite / Postgres adapters mirror it in their `WHERE` builders because
+ * they cannot import across the type-only package boundary.
+ *
+ * Absence narrows: no `parentage` (and an explicit `undefined`) means
+ * `"top-level"`, so a caller that passes no filter gets only the sessions a
+ * person started. This is deliberately the **opposite** of
+ * {@link matchesTenantFilter}, where absence widens — see
+ * `SessionListOptions.parentage` for why the two differ.
+ *
+ * The top-level test is `== null` rather than `=== undefined` so a record
+ * persisted before `parentSessionId` existed, and one round-tripped through a
+ * store that nulls absent keys, both read as top-level (BP-030).
+ */
+export function matchesParentageFilter(
+  options: { parentage?: SessionParentage } | undefined,
+  recordParentSessionId: string | undefined
+): boolean {
+  const parentage = options?.parentage ?? "top-level";
+  if (parentage === "all") return true;
+  if (parentage === "top-level") return recordParentSessionId == null;
+  return recordParentSessionId === parentage.parentOf;
 }
 
 /**

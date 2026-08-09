@@ -42,6 +42,96 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 `ConcurrentModificationError` continues to surface from these paths when retries exhaust. That's the contract: if you write through `persist` and the remote authority moves faster than your retry budget, you need to either widen the budget or restructure to avoid the contention.
 
+### The resource state store is versioned too
+
+The four scopes above hold one state record each. **Resource state** — the state behind `ctx.sessionResources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
+
+That store used to be plain last-write-wins, which is the right model for a document body nothing merges against a prior read, and the wrong one for structured state concurrent workers read-modify-write. The store is now versioned: every stored resource carries a version that increases by one on each committed write and is never reused, and a write states the version it expected to find. A write lands only if nobody moved the key since; otherwise it is refused, and the refusal reports the version that is actually current.
+
+**That guarantee reaches flow code.** When you mutate `ctx.sessionResources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
+
+```ts
+// two concurrent execution contexts, unchanged flow code
+await ctx.sessionResources.task.patchState({ claimedBy: "worker-a" });
+await ctx.sessionResources.task.patchState({ note: "in progress" });
+// both fields present — neither context's write is silently dropped
+```
+
+Nothing changes in flow code — you never write a version yourself.
+
+Two behaviours are worth expecting, because both are cases where the old model quietly did the wrong thing:
+
+```ts
+await ctx.sessionResources.task.patchState({ note: "x" });
+// rejects if another context deleted it. It is not resurrected from a stale read.
+await ctx.sessionResources.tasks.create("t1");
+// rejects if a live "t1" exists, whether it was already there or won a race.
+```
+
+Both refusals are final rather than retried. A retry could only re-apply what you read before you lost, which for a deleted resource means bringing it back and for a lost `create` means overwriting whoever won.
+
+`getOrCreate` and `upsert` never surface the second one. Their contract is to hand you the instance either way, so a create that loses the race becomes a read of the winner (`getOrCreate`) or applies its update as a patch (`upsert`).
+
+One thing that is deliberately *not* an error: touching a resource that has never been stored. A resource you declared but never wrote exists so far only as its schema default, and a write to it that changes nothing is a no-op, not a report that something was deleted.
+
+Those two cases are why resource state has its own retry driver rather than sharing the one the four scopes use. The scope driver treats every conflict as retryable, which is correct when the only thing a conflict can mean is "somebody else moved this value." Resource state has two conflicts that mean something else — the key is gone, and the key is already taken — and retrying either produces exactly the write the version check was there to stop. Resource writes also run under the same two-tier dispatch the scopes use: a per-key queue orders one context's writes to a resource so they never contend with each other, and the compare-and-swap underneath handles the contexts the queue cannot see.
+
+Writing a value the resource already holds still skips the write and emits no change event — but only once the runtime has re-read the key and confirmed your version is current. If the version moved, that is a conflict, not a no-op: the value you are writing happens to equal a stale cache, and suppressing it there would be the silent lost update this whole model exists to prevent.
+
+A resource write can exhaust its retry budget under sustained contention and raise `ConcurrentModificationError`, the same as the external-store scopes above. The per-key write queue in front of it makes that rare, because writes from one context never contend with each other.
+
+Deleting a resource leaves a small marker behind rather than removing the row, and that marker keeps the version. It is what makes delete-then-recreate safe: a worker holding a version from before the delete can never match the resource that replaced it, because versions are never reused. Markers are kept indefinitely — nothing sweeps them — which costs one row per deleted key.
+
+One limit stated plainly: on the filesystem store the comparison is held per key on the store instance. That covers every write through that instance, two contexts sharing it included. It does not coordinate two stores pointed at the same directory, whether they sit in one Node process or two. The in-memory, SQLite and Postgres stores compare and swap inside the store itself.
+
+## Writing an updater that may run twice
+
+The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On the CAS path above, that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.
+
+That matters the moment your updater has something to tell its caller. The natural way to report an outcome is to reach outside the callback:
+
+```ts
+// Don't. `found` outlives the callback.
+let found = false
+await ref.updateState((s) => {
+  const idx = s.entries.findIndex((e) => e.id === id)
+  if (idx < 0) return s          // a replay lands here; `found` is still true
+  found = true
+  return { ...s, entries: withoutIndex(s.entries, idx) }
+})
+return found
+```
+
+If the first attempt removed the entry and a conflicting write removed it first, the second attempt takes the `idx < 0` branch and commits nothing — but `found` still holds `true` from the attempt that lost. The function reports work that was never saved. An accumulating array is worse: it keeps every attempt's entries, duplicates included.
+
+The rule is: **an updater treats everything declared outside it as read-only.** Reading an outer value is fine. Writing one — assigning it, pushing through it, assigning one of its properties — is not.
+
+Return the outcome instead. `updateStateWith` passes it back out of the write, taking the answer from whichever invocation committed:
+
+```ts
+import { updateStateWith } from "@flow-state-dev/core/helpers"
+
+return (await updateStateWith(ref, (s) => {
+  const idx = s.entries.findIndex((e) => e.id === id)
+  if (idx < 0) return { state: s, result: false }
+  return { state: { ...s, entries: withoutIndex(s.entries, idx) }, result: true }
+})) ?? false
+```
+
+The updater returns `{ state, result }`: the state to commit, and what this invocation did. `updateStateWith` returns the `result` belonging to the invocation whose state was committed, or `undefined` if the updater never completed one — which is why the example falls back to `false`.
+
+The same applies to values you *derive* from state before the write. Reading `ref.state.currentTurn`, stamping it onto a record, and committing that record inside the callback has the same defect one step removed: the record carries the turn from before the conflict. Build the record from the state the callback receives.
+
+`withOutcome` is the same helper for a runner that isn't a resource — anything that applies a mutator, including a wrapper of your own. Pass the runner as a closure, so the call keeps its receiver:
+
+```ts
+await withOutcome((mutator) => ref.updateState(mutator), updater)
+```
+
+That is what `updateStateWith(ref, updater)` does for you.
+
+A repo-wide check (`scripts/validate-updater-purity.mjs`, run by `pnpm typecheck`) fails the build on the common outward-write forms — assigning an outer binding, pushing through one, assigning one of its properties — including where the target is wrapped in a type assertion. It is a backstop, not a proof: a custom mutating method, a write through a helper that receives the binding, or an alias will pass it. The helper above is the actual fix; the check is there to catch the shapes people reach for out of habit.
+
 ## Mutation timeout
 
 The lock path can deadlock if a mutator never finishes — say it awaits something that never resolves. To bound the worst case, every in-memory mutation has a budget:

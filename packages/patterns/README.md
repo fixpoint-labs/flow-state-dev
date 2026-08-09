@@ -64,6 +64,30 @@ const block = parallelTasks({
 
 **Key exports:** `parallelTasks`, `parallelTasksInputSchema`
 
+#### Board bounds on the task-board patterns
+
+`parallelTasks`, `planAndExecute`, and `supervisor` each build their own `taskBoard`, and each forwards the board's bounds from its own config:
+
+| Option | Default | What it bounds |
+| --- | --- | --- |
+| `maxEnqueuedTasks` | `100` | Tasks addable while others are still `pending`. Refreshes as the board drains. |
+| `maxTotalTasks` | `500` | Tasks the board may ever hold, terminal ones included. Never refunded. |
+| `maxTotalRetries` | `50` | Failure retries the board may authorize, across every task. |
+
+The creation caps take a positive integer or `null` (unbounded). `maxTotalRetries` takes a **nonnegative** integer or `null`, so `0` means "run every task once, never retry". Omission reapplies the default on all three.
+
+At the retry bound the next failing task settles terminal `errored` instead of re-dispatching, and the board's completion item reports `terminationReason: "retry-budget-exhausted"`. `supervisor` reaches it soonest, since its `maxAttemptsPerTask` defaults to `3` and its tasks therefore retry by default:
+
+```typescript
+supervisor({
+  name: "research-team",
+  worker: analyst,
+  maxTotalRetries: 1_000,   // or null for no bound
+});
+```
+
+`eventActors` takes the two creation caps and no retry bound — it builds its task inits directly and never stamps a `maxAttempts`, so its tasks do not retry. Full semantics in the [Task board guide](https://flow-state.dev/docs/orchestration/task-board#bounding-the-retries).
+
 ### Routed Specialists
 
 Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared writable workspace resource. An LLM controller reads the workspace state and decides which specialist to invoke next, in a `.loopBack()` loop. Per-iteration records live in a `TaskCollection` so the decision sequence is first-class data.
@@ -119,7 +143,7 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 - `"complete"`: exit only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
 - `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
 
-The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures"` field so callers can tell a clean drain from a dep-blocked exit without inspecting `counts`.
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted"` field so callers can tell a clean drain from a dep-blocked exit, or from one the board's retry budget stopped, without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
@@ -158,7 +182,7 @@ const board = taskBoard({
 });
 ```
 
-CAS semantics are identical across backings — request-state exposes the same atomic-state surface — so contention safety, retries, and `task-change` emission all work the same. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
+The board API is identical across backings — request-state exposes the same atomic-state surface — so the mutation calls, retries, and `task-change` emission all work the same. Contention safety is now the same too: both are compare-and-swap with retry, the resource backing writing at the version its execution context read, so a task write built on a stale read is refused and re-applied rather than overwriting the writer that won. The filesystem store is the one exception — it compares within a single process, so a board fanned across replicas wants SQLite or Postgres underneath. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
 
 `awaiting_review` is fully supported: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
 

@@ -90,6 +90,23 @@ export interface SupervisorConfig<
    */
   maxTotalTasks?: number | null;
   maxEnqueuedTasks?: number | null;
+  /**
+   * Cumulative failure retries the internal board may authorize, across every
+   * task (FIX-948). Default 50 — a number, or `null` for explicitly unbounded.
+   *
+   * The two bounds above count only *new* tasks, so a task that keeps failing
+   * keeps spending while both sit still. This is the one number that bounds
+   * that. At the bound the failing task settles terminal `errored` instead of
+   * re-pending, and the board reports `terminationReason:
+   * "retry-budget-exhausted"`. `0` means "run every task once, never retry".
+   *
+   * Reachable here because it BINDS this pattern out of the box:
+   * `maxAttemptsPerTask` defaults to 3, so a supervisor board retries by
+   * default and a large plan on a flaky day can reach the ceiling
+   * legitimately. Without this option the default would be an
+   * un-opt-out-able ceiling on an existing pattern.
+   */
+  maxTotalRetries?: number | null;
   planner?: BlockDefinition<any, any>;
   /** Reviewer block. Pass `false` to disable per-task review entirely. */
   reviewer?: BlockDefinition<any, any> | false;
@@ -350,6 +367,9 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
+    ...(config.maxTotalRetries !== undefined
+      ? { maxTotalRetries: config.maxTotalRetries }
+      : {}),
     ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
     ...(config.maxEnqueuedTasks !== undefined
       ? { maxEnqueuedTasks: config.maxEnqueuedTasks }

@@ -12,7 +12,7 @@ Use it when:
 - Each task needs its own review — a worker output should be approved or revised before it counts as done
 - You want a retry budget that triggers on review rejection (not just on worker exceptions)
 
-If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent execution. If tasks need strict dependency ordering, use [Plan and Execute](./plan-and-execute). The supervisor honours `deps` between tasks (dependent tasks wait until their prerequisites complete) but executes independent tasks concurrently within the worker pool.
+If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent execution. If tasks need strict dependency ordering, use [Plan and Execute](./plan-and-execute). The supervisor honors `deps` between tasks (dependent tasks wait until their prerequisites complete) but executes independent tasks concurrently within the worker pool.
 
 ## Block composition
 
@@ -145,6 +145,18 @@ Pass `reviewer: false` to disable per-task review — every worker output flows 
 - Attempt 2 fails review → task re-pends, `attempts: 2`.
 - Attempt 3 fails review → task transitions to terminal `errored`, `labelFailedReviews` adds `failed-review`.
 
+`maxAttemptsPerTask` bounds one task. `maxTotalRetries` (default 50) bounds the board: it counts retries across every task, and when it runs out the next task that fails settles as `errored` with an error naming the budget, rather than being re-attempted. Since a supervisor task retries by default, a large plan on a flaky day can reach it — a 25-task plan where every task fails twice spends exactly 50. Raise it, or pass `null`:
+
+```ts
+supervisor({
+  name: "research-team",
+  worker: analyst,
+  maxTotalRetries: 1_000,   // or null for no bound
+});
+```
+
+The board's completion item reports `terminationReason: "retry-budget-exhausted"` when the budget is what stopped it. Full semantics are in [Bounding the retries](../orchestration/task-board#bounding-the-retries).
+
 A worker that throws (rather than producing output the reviewer rejects) is also subject to the same budget — the substrate doesn't distinguish. After the drain, `labelFailedReviews` separates them by metadata:
 
 | Failure kind | Label |
@@ -197,6 +209,10 @@ supervisor({
 
   // Per-task retry budget for review rejection. Default 3.
   maxAttemptsPerTask?: number;
+
+  // Retries the whole board may authorize, across every task. Default 50.
+  // `null` for no bound, `0` to never retry.
+  maxTotalRetries?: number | null;
 
   // Worker pool size. Default 3.
   maxConcurrency?: number;

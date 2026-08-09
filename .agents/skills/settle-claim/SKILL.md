@@ -21,6 +21,15 @@ Read [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Sett
 claim (POC settlement)" for when this fires, what it costs, and where the record lands. That
 is canonical; this file is how you execute it.
 
+**Not this skill: validating a direction before the gate.** A settlement is *reactive* — it
+arbitrates between two parties who have already stopped converging, which is why it's an
+independent worker and why its output is a verdict. Building throwaway code *proactively*, so
+reviewers and the human at the approval gate can see the shape a spec proposes, is
+[`spec-poc`](../spec-poc/SKILL.md): it fires on a trigger rather than a loop, lives published on
+the never-merged spec branch rather than in a deleted worktree, and answers *"is this direction
+right?"* rather than *"who is right?"*. A trigger noticed during authoring is the cheap case; by
+the time you're here, prose has already cost two rounds.
+
 **What justifies running at all: a loop, not an assertion.** This is for a claim that has been
 asserted and counter-asserted **at least twice** — it came back after being answered, the spec
 flipped on it, or two review rounds concluded opposite things. A claim asserted once gets
@@ -119,7 +128,7 @@ Run it. Then read what actually happened, not what you expected:
 | Exit | When | What you do |
 |---|---|---|
 | **Verdict only** *(the default)* | The run settled it and produced nothing worth keeping | **Delete the prototype directory.** Return the verdict block; the caller posts it. Nothing is committed, no PR. |
-| **Draft PR** | The POC found something worth a human's eyes | Commit the POC (or the graduated goal) on `poc/<ISSUE-ID>-<slug>` and open a **draft** PR whose description is the verdict block. Say in one line why it earned a PR. |
+| **Draft PR** | The POC found something worth a human's eyes | Commit the POC (or the graduated goal) on `poc/<ISSUE-ID>-<slug>` and open a **draft** PR. Lead the description with **the claim in one plain sentence** and one line on why this earned a PR at all — that pair is the problem and the ask. The verdict block follows as the evidence. This is the one PR body that does *not* take the full layout ([`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"): it seeks no direction review, so the compact form is the point. |
 | **Inconclusive** | Step 1 or Step 4 didn't discriminate | Delete the prototype. Return `INCONCLUSIVE` with what you tried and what would settle it. |
 
 A POC earns a **draft PR** in exactly three cases, and you should be reluctant about all

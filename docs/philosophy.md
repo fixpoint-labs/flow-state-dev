@@ -155,6 +155,14 @@ through, and a check is only as strong as the producers it rules out. If you can
 find that convergence point, you haven't found the owning layer — you're patching
 call sites, and review will keep finding more of them.
 
+**The same arithmetic governs what you write down.** A decision restated in ten places
+is corrected in none of them until every restatement moves, and a coordination
+document's tables, indexes, diagrams, and completion criteria *are* restatements — they
+are what a reader acts on, not decoration around the section that owns the decision. So
+the change is the edit plus every surface carrying the old answer. The tell is the same
+one: if review keeps finding another place the old answer survived, you corrected a site
+rather than the thing.
+
 *Derives:* BP-028.
 
 ### 6. Readability is an output
@@ -166,7 +174,18 @@ tradeoffs, and the decisions, *before* the deep detail. Density is a cost we pay
 deliberately where it buys precision (the agent-facing half of a spec, a contract
 definition), never by default.
 
-*Derives:* BP-039 (specs lead with plain language), the spec's two-part structure.
+**Altitude is also *whose chair they sit in.*** The human decides as the product
+owner — they hold the objective and know things about the business we don't. So an
+ask is translated into the decision they are actually making: what it costs in
+promises, customers, timing, and reversibility, not the mechanism that produced it.
+They may well be technical, which makes handing them the mechanism easy and still
+wrong — every paragraph they spend re-deriving a call we already made is attention
+not spent on the objective only they are tracking. Dropping them into the engineer's
+chair is sometimes necessary and should be rare; when it is, say so rather than
+letting it happen by default.
+
+*Derives:* BP-039 (specs lead with plain language), BP-041 (frame every ask as a
+business decision), the spec's two-part structure.
 
 ### 7. Prove the goal, not the mock
 

@@ -133,7 +133,16 @@ user a decision that a five-minute run answers.
 
 ## Report (compact — the coordinator holds this, not the spec texts)
 
-Return a ranked table, worst mutual-incoherence first. For each conflict:
+Return a ranked table, worst mutual-incoherence first. **You read the specs; the coordinator
+holds a status table and does the asking.** So a `decision-needed` row owes it the substance of
+an ask — the fork in plain terms, the cost, and what the user might know that would settle it —
+because the coordinator cannot reconstruct any of that and would otherwise relay "spec A and
+spec B disagree about X", which is two documents' words rather than a decision. Your `recommend`
+line is the recommendation; it is required on every row, including the ones you're handing up.
+Shape and worked example:
+[`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md).
+
+For each conflict:
 
 ```
 conflict: <one line — what disagrees>
@@ -141,7 +150,11 @@ specs:    <ISSUE-A> ↔ <ISSUE-B> (↔ <ISSUE-C> …)
 kind:     scope-overlap | decision-conflict | surface-collision | assumption-conflict | dependency-conflict | drift
 where:    <the section/decision/API in each spec that collides>
 recommend: <the resolution, and which spec(s) should change to land it>
-decision-needed?: NO (docs settle it — <which doc>) | YES (<the call the user must make, with options>)
+decision-needed?: NO (docs settle it — <which doc>) | YES (<the fork as a plain-language either/or>
+                  terms: <the observable behaviour each option produces — no paths, no symbols>
+                  tradeoff: <what picking one costs, and who outside the room feels it>
+                  changes-my-mind: <the fact you don't have and the user might>
+                  if-wrong: <what being wrong costs — prices the mistake, not the choice>)
 poc-candidate: NO | YES (claim: <X does/does not Y> · load: <what depends on it in each spec> · falsify: <what would disprove it>)
 fable-candidate: NO | YES (<the self-contained slice — excerpts, the decision, tenets in tension>)
 ```

@@ -265,7 +265,11 @@ const BUILD_SCHEMA = {
     status: { type: 'string', enum: ['open', 'pending', 'failed'] },
     pr: { type: ['number', 'null'] },
     branch: { type: ['string', 'null'] },
-    blocker: { type: ['string', 'null'] },
+    blocker: {
+      type: ['string', 'null'],
+      description:
+        'Needs a human decision — lifted to the row and surfaced by the coordinator. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
+    },
     summary: { type: 'string', description: 'One compact line' },
   },
 }
@@ -325,7 +329,11 @@ const FIX_SCHEMA = {
     // A repair can hit an architectural fork it must escalate rather than guess. Without this the
     // only way to say so was `pr: null`, which reads as "incomplete" and re-dispatches the worker
     // at the same undecided fork every wake.
-    blocker: { type: ['string', 'null'], description: 'Needs a human decision — parks the repair and is surfaced' },
+    blocker: {
+      type: ['string', 'null'],
+      description:
+        'Needs a human decision — parks the repair and is surfaced. Carry the ASK, not a topic: all six parts, per docs/contributing/asking-for-decisions.md (the fork, plain terms, the trade-off, your recommendation, what would change your mind, and what being wrong costs). The coordinator holds only status lines and cannot reconstruct any of that.',
+    },
     summary: { type: 'string' },
   },
 }
@@ -334,7 +342,11 @@ const FIX_SCHEMA = {
 // The step
 // ---------------------------------------------------------------------------
 
-const issueId = args.issueId
+// The Workflow tool delivers `args` as a JSON string at runtime, while `verify.mjs` passes
+// an object. Normalize so the script reads the same either way — reading `args.x` off a
+// string silently yields `undefined` for every field, which fails far from the cause.
+const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const issueId = input.issueId
 // The human's answer to a decision a slice escalated, forwarded by the caller.
 //
 // This DAG's workers are the ones that hit the fork — the escalation came from a build or fix worker,
@@ -345,9 +357,9 @@ const issueId = args.issueId
 // A LIST, because two slices can escalate in one wake and a single slot silently drops one of the
 // answers — see `normalizeResolutions` in epic-wake.js for the sequence that guarantees it.
 const resolutions = [
-  ...(args.blockerResolutions || []).filter((r) => r && r.answer).map((r) => ({ for: r.for || null, answer: r.answer })),
+  ...(input.blockerResolutions || []).filter((r) => r && r.answer).map((r) => ({ for: r.for || null, answer: r.answer })),
   // BP-030: the single-slot shape, tolerated on the way in.
-  ...(args.blockerResolution ? [{ for: args.blockerResolutionFor || null, answer: args.blockerResolution }] : []),
+  ...(input.blockerResolution ? [{ for: input.blockerResolutionFor || null, answer: input.blockerResolution }] : []),
 ]
 /**
  * The single fork an UNTARGETED answer belongs to, if that is unambiguous — and NOTHING if it is not.
@@ -366,8 +378,8 @@ const resolutions = [
  * The repair's own fork counts as a target, because it is a fork of the same kind and an untargeted
  * answer cannot be aimed at both it and a slice.
  */
-const blockedNodeIds = (args.subPrs || []).filter((n) => n.blocker).map((n) => n.id)
-const repairBlocked = !!(args.assembledGoal || {}).fixBlocker
+const blockedNodeIds = (input.subPrs || []).filter((n) => n.blocker).map((n) => n.id)
+const repairBlocked = !!(input.assembledGoal || {}).fixBlocker
 const untargetedTargets = blockedNodeIds.length + (repairBlocked ? 1 : 0)
 // `hasUntargeted` is a PRECONDITION, not a detail: without it "the sole blocked fork owns the untargeted
 // answer" reads as "the sole blocked fork is answered", and every solitary blocked slice was released with
@@ -392,7 +404,7 @@ const resolutionNote = (nodeId) => {
   return (
     `\n${mine.length === 1 ? 'A decision' : `${mine.length} decisions`} this slice escalated ${mine.length === 1 ? 'has' : 'have'} been ANSWERED by the human:\n` +
     mine.map((r) => `  - ${r.answer}`).join('\n') +
-    `\nImplement as given — do not re-derive the choice and do not escalate the same fork again. If one does not answer the fork you actually hit, report a new blocker naming precisely what is still open.\n`
+    `\nImplement as given — do not re-derive the choice and do not escalate the same fork again. If one does not answer the fork you actually hit, report a new blocker naming precisely what is still open, written as a full ask (all six parts, per docs/contributing/asking-for-decisions.md) — you read the code, the coordinator did not.\n`
   )
 }
 
@@ -417,7 +429,7 @@ const answeredIds = new Set([...resolutions.map((r) => r.for).filter(Boolean), .
 // `building` node therefore matched no branch, produced no action, and logged as "waiting" on
 // every wake with no external event able to move it: a permanent stall. It normalizes to
 // `pending`, which retries the build; a build that never returned left no PR to lose. (BP-030.)
-const nodes = (args.subPrs || [])
+const nodes = (input.subPrs || [])
   .map((n) => (n.status === 'building' ? { ...n, status: 'pending' } : n))
   // Clear the blocker each answer resolves (see above). A row-level answer with no slice named clears
   // whichever slice is blocked, matching how `epic-wake` lifts one nested blocker at a time.
@@ -427,11 +439,11 @@ const nodes = (args.subPrs || [])
   // delivery") and lost the decision whenever that build died: the node persisted already-unblocked while
   // the caller consumed the one-shot resolution, so the next worker reached the fork with nothing.
   // A dead worker must mutate nothing.
-for (const n of args.subPrs || []) {
+for (const n of input.subPrs || []) {
   if (n.status === 'building') log(`${n.id}: carried status "building" is not a state a wake can resume — retrying the build.`)
 }
-const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
-const goal = { ...(args.assembledGoal || {}) }
+const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
+const goal = { ...(input.assembledGoal || {}) }
 
 // The repair blocker is the third copy of the same decision (row, sub-PR, goal), and it gets the same
 // treatment: an answer RELEASES the repair, and the blocker is cleared once the fix worker has actually
@@ -641,7 +653,7 @@ const built = await parallel(
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) stopped on a decision only a human could make, and it has now been ANSWERED.\n` +
           `Fetch and check out ${item.node.branch} first — your worktree is fresh and starts on the lifecycle's checkout, NOT on this sub-PR.\n` +
           `Apply the decision to that EXISTING PR: update the implementation, run \`review\`, push. Do not open a new PR and do not merge it. Report status: open.\n` +
-          `If the answer does not resolve the fork you actually hit, leave the PR as it is and report a new blocker naming precisely what is still open.` +
+          `If the answer does not resolve the fork you actually hit, leave the PR as it is and report a new blocker naming precisely what is still open, written as a full ask (all six parts, per docs/contributing/asking-for-decisions.md) — you read the code, the coordinator did not.` +
           resolutionNote(item.node.id)
         : item.action === 'rebase'
         ? `Sub-PR ${item.node.id} of ${issueId} (PR #${item.node.pr}, branch ${item.node.branch}) was stacked on ${item.node.stackedOn}, which has now merged.\n` +

@@ -4,7 +4,7 @@
 // surface) and directly off the user-scope store.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryStores } from "@flow-state-dev/engine";
+import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import knowledgeHubFlow from "../src/flow";
 import type { InboxRecord } from "../src/inbox";
@@ -32,7 +32,7 @@ function list(stores: Stores, input: Record<string, unknown> = {}) {
 
 /** All stored inbox records for the owner, keyed by storage path. */
 async function storedRecords(stores: Stores): Promise<Record<string, InboxRecord>> {
-  return (await stores.resourceState.getAll("user", USER)) as Record<string, InboxRecord>;
+  return toBareStates<InboxRecord>(await stores.resourceState.getAll("user", USER));
 }
 
 let stores: Stores;
@@ -126,7 +126,7 @@ describe("logActivity", () => {
     const input = { kind: "task", content: "Renew passport", situation: "Trip planning" };
     await capture(stores, input);
     const [path, record] = Object.entries(await storedRecords(stores))[0];
-    await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });
+    await stores.resourceState.set("user", USER, path, { ...record, status: "swept" }, "any");
 
     const retry = await capture(stores, input);
     expect((retry.output as { deduplicated: boolean }).deduplicated).toBe(false);
@@ -194,7 +194,7 @@ describe("listInbox (behaviour 7)", () => {
     await capture(stores, { kind: "task", content: "to be swept", situation: "c" });
     // Simulate the FIX-883 sweeper marking the record swept, in place.
     const [path, record] = Object.entries(await storedRecords(stores))[0];
-    await stores.resourceState.set("user", USER, path, { ...record, status: "swept" });
+    await stores.resourceState.set("user", USER, path, { ...record, status: "swept" }, "any");
 
     const result = await list(stores);
     expect(result.output).toEqual({ items: [], totalPending: 0, oldestPendingCapturedAt: null });

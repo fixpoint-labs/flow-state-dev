@@ -10,7 +10,8 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TaskCollectionRef } from "../tasks";
-import { hasClaimableTask, inFlightCount } from "./shared";
+import { boardQuiescence } from "./quiescence";
+import { hasClaimableTask } from "./shared";
 
 /**
  * Wake-up predicate for the worker idle-wait. Semantics depend on
@@ -35,6 +36,16 @@ import { hasClaimableTask, inFlightCount } from "./shared";
  *
  * Reads collection state directly; the items array is ignored. Cheap
  * on every fan-out — at most a couple of count/list reads.
+ *
+ * Every mode above reduces to the same two disjuncts, so the terminal
+ * half defers to `boardQuiescence` — the single definition of the exit
+ * question the exit check also reads (FIX-990).
+ *
+ * `hasClaimableTask` is NOT redundant with that verdict and must not be
+ * folded into it. A board holding newly claimable work is `continue` by
+ * design (the drain should not end), so a wake test written as the verdict
+ * alone would leave a worker asleep on claimable work until its timeout —
+ * exactly the promptness defect this issue set out to fix.
  */
 export function whenBoardClaimable(
   collection: TaskCollectionRef,
@@ -43,20 +54,7 @@ export function whenBoardClaimable(
     shouldExit?: (collection: TaskCollectionRef) => boolean;
   }
 ): (items: readonly OutputItem[]) => boolean {
-  return () => {
-    if (hasClaimableTask(collection)) return true;
-    if (options.onIdle === "complete") {
-      return inFlightCount(collection) === 0;
-    }
-    if (options.onIdle === "complete-or-blocked") {
-      // Wake when no active worker is producing state changes — this
-      // covers both the drained case (inFlightCount === 0) and the
-      // dep-blocked case (pending tasks exist but none are claimable
-      // and no worker is in-flight). `checkBoard` disambiguates.
-      return (
-        collection.count({ status: ["in_progress", "awaiting_review"] }) === 0
-      );
-    }
-    return options.shouldExit?.(collection) === true;
-  };
+  return () =>
+    hasClaimableTask(collection) ||
+    boardQuiescence(collection, options) !== "continue";
 }

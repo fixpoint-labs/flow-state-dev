@@ -57,6 +57,40 @@ export type FilesystemResourceStoreOptions<T> = {
   deserialize: (raw: string) => T;
 };
 
+/**
+ * Layout-aware operations the versioned resource-state store needs on top of
+ * the six methods, and which `ContentStore` does not.
+ *
+ * `ResourceStateStore` replaced its `deleteAll` with an enumerate-and-mark
+ * pass (a scope purge must retain each key's version, so it cannot `rm -rf`),
+ * but it still has to honour the same legacy-layout rules the factory owns.
+ * Rather than reimplementing the marker protocol outside the factory, the
+ * versioned store asks these two questions and composes the answers.
+ */
+export interface KeyedResourceStoreLayoutOps {
+  /**
+   * True when a valid nested-layout marker is present. False when it is
+   * absent (fresh subtree, or one predating the nested layout). Throws on a
+   * marker this build cannot interpret, exactly as every other op does.
+   */
+  hasValidLayoutMarker(): Promise<boolean>;
+  /**
+   * Re-validate before a mutating op: reject an incompatible marker, and — if
+   * the marker is absent — re-scan for legacy data the memoized layout result
+   * may have missed. The versioned store decides some writes (a conflict, a
+   * delete of an absent key) without reaching the factory's own mutators, so
+   * it has to run this guard itself or those paths would skip it.
+   */
+  assertWritableLayout(): Promise<void>;
+  /**
+   * Remove a scope's directory outright — the pre-nested-layout escape hatch
+   * `deleteAll` has always provided, so an upgraded install can tear down old
+   * flat scopes without a read first. Only reachable when no valid marker is
+   * present; a marked subtree is purged by marking, not by removal.
+   */
+  purgeScopeDirectory(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+}
+
 /** The six-method keyed-resource-store contract shared by both public stores. */
 export interface KeyedResourceStore<T> {
   get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<T | undefined>;
@@ -75,7 +109,7 @@ function errno(error: unknown): string | undefined {
   return (error as NodeJS.ErrnoException | undefined)?.code;
 }
 
-class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
+class FilesystemResourceStore<T> implements KeyedResourceStore<T>, KeyedResourceStoreLayoutOps {
   private readonly root: string;
   private readonly ext: string;
   private readonly serialize: (value: T) => string;
@@ -440,6 +474,17 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     return result;
   }
 
+  /** See {@link KeyedResourceStoreLayoutOps.hasValidLayoutMarker}. */
+  async hasValidLayoutMarker(): Promise<boolean> {
+    return this.markerValidOrAbsent();
+  }
+
+  /** See {@link KeyedResourceStoreLayoutOps.assertWritableLayout}. */
+  async assertWritableLayout(): Promise<void> {
+    await this.ensureLayout();
+    await this.assertNoUnmarkedLegacyData();
+  }
+
   async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
     // Skips the has-data legacy SCAN — an absent marker (legacy or fresh) must
     // stay deletable so an upgraded install can tear old scopes down without a
@@ -447,6 +492,11 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
     // `rm -rf` data owned by a layout this build can't interpret (e.g. after a
     // version rollback), which the full-bypass would have destroyed.
     await this.markerValidOrAbsent();
+    await this.purgeScopeDirectory(scopeType, scopeId);
+  }
+
+  /** See {@link KeyedResourceStoreLayoutOps.purgeScopeDirectory}. */
+  async purgeScopeDirectory(scopeType: ContentScopeType, scopeId: string): Promise<void> {
     const dir = this.scopeDir(scopeType, scopeId);
     await this.assertAncestorsSafe(dir);
     let stat;
@@ -479,5 +529,19 @@ class FilesystemResourceStore<T> implements KeyedResourceStore<T> {
 export function createFilesystemResourceStore<T>(
   options: FilesystemResourceStoreOptions<T>
 ): KeyedResourceStore<T> {
+  return new FilesystemResourceStore<T>(options);
+}
+
+/**
+ * Same store, widened to expose {@link KeyedResourceStoreLayoutOps}.
+ *
+ * Used by the filesystem `ResourceStateStore`, which layers versioning and an
+ * enumerate-and-mark `deleteAll` over this factory and needs to ask about the
+ * layout marker to do it. `ContentStore` keeps the narrow factory above, so
+ * its surface is unchanged by the state store's divergence.
+ */
+export function createFilesystemResourceStoreWithLayoutOps<T>(
+  options: FilesystemResourceStoreOptions<T>
+): KeyedResourceStore<T> & KeyedResourceStoreLayoutOps {
   return new FilesystemResourceStore<T>(options);
 }

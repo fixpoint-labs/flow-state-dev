@@ -183,9 +183,15 @@ planAndExecute({
   // Default: false.
   enableReplanning?: boolean;
 
-  // Per-task retry budget stamped onto every seeded TaskInit. Default 1
-  // (no retries; preserves pre-migration behavior).
+  // Per-task retry budget stamped onto every seeded TaskInit. Default 1,
+  // meaning one attempt and no retries.
   maxAttemptsPerTask?: number;
+
+  // Retries the whole board may authorize, across every task. Default 50.
+  // `null` for no bound, `0` to never retry. Binds only once
+  // `maxAttemptsPerTask` is raised above 1. See Task Board → Bounding the
+  // retries.
+  maxTotalRetries?: number | null;
 
   // Worker pool size for the underlying taskBoard. Default 1 (sequential
   // drain). Bump to fan out independent dep-free steps within a single
@@ -414,7 +420,7 @@ Plan and Execute pins `flowPolicy.recentTrajectory({ n: 8 })` by default. Each s
 
 The pattern emits two component-item streams renderers can subscribe to:
 
-- `task-change` — one item per task transition, emitted by the substrate `TaskCollection`. Carries the full `Task` snapshot at the moment of the change. The `<TaskPlan />` renderer keys per-task rows on `data.task.id`.
+- `task-change` — one item per task transition, emitted by the substrate `TaskCollection`. Carries the full `Task` snapshot at the moment of the change, and is keyed `${collectionId}/${taskId}` so the latest change for a task replaces the previous one. The `<TaskPlan />` renderer groups rows by `data.taskId`.
 - `task-board-meta` — board-level status, keyed by `data.collectionId`. The substrate emits `active` and `completed`; this pattern adds `planning`, `replanning`, and `synthesizing` at the corresponding phase boundaries so the renderer can show a status header.
 
 Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have been removed — the substrate items above carry strictly more information and are keyed identically.

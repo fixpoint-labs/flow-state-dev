@@ -13,7 +13,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 Before implementing:
 
 - State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
+- If multiple interpretations exist, present them - don't pick silently. Present them **with your recommendation** — see "Asking for sign-off" below; a neutral fork you already have a view on isn't neutrality.
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
@@ -109,6 +109,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
+- `docs/contributing/asking-for-decisions.md` — **Read before putting any fork, gate, or sign-off to the user.** The engineer/product-owner contract, the six-part shape, and a worked example.
 - `docs/contributing/best-practices.md` — Universal BPs + the situational index; per-category situational BPs live in `docs/contributing/best-practices/<category>.md` (open the category file for the area you're touching). Universal BPs are mirrored in this file's "Best practices" section.
 - Per-package `CHANGELOG.md` files and `docs/contributing/release-notes-workflow.md` — what shipped and how new changes get recorded
 - `packages/*/README.md` — Per-package API docs
@@ -128,7 +129,16 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/cli`               | Terminal interface (`fsdev`)                                            |
 | `@flow-state-dev/devtool`           | Pre-built DevTool assets for `fsdev dev`                                |
 | `@flow-state-dev/store-sqlite`      | SQLite-backed persistent store                                          |
+| `@flow-state-dev/store-postgres`    | PostgreSQL-backed persistent store                                      |
 | `@flow-state-dev/vercel`            | Vercel deployment adapter (SSE shaping, heartbeats, runtime config)     |
+| `@flow-state-dev/next`              | Next.js deployment adapter                                              |
+| `@flow-state-dev/node`              | Node HTTP host adapter — serve a long-lived FSD server in one call      |
+| `@flow-state-dev/bullmq`            | BullMQ host/runtime adapter — durable background jobs, native cron, full-flow worker dispatch |
+| `@flow-state-dev/mcp`               | MCP transport adapter                                                   |
+| `@flow-state-dev/chat-sdk`          | Chat SDK inbound transport                                              |
+| `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
+| `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
+| `@flow-state-dev/claude-code`       | Claude Code integration — dispatch cloud coding tasks via the local `claude` CLI |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
 | `@flow-state-dev/workforce`         | Agent registry, personas, and materialization (Layer 2 on orchestration) |
@@ -138,6 +148,8 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@thought-fabric/core`              | Cognitive architecture primitives (attention, identity)                 |
 | `apps/devtool`                      | DevTool source app (builds into `@flow-state-dev/devtool`)              |
 | `apps/docs`                         | Documentation site (Docusaurus)                                         |
+| `apps/kitchen-sink`                 | Canonical reference app (Next.js) — hosts every subsystem, where features get tested end-to-end |
+| `apps/pattern-benchmark`            | Cross-pattern benchmark suite over a fixed task suite + model           |
 
 
 ## Documentation Structure
@@ -190,13 +202,14 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `audit-coherence`         | Sweep the codebase (or a change) for incoherence (conflicting patterns, philosophy drift, gaps); the coherence lens of `review` |
 | `review`                  | The single definition of how we review — composes coherence + restraint + correctness + completeness (+ optional depth) as parallel sub-agent lenses over a change or codebase slice; run standalone and by `issue-implement` |
 | `polish-docs`             | The docs editor — a corpus-level editorial pass that consolidates, streamlines, simplifies, and re-arranges docs for readability and navigation (unafraid to rewrite/move); run standalone on a section or the whole site, and auto-dispatched at epic wrap as a draft docs-cleanup PR |
-| `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); every phase runs in a fresh bounded sub-agent so token cost stays small |
+| `issue-lifecycle`         | Thin event-driven orchestrator that drives ONE issue end-to-end (spec → approval gate → implement → PR feedback → stop before merge); a **bug skips the spec** and enters at implementation, with its PR as the review surface; every phase runs in a fresh bounded sub-agent so token cost stays small |
 | `epic-lifecycle`          | Drive ONE epic (a set of related issues under a shared objective) end-to-end: epic-spec → objective gate → each sub-issue's `issue-lifecycle` in parallel, each in its own git worktree/branch → epic wrap (lessons + docs polish). Holds only a compact status table. Parallel issue work always runs under an epic |
+| `spec-poc`                | Build a throwaway POC **on** a never-merged spec/epic PR so a direction is validated before it's implemented — a characterization test pinning how things already work, sketch files showing a solution's shape, a self-contained HTML mockup, or (epic altitude) a rough end-state showing what the whole set looks like once every issue lands. Carries 2–3 competing variants when a fork is contested. Triggered, not default; costs no review rounds; never merges |
 | `settle-claim`            | Settle ONE disputed factual claim ("does X actually work that way?") with a quick throwaway POC — a goal-shaped check run on the real path — returning CONFIRMED / REFUTED / INCONCLUSIVE with evidence. Fires when a review **loops** on the same behavioral claim (asserted and counter-asserted twice), not on a single assertion; non-blocking, costs no review rounds, opens a PR only if it found something worth a human's eyes |
 | `cross-spec-review`       | Review an epic's SET of specs against each other for mutual coherence (scope overlap, conflicting decisions, colliding surface) before any is built; the coherence lens at spec-set altitude; gated on the user approving each spec first. Read-only — reports conflicts to the coordinator |
 | `watch-pr`                | Local substitute for `subscribe_pr_activity` (cloud-only): arms a `Monitor` poll loop that streams new PR comments, reviews (incl. approvals), and CI conclusions into the session — waking only on real events. Use when working against a PR locally, or as a local epic/issue lifecycle's webhook stand-in |
 
-> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it.
+> **How the orchestration fits together** — the two lifecycles (epic and issue), the roles, the gates (`spec approved`, `epic approved`), **which issues get a spec at all** (features do; bugs go straight to the fix), the epic-spec, **the spec-review bar and convergence rule**, and **the twelve-round PR-feedback cap** (past it we stop auto-handling review feedback and ask you whether the approach needs re-examining) — are defined once, with diagrams, in [`docs/contributing/orchestration.md`](docs/contributing/orchestration.md). The skills above reference it rather than restating it. Its companion, [`docs/contributing/pr-reviewer-guidance.md`](docs/contributing/pr-reviewer-guidance.md), is canonical for what **every** PR description owes its two audiences — the layout (problem → what this does → what's asked of you → *"Parts worth reviewing closely"*, with the static reviewer contract collapsed below the fold), and when a diagram earns its place. The general rule it applies — **the fold**: lead with the problem, collapse the derivation, and the per-artifact word budgets and density checks that go with it — is [`docs/contributing/writing-for-humans.md`](docs/contributing/writing-for-humans.md), which governs specs, Linear issues, and review comments too. The fold decides *where* an ask goes; [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) decides *what it says* — every gate, fork, and escalated blocker is written to it.
 
 
 ### Development skills
@@ -211,6 +224,16 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 | `add-store-adapter` | Create a new persistence store adapter package                                 |
 | `add-docs-page`     | Add a page to the Docusaurus documentation site                                |
 
+
+## Asking for sign-off
+
+**You are the engineer. The user is the product owner** — they set the objectives and track the process as a whole. They have technical knowledge, but that is a trap, not a licence: every paragraph they spend re-deriving a call you already made is attention not spent on the thing only they are tracking. Dropping them into the engineer's chair is occasionally necessary and should be **rare**; when it is, say out loud that it's happening.
+
+**Translate every ask into the decision they are actually making** — priced in customers, promises, timing, and reversibility, not in files and symbols. Six parts, hardest ask first, batched under one `Need your sign-off` heading: **the fork as a plain-language heading** ("fix it, or document it as best-effort?") · **plain terms** (could they explain it back to a customer?) · **the trade-off** · **my recommendation, always** · **what would change my mind** · **what being wrong costs**.
+
+**Don't ask when you shouldn't:** the call is the implementer's, the answer is derivable from the spec or a decision they already made, or it's a coin flip with near-zero cost either way — decide it and note it in a line. Under-asking hides a call that shapes the product; over-asking trains them to skim.
+
+**Read [`docs/contributing/asking-for-decisions.md`](docs/contributing/asking-for-decisions.md) (BP-041) before putting any fork, gate, or sign-off to the user** — it is canonical for what each part means and carries the worked example. It governs conversation, a spec's §6/§12, a PR's *What's asked of you*, a gate, and an escalated blocker alike.
 
 ## Capabilities
 
@@ -257,6 +280,10 @@ pnpm --filter @thought-fabric/core typecheck  # Typecheck thought-fabric
 ```
 
 ## Writing Style (site content)
+
+The full standard is [`docs/contributing/user-docs.md`](docs/contributing/user-docs.md) — read it before writing any user-facing prose. It carries the **outsider rule** (docs describe what the thing does, never how it was built, what it used to do, or what bug prompted it), the two sentence tests, and the tells table. The summary below is the voice half of it.
+
+**Don't write user-facing prose yourself while holding a spec or a diff.** Dispatch the `docs-writer` agent, then `docs-editor`. Context leaks even when you know the rules — that's what the isolation is for.
 
 When writing blog posts, landing copy, or any prose for `apps/docs`, use this voice:
 
@@ -313,7 +340,7 @@ Best practices have two altitudes. Full text lives in `docs/contributing/best-pr
 - **Resources & state** (`docs/contributing/best-practices/resources.md`): BP-015 `expose`/`exclude` over `data` projections · BP-019 resource refs in leaf modules · BP-020 live mode never falls back to fixtures · BP-021 `cacheable` declared deliberately · BP-023 state schemas `.nullable().default(null)` · BP-027 user-scoped resources default to shared · BP-033 filter at the source before you load (don't list-then-discard).
 - **React** (`docs/contributing/best-practices/react.md`): BP-010 `useMemo` over `useEffect`; derive flags from the complete input set; signal only on real change.
 - **Engine & transport** (`docs/contributing/best-practices/engine.md`): BP-026 bundle forwarded options into `RuntimeConfig`.
-- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a Linear-linked spec) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs are versioned docs (`docs/specs/<ISSUE-ID>.md`) reviewed as a PR, synced with Linear · BP-039 specs lead with a plain-language summary (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds.
+- **Process & docs** (`docs/contributing/best-practices/process.md`): BP-002 spec-driven execution (each change maps to a tracked unit of intent — a spec for a feature, the issue itself for a bug) · BP-004 public boundary first · BP-006 keep planning/tracking labels out of code & tests · BP-008 root README onboarding-first · BP-009 package READMEs current · BP-037 specs live on their spec PR (`spec/<ISSUE-ID>.md`) and in Linear, never on `main` (CI-enforced) · BP-039 lead with the problem in plain language and fold the derivation below it (grok before diving deep) · BP-040 spec review is a direction check — fold only what changes the approach, note the rest for the implementer, converge in two rounds · BP-041 frame every ask as a business decision.
 
 **Document new and changed user-facing functionality** (always)
 

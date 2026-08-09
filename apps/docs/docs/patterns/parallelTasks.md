@@ -85,6 +85,11 @@ parallelTasks({
   // Max concurrent sub-tasks. Default: 3.
   maxConcurrency?: number;
 
+  // Retries the whole board may authorize, across every sub-task. Default 50.
+  // `null` for no bound, `0` to never retry. A sub-task retries when the
+  // planner gives it a maxAttempts. See Task Board → Bounding the retries.
+  maxTotalRetries?: number | null;
+
   // Override the planning step.
   // Must accept { goal: string } and output { tasks: Array<{ goal: string }> }.
   // Default: utility.decomposer()

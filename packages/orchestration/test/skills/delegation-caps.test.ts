@@ -24,12 +24,48 @@
  * convergence, not of the two paths landing on different boards.
  */
 import { describe, expect, it, vi } from "vitest";
+
+/**
+ * Every `TaskCollectionRef` the delegation surface actually constructs.
+ *
+ * Hoisted so the `vi.mock` factory below (which vitest lifts above the imports)
+ * can close over it. The surface builds its board inside a private closure, so
+ * this is the only seam that observes the caps the SURFACE passed rather than
+ * caps a test re-derived alongside it.
+ */
+const { constructedRefs } = vi.hoisted(() => ({
+  constructedRefs: [] as { maxTotalRetries: number | null }[],
+}));
+
+// Wrap the real barrel: every export stays genuine, and the one construction
+// entry point the surface calls also records what it returned.
+vi.mock("../../src/tasks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/tasks")>();
+  return {
+    ...actual,
+    getOrCreateTaskCollection: async (options: Parameters<typeof actual.getOrCreateTaskCollection>[0]) => {
+      const ref = await actual.getOrCreateTaskCollection(options);
+      constructedRefs.push(ref);
+      return ref;
+    },
+  };
+});
+
 import { generator, handler } from "@flow-state-dev/core";
 import type { DefinedCapability, GeneratorTool, InitialSkill } from "@flow-state-dev/core";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { createSkillsLibrary } from "../../src/skills/library";
-import { getOrCreateTaskCollection } from "../../src/tasks";
+import {
+  createSequencerBackedTaskCollection,
+  DEFAULT_MAX_ENQUEUED_TASKS,
+  DEFAULT_MAX_TOTAL_RETRIES,
+  DEFAULT_MAX_TOTAL_TASKS,
+  getOrCreateTaskCollection,
+  resolveTaskCapDefaults,
+  RETRY_BUDGET_NOT_APPLICABLE,
+} from "../../src/tasks";
+import { createFakeSequencerState } from "../helpers";
 import {
   buildTaskToolsList,
   createTaskToolsCapability,
@@ -303,5 +339,88 @@ describe("delegation board caps — a worker's mid-drain fan-out", () => {
       ctx,
     )) as AddTaskResult;
     expect(fanOut).toEqual({ ok: false, error: "enqueued_task_cap_exceeded" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The retry budget is refused here — at the PATH, not just the declaration
+// ---------------------------------------------------------------------------
+
+/**
+ * A delegation board carries **no** retry budget (FIX-948, Decision 8).
+ *
+ * A task created through the delegation `addTask` tool can never retry — the
+ * tool neither accepts nor stamps `maxAttempts`, and the routing predicate
+ * settles terminal without one — so a budget here would have no subject.
+ *
+ * The trap this suite exists for: refusing the public option on
+ * `SkillsLibraryOptions` does **not** refuse the cap. `resolveTaskCapDefaults`
+ * applies the DEFAULT budget to whatever it is handed, and the delegation
+ * surface spreads the *whole* resolved object into its collection constructor —
+ * so leaving the option off would still install a real, non-configurable cap
+ * with no way to raise it or pass `null`, silently activating the day delegation
+ * gains `maxAttempts`. A type-level "absent from `SkillsLibraryOptions`" check
+ * passes in exactly that broken state, which is why these assertions are about
+ * the constructed collection instead.
+ */
+describe("delegation board — the retry budget is filtered out of the cap spread", () => {
+  it("installs no budget on a collection built from the surface's resolved caps", async () => {
+    const caps = resolveTaskCapDefaults("[skills] delegation board", {
+      maxTotalTasks: undefined,
+      maxEnqueuedTasks: undefined,
+      maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE,
+    });
+
+    const board = createSequencerBackedTaskCollection({
+      collectionId: DELEGATION_BOARD_FIELD,
+      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      ...caps,
+    });
+
+    // No limit is in force — which is what the board's completion item reports,
+    // and what a caller reads to know nothing was enforced.
+    expect(board.maxTotalRetries).toBeNull();
+    // The creation caps still apply: this refuses ONE axis, not the object.
+    expect(caps.maxTotalTasks).toBe(DEFAULT_MAX_TOTAL_TASKS);
+    expect(caps.maxEnqueuedTasks).toBe(DEFAULT_MAX_ENQUEUED_TASKS);
+  });
+
+  it("would install one if the axis were merely OMITTED — the failure mode, pinned", async () => {
+    // The counterfactual, asserted so the test above cannot pass vacuously.
+    // Leaving the option undeclared is not the same as refusing it: an absent
+    // axis takes the default at every defaulting site, so the spread below —
+    // exactly what the delegation surface performs — silently acquires a budget
+    // the board cannot configure.
+    const unfiltered = resolveTaskCapDefaults("[skills] delegation board", {});
+    const board = createSequencerBackedTaskCollection({
+      collectionId: DELEGATION_BOARD_FIELD,
+      sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+      ...unfiltered,
+    });
+    expect(board.maxTotalRetries).toBe(DEFAULT_MAX_TOTAL_RETRIES);
+  });
+
+  it("holds on the board the SURFACE builds, not one a test rebuilds beside it", async () => {
+    // The two assertions above construct their collection from caps the test
+    // resolved itself, so they hold whatever `delegation-surface.ts` does —
+    // deleting its `maxTotalRetries: RETRY_BUDGET_NOT_APPLICABLE` leaves them
+    // green. This one drives the real executive tool surface and reads the ref
+    // the surface constructed, so the opt-out is pinned where it lives.
+    constructedRefs.length = 0;
+    const { tools, ctx } = await buildSurface();
+    await addN(toolNamed(tools, "addTask"), ctx, 1);
+
+    expect(constructedRefs.length).toBeGreaterThan(0);
+    for (const ref of constructedRefs) expect(ref.maxTotalRetries).toBeNull();
+  });
+
+  it("keeps the option off `SkillsLibraryOptions` — necessary, and not sufficient", () => {
+    // The type-level half. Kept because the option genuinely must not be
+    // offered, but it is the assertion that used to pass while the cap
+    // installed, so it is deliberately paired with the two above.
+    const options: Record<string, unknown> = {};
+    // @ts-expect-error — `maxTotalRetries` is not part of SkillsLibraryOptions.
+    createSkillsLibrary({ catalog: {}, initialSkills: [], maxTotalRetries: 10 });
+    expect(options.maxTotalRetries).toBeUndefined();
   });
 });

@@ -29,7 +29,7 @@
  * configured. Without one, a miss (unknown assignee, or no assignee on
  * the task) throws out of the router; the error propagates up through
  * the sequencer's `.rescue()` to `recordError`, which writes
- * `collection.fail` against the worker's per-state `currentTaskId` —
+ * `collection.fail` against the worker's per-state `currentClaim` —
  * exactly the offending task, never a sibling's concurrently-claimed
  * work. With a `defaultWorker`, a miss instead routes to that worker
  * via the `keyedRouter` `fallback` slot (FIX-940): an unknown assignee

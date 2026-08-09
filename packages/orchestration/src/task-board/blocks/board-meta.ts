@@ -34,6 +34,7 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef } from "../../tasks";
+import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -76,13 +77,22 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  *
  * `terminationReason` distinguishes a clean drain (`"all-completed"`)
  * from a board that exited with non-`completed` tasks remaining
- * (`"blocked-by-failures"`). The classification is purely structural —
- * `counts.completed === counts.total` — so it works identically for
- * all `onIdle` modes (FIX-626). Note: in `onIdle: "wait"` mode an
- * early-firing `shouldExit` while tasks are still `in_progress` /
- * `pending` will report `"blocked-by-failures"` even though nothing
- * actually failed; users overriding termination can read `counts`
- * directly to disambiguate.
+ * (`"blocked-by-failures"`), and from one the collection's cumulative
+ * retry budget stopped (`"retry-budget-exhausted"`, FIX-948). The first
+ * two are purely structural — `counts.completed === counts.total` — so
+ * they work identically for all `onIdle` modes (FIX-626). Note: in
+ * `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
+ * still `in_progress` / `pending` will report `"blocked-by-failures"`
+ * even though nothing actually failed; users overriding termination can
+ * read `counts` directly to disambiguate.
+ *
+ * The retry reason is read from a persisted DENIAL MARKER on the tasks,
+ * never inferred from `counts.retries === maxTotalRetries` — that
+ * arithmetic does not establish a refusal. A task can consume the last
+ * grant and then succeed while an unrelated task with no `maxAttempts`
+ * fails normally, leaving the count exactly at the limit with an errored
+ * task on the board and no retry ever denied. A termination reason that
+ * can lie is worse than no new reason at all.
  */
 export function createBoardMetaCompleted(options: BoardMetaOptions) {
   const { name, collection: collectionFactory, collectionId } = options;
@@ -105,12 +115,27 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
         awaiting_review: collection.count({ status: "awaiting_review" }),
         in_progress: collection.count({ status: "in_progress" }),
         pending: collection.count({ status: "pending" }),
+        /** Failure retries this board authorized (FIX-948). */
+        retries: sumGrantedRetries(all),
       };
-      const terminationReason: "all-completed" | "blocked-by-failures" =
-        counts.completed === counts.total ? "all-completed" : "blocked-by-failures";
+      // Read off the COLLECTION, not this board's config: a board handed a
+      // collection it did not construct knows nothing about that collection's
+      // caps, and a caller who built one with a budget deliberately would
+      // otherwise be told `null` — "nothing was enforced" — about a limit they
+      // set themselves. `?? null` tolerates a custom `TaskCollectionRef`
+      // predating this field at runtime; `null` means no limit is in force.
+      const maxTotalRetries = collection.maxTotalRetries ?? null;
+      const terminationReason:
+        | "all-completed"
+        | "blocked-by-failures"
+        | "retry-budget-exhausted" = anyRetryDeniedByBudget(all)
+        ? "retry-budget-exhausted"
+        : counts.completed === counts.total
+          ? "all-completed"
+          : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
-        { collectionId, status: "completed", terminationReason, counts },
+        { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },
         { key: collectionId }
       );
     },

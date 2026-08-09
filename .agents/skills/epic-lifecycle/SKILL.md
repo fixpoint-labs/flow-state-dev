@@ -34,9 +34,9 @@ ends the turn:
 | Phase | What happens | Ends when |
 |---|---|---|
 | **EPIC_SETUP** | Resolve the set; discover or create the epic issue; `epic-agent` writes the epic-spec and opens the never-merged epic PR | Epic PR is open → AWAITING_OBJECTIVE |
-| **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold at NEEDS_SPEC. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
+| **AWAITING_OBJECTIVE** | The epic's purpose/outcome is up for sign-off; sub-issues hold before their first action. Epic-PR review runs on the same two-round budget as a spec PR | An approving human comment or review lands on the epic PR |
 | **RUNNING** | Each sub-issue advances through its own `issue-lifecycle` in its own worktree, in parallel up to the cap. Per-issue spec-approval gates surface as they arrive; epic feedback fans down | Every sub-issue is merged, closed, or dropped |
-| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Each** wrap pass is either surfaced as a draft PR **or explicitly skipped** — both passes have documented skip conditions (no rework worth measuring · no docs touched), so "skipped, and why" is a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
+| **EPIC_WRAP** | Close the epic PR unmerged (branch kept); dispatch `distill-lessons` and `polish-docs` as draft PRs | **Lessons always surfaces a draft PR** — the ledger rows are factual and must land; a clean epic gets a rows-only PR rather than no PR, since its row is the one the trend most needs. Only the *grounding proposal* inside it is skippable. **Docs-polish may be skipped entirely** (no docs touched), and "skipped, and why" is then a terminal outcome exactly like "surfaced". Record the disposition of each in the epic record and report it; never wait on a PR a skip condition means will never exist |
 
 ## How it stays safe and cheap
 
@@ -44,8 +44,8 @@ ends the turn:
   `isolation: worktree`, so it lives on its own branch in its own git worktree.
   Parallel commits/pushes never collide — the whole reason worktrees exist here.
 - **Thin coordinator, isolated workers.** The coordinator holds only a compact **status
-  table** — one row per issue: `issue · phase · spec PR# · impl PR# · spec-review rounds ·
-  settling · gate-pending? · worktree`. It never holds a worker's context. Each worker advances its
+  table** — one row per issue: `issue · route · phase · spec PR# · impl PR# · spec-review
+  rounds · settling · gate-pending? · worktree`. It never holds a worker's context. Each worker advances its
   issue by **one bounded step** (via `issue-lifecycle`) in its own context and returns
   **≤ a couple of lines** of status, then exits. Token cost at the coordinator level is a
   small table across wakes, regardless of how much work the issues involve.
@@ -76,7 +76,7 @@ filesystem. So the division is fixed:
 | Per-issue refresh via `scout` (Linear parent→children in one query; PR comments/reviews/checks/meta) | **Resolving the set** and confirming it with you (loop step 1) |
 | Deciding each issue's pending action, and the **review round budget** for issue specs *and* the epic PR | **`.orchestration/` reads and writes** — the script gets the table via `args`, returns the new one |
 | Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
-| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror**, and the `spec approved` / `epic approved` labels |
+| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror** (the approval labels are the owner's — never written here) |
 | Routing a POC verdict to its issues the moment that POC finishes | **Ending the turn**, the heartbeat, and re-entry |
 
 **A workflow runs in the background**, so a wake is: call `epic-wake` → end the turn → the
@@ -111,6 +111,31 @@ even if more are queued. State the chosen N and the cap to the user.
 > and only inside each issue's own worktree/branch. A PR whose diff is a board /
 > status / scratch file is a bug — do not open it.
 
+## PR events are wake signals, not work items
+
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR events are
+wake signals, not work items".** Read it, don't re-derive it here. It is a *correctness* rule —
+and the harness's own posture on PRs you opened (they're yours to drive green, so diagnose the
+failure, push the fix, answer the reviewer) is louder than this heading and wins if you let it.
+
+The epic-specific delta:
+
+- **`epic-wake` decides the action; your job is to run the wake.** The script classifies each
+  row's pending action from durable state — which worker, which budget, whether to dispatch at
+  all — and that depends on the row's phase *and* the kind of activity. Don't restate those
+  routes here and don't predict them from the event text; run the wake and let it classify.
+  Don't relay comment text into `args` either — the wake's refresh scan re-reads each PR off its
+  own activity cursor, so a pasted copy is only a staler one.
+- **The PR you have to recognize includes the epic PR, which has no row.** It lives in the
+  `epic` handle beside them; its events are the objective sign-off and the epic-spec's own
+  feedback. Drop one as "not mine" and the whole set sits at AWAITING_OBJECTIVE until a
+  heartbeat catches it — the epic gate is a barrier, so a missed approval parks every issue,
+  not one.
+- **The write rule's instance here:** posting an alignment the user just decided
+  ("Cross-spec coherence" → step 4, *Route the alignment*) carries a human's decision, so it is
+  allowed. Answering a reviewer is a technical judgment about a diff you haven't read, so it is
+  not.
+
 ## The loop (each invocation)
 
 1. **Resolve the epic and its set.** Take the epic issue ID, or the issue IDs, from the
@@ -120,11 +145,23 @@ even if more are queued. State the chosen N and the cap to the user.
    per-issue handle-cache pointers), **and the epic handle alongside it** (epic issue ID ·
    name · `epic/<name>` branch · epic PR#), so it survives across wakes — the next refresh
    needs it to re-check the epic PR for its approving comment or review, keep the epic PR
-   subscribed, and pass the branch/SHA to workers. Two more coordinator-owned fields live
-   here because nothing else can hold them across wakes: the epic PR's own review budget
+   subscribed, and pass the branch/SHA to workers.
+
+   **Establish the `owner` login here too** — the GitHub account whose approval *label* passes a gate. It is the product owner you are
+   reporting to, so ask them once if you don't already know it, and persist it beside the epic
+   handle; a login you inferred from a PR author or a commit trailer is a guess, and this one
+   authorizes work. If you cannot establish it, say so and carry on without it: the wake turns
+   the label channel off rather than trusting an unattributable label, and the owner's comment
+   or review still passes every gate. What you must not do is leave the field out silently —
+   an owner who signs off by label alone would then wait forever on a channel nothing reads.
+
+   Two more coordinator-owned fields live here for the same reason — nothing else holds them
+   across wakes: the epic PR's own review budget
    (**`reviewRounds`** + **`aboveBarFound`**, passed to and returned by each wake) and, at
    wrap, each pass's **disposition**
-   (`lessons: <PR#|skipped: why>` · `docs_polish: <PR#|skipped: why>`).
+   (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
+   clean epic still lands its rows as a rows-only PR; only the proposal inside it is skippable
+   · `docs_polish: <PR#|skipped: why>`, which *can* be skipped outright).
 2. **Run the wake.** Dispatch the **`epic-wake` workflow** with the table from
    `.orchestration/`. It does the refresh, the epic-gate check, the capped worker fan-out, the
    review budgets, the claim dedupe and the verdict routing — see
@@ -139,7 +176,8 @@ even if more are queued. State the chosen N and the cap to the user.
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
                 verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
-       issues: [ { id, phase, specPr, implPr, specReviewRounds, specLevelFound,
+       owner: <the GitHub login authorized to sign off by LABEL>,
+       issues: [ { id, route, phase, specPr, implPr, specReviewRounds, specLevelFound,
                    prFeedbackRounds, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
                    approvedInSession, subPrs, assembledGoal, unsettled, blockerFor,
@@ -152,8 +190,28 @@ even if more are queued. State the chosen N and the cap to the user.
    filesystem, so **you are its memory**. Four groups of fields are load-bearing for exactly
    that reason, and each fails in its own way if you drop it:
 
+   - **`owner`** — the GitHub login whose `spec approved` / `epic approved` label passes a gate.
+     Labels are writable by every collaborator and every bot with write access, so the scan
+     verifies **who applied it** against this login before the label counts; "a human applied
+     it" is not the test, because an agent with write access is not a human and a passing
+     collaborator is not the owner. Omit it and the **label channel is simply off** — the
+     scouts report it false whatever labels a PR carries, and only comment/review approval
+     works. That is fail-closed by design: a label nobody can be held to is not a sign-off.
+     The *timing* half stays unchecked either way — presence, not recency, once the applier
+     is right.
+
+   - **`issues[].route`** (`spec | direct`) — which route the issue takes into
+     implementation ([`orchestration.md`](../../../docs/contributing/orchestration.md) →
+     "Which issues get a spec"). The wake re-derives it from the Linear category each
+     refresh and hands it back, so persisting it verbatim is all you owe; what you must
+     not do is invent one. A **bug** is `direct`: it never enters NEEDS_SPEC, never opens
+     a spec PR, and is **never offered a spec-approval gate** — its only gate is merge.
+     The default when nothing is known is `spec`, which fails closed (an unnecessary
+     document beats ungated code).
    - **The counters** (`specReviewRounds`, `specLevelFound`, `epic.reviewRounds`,
      `epic.aboveBarFound`) — drop them and every review budget silently restarts at zero.
+     A `direct` row spends none of them; a bug row whose spec-review counter is climbing
+     is a routing bug, not a chatty reviewer.
    - **The activity cursors** (`issues[].lastSeenActivityAt` / `lastSeenSha`, and
      `epic.lastSeenActivityAt` / `lastSeenSha`) — these are how a scout tells new feedback from
      feedback already handled. Carry a stale one and the *same* review comment reads as new
@@ -266,10 +324,13 @@ even if more are queued. State the chosen N and the cap to the user.
    wake surfaced (Linear auto-status is off; the mapping + state IDs live in `issue-lifecycle`
    → "Linear status is a mirror you own"). Workers set the mirror for transitions they effect
    (they opened the PR); you set it for the ones the wake *detected* — a spec/epic approval, a
-   merge — and for a detected approval also apply the `spec approved` / `epic approved` label
-   as the durable, filterable record. Idempotent: skip if the issue is already in the target
-   state and the label is already present. **The gate is the fresh approval the wake
-   re-derived, never the label** — the label can go stale behind a later push.
+   merge. **Do not apply the `spec approved` / `epic approved` label** — it is the owner's
+   signal, not a record you write. Idempotent: skip if the issue is already in the target
+   state. **The label is the OWNER's approval channel, never written by the coordinator** — the owner signs off with it as well as by comment, so the
+   wake reads it and it passes the gate on its own. It does **not** expire on a push (a spec
+   or epic PR takes commits for its whole life; expiring would revoke the approval on the
+   next fold); **removing the label is the revocation.** An approving *review* keeps its own
+   staleness rule — a later push supersedes it.
 
    **Route the epic-PR feedback the wake handed you — both channels, or it is lost.** Neither
    is optional, because the coordinator never reads epic-PR content itself and nothing else will
@@ -332,16 +393,29 @@ even if more are queued. State the chosen N and the cap to the user.
    contract every other epic-level answer uses — and leave the `unsettled` entry in place. `epic-agent`
    folds it into the epic-spec and the entry retires with the fold, which is what makes the record and the
    decision move together.
-4. **Surface gates.** If the epic is awaiting its objective sign-off, surface the epic
-   PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
-   releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
+4. **Surface gates.** **Write every gate and every blocker as a decision put to a product
+   owner** — all six parts, per
+   [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical).
+   Batch the turn's asks under one `Need your sign-off` heading, numbered, hardest first. "The
+   spec PR is open, please approve" is not a gate surfaced — it pushes the framing job onto the
+   person least able to do it. You hold links and status lines, not the code, so build the ask
+   from what the workers returned (a row's `blocker` carries its parts) rather than re-deriving
+   it; where a worker gave you a bare phrase, say what you have and name what's missing instead
+   of inventing the substance.
+
+   If the epic is awaiting its objective sign-off, surface the epic
+   PR (its purpose/objective) and note that an **approving comment or review on the epic PR —
+   or their own `epic approved` label** releases the epic's issues to start — until then they
+   hold at NEEDS_SPEC. Then, per issue:
    for any issue **awaiting spec approval** (its spec PR is open, Part I + II), surface the
-   **spec PR link** for review and note that **an approving comment or review on the spec PR**
+   **spec PR link** for review and note that **an approving comment or review on the spec PR,
+   or their own `spec approved` label,**
    is the go-ahead to implement (a plain "approved" comment, or an Approve-state review, from a
-   human other than the PR's author — the label is applied by the coordinator, not the human).
+   human other than the PR's author — or the label, which only they apply).
    **Say what they're signing off: the direction** — the problem framing, the approach, and the
    numbered Decisions — and, for a converged spec, that remaining open threads are carried as
-   implementer notes rather than blockers. **If a POC settlement is in flight on that issue,
+   implementer notes rather than blockers. State the outcome the epic buys and the calls that
+   are hard to reverse; the numbered Decisions live on the PR, so index them, don't recite them. **If a POC settlement is in flight on that issue,
    say so in one line** (the claim, and that the verdict will land on the PR) — approval isn't
    blocked on it, but the user shouldn't sign off on a contested premise unknowingly. The
    returned `gates` array carries this for you: each `spec-approval` entry names the PR and its
@@ -363,10 +437,11 @@ even if more are queued. State the chosen N and the cap to the user.
    must wake the coordinator, not wait for the heartbeat, and epic PR activity must too (so feedback
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
-   delivered PR-activity events, so a spec- or epic-PR approval (either form) wakes the coordinator
-   immediately (the reason the gates moved off labels, whose webhook never arrives). The
-   transitions webhooks *don't* cover — CI success and merge/close — are caught on the wake's
-   scout refresh (step 2). Schedule one check-in
+   delivered PR-activity events, so a spec- or epic-PR approval in either of those forms wakes
+   the coordinator immediately. The owner's **label** is the third channel and the slow one: a
+   `labeled` webhook never arrives, so it is found only by the wake's scout refresh. The
+   transitions webhooks *don't* cover — CI success and merge/close — are caught on that same
+   refresh (step 2). Schedule one check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. **Move to EPIC_WRAP only when the wake returns `mayWrap: true`.**
 
@@ -476,8 +551,10 @@ The set belongs to one body of work with **cross-cutting concerns** — shared s
 naming, sequencing, common direction — so the epic-spec exists to keep those decisions out
 of a vacuum. **The epic-spec, its conventions, the objective gate, and the index-vs-table
 distinction are defined in
-[`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)** — read
-it; below is only the coordinator's *operating procedure*.
+[`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)**, and
+its sections and shape in
+[`epic-spec-template.md`](../../../docs/contributing/epic-spec-template.md) (each one a
+worked example) — read those; below is only the coordinator's *operating procedure*.
 
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
@@ -492,22 +569,46 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
   document), and returns the handles. The coordinator holds only handles (epic issue ID, name,
   branch, epic PR#), never the spec text.
+- **Consider an end-state POC — before the objective gate, not after.** The objective gate is the
+  **last moment the division into issues is cheap to change**, and whether the assembled surface
+  is right is the one question only this altitude can ask. When that's genuinely unclear, dispatch
+  `epic-agent` to build a rough [`spec-poc`](../spec-poc/SKILL.md) end-state on the epic branch,
+  recorded in the epic-spec's **§3 Shape of the whole**. Triggered, not default; blocks nothing;
+  **disclose an in-flight one when you surface the gate**, so nobody approves on an unchecked
+  premise. Why and when, canonically:
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec-branch POCs".
+
+  **Two mechanics are yours, because `epic-wake` has no slot for this.** The script's cap is shared
+  by the issue workers, the epic fold and settlements, and it knows nothing about a POC dispatch:
+  1. **It takes the fold's slot — never run it concurrently with a fold or a settlement.** One
+     `epic-agent` worktree at a time on the epic branch, or two dispatches race the same branch.
+     A wake that has a fold to do does the fold; the POC waits for the next one.
+  2. **Record it in the epic record, or it re-dispatches every wake.** `AWAITING_OBJECTIVE` wakes
+     on every bot review and CI event, and the trigger is judgment — so it re-fires unless the
+     answer is written down. Write `spec_poc: <path> · showed: <one line>` — or
+     `spec_poc: skipped: <why>` — the same way `lessons: … proposal skipped:` makes a wrap
+     terminate. **A
+     skip is a recorded outcome, not a silent one.**
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
   until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*
-  epic-level gate — direction stays ungated. When an
-  approving human comment or review lands on the epic PR, **the coordinator writes both mirrors**
-  — it applies the `epic approved` label (durable, filterable record) *and* moves the Epic
-  *issue's* Linear state to reflect "objective approved" (the comment or review is the
-  trigger; the label and Linear state are human-facing mirrors, and the coordinator owns keeping
-  them in step so they don't drift).
+  epic-level gate — direction stays ungated. When approval lands on the epic PR **by any of the
+  three channels — comment, review, or the owner's label** — **the coordinator writes the Linear
+  mirror only**: it moves the Epic *issue's* state to reflect "objective approved". Include the
+  label case or the mirror silently disagrees with the gate, leaving the Epic issue reading
+  unapproved while its children implement. **It does
+  not touch the `epic approved` label**, which is the owner's own signal: a coordinator-written
+  label would outlive the review it recorded and keep the gate open past a later push.
 - **Own the subscription; fan feedback down.** Only the coordinator can subscribe to the epic
   PR (sub-agents can't), so epic-PR feedback arrives here. The **folding** is the wake's:
   it dispatches `epic-agent` to triage against the bar, fold above-the-bar items into the
   epic-spec, refresh the running index from your table's PR handles (one update pass, not a
   separate mode), and return `fanOut` — the issues an above-the-bar item touches. You route
-  those as **implementer notes**; a comment about a single issue's internals never goes into
-  that issue's spec. Nothing here pulls epic-comment *content* into the coordinator's context.
+  those `fanOut` issues as **implementer notes**; a comment about a single issue's internals
+  never goes into that issue's spec. A fold that changes a decision must satisfy tenet 5 —
+  every surface of the epic-spec restating that decision moves with it — and `epic-agent` owns
+  that check at edit time, so don't re-derive it here.
+  Nothing here pulls epic-comment *content* into the coordinator's context.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.
@@ -515,7 +616,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   size where a recurring rework class becomes visible (three of five issues carrying the
   same `design-off` feedback is a signal one issue alone can't show). At epic wrap, dispatch
   **one bounded sub-agent** (worktree, like `epic-agent`) to run **`distill-lessons` in
-  loop mode** over the epic's spec + impl PRs: append the cycle-ledger rows and open a
+  loop mode** over the epic's spec + impl PRs **and the epic PR itself** — the epic PR is a
+  reviewed artifact with a rework class its children don't have, and a collector handed only
+  the children reports **zero** for that class, which reads as progress. Append the
+  cycle-ledger rows and open a
   **draft** "lessons" PR carrying the ledger rows (factual) plus any *proposed* tenet/BP
   sharpening. Keep it **draft** — `distill-lessons` writes to the grounding only after your
   review, so the PR is a proposal you approve, not auto-landed lessons. It's a fresh PR
@@ -524,11 +628,27 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   the lessons itself. **Spec-review rounds are ledger signal too** — an epic whose specs each
   needed a third round is telling you something about the spec-authoring altitude, and the
   ledger is where that becomes visible. This is also where the Fable-escalation trial is
-  *measured* — the ledger's `design-off` trend is the evidence it's earning its cost. Skip for
-  an epic with no rework worth measuring — this is the loop-measurement payoff, not
-  ceremony for every run. **A skip is a recorded outcome, not a silent one:** write
-  `lessons: skipped: <why>` to the epic record and report it, so EPIC_WRAP can complete
-  instead of waiting forever on a PR that will never open.
+  *measured* — the ledger's `design-off` trend is the evidence it's earning its cost.
+
+  **The skip is partial, and the split is deliberate.** An epic with no rework worth measuring
+  skips the *grounding-proposal* pass — no tenet/BP sharpening, and the lessons PR carries rows
+  only. It does **not** skip the PR, and it does **not** skip the ledger rows: **always append the factual rows, including for a clean epic.** A clean
+  epic is the most valuable row the instrument has — dropping it leaves a ledger containing only
+  epics that had findings, so `rounds-to-approval` and `design-off` measure a survivor-biased
+  sample and a genuine improvement is invisible by construction. Rows are data; the proposal is
+  the judgment call, and only the judgment call is skippable.
+
+  **Rows still need a way to land.** They are written in the wrap worker's worktree, so a run
+  that opens no PR leaves them there and they never reach the default branch — the epic records
+  the collection as complete while the instrument gains nothing. So the skip changes the PR's
+  *contents*, never its existence: when the proposal is skipped, still open the **draft
+  ledger-only PR** carrying just the factual rows. It is small and boring by design, and that
+  is the point — a clean epic's row is the one the trend most needs.
+
+  **A skipped proposal is a recorded outcome, not a silent one:** write
+  `lessons: <PR#> [proposal skipped: <why>]` to the epic record — the same token the coordinator
+  state uses — and report it, so EPIC_WRAP completes on a PR that exists rather than waiting on
+  one that never opens.
 - **Polish the docs.** Each issue edited the docs in isolation, so the corpus accretes the same
   way code does — the same concept re-explained across pages, guides swollen into walls of text,
   navigation that stopped cohering. At epic wrap, once the batch's impl PRs have merged, dispatch
@@ -553,9 +673,12 @@ Then decide whether it joins the epic:
 
 - **Belongs under the epic and unblocked** (nothing it's blocked-by is still open/in-progress
   — the wake enforces this from Linear each refresh and reports anything blocked in `blocked`)
-  → it *may be added to the active set*, up to the concurrency cap, entering at NEEDS_SPEC.
-  It still hits its own **spec-approval gate** before any implementation — so this
-  starts a *spec*, not unreviewed code. Surface each addition to the user. **Pass the epic
+  → it *may be added to the active set*, up to the concurrency cap, entering at its
+  route's entry phase — NEEDS_SPEC for a feature, NEEDS_IMPLEMENTATION for a bug. A
+  feature still hits its own **spec-approval gate** before any implementation, so what
+  this starts is a *spec*, not unreviewed code; a discovered **bug** goes straight to a
+  fix and its PR, which is the point of the direct route and the thing to be deliberate
+  about — surface each addition to the user, and say which route it took. **Pass the epic
   issue ID to `issue-manager`** so the new issue is **parented under the epic** (subject to
   the same one-parent safety check) — otherwise it won't show under the epic in Linear and
   `issue-spec` won't discover the epic via `issue.parent`.
@@ -581,6 +704,12 @@ Because the epic-spec already coordinates the set up front, this pass narrows to
 **conformance check** — do the issue specs adhere to the epic's objective, themes, and
 decisions, and what did the epic *not* settle? (`cross-spec-review` handles that narrowing
 itself; you just dispatch it.)
+
+**It is a pass over specs, so `direct`-route (bug) rows are not in it.** They have no
+spec to be incoherent with, they are not waited for before the pass can be asked, and they
+are never held by it — a bug keeps implementing while the epic's features wait on their
+coherence check. The wake computes the set on that basis; an epic of nothing but bugs
+never asks for the pass at all, which is correct.
 
 **The gate — never align to an unvalidated spec.** Cross-aligning specs only helps if each
 is already sound; aligning a good spec to a still-wrong one spreads the flaw. So this pass
@@ -611,8 +740,12 @@ Once both hold:
    cheaper to trigger than a two-round review loop, so this is where a POC fleet would come from
    if anywhere.
 3. **Walk you through the remaining decisions.** For each conflict the report marks *decision-needed*,
-   surface it with the trade-off (`AskUserQuestion`) — the coordinator owns all user interaction;
-   the review sub-agent never prompts. Conflicts the docs already settle are applied without
+   surface it as a decision they can make, in full — all six parts, per
+   [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (the report
+   hands up the substance, you do the framing). `AskUserQuestion` gets the crisp choice. A
+   conflict relayed as "spec A and spec B disagree about X" is two specs' words, not an ask —
+   the user is deciding about the product, not refereeing two documents. The coordinator owns all
+   user interaction; the review sub-agent never prompts. Conflicts the docs already settle are applied without
    a prompt (noted, not asked). For a conflict the report marks **`fable-candidate`**, the
    walkthrough asks two things, not one: the decision itself, **and** whether to spend a
    **Fable** adjudication on it first (`AskUserQuestion`, with the rough cost). Only on an
@@ -630,6 +763,15 @@ Once both hold:
    issue. An alignment edit is a *spec-level* change by construction — a cross-spec conflict
    is never below the bar — so it earns a fresh round outside the two-round budget, and the
    issue returns to spec review before it implements.
+
+   **`crossSpecCleared` is what holds it, not the approval label — and that distinction is
+   load-bearing.** An owner's label is standing: it survives a push, so an alignment edit
+   landing at a new head does *not* retract it, and a gate reading the label alone would
+   report the spec approved against text the alignment just changed. `crossSpecCleared` is
+   coordinator state you own precisely so a mechanical edit cannot clear a human gate: leave
+   it `false` until every aligned spec has cleared approval **again**, which means the owner
+   re-confirming — not the old label still being present. Never remove the owner's label to
+   force this; hold on your own flag and ask.
 
 Run this once per epic when the set stabilizes; re-run only if a later approved spec joins
 the set or an alignment edit could ripple.
@@ -655,12 +797,16 @@ step. So:
 - **A real blocker is the agent's to resolve or sequence, not to punt.** If implementation
   can't proceed because of an open decision or an unlanded prerequisite from another issue,
   that's the coordinator's problem to handle: sequence the prerequisite (run its blocker to merge
-  first), or resolve the decision from the spec/codebase. Surface it to the user **only** when
+  first), or **dispatch a worker to** resolve the decision from the spec/codebase — the answer is
+  in artifacts you don't read (Token discipline: handles and status only), so resolving it here
+  would mean pulling a spec or a diff into this context to do it. Surface it to the user **only** when
   it genuinely needs a human call (a decision the spec doesn't settle) — with the specific
   question, not a vague "should I continue?". A prerequisite that simply needs to land is
   tracked and ordered by the coordinator, never a reason to idle.
-- **Spec-approval gate is per issue.** Approvals are independent — issue B isn't blocked by
-  issue A's pending spec.
+- **Spec-approval gate is per issue, and only on the spec route.** Approvals are
+  independent — issue B isn't blocked by issue A's pending spec, and a **bug** has no such
+  gate at all. Never manufacture one: asking the user to approve a spec for an issue that
+  will never have a spec parks the row on an answer nobody can give.
 - **Spec review converges; it doesn't wait for silence.** A spec that has spent its round
   budget goes to the gate. Open review threads are not an external signal to wait on — the
   spec PR is never merged, so they gate nothing.

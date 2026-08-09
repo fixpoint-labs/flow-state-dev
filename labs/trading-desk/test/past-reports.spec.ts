@@ -21,7 +21,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow } from "@flow-state-dev/core";
-import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import { createInMemoryStores, type StoreRegistry, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
 import { checkTickerResolvable } from "../flows/analysis/orchestration/guards";
 import { commitPortfolioManagerMemo } from "../flows/analysis/agents/portfolio-manager/writer";
@@ -455,7 +455,7 @@ describe("PM commit writes snapshot + reports-index metadata", () => {
     expect(result.status).toBe("completed");
 
     // (a) The durable snapshot resource — keyed by its `ref`.
-    const resources = await stores.resourceState.getAll("session", sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const snapshot = resources["tradingDeskDecisionSnapshot"] as
       | {
           ticker?: string;
@@ -545,7 +545,7 @@ describe("PM commit writes snapshot + reports-index metadata", () => {
     expect(result.status).toBe("completed");
 
     // The durable snapshot records the post-clamp "Hold", never the raw "Buy".
-    const resources = await stores.resourceState.getAll("session", sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const snapshot = resources["tradingDeskDecisionSnapshot"] as
       | { finalRating?: string }
       | undefined;

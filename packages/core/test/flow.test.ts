@@ -4,6 +4,37 @@ import { defineFlow, generator, handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
 import { createMockContext, runForTest } from "./helpers";
 describe("defineFlow", () => {
+  it("fails closed when removed middleware is passed to a flow", () => {
+    const middleware = vi.fn();
+
+    expect(() =>
+      defineFlow({
+        kind: "legacy-middleware",
+        actions: {},
+        middleware
+      } as any)
+    ).toThrow(/removed "middleware" option/);
+    expect(middleware).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when removed middleware is passed to flow instance options", () => {
+    const flow = defineFlow({ kind: "legacy-instance-middleware", actions: {} });
+
+    expect(() => flow({ middleware: vi.fn() } as any)).toThrow(
+      /removed "middleware" option/
+    );
+  });
+
+  it("fails closed when removed middleware is passed to a block", () => {
+    expect(() =>
+      handler({
+        name: "legacy-middleware-block",
+        middleware: vi.fn(),
+        execute: () => "secret"
+      } as any)
+    ).toThrow(/removed "middleware" option/);
+  });
+
   it("returns callable flow type with defaults and merge-based overrides", () => {
     const baseAction = handler({
       name: "base-action",

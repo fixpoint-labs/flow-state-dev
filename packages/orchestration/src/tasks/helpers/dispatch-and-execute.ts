@@ -27,6 +27,7 @@
 import { handler } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
+import { ticketForClaim } from "../claim-ticket";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import type { TaskDispatcher } from "../dispatchers/types";
@@ -171,6 +172,10 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
 
       const worker = resolveWorker(options.workers, claimed);
       const workerInput = packWorkerInput(claimed, options.collection);
+      // Minted from the claim the substrate just committed, never assembled by
+      // hand (FIX-981). `claimed` is post-claim, so its `attempts` is this
+      // cycle's attempt number.
+      const claim = ticketForClaim(options.collection.collectionId, claimed);
 
       try {
         // BP-011 deviation (FIX-503): the worker is selected dynamically from
@@ -179,18 +184,17 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
         // substrate cast for first-party dispatch.
         const output = (await asRuntime(worker).run(workerInput, ctx)) as TOut;
         // Advisory write-back (FIX-951): the task may have been settled or
-        // handed to another worker while this one ran. `claimed.attempts` is
-        // post-claim, so it is this cycle's attempt number.
+        // handed to another worker while this one ran.
         await options.collection.complete(claimed.id, output, {
           ifAllowed: true,
-          expectAttempt: claimed.attempts,
+          claim,
         });
         return { claimed: true, taskId: claimed.id, output };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         await options.collection.fail(claimed.id, message, {
           ifAllowed: true,
-          expectAttempt: claimed.attempts,
+          claim,
         });
         if (onError === "fail") throw err;
         return { claimed: true, taskId: claimed.id, error: message };

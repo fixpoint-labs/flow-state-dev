@@ -27,11 +27,14 @@
  * worker block runs as a first-class step in the sequencer — it is
  * NOT invoked from inside another block's `execute` (BP-011).
  *
- * `recordSuccess` reads `currentTaskId` from the worker's own
+ * `recordSuccess` reads `currentClaim` from the worker's own
  * sequencer state and calls `collection.complete`. `recordError` runs
  * via `.rescue()` and calls `collection.fail` against the same
- * per-state `currentTaskId` — so a thrown error fails exactly one
- * task, never a sibling's concurrently-claimed work.
+ * per-state `currentClaim` — so a thrown error fails exactly one
+ * task, never a sibling's concurrently-claimed work. The claim is
+ * presented to the substrate as well as read from, so the guarantee
+ * holds against a task the worker no longer owns, not just against
+ * one it never named.
  *
  * ## Termination
  *
@@ -77,6 +80,7 @@ import {
   isDefinedTaskCollection,
   onTaskChangeFor,
   resolveTaskCapDefaults,
+  ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
   type TaskCollectionRef,
@@ -116,9 +120,17 @@ import {
   createFlowPolicyResolver,
   createInstallBoardFlowState,
   createTeardownBoardFlowState,
-  stampCurrentTaskId,
+  stampCurrentClaim,
   type BoardRunFlowState,
 } from "./flow-policy-wiring";
+import {
+  assertDetachedBoardSupported,
+  resolveWorkerSlots,
+  type ResolvedWorkerSlot,
+  type TaskWorkerDispatch,
+  type TaskWorkerSlot,
+  type TaskWorkerSlotRegistry,
+} from "./detached";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -195,7 +207,21 @@ export {
   type TaskBoardCapabilityOptions,
   type TaskBoardCapabilityAccessor,
 } from "./capability";
+export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
+export {
+  assertDetachedBoardSupported,
+  isTaskWorkerEntry,
+  resolveWorkerSlot,
+  resolveWorkerSlots,
+} from "./detached";
+export type {
+  ResolvedWorkerSlot,
+  TaskWorkerDispatch,
+  TaskWorkerEntry,
+  TaskWorkerSlot,
+  TaskWorkerSlotRegistry,
+} from "./detached";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -259,6 +285,34 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   name: string;
 
   /**
+   * Explicit, stable identifier for this board. **Required when any worker
+   * declares `dispatch: { mode: "detached" }`**, optional otherwise (FIX-982).
+   *
+   * A detached worker runs in a Workstream whose session id is derived by
+   * hashing `(parentSessionId, boardId, coordinate, topic)`, so this value
+   * lands in a persisted key. It cannot be derived from `name` (unique per
+   * flow, not per session) or from `collectionId` (the literal
+   * `"factory-supplied"` for every factory board), which is why it is
+   * declared rather than inferred.
+   *
+   * Renaming it is a **breaking re-key**: live Workstreams keyed on the old
+   * value are orphaned.
+   */
+  boardId?: string;
+
+  /**
+   * Dispatch mode for a **uniform** worker — a board whose `workers` is a
+   * single block (FIX-982). Omitted means inline, which is what every board
+   * does today.
+   *
+   * Registry boards declare this per worker instead, as
+   * `{ worker, dispatch }` values under `workers`; passing this field
+   * alongside a registry is a construction error, because it would not say
+   * which worker it meant.
+   */
+  dispatch?: TaskWorkerDispatch;
+
+  /**
    * Where the collection lives — a once-chosen internal detail. Optional; an
    * omitted collection is request-backed with `collectionId` = `name`. One of:
    *
@@ -284,8 +338,12 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * every claimed task; a registry routes by `task.assignee`. Workers
    * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
+   *
+   * A registry **value** may also be a `{ worker, dispatch }` entry, which is
+   * how a board declares that worker detached (FIX-982). A bare block still
+   * means inline, so no existing board needs editing.
    */
-  workers: TaskWorker<TInput, TOutput> | TaskWorkerRegistry;
+  workers: TaskWorker<TInput, TOutput> | TaskWorkerSlotRegistry;
 
   /**
    * Optional default worker — the **delegation floor** (FIX-940).
@@ -295,8 +353,11 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * declared workers are never routed through it (reached only on a
    * genuine miss). Non-delegation consumers (blackboard, patterns) leave
    * it unset.
+   *
+   * Accepts a `{ worker, dispatch }` entry to detach the floor itself
+   * (FIX-982); a bare block still means inline.
    */
-  defaultWorker?: TaskWorker;
+  defaultWorker?: TaskWorkerSlot;
 
   /**
    * Maximum parallel workers. Default: 4. The pattern spawns exactly
@@ -340,6 +401,24 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   maxTotalTasks?: number | null;
 
   /**
+   * Cumulative failure retries this board may authorize, across every task
+   * (FIX-948). Default 50. `null` is explicitly unbounded; same
+   * supplied-collection rule as `maxEnqueuedTasks`.
+   *
+   * The creation caps above count only *new* tasks, and a retry re-runs one that
+   * already exists — so a failing task keeps spending while both of them sit
+   * still. This is the one number that bounds that. At the bound a failing task
+   * settles terminal `errored` rather than re-pending, and the board's
+   * completion item reports `terminationReason: "retry-budget-exhausted"`.
+   *
+   * `0` is legal and means "run every task once, never retry". Only failure
+   * retries count — `unblock`, `resumeFromReview`, and `reclaim` also re-pend a
+   * task and do not consume the budget. See `tasks/collection/task-caps.ts` for
+   * the full semantics, including why the budget is spent at authorization.
+   */
+  maxTotalRetries?: number | null;
+
+  /**
    * Dispatcher for ready-task selection. Either a `TaskDispatcher`
    * instance or a string naming one of the standard dispatchers
    * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
@@ -374,7 +453,7 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    *   the parent forEach rejects, the board fails.
    *
    * Fails the offending task only — siblings concurrently in-progress
-   * are unaffected because each worker tracks its own `currentTaskId`
+   * are unaffected because each worker tracks its own `currentClaim`
    * in worker state.
    */
   onError?: "skip" | "fail";
@@ -487,6 +566,21 @@ export interface TaskBoardHandle<
    */
   backing: TaskBoardBacking;
   /**
+   * The board's declared `boardId` (FIX-982), or `undefined` when it declared
+   * none. Always present on a board with detached workers — that is what
+   * `assertDetachedBoardSupported` enforces — so P2's routing-coordinate
+   * derivation can read it off the handle without re-deriving from config.
+   */
+  boardId?: string;
+  /**
+   * The workers that declared `dispatch: { mode: "detached" }`, in declaration
+   * order (FIX-982). Empty on every board that ships today.
+   *
+   * Surfaced so the registry bubble-up (P2) reads one resolved list rather
+   * than re-walking the raw `workers` config and re-deciding what an entry is.
+   */
+  detachedWorkers: readonly ResolvedWorkerSlot[];
+  /**
    * Whether the board's own `initialTasks` seed carries any task without a
    * stable `id` (FIX-910). An idless initial task is re-added on every drain
    * re-entry (`createSeedCollection` only dedups stable ids), so a multi-drain
@@ -531,9 +625,11 @@ export function taskBoard<
 ): TaskBoardHandle<TInput, TOutput, TName> {
   const {
     name,
+    boardId,
     collection: collectionConfig,
-    workers,
-    defaultWorker,
+    workers: workersConfig,
+    defaultWorker: defaultWorkerConfig,
+    dispatch: uniformDispatch,
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
@@ -564,6 +660,27 @@ export function taskBoard<
     );
   }
 
+  // FIX-982: flatten `{ worker, dispatch }` entries down to the bare shapes the
+  // drain already composes, and note which asked to be detached. A board with
+  // no entries produces exactly the values it was handed.
+  const isUniform = typeof (workersConfig as { run?: unknown }).run === "function";
+  if (uniformDispatch !== undefined && !isUniform) {
+    throw new Error(
+      `[task-board] "${name}" passes a board-level \`dispatch\` alongside a worker registry — ` +
+        `it would not say which worker it meant. Declare dispatch per worker instead: ` +
+        `\`workers: { <assignee>: { worker, dispatch } }\`.`
+    );
+  }
+  const resolvedWorkers = resolveWorkerSlots({
+    workers: workersConfig,
+    ...(defaultWorkerConfig !== undefined
+      ? { defaultWorker: defaultWorkerConfig }
+      : {}),
+    ...(uniformDispatch !== undefined ? { dispatch: uniformDispatch } : {}),
+  });
+  const workers = resolvedWorkers.workers;
+  const defaultWorker = resolvedWorkers.defaultWorker;
+
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
@@ -572,6 +689,18 @@ export function taskBoard<
   );
   const { collectionFactory, collectionId, capability, backing, drainUses } =
     binding;
+
+  // FIX-982 decision 11 — a detached board is refused here, loudly and by
+  // name, never degraded with a warning. Runs after the binding so the
+  // once-chosen backing is known. Two of the spec's six refusals are NOT here
+  // because the fact they test does not exist yet at construction; see the
+  // module doc on `./detached`.
+  assertDetachedBoardSupported({
+    name,
+    boardId,
+    backing,
+    detached: resolvedWorkers.detached,
+  });
 
   // Seed-inspectability for construction-time guards (FIX-910): an initial task
   // without a stable id is re-added on every drain re-entry, so a multi-drain
@@ -649,10 +778,10 @@ export function taskBoard<
 
   // Worker body: the worker block runs directly (BP-011 conformance —
   // no handler wrapping). The body sequencer owns its own state with
-  // `currentTaskId`; the leading `.tap()` stamps the claimed task's
-  // id so `recordSuccess` (success path) and `recordError`
+  // `currentClaim`; the leading `.tap()` stamps the claimed task's
+  // ticket so `recordSuccess` (success path) and `recordError`
   // (`.rescue()` path) can both read the same scoped value via
-  // `ctx.sequencer`. Per-iteration scoping prevents stale ids from
+  // `ctx.sequencer`. Per-iteration scoping prevents stale claims from
   // leaking across loop turns.
   const workerBody = sequencer({
     name: `${name}-worker-body`,
@@ -665,14 +794,25 @@ export function taskBoard<
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
     .tap(async (task: Task, ctx) => {
-      // `attempts` is stamped alongside the id so both recorders can scope
-      // their write-back to the attempt that produced it (FIX-951). The
-      // claim already incremented it, so this is this worker's attempt
-      // number, not the pre-claim one.
-      await ctx.sequencer!.patchState({
-        currentTaskId: task.id,
-        currentAttempt: task.attempts,
-      });
+      // The ONE mint site for this board's claim tickets (FIX-981). `task` is
+      // what `claim()` returned, so `attempts` is already incremented and this
+      // is this worker's attempt, not the pre-claim one.
+      //
+      // The board id comes from the RESOLVED ref, never from this closure's
+      // `collectionId`. They are not always the same string: a board handed a
+      // caller-supplied `(ctx) => TaskCollectionRef` factory reports
+      // `"factory-supplied"` here while the ref carries its own id, and the
+      // guard compares against the ref's. Minting from the wrong one refuses
+      // every write-back the board makes, so the board never drains.
+      const ticket = ticketForClaim(
+        (await collectionFactory(ctx)).collectionId,
+        task
+      );
+      // Stamped onto the body state so both recorders can scope their
+      // write-back to the claim that produced it (FIX-951, retargeted by
+      // FIX-981): a displaced attempt declines, and so does a write aimed at
+      // any task other than this one.
+      await ctx.sequencer!.patchState({ currentClaim: ticket });
       // FIX-658: mark this worker-body scope so every item the worker emits
       // (messages, tool calls, sources, reasoning) is stamped with the task
       // id at emit time. This makes per-task attribution correct under
@@ -680,10 +820,12 @@ export function taskBoard<
       // this task's render window — and across sequential `loopBack` turns,
       // where the execution path repeats but each turn is a fresh scope.
       ctx._markTaskScope?.(task.id);
-      // FIX-610: also stamp the active task id onto the shared
-      // run-state bag so any cacheable tool the worker invokes attributes
-      // cache writes to this task (later hits get `sourceTask`).
-      stampCurrentTaskId(task);
+      // FIX-610: also stamp the claim onto the per-worker AsyncLocalStorage
+      // seam, so any cacheable tool the worker invokes attributes cache writes
+      // to this task (later hits get `sourceTask`) — and, since FIX-981, so any
+      // task tool the worker calls presents this ticket without the model ever
+      // seeing it.
+      stampCurrentClaim(ticket);
     })
     .step(workerStep)
     .tap(recordSuccess)
@@ -693,11 +835,20 @@ export function taskBoard<
     // Per-worker mutable cell holding the resolved collection ref. The
     // `.waitForCondition` predicate signature is `(items) => boolean`
     // and does not receive a ctx, so we capture the ref via a leading
-    // `.tap` step the first time this worker runs. Resolving once per
-    // worker is fine: the collection factory is idempotent (same
-    // collectionId → same ref) and avoids re-doing the lookup every
-    // iteration. Predicate reads from `cell.collection!` — guaranteed
-    // populated because the tap runs before the wait.
+    // `.tap` step the first time this worker runs. Predicate reads from
+    // `cell.collection!` — guaranteed populated because the tap runs
+    // before the wait.
+    //
+    // Resolving once per worker is safe because every resolution inside
+    // one request reads one task set, so a task added through any other
+    // resolution is visible through this cached ref too. That was not true
+    // before FIX-990: the durable backing gave each resolution a private
+    // view of which tasks existed, and this comment claimed an idempotence
+    // the code did not have — a sibling's mid-wait add stayed invisible to
+    // a parked worker, which both defeated the event-driven wake and let a
+    // board retire with work outstanding. The shared record is what makes
+    // the cache correct; see `tasks/collection/resource-backed.ts` for the
+    // contract and its same-request boundary.
     const cell: {
       collection?: TaskCollectionRef;
       wakeFilter?: (item: OutputItem) => boolean;
@@ -810,7 +961,16 @@ export function taskBoard<
   // once-chosen backing onto every downstream wiring, so no call site restates
   // it. `board.capability` is always defined; `uses: [board.capability]` gets a
   // typed `ctx.cap.<name>` accessor regardless of backing.
-  return { drain, collectionId, capability, backing, hasIdlessInitialTasks, caps };
+  return {
+    drain,
+    collectionId,
+    capability,
+    backing,
+    ...(boardId !== undefined ? { boardId } : {}),
+    detachedWorkers: resolvedWorkers.detached,
+    hasIdlessInitialTasks,
+    caps,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -837,15 +997,17 @@ function resolveBoardCaps(
     typeof config.collection === "function" ||
     isDefinedTaskCollection(config.collection);
   const capsRequested =
-    config.maxTotalTasks !== undefined || config.maxEnqueuedTasks !== undefined;
+    config.maxTotalTasks !== undefined ||
+    config.maxEnqueuedTasks !== undefined ||
+    config.maxTotalRetries !== undefined;
 
   if (supplied) {
     if (capsRequested) {
       throw new Error(
-        `[task-board] "${name}" cannot take maxTotalTasks/maxEnqueuedTasks together with a ` +
-          `supplied collection — caps belong to the collection, so configure them where it is ` +
-          `created (e.g. getOrCreateTaskCollection({ backing: "sequencer", maxTotalTasks })). ` +
-          `A board only applies caps to a collection it constructs itself.`
+        `[task-board] "${name}" cannot take maxTotalTasks/maxEnqueuedTasks/maxTotalRetries ` +
+          `together with a supplied collection — caps belong to the collection, so configure ` +
+          `them where it is created (e.g. getOrCreateTaskCollection({ backing: "sequencer", ` +
+          `maxTotalTasks })). A board only applies caps to a collection it constructs itself.`
       );
     }
     return {};
@@ -859,6 +1021,7 @@ function resolveBoardCaps(
   return resolveTaskCapDefaults(`[task-board] "${name}"`, {
     maxTotalTasks: config.maxTotalTasks,
     maxEnqueuedTasks: config.maxEnqueuedTasks,
+    maxTotalRetries: config.maxTotalRetries,
   });
 }
 

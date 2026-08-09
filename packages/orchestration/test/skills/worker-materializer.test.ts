@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentSpec } from "@flow-state-dev/core";
-import { __resetDeprecationWarningsForTests } from "@flow-state-dev/core";
+import { __resetDeprecationWarningsForTests, handler } from "@flow-state-dev/core";
+import { testBlock } from "@flow-state-dev/testing";
+import { z } from "zod";
 import {
   materializeWorker,
+  materializeToolSeat,
   buildUserMessage,
   CONVERSATION_HISTORY_TURNS,
 } from "../../src/skills/worker-materializer";
@@ -361,5 +364,72 @@ describe("buildUserMessage", () => {
   it("omits the input line when no payload was attached", () => {
     const msg = buildUserMessage({ taskId: "t1", goal: "g", attempts: 0 } as never);
     expect(msg).not.toContain("Input:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tool seats — FIX-925
+// ---------------------------------------------------------------------------
+
+/** A deterministic catalog tool with a typed argument schema. */
+function makeFetchTool(calls: unknown[]) {
+  return handler({
+    name: "httpGet",
+    description: "Fetch a URL and return its body.",
+    inputSchema: z.object({ url: z.string() }),
+    outputSchema: z.object({ body: z.string() }),
+    execute: async (input: { url: string }) => {
+      calls.push(input);
+      return { body: `body of ${input.url}` };
+    },
+  }) as never;
+}
+
+/** A worker-input envelope shaped exactly as the board's drain packs it. */
+function envelope(input: unknown) {
+  return { taskId: "t1", goal: "fetch page A", attempts: 0, input };
+}
+
+describe("materializeToolSeat (FIX-925)", () => {
+  it("invokes the catalog tool with the task envelope's `input` as its typed args", async () => {
+    const calls: unknown[] = [];
+    const block = materializeToolSeat("httpGet", makeFetchTool(calls), "demo");
+
+    const result = await testBlock(block as never, {
+      input: envelope({ url: "https://a.example" }),
+    });
+
+    expect(result.error).toBeNull();
+    // The tool saw its OWN typed args, not the TaskWorkerInput envelope — this
+    // is what the compositional wrapper buys, and it is the whole reason a tool
+    // needs no declaration to become a board seat.
+    expect(calls).toEqual([{ url: "https://a.example" }]);
+    // ...and the tool's native return value is the worker's output, so
+    // `record-result` writes it onto the task unchanged.
+    expect(result.output).toEqual({ body: "body of https://a.example" });
+  });
+
+  it("survives the board's own connectInput, which REPLACES a bare mapper", async () => {
+    // The regression this wrapper exists for: `buildWorkerStep` calls
+    // `worker.connectInput<Task>(...)` on every registered worker, and
+    // connectInput rebuilds a block with the new mapper rather than composing.
+    // A bare `tool.connectInput(env => env.input)` would be overwritten and the
+    // tool would receive the whole envelope. Re-connecting the materialized
+    // seat here stands in for that, and the inner unwrap must still run.
+    const calls: unknown[] = [];
+    const block = materializeToolSeat("httpGet", makeFetchTool(calls), "demo");
+
+    const reconnected = (
+      block as unknown as {
+        connectInput: (fn: (t: { assignee?: string }) => unknown) => unknown;
+      }
+    ).connectInput(() => envelope({ url: "https://b.example" }));
+
+    const result = await testBlock(reconnected as never, {
+      input: { assignee: "httpGet" },
+    });
+
+    expect(result.error).toBeNull();
+    expect(calls).toEqual([{ url: "https://b.example" }]);
   });
 });

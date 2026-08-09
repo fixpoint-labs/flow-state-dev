@@ -38,6 +38,12 @@ is internally consistent with the rest of the runtime. Two checks:
   incompatible `user.stateSchema` (or `org.stateSchema`) shapes,
   `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup.
   See [Cross-flow schema compatibility](#cross-flow-schema-compatibility).
+- **Identity source.** The `userId` and `orgId` an action runs under come
+  from the resolver. Posting an `orgId` in the request body does not change
+  which org the action runs in. If you want a caller to be able to name its
+  own org, read it inside the resolver, where you can check it against the
+  credential you just verified. The resolver is given the parsed body as
+  `metadata.body` for exactly this.
 
 The framework does not — and cannot — verify that `userId: A` actually
 belongs to whoever sent the request. That's the credential your middleware
@@ -259,6 +265,58 @@ export const flowstate = createFlowState({
 ```
 
 Per-flow `defineFlow({ authentication })` always wins over this fallback.
+
+## What a resolver protects
+
+Configuring `resolvePrincipal` covers the whole flow API, not just action
+calls. The same hook runs for session reads and writes, session state,
+resource content, request control (stream, abort, resume, status), and the
+debug endpoints.
+
+Two things happen on each of those requests. The framework resolves a
+principal through your hook, then checks that the principal owns what the URL
+addressed. A session or request belongs to the `userId` it was created under,
+so a caller holding a valid credential for a different user gets a `403`:
+
+```
+GET /api/flows/sessions/abc123   no credential                    -> 401
+GET /api/flows/sessions/abc123   bob's, session belongs to alice  -> 403
+GET /api/flows/sessions/abc123   alice's                          -> 200
+```
+
+Listing endpoints scope to the caller instead of rejecting. `GET
+/api/flows/sessions` returns the caller's sessions. The `userId` query
+parameter still works as a filter, but it can only narrow that set, never
+widen it.
+
+`POST /api/flows/:flowKind/sessions` takes the new session's `userId` and
+`orgId` from the principal. A `userId` in the request body is ignored when a
+resolver is configured, the same way `orgId` is ignored on action calls.
+
+### Without a resolver
+
+If you haven't configured `resolvePrincipal`, on the flow or as a host-level
+fallback, the framework reads `body.userId` and the management endpoints stay
+open. That's the development default, and it's why `fsdev serve` refuses to
+bind a non-loopback host until your flows have authentication configured. See
+[the CLI reference](/docs/api/cli).
+
+Flows are checked independently. On a server where one flow configures a
+resolver and another doesn't, the second flow's sessions stay open.
+
+The two endpoints that span every flow, `GET /api/flows/sessions` and `GET
+/api/flows/active-requests`, need a host-level resolver to identify the caller.
+Without one they keep working, but they only return rows for the flows that
+have no resolver of their own. A flow that authenticates doesn't get its
+sessions listed to an anonymous caller.
+
+### What the resolver sees
+
+On these routes the resolver gets the `Request` (headers, cookies, URL) and no
+parsed body. Reading a credential from a header or a cookie works the same as
+it does on an action call. A resolver that reads `metadata.body` gets
+`undefined` here: a `GET` has no body to read, and the framework won't decide
+access from a field the caller writes.
 
 ## Session consistency check
 

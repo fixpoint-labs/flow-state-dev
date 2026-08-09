@@ -36,6 +36,18 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * filtering. Undefined for single-tenant sessions.
    */
   tenantId?: string;
+  /**
+   * Bare id of the session this session belongs to (FIX-1009). Undefined for a
+   * top-level session — one a person started — which is every session that
+   * exists today. A record persisted before this field existed reads back as
+   * `undefined`, and a store that nulls absent keys hands back `null`; both
+   * mean top-level, so readers must guard with `== null` (BP-030).
+   *
+   * Bare, not tenant-namespaced, matching {@link RequestRecord.sessionId}:
+   * isolation comes from conjoining `tenantId` in the list filter, not from
+   * namespacing this field.
+   */
+  parentSessionId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -95,6 +107,19 @@ export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<
   resources?: Record<string, JsonObject>;
 };
 
+/**
+ * Which sessions a listing returns, by parentage (FIX-1009). Three modes, each
+ * a **named** value so none is reachable only by omission or by a sentinel:
+ *
+ * - `"top-level"` — only sessions with no parent, i.e. the ones a person
+ *   started. The default (see {@link SessionListOptions.parentage}).
+ * - `"all"` — every session, parented or not. Reproduces the unrestricted
+ *   behaviour listing had before this option existed; for admin, debug and
+ *   recovery callers that genuinely want everything.
+ * - `{ parentOf }` — only the children of that one session.
+ */
+export type SessionParentage = "top-level" | "all" | { parentOf: string };
+
 export type SessionListOptions = {
   flowKind?: string;
   userId?: string;
@@ -103,6 +128,21 @@ export type SessionListOptions = {
    * present-vs-absent exact-match semantics — they are identical here.
    */
   tenantId?: string;
+  /**
+   * Parentage filter (FIX-1009). **Omitting this narrows to `"top-level"`** —
+   * a caller that asks for nothing gets only the sessions a person started.
+   *
+   * Note the asymmetry with `tenantId` in this same object, which is the thing
+   * a reader pattern-matching the two will get backwards: an absent `tenantId`
+   * **widens** (every record passes), an absent `parentage` **narrows**. It is
+   * deliberate. An un-tenanted list is an admin read, whereas an un-parented
+   * list is the *common* read and has to be safe by default — otherwise every
+   * caller written before parented sessions existed silently starts showing
+   * internal machinery beside the user's own sessions.
+   *
+   * Pass `"all"` to opt back into the unrestricted behaviour explicitly.
+   */
+  parentage?: SessionParentage;
   limit?: number;
   offset?: number;
 };
@@ -162,8 +202,39 @@ export type OrgListOptions = {
  * - A number means "only write if the current stored version equals this"
  * - "any" means "write unconditionally" (used for creates, migrations, and
  *   system writes that fall outside the CAS retry loop)
+ * - "absent" means "only write if no record exists at this id" — create-if-
+ *   absent. An existing record at **any** version, including `0`, is a
+ *   conflict carrying that record.
+ *
+ * ## `"absent"` is a distinct sentinel, not a re-use of `0`
+ *
+ * This union is shared by two store families that mean different things by
+ * `0`, so create-if-absent needs a spelling that cannot be confused with a
+ * version:
+ *
+ *  - **Scope stores** (`SessionStore`, `RequestStore`, `UserStore`,
+ *    `OrgStore`) create records **at version `0`**, so `0` is a real, live
+ *    version there and a stored v0 record is live rather than absent.
+ *    `expectedVersion: 0` means "the stored version is exactly 0."
+ *  - **`ResourceStateStore`** starts its versions at `1`, which leaves its
+ *    `0` free to mean "no live row" — create-if-absent, satisfied by a
+ *    tombstone as well as a never-existed key.
+ *
+ * Because the scope stores' `0` is taken, create-if-absent could not be
+ * ported to them as a number. `"absent"` means the same thing in both
+ * families and collides with neither. `ResourceStateStore` **refuses** it
+ * (`assertExpectedVersion`) rather than aliasing it onto its `0`, so
+ * `"absent"` never acquires a second, verb-dependent meaning on the resource
+ * side's delete predicate.
+ *
+ * Two consequences for anyone branching on this type:
+ *  - `expectedVersion !== "any"` no longer implies `typeof === "number"`.
+ *    Narrow with `typeof expectedVersion === "number"` wherever the body
+ *    does arithmetic or binds the value to a SQL parameter.
+ *  - The CAS delta verbs read-modify-write an existing record, so `"absent"`
+ *    is meaningless there and **throws** rather than conflicting.
  */
-export type ExpectedVersion = number | "any";
+export type ExpectedVersion = number | "any" | "absent";
 
 /**
  * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than
@@ -195,6 +266,12 @@ export type SetResult<TRecord> =
  * the current stored version equals `expectedVersion` (or always when
  * `"any"`). Returns the new version on success, or the current record/
  * version on conflict.
+ *
+ * One exception: every verb here read-modify-writes an **existing** record,
+ * so `expectedVersion: "absent"` is meaningless and **throws** rather than
+ * conflicting. A conflict would send the caller into a retry loop that can
+ * never converge; a throw names the programming error at the call site.
+ * `set(id, record, "absent")` is how a record is created.
  *
  * `updatedAt` is caller-supplied (matching `set`, where it travels inside
  * the record). Adapters MUST write it as given so the caller's local cache
@@ -261,6 +338,25 @@ export interface SessionStore extends DeltaStoreOps<SessionRecord> {
    * Write `value` when the stored record's version matches `expectedVersion`.
    * Returns the new version on success or the current stored value/version on
    * conflict. The `version` field on `value` is the NEW version to persist.
+   *
+   * `expectedVersion` accepts three things, and the scope stores' reading of
+   * `0` is the one that differs from `ResourceStateStore` (see
+   * {@link ExpectedVersion}):
+   *
+   * | Value | Writes when |
+   * |---|---|
+   * | `"any"` | Always. Last write wins |
+   * | a number | The stored version equals it. **`0` means "stored at version 0"** — scope records are *created* at `0`, so a v0 record is live, not absent |
+   * | `"absent"` | No record exists at this id. An existing record at any version, `0` included, is a conflict carrying it |
+   *
+   * `"absent"` is how a caller wins or loses a create race rather than
+   * silently overwriting: a `get`-then-`set` cannot, because nothing stops a
+   * second writer between the two calls.
+   *
+   * `delete` is a hard delete with no tombstone, so a recreated id may reuse
+   * versions. An observer holding a pre-delete version can therefore match
+   * the record that replaces it — stated rather than defended, and the reason
+   * this store's versions are not a substitute for identity.
    */
   set(
     id: string,
@@ -528,44 +624,208 @@ export interface ContentStore {
 }
 
 /**
+ * Phantom brand for {@link VersionedResourceState}. Declared, never defined —
+ * it exists only in the type system and is absent from every runtime value.
+ */
+declare const versionedResourceStateBrand: unique symbol;
+
+/**
+ * A live resource state row together with the CAS version it was read at.
+ *
+ * The version is what makes a read usable as the basis for a conditional
+ * write: pass it back as `set`'s `expectedVersion` and the write lands only
+ * if nobody moved the key in between. `undefined` from a read means "no live
+ * row" — an absent key and a tombstoned one are indistinguishable to readers
+ * by design (see {@link ResourceStateStore}).
+ *
+ * ## Why this type is branded
+ *
+ * Structurally, `{ state, version }` is a perfectly good `JsonObject`. That
+ * made every missed unwrap a *silent* bug rather than a compile error — handing
+ * `{ state, version }` where the state itself was expected typechecked
+ * cleanly and produced the wrong value downstream. The phantom brand below
+ * breaks that assignability: its declared type is a `unique symbol`, which is
+ * not a `JsonValue`, so `VersionedResourceState` (and any `Record` of them) is
+ * no longer assignable to `JsonObject`. Use {@link toBareState} / {@link toBareStates}
+ * to project down; forgetting to is now a type error.
+ *
+ * The property is optional and never written, so constructing a versioned read
+ * stays a plain object literal — adapters pay nothing for the brand. It does
+ * not defend against an explicit `as` cast, which remains the caller's
+ * assertion to make.
+ */
+export type VersionedResourceState = {
+  /**
+   * Phantom. Never present at runtime — see the note above. The key is a
+   * string rather than the symbol itself on purpose: a `JsonObject`'s index
+   * signature only constrains string keys, so a symbol-keyed brand would be
+   * ignored by the assignability check this exists to fail.
+   */
+  readonly __versionedResourceState?: typeof versionedResourceStateBrand;
+  /** The stored state. A tombstone is never returned, so this is always live. */
+  state: JsonObject;
+  /** Monotonic per key, never reused — see {@link ResourceStateStore}. */
+  version: number;
+};
+
+/**
  * Separates resource state persistence from scope record persistence.
  *
  * State is addressed by (scopeType, scopeId, resourceKey) — the same scheme as
  * `ContentStore`, and covers both single-resource and collection-instance
  * state uniformly. Each resource's state is a `JsonObject` written under its
  * own key, so a mutation to one resource never rewrites the whole scope
- * record. This is the state-layer twin of `ContentStore` (FIX-689): content
- * bodies and state metadata follow the same keyed storage pattern, but live in
- * separate stores because their payload types and lifecycles are independent
- * (a resource can carry state with no content body, and vice versa).
+ * record. It shares `ContentStore`'s keyed storage pattern (FIX-689), but the
+ * two stores deliberately diverge on concurrency — see below.
  *
- * Concurrency: plain per-key last-write-wins (no CAS), matching `ContentStore`.
- * Per-resource keying structurally removes the whole-map clobber hazard that
- * a shared inline `resources` map had.
+ * ## Concurrency: compare-and-swap, not last-write-wins
+ *
+ * Every write carries an {@link ExpectedVersion} and returns a
+ * {@link SetResult}, so a caller can tell whether its write actually landed.
+ * This is the one place this store differs from `ContentStore`, and the
+ * difference is deliberate: LWW is right for content, because nothing merges
+ * a document body against a prior read. It is wrong for structured state that
+ * concurrent workers read-modify-write, which is what resource state became
+ * when it started backing task boards. One addressing scheme, two access
+ * patterns, two concurrency models.
+ *
+ * Two semantics diverge from the scope stores that share these types, and
+ * both are deliberate:
+ *
+ *  - **`expectedVersion: 0` means "no live row"** — it is create-if-absent,
+ *    and it is satisfied by a tombstoned key as well as a never-existed one.
+ *  - **Some conflicts are terminal, not retryable.** A conflict against a
+ *    tombstone must not be retried into a resurrection, and a losing
+ *    create-if-absent must not be retried into an overwrite. Callers drive
+ *    this store through the resource CAS driver, not `runWithCAS`.
+ *
+ * ## Lifecycle and version semantics
+ *
+ * | Rule | Behaviour |
+ * |---|---|
+ * | Lifecycle | `live` (visible) or `deleted` (tombstone: invisible, version retained) |
+ * | Reads | `get` / `getAll` / `getByPrefix` return **live rows only**. A tombstone reads exactly like an absent key |
+ * | Snapshots | Every state crossing the boundary is a **deep copy**, both ways: what a read returns, what a caller passed to `set`, and a conflict's `currentValue`. Mutating any of them never changes the stored row — the version has to witness the value, so no path may change a value without bumping a version |
+ * | Snapshot timing | `set` captures its value **before it yields** — on the synchronous run-up to the adapter's first `await`, never behind a lock or a microtask. A mutation the caller makes while the returned promise is still in flight must not be the one that commits. Serializing *eventually* is not enough: by the time a deferred body runs, the caller has had control back |
+ * | Version | First create writes `1`; each committed write bumps by 1; **never reused**. A recreate continues from the tombstone's version + 1 |
+ * | `delete` | Retains the version, drops the payload (stores `{}`), marks `deleted`. The version is the only thing a tombstone carries |
+ * | `deleteAll` | Bulk-marks every live key in the scope `deleted`. A scope operation, so it takes no expected version |
+ * | Retention | **Tombstones are retained indefinitely, in every scope.** Nothing reclaims one, and nothing here depends on anything ever doing so |
+ * | Legacy rows | A row written before versioning reads as **live at version 1** — never as absent |
+ * | Version domain | A numeric `expectedVersion` must be a **non-negative integer**. Negative, fractional, `NaN` and `Infinity` **throw** — a programming error, not a lost race, so it is never folded into a conflict |
+ *
+ * Retention is what closes the delete/recreate ABA: because a tombstone keeps
+ * its version, an observer holding a pre-delete version never matches the row
+ * that replaces it. A tombstone that is never removed is always sound — it
+ * costs one row and can never resurrect anything.
+ *
+ * ## Per-adapter guarantee
+ *
+ * Real CAS on memory, SQLite and Postgres. The filesystem adapter compares
+ * under a per-key mutex held on the store **instance**, so it closes the
+ * in-process race but does **not** protect two OS processes over one
+ * directory. Stated rather than implied.
  */
 export interface ResourceStateStore {
-  /** Read a single resource's state, or `undefined` if none is stored. */
-  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<JsonObject | undefined>;
-
-  /** Write a single resource's state. Creates or overwrites. */
-  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, state: JsonObject): Promise<void>;
-
-  /** Delete a single resource's state. */
-  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
-
-  /** Read all state for a scope instance. Used by full-scope reads (`/state`, debug snapshot). */
-  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, JsonObject>>;
+  /**
+   * Read a single resource's live state and its version, or `undefined` when
+   * there is no live row. A tombstoned key returns `undefined`, exactly like
+   * a key that never existed.
+   */
+  get(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    resourceKey: string
+  ): Promise<VersionedResourceState | undefined>;
 
   /**
-   * Read every state entry in a scope whose resourceKey starts with
-   * `keyPrefix`. An empty `keyPrefix` returns all keys in the scope
-   * (equivalent to `getAll`). Used during context initialization to load only
-   * the state a flow declares — fixed resources by exact key, collections by
-   * their pattern prefix.
+   * Write a single resource's state if `expectedVersion` still holds.
+   *
+   * - A number writes only when the current **live** version equals it.
+   * - `0` is create-if-absent: it succeeds when there is no live row
+   *   (never existed, or tombstoned) and conflicts against a live one.
+   * - `"any"` writes unconditionally — the opt-out, and the posture every
+   *   caller that has not adopted CAS passes explicitly.
+   *
+   * A number outside that domain — negative, fractional, `NaN`, `Infinity` —
+   * throws rather than conflicting. The type admits it; the contract does not.
+   *
+   * On conflict, `conflict.currentValue` is the current live state or
+   * `undefined` when the row is tombstoned, and `conflict.currentVersion` is
+   * the version now stored. A caller must treat an `undefined` current value
+   * as "deleted" and stop — never as "reuse what I had cached".
    */
-  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, JsonObject>>;
+  set(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    resourceKey: string,
+    state: JsonObject,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<JsonObject>>;
 
-  /** Delete all state for a scope instance. Used during scope record deletion. */
+  /**
+   * Tombstone a single resource's state if `expectedVersion` still holds.
+   * Takes a version like every other write, so a delete chosen from a stale
+   * snapshot conflicts instead of tombstoning a newer generation.
+   *
+   * The row keeps its version and drops its payload. Deleting an absent or
+   * already-tombstoned key is an idempotent success — an absent key reports
+   * `version: 0`, consistent with `0` meaning "no live row" everywhere else in
+   * this contract. That is not a version any row holds, so never carry it
+   * forward as the basis for a later write.
+   *
+   * `"any"` and a positive version part company when a delete finds nothing to
+   * remove and a live row appears before it can say why. `"any"` asserts
+   * nothing about versions, so "there was no live row" is already the whole
+   * answer to what it asked: the call linearizes there, a recreate that lands
+   * afterwards belongs to a later story, and the result is an idempotent
+   * success reporting `version: 0` — never the recreated row's version, which
+   * names a live row this delete did not remove. A positive `expectedVersion`
+   * asserted something that did not hold at that same point, so it conflicts,
+   * carrying the version now stored. Both halves matter: collapsing them into
+   * "always succeed" hides a real lost race, and collapsing them into "always
+   * conflict" reports one to a caller that opted out of versions entirely.
+   */
+  delete(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    resourceKey: string,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<JsonObject>>;
+
+  /**
+   * Read all live state for a scope instance, each entry carrying its
+   * version. Used by full-scope reads (`/state`, debug snapshot).
+   */
+  getAll(
+    scopeType: ContentScopeType,
+    scopeId: string
+  ): Promise<Record<string, VersionedResourceState>>;
+
+  /**
+   * Read every live state entry in a scope whose resourceKey starts with
+   * `keyPrefix`, each carrying its version. An empty `keyPrefix` returns all
+   * live keys in the scope (equivalent to `getAll`). Used during context
+   * initialization to load only the state a flow declares — fixed resources
+   * by exact key, collections by their pattern prefix.
+   */
+  getByPrefix(
+    scopeType: ContentScopeType,
+    scopeId: string,
+    keyPrefix: string
+  ): Promise<Record<string, VersionedResourceState>>;
+
+  /**
+   * Tombstone all live state for a scope instance, retaining each key's
+   * version. Used during scope record deletion. A scope operation rather than
+   * a key operation, so it carries no expected version.
+   *
+   * Note the limit this honestly does not close: a create of a key that never
+   * existed can still land after this returns, because a bulk mark only
+   * touches rows that already exist and `expectedVersion: 0` is satisfied by
+   * a never-existed key. Closing that needs a scope generation, not a per-key
+   * predicate.
+   */
   deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
 }
 

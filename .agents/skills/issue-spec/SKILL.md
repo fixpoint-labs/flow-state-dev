@@ -1,6 +1,6 @@
 ---
 name: issue-spec
-description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, then publish the spec as a versioned doc at docs/specs/<ISSUE-ID>.md opened as a spec PR for automated review and mirrored to the Linear issue (repo and Linear kept in sync).
+description: Pull a Linear issue, deeply research implementation approaches using web sources and codebase patterns, validate with multiple agents, then publish the spec at spec/<ISSUE-ID>.md on its own spec branch, opened as a spec PR for automated review and mirrored to the Linear issue (which is the durable copy — the spec never lands on main).
 argument-hint: "<Linear issue ID or identifier, e.g. FSD-142> [--interactive]"
 ---
 
@@ -20,17 +20,42 @@ You are a specification research and authoring agent. Given a Linear issue, your
 
 **Issues describe the problem; specs describe the solution.** The Linear issue is the canonical statement of *what we are trying to accomplish and why* — the user/business/developer outcome. The spec document is the canonical statement of *how we will accomplish it* — architecture, file changes, sequencing, tests. Once a spec exists, the issue must not duplicate or contradict its solution detail. Solution detail in the issue rots faster than the spec, fragments authority, and leaves readers unsure which to trust.
 
-**The spec lives in two synced places.** It is authored as a versioned doc at `docs/specs/<ISSUE-ID>.md` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. The two copies are the same content and must be kept in sync — see Step 6. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. The spec PR is never merged — `issue-implement` closes it (unmerged, branch deleted) when implementation starts, and the Linear document carries the spec from then on.
+**The spec is reviewed in the repo and kept in Linear.** It is authored at `spec/<ISSUE-ID>.md` on branch `spec/<ISSUE-ID>` (the reviewable artifact, opened as its own PR so the project's automated reviewers critique the design before any code is written) and mirrored to the Linear issue's document. Reviewing the spec as a PR is the cheapest place to fix a design: a doc edit, not a code rewrite. **The spec never reaches `main`** — `issue-implement` closes the PR (unmerged, branch deleted) when implementation starts, and Linear is the durable copy from then on. CI enforces this (`scripts/validate-spec-folder.mjs`); the spec PR is exempt by its **branch name** (`spec/*`, and `epic/*` for an epic spec), so the exemption is automatic — nothing to remember.
 
 This split has a consequence: **after writing the spec, you must reframe the issue.** Many issues in this project were written before this split was the norm and contain implementation specifics, file paths, and pseudo-architecture sketches. Those details either belong in the spec (and are now redundant) or are stale (and now contradict the spec). Step 6 below makes that reshaping a required, not optional, step.
 
 **Specs earn their keep by avoiding implementation work, not by producing it.** Some Linear issues describe features that should not be built — the use case is already served by an existing primitive, the proposed API encodes single-vendor knowledge into a multi-vendor surface, or the new code is purely ergonomic over capability that already exists. When the research surfaces any of these patterns or patterns similar to them, your job is to *say so* and propose alternatives, not to mechanically deliver a spec that adds maintenance debt. Step 3.5 is a required gate that forces this question after research lands but before drafting begins. Do not skip it.
 
+## Who gets a spec — and who doesn't
+
+**A bug normally never reaches this skill.** Bugs take the *direct route*: no spec, no
+spec PR, no spec-approval gate — straight to `issue-implement`, where `diagnose` builds
+the reproduction and the fix is reviewed on its own PR. The rule and its reasoning are
+canonical in
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "Which issues get a
+spec". Don't write a spec for a bug just because one was asked for; say what the routing
+rule says and let it go straight to the fix.
+
+**Three things send a bug here.** The first is the common one and needs no judgment from
+you: **a spec PR already exists** for the issue — someone specced it deliberately, so
+carry on and do the work (this is also how a Step 6.5 review round on an existing bug spec
+reaches you; refusing it there would stall the very row the coordinator is waiting to
+approve). The other two are judgment calls, and if you're specced onto one, shape the spec
+around it rather than producing a full feature-shaped document:
+
+- **No reproduction / an ambiguous symptom.** The research *is* working out what is
+  happening. The valuable output is Part II §10: the reproduction shape and the seam the
+  regression test will live at. Part I stays short — the Case is "we don't yet know what
+  this is," and the Decisions are about where to look, not what to build.
+- **It isn't really a bug.** The fix is a new capability or a contract change. Then it's
+  a feature and gets the ordinary treatment; say so in Part I §1 so the mislabel is
+  visible at sign-off.
+
 ## Companion skills
 
-The spec is the input to `issue-implement`, which auto-routes based on the Linear category label:
+The spec is the input to `issue-implement`, which picks its discipline from the Linear category label:
 
-- **Bug** → implementation follows `diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
+- **Bug** (the rare specced one) → implementation follows `diagnose` (build feedback loop → reproduce → hypothesise → instrument → fix + regression test → cleanup).
 - **Feature / Enhancement** → implementation follows `tdd` (red-green-refactor with vertical tracer-bullet slices).
 
 Shape the spec's Testing Strategy (Part II §10) to support whichever discipline applies. For bugs: name the seam where the feedback loop will live (vitest, `fsdev block`, `fsdev run` with NDJSON, integration-tests). For features: name the behaviours-to-test in observable terms (items emitted, state changes, return values) so each becomes a tracer-bullet test.
@@ -67,6 +92,15 @@ Fetch the full issue from Linear (see CLAUDE.md → "Linear access" for the chan
 6. **Look for an epic** (context, never a dependency). Check the issue's **parent**: if it's a Linear issue carrying the **`Epic` label (Kind group)**, this issue is under that epic — always the case under `epic-lifecycle`, and possible but not required for a standalone run. Read its epic-spec (the epic issue's attached document, or the `epic/<name>` branch — under `epic-lifecycle` the coordinator passes the epic handle so you needn't re-fetch). If one applies, **align** to its themes and longer-horizon direction (a reference, not a parent contract — you still make local calls), cite it in Part I §2, and carry the epic PR link. If you spot a **cross-cutting concern**, **comment up on the epic PR** (non-blocking) instead of deciding it here. No epic parent → proceed unchanged. See [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md).
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
+
+**Check the category label before anything else.** If it's **Bug**, check it against the
+three exceptions in "Who gets a spec" above. **An existing spec PR settles it — carry on**
+(that's the re-entry path for a review round on a bug's spec, and refusing it would strand
+the spec mid-review). Otherwise, if neither judgment call applies — no reproduction, or
+not really a bug — say so in one line ("FIX-N is a bug with a clear repro — it takes the
+direct route; run `/issue-implement FIX-N`") and **do not write a spec**. Don't move its
+Linear state either: an issue parked in "In Spec Dev" for a spec nobody is writing is
+worse than no signal.
 
 Once the issue is loaded, **move it to "In Spec Dev"** with `save_issue` (set `state` to the "In Spec Dev" workflow state for the issue's team). This signals to the team that spec authoring is in flight. If the issue is already in "In Spec Dev" or a later state, leave it. If the team has no "In Spec Dev" state, fall back to the closest equivalent (e.g., "In Progress") and note it in the publishing comment.
 
@@ -258,9 +292,59 @@ Before drafting, check whether the research has surfaced a **design question tha
 - A state model that "looks fine on paper" but you can't tell whether scope boundaries handle edge cases correctly
 - A UI choice for devtool / kitchen-sink / renderer changes where the answer needs to be seen, not described
 
-If yes, **stop drafting and run `prototype` first**. Logic prototypes for block / capability / state questions (throwaway flow in `apps/kitchen-sink/flows/_prototypes/`); UI prototypes for renderer / devtool / kitchen-sink page questions. Capture the answer in the prototype's `NOTES.md` and bring it back as input to the spec. A spec that hand-waves through a question a one-day prototype would have answered will produce wasted implementation work.
+**Either way, consider a solution sketch** (`spec-template.md` §7). Where the solution's
+shape is easier to see than to describe, sketching it makes you confront the design
+concretely before asking anyone to sign off, shows the reviewer a shape instead of making
+them reconstruct one, and gives the implementer a starting point. Include one when the
+composition is novel or the ergonomics only show up in code; skip it when the change
+extends an existing pattern.
 
-If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without a prototype.
+**Write the sketch in the doc as pseudocode**, quick and dirty, not the end state. Name
+roles (`the stream seam`) rather than functions you think exist: almost-real code invites a
+reviewer to check the names against the repo, and then you are debating a seam nobody
+proposed. Real code belongs on the spec branch as throwaway files, referenced from §7 —
+the spec PR is never merged, so prototyping there is free and the doc carries no
+API-shaped claims.
+
+**Protect it in review, and expect to.** Automated reviewers will treat a sketch as code
+and report missing error handling, loose types and edge cases. The reviewer contract at the
+top of the spec PR says the sketch is out of scope at the line level (Step 6), and at
+triage that feedback is a **Drop** — not even a §13 note, since there is nothing for the
+implementer to weigh about code that isn't shipping. Only a comment on the sketch's
+*direction* — wrong layer, wrong composition, won't work — is real, and that's an ordinary
+fold. See [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec review".
+
+**When a sketch isn't enough — build a POC, and pick the right kind.** A spec that hand-waves
+through a question a day of throwaway code would have answered produces wasted implementation
+work. Two routes, and the difference is **who reads the result**:
+
+- **[`spec-poc`](../spec-poc/SKILL.md) — the published route, and the default here.** Built on
+  the spec branch under `spec-poc/<ISSUE-ID>-<slug>/` so the reviewers and the human at the gate
+  can run it. **Read that skill for the triggers and the four kinds** — the short version is an
+  unverified premise, a novel composition, ergonomics that only show in code, something with a
+  look, or two shapes in contention. The default is still *no POC*.
+- **[`prototype`](../prototype/SKILL.md) — the private route.** You're exploring, undecided,
+  and nobody else needs to see it: a throwaway flow in
+  `apps/kitchen-sink/flows/_prototypes/`, answer captured in `NOTES.md`, brought back as
+  input. Use it when the question is *yours* rather than the reviewer's.
+
+**Create the spec branch before you commit a POC — and then Step 6 must not re-create it.** A
+published POC has to be *on* the spec branch, so if a trigger fires, create the branch here,
+once, from fresh `origin/main`: `git fetch origin main && git checkout -B spec/<ISSUE-ID>
+origin/main`. Commit the POC to it. **Then tell Step 6 the branch already exists**, because
+Step 6's `checkout -B spec/<ISSUE-ID> origin/main` *resets* the branch and would silently
+discard every POC commit — leaving §7 and the PR description pointing at files that aren't in
+the PR. A private `prototype` needs none of this: it isn't committed to the spec branch at all.
+
+Either way, **record what it showed in §7 — including when the premise held.** A POC that
+changed nothing is a real result; only reporting the ones that found problems teaches the next
+reader that a quiet POC failed. A premise it settled goes in §12 with the same
+"resolved, don't reopen" force a `settle-claim` verdict carries, and if it moved the design,
+add a *Spec evolution* line. Building it costs **zero review rounds** and blocks nothing — but
+if a load-bearing POC is still in flight when the gate is surfaced, **say so**, so nobody
+approves on an unchecked premise. Full rules: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "Spec-branch POCs".
+
+If the question is small enough to answer with a `fsdev block` invocation or a quick read, proceed without either.
 
 Once design questions are resolved, draft the implementation spec. The spec must follow the project's conventions from `linear-practices.md`:
 
@@ -271,7 +355,10 @@ The spec follows the **two-part template** in
 **Part I — The Case** (for the human decision-maker) and **Part II — The Build Plan**
 (for the implementing agent), split by a hard divider. **Read the template — it is
 the single source of truth for section order and what each section owes its reader.**
-Do not restate its section list here; if the structure changes, it changes there.
+Every section there is one line of instruction followed by a **worked example** of that
+section filled in, all from one running issue; write yours to match the example's shape
+and altitude rather than reasoning from the instruction alone. Do not restate its
+section list here; if the structure changes, it changes there.
 
 **Title:** `{ISSUE-ID}: {Issue Title} — Implementation Spec`
 
@@ -347,22 +434,37 @@ Address any issues the validators surface. If there are unresolvable questions, 
 
 Publish the **full spec (Part I + Part II)** in two places that must hold identical content: a versioned doc in the repo (the reviewable artifact) and the Linear document (the issue-attached copy).
 
-1. **Write `docs/specs/<ISSUE-ID>.md`** (e.g. `docs/specs/FIX-775.md`) with **Part I and Part II** in full, and an opening **Spec evolution** section with one entry: `- **Spec drafted** — <one line: how the problem is framed, the approach chosen, and the build shape>.` This is the canonical reviewable artifact.
+1. **Write `spec/<ISSUE-ID>.md`** — substituting the issue's own ID for the placeholder — with **Part I and Part II** in full, and a **Spec evolution** section carrying one entry: `- **Spec drafted** — <one line: how the problem is framed, the approach chosen, and the build shape>.` This is the canonical reviewable artifact.
 
-2. **Open the spec PR ready for review.** Create `spec/<ISSUE-ID>` based on fresh `origin/main` — worktree-safe, so it's correct whether you're in the coordinator's checkout or a worktree spun off it (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching): `git fetch origin main && git checkout -B spec/<ISSUE-ID> origin/main`. Commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>` **ready for review** (not a draft) with `create_pull_request`. **Label the PR `spec`** so spec PRs stay filterable and the orchestrators can find them by label (create the `spec` label in the repo if it doesn't exist yet).
+   **Spec evolution goes at the bottom**, where [`spec-template.md`](../../../docs/contributing/spec-template.md) puts it — not at the top. It is the change story: the derivation, which never leads (BP-039). Keep the document title and the `Part I` heading — structural navigation is exempt — but Part I §1's problem statement is the first **content** in the document, with no metadata, status block, or timeline above it.
 
-   **The PR description opens with the reviewer contract, then Part I ("The Case") verbatim.** The contract is the `## For reviewers — what this document is` block from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted at the very top: what this document is, what's in scope to challenge (framing, approach, the numbered Decisions, invalidating constraints, scope), and what's deliberately unsettled and owned by the implementer (names, signatures, layout, local structure, micro-optimizations, test internals). Most spec-PR review comes from **automated reviewers we can't instruct**, tuned for code review and pointed at a document that is deliberately not a finished design — this block is the one lever we have on them, it costs nothing, and it raises the altitude of what comes back. Never ship a spec PR without it.
+2. **Open the spec PR ready for review.** Get onto `spec/<ISSUE-ID>` — and **which command depends on whether Step 4 already created it for a POC**, because the create form resets the branch:
 
-   Part I follows — problem/why-now, solution in plain terms and the tenets it leans on, tradeoffs, focus practices, usage examples, and the numbered Decisions & rules — so reviewers see the scan-first shape without opening the doc; Part II (the directional Build Plan) is reviewed via the committed doc diff, not pasted into the body. It is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the design *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
+   - **No POC (the common case): create it** on fresh `origin/main` — worktree-safe, so it's correct whether you're in the coordinator's checkout or a worktree spun off it (see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Worktree branching): `git fetch origin main && git checkout -B spec/<ISSUE-ID> origin/main`.
+   - **Step 4 built a POC: the branch already exists and carries commits. Do NOT run the line above** — `-B … origin/main` resets it, discarding every POC commit and leaving §7 and the POC block pointing at files that aren't in the PR. You are already on the branch in the same worktree, so just verify it (`git branch --show-current`) and commit onto it; if you somehow aren't, check it out **without** re-basing on main — `git checkout spec/<ISSUE-ID>` (or `git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` if it was already pushed).
+
+   Then commit the spec doc, push, and open a PR titled `spec(<ISSUE-ID>): <issue title>` **ready for review** (not a draft) with `create_pull_request`. **Label the PR `spec`** so spec PRs stay filterable and the orchestrators can find them by label (create the `spec` label in the repo if it doesn't exist yet).
+
+   **Write the PR description per [`pr-reviewer-guidance.md`](../../../docs/contributing/pr-reviewer-guidance.md) → "The layout"** — canonical for the block order, what collapses, when a diagram earns its place, and what never collapses. Don't restate it here. What's specific to a **spec** PR is the mapping:
+
+   - **Block 1 (the problem)** ← Part I §1 condensed. **Block 2 (what this does)** ← §2, plus what it deliberately doesn't do. **Block 3 (what's asked of you)** ← an index of §6 with **one row per Decision — every one of them**, each carried **in words** rather than by bare number. §6 is the sign-off surface, so a Decision left out of the index is one the reviewer is asked to approve without seeing. Price the *If it's wrong* column in consequences, not mechanism — it is the only column that tells a product owner what signing this off costs them. **Any §6 row that is a genuine live fork, plus every §12 open question, is *also* asked in full below the table** — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md); zero to two per spec. **Its one-line row stays in the index** — §6 is the sign-off surface, and dropping the row would hide the one decision still genuinely open (same rule as [`spec-template.md`](../../../docs/contributing/spec-template.md) → §6). The full ask carries its own *what being wrong costs* because the row's *If it's wrong* cell is sized for ratification — one line, too compressed to calibrate a call the human is actually making. The rest of §6 the human is ratifying, and one line each is what keeps eight of them on a screen.
+   - **First collapsed block: the contract** — `## How to review this` from [`spec-template.md`](../../../docs/contributing/spec-template.md), pasted **verbatim**. Smoothing it weakens the only instruction an external bot ever receives, and no spec PR ships without it.
+   - **Second collapsed block: the rest of Part I** — §3 tradeoffs, §4 focus practices, §5 examples, §6 in full. Blocks 1–3 already carry §1, §2 and the §6 index, so it picks up where they stop and nothing is said twice.
+   - **Budget:** the spec-PR row in [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) → Budgets.
+   - **If a Step 4 POC was built**, add a collapsed POC block: one runnable command per artifact, the question it answers, and that it's throwaway.
+
+   Part II (the directional Build Plan) is reviewed via the committed doc diff, not pasted into the body. The PR is docs-only (no changeset — BP-022) and is separate from the eventual implementation PR. Its purpose is to get the project's automated reviewers to critique the design *before* any code is written. Because this PR is never merged (it's closed unmerged when implementation starts), it is also the place to show **fuller worked examples** that would bloat the spec — as collapsed PR-description sections or committed throwaway example files. Keep the spec doc's own examples small (Part I §5); put anything larger here, so the implementing agent isn't forced to wade through it.
+
+   **`<details>` belongs in the PR body, not in the spec doc.** `spec/<ISSUE-ID>.md` is mirrored verbatim to a Linear document, which renders the tag as raw HTML; the spec's own Part I / Part II split is already its fold.
 
 3. **Publish to Linear.** Check for an existing spec document on the issue: `update_document` if one exists, else `create_document` linked to the issue — with the same content as the repo doc (the full spec).
 
 4. **Update issue relations and comment**:
    - Add/update dependency relations discovered during research (`save_issue` with `blockedBy` / `blocks`).
-   - Add a comment summarizing: "Implementation spec created/updated. Open questions: [list if any]." Include the **Decisions & rules** block from Part I §6 verbatim, and a link to the **spec PR**. The durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
+   - Add a publishing comment, **problem first** per [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) — not a status label. One or two sentences on what's broken and the approach taken, then the ask (approve the direction, or raise a Decision), then any open questions. Keep that opening within the Linear-issue budget. **Linear renders neither `<details>` nor collapsed blocks**, so the detail — the **Decisions & rules** block from Part I §6 verbatim, and the link to the **spec PR** — goes below a `---` under a `## Detail` heading. The durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
    - If open questions exist, flag the issue for discussion.
 
-5. **Keep the two copies in sync.** `docs/specs/<ISSUE-ID>.md` and the Linear document are the same content. Any later edit to either — most often from spec-PR review (Step 6.5) — is mirrored to the other in the same change set. Never let them drift.
+5. **Mirror every change to Linear.** `spec/<ISSUE-ID>.md` is the review surface and dies with the PR; the Linear document is what survives. Any later edit — most often from spec-PR review (Step 6.5) — is mirrored to Linear in the same change set, so the durable copy is never the stale one.
 
 6. **Move the issue to "In Spec Review"** with `save_issue`, *after* the repo doc, PR, Linear document, and publishing comment are all in place. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the comment.
 
@@ -392,7 +494,7 @@ Two instincts to override, because both run the wrong way:
 - **A note is not a deferral.** §13 is *how* a good observation gets acted on — at the altitude where it can be judged against real code. The implementer reads it as input.
 - **Volume is not signal.** Ten below-the-bar comments don't add up to one spec-level problem. Ten notes is a normal review of a directional document. A reviewer restating a below-the-bar point hasn't promoted it — reply once; the repeat needs no new answer.
 
-**Escalate genuinely debatable feedback to the user.** When a suggestion is *spec-level* and both the reviewer's and the spec's positions are defensible — a scope change, a reversed decision — don't silently accept it: surface it with the trade-off (`AskUserQuestion` for a crisp choice) and let the user decide. This is for direction forks only; a below-the-bar comment is never worth a user prompt.
+**Escalate genuinely debatable feedback to the user.** When a suggestion is *spec-level* and both the reviewer's and the spec's positions are defensible — a scope change, a reversed decision — don't silently accept it: surface it as a decision they can make, in full — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). **Recommend**; you have researched this and they haven't. `AskUserQuestion` gets a crisp choice; the framing still has to be there. Relaying the reviewer's wording is not an ask — it hands them a debate instead of a decision. This is for direction forks only; a below-the-bar comment is never worth a user prompt.
 
 #### 6.5.2 On a spec-level pivot, re-draft — do not append (anti-addenda rule)
 
@@ -438,7 +540,12 @@ three outcomes. Read it. Four things are this step's:
      changed>, because the run showed <what>.` Costs **one round outside the budget**; say so
      in one line.
    - **INCONCLUSIVE** → don't retry and don't pick a side. Surface it to the user as a
-     direction fork with the trade-off (`AskUserQuestion`).
+     direction fork asked **in full** (`AskUserQuestion`) — all six parts, per
+     [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). You ran the
+     POC and they didn't, so say what it did and did **not** settle, and still give a
+     recommendation where the direction has one that doesn't rest on the unsettled claim. If it
+     genuinely has none, say that outright — "no recommendation, and the POC is why" is an honest
+     answer here and is not the same as quietly leaving the part out.
 
 #### 6.5.4 Converge — two rounds, then hand to the human
 
@@ -455,7 +562,7 @@ A bot leaving `CHANGES_REQUESTED` on a spec PR does **not** hold the gate (only 
 
 #### 6.5.5 Sign-off
 
-The spec PR is done when it's converged and the user has signed off on the **direction**. **The sign-off signal the orchestrators gate on is an approving comment or GitHub Review from the user on the spec PR** — either a comment saying "approved" or a Review with `state: APPROVED`, authored by a human (not a bot, not a bot-authored comment/review, and for a review, not the PR's own author); see `docs/contributing/orchestration.md` → Gates. A comment or a review is the gate because either *wakes* the orchestrator, where an applied label doesn't. **On sign-off, apply the `spec approved` label as the durable mirror** if it isn't already present — the label records the gate (and keeps spec PRs filterable); it no longer triggers it. The approval is what authorizes closing the spec PR and starting implementation: from the agreed spec, implementation proceeds and the spec PR is closed unmerged — under `issue-lifecycle` the lifecycle closes it at the approval gate, standalone `issue-implement` closes it during branch setup. Don't merge or close the spec PR yourself.
+The spec PR is done when it's converged and the user has signed off on the **direction**. **The sign-off signal the orchestrators gate on is an approving comment or GitHub Review from the user on the spec PR** — either a comment saying "approved" or a Review with `state: APPROVED`, authored by a human (not a bot, not a bot-authored comment/review, and for a review, not the PR's own author); see `docs/contributing/orchestration.md` → Gates. A comment or review *wakes* the orchestrator immediately where a label does not, so those are the fast channels — but the owner's `spec approved` label passes the gate too, picked up on the next wake. **Never apply the `spec approved` label yourself** — it is the owner's own approval channel and passes the gate on its own, so a label written here would manufacture the sign-off it is supposed to report. The approval is what authorizes closing the spec PR and starting implementation: from the agreed spec, implementation proceeds and the spec PR is closed unmerged — under `issue-lifecycle` the lifecycle closes it at the approval gate, standalone `issue-implement` closes it during branch setup. Don't merge or close the spec PR yourself.
 
 ### Step 7: Reframe the Issue Description
 
@@ -513,7 +620,9 @@ The full spec (Part I + Part II) is published as a ready spec PR. Present it to 
 8. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
 9. **Links**: the Linear issue, the spec document, and the spec PR
 
-If there are open questions, ask the user to resolve them. Once resolved, update the spec document with the decisions.
+**Write this for a product owner, not a peer engineer.** You are the engineer; they set the objectives and track the process as a whole. Items 3, 4 and 8 get stated in observable behaviour and priced in consequences — customers, promises, timing, reversibility — not in files, symbols, or framework vocabulary.
+
+If there are open questions, **ask them properly** — all six parts, per [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) (canonical, with a worked example). Batch them under one `Need your sign-off` heading, numbered, hardest first — zero to two is normal; more than that and the direction isn't ready for review. Once resolved, update the spec document with the decisions.
 
 ## Guidelines
 
@@ -527,6 +636,6 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 - **Non-goals matter.** Explicitly stating what you're NOT doing prevents scope creep and sets expectations.
 - **Documentation is part of the spec, not an afterthought.** Every spec must include the Documentation Plan (Part II §11) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
 - **Reframing the issue is part of the spec workflow, not a post-script.** Step 7 is required. The moment the spec is published, any solution detail still living in the issue is duplicate or stale. Removing it preserves the issue/spec separation and prevents future readers from following the wrong source. Do not skip it because the issue "looks fine" — re-read it through the PM/business lens and prune.
-- **Open questions are OK.** It's better to flag uncertainty than to make a wrong assumption. Present options with trade-offs and let the project owner decide.
+- **Open questions are OK — but never neutral.** It's better to flag uncertainty than to make a wrong assumption. Present the fork in full ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md)), **recommendation included**: options and trade-offs alone hand the owner an unpriced menu and cost a round while they ask what you think. You did the research; they didn't. See [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md). And a question you'd answer the same way whatever they said isn't open — decide it and make it a §6 Decision.
 - **Dependency accuracy is critical.** If you say "no dependencies," an agent will start building immediately. If there's actually a dependency, the work gets thrown away. Be thorough.
 - **Push back when you should.** Your job is not to produce a spec on every issue; it is to produce specs for the issues that warrant them. When Step 3.5 surfaces a wrapper-over-primitive shape, single-vendor leakage into framework surface, or a precedent-mirror that doesn't transfer semantically, the right deliverable is a concise case for *not* shipping and one or more proposed alternatives. The user can override — but you have to actually present the case. A spec the user later cancels is more expensive than five minutes of "should we even build this?"

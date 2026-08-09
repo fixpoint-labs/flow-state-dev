@@ -10,7 +10,12 @@
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
+import {
+  createExecutionContext,
+  createFlowRegistry,
+  createInMemoryStores,
+  toBareStates
+} from "../src";
 import type { SessionRecord } from "../src/stores/types";
 import { getPersistedData } from "../src/resources/internal";
 
@@ -61,13 +66,13 @@ describe("FIX-735: per-resource flowIsolation", () => {
     await ctx.resources.notes.patchState({ text: "private" });
 
     // Shared resource lives at the bare identity key; isolated one does not.
-    const bare = await stores.resourceState.getAll("user", "user_1");
+    const bare = toBareStates(await stores.resourceState.getAll("user", "user_1"));
     expect(bare).toHaveProperty("accounts");
     expect(bare).not.toHaveProperty("notes");
     expect((bare.accounts as { balance: number }).balance).toBe(100);
 
     // Isolated resource lives at the flow-namespaced key; shared one does not.
-    const isolated = await stores.resourceState.getAll("user", "user_1:flow-a");
+    const isolated = toBareStates(await stores.resourceState.getAll("user", "user_1:flow-a"));
     expect(isolated).toHaveProperty("notes");
     expect(isolated).not.toHaveProperty("accounts");
     expect((isolated.notes as { text: string }).text).toBe("private");
@@ -179,12 +184,14 @@ describe("FIX-735: per-resource flowIsolation", () => {
     await sharedColl.create("a", { n: 1 });
     await isoColl.create("b", { n: 2 });
 
-    const bare = await stores.resourceState.getByPrefix("user", "user_1", "shared/");
+    const bare = toBareStates(await stores.resourceState.getByPrefix("user", "user_1", "shared/"));
     expect(Object.keys(bare)).toContain("shared/a");
-    const bareIso = await stores.resourceState.getByPrefix("user", "user_1", "iso/");
+    const bareIso = toBareStates(await stores.resourceState.getByPrefix("user", "user_1", "iso/"));
     expect(Object.keys(bareIso)).toHaveLength(0);
 
-    const isolated = await stores.resourceState.getByPrefix("user", "user_1:flow-coll", "iso/");
+    const isolated = toBareStates(
+      await stores.resourceState.getByPrefix("user", "user_1:flow-coll", "iso/")
+    );
     expect(Object.keys(isolated)).toContain("iso/b");
   });
 
@@ -198,7 +205,7 @@ describe("FIX-735: per-resource flowIsolation", () => {
     registry.register(flow);
 
     // Shared resource present at the bare userId, but NO user scope record.
-    await stores.resourceState.set("user", "user_1", "accounts", { balance: 42 });
+    await stores.resourceState.set("user", "user_1", "accounts", { balance: 42 }, "any");
     const session: SessionRecord = {
       id: "sess_a",
       flowKind: "flow-a",
@@ -254,10 +261,12 @@ describe("FIX-735: per-resource flowIsolation", () => {
     await shallowColl.create("2", { n: 2 });
 
     // The deep instance lands in the isolated bucket, not the shallow shared one.
-    const isolated = await stores.resourceState.getByPrefix("user", "user_1:flow-nested", "a/b/");
+    const isolated = toBareStates(
+      await stores.resourceState.getByPrefix("user", "user_1:flow-nested", "a/b/")
+    );
     expect(Object.keys(isolated)).toContain("a/b/1");
     // The shallow shared instance stays at the bare id, and the deep one is not there.
-    const bare = await stores.resourceState.getByPrefix("user", "user_1", "a/");
+    const bare = toBareStates(await stores.resourceState.getByPrefix("user", "user_1", "a/"));
     expect(Object.keys(bare)).toContain("a/2");
     expect(Object.keys(bare)).not.toContain("a/b/1");
   });

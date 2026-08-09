@@ -87,6 +87,16 @@ Everything this adapter stores survives a process restart, including resource st
 | Resource content (artifacts, collection bodies, client data) | Yes | `resource_content` |
 | Sequencer checkpoints, suspensions, leases, traces | Yes | dedicated tables |
 
+### Resource state carries a version, and deletes leave a row behind
+
+`resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.
+
+**What that guarantee covers.** The compare-and-swap protects any caller that passes the version it read, and that includes resource mutations authored inside a flow: the runtime writes them at the version the execution context observed, so two flow contexts patching one resource can no longer silently drop a write. Choose an adapter here for durability and for the version and tombstone semantics described below — the concurrency guarantee itself is the same on every adapter except the filesystem one, which compares within a single process only.
+
+The migration is applied automatically on open and is **purely additive**: `ADD COLUMN` with defaults, no table rebuild, no backfill, indexes untouched, and `state` stays `NOT NULL`. Rows written before the upgrade read as **live at version 1**. Re-opening an already-migrated database is a no-op, so it is safe to roll forward repeatedly.
+
+**Operator-visible:** deleting a resource does not remove its row. It marks the row `deleted`, keeps the version, and replaces the payload with `{}`. That retained version is what makes delete-then-recreate safe. Nothing reclaims these rows — there is no sweep, no timer, no retention window — so a workload that creates and deletes many resource keys accumulates one small row per deleted key. Plan for it rather than expecting a cleanup pass that does not exist.
+
 ```ts
 const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
 await stores.content.set("session", sessionId, "artifacts/report", "…body…");
@@ -104,6 +114,8 @@ Live-tail subscriptions (`request.subscribeToEvents`) share one poll loop per re
 The store auto-applies schema changes on connection open via `initializeSchema`. No manual migration step.
 
 The `request_items` table was added for incremental item persistence: instead of rewriting the whole request blob on every item boundary, the store upserts one row per changed item keyed by `(request_id, item_id)`. Existing databases upgrade transparently — items written to the old `requests.data` blob are read via a fallback merge, and new items go to the table.
+
+`sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
 
 ## Individual Store Constructors
 
