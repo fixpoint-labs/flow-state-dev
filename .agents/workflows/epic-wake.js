@@ -383,10 +383,16 @@ function pendingAction(row) {
  */
 function noScanNeeded(row, prerequisites) {
   if (prerequisites.has(row.id)) return false
+  // Checked BEFORE the terminal branch, not inside the non-terminal one. The three exceptions above are a
+  // flat list, and reading `closedBlocker` only on one path made a row that is both terminal in Linear and
+  // carrying a closed-PR observation skippable forever — the recovery its own blocker text advertises is
+  // a scan, so it became unreachable. That is the defect this file keeps producing: two predicates over
+  // the same state, disagreeing.
+  if (row.closedBlocker) return false
   if (row.linearTerminal) {
     return !(row.verdicts || []).length && !(row.blockerResolutions || []).length && !row.blockerResolution
   }
-  return !!row.blocker && !row.closedBlocker
+  return !!row.blocker
 }
 
 /**

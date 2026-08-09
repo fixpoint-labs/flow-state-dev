@@ -1452,6 +1452,34 @@ check('a blocker the SCAN observed keeps its scan, so reopening the PR clears it
   assert.deepEqual(result.blockers, [])
 })
 
+check('a closedBlocker keeps its scan even on a terminal row', async () => {
+  // The rule above is not conditional on the row being non-terminal, and the doc comment lists it as a
+  // flat exception — but the terminal branch returned before ever consulting `closedBlocker`, so a row
+  // that is BOTH terminal in Linear and carrying a closed-PR observation was skipped forever. Its
+  // blocker text advertises "reopen the PR"; only a scan sees that, so the recovery was unreachable and
+  // the code contradicted the comment directly above it. Reachable whenever a human marks the issue done
+  // while a sub-PR sits closed-unmerged.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          linearTerminal: true,
+          blocker: 'Closed without merging: impl PR #9. Needs a human decision — either reopen the PR on GitHub...',
+          closedBlocker: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+      linear: { 'FIX-2': 'Done' },
+    }),
+  })
+  assert.deepEqual(scannedIn(calls), ['FIX-2'], 'terminal does not outrank the observation that only a scan can clear')
+  assert.equal(result.issues[0].blocker, null, 'and the reopened handle actually clears it')
+})
+
 check('a terminal prerequisite keeps its scan, so its dependent can unblock', async () => {
   // `openBlockers` clears a blocked-by relation only on LIVE merge evidence — Linear state is a
   // mirror a human can move by hand, the merge is the fact. A prerequisite with no scan reads as
