@@ -1,9 +1,12 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ExpectedVersion,
   PersistErrorHandler,
   RequestListOptions,
   RequestRecord,
+  RequestStatus,
   RequestStore,
   SetResult,
   SubscribeToEventsOptions
@@ -13,10 +16,10 @@ import {
   type FilesystemRecordStore
 } from "./shared";
 import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
-import { withRequestSourceDefault } from "../shared";
+import { withRequestSourceDefault, withStoredAbortRequested } from "../shared";
 import { matchesTenantFilter } from "../scope-keys";
 import { pollEvents } from "../subscribe-helpers";
-import { appendFile, readdir, readFile, rm } from "node:fs/promises";
+import { appendFile, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   createSerializedWriteQueue,
@@ -44,6 +47,22 @@ function toEventsPath(rootDir: string, requestId: string): string {
 
 function toRunOncePath(rootDir: string, requestId: string): string {
   return toRecordPath(rootDir, requestId).replace(/\.json$/, ".runonce.json");
+}
+
+/**
+ * Path of the abort-intent marker beside a request's record file (FIX-1026).
+ *
+ * Existence *is* the flag, so the narrow read is a `stat` rather than a parse.
+ * This adapter keeps items inline on the record, so any read that goes through
+ * `readRecord` is O(items) — reusing it for the abort poll would deserialize a
+ * growing item array on every heartbeat tick, which is the exact cost the
+ * narrow read exists to remove.
+ *
+ * Deliberately not a `.json` file: `listRecords` only collects `.json`
+ * entries, so the marker cannot be mistaken for a record.
+ */
+function toAbortMarkerPath(rootDir: string, requestId: string): string {
+  return toRecordPath(rootDir, requestId).replace(/\.json$/, ".abort");
 }
 
 /**
@@ -170,8 +189,53 @@ export class FilesystemRequestStore implements RequestStore {
     });
   }
 
+  /**
+   * Whether the abort marker exists for a request (FIX-1026).
+   * `stat` rather than a read — the file's contents are never consulted.
+   */
+  private async hasAbortMarker(id: string): Promise<boolean> {
+    try {
+      await stat(toAbortMarkerPath(this.rootDir, id));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  /** Create or remove the abort marker so existence matches `requested`. */
+  private async writeAbortMarker(id: string, requested: boolean): Promise<void> {
+    const markerPath = toAbortMarkerPath(this.rootDir, id);
+    if (requested) {
+      await ensureDirectory(this.rootDir);
+      await atomicWrite(markerPath, "");
+      return;
+    }
+    await rm(markerPath, { force: true });
+  }
+
   async get(id: string): Promise<RequestRecord | undefined> {
-    return withRequestSourceDefault(await this.store.get(id));
+    const [record, marked] = await Promise.all([
+      this.store.get(id),
+      this.hasAbortMarker(id)
+    ]);
+    if (record === undefined) return undefined;
+
+    // BP-030 dual-read. The marker is authoritative once it exists; a record
+    // written before the flag moved off `set`'s surface still carries it
+    // inline, and must still read as requested. Nothing is rewritten — but
+    // this is also the point the record becomes migrated, because the record
+    // has already been paid for here. `isAbortRequested` can then stay a
+    // `stat` instead of inheriting this read's cost on every tick.
+    const inlineLegacy = record.abortRequested === true;
+    if (inlineLegacy && !marked) {
+      // Best-effort: a read must never fail because the migration write did.
+      await this.writeAbortMarker(id, true).catch(() => {});
+    }
+
+    return withRequestSourceDefault(
+      withStoredAbortRequested(record, marked || inlineLegacy ? true : undefined)
+    );
   }
 
   async set(
@@ -179,7 +243,47 @@ export class FilesystemRequestStore implements RequestStore {
     value: RequestRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
-    return this.store.set(id, value, expectedVersion);
+    // `abortRequested` is off `set`'s write surface (FIX-1026). The marker is
+    // the only home, so the record body never carries the flag: stripping it
+    // here means a full-record write can neither set the flag nor clear it,
+    // whatever snapshot the caller built its record from.
+    return this.store.set(
+      id,
+      withStoredAbortRequested(value, undefined),
+      expectedVersion
+    );
+  }
+
+  async isAbortRequested(requestId: string): Promise<boolean> {
+    return this.hasAbortMarker(requestId);
+  }
+
+  async setFieldsIfStatus(
+    id: string,
+    fields: ConditionalRequestFields,
+    allowedStatuses: readonly RequestStatus[],
+    updatedAt: number
+  ): Promise<ConditionalWriteResult> {
+    const { abortRequested, ...recordFields } = fields;
+    let found: RequestStatus | undefined;
+
+    // `update` runs the merge under the per-id write lock, which is what makes
+    // the status check and the write one step against concurrent `set`s in
+    // this process. (Cross-process is out of scope for this adapter — see the
+    // single-writer disclaimer on the class.)
+    await this.store.update(id, (current) => {
+      found = current.status;
+      if (!allowedStatuses.includes(current.status)) return current;
+      return { ...current, ...recordFields, updatedAt };
+    });
+
+    if (found === undefined) return { applied: false, status: undefined };
+    if (!allowedStatuses.includes(found)) return { applied: false, status: found };
+
+    if (abortRequested !== undefined) {
+      await this.writeAbortMarker(id, abortRequested);
+    }
+    return { applied: true, status: found };
   }
 
   /**
@@ -235,7 +339,8 @@ export class FilesystemRequestStore implements RequestStore {
   private async deleteSidecars(id: string): Promise<void> {
     const exact = new Set([
       path.basename(toEventsPath(this.rootDir, id)),
-      path.basename(toRunOncePath(this.rootDir, id))
+      path.basename(toRunOncePath(this.rootDir, id)),
+      path.basename(toAbortMarkerPath(this.rootDir, id))
     ]);
     const runOncePrefixes = [
       `${encodeURIComponent(id)}.runonce.`,

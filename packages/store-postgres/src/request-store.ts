@@ -24,10 +24,14 @@ import {
   pollEvents,
   synthesizeRequestInterrupted,
   StoreSubscriptionError,
+  withStoredAbortRequested,
+  type ConditionalRequestFields,
+  type ConditionalWriteResult,
   type ExpectedVersion,
   type ReadEventsFn,
   type RequestListOptions,
   type RequestRecord,
+  type RequestStatus,
   type RequestStore,
   type SetResult,
   type SubscribeToEventsOptions
@@ -108,6 +112,11 @@ export function createPostgresRequestStore(
 
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
+    // `abortRequested` is off `set`'s write surface (FIX-1026): the stored
+    // value wins in both directions, enforced inside the UPDATE so a
+    // concurrent `setFieldsIfStatus` cannot be overwritten by a full-record
+    // write that read the row a moment earlier.
+    preserveJsonKeys: ["abortRequested"],
     columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
@@ -299,9 +308,12 @@ export function createPostgresRequestStore(
       // Items live in `request_items`; keep them out of `requests.data` to
       // avoid double-storage.
       const { items: _omitted, ...withoutItems } = value;
+      // Strip the abort flag before it is bound: `preserveJsonKeys` re-applies
+      // the stored value on the UPDATE paths, and an INSERT has no stored row
+      // to preserve, so a record carrying the flag must not create one.
       const result = await base.set(
         id,
-        withoutItems as RequestRecord,
+        withStoredAbortRequested(withoutItems as RequestRecord, undefined),
         expectedVersion
       );
       if (result.ok && isTerminalRequestStatus(value.status)) {
@@ -309,6 +321,49 @@ export function createPostgresRequestStore(
       }
       return result;
     },
+
+    async isAbortRequested(requestId: string): Promise<boolean> {
+      // `data` is JSONB and items live in `request_items`, so this is a
+      // primary-key lookup plus a key probe — O(1) in item count, as the
+      // interface requires of every adapter.
+      const result = await executor.query(
+        "SELECT data -> 'abortRequested' AS flag FROM requests WHERE id = $1",
+        [requestId]
+      );
+      const row = result.rows[0] as { flag: unknown } | undefined;
+      return row?.flag === true;
+    },
+
+    async setFieldsIfStatus(
+      id: string,
+      fields: ConditionalRequestFields,
+      allowedStatuses: readonly RequestStatus[],
+      updatedAt: number
+    ): Promise<ConditionalWriteResult> {
+      // One statement: the status the predicate reads and the write it gates
+      // are the same snapshot. A version CAS cannot stand in for this —
+      // terminal transitions persist `version` unchanged, so a version-checked
+      // write validates after a terminal commit and resurrects a dead record.
+      const result = await executor.query(
+        `WITH found AS (
+           SELECT status FROM requests WHERE id = $1
+         ), updated AS (
+           UPDATE requests
+              SET data = data || $2::jsonb, updated_at = $3
+            WHERE id = $1 AND status = ANY($4::text[])
+            RETURNING status
+         )
+         SELECT (SELECT status FROM found) AS found_status,
+                EXISTS (SELECT 1 FROM updated) AS applied`,
+        [id, JSON.stringify(fields), updatedAt, [...allowedStatuses]]
+      );
+      const row = result.rows[0] as
+        | { found_status: RequestStatus | null; applied: boolean }
+        | undefined;
+      const status = row?.found_status ?? undefined;
+      return { applied: row?.applied === true, status };
+    },
+
     patchField: base.patchField,
     incField: base.incField,
     pushToArray: base.pushToArray,

@@ -28,6 +28,31 @@ export function withRequestSourceDefault<T extends RequestRecord | undefined>(
   return { ...(record as RequestRecord), source: "http" } as T;
 }
 
+/**
+ * Force a request record's `abortRequested` to the value already stored,
+ * whatever the incoming record says (FIX-1026).
+ *
+ * The single helper behind `RequestStore.set`'s rule that the flag is off its
+ * write surface in both directions. Adapters call it on the value they are
+ * about to persist, passing the stored flag they just read; `undefined` drops
+ * the key so a record that never carried it does not gain one.
+ *
+ * Kept here rather than inlined per adapter so the four implementations cannot
+ * drift into three subtly different readings of "ignores".
+ */
+export function withStoredAbortRequested<T extends RequestRecord>(
+  value: T,
+  stored: boolean | undefined
+): T {
+  if (stored === undefined) {
+    if (value.abortRequested === undefined) return value;
+    const { abortRequested: _dropped, ...rest } = value;
+    return rest as T;
+  }
+  if (value.abortRequested === stored) return value;
+  return { ...value, abortRequested: stored };
+}
+
 export function withActiveRequestSourceDefault<T extends ActiveRequestEntry | undefined>(
   entry: T
 ): T {

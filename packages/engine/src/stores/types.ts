@@ -92,8 +92,76 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   items?: OutputItem[];
   interruptedAt?: number;
+  /**
+   * Whether cancellation has been requested for this request (FIX-1026).
+   *
+   * **Readable here, but NOT writable through {@link RequestStore.set}.** A
+   * full record handed to `set` cannot change the stored value in either
+   * direction — it can neither set the flag nor clear one. The only write path
+   * is {@link RequestStore.setFieldsIfStatus}; the only cheap read path is
+   * {@link RequestStore.isAbortRequested}.
+   *
+   * The field is carried as a passenger by every full-record writer (they all
+   * build `{ ...heldRecord, ...patch }` from a snapshot taken before the flag
+   * existed, the longest-lived being the execution context's run-lifetime
+   * `requestRef`). Taking it off `set`'s write surface is what makes those
+   * writers harmless without changing a single call site.
+   *
+   * `boolean | undefined` — read it with `=== true`, never truthily.
+   */
   abortRequested?: boolean;
   abortedAt?: number;
+};
+
+/**
+ * Fields {@link RequestStore.setFieldsIfStatus} may write.
+ *
+ * Derived from {@link RequestRecord} rather than hand-listed, minus the fields
+ * that are not a plain part of the record body:
+ *
+ * - `id` / `version` / `createdAt` — identity and CAS bookkeeping, owned by `set`.
+ * - `state` — has its own versioned verbs (`patchField` / `incField` / `pushToArray`).
+ * - `items` — lives in a child table on the persistent adapters, written via `persistItems`.
+ * - `updatedAt` — supplied as an explicit argument, mirroring the delta verbs.
+ * - `status` and the indexed access-path fields (`flowKind`, `userId`, `sessionId`,
+ *   `orgId`, `tenantId`) — denormalized into columns by the SQL adapters. `status`
+ *   is additionally what the predicate reads, and a verb that both predicates on
+ *   and rewrites status would be reasoning about two different values under one name.
+ */
+export type ConditionalRequestFields = Partial<
+  Omit<
+    RequestRecord,
+    | "id"
+    | "version"
+    | "createdAt"
+    | "updatedAt"
+    | "state"
+    | "items"
+    | "status"
+    | "flowKind"
+    | "userId"
+    | "sessionId"
+    | "orgId"
+    | "tenantId"
+  >
+>;
+
+/**
+ * Outcome of {@link RequestStore.setFieldsIfStatus}.
+ *
+ * `status` is the status the adapter found under the same atomic step that
+ * evaluated the predicate, so a caller can pick its own error without a second
+ * read that could observe a different record.
+ *
+ * | `applied` | `status` | Meaning |
+ * |---|---|---|
+ * | `true` | the matched status | The predicate held and the fields were written |
+ * | `false` | the status found | A record exists but its status is outside the predicate |
+ * | `false` | `undefined` | No record exists at this id |
+ */
+export type ConditionalWriteResult = {
+  applied: boolean;
+  status?: RequestStatus;
 };
 
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
@@ -369,7 +437,19 @@ export interface SessionStore extends DeltaStoreOps<SessionRecord> {
 
 export interface RequestStore extends DeltaStoreOps<RequestRecord> {
   get(id: string): Promise<RequestRecord | undefined>;
-  /** See `SessionStore.set` for CAS semantics. */
+  /**
+   * See `SessionStore.set` for CAS semantics.
+   *
+   * **`set` ignores {@link RequestRecord.abortRequested} in both directions**
+   * (FIX-1026): the stored value survives a full record that omits it, and a
+   * full record that carries it cannot set one. Adapters must hold this
+   * themselves — the compiler will not, because the field is still on the
+   * record type for reading. An adapter that "helpfully" honours the field on
+   * `set` reintroduces the hazard the rule exists to remove: every full-record
+   * writer builds `{ ...heldRecord, ...patch }` from a snapshot that predates
+   * the flag, so honouring it means erasing a cancellation nobody intended to
+   * touch. Write it with {@link RequestStore.setFieldsIfStatus}.
+   */
   set(
     id: string,
     value: RequestRecord,
@@ -417,6 +497,63 @@ export interface RequestStore extends DeltaStoreOps<RequestRecord> {
    * persisted items should `flushItems` first.
    */
   countItems(requestId: string): Promise<number>;
+
+  /**
+   * Whether cancellation has been requested for this request (FIX-1026).
+   *
+   * The narrow read behind the running process's abort poll: it answers the
+   * one question the poll asks without materializing the request. Same
+   * motivation and same obligation as {@link RequestStore.countItems} — a
+   * question about a request that adapters answer with a primary-key lookup
+   * rather than by loading payloads.
+   *
+   * **Required, and O(1) in item count on every adapter.** This runs on the
+   * heartbeat tick for the life of every request, so an implementation that
+   * reads the record — and therefore deserializes a monotonically growing item
+   * array — turns a long detached run into quadratic work, on exactly the
+   * workload the poll exists to serve. `get()` is not an acceptable
+   * implementation on any adapter whose `get()` carries items.
+   *
+   * Returns `false` for an unknown request: a request that is gone is not
+   * abort-requested, and the caller's timer is about to be cleared anyway.
+   */
+  isAbortRequested(requestId: string): Promise<boolean>;
+
+  /**
+   * Apply `fields` to a request only while its status is one of
+   * `allowedStatuses`, evaluating the predicate and the write as one atomic
+   * step inside the adapter (FIX-1026).
+   *
+   * The verb `RequestStore` was missing. Two things make it necessary rather
+   * than convenient:
+   *
+   * - **`set` cannot express it.** `set` takes a whole record, so writing one
+   *   field means read-modify-write, and every full-record writer already
+   *   carries fields it never intended to touch.
+   * - **`expectedVersion` cannot express it either.** The predicate that
+   *   matters is about *status*, and terminal transitions go through a `set`
+   *   with `"any"` that persists `version` **unchanged**. A version-checked
+   *   write therefore still validates after a terminal commit and resurrects a
+   *   dead record. No amount of version arithmetic reaches a status.
+   *
+   * Deliberately general — the predicate and the field set are parameters, not
+   * an abort-shaped `markAborted()` — because the same shape is
+   * *"change these fields only if the record is still in this state."*
+   *
+   * Distinct from {@link DeltaStoreOps.patchField}, which addresses the
+   * record's `state` slice under a *version* predicate. This addresses
+   * top-level record fields under a *status* predicate; the two sit beside
+   * each other rather than one generalizing the other.
+   *
+   * An empty `allowedStatuses` matches nothing, and an absent record is never
+   * a match — see {@link ConditionalWriteResult} for the three outcomes.
+   */
+  setFieldsIfStatus(
+    id: string,
+    fields: ConditionalRequestFields,
+    allowedStatuses: readonly RequestStatus[],
+    updatedAt: number
+  ): Promise<ConditionalWriteResult>;
 
   /**
    * Persist a stream event for a request.

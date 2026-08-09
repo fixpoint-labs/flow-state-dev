@@ -15,6 +15,8 @@
 import type Database from "better-sqlite3";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ExpectedVersion,
   RequestListOptions,
   RequestRecord,
@@ -50,6 +52,30 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
     status === "aborted" ||
     status === "suspended"
   );
+}
+
+/**
+ * Force `abortRequested` to the value already stored, whatever the incoming
+ * record says — the adapter half of `RequestStore.set`'s rule that the flag is
+ * off its write surface (FIX-1026).
+ *
+ * Mirrors the engine's `withStoredAbortRequested`, restated here for the same
+ * reason `isTerminalRequestStatus` is: this package keeps a TYPE-ONLY
+ * dependency on `@flow-state-dev/engine` (enforced by
+ * `scripts/validate-package-boundaries.mjs`), so it cannot import the runtime
+ * helper. Keep the two in step.
+ */
+function withStoredAbortRequested(
+  value: RequestRecord,
+  stored: boolean | undefined
+): RequestRecord {
+  if (stored === undefined) {
+    if (value.abortRequested === undefined) return value;
+    const { abortRequested: _dropped, ...rest } = value;
+    return rest as RequestRecord;
+  }
+  if (value.abortRequested === stored) return value;
+  return { ...value, abortRequested: stored };
 }
 
 /**
@@ -217,6 +243,31 @@ export function createSQLiteRequestStore(
   const selectEventsAfterStmt = db.prepare(
     "SELECT event_data FROM request_events WHERE request_id = ? AND sequence_number > ? ORDER BY sequence_number ASC"
   );
+  // Abort intent (FIX-1026). The flag lives in the `requests.data` blob where
+  // it has always lived — `json_extract` on the primary key reads it without
+  // materializing anything else, and items live in `request_items`, so this
+  // read is O(1) in item count as the interface requires.
+  const selectAbortFlagStmt = db.prepare(
+    "SELECT json_extract(data, '$.abortRequested') AS flag FROM requests WHERE id = ?"
+  );
+  const selectStatusDataStmt = db.prepare(
+    "SELECT status, data FROM requests WHERE id = ?"
+  );
+  const updateDataStmt = db.prepare(
+    "UPDATE requests SET data = ?, updated_at = ? WHERE id = ?"
+  );
+
+  /**
+   * The stored abort flag, or `undefined` when the request or the key is
+   * absent. `json_extract` surfaces SQLite's JSON `true` as `1`.
+   */
+  function readAbortFlag(id: string): boolean | undefined {
+    const row = selectAbortFlagStmt.get(id) as { flag: unknown } | undefined;
+    if (row === undefined || row.flag === null || row.flag === undefined) {
+      return undefined;
+    }
+    return row.flag === 1 || row.flag === true;
+  }
   /** Accumulates new events between coalesced writes for incremental persistence. */
   const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
 
@@ -278,15 +329,51 @@ export function createSQLiteRequestStore(
       // item write for this request has already flushed within its
       // microtask before this async method body runs — no drain needed.
       const { items: _omitted, ...withoutItems } = value;
+      // `abortRequested` is off `set`'s write surface (FIX-1026). The read
+      // below and the write inside `base.set` are not separated by an `await`
+      // — better-sqlite3 is synchronous and `base.set` does its DB work before
+      // yielding — so no conditional write can land between them.
       const result = await base.set(
         id,
-        withoutItems as RequestRecord,
+        withStoredAbortRequested(
+          withoutItems as RequestRecord,
+          readAbortFlag(id)
+        ),
         expectedVersion
       );
       if (result.ok && isTerminalRequestStatus(value.status)) {
         clearItemMaps(id);
       }
       return result;
+    },
+
+    async isAbortRequested(requestId: string): Promise<boolean> {
+      return readAbortFlag(requestId) === true;
+    },
+
+    async setFieldsIfStatus(
+      id: string,
+      fields: ConditionalRequestFields,
+      allowedStatuses: readonly RequestStatus[],
+      updatedAt: number
+    ): Promise<ConditionalWriteResult> {
+      // One transaction: the status the predicate reads is the status the
+      // write lands on. This is what a version CAS cannot give — terminal
+      // transitions persist `version` unchanged, so a version-checked write
+      // still validates after a terminal commit and resurrects the record.
+      return db.transaction((): ConditionalWriteResult => {
+        const row = selectStatusDataStmt.get(id) as
+          | { status: RequestStatus; data: string }
+          | undefined;
+        if (row === undefined) return { applied: false, status: undefined };
+        if (!allowedStatuses.includes(row.status)) {
+          return { applied: false, status: row.status };
+        }
+        const record = JSON.parse(row.data) as RequestRecord;
+        const next = { ...record, ...fields, updatedAt };
+        updateDataStmt.run(JSON.stringify(next), updatedAt, id);
+        return { applied: true, status: row.status };
+      })();
     },
 
     patchField: base.patchField,
