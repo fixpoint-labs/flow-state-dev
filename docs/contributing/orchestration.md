@@ -810,6 +810,11 @@ getting re-argued, each pass reversing the last. So the necessary condition is:
    normally (fold it, note it, or drop it with a pointer) and only reach for a settlement if
    it returns.
 
+   **A loop also counts when each round finds a *new* defect in the same mechanism** — every
+   pass faulting the last pass's fix rather than re-arguing one claim. That satisfies this
+   condition on its own: a mechanism that takes a fresh correction every round is one prose
+   can't settle, and the next round of prose won't either. Stop revising and run it.
+
 Then all three of these have to hold as well:
 
 1. **The disagreement is about behavior, not taste or direction.** Someone asserts the

@@ -203,6 +203,12 @@ shape in [`asking-for-decisions.md`](asking-for-decisions.md), with the row itse
 place so §6 stays the complete sign-off surface. Zero to two per spec; more than that and the
 direction isn't ready for review.
 
+**Size is a count, not an adjective, and it counts everything the spec commissions.** Write it
+last, as three numbers read straight off Part II — production files (§8), test behaviours (§10),
+documentation surfaces (§11) — plus the PR count. A label written before Part II is finished is a
+guess, and a label that counts only the production diff understates the specs where most of the
+work is the test surface. This is the number the human budgets against.
+
 > 1. **Resume filters server-side by sequence number.**
 >    *Rejected:* client-side dedupe.
 >    *Locks in:* every transport we add later needs a monotonic per-request sequence.
@@ -229,7 +235,7 @@ direction isn't ready for review.
 > (backoff, retry limits). Reattaching to a request that completed mid-flight *is* in
 > scope — see decision 3.
 >
-> **Size:** Medium (multi-file, one PR, ~250 LOC).
+> **Size:** Medium — 4 production files · 9 test behaviours · 3 doc surfaces · 1 PR.
 
 *(Large only: declare the §8 PR plan and record its shape as a decision here.)*
 
