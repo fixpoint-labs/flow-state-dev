@@ -193,6 +193,87 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     expect(await store.isAbortRequested(requestId)).toBe(true);
   });
 
+  it("does not lose legacy inline intent to a write that overlaps the migration", async () => {
+    const requestId = "req_legacy_overlap";
+    writeLegacyRecord(requestId, "suspended");
+    expect((await store.get(requestId))?.abortRequested).toBe(true);
+
+    // Park writer A after its detector read has observed the inline flag but
+    // before the migration has finished. The seam is the record store's own
+    // `get` because that read is the only step of the migration that runs
+    // OUTSIDE the per-id lock — the one window a second writer can enter.
+    // Parking at the marker write instead would prove nothing: by then the
+    // lock is held, and it already serializes everyone else behind it.
+    const entered = createGate();
+    const parked = createGate();
+    const seam = store as unknown as {
+      store: { get: (id: string) => Promise<RequestRecord | undefined> };
+    };
+    const originalGet = seam.store.get.bind(seam.store);
+    let parkedOnce = false;
+    seam.store.get = async (id: string) => {
+      const record = await originalGet(id);
+      if (!parkedOnce && id === requestId) {
+        parkedOnce = true;
+        entered.open();
+        await parked.wait;
+      }
+      return record;
+    };
+
+    const writeA = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
+    await entered.wait; // A is mid-migration, having already marked the memo
+
+    // B is an ordinary second full-record write. It is launched and A released
+    // without awaiting B in between: once the migration is ordered correctly B
+    // cannot finish before A, so awaiting it here would hang on the fix rather
+    // than test it. Ordering stays deterministic anyway — B takes the per-id
+    // lock while A is parked outside it, so A's locked re-read is guaranteed to
+    // observe whatever B wrote.
+    const writeB = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
+    parked.open();
+    await Promise.all([writeA, writeB]);
+
+    // Both writes reported success and no I/O failed — this loss is silent.
+    // The cancellation must still reach the cross-process poll, which consults
+    // the marker and nothing else.
+    expect(await store.isAbortRequested(requestId)).toBe(true);
+    expect((await store.get(requestId))?.abortRequested).toBe(true);
+  });
+
+  it("retries the migration after a failed detector read rather than remembering the failure", async () => {
+    const requestId = "req_legacy_retry";
+    writeLegacyRecord(requestId, "suspended");
+
+    // Fail the migration's detector read exactly once.
+    const seam = store as unknown as {
+      store: { get: (id: string) => Promise<RequestRecord | undefined> };
+    };
+    const originalGet = seam.store.get.bind(seam.store);
+    let failNextRead = true;
+    seam.store.get = async (id: string) => {
+      if (failNextRead && id === requestId) {
+        failNextRead = false;
+        throw Object.assign(new Error("EIO: simulated read failure"), {
+          code: "EIO"
+        });
+      }
+      return originalGet(id);
+    };
+
+    // The write fails loudly rather than stripping intent it could not migrate.
+    await expect(
+      store.set(requestId, makeRecord(requestId, "in_progress"), "any")
+    ).rejects.toThrow("simulated read failure");
+    expect((await store.get(requestId))?.abortRequested).toBe(true);
+
+    // The next write must retry the migration. Remembering the outcome before
+    // knowing it — either as "checked" or as a memoized rejection — leaves the
+    // request permanently unable to move its intent to the marker.
+    await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
+    expect(await store.isAbortRequested(requestId)).toBe(true);
+  });
+
   it("does not resurrect a deleted record when the delete lands mid-callback", async () => {
     const requestId = "req_marker_delete_interleave";
     await store.set(requestId, makeRecord(requestId, "in_progress"), "any");

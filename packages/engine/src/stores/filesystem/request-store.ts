@@ -145,12 +145,20 @@ export class FilesystemRequestStore implements RequestStore {
    */
   private readonly eventsFormatVerified = new Set<string>();
   /**
-   * Requests whose record has been checked once this process for a pre-upgrade
-   * inline `abortRequested` (FIX-1026). Mirrors `eventsFormatVerified`:
-   * migration runs lazily, on the first `set` per request, and the check costs
-   * one record read per request per process rather than one per write.
+   * The legacy-abort migration for a request, in flight or already finished
+   * (FIX-1026). Keyed by request id; migration runs lazily on the first `set`
+   * per request, so the check costs one record read per request per process
+   * rather than one per write.
+   *
+   * A promise rather than a "checked" flag, because concurrent writers must
+   * *wait* for the migration, not skip it. `set` strips the inline flag, so a
+   * second `set` that observed a flag meaning "someone is handling this" and
+   * proceeded would strip the only copy of a cancellation while the migration
+   * that was going to rescue it is still reading — and the migration's own
+   * locked re-read would then find nothing left to migrate. Sharing the promise
+   * makes "the migration has completed" the thing a writer waits on.
    */
-  private readonly legacyAbortChecked = new Set<string>();
+  private readonly legacyAbortMigrations = new Map<string, Promise<void>>();
 
   private readonly pollIntervalMs: number;
   private readonly onPersistError?: PersistErrorHandler;
@@ -309,11 +317,34 @@ export class FilesystemRequestStore implements RequestStore {
    * ordering is what keeps the marker write from outliving a concurrent
    * `delete`: after a delete, `update` finds no record and the merge never
    * runs, so no orphan marker is created.
+   *
+   * Concurrent callers share one migration and await it. The detecting read is
+   * the only step outside the lock, so it is also the only window a second
+   * writer can enter — and a second `set` that skipped ahead through it would
+   * strip the inline flag before this had moved it.
    */
-  private async migrateLegacyAbortIntent(id: string): Promise<void> {
-    if (this.legacyAbortChecked.has(id)) return;
-    this.legacyAbortChecked.add(id);
+  private migrateLegacyAbortIntent(id: string): Promise<void> {
+    const existing = this.legacyAbortMigrations.get(id);
+    if (existing !== undefined) return existing;
 
+    // Evict a failed migration rather than memoizing the rejection. A retained
+    // failure would disable migration for this id for the life of the process,
+    // and every later `set` would strip the inline flag with no marker to
+    // replace it — the same silent loss, just deferred. The error still
+    // propagates, so the write fails loudly instead of dropping intent.
+    const migration = this.runLegacyAbortMigration(id).catch((error: unknown) => {
+      this.legacyAbortMigrations.delete(id);
+      throw error;
+    });
+    this.legacyAbortMigrations.set(id, migration);
+    return migration;
+  }
+
+  /**
+   * The migration itself. Runs at most once per request per process; callers
+   * go through `migrateLegacyAbortIntent`, which owns the memo.
+   */
+  private async runLegacyAbortMigration(id: string): Promise<void> {
     // Detector only. Records written by this store never carry the field, so
     // this returns without writing anything for every non-legacy request.
     const current = await this.store.get(id);
