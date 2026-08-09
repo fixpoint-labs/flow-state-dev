@@ -2204,8 +2204,18 @@ FIX-1026 are both **In Development**.*
 
 **The wrap condition** *(what condition 2b was restated as, and §6 points here for it)*: the epic is
 not done when every issue has merged. It is done when **S4/FIX-1013 has RUN and produced §5's five
-pass criteria.** That is **not satisfiable today** — S4's prerequisites S1b/S2/S3 are deferred, which
-is exactly OQ-H.
+pass criteria**, and when **cross-process cancellation has landed**.
+
+The second half is an independent condition, not implied by the first. S4's five criteria require
+only *observable* cancellation, so S4 can pass with delivery working in-process and never exercise
+the cross-instance path — which is why the ownership paragraph above can remove FIX-1026 from
+FIX-982's contract while the epic's cancellation clause stays open. **It is now satisfied:
+FIX-1026 merged 2026-08-09 (#1100).**
+
+**OQ-H is resolved and this is satisfiable** — an earlier version of this paragraph said it was not,
+on the premise that S4's prerequisites S1b/S2/S3 were deferred *out* of the epic. The owner's
+2026-08-08 answer was sequencing, not exclusion: the whole S1b → S2 → S3 → S4 → S5 chain stays in
+the epic and runs **last**, in dependency order, after FIX-982 ships. The gate stands as filed.
 
 ### Proposed issue-scope changes — awaiting the owner's approval, not applied
 
