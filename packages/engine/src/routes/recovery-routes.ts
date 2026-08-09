@@ -102,7 +102,7 @@ export async function handleRetryRequest(
   // refused rather than admitted. Webhook stays refused for the original reason
   // — its handler is reachable only behind signature verification. Return the
   // same not-found shape as a missing record so they're indistinguishable here.
-  if (!isPublicReentryAllowed(originalRecord.source)) {
+  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
@@ -196,7 +196,7 @@ export async function handleContinueRequest(
 
   // Same allow-list as `handleRetryRequest` — see `public-reentry.ts`. Treat a
   // source that is not caller-facing as not found.
-  if (!isPublicReentryAllowed(originalRecord.source)) {
+  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 

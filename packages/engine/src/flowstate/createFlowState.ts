@@ -320,6 +320,7 @@ class InternalFlowState<TSettings extends object>
       durabilityRetention: this.#options.durabilityRetention,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
+      publicReentrySources: this.#options.publicReentrySources,
       requestHost: { staleThresholdMs }
     });
 

@@ -186,6 +186,19 @@ export interface CreateFlowStateOptions<
   queuedGraceMs?: number;
 
   /**
+   * Transport sources this deployment adds to the public re-entry allow-list
+   * for `retry`, `continue` and `resume`.
+   *
+   * Name the sources your own out-of-tree `InboundTransportAdapter`s stamp —
+   * without this they are refused with a not-found, because a source the
+   * framework cannot enumerate is refused by default. `webhook` and the
+   * detached-dispatch source are refused: neither is caller-addressed, so
+   * re-entering one from a public route would run it with caller-supplied
+   * input. Default: only the built-in sources.
+   */
+  publicReentrySources?: readonly string[];
+
+  /**
    * Enable durable execution. When `true`, `createFlowState` builds the
    * default `createCheckpointDurabilityProvider` from its own resolved stores
    * and installs it on the runtime, so actions marked `durable: true` get

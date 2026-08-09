@@ -34,8 +34,14 @@ Also in this change:
   transport sources (`http`, `mcp`, `chat`, `scheduled`) instead of three separate
   webhook deny-lists. **This is a behaviour change:** a request whose source is not
   on the list is no longer re-enterable and returns the same not-found shape a
-  missing request does. A deployment using a third-party transport source must add
-  it to the allow-list.
+  missing request does. A deployment using its own inbound transport names that
+  transport's source in the new `publicReentrySources` option on `createFlowState`
+  and `createFlowApiRouter` — `InboundTransportAdapter.source` is an open string,
+  so the framework cannot enumerate out-of-tree sources and an allow-list nobody
+  could extend would take recovery away from them permanently. Two sources are
+  not openable and are refused when the router is built: `webhook`, whose handler
+  is reachable only behind signature verification, and the detached-dispatch
+  source, which has no caller-facing entry at all.
 - Every request registry now declares whether it is shared across processes, read
   fail-closed — an adapter that declares nothing is treated as per-process. The
   Postgres adapter answers from its construction shape, so a store built with an

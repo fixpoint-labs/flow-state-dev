@@ -117,6 +117,34 @@ dispatcher. If two adapters declare the same `(method, path)` pair, the
 router throws `TransportRouteCollisionError` at construction time —
 better than ambiguous runtime dispatch.
 
+### Letting your transport's requests be re-entered
+
+The public `retry`, `continue` and `resume` routes re-run a request that
+already exists, and retry accepts a caller-supplied `inputOverride`. Whether a
+given request may be re-entered that way depends on the transport it arrived
+on, so those routes work from an allow-list: `http`, `mcp`, `chat` and
+`scheduled`. A request on any other source gets the same not-found response a
+missing request does.
+
+Your custom source is not on that list, because the framework has no way to
+know it exists. Name it when you build the host:
+
+```ts
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  adapters: [createEchoAdapter()],
+  publicReentrySources: ["echo"]
+});
+```
+
+`createFlowState` takes the same option. Two sources are refused: `webhook`
+and the framework's detached-dispatch source. A webhook handler is reachable
+only behind signature verification, and a detached dispatch has no
+caller-facing entry at all — re-entering either from a public route would run
+it with input a caller chose. Naming one throws when the router is built,
+rather than quietly doing nothing.
+
 ### Scheduled adapter shape
 
 `@flow-state-dev/scheduled` is the second concrete adapter after MCP.

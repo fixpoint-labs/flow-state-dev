@@ -123,6 +123,8 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 `createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, `staleSweepThresholdMs`, and `queuedGraceMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
 
+It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
+
 ### DevTool connection (dev-only)
 
 `devtool?: { userId?, bearerToken? }` declares how `fsdev dev` should connect the DevTool UI to this app. `userId` is the session identity DevTool acts as; `bearerToken` is sent as `Authorization: Bearer` on every flow request, so a **bearer-gated flow** (one whose `resolvePrincipal` validates a shared secret) is debuggable through DevTool using its **real** authentication — no bypass.
@@ -725,7 +727,13 @@ createFlowApiRouter({
   staleSweepThresholdMs: 60_000,
   // How long a request queued with an external dispatcher may wait, unclaimed,
   // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
-  queuedGraceMs: 600_000
+  queuedGraceMs: 600_000,
+  // Sources from your own inbound transports that `retry` / `continue` /
+  // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
+  // are always admitted; every other source is refused with a not-found unless
+  // named here. `webhook` and the detached-dispatch source are never openable
+  // — naming one throws at construction.
+  publicReentrySources: ["echo"]
 });
 ```
 

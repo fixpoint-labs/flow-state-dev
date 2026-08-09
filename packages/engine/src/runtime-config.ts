@@ -78,6 +78,14 @@ export interface RuntimeConfig {
    * applies {@link DEFAULT_QUEUED_GRACE_MS}.
    */
   queuedGraceMs?: number;
+  /**
+   * Transport sources this deployment adds to the public re-entry allow-list
+   * (FIX-999). Carried here for the same reason as `queuedGraceMs`: three
+   * routes consult the list — `retry`, `continue` and `resume` — and this
+   * bundle is the only thing that reaches all of them from both public entry
+   * points. Absent → only the built-in sources are re-enterable.
+   */
+  publicReentrySources?: readonly string[];
 }
 
 /**
@@ -100,7 +108,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     durabilityRetention: options.durabilityRetention,
     errorCapture: options.errorCapture,
     requestHost: options.requestHost,
-    queuedGraceMs: options.queuedGraceMs
+    queuedGraceMs: options.queuedGraceMs,
+    publicReentrySources: options.publicReentrySources
   };
 }
 

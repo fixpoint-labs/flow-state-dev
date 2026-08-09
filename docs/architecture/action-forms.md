@@ -144,6 +144,13 @@ reason:
   detached handler caller-chosen input. The allow-list replaced three per-route
   webhook deny-lists, which admitted every source nobody thought to name.
 
+  A deployment adds its **own** transports' sources with the
+  `publicReentrySources` host option, since `InboundTransportAdapter.source` is
+  an open string and the framework cannot enumerate them. It cannot add these
+  two: `webhook` and the detached source are stamped by the framework and are
+  refused at router construction, because the reason each is excluded is a
+  property of the framework rather than of the deployment.
+
 ## The carried core: dynamic schedules
 
 Three of the four event coordinates point at something declared statically on

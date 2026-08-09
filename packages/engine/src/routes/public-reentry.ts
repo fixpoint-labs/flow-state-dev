@@ -17,8 +17,16 @@
  * refusal, which is visible; forgetting to add one to a deny-list costs a
  * bypass, which is not.
  *
+ * A deployment extends the list with its OWN transports through the
+ * `publicReentrySources` host option — see {@link isPublicReentryAllowed}.
+ * `InboundTransportAdapter.source` is an open string, so an out-of-tree
+ * transport necessarily lands on a source the framework cannot enumerate, and
+ * an allow-list nobody can extend would take retry, continue and resume away
+ * from it permanently.
+ *
  * FIX-1021 generalizes this predicate; it does not replace it.
  */
+import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-sources";
 
 /**
  * Sources that arrived on a caller-facing transport and may be re-entered.
@@ -44,6 +52,25 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Sources a host may never declare, whatever it passes.
+ *
+ * Both are stamped by the framework itself, not by a deployment's transport, so
+ * neither is a deployment's to re-open — and the reason each is excluded is a
+ * property of the framework rather than of the deployment. `webhook`'s handler
+ * is reachable only behind signature verification; `workstream` has no
+ * caller-facing entry at all by construction. Re-admitting either hands an HTTP
+ * caller `inputOverride` on a handler that was never caller-addressed, which is
+ * precisely the bypass the allow-list exists to close.
+ *
+ * A host that names one is refused at construction by
+ * {@link assertPublicReentrySources} rather than having it silently dropped.
+ */
+const NEVER_PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
+  WEBHOOK_SOURCE,
+  WORKSTREAM_SOURCE
+]);
+
+/**
  * Whether a request that arrived on `source` may be re-entered through the
  * public retry / continue / resume routes.
  *
@@ -51,8 +78,43 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
  * internal one, an empty string on a malformed record — is refused. Callers turn
  * `false` into the same not-found shape a missing record produces, so a refused
  * request is indistinguishable from one that does not exist.
+ *
+ * `additionalSources` is the host's `publicReentrySources` option, carried on
+ * the runtime config. Absent or empty leaves the built-in list exactly as it
+ * was, so a deployment that configures nothing is unaffected. The
+ * never-re-enterable check is repeated here rather than left to the
+ * construction-time assert because this predicate is the actual authorization
+ * boundary and is exported on its own: it must be correct for whatever list it
+ * is handed, not only for one that a boundary validated.
  */
-export function isPublicReentryAllowed(source: string | undefined): boolean {
+export function isPublicReentryAllowed(
+  source: string | undefined,
+  additionalSources?: readonly string[]
+): boolean {
   if (source == null) return false;
-  return PUBLIC_REENTRY_SOURCES.has(source);
+  if (PUBLIC_REENTRY_SOURCES.has(source)) return true;
+  if (additionalSources === undefined || NEVER_PUBLIC_REENTRY_SOURCES.has(source)) return false;
+  return additionalSources.includes(source);
+}
+
+/**
+ * Validate a host's `publicReentrySources` at construction, throwing on a
+ * source the framework never re-enters.
+ *
+ * Loud rather than silently ignored (BP-030): a deployment that reads "add your
+ * transport to the allow-list" and tries `webhook` has made an assumption about
+ * its own security posture, and discovering the option did nothing from a
+ * production 404 is the wrong moment to learn otherwise.
+ */
+export function assertPublicReentrySources(sources: readonly string[] | undefined): void {
+  if (sources === undefined) return;
+  const refused = sources.filter((source) => NEVER_PUBLIC_REENTRY_SOURCES.has(source));
+  if (refused.length === 0) return;
+  throw new Error(
+    `publicReentrySources cannot include ${refused.map((s) => `"${s}"`).join(", ")}: ` +
+      "these sources are stamped by the framework and have no caller-facing entry " +
+      "(a webhook handler is reachable only behind signature verification, and a " +
+      "detached dispatch is not caller-addressed at all), so re-entering one from a " +
+      "public route would run it with caller-supplied input."
+  );
 }

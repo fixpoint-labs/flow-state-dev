@@ -468,6 +468,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           durabilityProvider: runtimeConfig.durabilityProvider,
+          publicReentrySources: runtimeConfig.publicReentrySources,
           seams,
           requestContext
         });

@@ -70,6 +70,12 @@ type ResumeRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   durabilityProvider?: DurabilityProvider;
+  /**
+   * The host's `publicReentrySources` (FIX-999), read straight off the runtime
+   * config like `durabilityProvider` above. Absent → only the built-in sources
+   * are re-enterable.
+   */
+  publicReentrySources?: readonly string[];
   seams: InternalRouteSeams;
   requestContext: RequestContext;
 };
@@ -94,7 +100,7 @@ export async function handleResumeSuspension(
   // retry/continue routes (FIX-999) and runs before anything else can act on the
   // record, returning the same not-found shape as a missing record so a refused
   // request is indistinguishable from one that does not exist.
-  if (!isPublicReentryAllowed(originalRequest.source)) {
+  if (!isPublicReentryAllowed(originalRequest.source, ctx.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 

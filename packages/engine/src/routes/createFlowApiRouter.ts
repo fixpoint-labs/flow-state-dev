@@ -31,6 +31,7 @@ import {
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
 import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
+import { assertPublicReentrySources } from "./public-reentry";
 import { createDurabilitySweeper } from "../durability/durability-sweeper";
 import type { MatchFunction } from "path-to-regexp";
 import {
@@ -159,6 +160,25 @@ export type CreateFlowApiRouterOptions = {
    * Default: 600000 (10 minutes).
    */
   queuedGraceMs?: number;
+
+  /**
+   * Transport sources this deployment adds to the public re-entry allow-list
+   * (FIX-999).
+   *
+   * `retry`, `continue` and `resume` admit `http`, `mcp`, `chat` and
+   * `scheduled` and refuse everything else with a not-found. That default is
+   * right for a source nobody named, but `InboundTransportAdapter.source` is an
+   * open string: a transport you wrote stamps a source the framework cannot
+   * know about, and its requests would lose re-entry with no way to get it
+   * back. Name those sources here.
+   *
+   * Only your own transports. `webhook` and the framework's detached-dispatch
+   * source are refused at construction — a webhook handler is reachable only
+   * behind signature verification and a detached dispatch is not caller-
+   * addressed at all, so re-entering either from a public route would run it
+   * with caller-supplied input.
+   */
+  publicReentrySources?: readonly string[];
 
   /**
    * Enable the privileged read-only debug endpoint surface under
@@ -405,6 +425,14 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
       staleSweepIntervalMs
     }
   };
+
+  // Refuse a host-declared re-entry source the framework never re-enters, here
+  // rather than at the route (FIX-999). Checked on the RESOLVED config so both
+  // entry points are covered by one assert: a direct caller's flat option and
+  // the one `createFlowState` put on the config it shares. A misconfiguration
+  // here is a security assumption, and a production 404 is the wrong place to
+  // discover the option did nothing.
+  assertPublicReentrySources(runtimeConfig.publicReentrySources);
 
   const handlers = createFlowRouteHandlers({
     ...options,
