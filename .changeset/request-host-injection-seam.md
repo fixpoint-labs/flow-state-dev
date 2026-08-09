@@ -5,7 +5,7 @@
 "@flow-state-dev/store-postgres": minor
 ---
 
-Give capabilities a declared way to reach the runtime, instead of a cast.
+Give capabilities a declared way to reach the runtime, instead of a cast (FIX-999).
 
 A capability's helper functions are typed against the `BlockContext` that
 `@flow-state-dev/core` declares, and `core` does not depend on `@flow-state-dev/engine`.
