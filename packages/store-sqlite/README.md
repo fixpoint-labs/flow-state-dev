@@ -75,6 +75,8 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 
 This adapter fully supports interrupted request recovery. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query.
 
+The registry declares `sharedAcrossProcesses: false`. A SQLite file can sit on a volume every worker opens or on a local disk only one process sees, and the adapter cannot tell which from the database handle it is given — so it reports not shared. Runtime behaviour that depends on reading another process's in-flight requests stays disabled rather than answering from a registry that may be process-local.
+
 ## Resource persistence
 
 Everything this adapter stores survives a process restart, including resource state and resource content. A file-backed registry is a true persistent store, at parity with the Postgres adapter.

@@ -454,6 +454,22 @@ const counter = sequencer({
 
 Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.default()`, etc. — so the marker sits on the outermost schema instance referenced by the parent `z.object` shape.
 
+## Reaching the runtime from a capability (`ctx.requestHost`)
+
+`BlockContext` carries an optional `requestHost` member — the one declared way a capability's helper functions reach facilities only the runtime can provide, such as starting a detached child request or settling a durable row owned by another session.
+
+It is **framework-facing**. There is nothing to declare to get one, and app code does not normally touch it: a host built through the shipped entry points supplies it.
+
+```ts
+import { requireRequestHost } from "@flow-state-dev/core";
+
+const host = requireRequestHost(ctx); // throws by name when none is wired
+```
+
+The member is optional in the *type* so a hand-built test context still type-checks. `requireRequestHost` turns a missing host into a named error rather than `undefined is not a function`.
+
+Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id — a caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
+
 ## Key design decisions
 
 **Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.
