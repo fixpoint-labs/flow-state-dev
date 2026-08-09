@@ -45,6 +45,7 @@ import {
   handleListCollectionState,
   handleUpdateResourceContent
 } from "../src/routes/resource-routes";
+import { handleGetSessionState } from "../src/routes/state-routes";
 
 // ---------------------------------------------------------------------------
 // Flow under test
@@ -87,13 +88,13 @@ type Observed = {
 
 let observed: Observed;
 
-/** Reads `notes/a` from inside a live execution context. */
+/** Reads the note named by the action input from inside a live execution context. */
 const readNote = handler({
   name: "read-note",
   inputSchema: z.string(),
   resources: { notes },
-  execute: async (_input: string, ctx: any) => {
-    const ref = await ctx.resources.notes.getOptional("a");
+  execute: async (input: string, ctx: any) => {
+    const ref = await ctx.resources.notes.getOptional(input);
     if (ref === undefined) {
       observed.noteMissing = true;
       return "missing";
@@ -241,7 +242,7 @@ describe("FIX-1000 seam: a resource written through a route is visible to an act
 
     expect((await postNote(ctx, "a", "route-content")).status).toBe(201);
 
-    await run(ctx, "readNote", "probe");
+    await run(ctx, "readNote", "a");
 
     // Both halves matter and they fail independently: the state row and the
     // content row are separate stores addressed by the same scope id, so a
@@ -257,7 +258,7 @@ describe("FIX-1000 seam: a resource written through a route is visible to an act
     expect((await postNote(ctx, "a", "first")).status).toBe(201);
     expect((await patchNoteContent(ctx, "a", "second")).status).toBe(200);
 
-    await run(ctx, "readNote", "probe");
+    await run(ctx, "readNote", "a");
 
     expect(observed.noteContent).toBe("second");
   });
@@ -281,7 +282,8 @@ describe("FIX-1000 seam: a resource written by an action is visible to the route
     const state = await getNoteState(ctx, "b");
     expect(state.status).toBe(200);
     expect((await state.json()) as unknown).toMatchObject({
-      state: { title: "hello" }
+      topic: "b",
+      clientData: { title: "hello" }
     });
 
     const content = await getNoteContent(ctx, "b");
@@ -289,16 +291,38 @@ describe("FIX-1000 seam: a resource written by an action is visible to the route
     expect(((await content.json()) as { content: string }).content).toBe("context-content:hello");
   });
 
-  it("a route DELETE of an action-written item removes it for the action too", async () => {
+  it("a single (non-collection) session resource an action patched is readable through GET state", async () => {
+    // The collection path and the single-resource path address through the
+    // same derivation but reach it by different code, so one can be converted
+    // without the other.
+    const ctx = setup();
+    await createSession(ctx);
+    await run(ctx, "writeNote", "nick");
+
+    const response = await handleGetSessionState(
+      new Request(`${API}/sessions/${SESSION_ID}/state`),
+      { kind: "get_session_state", sessionId: SESSION_ID },
+      ctx
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      clientData?: { session?: Record<string, unknown> };
+    };
+    expect(JSON.stringify(body)).toContain("nick");
+  });
+
+  it("a second action sees what the first action wrote (same generation across requests)", async () => {
+    // Two requests against one session must resolve the same address — the
+    // generation lives on the record, so a re-mint per request would silently
+    // give every request a private scope.
     const ctx = setup();
     await createSession(ctx);
     await run(ctx, "writeNote", "hello");
+    await run(ctx, "readNote", "b");
 
-    // Rename to the key `readNote` looks for so the round trip is observable
-    // through the read action rather than only through another route.
-    expect((await postNote(ctx, "a", "route-content")).status).toBe(201);
-    await run(ctx, "readNote", "probe");
     expect(observed.noteMissing).toBe(false);
+    expect(observed.noteState).toMatchObject({ title: "hello" });
+    expect(observed.noteContent).toBe("context-content:hello");
   });
 });
 
