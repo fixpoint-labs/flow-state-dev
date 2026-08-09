@@ -944,7 +944,17 @@ export async function runActionInternal<
   // Here it closes the window where the cancel was recorded between admission
   // and the run starting, without waiting a full interval. Gated on the timer
   // so `heartbeatIntervalMs: 0` really is off.
-  if (heartbeatTimer !== undefined) void pollAbortIntent();
+  //
+  // AWAITED, not fired and forgotten. The read is issued either way; awaiting
+  // is what makes "a cancel recorded before the run started stops the run" a
+  // guarantee instead of a race the store's latency decides. Left unawaited, an
+  // action shorter than one `isAbortRequested` round trip runs to completion —
+  // model calls included — clears the post-drain abort check, and persists
+  // `completed` before the read that would have stopped it returns; by then the
+  // controller is deregistered and the delivery has nowhere to land. The cost
+  // is one narrow read on the start path, and `pollAbortIntent` swallows its
+  // own failures, so this can delay a request start but can never fail one.
+  if (heartbeatTimer !== undefined) await pollAbortIntent();
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -1273,12 +1283,27 @@ export async function runActionInternal<
     input: summarizeForLog(options.input)
   });
 
-  await emitActionLifecycleSeam(internalSeams, "started", metadata);
+  // The last awaits before the main try, and covered by neither cleanup path on
+  // their own: the pre-transition catch above has already closed, and every
+  // terminal path lives inside the try below. A rejection here — an `onStarted`
+  // observer that throws, an instrumentation seam that rejects — would leave
+  // the heartbeat/abort-poll timer running for the life of the process, reading
+  // the request store once per interval for a request that is already gone.
+  // Same leak the pre-controller guards close, one window further down; the
+  // difference is that the abort controller is registered by now, so this guard
+  // has to release that too. Rethrows, so the caller still sees the failure.
+  try {
+    await emitActionLifecycleSeam(internalSeams, "started", metadata);
 
-  await runObserver(options.flow.request?.onStarted, {
-    requestId,
-    actionName: options.actionName
-  }, ctx, { internalSeams, logger });
+    await runObserver(options.flow.request?.onStarted, {
+      requestId,
+      actionName: options.actionName
+    }, ctx, { internalSeams, logger });
+  } catch (startupError) {
+    stopHeartbeatTimer();
+    deregisterAbortController(requestId);
+    throw startupError;
+  }
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -1538,6 +1563,22 @@ export async function runActionInternal<
         await ttsHook.finalize();
       }
     }
+
+    // Second barrier, for work the completion hooks themselves queued. Moving
+    // the hooks below the drain above took them out from under it: an
+    // `onCompleted` that is a sequencer dispatching `.work()` now enqueues into
+    // a pool nothing is waiting on, so the request would emit `completed` and
+    // return while a notification or state write was still running — and the
+    // flushes below could miss its items. Cheap when the hooks queued nothing:
+    // `drainAll` is a no-op on an empty pool and the helper only emits a
+    // `backgroundTasks` status when it actually drained something.
+    //
+    // Deliberately NOT paired with a second abort check. The first one guards a
+    // wait that precedes every success hook; by here `onCompleted` has run and
+    // may have committed side effects, so flipping the request to `aborted`
+    // would report a cancellation for work that demonstrably succeeded. A
+    // cancel arriving this late is the teardown window, which §9 covers.
+    await drainRequestWorkPool(ctx);
 
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);

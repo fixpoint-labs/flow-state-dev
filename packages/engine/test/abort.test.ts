@@ -1254,6 +1254,169 @@ describe("runAction — cross-process abort delivery", () => {
     await new Promise((r) => setTimeout(r, 120));
     expect(reads).toBe(readsAtFailure);
   });
+
+  // The pre-controller guards above stop at `registerAbortController`, but two
+  // awaits still sit between it and the main try — the `started` lifecycle seam
+  // and the flow's `onStarted` observer. A rejection in either returns through
+  // neither the pre-transition cleanup nor a terminal path, so the timer
+  // survives the request and keeps reading the request store forever. Same leak
+  // as the pre-controller one, one window further down — and here the abort
+  // controller is registered, so it leaks too.
+  it("stops polling the store when a startup observer fails after registration", async () => {
+    const base = createInMemoryStores();
+    const requestId = "req_xproc_started_fails";
+    let reads = 0;
+    let observerRan = false;
+    let bodyRan = false;
+
+    const stores = withStoreOverrides(base, {
+      request: {
+        isAbortRequested: async (id: string) => {
+          reads += 1;
+          return base.request.isAbortRequested(id);
+        }
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "xproc-started-fails",
+      request: {
+        heartbeatIntervalMs: 20,
+        onStarted: handler({
+          name: "on-started-throws",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: async () => {
+            observerRan = true;
+            throw new Error("onStarted observer failed");
+          }
+        })
+      },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "never-reached",
+            inputSchema: z.object({}).passthrough(),
+            outputSchema: z.string(),
+            execute: async () => {
+              bodyRan = true;
+              return "body succeeded";
+            }
+          })
+        }
+      }
+    })();
+
+    let caught: unknown;
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_xproc",
+      stores,
+      runtimeConfig: {}
+    }).then(
+      () => {},
+      (err: unknown) => {
+        caught = err;
+      }
+    );
+
+    // Precondition: the run really did die in THIS window — past registration
+    // (the observer runs long after it) and before the main try (the body never
+    // ran). Without both, the test is asserting about a window it never opened.
+    expect(observerRan).toBe(true);
+    expect(bodyRan).toBe(false);
+    // The failure still reaches the caller; the guard cleans up, it does not
+    // swallow.
+    expect(caught).toBeDefined();
+
+    // The controller is registered by this point, so the guard owes its release
+    // as well as the timer's.
+    expect(hasActiveAbortController(requestId)).toBe(false);
+
+    const readsAtFailure = reads;
+    // Several intervals' worth. A surviving timer polls once per interval.
+    await new Promise((r) => setTimeout(r, 120));
+    expect(reads).toBe(readsAtFailure);
+  });
+
+  /**
+   * The admission poll is the only thing that can deliver a cancel recorded
+   * before the run starts — and it is a store read, so whether it lands at all
+   * depended on how that read raced the action. Fired and forgotten, an action
+   * shorter than one `isAbortRequested` round trip runs, clears the post-drain
+   * abort check, persists `completed` and deregisters its controller while the
+   * read that would have stopped it is still in flight; the answer then arrives
+   * with nowhere to land. Awaited, the race cannot occur.
+   *
+   * The delay only has to be long enough to lose that race, and the unfixed
+   * code loses it at ANY delay — so a generous one cannot make this flaky, only
+   * more obviously red.
+   */
+  it("does not run the action until the admission read has answered", async () => {
+    const base = createInMemoryStores();
+    const requestId = "req_xproc_admission_await";
+
+    const stores = withStoreOverrides(base, {
+      request: {
+        async isAbortRequested(this: StoreRegistry["request"], id: string) {
+          await new Promise((r) => setTimeout(r, 60));
+          return Object.getPrototypeOf(this).isAbortRequested.call(this, id);
+        }
+      }
+    });
+
+    // A tick interval far outside the run, and a body that completes as soon as
+    // it is entered. So the admission poll is the ONLY delivery path in play —
+    // no timer tick fires, and the body cannot outlast anything but the read.
+    const flow = makeBlockingFlow({
+      kind: "xproc-admission-await",
+      heartbeatIntervalMs: 10_000,
+      selfCompleteAfterMs: 0
+    });
+
+    // The cancel is already recorded when the run starts — a queued job stopped
+    // before a worker picked it up.
+    const now = Date.now();
+    await base.request.set(
+      requestId,
+      {
+        id: requestId,
+        state: {},
+        version: 0,
+        createdAt: now,
+        updatedAt: now,
+        flowKind: "xproc-admission-await",
+        actionName: "run",
+        userId: "u_xproc",
+        source: "http",
+        status: "in_progress",
+        startedAtMs: now
+      },
+      "any"
+    );
+    await recordAbortIntent(base, requestId);
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_xproc",
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    // The body honours its signal up front, so this is the direct statement
+    // that it was entered with the cancel already delivered.
+    expect(result.output).not.toBe("completed naturally");
+    const record = await base.request.get(requestId);
+    expect(record?.status).toBe("aborted");
+  });
 });
 
 describe("handleAbortRequest — conditional write", () => {
@@ -1962,5 +2125,82 @@ describe("cross-process abort delivered during the background drain", () => {
       "request.completed",
       "request.finished:completed"
     ]);
+  });
+
+  /**
+   * Moving the completion hooks below the work-pool drain took them out from
+   * under the barrier. A hook that is a sequencer dispatching `.work()` enqueues
+   * into the request pool AFTER the only drain, and an inner sequencer does not
+   * auto-await its own work while a request pool exists (FIX-554) — so the
+   * request would emit `completed` and return with a notification or state
+   * write still running, and the item flush below could miss it. Before the
+   * move, that same work was covered by the drain.
+   */
+  it("drains work queued by the completion hooks before it settles", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_hook_queued_work";
+    let workFinished = false;
+    const workStarted = createGate();
+
+    const hookWork = handler({
+      name: "hook-background",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async () => {
+        workStarted.open();
+        // Long enough that a request which does not wait provably returns
+        // first; a request that does wait simply takes this long.
+        await new Promise((r) => setTimeout(r, 60));
+        workFinished = true;
+        return "hook work done";
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "hook-queued-work",
+      request: {
+        heartbeatIntervalMs: 0,
+        // A sequencer, because `.work()` is what a hook uses to fan out — the
+        // shape the drain has to cover.
+        onCompleted: sequencer({ name: "on-completed-seq" })
+          .work(hookWork)
+          .step(handler({
+            name: "hook-body",
+            inputSchema: z.object({}).passthrough(),
+            outputSchema: z.string(),
+            execute: async () => "hook body done"
+          }))
+      },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "body-queues-nothing",
+            inputSchema: z.object({}).passthrough(),
+            outputSchema: z.string(),
+            execute: async () => "body succeeded"
+          })
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_hook_work",
+      stores,
+      runtimeConfig: {}
+    });
+
+    expect(result.error).toBeUndefined();
+    // Precondition: the hook really did dispatch background work, so the
+    // barrier below has something to be about.
+    await workStarted.wait;
+    // The barrier itself — `runAction` returned only after the hook's work had
+    // finished, not while it was still running in the void.
+    expect(workFinished).toBe(true);
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
 });
