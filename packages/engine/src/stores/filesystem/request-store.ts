@@ -273,6 +273,11 @@ export class FilesystemRequestStore implements RequestStore {
     // single-writer disclaimer on the class.)
     await this.store.update(id, (current) => {
       found = current.status;
+      // Returning `current` unchanged still rewrites the file — `update` has no
+      // "decline" path. Deciding outside the lock instead would reintroduce the
+      // read-then-write race this verb exists to remove, so the redundant write
+      // on a failed predicate is the price, and it only happens on a cancel
+      // that arrives after the request is already terminal.
       if (!allowedStatuses.includes(current.status)) return current;
       return { ...current, ...recordFields, updatedAt };
     });
