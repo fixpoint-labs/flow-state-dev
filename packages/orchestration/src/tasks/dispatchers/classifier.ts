@@ -41,7 +41,7 @@ export function classifierDispatcher(
   return {
     async claim(collection, workerId, ctx) {
       const lookup = (id: string) => collection.get(id);
-      const ready = collection.list().filter((t) => isClaimable(t, lookup, Date.now()));
+      const ready = collection.list().filter((t) => isClaimable(t, lookup, collection.now()));
       if (ready.length === 0) return null;
 
       const pickedId = await options.classify(ready, ctx, collection);

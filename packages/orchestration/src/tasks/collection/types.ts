@@ -255,6 +255,28 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   collectionId: string;
 
   /**
+   * The clock this collection stamps and judges leases against (FIX-1005).
+   *
+   * **Exposed because a lease is a comparison, and a comparison needs one
+   * clock.** `leaseUntil` is written by the claim write against this clock, so
+   * anything asking "has this lease run out" — the board's wake probe, the
+   * ready-task preview, a dispatcher's candidate scan, the renewal driver
+   * deciding when to write next — has to ask the same one. Reading
+   * `Date.now()` instead works right up until a collection is built on an
+   * injected clock, at which point the two sides silently answer different
+   * questions: a live task can read as abandoned and an abandoned one as live.
+   *
+   * That divergence is invisible in production, where every clock is the wall
+   * clock. It is *only* visible under an injected clock — which is what tests
+   * use. So the failure mode is a lease test that passes without exercising a
+   * coherent timeline at all, which is the last test you want to be wrong.
+   *
+   * Implementing this interface yourself? `now: () => Date.now()` is the right
+   * answer unless you have a reason for another.
+   */
+  readonly now: () => number;
+
+  /**
    * The cumulative retry budget this ref actually enforces (FIX-948), or `null`
    * when none is in force.
    *

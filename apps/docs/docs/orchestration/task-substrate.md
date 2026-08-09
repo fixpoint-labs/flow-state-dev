@@ -247,6 +247,8 @@ Writing one is a three-sided job, and the last two sides are the ones that are e
 
 A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than writing a fourth copy of the rule.
 
+Your ref also exposes `now()`, the clock it stamps and judges leases against — `() => Date.now()` unless you have a reason for another. A lease is a comparison, so everything asking "has this run out" reads that one clock rather than reaching for the wall clock itself.
+
 ## The three backings
 
 Where a collection stores its tasks decides how long they live. `getOrCreateTaskCollection` resolves the same `TaskCollectionRef` API over any of three backings, so your pattern code doesn't change when the storage does.

@@ -17,6 +17,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  classifierDispatcher,
   createSequencerBackedTaskCollection,
   startLeaseRenewal,
   ticketForClaim,
@@ -27,6 +28,7 @@ import {
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import { hasClaimableTask } from "../../src/task-board/shared";
 import { createFakeSequencerState } from "../helpers";
 
 interface Harness {
@@ -217,6 +219,77 @@ describe("renewLease — the write", () => {
 // ---------------------------------------------------------------------------
 // The driver
 // ---------------------------------------------------------------------------
+
+describe("one clock — the collection's", () => {
+  // A lease is a comparison, and a comparison needs one clock. `leaseUntil` is
+  // stamped by the claim write against the collection's clock, so anything
+  // asking "has this run out" has to ask the same one. Every collection in
+  // this file is frozen at t=1000, which is roughly 1.7e12 ms away from the
+  // wall clock — so a reader that reaches for `Date.now()` instead is not
+  // subtly wrong, it is wrong by fifty-six years, and these assertions catch
+  // it. In production both clocks are the wall clock and nothing misbehaves,
+  // which is exactly what makes it a trap: the divergence is reachable only
+  // from a test, and a lease test on two timelines is the last test you want
+  // to be silently vacuous.
+
+  it("writes a renewal deadline on the COLLECTION's timeline, not the wall clock", async () => {
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const timer = fakeTimer();
+    const driver = startLeaseRenewal({
+      collection: h.collection,
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      // Deliberately NO `now` — the driver has to pick the collection's up.
+      timer: timer.timer,
+    });
+
+    h.setNow(11_000);
+    await timer.fireNext();
+
+    // 11_000 + the committed 30s span. Reading the wall clock here would
+    // install a deadline around 1.7e12 and this assertion would be off by
+    // decades.
+    expect(h.collection.get("t")!.leaseUntil).toBe(41_000);
+    driver.stop();
+  });
+
+  it("does not read a healthy claim as abandoned through the board's wake probe", async () => {
+    // The read side of the same divergence. Under `Date.now()` this freshly
+    // claimed row — leased to t=31_000 on the collection's clock — reads as
+    // lapsed decades ago, so the probe reports claimable work and a board
+    // would try to recover a task a worker is actively holding.
+    const h = harness();
+    await claimed(h, 30_000);
+
+    expect(hasClaimableTask(h.collection)).toBe(false);
+
+    h.setNow(31_001);
+    expect(hasClaimableTask(h.collection)).toBe(true);
+  });
+
+  it("does not read a healthy claim as abandoned through a narrowing dispatcher", async () => {
+    // Same again at the classifier's candidate scan, which is the third place
+    // a hardcoded clock was reachable from.
+    const h = harness();
+    await claimed(h, 30_000);
+    const seen: string[][] = [];
+    const dispatcher = classifierDispatcher({
+      classify: async (candidates) => {
+        seen.push(candidates.map((c) => c.id));
+        return null;
+      },
+    });
+
+    // Nothing is claimable, so the classifier is never even consulted.
+    expect(await dispatcher.claim(h.collection, "w2", {} as never)).toBeNull();
+    expect(seen).toEqual([]);
+
+    h.setNow(31_001);
+    await dispatcher.claim(h.collection, "w2", {} as never);
+    expect(seen).toEqual([["t"]]); // now it really is abandoned
+  });
+});
 
 describe("startLeaseRenewal — cadence, phase and the floor", () => {
   it("keeps a healthy worker's claim at any lease age, and never disturbs it", async () => {

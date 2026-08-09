@@ -43,10 +43,14 @@ Two contracts changed:
   candidates instead of replacing them.** Claimability is the substrate's call.
   Drop any `t.status === "pending"` assertion from your predicate — it now
   switches recovery off for that dispatcher rather than expressing a filter.
-- **`TaskCollectionRef` gains `renewLease`.** If you implement the interface
-  yourself, you owe three things, and the last two are easy to miss: the renewal
-  write, a `claim()` that takes over tasks whose lease has run out, and a refusal
-  of any ticketed write whose lease has already run out.
+- **`TaskCollectionRef` gains `renewLease` and `now`.** If you implement the
+  interface yourself, you owe three behaviours, and the last two are easy to
+  miss: the renewal write, a `claim()` that takes over tasks whose lease has run
+  out, and a refusal of any ticketed write whose lease has already run out.
+  `now` is the clock your collection stamps and judges leases against —
+  `now: () => Date.now()` unless you have a reason for another. It is exposed
+  because a lease is a comparison, and everything comparing against `leaseUntil`
+  has to read the same clock the claim write stamped it with.
 
 `@flow-state-dev/core` gains a per-step abort signal: `.step(block, {
   abortSignal })` runs one step under an additional signal, composed with the

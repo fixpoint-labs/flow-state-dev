@@ -93,7 +93,13 @@ export interface LeaseRenewalOptions {
    * renewal stops: a cancelled request is not a live worker.
    */
   signal?: AbortSignal;
-  /** Clock injection for tests. Default: `Date.now`. */
+  /**
+   * The clock renewal reasons against. **Defaults to the collection's own**,
+   * never to `Date.now` — the deadlines this driver writes are compared
+   * against `leaseUntil`, which the claim write stamped on that clock, so a
+   * driver reading a different one writes on a different timeline than the row
+   * it is extending. Override only to drive the driver itself in a test.
+   */
   now?: () => number;
   /** Timer injection for tests. Default: an unref'd `setTimeout`. */
   timer?: RenewalTimer;
@@ -149,7 +155,7 @@ export interface LeaseRenewalDriver {
  */
 export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDriver {
   const { collection, ticket, claimedTask } = options;
-  const now = options.now ?? Date.now;
+  const now = options.now ?? collection.now;
   const timer = options.timer ?? defaultTimer;
 
   const lost = new AbortController();

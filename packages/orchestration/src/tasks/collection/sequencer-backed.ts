@@ -383,6 +383,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // The one clock this collection stamps and judges leases against
+    // (FIX-1005). Everything comparing against `leaseUntil` reads it, so the
+    // claim write and the readers cannot end up on two timelines.
+    now,
     // This backing enforces, so the resolved budget IS the limit in force.
     maxTotalRetries: maxTotalRetries ?? null,
 

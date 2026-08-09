@@ -174,7 +174,10 @@ work. Drive it with `withLeaseRenewal` (when your work is one call) or
 single-flight and abort rules.
 
 `isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
-a custom `TaskCollectionRef` can read it rather than restating it.
+a custom `TaskCollectionRef` can read it rather than restating it. The `now` it
+takes comes from `collection.now()` — the clock the collection stamped
+`leaseUntil` with. Everything comparing against a lease reads that one clock;
+reaching for `Date.now()` instead is only ever right by coincidence.
 
 ### Dispatchers
 

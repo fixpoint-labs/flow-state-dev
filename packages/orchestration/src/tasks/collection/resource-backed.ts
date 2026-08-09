@@ -503,6 +503,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // The one clock this collection stamps and judges leases against
+    // (FIX-1005). Everything comparing against `leaseUntil` reads it, so the
+    // claim write and the readers cannot end up on two timelines.
+    now,
     // This backing COUNTS retries but never enforces a budget (FIX-948): the
     // check has to be atomic against the whole ledger and the resource layer has
     // no CAS across instances. `null` says "no limit is in force", which is the

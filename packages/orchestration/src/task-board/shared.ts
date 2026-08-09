@@ -93,18 +93,17 @@ export function inFlightCount(collection: TaskCollectionRef): number {
  * The list query widens with it — `in_progress` rows are candidates now,
  * because one whose lease has lapsed has no live worker on it.
  *
- * **`now` is a parameter because this probe has no clock of its own**, and
- * reading the wall clock unconditionally would be wrong for a collection built
- * on an injected one: the lease was stamped against the collection's clock, so
- * a probe reading a different clock answers a different question than the claim
- * write does. A board on the default (wall-clock) collection passes nothing.
+ * **The clock comes from the collection**, not from `Date.now`. The lease this
+ * probe judges was stamped by the claim write against the collection's clock,
+ * so reading any other one answers a different question than the claim will —
+ * a live task can read as abandoned, or an abandoned one as live. Invisible in
+ * production, where every clock is the wall clock, and therefore exactly the
+ * kind of divergence only a test would ever surface.
  */
-export function hasClaimableTask(
-  collection: TaskCollectionRef,
-  now: number = Date.now()
-): boolean {
+export function hasClaimableTask(collection: TaskCollectionRef): boolean {
   const candidates = collection.list({ status: ["pending", "in_progress"] });
   const lookup = (id: string): Task | undefined => collection.get(id);
+  const now = collection.now();
   for (let i = 0; i < candidates.length; i += 1) {
     if (isClaimable(candidates[i], lookup, now)) return true;
   }

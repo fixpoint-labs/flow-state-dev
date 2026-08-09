@@ -169,7 +169,7 @@ describe.each(BACKINGS)("recovery — admission (%s)", (_name, makeBacking) => {
     const row = backing.collection.get("t")!;
     expect(isClaimable(row, (id) => backing.collection.get(id), at)).toBe(true);
     // 2. the board's wake probe
-    expect(hasClaimableTask(backing.collection, at)).toBe(true);
+    expect(hasClaimableTask(backing.collection)).toBe(true);
     // 3. the claim path
     expect((await backing.collection.claim("w2"))?.id).toBe("t");
   });
@@ -286,7 +286,7 @@ describe.each(BACKINGS)("recovery — disposition and the allowance (%s)", (_nam
     await abandonRepeatedly(backing, DEFAULT_MAX_ABANDONMENTS + 1);
 
     // Admitted: the wake probe fires for it.
-    expect(hasClaimableTask(backing.collection, backing.now())).toBe(true);
+    expect(hasClaimableTask(backing.collection)).toBe(true);
     // And then settled rather than run.
     expect(await backing.collection.claim("w-last")).toBeNull();
     expect(backing.collection.get("t")?.status).toBe("errored");

@@ -48,7 +48,7 @@ export function createSelectNextReadyTask(options: SelectNextReadyTaskOptions) {
       // board" is the honest answer either way.
       const candidates = collection.list({ status: ["pending", "in_progress"] });
       const lookup = (id: string): Task | undefined => collection.get(id);
-      const now = Date.now();
+      const now = collection.now();
       const eligible = candidates.filter((task) => isClaimable(task, lookup, now));
       if (eligible.length === 0) return { ready: false };
       eligible.sort((a, b) => {

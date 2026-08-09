@@ -52,11 +52,9 @@ export function whenBoardClaimable(
   options: {
     onIdle: "wait" | "complete" | "complete-or-blocked";
     shouldExit?: (collection: TaskCollectionRef) => boolean;
-    /** See `BoardQuiescenceOptions.now` — the clock claimability is judged against. */
-    now?: number;
   }
 ): (items: readonly OutputItem[]) => boolean {
   return () =>
-    hasClaimableTask(collection, options.now) ||
+    hasClaimableTask(collection) ||
     boardQuiescence(collection, options) !== "continue";
 }

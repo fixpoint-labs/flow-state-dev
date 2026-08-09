@@ -31,7 +31,11 @@ import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
 
-/** The frozen clock every collection in this file is built on. */
+/**
+ * The frozen clock every collection in this file is built on. The wake probe
+ * reads it back off the collection (FIX-1005), which is what keeps `working`
+ * reading as "a worker holds this" rather than as an expired lease.
+ */
 const BOARD_NOW = 1000;
 
 /** A collection in one of the board states the classifier discriminates. */
@@ -132,12 +136,8 @@ describe("boardQuiescence - both consumers read one verdict", () => {
     "$state / onIdle $onIdle -> $verdict (wake: $wakes)",
     async ({ state, onIdle, verdict, wakes, shouldExit }) => {
       const collection = await collectionInState(state);
-      // The same frozen clock the collection stamps leases against (FIX-1005).
-      // Passing the wall clock instead would read every one of these leases as
-      // lapsed and turn `working` into a claimable board.
       const options = {
         onIdle,
-        now: BOARD_NOW,
         ...(shouldExit !== undefined ? { shouldExit } : {}),
       };
 
@@ -154,7 +154,7 @@ describe("whenBoardClaimable - the promptness fast path", () => {
     "wakes on newly claimable work in onIdle %s, where the verdict alone would not",
     async (onIdle) => {
       const collection = await collectionInState("claimable");
-      const options = { onIdle, now: BOARD_NOW, shouldExit: () => false };
+      const options = { onIdle, shouldExit: () => false };
 
       // The regression guard, stated as the two halves of the disjunction:
       // the classifier says keep draining, and the wake test still fires. Drop
@@ -169,7 +169,7 @@ describe("whenBoardClaimable - the promptness fast path", () => {
     // dep-blocked pending task must not read as claimable and busy-wake a
     // worker that could do nothing with it.
     const collection = await collectionInState("dep-blocked");
-    const options = { onIdle: "complete" as OnIdle, now: BOARD_NOW };
+    const options = { onIdle: "complete" as OnIdle };
     expect(boardQuiescence(collection, options)).toBe("continue");
     expect(whenBoardClaimable(collection, options)([])).toBe(false);
   });
