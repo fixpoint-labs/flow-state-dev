@@ -3207,7 +3207,13 @@ const epicOut = {
     // approval re-opens the gate), which is the case failing closed actually protects.
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
-    approved: gateUsable ? !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel) : !!epic.approved,
+    // `carriedApprovalHolds` belongs here too, or the carry is a ONE-SHOT: the gate opens, work
+    // dispatches, and this line then persists `false` next to a label that is still on the PR — so
+    // the next wake carries no approval, `carriedApprovalHolds` is false, and the stall returns.
+    // The gate and its persisted twin have to agree, which is why they share the term.
+    approved: gateUsable
+      ? !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel || carriedApprovalHolds)
+      : !!epic.approved,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)

@@ -405,6 +405,10 @@ check('the `epic approved` label signs the objective off, and only its removal r
   assert.equal(unattributable.result.epicApproved, true, 'an unreadable provenance check does not revoke a recorded approval')
   assert.deepEqual(unattributable.result.held, [], 'so the set is not re-held')
   assert.ok(workerLabels(unattributable.calls).length > 0, 'and work keeps moving')
+  // The PERSISTED twin has to agree with the gate, or the carry is a one-shot: dispatch once, write
+  // `false` next to a label that is still there, and the next wake re-locks with nothing carried.
+  // The gate opening is only half the fix; the coordinator persists this field verbatim.
+  assert.equal(unattributable.result.epic.approved, true, 'and the approval is persisted, so the next wake still carries it')
 
   // Removal is still the revocation — that is the owner's control and it must survive the fix above.
   // The label being GONE is a different fact from the label being unattributable, which is the whole
@@ -418,6 +422,7 @@ check('the `epic approved` label signs the objective off, and only its removal r
   })
   assert.equal(labelRemoved.result.epicApproved, false, 'removing the label revokes the objective even with a carried approval')
   assert.deepEqual(labelRemoved.result.held, ['FIX-2'], 'and the set is held again')
+  assert.equal(labelRemoved.result.epic.approved, false, 'and the revocation is persisted, so it does not come back next wake')
 
   // And it cannot MANUFACTURE a sign-off: an epic nobody ever approved has no carried `true` to
   // survive, so the unattributable-label path leaves it exactly as fail-closed as before.
