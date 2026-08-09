@@ -273,8 +273,8 @@ out-of-band chat approval:
 
 | Gate | Signal | Meaning | Blocks |
 |---|---|---|---|
-| **Spec approval** | an approving comment or GitHub Review from a human on the spec PR | The full spec (Part I + Part II) is directionally signed off | implementing that issue |
-| **Epic objective** | an approving comment or GitHub Review from a human on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
+| **Spec approval** | an approving comment, an approving GitHub Review, **or the owner's `spec approved` label** on the spec PR | The full spec (Part I + Part II) is directionally signed off | implementing that issue |
+| **Epic objective** | an approving comment, an approving GitHub Review, **or the owner's `epic approved` label** on the epic PR | The epic's purpose/outcome is worth pursuing | *ramping* the epic's issues (they hold before their first action) |
 
 The epic-objective gate is the **only** epic-level gate — the epic's *direction* (themes,
 feedback, upward comments) flows continuously and never blocks. The spec-approval gate is
@@ -297,18 +297,42 @@ the lifecycles apply it when they surface a gate, and the same rule governs an *
 blocker** — a worker that can't settle a fork returns the parts of the ask, and the
 coordinator (which never read the code) surfaces them without re-deriving.
 
-**Why a comment or review, not a label — either drives; label and Linear mirror.** A
-`labeled` webhook is **not** in the PR-activity stream the coordinator subscribes to
-(comments, CI, and reviews are), so a label a human applies never wakes the session —
-it's only noticed on the next heartbeat poll. A **comment or a review submission is
-delivered**, so either wakes the coordinator immediately. The two sign-off gates
-therefore run on **either an approving comment or an approving GitHub Review from a
-human**, and the coordinator **mirrors it to the `spec approved` / `epic approved`
-label** — a durable, filterable record — the moment it detects one. The label is
-written by the coordinator now, not applied by the human; it records the gate, it no
-longer triggers it.
+**Three channels sign off, and the label is one of them.** A comment, an approving GitHub
+Review, or the `spec approved` / `epic approved` **label** — any of the three passes the
+gate. The difference between them is *latency, not authority*: a `labeled` webhook is not in
+the PR-activity stream the coordinator subscribes to (comments, CI, and reviews are), so a
+label is picked up on the next wake rather than waking the session immediately. **The label
+is the owner's alone: the coordinator never writes it, and the scan verifies who did.**
+GitHub labels are writable by every collaborator and every bot with write access, so presence
+is only half the test — the wake reads the most recent `labeled` event and requires its actor
+to be the configured owner login, failing closed when it can't attribute one. Checking *who*
+applied it is a different question from checking *when*, and only the first is asked; the
+second is the staleness rule that would revoke an approval on the next fold. It used to mirror detected approvals
+there, and that is exactly what could not stand once the label became an input — a mirrored
+review approval outlives the review it recorded, so a push that correctly reopened the gate
+left the mirror holding it open against content nobody approved. One label cannot be both a
+standing sign-off and the record of a channel that expires.
 
-**What counts as approval.** Either signal, from a human:
+**The difference between them is latency, not authority.** A `labeled` webhook is **not**
+in the PR-activity stream the coordinator subscribes to (comments, CI and reviews are), so
+a label never wakes the session — it is picked up on the next wake or heartbeat poll. A
+comment or review submission is delivered, so either wakes the coordinator immediately.
+Labelling therefore signs off just as validly; it is simply quieter, and the work starts on
+the next wake rather than within seconds.
+
+**A label does not expire on a push, and that is deliberate.** A spec or epic PR takes
+commits for its whole life — every folded review round is one — so invalidating the label
+whenever a commit lands after it would revoke the approval on the next edit and re-hold the
+set. A label is *standing state the owner can remove*, so **removal is the revocation** —
+a control neither a comment nor a review offers. An approving review, by contrast, keeps its
+own staleness rule: a later push supersedes it, exactly as GitHub treats it.
+
+> This corrected an earlier rule that read *"the gate is the fresh approval the wake
+> re-derived, never the label."* Under it, an epic whose owner had signed the objective off
+> by label read as unapproved and its entire set was held indefinitely, with no way for the
+> coordinator to assert the gate — a live scan overrides the carried value by design.
+
+**What counts as approval.** Any of these three, from a human:
 
 - **A comment** that (a) expresses approval — its body says "approved" — **and** (b) is
   authored by a human: not a bot account, and not a comment whose body marks it as
@@ -339,15 +363,26 @@ longer triggers it.
   push naturally drops the gate back to pending on the next refresh; the rule here is just that
   the check is "is the *current head* approved," not "was anything ever approved."
 
-Both clauses are load-bearing — they exclude the coordinator's own footer-signed
-comments and every review bot, so only a genuine human sign-off — by comment or by
-review — trips the gate. **A substantive push after a comment-based approval re-opens the
-gate too** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
-as approving the state at that moment; new work needs fresh sign-off).
+- **The `spec approved` / `epic approved` label**, applied by the owner. Presence is the
+  whole test: it does not expire on a push, because a spec or epic PR takes commits for its
+  whole life and expiring it would revoke the approval on the next fold. **Removal is the
+  revocation.** The coordinator never writes these labels — see above.
+
+Both clauses on the comment and review paths are load-bearing — they exclude the
+coordinator's own footer-signed comments and every review bot, so only a genuine human
+sign-off trips the gate. **A substantive push after a comment-based approval re-opens the
+gate** (the comment carries no `commit_id`, so the coordinator treats a human "approved"
+as approving the state at that moment; new work needs fresh sign-off). That staleness rule
+is the comment/review path's alone — a label is standing state, not a point-in-time act.
+
+**A human `CHANGES_REQUESTED` outranks all three channels.** It is the one signal that
+withholds the gate no matter how approval arrived, and it exists because the label is
+standing: without it, a change request would sit unanswered behind an approval nobody
+retracted.
 
 The epic *issue's* Linear state is a second human-facing mirror of the objective gate, not
-the trigger — the **coordinator writes that mirror** when the approving comment or review
-lands, so it doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
+the trigger — the **coordinator writes that mirror** when approval lands on any of the three
+channels, so it doesn't drift. (The epic issue itself is tagged with the **`Epic` label under Linear's
 "Kind" group** — that's what marks a Linear issue as an epic and keeps it filterable off the
 working board.)
 
@@ -1054,8 +1089,10 @@ So on any PR-activity event — a review comment, a CI failure, a push, an appro
   that re-reads the same batch and re-posts replies to comments already answered.
 
 **Writing to a PR: you may carry a human's decision outward, never a technical judgment of your
-own.** Applying a `spec approved` mirror label, or posting an alignment the user just decided in
-a cross-spec walkthrough, carries a decision made somewhere the coordinator can see. Answering a
+own.** Posting an alignment the user just decided in a cross-spec walkthrough carries a decision
+made somewhere the coordinator can see. (Applying an approval label is *not* an example of this
+and never was — see above: the label is the owner's signal, and a coordinator-written one would
+manufacture the sign-off it purports to record.) Answering a
 reviewer, explaining a design choice, conceding a point, or calling a finding wrong are all
 judgments about a diff it hasn't read, and they belong to the worker that has.
 
@@ -1067,8 +1104,8 @@ Two reads are the exception, both **small and offloaded to `scout`**, never fold
 coordinator: the **spec/epic-PR approval check** ("is there an approving comment or GitHub
 Review from a human?" — the sign-off gate — checks both the PR's comments and its reviews) and
 **epic-PR feedback fan-out** ("which aligned issues does this comment touch?"). Scout returns
-the verdict / target list; the coordinator routes on it and, for a detected approval, applies
-the mirror label.
+the verdict / target list, including whether the owner's approval label is present; the
+coordinator routes on it and writes the Linear mirror. It never writes the label.
 
 **What the coordinator reports instead.** The worker's status line is what it has, and it is
 what the user gets: the issue, its phase, the PR, and the worker's one line on what it did. One

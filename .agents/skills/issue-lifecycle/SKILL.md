@@ -58,18 +58,29 @@ On each invocation, reconstruct the phase from a **small** read:
     require no outstanding `CHANGES_REQUESTED`, and confirm the approving review's `commit_id`
     is the current head — a push after an approval re-opens the gate. The full detection rule is
     in [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A comment or a
-    review submission is the gate because either *wakes* the lifecycle — a `labeled` webhook
-    doesn't arrive, but both of these do. On detecting either, **mirror it to the
-    `spec approved` label** (a durable, filterable record) in the same step. **The gate is the
-    fresh evidence — a current-head approving comment/review, re-derived by this scan each
-    wake — not the label.** The `spec approved` label is a mirror only; it can go stale (it was
-    applied at an earlier commit, then a push or a later `CHANGES_REQUESTED` landed), so
-    **never advance from the label alone** — re-confirm approval against the current head every
-    wake. That fresh approval is what advances to NEEDS_IMPLEMENTATION and authorizes closing
+    review submission wakes the lifecycle immediately — a `labeled` webhook doesn't arrive, but
+    both of these do. **Do NOT apply the `spec approved` label** on detecting one — see below.
+    **The label is the owner's own approval channel**: the owner signs specs off by applying it, so the scan reads it and it
+    passes the gate alone — **once you have attributed it to them**, which is not automatic and
+    is spelled out under [Waking](#waking). The difference between the channels is *latency, not
+    authority* — a label is picked up on the next wake rather than waking the session.
+
+    **The coordinator never applies these labels.** They are the owner's signal alone: standing, surviving a push, revoked by removal. A coordinator-written *mirror* would outlive the approval it mirrors — an approving review dies on the next substantive push, but the label recording it would sit there holding the gate open against content nobody approved. One label cannot be both a standing sign-off and the record of a channel that expires; writing it is what made it both.
+
+    **A label does not expire on a push; removing it is the revocation.** A spec PR takes
+    commits while review is folded, so expiring the label would revoke the approval on the next
+    round. An approving **review** keeps its own staleness rule — re-confirm a
+    comment/review approval against the current head each wake, and a later
+    `CHANGES_REQUESTED` from any human still withholds the gate. Approval by any channel is
+    what advances to NEEDS_IMPLEMENTATION and authorizes closing
     the spec PR (unmerged).
 - **Handle cache:** a compact record at `.orchestration/<ISSUE-ID>.md` (a **gitignored,
   session-only** directory — never `git add`/commit/PR it) — issue
-  ID, **`route`** (`spec | direct` — see "Two routes in"), spec PR#, impl PR#, branch,
+  ID, **`route`** (`spec | direct` — see "Two routes in"), **`owner`** (the GitHub login whose
+  approval *label* passes the gate — establish it on the first wake, ask if you don't know it,
+  and never infer it from a PR author or a commit trailer, since this one authorizes work;
+  without it the label channel is off and only comment/review approval works), spec PR#, impl
+  PR#, branch,
   worktree path, current phase, the last action
   taken, the **spec-review round count** (see the convergence budget below), the
   **PR-feedback round count** (`prFeedbackRounds` — see the cap below), and any
@@ -123,7 +134,7 @@ boundary. The gate is the only place a human blocks; once it opens, keep moving.
 | Phase (derived) | Next bounded action | Then |
 |---|---|---|
 | **NEEDS_SPEC** — spec route, no spec yet *(a direct-route issue skips this row and the next)* | Dispatch a sub-agent: *run `issue-spec <issue>`*. It researches, drafts **Part I ("The Case") and Part II ("The Build Plan")**, opens the spec PR **ready for review**, and returns Part I + open questions + spec PR link, then exits. | Surface Part I + the spec PR to the user for review; record handles; end turn → AWAITING_SPEC_APPROVAL. |
-| **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest as §13 notes, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When an **approving human comment or Review is posted** on the spec PR (the durable sign-off — a comment saying "approved", or a Review whose latest state is `APPROVED` on the current head, from a human, not a bot, and for a review, not the PR's own author; see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates): **mirror it to the `spec approved` label**, **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical — *unless a POC settlement on a load-bearing claim is still in flight, in which case leave it open until the verdict lands* (see POC settlement below; this defers cleanup only, never implementation) — and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — apply the `spec approved` label as the mirror and proceed the same way. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
+| **AWAITING_SPEC_APPROVAL** — spec PR is open (Part I + II) | On a **spec-PR review event**, *and only while the round budget allows* (see below): dispatch a bounded sub-agent to run `issue-spec` Step 6.5 for that batch (triage against the bar, fold spec-level findings, record the rest as §13 notes, escalate direction forks), returns what changed + rounds actually spent + whether anything was spec-level, exits; add the **rounds it reports spent** to the count (not one per event — see below). When **approval lands** on the spec PR — an approving human comment, a Review whose latest state is `APPROVED` on the current head (human, not a bot, not the PR's own author), **or the `spec approved` label, attributed to the owner** (see [Waking](#waking) — presence alone is not the test); see [`orchestration.md`](../../../docs/contributing/orchestration.md) → Gates. A human `CHANGES_REQUESTED` withholds the gate whichever channel approved. Do NOT apply the label yourself — it is the owner's signal, not a record you write: **close the spec PR** (unmerged, delete the branch) pointing to the Linear document as canonical — *unless a POC settlement on a load-bearing claim is still in flight, in which case leave it open until the verdict lands* (see POC settlement below; this defers cleanup only, never implementation) — and — **without ending the turn** — proceed straight into NEEDS_IMPLEMENTATION and dispatch implementation. The approval is the release; nothing external separates approved from implementing. If the user conveys sign-off **in-session** instead of commenting or reviewing, that in-session sign-off satisfies the gate identically (the comment/review channel exists only for the *async* wake; a live "approved" needs none) — record it as `approvedInSession` (the head SHA they approved) and proceed the same way; do not apply the label. | **Chain into NEEDS_IMPLEMENTATION in the same wake** — do not end the turn on the approval. (While *unapproved*, end the turn and wait: **human sign-off** — an approving comment/review or an in-session "approved" — is the one required gate in; don't implement without one.) |
 | **NEEDS_IMPLEMENTATION** — spec approved, **or** a direct-route (bug) issue, which enters here | **Single-PR (default):** dispatch a sub-agent to *run `issue-implement <issue>`* — implements on `fix/<ISSUE>` (the spec PR was already closed at the approval gate; `issue-implement` skips the close when it finds it already closed, and a bug has none to close), runs `review`, opens the impl PR, returns summary + key decisions + PR link, exits. **A direct-route worker that finds no reproduction, or finds the "bug" is really a feature, returns `specRequired` instead of building** — that re-routes the issue to `NEEDS_SPEC`. A design *decision* found mid-diagnosis is not that: it ships with the fix and is surfaced on the PR. **Multi-PR (the spec declares a PR plan):** advance the plan by one bounded step via the **`issue-multi-pr` workflow** — see [Multi-PR issues](#multi-pr-issues-pr-plan) below. | Record impl PR#(s); subscribe; end turn → PR_FEEDBACK. |
 | **PR_FEEDBACK** — impl PR(s) open | On each **PR event** (new review comments / CI) on any open impl / sub-PR, *and only while the round cap allows* (see below): dispatch a fresh bounded sub-agent to run `issue-implement` Step 10 for that batch — react, fix, reply, push — exit; add the rounds it reports spent to `prFeedbackRounds`. | End turn between events. When a PR is approved + green: surface **"ready to merge"** and stop (merge is the user's). Multi-PR: a merged dependency unblocks its dependents (they return to NEEDS_IMPLEMENTATION); after the **last** sub-PR merges the issue is **not** yet DONE — run the assembled end-to-end goal first (see [Multi-PR issues](#multi-pr-issues-pr-plan) §4). |
 | **DONE** — impl PR merged **and** (multi-PR) the assembled goal passed | none | Update the cache to DONE; report completion. |
@@ -484,9 +495,32 @@ arrives). As a fallback heartbeat for
 transitions webhooks *don't* cover — CI success and merge — schedule a check-in
 (`send_later`, ~30–60 min) and re-arm it while the issue is
 live; stop once the impl PR is merged or closed. On each wake, re-read the spec-PR
-approval signal rather than trusting a webhook arrived: in AWAITING_SPEC_APPROVAL, an approving
-human comment or review on the spec PR is the go-ahead (check the PR's comments and reviews —
-both small reads; not a label). Never poll with `sleep`.
+approval signal rather than trusting a webhook arrived: in AWAITING_SPEC_APPROVAL, the go-ahead
+is an approving human comment, an approving review, **or the `spec approved` label** — check
+comments, reviews *and* labels, all small reads. The label needs checking precisely because it
+never wakes the session, so it is only ever found by looking.
+
+**Attribute the label before you accept it.** A GitHub label is writable by every collaborator
+and by every bot with write access, so its presence is only half the test — read the PR
+timeline's `labeled` events for `spec approved`, take the **most recent**, and require its
+actor's login to be the **owner's** — the `owner` in this issue's handle cache, established on
+the first wake. Not "a human": an agent with write access is not a human,
+and a passing collaborator is not the owner. If you have no configured owner login, if the
+timeline is unreadable, or if the most recent `labeled` event names anyone else, **treat the
+label as absent** and fall back to the comment/review channels — and if it was the *owner
+login* you were missing, say so once rather than silently, since someone signing off by label
+alone is otherwise waiting on a channel nothing reads — an approval you cannot
+attribute is not an approval, and this gate is what stands between a label and closing the spec
+PR to start building. Checking *who* applied it is a different question from checking *when*:
+the second is not asked, because a spec PR takes commits while review is folded and expiring
+the label would revoke the approval on the next round. `epic-wake` applies the identical rule
+via its `owner` arg; this is the standalone path's copy of it.
+
+**A human `CHANGES_REQUESTED`
+outranks all three**: the label is the owner's standing signal, revoked only by removal, so it
+outlives a later change request and would otherwise carry the issue past feedback nobody
+addressed.
+Never poll with `sleep`.
 
 **Both `subscribe_pr_activity` and `send_later` are cloud-only** — neither works in a local
 Claude Code session (no reachable webhook endpoint, no server-side scheduler). Check whether

@@ -76,7 +76,7 @@ filesystem. So the division is fixed:
 | Per-issue refresh via `scout` (Linear parent→children in one query; PR comments/reviews/checks/meta) | **Resolving the set** and confirming it with you (loop step 1) |
 | Deciding each issue's pending action, and the **review round budget** for issue specs *and* the epic PR | **`.orchestration/` reads and writes** — the script gets the table via `args`, returns the new one |
 | Dispatching `issue-worker` / `epic-agent` / `poc-agent`, capped and prioritized | **PR subscriptions** (`subscribe_pr_activity` / local `Monitor`) — a sub-agent can't hold one |
-| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror**, and the `spec approved` / `epic approved` labels |
+| **Deduping claims** so one claim argued on two issues is one settlement fanned to both | **The Linear status mirror** (the approval labels are the owner's — never written here) |
 | Routing a POC verdict to its issues the moment that POC finishes | **Ending the turn**, the heartbeat, and re-entry |
 
 **A workflow runs in the background**, so a wake is: call `epic-wake` → end the turn → the
@@ -145,8 +145,18 @@ The epic-specific delta:
    per-issue handle-cache pointers), **and the epic handle alongside it** (epic issue ID ·
    name · `epic/<name>` branch · epic PR#), so it survives across wakes — the next refresh
    needs it to re-check the epic PR for its approving comment or review, keep the epic PR
-   subscribed, and pass the branch/SHA to workers. Two more coordinator-owned fields live
-   here because nothing else can hold them across wakes: the epic PR's own review budget
+   subscribed, and pass the branch/SHA to workers.
+
+   **Establish the `owner` login here too** — the GitHub account whose approval *label* passes a gate. It is the product owner you are
+   reporting to, so ask them once if you don't already know it, and persist it beside the epic
+   handle; a login you inferred from a PR author or a commit trailer is a guess, and this one
+   authorizes work. If you cannot establish it, say so and carry on without it: the wake turns
+   the label channel off rather than trusting an unattributable label, and the owner's comment
+   or review still passes every gate. What you must not do is leave the field out silently —
+   an owner who signs off by label alone would then wait forever on a channel nothing reads.
+
+   Two more coordinator-owned fields live here for the same reason — nothing else holds them
+   across wakes: the epic PR's own review budget
    (**`reviewRounds`** + **`aboveBarFound`**, passed to and returned by each wake) and, at
    wrap, each pass's **disposition**
    (`lessons: <PR#> [proposal skipped: why]` — lessons **always** has a PR number, since a
@@ -166,6 +176,7 @@ The epic-specific delta:
                 reviewRounds, aboveBarFound, lastSeenActivityAt, lastSeenSha,
                 verdicts, unsettled, openQuestions, answers },
        cap:   <the N you chose and stated>,
+       owner: <the GitHub login authorized to sign off by LABEL>,
        issues: [ { id, route, phase, specPr, implPr, specReviewRounds, specLevelFound,
                    prFeedbackRounds, verdicts,
                    lastSeenActivityAt, lastSeenSha, blocker, blockerResolutions,
@@ -178,6 +189,16 @@ The epic-specific delta:
    Everything in `args` comes straight out of `.orchestration/` — the script has no
    filesystem, so **you are its memory**. Four groups of fields are load-bearing for exactly
    that reason, and each fails in its own way if you drop it:
+
+   - **`owner`** — the GitHub login whose `spec approved` / `epic approved` label passes a gate.
+     Labels are writable by every collaborator and every bot with write access, so the scan
+     verifies **who applied it** against this login before the label counts; "a human applied
+     it" is not the test, because an agent with write access is not a human and a passing
+     collaborator is not the owner. Omit it and the **label channel is simply off** — the
+     scouts report it false whatever labels a PR carries, and only comment/review approval
+     works. That is fail-closed by design: a label nobody can be held to is not a sign-off.
+     The *timing* half stays unchecked either way — presence, not recency, once the applier
+     is right.
 
    - **`issues[].route`** (`spec | direct`) — which route the issue takes into
      implementation ([`orchestration.md`](../../../docs/contributing/orchestration.md) →
@@ -303,10 +324,13 @@ The epic-specific delta:
    wake surfaced (Linear auto-status is off; the mapping + state IDs live in `issue-lifecycle`
    → "Linear status is a mirror you own"). Workers set the mirror for transitions they effect
    (they opened the PR); you set it for the ones the wake *detected* — a spec/epic approval, a
-   merge — and for a detected approval also apply the `spec approved` / `epic approved` label
-   as the durable, filterable record. Idempotent: skip if the issue is already in the target
-   state and the label is already present. **The gate is the fresh approval the wake
-   re-derived, never the label** — the label can go stale behind a later push.
+   merge. **Do not apply the `spec approved` / `epic approved` label** — it is the owner's
+   signal, not a record you write. Idempotent: skip if the issue is already in the target
+   state. **The label is the OWNER's approval channel, never written by the coordinator** — the owner signs off with it as well as by comment, so the
+   wake reads it and it passes the gate on its own. It does **not** expire on a push (a spec
+   or epic PR takes commits for its whole life; expiring would revoke the approval on the
+   next fold); **removing the label is the revocation.** An approving *review* keeps its own
+   staleness rule — a later push supersedes it.
 
    **Route the epic-PR feedback the wake handed you — both channels, or it is lost.** Neither
    is optional, because the coordinator never reads epic-PR content itself and nothing else will
@@ -380,12 +404,14 @@ The epic-specific delta:
    of inventing the substance.
 
    If the epic is awaiting its objective sign-off, surface the epic
-   PR (its purpose/objective) and note that an **approving comment or review on the epic PR**
-   releases the epic's issues to start — until then they hold at NEEDS_SPEC. Then, per issue:
+   PR (its purpose/objective) and note that an **approving comment or review on the epic PR —
+   or their own `epic approved` label** releases the epic's issues to start — until then they
+   hold at NEEDS_SPEC. Then, per issue:
    for any issue **awaiting spec approval** (its spec PR is open, Part I + II), surface the
-   **spec PR link** for review and note that **an approving comment or review on the spec PR**
+   **spec PR link** for review and note that **an approving comment or review on the spec PR,
+   or their own `spec approved` label,**
    is the go-ahead to implement (a plain "approved" comment, or an Approve-state review, from a
-   human other than the PR's author — the label is applied by the coordinator, not the human).
+   human other than the PR's author — or the label, which only they apply).
    **Say what they're signing off: the direction** — the problem framing, the approach, and the
    numbered Decisions — and, for a converged spec, that remaining open threads are carried as
    implementer notes rather than blockers. State the outcome the epic buys and the calls that
@@ -411,10 +437,11 @@ The epic-specific delta:
    must wake the coordinator, not wait for the heartbeat, and epic PR activity must too (so feedback
    can fan down and an approving comment or review on the epic PR is caught). **The two
    sign-off gates now ride that stream** — both a comment and a review submission are
-   delivered PR-activity events, so a spec- or epic-PR approval (either form) wakes the coordinator
-   immediately (the reason the gates moved off labels, whose webhook never arrives). The
-   transitions webhooks *don't* cover — CI success and merge/close — are caught on the wake's
-   scout refresh (step 2). Schedule one check-in
+   delivered PR-activity events, so a spec- or epic-PR approval in either of those forms wakes
+   the coordinator immediately. The owner's **label** is the third channel and the slow one: a
+   `labeled` webhook never arrives, so it is found only by the wake's scout refresh. The
+   transitions webhooks *don't* cover — CI success and merge/close — are caught on that same
+   refresh (step 2). Schedule one check-in
    (`send_later`, ~30–60 min) as the backstop and re-arm while any issue is live. Re-enter
    on PR events or the check-in. **Move to EPIC_WRAP only when the wake returns `mayWrap: true`.**
 
@@ -565,12 +592,13 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
 - **Enforce the objective gate.** Surface the epic-spec's purpose/objective for the
   **approving comment or review** sign-off; the wake holds the epic's issues at NEEDS_SPEC
   until it lands (it returns `epicApproved: false` and dispatches nothing). It's the *only*
-  epic-level gate — direction stays ungated. When an
-  approving human comment or review lands on the epic PR, **the coordinator writes both mirrors**
-  — it applies the `epic approved` label (durable, filterable record) *and* moves the Epic
-  *issue's* Linear state to reflect "objective approved" (the comment or review is the
-  trigger; the label and Linear state are human-facing mirrors, and the coordinator owns keeping
-  them in step so they don't drift).
+  epic-level gate — direction stays ungated. When approval lands on the epic PR **by any of the
+  three channels — comment, review, or the owner's label** — **the coordinator writes the Linear
+  mirror only**: it moves the Epic *issue's* state to reflect "objective approved". Include the
+  label case or the mirror silently disagrees with the gate, leaving the Epic issue reading
+  unapproved while its children implement. **It does
+  not touch the `epic approved` label**, which is the owner's own signal: a coordinator-written
+  label would outlive the review it recorded and keep the gate open past a later push.
 - **Own the subscription; fan feedback down.** Only the coordinator can subscribe to the epic
   PR (sub-agents can't), so epic-PR feedback arrives here. The **folding** is the wake's:
   it dispatches `epic-agent` to triage against the bar, fold above-the-bar items into the
@@ -735,6 +763,15 @@ Once both hold:
    issue. An alignment edit is a *spec-level* change by construction — a cross-spec conflict
    is never below the bar — so it earns a fresh round outside the two-round budget, and the
    issue returns to spec review before it implements.
+
+   **`crossSpecCleared` is what holds it, not the approval label — and that distinction is
+   load-bearing.** An owner's label is standing: it survives a push, so an alignment edit
+   landing at a new head does *not* retract it, and a gate reading the label alone would
+   report the spec approved against text the alignment just changed. `crossSpecCleared` is
+   coordinator state you own precisely so a mechanical edit cannot clear a human gate: leave
+   it `false` until every aligned spec has cleared approval **again**, which means the owner
+   re-confirming — not the old label still being present. Never remove the owner's label to
+   force this; hold on your own flag and ask.
 
 Run this once per epic when the set stabilizes; re-run only if a later approved spec joins
 the set or an alignment edit could ripple.

@@ -57,7 +57,8 @@ Take the single action the dispatch calls for:
   (dual-synced, exactly as a spec attaches to a work issue). Return the epic issue ID + epic
   PR link. Do **not** approve the objective yourself — you surface it; the coordinator takes
   it to the human for the sign-off, which is an **approving comment or GitHub Review** on the
-  epic PR (the coordinator mirrors it to the `epic approved` label).
+  epic PR, **or the owner's own `epic approved` label**. Nobody but the owner applies that
+  label — not you, not the coordinator.
 
   **Write the epic PR description to the fold** —
   [`pr-reviewer-guidance.md`](../../docs/contributing/pr-reviewer-guidance.md) → "The layout"
@@ -164,7 +165,7 @@ issue workers. Commit and push; **never merge, never delete the branch**.
 ```
 epic: <name>   epic_issue: <ID>   branch: epic/<name>   epic_pr: <#/none>
 sub_issues: <n parented>   (doc attached to epic issue: yes/added)
-objective: <one line — the why/outcome>   approved: <yes (approving comment or review; mirrored to epic approved label) | pending sign-off>
+objective: <one line — the why/outcome>   approved: <yes (approving comment, review, or the owner's epic approved label) | pending sign-off>
 did: <one line — created | updated (folded feedback / index: <n> PRs) | end-state POC>
 spec_poc: none | <path on the epic branch> · showed: <one line> · changed: <what, or "nothing — premise held"> · variants: <n/none>
     (`spec_poc:`, never `poc:` — `issue-lifecycle` already uses `poc:` for a settlement verdict,

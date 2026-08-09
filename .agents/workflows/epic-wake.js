@@ -1486,6 +1486,29 @@ function approvedInSessionFor(row, fresh, refreshedLive) {
   return false
 }
 
+/**
+ * THE spec-approval decision. Every channel and every veto lives here, and nothing outside computes
+ * approval from parts.
+ *
+ * Approval arrives three ways — an approving human comment/review on the current head, the
+ * `spec approved` label, or an in-session go-ahead the coordinator recorded — and a human
+ * `CHANGES_REQUESTED` vetoes all of them.
+ *
+ * It is one function because it was three expressions, and a rule added to a scattered OR has to be
+ * remembered at every branch. It wasn't: the change-request veto was added to the comment/review and
+ * label branches and missed on the in-session one, which let a spec enter implementation past a
+ * change request. Review had caught the same shape one round earlier on a different branch. Composing
+ * the channels in one place makes the next rule impossible to half-apply.
+ */
+function specApprovalFor(row, fresh, refreshedLive) {
+  // A veto needs a live observation to be trusted. Without one there is nothing to veto WITH, and the
+  // channels below already refuse to release on a dead scout.
+  if (refreshedLive && fresh.humanChangesRequested) return false
+  const byReview = refreshedLive && !!(fresh.specApproved && fresh.headSha)
+  const byLabel = refreshedLive && !!fresh.specApprovedByLabel
+  return byReview || byLabel || approvedInSessionFor(row, fresh, refreshedLive)
+}
+
 function bindByPosition(results, ids, onMismatch) {
   const byId = new Map()
   results.forEach((res, i) => {
@@ -1540,9 +1563,19 @@ const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
-  required: ['approved', 'newReviewEvents', 'headSha', 'latestActivityAt'],
+  required: ['approved', 'approvedByLabel', 'humanChangesRequested', 'newReviewEvents', 'headSha', 'latestActivityAt'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
+    approvedByLabel: {
+      type: 'boolean',
+      description:
+        'The `epic approved` label is present on the PR. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
+    },
+    humanChangesRequested: {
+      type: 'boolean',
+      description:
+        "A human's LATEST review state on the epic PR is CHANGES_REQUESTED. Outranks the label, which is standing state the owner revokes by removing and which therefore survives a later change request. Bots never count.",
+    },
     approver: { type: ['string', 'null'] },
     headSha: { type: ['string', 'null'] },
     newReviewEvents: { type: 'boolean', description: 'Review activity STRICTLY NEWER than the activity cursor it was given' },
@@ -1591,7 +1624,7 @@ const PR_STATE_SCHEMA = {
   // rule for any field an action depends on — and the epic gate's own schema has always required it.
   // `['string','null']` still lets a scout say "did not observe"; what it can no longer do is stay
   // silent and have the approval accepted anyway.
-  required: ['issueId', 'phase', 'specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
+  required: ['issueId', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
   properties: {
     issueId: { type: 'string' },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
@@ -1607,6 +1640,16 @@ const PR_STATE_SCHEMA = {
     specPr: { type: ['number', 'null'] },
     implPr: { type: ['number', 'null'] },
     specApproved: { type: 'boolean', description: 'Approving human comment/review on the CURRENT head — never a stale one' },
+    specApprovedByLabel: {
+      type: 'boolean',
+      description:
+        'The `spec approved` label is present on the spec PR. Presence alone — the owner signs off this way too, and a label is standing state whose removal is the revocation, so it does not expire on a push.',
+    },
+    humanChangesRequested: {
+      type: 'boolean',
+      description:
+        "A human's LATEST review state on the spec PR is CHANGES_REQUESTED. Reported separately because it must outrank the label: `spec approved` is standing state revoked only by removal, so a label the owner applied and then left in place would otherwise carry an issue past a change request nobody addressed. Bots never count.",
+    },
     newSpecReviewEvents: { type: 'boolean', description: 'Spec-PR review activity STRICTLY NEWER than the cursor it was given' },
     newPrEvents: { type: 'boolean', description: 'Impl-PR activity STRICTLY NEWER than the cursor it was given' },
     ciFailed: { type: 'boolean', description: 'Observed this scan — never inherited, so a recovered PR stops being re-dispatched' },
@@ -1836,12 +1879,22 @@ const POC_SCHEMA = {
 // The wake
 // ---------------------------------------------------------------------------
 
-const epic = args.epic
-const rows = args.issues || []
+// The Workflow tool delivers `args` as a JSON string at runtime, while `verify.mjs` passes
+// an object. Normalize so the script reads the same either way — reading `args.x` off a
+// string silently yields `undefined` for every field, which fails far from the cause.
+const input = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const epic = input.epic
+const rows = input.issues || []
+// The GitHub login authorized to sign off by LABEL. The label is the owner's channel by contract,
+// and a label is writable by every collaborator and every bot with write access — so "a human
+// applied it" is not the test, "the owner applied it" is. Absent, the label channel is simply OFF
+// (the scouts are told to report it false); comment and review approval are unaffected. Fail-closed
+// on purpose: widening to any human here is the same class of bug as reading the label at all was.
+const approvalOwner = typeof input.owner === 'string' && input.owner.trim() ? input.owner.trim() : null
 // An explicit positive cap wins; anything else (absent, 0, junk) falls back to the default
 // rather than silently becoming it.
-const cap = Number.isFinite(args.cap) && args.cap > 0 ? args.cap : 3
-const requests = args.settleRequests || []
+const cap = Number.isFinite(input.cap) && input.cap > 0 ? input.cap : 3
+const requests = input.settleRequests || []
 
 phase('Refresh')
 
@@ -1851,6 +1904,13 @@ const [gate, linear, ...prStates] = await parallel([
   () =>
     agent(
       `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
+        (approvalOwner
+          ? `SEPARATELY, report approvedByLabel:true whenever the PR currently carries the \`epic approved\` LABEL **and \`${approvalOwner}\` applied it**. Two independent checks, and conflating them is the bug this wording exists to prevent:\n` +
+            `  · WHO — verify provenance. Read the PR's timeline for \`labeled\` events naming \`epic approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\`. Not "a human" — this label is that account's authorization channel specifically, and a label is writable by every collaborator and every bot with write access, so accepting it from anyone else releases every child issue without the sign-off the gate exists to require. If the timeline is unreadable, or no \`labeled\` event can be found for a label that is present, or the most recent one was applied by anybody else, report FALSE — an approval you cannot attribute to \`${approvalOwner}\` is not an approval.\n` +
+            `  · WHEN — do NOT check. Once the actor is \`${approvalOwner}\`, presence is the whole test: do not compare the label against the head commit and do not treat a later push as invalidating it. An epic-spec PR takes commits continuously as feedback is folded, so a staleness rule would revoke the approval on the next edit and hold the entire set. A label is standing state the owner can REMOVE; removal is the revocation.\n` +
+            `Check the labels even when you find no approving comment. Report it independently of \`approved\` — do not fold one into the other, and do not infer it from body text claiming approval.\n`
+          : `The \`epic approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report approvedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
+        `ALSO report humanChangesRequested:true when any human's LATEST review state is CHANGES_REQUESTED. It outranks the label, which is standing state that survives a later change request until the owner removes it. Bots never count.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
     ),
@@ -1885,6 +1945,10 @@ const [gate, linear, ...prStates] = await parallel([
             ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
             : '') +
           `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+          (approvalOwner
+            ? `SEPARATELY report specApprovedByLabel:true whenever the spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
+            : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
+          `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: the label is standing state that stays on the PR after a change request lands, so without this it carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
           `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
           `Also report whether CI is failing.`,
         { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
@@ -1929,7 +1993,17 @@ if (scanned && !gate.headSha) {
 // The cost is one wake of held work whenever the scout flakes, and the next usable scan releases it. The
 // alternative is children authoring specs and PRs against an objective that may have just changed, which
 // costs their rework. This is the gate the file says everywhere must not be bypassable.
-const epicApproved = scanned && gateUsable && !!gate.approved
+// Either channel signs the objective off. The owner marks approval with the `epic approved` LABEL as
+// well as by comment, and reading only comments held a fully-approved epic's entire set indefinitely
+// while the label sat on the PR — the coordinator has no way to assert the gate from `args`, because
+// a live scan's answer overrides the carried one by design.
+//
+// The label does NOT expire on a push, and that difference from a review approval is deliberate. An
+// epic-spec PR takes commits for the life of the epic — every fold is one, #993 carries 94 — so a
+// staleness rule would revoke the objective on the next edit and re-hold the whole set, which is the
+// stall this change exists to remove. A label is standing state the owner can remove at any time, so
+// REMOVAL is the revocation, and it is a control a comment does not have.
+const epicApproved = scanned && gateUsable && !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel)
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.approved) {
   log(
@@ -1982,14 +2056,91 @@ if (discovered.length) {
   )
 }
 
+/**
+ * Drop blocked-by relations whose prerequisite has already finished.
+ *
+ * The scout schema calls this field "Open blocked-by relations", but nothing enforces it, and a
+ * scout that reports a merged prerequisite blocks the row PERMANENTLY: `pendingAction` refuses a
+ * row with any `blockedBy`, and the refresh overwrites the carried value, so the coordinator
+ * cannot correct it from `args` either. One over-reported id is enough to strand an issue for the
+ * rest of the epic.
+ *
+ * Only blockers this epic can SEE are dropped — `linearById` covers the epic's children, so a
+ * blocker outside the epic is unresolvable here and is kept. That fails closed: a stale block
+ * costs a wake, an incorrectly cleared one runs an issue concurrently with its prerequisite.
+ *
+ * FINISHED, not merely terminal. `TERMINAL_LINEAR` also matches cancelled / duplicate / dropped —
+ * states where the work is GONE rather than done. Clearing those would admit a dependent whose
+ * prerequisite never landed, which is the opposite failure and a worse one. A cancelled blocker
+ * keeps blocking and is logged, because it can never merge on its own: somebody has to decide
+ * whether the dependent still needs it, and a silent permanent stall is how that decision gets
+ * missed.
+ */
+const cancelledBlockers = new Set()
+const unmergedBlockers = new Set()
+// Carried rows only — `discovered` rows are new this wake and carry no handles to fall back on.
+const carriedById = new Map(rows.map((r) => [r.id, r]))
+const openBlockers = (ids) =>
+  (ids || []).filter((b) => {
+    const bs = linearById.get(b)
+    if (!bs) return true
+    const state = (bs.state || '').trim()
+    if (!TERMINAL_LINEAR.test(state)) return true
+    if (CANCELLED_LINEAR.test(state)) {
+      cancelledBlockers.add(`${b} (${state})`)
+      return true
+    }
+    // Terminal-and-not-cancelled in Linear normally MEANS merged, because the coordinator writes Done
+    // off the merge it observed. But Linear state is a mirror a human can move by hand, and the contract
+    // is that blocked work waits for its blocker to LAND — so where we know the blocker has an impl PR,
+    // only a LIVE `merged: true` clears it. Only for blockers we actually carry as rows: for anything
+    // outside the set we have no PR to look at, and Linear is the only evidence there is. A blocker with
+    // no impl PR anywhere (docs, a dropped row) has nothing to contradict, so Done still clears it.
+    const carriedBlocker = carriedById.get(b)
+    if (carriedBlocker) {
+      const blockerScan = freshById.get(b)
+      // A multi-PR blocker has no row-level `implPr` at all — its handles live in `subPrs[].pr` and
+      // `assembledGoal.fixPr` — so a single-handle check reads it as "no PR" and clears it while
+      // slices are still open. `multiPrPhase` is already the one definition of when such a row is
+      // finished (every slice merged AND the goal proven); asking it here rather than re-deriving the
+      // test keeps a second, drifting answer from existing. It reads CARRIED statuses, so a blocker
+      // whose slices merged during this very wake holds one wake longer — the safe direction, and the
+      // next wake has the updated handles.
+      const multi = multiPrPhase(carriedBlocker)
+      if (multi) {
+        if (multi !== 'DONE') {
+          const open = (carriedBlocker.subPrs || []).filter((s) => s.status !== 'merged').map((s) => s.id)
+          unmergedBlockers.add(
+            `${b} (Linear ${state}, but its PR plan is unfinished${open.length ? ` — ${open.join(', ')} not merged` : ' — goal not yet proven'})`,
+          )
+          return true
+        }
+        return false
+      }
+      // Single-PR: the handle comes from the scan when it observed one and from the carried row
+      // otherwise — the same "null means NOT OBSERVED, keep what we had" rule the row refresh below
+      // applies. Reading only the scan meant a dead scout (no entry) or a partial one
+      // (`implPr: null`) looked exactly like "this blocker has no PR", which cleared the relation on
+      // an infrastructure failure — precisely the invariant that a null agent result must never
+      // advance anything.
+      const knownPr = (blockerScan && blockerScan.implPr) || carriedBlocker.implPr
+      if (knownPr && !(blockerScan && blockerScan.merged === true)) {
+        unmergedBlockers.add(
+          `${b} (Linear ${state}, but #${knownPr} is ${blockerScan ? 'not merged' : 'unobserved — its refresh did not return'})`,
+        )
+        return true
+      }
+    }
+    return false
+  })
+
 const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
   const refreshedLive = freshById.has(row.id)
   const li = linearById.get(row.id) || {}
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
-  const scanApproved =
-    (refreshedLive ? !!(fresh.specApproved && fresh.headSha) : false) || approvedInSessionFor(row, fresh, refreshedLive)
+  const scanApproved = specApprovalFor(row, fresh, refreshedLive)
   // Hoisted for the same reason `scanApproved` is: the route depends on the RESOLVED spec handle
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.
@@ -2069,7 +2220,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
     // skipped it, so the carried relation stands. Getting this backwards either un-blocks an
     // issue on a failed refresh or blocks it forever after its prerequisite merged.
-    blockedBy: linearById.has(row.id) ? li.blockedBy || [] : row.blockedBy || [],
+    blockedBy: openBlockers(linearById.has(row.id) ? li.blockedBy : row.blockedBy),
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
@@ -2225,7 +2376,7 @@ const crossSpecComing = crossSpecRows.filter(
 // which is exactly the order the gate exists to prevent. What it takes is a SET: two specs that exist or
 // are still coming. One spec has nothing to be incoherent with, and holding for a pass that can never be
 // asked is the deadlock again by a different route.
-crossSpecHold = !args.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
+crossSpecHold = !input.crossSpecCleared && crossSpecSet.length + crossSpecComing.length > 1
 // The ASK is narrower, and that is the skill's other precondition: the pass runs only once every spec is
 // open and individually approved, because aligning a good spec to an unvalidated one spreads the flaw.
 // No "and the set has two entries" clause: the hold already requires `set + coming > 1`, so with nothing
@@ -2251,6 +2402,25 @@ if (!epicApproved) {
 }
 for (const row of plan.blocked) {
   log(`${row.id}: blocked by ${row.blockedBy.join(', ')} — tracked, not admitted to the active set.`)
+}
+if (cancelledBlockers.size) {
+  // A cancelled prerequisite can never merge, so the rows behind it are blocked until a human
+  // either drops the relation or revives the work. Said out loud because the alternative — a
+  // dependent that simply never runs again, with nothing in the output explaining why — is the
+  // failure mode this whole filter exists to remove.
+  log(
+    `Blocker(s) cancelled, not completed: ${[...cancelledBlockers].join(', ')} — still blocking, because cancelled work never landed. ` +
+      `Whoever owns the epic decides whether the dependents still need it; nothing here can clear it.`,
+  )
+}
+if (unmergedBlockers.size) {
+  // Same no-silent-stop rule, different cause: Linear says done, the PR says otherwise. Worth saying
+  // out loud because this one looks like a bug from the outside — the prerequisite reads Done on the
+  // board while its dependent sits still — and the resolution is a person's, not this script's.
+  log(
+    `Blocker(s) marked done in Linear but not merged: ${[...unmergedBlockers].join(', ')} — still blocking. ` +
+      `Linear state is a mirror; the merge is the fact. Merge the PR, or drop the relation if the dependent no longer needs it.`,
+  )
 }
 for (const row of plan.converged) {
   log(`${row.id}: spec converged (${row.specReviewRounds} rounds spent) — review event logged, awaiting the human gate.`)
@@ -2499,7 +2669,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
 // and the documented rule is that a push after approval re-opens the gate. The next wake's scan
 // re-locks correctly — but the gates emitted BELOW, in this wake, were computed from the pre-fold value,
 // so a child spec approval or a merge would be invited against an objective nobody has signed off. Those
-// approvals are durable (mirrored to a label), so accepting one releases implementation with no second
+// approvals are durable (the owner's label is standing state), so accepting one releases implementation with no second
 // alignment gate — the exact defect already fixed for the unapproved case, in its other direction.
 //
 // `heldForFold` does not cover this: it defers WORK, and only when there is work to defer. A wake whose
@@ -2794,13 +2964,13 @@ const epicOut = {
     // `epic.headSha` and are told not to re-fetch it, so a stale one aligns their specs and
     // implementations to a superseded objective. This is not the review cursor.
     headSha: epicHead,
-    // A previously recorded approval is DURABLE (the coordinator mirrors it to a label), so a
+    // A previously recorded approval is DURABLE (the owner's label is standing state), so a
     // dead scout must not re-lock an epic that was already signed off — that would stall every
     // sub-issue on an infrastructure failure. A live scan still revokes it (a push after
     // approval re-opens the gate), which is the case failing closed actually protects.
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
-    approved: gateUsable ? !!gate.approved : !!epic.approved,
+    approved: gateUsable ? !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel) : !!epic.approved,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)
