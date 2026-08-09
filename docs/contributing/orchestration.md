@@ -307,7 +307,20 @@ GitHub labels are writable by every collaborator and every bot with write access
 is only half the test — the wake reads the most recent `labeled` event and requires its actor
 to be the configured owner login, failing closed when it can't attribute one. Checking *who*
 applied it is a different question from checking *when*, and only the first is asked; the
-second is the staleness rule that would revoke an approval on the next fold. It used to mirror detected approvals
+second is the staleness rule that would revoke an approval on the next fold.
+
+**One narrow exception, and it rides ignorance rather than doubt.** Attribution needs the PR's
+`labeled` timeline, and some environments expose a PR's labels but not its events at all. There,
+the provenance read fails on *every* wake, so failing closed stops being a safety default and
+becomes a way to silently **revoke** an objective the owner already signed off — an epic that
+re-locks itself forever with the label sitting on the PR. So the wake distinguishes *"I could not
+read who applied it"* from *"I read it, and it was not the owner"*, and a **coordinator-recorded
+approval survives only the first**. The second is a verified rejection and holds the gate, which
+matters because a label is writable by any collaborator: without that split, a push invalidating
+a real comment-approval plus a label from anyone would release the whole epic. Nothing else
+moves — an epic nobody ever approved has no recorded approval to carry, **removal is still the
+revocation** (the label going absent is a different fact from an unreadable applier, and it drops
+the gate on the spot), and a human `CHANGES_REQUESTED` still outranks all of it. It used to mirror detected approvals
 there, and that is exactly what could not stand once the label became an input — a mirrored
 review approval outlives the review it recorded, so a push that correctly reopened the gate
 left the mirror holding it open against content nobody approved. One label cannot be both a
@@ -366,7 +379,10 @@ own staleness rule: a later push supersedes it, exactly as GitHub treats it.
 - **The `spec approved` / `epic approved` label**, applied by the owner. Presence is the
   whole test: it does not expire on a push, because a spec or epic PR takes commits for its
   whole life and expiring it would revoke the approval on the next fold. **Removal is the
-  revocation.** The coordinator never writes these labels — see above.
+  revocation.** The coordinator never writes these labels — see above. Gate state is still
+  re-derived every wake; the one thing carried across is a recorded objective approval whose
+  label is present but *unattributable* in an environment with no timeline access, which is the
+  narrow exception described above and not a licence to treat any approval as permanent.
 
 Both clauses on the comment and review paths are load-bearing — they exclude the
 coordinator's own footer-signed comments and every review bot, so only a genuine human
