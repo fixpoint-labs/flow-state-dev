@@ -35,8 +35,26 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { TaskCollectionRef } from "../../tasks";
+import { currentLeaseRenewal, type TaskCollectionRef } from "../../tasks";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
+
+/**
+ * Stop renewing this worker's lease (FIX-1005).
+ *
+ * Called from both recorders because they are the board's two exits — the
+ * success tap and the `.rescue()` handler — and the driver must stop on every
+ * path out, not just the happy one. Reading the driver off the per-worker
+ * AsyncLocalStorage seam rather than a closure is what makes that per-iteration
+ * correct under concurrent fan-out.
+ *
+ * Deliberately not the *only* thing that stops a driver: it also stops when the
+ * request's own signal aborts, and its timer is unref'd. A worker body that
+ * exits through neither recorder — a suspension, which is control flow rather
+ * than a failure — therefore leaks no timer and holds no runtime open.
+ */
+function stopLeaseRenewal(): void {
+  currentLeaseRenewal()?.stop();
+}
 
 export interface RecordSuccessOptions {
   name: string;
@@ -58,6 +76,10 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
     inputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (output: unknown, ctx) => {
+      // The work is done, so stop asserting the worker is still alive — before
+      // the settlement rather than after it, so a renewal cannot be in flight
+      // against a row this call is about to move.
+      stopLeaseRenewal();
       const claim = ctx.sequencer!.state.currentClaim;
       if (claim === undefined) return;
       await (await collectionFactory(ctx)).complete(claim.taskId, output, {
@@ -102,6 +124,7 @@ export function createRecordError(options: RecordErrorOptions) {
     outputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (error: unknown, ctx) => {
+      stopLeaseRenewal();
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
       if (claim !== undefined) {

@@ -71,24 +71,58 @@ export function buildInitialTask<TInput, TOutput>(
 }
 
 /**
+ * How many times this task's work was abandoned by a dead worker and handed
+ * back out (FIX-1005), with the BP-030 legacy guard applied.
+ *
+ * The `readRetryLedger` posture exactly, and for the same reason: **absent
+ * reads as zero**. A row persisted before the upgrade — or one an older
+ * writer normalized, which drops a key its schema does not know — gets the
+ * full allowance rather than none. That direction is deliberate. Over-recovery
+ * is in policy; withholding recovery is the bug this mechanism exists to fix,
+ * so a counter that could read as *exhausted* when it is merely missing would
+ * strand exactly the rows the mechanism is for.
+ */
+export function readAbandonments(task: Task): number {
+  return task.abandonments ?? 0;
+}
+
+/**
+ * How many times a task's work may be handed back out after its worker died
+ * before the substrate stops recovering it and settles the row `errored`
+ * (FIX-1005).
+ *
+ * Three, because a bad deploy or a cycling node strands a job once or twice.
+ * That covers the class while still bounding duplicate side effects at a small
+ * constant — and because this is its OWN budget, a job with no `maxAttempts`
+ * gets these three rather than the zero a shared budget would leave it.
+ */
+export const DEFAULT_MAX_ABANDONMENTS = 3;
+
+/**
  * Decide whether `fail(id, error)` should re-pend (retry path) or
  * transition the task to terminal `errored`. Centralized so both
  * backings agree on the contract.
  *
- * Semantics: when `task.maxAttempts` is set and `task.attempts <
- * task.maxAttempts`, the task has a retry budget remaining and `fail`
- * is treated as a soft fail — status flips to `pending`, the error is
- * captured on `feedback`, and the next claim picks up a fresh attempt.
- * Otherwise the call is a hard fail — terminal `errored`.
+ * Semantics: when `task.maxAttempts` is set and the task's *own* failures have
+ * not yet spent it, `fail` is treated as a soft fail — status flips to
+ * `pending`, the error is captured on `feedback`, and the next claim picks up
+ * a fresh attempt. Otherwise the call is a hard fail — terminal `errored`.
  *
  * `attempts` is incremented at claim time (`applyClaimToTask`), so
  * after the first failed attempt `attempts === 1`. With
  * `maxAttempts === 3`, the comparison `1 < 3` permits two more
  * retries before the budget is exhausted on the third failure.
+ *
+ * **Abandonments are discounted, and that is what makes the two budgets
+ * separate rather than separate-in-name-only (FIX-1005).** Recovering an
+ * abandoned row goes through `claim`, which advances `attempts` — so without
+ * the discount a crashed machine would silently spend the retries the caller
+ * configured for real failures. `attempts - abandonments` is the count of
+ * attempts this task actually got to run out of its own budget.
  */
 export function shouldRetryOnFail(task: Task): boolean {
   if (task.maxAttempts === undefined) return false;
-  return task.attempts < task.maxAttempts;
+  return task.attempts - readAbandonments(task) < task.maxAttempts;
 }
 
 /**
@@ -343,14 +377,34 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  * patch-hook on the patch helper (FIX-976 / epic constraint A1) and deliberately
  * not a further arm here: `setAssignee` never travels this path.
  *
+ * ## The lease fence (FIX-1005)
+ *
+ * The last arm is the holder's half of {@link leaseLapsed}. A ticket-fenced
+ * write on an `in_progress` row whose lease has already gone is declined
+ * `lost-claim` — the reason it already is, not a new one.
+ *
+ * This is what makes the lease a promise rather than a hope. `isClaimable`'s
+ * recovery arm and this arm are **two readings of one subtraction**, both
+ * evaluated on the committed row inside the same atomic write, so a row is
+ * either still the claimant's or already the queue's and the two sides cannot
+ * drift. It closes three holes at once: a renewal that commits after the lease
+ * it held cannot install a deadline on a row nobody holds, a settlement from a
+ * worker that ran past its lease is refused, and a rescue path's `fail()`
+ * after a lost lease is refused so the row stays recoverable instead of being
+ * terminalized `errored` by our own liveness mechanism.
+ *
  * @param collectionId The board this write is happening on — compared against
  *   the ticket's, because two boards may both hold a task id.
+ * @param now The clock the write is running against. Both backings already
+ *   have one in scope at the call site; taking it as a parameter rather than
+ *   capturing `Date.now` is what keeps this testable with an injected clock.
  */
 export function transitionDeclineReason(
   task: Task,
   targetStatus: TaskStatus,
   options: TaskTransitionOptions | undefined,
-  collectionId: string
+  collectionId: string,
+  now: number
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
@@ -361,6 +415,7 @@ export function transitionDeclineReason(
     return "disallowed";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
+  if (claim !== undefined && leaseLapsed(task, now)) return "lost-claim";
   return undefined;
 }
 
@@ -386,10 +441,38 @@ export function depsSatisfied(
 }
 
 /**
+ * The one subtraction this whole mechanism rests on (FIX-1005): an
+ * `in_progress` row whose lease deadline has already passed.
+ *
+ * **One fact, two readings.** The queue reads it as *"this row is available"*
+ * ({@link isClaimable}); the holder reads it as *"this row is no longer mine"*
+ * ({@link transitionDeclineReason}'s fence). They are the same comparison on
+ * the same committed row, so nothing has to be scheduled and nothing has to
+ * agree with anything — there is no window between them to get wrong.
+ *
+ * **Scoped to `in_progress` on purpose.** {@link ATTEMPT_OWNED_STATUSES} also
+ * contains `awaiting_review`, and `awaitReview` deliberately does *not* clear
+ * `leaseUntil` — so an unscoped reading would take back (and refuse writes on)
+ * any task a human took longer than a lease to review. A review park is an
+ * explicit park; the lease governs `in_progress` and nothing else.
+ *
+ * `!= null` rather than truthiness: a row persisted without a lease is not a
+ * lapsed one (BP-030).
+ */
+export function leaseLapsed(task: Task, now: number): boolean {
+  if (task.status !== "in_progress") return false;
+  return task.leaseUntil != null && task.leaseUntil <= now;
+}
+
+/**
  * True when `task` is ready to be claimed: status is `pending` and
- * deps are satisfied. The substrate's default eligibility wraps this.
- * Skips `awaiting_review` naturally because the status check requires
- * `pending` (FIX-443 §10.1).
+ * deps are satisfied.
+ *
+ * Kept as the narrower "never been started" question. Since FIX-1005 the
+ * substrate's admission test is {@link isClaimable}, which is this **plus**
+ * a row whose worker died — dispatchers that used to spell out `isReady`
+ * dropped the conjunct rather than widening it, because widening three copies
+ * separately is the drift the shared predicate exists to prevent.
  */
 export function isReady(
   task: Task,
@@ -400,13 +483,69 @@ export function isReady(
 }
 
 /**
- * Default eligibility predicate against a task lookup. Used by `claim`
- * when no custom `eligibility` is supplied.
+ * **The one admission predicate** — "should the claim path look at this row?"
+ * (FIX-1005).
+ *
+ * Shared by all three producers that used to answer it independently: the
+ * claim path, the board's wake probe (`task-board/shared.ts`), and the
+ * ready-task preview (`blocks/select-next-ready-task.ts`). Move a subset and a
+ * board recovers rows it never wakes for, or wakes for work it will not take.
+ *
+ * It answers **admission only**. What to *do* with an admitted row —
+ * re-dispatch it, or settle it because its abandonment allowance is spent — is
+ * {@link claimDisposition}'s question, decided inside the atomic write against
+ * committed state. Folding disposition in here is what produced an earlier
+ * contradiction: both backings filter candidates through eligibility *before*
+ * the write, so a row the predicate excluded could never reach the branch that
+ * was supposed to settle it.
+ *
+ * There is deliberately **no attempts arm**. `maxAttempts` is optional and
+ * `shouldRetryOnFail` returns `false` without one, so an "attempts remain" arm
+ * would make an ordinary task unrecoverable after its first attempt — the
+ * feature off by default unless every caller opted into retries.
+ *
+ * `now` is a parameter rather than a captured clock because the wake probe has
+ * none of its own.
  */
-export function defaultEligibility(
-  lookup: (id: string) => Task | undefined
-): (task: Task) => boolean {
-  return (task) => isReady(task, lookup);
+export function isClaimable(
+  task: Task,
+  lookup: (id: string) => Task | undefined,
+  now: number
+): boolean {
+  if (task.status !== "pending" && !leaseLapsed(task, now)) return false;
+  return depsSatisfied(task, lookup);
+}
+
+/**
+ * What the claim write should do with a row {@link isClaimable} admitted
+ * (FIX-1005) — evaluated **inside** the atomic write, against committed state.
+ *
+ * - `claim` — hand it out. The ordinary case, and every `pending` row.
+ * - `settle-abandoned` — its worker died more times than the allowance
+ *   permits, so the write settles it `errored` right here rather than handing
+ *   out another duplicate execution. Settling *in the claim write* is what
+ *   keeps the deadlock closed: a row left `in_progress` with nobody on it
+ *   still counts as in-flight, and the board would then never report `drained`
+ *   or `blocked`.
+ */
+export function claimDisposition(
+  task: Task,
+  now: number,
+  maxAbandonments: number
+): "claim" | "settle-abandoned" {
+  if (!leaseLapsed(task, now)) return "claim";
+  return readAbandonments(task) < maxAbandonments ? "claim" : "settle-abandoned";
+}
+
+/** The error recorded on a row the substrate stopped recovering (FIX-1005). */
+export function abandonmentExhaustedError(
+  taskId: string,
+  maxAbandonments: number
+): string {
+  return (
+    `[tasks] task "${taskId}" was abandoned by its worker ${maxAbandonments} times ` +
+    `without completing. Not re-dispatched.`
+  );
 }
 
 /** Default ordering: ascending `createdAt`, stable on tied timestamps via id. */
@@ -415,8 +554,91 @@ export function defaultOrder(a: Task, b: Task): number {
   return a.id.localeCompare(b.id);
 }
 
-/** Default lease duration applied when the dispatcher does not pass one through. */
-export const DEFAULT_LEASE_DURATION_MS = 30_000;
+/**
+ * Default lease duration applied when the dispatcher does not pass one through.
+ *
+ * **Two minutes (FIX-1005).** Duplicate side effects are the expensive failure
+ * and slow recovery is the cheap one. At `RENEWAL_DIVISOR = 3` this puts
+ * renewals 40 s apart and one missed renewal is survivable, so a worker has to
+ * be unresponsive for roughly 80 s before it loses its row — which is the band
+ * ordinary GC pauses, slow disks and paused containers actually fall in. The
+ * cost is that a genuinely dead job waits up to two minutes to come back;
+ * callers who want it sooner pass a shorter lease per claim.
+ *
+ * A **default**, not a guard: {@link assertValidLeaseDuration} still validates
+ * whatever a caller passes, and a caller passing its own lease is unaffected.
+ */
+export const DEFAULT_LEASE_DURATION_MS = 120_000;
+
+/**
+ * Floor on a caller-supplied lease (FIX-1005).
+ *
+ * The renewal cadence is derived from the lease (`span / RENEWAL_DIVISOR`), so
+ * one minimum stated in the caller's own units subsumes a separate cadence
+ * floor: there is one number to justify instead of two.
+ */
+export const MIN_LEASE_DURATION_MS = 1_000;
+
+/**
+ * Ceiling on a caller-supplied lease (FIX-1005), and it exists for the same
+ * reason the floor does.
+ *
+ * `setTimeout` coerces a delay past a 32-bit signed integer to **1 ms** (with a
+ * `TimeoutOverflowWarning`), so a lease past `TIMEOUT_MAX × RENEWAL_DIVISOR`
+ * would rebuild the renewal write storm the floor exists to prevent — out of a
+ * lease nobody would call invalid. About 74.5 days.
+ */
+export const MAX_LEASE_DURATION_MS = 2_147_483_647 * 3;
+
+/**
+ * Refuse a lease duration outside its permissible domain (FIX-1005).
+ *
+ * **Throws rather than declining or normalizing**, reusing this repo's stated
+ * posture for a numeric argument outside its domain (`RequestStore`'s
+ * `expectedVersion`, `engine/src/stores/types.ts`): it is a programming error,
+ * not a runtime condition and not a lost race, so it is never folded into a
+ * write verdict. Normalizing silently is the worse option — a caller who asked
+ * for a 10 ms lease and got 1,000 ms has been given a different guarantee than
+ * the one they asked for.
+ */
+export function assertValidLeaseDuration(leaseDurationMs: number): void {
+  if (!Number.isFinite(leaseDurationMs)) {
+    throw new Error(
+      `[tasks] leaseDurationMs must be a finite number, got ${String(leaseDurationMs)}.`
+    );
+  }
+  if (leaseDurationMs < MIN_LEASE_DURATION_MS) {
+    throw new Error(
+      `[tasks] leaseDurationMs must be at least ${MIN_LEASE_DURATION_MS}ms, got ` +
+        `${leaseDurationMs}ms. The lease is how long a worker may be gone before its ` +
+        `work is handed to someone else; below this the renewal cadence it implies is ` +
+        `a write storm.`
+    );
+  }
+  if (leaseDurationMs > MAX_LEASE_DURATION_MS) {
+    throw new Error(
+      `[tasks] leaseDurationMs must be at most ${MAX_LEASE_DURATION_MS}ms, got ` +
+        `${leaseDurationMs}ms. A longer lease overflows the renewal timer's delay, ` +
+        `which the platform then coerces to 1ms.`
+    );
+  }
+}
+
+/**
+ * Refuse a renewal deadline outside its permissible domain (FIX-1005).
+ *
+ * Same posture as {@link assertValidLeaseDuration}, and deliberately the same
+ * rule rather than a second convention: the claim seam validates a *duration*
+ * and cannot constrain the *absolute* deadline the renewal verb takes, so the
+ * verb validates its own input at its own seam.
+ */
+export function assertValidLeaseDeadline(leaseUntil: number): void {
+  if (!Number.isFinite(leaseUntil)) {
+    throw new Error(
+      `[tasks] renewLease requires a finite absolute deadline, got ${String(leaseUntil)}.`
+    );
+  }
+}
 
 /**
  * Apply a `claim` to a task — flip status, stamp lease, increment attempts,
@@ -439,13 +661,43 @@ export function applyClaimToTask<TInput, TOutput>(
   leaseDurationMs: number,
   claimedBy?: TaskClaimIdentity
 ): Task<TInput, TOutput> {
+  // A claim that takes back a lapsed row is a RECOVERY, and it is counted
+  // (FIX-1005). Counting it here rather than at a separate seam is what keeps
+  // the count atomic with the hand-off: the same write that advances
+  // `attempts` advances this, so there is no window in which a row has been
+  // re-dispatched but not yet charged for it.
+  const recovering = leaseLapsed(task as Task, now);
   return {
     ...task,
     status: "in_progress",
     attempts: task.attempts + 1,
+    ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
     ...(claimedBy !== undefined ? { claimedBy } : {}),
+    updatedAt: now,
+  };
+}
+
+/**
+ * The patch that settles a row whose abandonment allowance is spent
+ * (FIX-1005), applied inside the same claim write that admitted it.
+ *
+ * `in_progress → errored` is already a legal transition, and clearing the
+ * lease and the coordinate matches every other path that ends a claim.
+ */
+export function applyAbandonmentSettlement<TInput, TOutput>(
+  task: Task<TInput, TOutput>,
+  now: number,
+  maxAbandonments: number
+): Task<TInput, TOutput> {
+  return {
+    ...task,
+    status: "errored",
+    error: abandonmentExhaustedError(task.id, maxAbandonments),
+    completedAt: now,
+    leaseUntil: undefined,
+    claimedBy: undefined,
     updatedAt: now,
   };
 }

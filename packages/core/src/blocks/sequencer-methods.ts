@@ -7,6 +7,9 @@ import type {
   RescueHandlerSpec
 } from "../types/block";
 import type { UsesEntry } from "../capability/types";
+import type { StepOptions } from "./internal/arg-shapes";
+
+export type { StepOptions } from "./internal/arg-shapes";
 
 /**
  * Shorthand for a `BlockContext` whose `sequencer.state` slot is typed from
@@ -127,6 +130,11 @@ export interface SequencerDefinition<
   step<TOutSchema extends ZodTypeAny>(
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  // step(block, options) — per-step dispatch options (FIX-1005)
+  step<TOutSchema extends ZodTypeAny>(
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
   // step(factory, inlineConfig) — inline block definition
   step<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
     factory: TFactory,
@@ -137,11 +145,23 @@ export interface SequencerDefinition<
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
   ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
+  // step(connector, block, options) — both
+  step<TStepIn, TOutSchema extends ZodTypeAny>(
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>, TStateSchema>;
 
   // stepIf(condition, block) — conditional, union of current | block output
   stepIf<TOutSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  // stepIf(condition, block, options) — per-step dispatch options (FIX-1005)
+  stepIf<TOutSchema extends ZodTypeAny>(
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
   ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
   // stepIf(condition, factory, inlineConfig) — conditional inline
   stepIf<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
@@ -154,6 +174,13 @@ export interface SequencerDefinition<
     condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
+  // stepIf(condition, connector, block, options) — both
+  stepIf<TStepIn, TOutSchema extends ZodTypeAny>(
+    condition: (input: TOutput, ctx: SequencerCtx<TStateSchema>) => boolean | Promise<boolean>,
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, TOutSchema>,
+    options: StepOptions
   ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>, TStateSchema>;
 
   map<TNext>(

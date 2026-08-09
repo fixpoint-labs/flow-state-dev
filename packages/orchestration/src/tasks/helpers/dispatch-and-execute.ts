@@ -28,6 +28,7 @@ import { handler } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { ticketForClaim } from "../claim-ticket";
+import { withLeaseRenewal } from "../lease-renewal";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import type { TaskDispatcher } from "../dispatchers/types";
@@ -182,7 +183,26 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
         // `task.assignee`, so it can't be wired into a static sibling-step
         // sequencer composition. `asRuntime(worker).run` is the sanctioned
         // substrate cast for first-party dispatch.
-        const output = (await asRuntime(worker).run(workerInput, ctx)) as TOut;
+        //
+        // Renewal spans exactly the worker's execution (FIX-1005): it starts
+        // where the ticket is minted and stops when the run returns, on both
+        // the success and the throw path. This is the one seam whose work is a
+        // single call, so it takes the helper's callback form.
+        const output = (await withLeaseRenewal({
+          collection: options.collection,
+          ticket: claim,
+          claimedTask: claimed,
+          signal: ctx.signal,
+          run: async (leaseLost) => {
+            // Composed, never substituted — the worker must still stop when
+            // the request is cancelled, not only when the claim is lost.
+            const signal =
+              ctx.signal === undefined
+                ? leaseLost
+                : AbortSignal.any([ctx.signal, leaseLost]);
+            return asRuntime(worker).run(workerInput, { ...ctx, signal });
+          },
+        })) as TOut;
         // Advisory write-back (FIX-951): the task may have been settled or
         // handed to another worker while this one ran.
         await options.collection.complete(claimed.id, output, {

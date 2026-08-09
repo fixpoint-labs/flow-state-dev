@@ -1092,12 +1092,15 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   const definition = Object.assign(baseBlock, {
     step<TStepIn, TNext>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
-      arg2?: BlockDefinition<any, any> | Record<string, unknown>
+      arg2?: BlockDefinition<any, any> | Record<string, unknown>,
+      arg3?: Record<string, unknown>
     ): SequencerDefinition<TInput, TNext, TStateSchema> {
-      // Shapes: step(block) | step(connector, block) | step(factory, inlineConfig).
-      const shape = resolveCallShape([arg1, arg2], "child");
+      // Shapes: step(block) | step(connector, block) | step(factory, inlineConfig),
+      // each optionally followed by a `StepOptions` bag (FIX-1005).
+      const shape = resolveCallShape([arg1, arg2, arg3], "child");
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const resolveAbortSignal = shape.stepOptions?.abortSignal;
       const capturedInput = inferFirstBlockInput(block);
 
       return extend<TNext>(
@@ -1105,7 +1108,18 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const path = childBlockPath(ctx, runtime, "step", stepIndex);
-            const result = await runChild(ctx, { block, connector }, path, value, sequentialInputHint(ctx, runtime));
+            // Resolved per dispatch, not at definition time — the signal is a
+            // runtime fact (which claim this iteration holds), so a step
+            // composed once and run many times gets its own each turn.
+            const extraSignal = resolveAbortSignal?.(ctx);
+            const result = await runChild(
+              ctx,
+              { block, connector },
+              path,
+              value,
+              sequentialInputHint(ctx, runtime),
+              extraSignal
+            );
             recordSequentialChild(runtime, path);
             return result;
           }
@@ -1120,14 +1134,17 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     stepIf<TStepIn, TNext>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
-      arg3?: BlockDefinition<any, any> | Record<string, unknown>
+      arg3?: BlockDefinition<any, any> | Record<string, unknown>,
+      arg4?: Record<string, unknown>
     ): SequencerDefinition<TInput, TOutput | TNext, TStateSchema> {
       // Shapes: stepIf(cond, block) | stepIf(cond, connector, block) |
-      // stepIf(cond, factory, inlineConfig). The condition is stripped before
+      // stepIf(cond, factory, inlineConfig), each optionally followed by a
+      // `StepOptions` bag (FIX-1005). The condition is stripped before
       // resolving and re-applied as a runtime gate below.
-      const shape = resolveCallShape([arg2, arg3], "child");
+      const shape = resolveCallShape([arg2, arg3, arg4], "child");
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const resolveAbortSignal = shape.stepOptions?.abortSignal;
 
       return extend<TOutput | TNext>(
         {
@@ -1140,7 +1157,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
-            const result = await runChild(ctx, { block, connector }, path, value, sequentialInputHint(ctx, runtime));
+            const result = await runChild(
+              ctx,
+              { block, connector },
+              path,
+              value,
+              sequentialInputHint(ctx, runtime),
+              resolveAbortSignal?.(ctx)
+            );
             recordSequentialChild(runtime, path);
             return result;
           }

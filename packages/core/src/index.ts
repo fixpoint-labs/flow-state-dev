@@ -231,7 +231,8 @@ export type {
   ParallelStepOutput,
   RouterConfig,
   SequencerConfig,
-  SequencerDefinition
+  SequencerDefinition,
+  StepOptions
 } from "./blocks";
 export type {
   CostEstimate,

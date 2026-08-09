@@ -98,8 +98,21 @@ export interface ClaimOptions {
    */
   order?: (a: Task, b: Task) => number;
   /**
-   * Lease duration in ms applied to the claimed task's `leaseUntil`. When
-   * unset the substrate picks a sensible default per backing.
+   * How long the claimant may be gone before its work is handed to someone
+   * else. Stamped onto the claimed task's `leaseUntil`; defaults to two
+   * minutes.
+   *
+   * **This is the recovery-latency knob** (FIX-1005). A worker the substrate
+   * drives renews this while it works, so a lease that lapses means no live
+   * worker is holding the row and the next claim takes it back. Pass less and
+   * a dead job comes back sooner, at the cost of taking work from a worker
+   * that merely stalled; size it to the whole job and nobody takes it back
+   * until then. A row you claim by hand gets no renewal — you hold it, so you
+   * renew it.
+   *
+   * Validated rather than normalized: a value below one second, above ~74
+   * days, or non-finite **throws**, because each would turn the renewal
+   * cadence derived from it into a write storm or an overflowed timer.
    */
   leaseDurationMs?: number;
 }
@@ -338,11 +351,55 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   cancel(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
   /**
+   * Push this task's lease out to `leaseUntil` — the worker saying "still
+   * here" about a row it already proved it owns (FIX-1005).
+   *
+   * This is what makes an expired lease mean something. Nothing used to renew
+   * a lease, so an expired one was the *normal* condition of a perfectly
+   * healthy worker and could not be acted on. Once the holder keeps it alive,
+   * silence means the holder is gone, and `claim` can simply hand the row out
+   * again.
+   *
+   * Writes exactly **one** field. Not `attempts`, not `status`, and nothing a
+   * consumer reads as progress. It publishes no `task-change` item, because a
+   * renewal is not a lifecycle change — the task did not move.
+   *
+   * `options.claim` is **required**: renewal is an ownership assertion, so an
+   * unfenced one would let anything keep anyone's lease open. The write runs
+   * the same guards every other worker-callable write runs, so it declines
+   * `terminal` on a cancelled task, `not-my-task` on a recreated row, and
+   * `lost-claim` when the caller no longer holds it — **including the case
+   * that motivated the verb: a renewal that commits *after* the lease it was
+   * extending.** Without that arm a late renewal would install a fresh
+   * deadline on a row somebody else now holds.
+   *
+   * Throws — never declines — on a non-finite `leaseUntil` or a missing
+   * ticket. Both are programming errors rather than lost races, matching this
+   * repo's posture for a numeric argument outside its domain.
+   *
+   * **If you implement this interface yourself, the obligation is three-sided
+   * and the last two are easy to miss.** You implement this write; your own
+   * `claim()` must consider expired rows, fence the takeover on the attempt,
+   * and settle a row whose abandonment allowance is spent instead of running
+   * it; and every ticket-fenced write you accept must refuse a claimant whose
+   * lease has already lapsed. A ref that implements only this verb compiles,
+   * renews correctly, and silently never recovers anything.
+   */
+  renewLease(
+    id: string,
+    leaseUntil: number,
+    options: TaskTransitionOptions & { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
+  /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
    * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
    * — the same kind used by `resumeFromReview` since the lifecycle UI
    * cares only that the task is back to pending.
+   *
+   * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
+   * `claim`, so nothing has to call this for you; the verb is unchanged and
+   * stays available for a caller that wants to reset leases by hand.
    */
   reclaim(now?: number): Promise<number>;
 

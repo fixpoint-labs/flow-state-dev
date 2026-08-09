@@ -65,6 +65,23 @@ pipeline.step(handler, {
 });
 ```
 
+**Per-step abort signal.** A trailing `{ abortSignal }` runs the step under an
+additional signal, resolved from the running context on each dispatch:
+
+```ts
+pipeline.step(worker, { abortSignal: (ctx) => leaseFor(ctx)?.signal });
+```
+
+The signal is **composed** with the request's, never substituted for it, so the
+step aborts when either fires and cannot be made to outlive a cancelled request.
+The composed signal reaches the whole descendant tree, so a model call several
+blocks down aborts with it. Returning `undefined` is a no-op.
+
+The sequencer owns this because the sequencer is what dispatches the step: a
+statically composed child cannot be handed a signal that only exists at runtime,
+and no other seam carries one (`.work()` takes none either). `stepIf` accepts the
+same bag.
+
 ### `stepIf(condition, block)` — Conditional Step
 
 Execute only when condition returns true. Output type is union of current and step output.

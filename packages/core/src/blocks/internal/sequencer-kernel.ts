@@ -56,17 +56,38 @@ export type RunChildResult = {
  * (falling back to `inline` in unit-test contexts with no trace emitter).
  *
  * Does not touch `runtime` bookkeeping — see the file header.
+ *
+ * `extraSignal` (FIX-1005) runs the child — and its whole descendant tree —
+ * under an **additional** abort signal, composed with the request's rather
+ * than replacing it. Both halves of the substitution are needed and neither is
+ * sufficient alone: the spread gives the child's own `ctx.signal` the composed
+ * signal (the only path that exists in a unit-test context), and the
+ * `signalOverride` carries it into the server-installed execution scope so
+ * every descendant sees it too.
  */
 export async function runChild(
   ctx: BlockContext,
   shape: ChildDispatch,
   path: string,
   input: unknown,
-  inputHint: BlockValueInternal<unknown>
+  inputHint: BlockValueInternal<unknown>,
+  extraSignal?: AbortSignal
 ): Promise<RunChildResult> {
   const childInput = shape.connector ? await shape.connector(input, ctx) : input;
   stashInputHint(ctx, inputHint);
-  const value = await executeBlock(shape.block, childInput, ctx, path);
+  if (extraSignal === undefined) {
+    const value = await executeBlock(shape.block, childInput, ctx, path);
+    return { value, descriptor: refDescriptorForPath(ctx, path) };
+  }
+  const composed =
+    ctx.signal === undefined ? extraSignal : AbortSignal.any([ctx.signal, extraSignal]);
+  const value = await executeBlock(
+    shape.block,
+    childInput,
+    { ...ctx, signal: composed },
+    path,
+    { signalOverride: composed }
+  );
   return { value, descriptor: refDescriptorForPath(ctx, path) };
 }
 

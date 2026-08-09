@@ -104,6 +104,10 @@ const ADVISORY = { ifAllowed: true } as const;
  */
 describe("transitionDeclineReason — which condition fired", () => {
   const BOARD = "tasks";
+  /** The clock the predicate judges the lease against (FIX-1005). Every task
+   *  built below carries no `leaseUntil`, so the fence arm is inert here and
+   *  the four pre-existing arms are asserted unchanged. */
+  const NOW = 1000;
   const task = (status: TaskStatus, attempts = 1, createdAt = 0): Task =>
     ({
       id: "t",
@@ -124,7 +128,7 @@ describe("transitionDeclineReason — which condition fired", () => {
 
   it("returns undefined with no options, so an unguarded caller still throws downstream", () => {
     expect(
-      transitionDeclineReason(task("pending"), "errored", undefined, BOARD),
+      transitionDeclineReason(task("pending"), "errored", undefined, BOARD, NOW),
     ).toBeUndefined();
   });
 
@@ -151,7 +155,7 @@ describe("transitionDeclineReason — which condition fired", () => {
     // Legal transition, matching counter, but the task is back to `pending` —
     // ownership is the counter AND the status.
     expect(
-      transitionDeclineReason(task("pending"), "completed", { claim: mine }, BOARD),
+      transitionDeclineReason(task("pending"), "completed", { claim: mine }, BOARD, NOW),
     ).toBe("lost-claim");
   });
 
@@ -164,6 +168,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { claim: { ...mine, taskId: "somebody-elses" } },
         BOARD,
+        NOW,
       ),
     ).toBe("not-my-task");
   });
@@ -177,6 +182,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { claim: { ...mine, collectionId: "some-other-board" } },
         BOARD,
+        NOW,
       ),
     ).toBe("not-my-task");
   });
@@ -188,7 +194,7 @@ describe("transitionDeclineReason — which condition fired", () => {
     // from the ticket and this test is the one that goes red.
     const recreated = task("in_progress", 1, 5_000);
     expect(
-      transitionDeclineReason(recreated, "completed", { claim: mine }, BOARD),
+      transitionDeclineReason(recreated, "completed", { claim: mine }, BOARD, NOW),
     ).toBe("not-my-task");
   });
 
@@ -208,6 +214,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { ...ADVISORY, claim: mine },
         BOARD,
+        NOW,
       ),
     ).toBe("terminal");
   });
@@ -229,6 +236,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { ...ADVISORY, claim: { ...mine, taskId: "somebody-elses" } },
         BOARD,
+        NOW,
       ),
     ).toBe("not-my-task");
 
@@ -241,6 +249,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { ...ADVISORY, claim: { ...mine, taskId: "somebody-elses" } },
         BOARD,
+        NOW,
       ),
     ).toBe("not-my-task");
   });
@@ -252,6 +261,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { ...ADVISORY, claim: mine },
         BOARD,
+        NOW,
       ),
     ).toBeUndefined();
   });
@@ -266,6 +276,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { ifAllowed: true, expectAttempt: 1 } as never,
         BOARD,
+        NOW,
       ),
     ).toThrow(/"expectAttempt" was removed/);
 
@@ -276,6 +287,7 @@ describe("transitionDeclineReason — which condition fired", () => {
         "completed",
         { expectAttempt: undefined } as never,
         BOARD,
+        NOW,
       ),
     ).toThrow(/"expectAttempt" was removed/);
   });

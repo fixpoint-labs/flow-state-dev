@@ -9,6 +9,7 @@
  */
 import {
   fifoDispatcher,
+  isClaimable,
   priorityDispatcher,
   topologicalDispatcher,
   type Task,
@@ -77,18 +78,35 @@ export function inFlightCount(collection: TaskCollectionRef): number {
 }
 
 /**
- * Read-only probe: does the collection currently hold at least one
- * `pending` task whose deps are satisfied? Mirrors the substrate's
- * default dispatcher eligibility (FIX-443 §4) without performing a CAS
- * claim. Used by the worker idle-wait predicate to decide whether a
- * sleeping worker should wake up and re-attempt `claim`. Non-atomic by
- * design — a sibling worker may win the race; the predicate's job is
- * only to gate the wake-up, not to guarantee dispatch.
+ * Read-only probe: does the collection currently hold at least one task the
+ * claim path would look at? Used by the worker idle-wait predicate to decide
+ * whether a sleeping worker should wake up and re-attempt `claim`. Non-atomic
+ * by design — a sibling worker may win the race; the predicate's job is only
+ * to gate the wake-up, not to guarantee dispatch.
+ *
+ * Reads the substrate's **shared** `isClaimable` (FIX-1005) rather than a
+ * second hand-written copy of it, which is what keeps this from drifting away
+ * from what `claim` will actually take. That matters in both directions: a
+ * probe narrower than `claim` leaves a board asleep on work it could recover,
+ * and a probe wider than `claim` wakes a worker for work it will not take.
+ *
+ * The list query widens with it — `in_progress` rows are candidates now,
+ * because one whose lease has lapsed has no live worker on it.
+ *
+ * **`now` is a parameter because this probe has no clock of its own**, and
+ * reading the wall clock unconditionally would be wrong for a collection built
+ * on an injected one: the lease was stamped against the collection's clock, so
+ * a probe reading a different clock answers a different question than the claim
+ * write does. A board on the default (wall-clock) collection passes nothing.
  */
-export function hasClaimableTask(collection: TaskCollectionRef): boolean {
-  const pending = collection.list({ status: ["pending"] });
-  for (let i = 0; i < pending.length; i += 1) {
-    if (depsSatisfied(pending[i], collection)) return true;
+export function hasClaimableTask(
+  collection: TaskCollectionRef,
+  now: number = Date.now()
+): boolean {
+  const candidates = collection.list({ status: ["pending", "in_progress"] });
+  const lookup = (id: string): Task | undefined => collection.get(id);
+  for (let i = 0; i < candidates.length; i += 1) {
+    if (isClaimable(candidates[i], lookup, now)) return true;
   }
   return false;
 }

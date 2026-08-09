@@ -34,7 +34,7 @@ A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease
 ```
 pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ errored
-         │                ├─→ pending           (reclaim, after a stale lease)
+         │                ├─→ pending           (claim, after a lease runs out)
          │                ├─→ cancelled
          │                └─→ awaiting_review ─┬─→ completed
          │                                     ├─→ errored
@@ -116,7 +116,8 @@ argument that makes the write advisory. `ifAllowed` skips the write when the sta
 machine rejects it or the task is already settled. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
-for, still on that attempt. A guard cannot be raced: the task cannot change between
+for, still on that attempt, holding a lease that has not run out. A guard cannot be
+raced: the task cannot change between
 the check and the write. A declined write is skipped and never throws; the call
 reports it on the returned `TaskWriteOutcome`. Omit the argument and the methods
 throw on an illegal transition.
@@ -149,12 +150,39 @@ await collection.addTask({ id: "research", goal: "research the topic" });
 await collection.addTask({ goal: "draft the post", deps: ["research"] });
 ```
 
+### Leases and recovery
+
+A claim carries a lease: how long the claimant may be gone before the task is
+handed to somebody else. A worker the substrate drives pushes that deadline out
+while it runs (`renewLease`), so a lease that runs out means no live worker is
+holding the task, and the next `claim` on any host takes it back as a fresh
+attempt. Nothing to schedule.
+
+`ClaimOptions.leaseDurationMs` is the knob, defaulting to two minutes. Shorter
+means a dead job comes back sooner and a merely-slow worker is likelier to lose
+its task; longer means the opposite. Values under a second, over about 74 days,
+or non-finite are rejected rather than rounded.
+
+Recovery is bounded at three re-dispatches, after which the task settles
+`errored`. That allowance is separate from `maxAttempts`, so a crashed machine
+does not spend the retries configured for real failures.
+
+**A task you claim by hand gets no renewal** — you hold it, so you call
+`renewLease(id, deadline, { claim })` yourself, or size the lease to cover the
+work. Drive it with `withLeaseRenewal` (when your work is one call) or
+`startLeaseRenewal` (when it spans several steps); both carry the same cadence,
+single-flight and abort rules.
+
+`isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
+a custom `TaskCollectionRef` can read it rather than restating it.
+
 ### Dispatchers
 
 `fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
 `classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. None of
 them claims a task whose `deps` aren't all `completed` — that eligibility rule lives
-on `collection.claim` — so they differ only in ordering. `fifoDispatcher` and
+on `collection.claim`, and a dispatcher's own `eligibility` narrows it rather than
+replacing it — so they differ only in ordering. `fifoDispatcher` and
 `topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
 highest `priority` first, ties on `createdAt`.
 

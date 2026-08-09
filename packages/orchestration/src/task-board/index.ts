@@ -79,7 +79,10 @@ import {
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
   onTaskChangeFor,
+  currentLeaseRenewal,
   resolveTaskCapDefaults,
+  stampLeaseRenewal,
+  startLeaseRenewal,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -804,10 +807,8 @@ export function taskBoard<
       // `"factory-supplied"` here while the ref carries its own id, and the
       // guard compares against the ref's. Minting from the wrong one refuses
       // every write-back the board makes, so the board never drains.
-      const ticket = ticketForClaim(
-        (await collectionFactory(ctx)).collectionId,
-        task
-      );
+      const boardCollection = await collectionFactory(ctx);
+      const ticket = ticketForClaim(boardCollection.collectionId, task);
       // Stamped onto the body state so both recorders can scope their
       // write-back to the claim that produced it (FIX-951, retargeted by
       // FIX-981): a displaced attempt declines, and so does a write aimed at
@@ -826,8 +827,29 @@ export function taskBoard<
       // task tool the worker calls presents this ticket without the model ever
       // seeing it.
       stampCurrentClaim(ticket);
+      // FIX-1005: start renewing this claim's lease, and stamp the driver onto
+      // the same per-worker seam. Renewal is what makes a lapsed lease mean
+      // "no live worker holds this" rather than "the worker is taking a while",
+      // which is what lets `claim` recover an abandoned row at all.
+      //
+      // It rides the seam rather than the body state because an AbortController
+      // is not persistable state, and rather than a closure because
+      // `workerBody` is built once and shared by every worker on the board — a
+      // closure cell here would be one cell for `concurrency` workers.
+      stampLeaseRenewal(
+        startLeaseRenewal({
+          collection: boardCollection,
+          ticket,
+          claimedTask: task,
+          signal: ctx.signal,
+        })
+      );
     })
-    .step(workerStep)
+    // The worker runs under the driver's lease-loss signal, composed with the
+    // request's by the step dispatch (FIX-1005). Losing the claim stops the
+    // worker paying for work it can no longer record; it is not what makes the
+    // hand-off safe, which is the substrate's write fence.
+    .step(workerStep, { abortSignal: () => currentLeaseRenewal()?.signal })
     .tap(recordSuccess)
     .rescue([{ block: recordError }]);
 

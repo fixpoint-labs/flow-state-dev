@@ -39,6 +39,13 @@ export interface BoardQuiescenceOptions {
   onIdle: "wait" | "complete" | "complete-or-blocked";
   /** `onIdle: "wait"` only — the caller's own termination test. */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
+  /**
+   * The clock claimability is judged against (FIX-1005). Defaults to the wall
+   * clock, which is what a board on the default collection wants; pass the
+   * collection's own clock when it was built with an injected one, or the
+   * probe and the claim write answer different questions.
+   */
+  now?: number;
 }
 
 /**
@@ -57,7 +64,7 @@ export function boardQuiescence(
   if (inFlightCount(collection) === 0) return "drained";
   if (options.onIdle === "complete") return "continue";
   return collection.count({ status: ["in_progress", "awaiting_review"] }) === 0 &&
-    !hasClaimableTask(collection)
+    !hasClaimableTask(collection, options.now)
     ? "blocked"
     : "continue";
 }

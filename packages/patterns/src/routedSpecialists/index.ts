@@ -38,7 +38,10 @@ import type {
 } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
+  currentLeaseRenewal,
   getOrCreateTaskCollection,
+  stampLeaseRenewal,
+  startLeaseRenewal,
   ticketForClaim,
   type Task,
   type TaskClaimTicket,
@@ -403,6 +406,20 @@ export function routedSpecialists<
         // rather than declining every write with a ticket nobody holds.
         currentClaim =
           claimed === null ? undefined : ticketForClaim(collection.collectionId, claimed);
+        // FIX-1005: renew this claim's lease while the specialist runs. The
+        // claim and the work are in different steps here, so the driver rides
+        // the per-claim async scope rather than a callback — same rules, same
+        // driver, and `recordCompletion` / `recordError` stop it on both exits.
+        if (claimed !== null && currentClaim !== undefined) {
+          stampLeaseRenewal(
+            startLeaseRenewal({
+              collection,
+              ticket: currentClaim,
+              claimedTask: claimed,
+              signal: ctx.signal,
+            })
+          );
+        }
       }
 
       // Always overwrite `currentTaskId` (including clearing it when no task
@@ -436,6 +453,7 @@ export function routedSpecialists<
     name: `${name}-dispatch-rescue`,
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (error, ctx) => {
+      currentLeaseRenewal()?.stop();
       const state = ctx.sequencer!.state;
       const message = (error as Error).message;
       ctx.emit.status(
@@ -469,6 +487,10 @@ export function routedSpecialists<
     inputSchema: z.any(),
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
+      // The specialist returned, so stop asserting it is still alive — before
+      // the settlement, so no renewal is in flight against the row this call
+      // is about to move.
+      currentLeaseRenewal()?.stop();
       const state = ctx.sequencer!.state;
       if (state.currentTaskId !== undefined && !ctx.wasRescued(dispatch)) {
         const collection = await getCollection(ctx, collectionId);
@@ -530,7 +552,12 @@ export function routedSpecialists<
     .tap(initWorkspace)
     .step(controller)
     .tap(recordIteration)
-    .stepIf((r: ControllerOutput) => !r.done, dispatch)
+    .stepIf((r: ControllerOutput) => !r.done, dispatch, {
+      // Run the specialist under the lease-loss signal, composed with the
+      // request's by the step dispatch (FIX-1005). Losing the claim stops the
+      // specialist paying for work it can no longer record.
+      abortSignal: () => currentLeaseRenewal()?.signal,
+    })
     .tap(recordCompletion)
     .tap(emitSnapshot)
     .step(checkLoop)

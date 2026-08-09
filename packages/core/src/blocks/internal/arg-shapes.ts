@@ -10,7 +10,7 @@
 // `doUntil` / `doWhile` keep their own inline two-line discrimination — they
 // only support `(block) | (connector, block)` (no factory arm), so they don't
 // consume this resolver.
-import type { BlockDefinition, ConnectorFn } from "../../types/block";
+import type { BlockContext, BlockDefinition, ConnectorFn } from "../../types/block";
 import type { InlineBlockFactory } from "../sequencer-methods";
 import { isBlockDefinition } from "./utils";
 
@@ -76,7 +76,47 @@ export type ChildCallShape = {
   connector?: ConnectorFn<any, any>;
   factory?: InlineBlockFactory;
   inlineConfig?: Record<string, unknown>;
+  /** Per-step dispatch options (FIX-1005) — see {@link isStepOptions}. */
+  stepOptions?: StepOptions;
 };
+
+/**
+ * Per-step dispatch options for `.step()` (FIX-1005).
+ *
+ * Deliberately tiny. This is not a general escape hatch for per-step config —
+ * it carries the one thing a step's *dispatch* owns and the block itself
+ * cannot: the signal the step runs under.
+ */
+export type StepOptions = {
+  /**
+   * An **additional** abort signal this step runs under, resolved per
+   * execution from the running context.
+   *
+   * Composed with the request's signal, never a replacement for it: the step
+   * aborts when either fires, so a caller cannot accidentally make a step
+   * outlive a cancelled request. Return `undefined` and the step runs exactly
+   * as it would without the option.
+   *
+   * The resolver runs once per dispatch, immediately before the child is
+   * invoked, so it can read state a preceding step wrote.
+   */
+  abortSignal: (ctx: BlockContext) => AbortSignal | undefined;
+};
+
+/**
+ * True when `value` is a `.step()` options bag rather than a block, a
+ * connector, or an inline config.
+ *
+ * Keyed on the one member the type declares. That keeps the discrimination
+ * exact — an inline config never carries `abortSignal`, and a block is
+ * excluded outright — so adding this shape cannot silently re-route an
+ * existing `step(connector, block)` or `step(factory, config)` call.
+ */
+function isStepOptions(value: unknown): value is StepOptions {
+  if (typeof value !== "object" || value === null) return false;
+  if (isBlockDefinition(value)) return false;
+  return typeof (value as { abortSignal?: unknown }).abortSignal === "function";
+}
 
 /** The resolved shape for a background method (`work`, `workIf`). */
 export type BackgroundCallShape = {
@@ -124,9 +164,16 @@ export function resolveCallShape(
         inlineConfig: arg2 as Record<string, unknown>
       };
     }
-    const connector = arg2 === undefined ? undefined : (arg1 as ConnectorFn<any, any>);
-    const block = (arg2 ?? arg1) as BlockDefinition<any, any>;
-    return { block, connector };
+    // Peel a trailing step-options bag off first (FIX-1005), so the
+    // connector/block resolution below sees exactly the arguments it always
+    // did. `(block, opts)` and `(connector, block, opts)` both reduce to their
+    // pre-existing shape once the bag is removed.
+    const stepOptions = isStepOptions(arg3) ? arg3 : isStepOptions(arg2) ? arg2 : undefined;
+    const positional = stepOptions === arg2 ? [arg1] : [arg1, arg2];
+    const [first, second] = positional;
+    const connector = second === undefined ? undefined : (first as ConnectorFn<any, any>);
+    const block = (second ?? first) as BlockDefinition<any, any>;
+    return { block, connector, stepOptions };
   }
 
   if (pattern === "background") {
