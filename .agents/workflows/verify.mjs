@@ -1350,6 +1350,172 @@ check('a cleared blocker lets the issue resume', async () => {
   assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-2'])
 })
 
+check('a row parked on a human decision gets no refresh scout, and is still surfaced', async () => {
+  // One real wake dispatched twelve agents and spent five of them refreshing rows parked behind a
+  // `blocker` — rows it then refused to dispatch. The park IS the answer, so the scan buys nothing.
+  // Skipping the scan must not skip the SURFACING: the question is still owed to the human.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blocker: 'one store or two?' }),
+        row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 10 }),
+      ],
+    }),
+    respond: epicResponder({
+      // `headSha` is the marker: it is inert, and it only reaches the row if the one dispatched scan
+      // was bound to the right one. Skipping a row shortens the results array, so binding the
+      // remainder against the FULL table would offset every scan by each skipped row ahead of it —
+      // the exact failure `bindByPosition` exists to prevent, arriving through the door it doesn't watch.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 }, 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 10, headSha: 'sha-3' } },
+    }),
+  })
+  assert.deepEqual(labels(calls, 'refresh:'), ['refresh:FIX-3'], 'only the row that could act on a fresh read is scanned')
+  assert.deepEqual(result.blockers, [{ issueId: 'FIX-2', blocker: 'one store or two?' }])
+  assert.equal(result.issues.find((r) => r.id === 'FIX-3').headSha, 'sha-3', 'the surviving scan landed on its own row')
+  assert.doesNotMatch(logs.join('\n'), /discarding the scan/)
+  assert.match(logs.join('\n'), /carried forward without a PR scan/)
+})
+
+check('a terminal row gets no refresh scout, and is not resurrected by being skipped', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {} }, linear: { 'FIX-2': 'Done' } }),
+  })
+  assert.deepEqual(labels(calls, 'refresh:'), [])
+  assert.equal(result.issues[0].phase, 'DONE')
+  assert.equal(result.issues[0].merged, true, 'the merge it was finished on is carried, not re-derived from an empty scan')
+  assert.equal(result.mayWrap, true, 'a carried-forward terminal row still counts as finished')
+})
+
+check('a terminal row with a verdict still owed a fold keeps its scan', async () => {
+  // `pendingAction` dispatches `apply-verdict` on a finished row, so this one is not parked at all —
+  // the terminal skip has to ask what is LEFT to apply, not just whether Linear says done.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'DONE',
+          implPr: 9,
+          merged: true,
+          linearTerminal: true,
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'ran it' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'DONE', merged: true, implPr: 9 } }, linear: { 'FIX-2': 'Done' } }),
+  })
+  assert.deepEqual(labels(calls, 'refresh:'), ['refresh:FIX-2'])
+  assert.deepEqual(workerLabels(calls), ['apply-verdict:FIX-2'])
+})
+
+check('a blocker the SCAN observed keeps its scan, so reopening the PR clears it', async () => {
+  // `closedBlocker` tags a blocker that came from an observation (the impl PR was closed unmerged),
+  // not from a worker escalating a decision. Its own text advertises "reopen the PR and the next scan
+  // picks it up" — a recovery only a scan can see, so this one is not skippable.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blocker: 'Closed without merging: impl PR #9. Needs a human decision — either reopen the PR on GitHub...',
+          closedBlocker: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } } }),
+  })
+  assert.deepEqual(labels(calls, 'refresh:'), ['refresh:FIX-2'])
+  assert.equal(result.issues[0].blocker, null, 'the scan no longer reports the handle closed, so the observation goes')
+  assert.deepEqual(result.blockers, [])
+})
+
+check('a terminal prerequisite keeps its scan, so its dependent can unblock', async () => {
+  // `openBlockers` clears a blocked-by relation only on LIVE merge evidence — Linear state is a
+  // mirror a human can move by hand, the merge is the fact. A prerequisite with no scan reads as
+  // "unobserved", which keeps the dependent blocked; and since the terminal skip never lifts on its
+  // own, that block would be permanent. So anything another row waits on is scanned.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true }),
+        row('FIX-3', { phase: 'NEEDS_SPEC', blockedBy: ['FIX-2'] }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'DONE', merged: true, implPr: 9 }, 'FIX-3': {} },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Todo', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.ok(labels(calls, 'refresh:').includes('refresh:FIX-2'), 'the prerequisite is scanned even though it is terminal')
+  assert.deepEqual(result.issues.find((r) => r.id === 'FIX-3').blockedBy, [], 'live merge evidence clears the relation')
+  assert.deepEqual(result.blocked, [])
+})
+
+check('a row carried forward on purpose is not a row whose scout died', async () => {
+  // The two look identical from `freshById` and mean opposite things. FIX-2 was never scanned, so
+  // nothing contradicted its state and it is carried verbatim. FIX-3's scout DIED, which
+  // re-establishes nothing — so every scan-derived field falls back to its fail-closed default, and
+  // the approval that gates implementation is the one that must not survive.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true, ciFailed: true, blocker: 'which store?' }),
+        row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, ciFailed: true }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': {}, 'FIX-3': {} }, nulls: ['refresh:FIX-3'] }),
+  })
+  assert.deepEqual(labels(calls, 'refresh:'), ['refresh:FIX-3'])
+  const parked = result.issues.find((r) => r.id === 'FIX-2')
+  const dead = result.issues.find((r) => r.id === 'FIX-3')
+  assert.equal(parked.specApproved, true, 'nothing looked at this row, so nothing revoked its approval')
+  assert.equal(parked.ciFailed, true, 'and nothing re-observed its CI either')
+  assert.equal(dead.specApproved, false, 'a dead scout establishes nothing, so the gate closes')
+  assert.equal(dead.ciFailed, false)
+})
+
+check('carrying a row forward never advances its activity cursor', async () => {
+  // Invariant 2 applies to a skipped row exactly as it does to a deferred one: nobody read that
+  // batch, so the cursor stays put and the flag stays live for the wake that un-parks the row.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blocker: 'which store?',
+          newPrEvents: true,
+          latestActivityAt: 'T2',
+          lastSeenActivityAt: 'T1',
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': {} } }),
+  })
+  assert.equal(result.issues[0].lastSeenActivityAt, 'T1')
+  assert.equal(result.issues[0].newPrEvents, true)
+})
+
+check('a reopened terminal row is scanned again on the next wake', async () => {
+  // The skip is keyed on `linearTerminal`, which the children query refreshes for EVERY row —
+  // scanned or not, since that query is one agent for the whole set. Keying it on the carried phase
+  // would be self-sustaining instead: only a scan moves a phase off DONE, so a human reopening a
+  // finished issue mid-epic would never be looked at again.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {} }, linear: { 'FIX-2': 'In Development' } }),
+  })
+  assert.deepEqual(labels(first.calls, 'refresh:'), [], 'this wake was planned before the children query returned')
+  assert.equal(first.result.issues[0].linearTerminal, false, 'but the mirror still corrected itself')
+
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: first.result.issues }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } }, linear: { 'FIX-2': 'In Development' } }),
+  })
+  assert.deepEqual(labels(second.calls, 'refresh:'), ['refresh:FIX-2'])
+})
+
 check('a non-review worker cannot revoke the authorized third round', async () => {
   // `specLevelFound` is optional in WORKER_SCHEMA, so an apply-verdict fold omits it. Coercing
   // that absence to false would silently suppress the round a real review round authorized.

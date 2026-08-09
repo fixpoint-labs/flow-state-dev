@@ -341,6 +341,55 @@ function pendingAction(row) {
 }
 
 /**
+ * Rows that get NO refresh scout this wake, because a fresh read of their PR cannot change what the
+ * wake does with them.
+ *
+ * `pendingAction` parks a row carrying an unresolved human decision, and it parks a terminal one with
+ * nothing left to apply — in both cases BEFORE it reads a single scan-derived field. One real wake
+ * dispatched twelve agents and spent five of them refreshing rows it then refused to dispatch, all
+ * five parked behind a `blocker`: ~40% of the spend, by construction, on answers nothing could act on.
+ * These rows are carried forward verbatim instead.
+ *
+ * Decided from the CARRIED row alone, because the decision has to be made before the scan barrier: the
+ * Linear children query runs in the same `parallel()` as the scouts, so this wake's Linear state does
+ * not exist yet. Every input here is coordinator state or the previous wake's Linear read.
+ *
+ * `linearTerminal`, deliberately, rather than `phase === 'DONE'`. Only a scan can move a phase off
+ * DONE, so keying on the phase would make the skip self-sustaining: a human reopening a finished issue
+ * mid-epic would never be looked at again. `linearTerminal` is refreshed every wake by the children
+ * query, which is not per-row and stays — so a reopened issue drops out of this set and is scanned on
+ * the next wake. The cost is that a row whose merge the coordinator has not yet mirrored to Linear
+ * keeps its scan for a wake or two, which is the safe direction.
+ *
+ * Three things deliberately keep their scan:
+ *
+ * 1. **A `closedBlocker`.** That blocker is a scan OBSERVATION (the impl PR was closed unmerged), not a
+ *    durable escalation — `foldMultiPrScan` clears it as soon as a scan sees the handle open again.
+ *    Skipping the scan would make the recovery its own blocker text advertises unreachable.
+ * 2. **A terminal row with a landed verdict or an answered decision.** `pendingAction` dispatches those
+ *    (`apply-verdict` / `apply-decision`), so the row is not parked at all.
+ * 3. **Anything another row is blocked by.** `openBlockers` clears a blocked-by relation only on LIVE
+ *    merge evidence — Linear state is a mirror, the merge is the fact — and reads a missing scan as
+ *    "unobserved", which keeps the dependent blocked. Since the terminal skip would never lift on its
+ *    own, that block would be permanent. One extra scan per prerequisite, and only while something is
+ *    actually waiting on it.
+ *
+ * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks on it too: that
+ * relation can go away in this very wake's children query, and the row becomes dispatchable
+ * immediately — with no fresh read of its PR to dispatch from.
+ *
+ * @param row            the carried record
+ * @param prerequisites  ids named by any carried row's `blockedBy`
+ */
+function noScanNeeded(row, prerequisites) {
+  if (prerequisites.has(row.id)) return false
+  if (row.linearTerminal) {
+    return !(row.verdicts || []).length && !(row.blockerResolutions || []).length && !row.blockerResolution
+  }
+  return !!row.blocker && !row.closedBlocker
+}
+
+/**
  * One claim argued on two issues is ONE settlement fanned to both — WHEN the two requests spell it the
  * same way. The key normalizes case and whitespace and nothing more, so genuinely different wording
  * produces two POCs and two evidence replies. Recorded rather than papered over: closing that gap needs a
@@ -1898,6 +1947,31 @@ const requests = input.settleRequests || []
 
 phase('Refresh')
 
+// THREE states, not two, and the last two mean opposite things. Naming them apart is the whole
+// safety of this cut:
+//
+//   · scanned and returned       → `freshById.has(id)`; the live observation is authoritative.
+//   · CARRIED FORWARD on purpose → `carriedForward.has(id)`; no scout was dispatched, nothing was
+//     contradicted, and the row's own state is the best evidence there is.
+//   · the scout DIED             → in neither set. NOTHING happened (invariant 1): no cursor moves,
+//     no blocker clears, and scan-derived fields fall back to their fail-closed defaults.
+//
+// The `fresh = {}` path in the refresh below serves the third case: it CLEARS `readyToMerge`,
+// `ciFailed`, `specApproved` and the per-handle states, because a scan that failed is not evidence
+// those are still true. Applying it to the second case would be wrong in the opposite direction — it
+// would erase state this wake never looked at, on a row that is parked precisely so nothing acts on
+// it. So a carried-forward row takes its own branch there and never touches that path.
+const prerequisites = new Set(rows.flatMap((r) => r.blockedBy || []))
+const carriedForward = new Set(rows.filter((r) => noScanNeeded(r, prerequisites)).map((r) => r.id))
+const scannedRows = rows.filter((r) => !carriedForward.has(r.id))
+if (carriedForward.size) {
+  // No silent economies: a row nobody looked at says so, the same way a capped or deferred one does.
+  log(
+    `Refreshing ${scannedRows.length} of ${rows.length} row(s): ${[...carriedForward].join(', ')} carried forward without a PR scan — each is parked on an unresolved decision or already terminal, so a ` +
+      `fresh read could not change what this wake does with it. Their Linear state, blocked-ness and route still refresh from the children query, which is one agent for the whole set.`,
+  )
+}
+
 // Barrier, and justified: the epic gate holds EVERY issue, and the cap is a decision
 // across the whole set — nothing can be dispatched before all rows are known.
 const [gate, linear, ...prStates] = await parallel([
@@ -1921,7 +1995,7 @@ const [gate, linear, ...prStates] = await parallel([
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
     ),
-  ...rows.map(
+  ...scannedRows.map(
     (row) => () =>
       agent(
         `Derive the current lifecycle phase of Linear issue ${row.id} from durable state only. Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
@@ -2019,9 +2093,13 @@ const epicHead = (gate && gate.headSha) || epic.headSha || null
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
 const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
+// Bound to the rows that were actually DISPATCHED — `scannedRows`, not `rows`. Skipping a row
+// shortens the results array, so binding the remainder against the full table would offset every
+// scan by each skipped row ahead of it: the exact misattribution `bindByPosition` exists to prevent,
+// arriving through the one door it doesn't watch.
 const freshById = bindByPosition(
   prStates,
-  rows.map((r) => r.id),
+  scannedRows.map((r) => r.id),
   (id, reported) =>
     log(`refresh:${id} reported issueId ${reported} — discarding the scan rather than binding another issue's read (and its approval) to this row.`),
 )
@@ -2126,7 +2204,18 @@ const openBlockers = (ids) =>
       const knownPr = (blockerScan && blockerScan.implPr) || carriedBlocker.implPr
       if (knownPr && !(blockerScan && blockerScan.merged === true)) {
         unmergedBlockers.add(
-          `${b} (Linear ${state}, but #${knownPr} is ${blockerScan ? 'not merged' : 'unobserved — its refresh did not return'})`,
+          // Three reasons there is no live merge, and the human acts on each differently.
+          // `noScanNeeded` scans every id named by a carried `blockedBy`, so the middle case only
+          // arises for a relation that appeared for the FIRST time in this wake's children query —
+          // the prerequisite was not yet a prerequisite when the skip set was computed. It corrects
+          // itself on the next wake, once the dependent carries the relation.
+          `${b} (Linear ${state}, but #${knownPr} is ${
+            blockerScan
+              ? 'not merged'
+              : carriedForward.has(b)
+                ? 'unobserved — it was carried forward without a scan, and is scanned again next wake now that something depends on it'
+                : 'unobserved — its refresh did not return'
+          })`,
         )
         return true
       }
@@ -2138,6 +2227,42 @@ const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
   const refreshedLive = freshById.has(row.id)
   const li = linearById.get(row.id) || {}
+  const observedInLinear = linearById.has(row.id)
+  // Cancellation is read in ONE place for both branches below, so a carried-forward row and a
+  // scanned one cannot disagree about whether a question on cancelled work is still owed.
+  const cancelledNow = observedInLinear && CANCELLED_LINEAR.test((li.state || '').trim())
+  const dropQuestionsOnCancel =
+    cancelledNow && (row.blocker || (row.unsettled || []).length) ? { blocker: null, blockerFor: null, unsettled: [] } : {}
+
+  // CARRIED FORWARD ON PURPOSE — no scout was dispatched for this row (see `noScanNeeded`). Its own
+  // state is applied verbatim, and only what this wake genuinely re-observed is layered on top: the
+  // children query is not per-row, so Linear state, blocked-ness, cancellation and the route are as
+  // fresh here as on any scanned row.
+  //
+  // It must NOT fall through to the object below. That path treats every scan-derived field as void
+  // unless a live scan re-established it — right for a scout that DIED, and exactly wrong here. It
+  // would drop `specApproved`, which decides membership of the cross-spec set (whose two halves
+  // deadlock the epic when they disagree about who is still coming), and void the per-handle merge
+  // states — on a row nothing looked at and nothing contradicted.
+  if (carriedForward.has(row.id)) {
+    return {
+      ...row,
+      route: routeFor(row, li, observedInLinear, row.specPr),
+      linearState: li.state || row.linearState,
+      linearTerminal: observedInLinear ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+      ...dropQuestionsOnCancel,
+      blockedBy: openBlockers(observedInLinear ? li.blockedBy : row.blockedBy),
+      // The coordinator's own counters and the legacy-shape normalizations still run: they read the
+      // carried row, never a scan, so skipping them would leave a resumed epic's snake_case fields
+      // normalized on scanned rows and not on these.
+      specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
+      specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
+      prFeedbackRounds: carriedCount(row, 'prFeedbackRounds', 'pr_feedback_rounds'),
+      blockerResolutions: normalizeResolutions(row),
+      blockerResolution: null,
+      blockerResolutionFor: null,
+    }
+  }
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
   const scanApproved = specApprovalFor(row, fresh, refreshedLive)
@@ -2145,7 +2270,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.
   const resolvedSpecPr = fresh.specPr == null ? row.specPr : fresh.specPr
-  const route = routeFor(row, li, linearById.has(row.id), resolvedSpecPr)
+  const route = routeFor(row, li, observedInLinear, resolvedSpecPr)
   return {
     ...row,
     ...fresh,
@@ -2205,22 +2330,20 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // confirmed current. The last thing we actually saw is better evidence than nothing.
     headSha: (fresh && fresh.headSha) || row.headSha || null,
     linearState: li.state || row.linearState,
-    linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+    linearTerminal: observedInLinear ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // CANCELLED work carries no unanswered question. `pendingAction` already refuses to dispatch it, so a
     // blocker left on the row could never be cleared by anything — and it kept the surfaced blockers list
     // non-empty, which held the whole epic short of wrap while a human was asked to answer a question about
     // work that no longer exists. Cleared here, in the one place cancellation is observed, so the blockers
     // list and `mayWrap` cannot disagree about it. Logged below, never silent — the same rule cancelled
     // verdicts already follow.
-    ...(linearById.has(row.id) && CANCELLED_LINEAR.test((li.state || '').trim()) && (row.blocker || (row.unsettled || []).length)
-      ? { blocker: null, blockerFor: null, unsettled: [] }
-      : {}),
+    ...dropQuestionsOnCancel,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
     // skipped it, so the carried relation stands. Getting this backwards either un-blocks an
     // issue on a failed refresh or blocks it forever after its prerequisite merged.
-    blockedBy: openBlockers(linearById.has(row.id) ? li.blockedBy : row.blockedBy),
+    blockedBy: openBlockers(observedInLinear ? li.blockedBy : row.blockedBy),
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
