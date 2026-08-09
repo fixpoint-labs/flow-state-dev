@@ -277,7 +277,7 @@ See [the schedule index reference](https://flowstate.dev/docs/server/schedule-in
 
 This adapter fully supports the interrupted request recovery feature. The `ActiveRequestRegistry` implementation stores in-flight request entries with heartbeat timestamps, enabling `listStale()` to detect abandoned requests via an indexed range query on `last_heartbeat_at`.
 
-It also implements both `RequestStore` abort-intent members, so a request executing on one instance can be cancelled from another. `isAbortRequested` probes `data -> 'abortRequested'` on the primary-key row without touching `request_items`, and `setFieldsIfStatus` evaluates its status predicate and applies the write in a single statement. `set` cannot write `abortRequested` in either direction: the record store strips the key from the incoming value and re-applies the stored one inside the same `UPDATE`, so a full-record write built from a stale snapshot can neither erase a cancellation nor invent one.
+A request executing on one instance can be cancelled from another. Both `RequestStore` abort-intent members are implemented: `isAbortRequested` probes `data -> 'abortRequested'` on the primary-key row without touching `request_items`, and `setFieldsIfStatus` evaluates its status predicate and applies the write in a single statement.
 
 ## Cross-process live tail
 

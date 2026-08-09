@@ -96,9 +96,7 @@ If you raise `defaultSseHeartbeatMs` on the server, raise `stuckThresholdMs` on 
 
 ## Stopping a request that runs on another server
 
-`session.abortRequest()` and the `POST /api/flows/:flowKind/requests/:requestId/abort` endpoint stop a request wherever it is running, not just on the server that receives the call. That matters for background work: a request dispatched to a worker has no browser attached and no SSE connection to close, so closing a connection is not available as a way to stop it.
-
-Two things make it work.
+`session.abortRequest()` and the `POST /api/flows/:flowKind/requests/:requestId/abort` endpoint stop a request on whichever server is running it. That matters for background work: a request dispatched to a worker has no browser attached and no SSE connection to close, so closing a connection is not available as a way to stop it.
 
 The cancellation is recorded on the request record, which is durable. Separately, every running request wakes on a timer to write a **heartbeat** — a periodic note that says the run is still alive. On that same tick, the process running the work checks whether a cancellation has been recorded for it. When it finds one, it stops the run exactly as a same-process cancel would: background `.work()` tasks cancel, and the request settles with status `aborted`.
 
@@ -112,16 +110,20 @@ defineFlow({
 });
 ```
 
-The default is 10 seconds. Lowering it makes cancellation land sooner and costs one extra store read per request per tick.
+The default is 10 seconds. Each tick costs one store read per running request, so a shorter interval means proportionally more reads.
 
 ### What your deployment needs
 
-Two requirements, both things you configure:
-
-1. **A request store shared across processes** — SQLite or Postgres. The default in-memory store is per-process, so a second process cannot see the record at all.
+1. **A request store shared across processes** — SQLite or Postgres. The default in-memory store is per-process, so a second process cannot see the record at all. The filesystem store does not qualify either: it assumes a single writer per request and does no inter-process locking.
 2. **`heartbeatIntervalMs` greater than 0.** Setting it to `0` disables the timer, and with no tick there is no check and no delivery.
 
-Neither is reported back on the response. The abort endpoint returns `204` when it fired the request's controller in the process that received the call, and `202` when it recorded the cancellation for the running process to pick up. A `202` does not tell you whether the two requirements above are met — check your deployment, not the status code.
+### What the endpoint returns
+
+The abort endpoint returns `204` when it fired the request's controller in the process that received the call, and `202` when it recorded the cancellation for the running process to pick up. It returns `404` when no request exists under that id, and `409` when the request is no longer `in_progress`.
+
+Between the `202` and the run actually stopping, the request stays `in_progress` and keeps working, so items produced in that window still land on it. Treat `202` as "recorded", not "stopped". Watch for `status: "aborted"` to know it landed; `GET /api/flows/:flowKind/requests/:requestId/status` reports it with no stream attached.
+
+The endpoint checks neither deployment requirement, so a `202` on its own does not tell you the cancellation will be delivered. Check your deployment, not the status code.
 
 ## What this does *not* do
 
