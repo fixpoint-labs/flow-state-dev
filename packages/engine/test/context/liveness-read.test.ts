@@ -54,6 +54,7 @@ function harness(entries: Record<string, ActiveRequestEntry | undefined>) {
     listStale,
     inputs: {
       staleThresholdMs: THRESHOLD,
+      flowKind: "board",
       principal: { userId: "u_alice", tenantId: "t_acme" },
       isDescendantSession: async (sessionId: string | undefined) => sessionId === "s_child",
       now: () => NOW
@@ -123,6 +124,23 @@ describe("liveness read", () => {
     const h = harness({ req_1: entry({ tenantId: "t_other" }) });
     const answers = await readLiveness(["req_1"], { ...h.inputs, registry: h.registry });
     expect(answers).toEqual({ req_1: false });
+  });
+
+  it("answers not-live for another flow's request running in the caller's OWN session", async () => {
+    // A session id is not a flow boundary: execution validates a reused
+    // session's user, tenant and org, but not its flow kind, so the same
+    // principal can run a second flow under one session id. The descendant
+    // check accepts the caller's own session by design ("work I started"), so
+    // without a flow check that other flow's request would be exposed as live
+    // work of this one.
+    const h = harness({
+      req_other_flow: entry({ sessionId: "s_child", flowKind: "some-other-flow" })
+    });
+    const answers = await readLiveness(["req_other_flow"], {
+      ...h.inputs,
+      registry: h.registry
+    });
+    expect(answers).toEqual({ req_other_flow: false });
   });
 
   it("answers not-live for a request outside the caller's descendant chain", async () => {

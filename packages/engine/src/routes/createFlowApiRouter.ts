@@ -337,19 +337,14 @@ const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
 export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowApiRouter {
-  // Bundle the forwarded instance-level options once at this public boundary.
-  // `createFlowState` passes a pre-built `runtimeConfig`; direct callers get
-  // it constructed from their flat options here.
-  const runtimeConfig = options.runtimeConfig ?? createRuntimeConfig(options);
-  const handlers = createFlowRouteHandlers({
-    ...options,
-    runtimeConfig,
-    internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
-    dispatcher: options.dispatcher
-  });
-
   // Server-internal sweeper: marks requests whose executor heartbeat stopped
   // as interrupted, releasing session locks. Disabled when interval is 0.
+  //
+  // Resolved BEFORE the handlers are built, because the request-host seam's
+  // liveness gate needs this same pair and must describe the sweeper this
+  // router actually constructs. One resolution, two consumers — a host author
+  // configures the cadence and threshold once, here, and cannot desynchronize
+  // the gate from the sweeper it is reasoning about.
   const staleSweepIntervalMs =
     options.staleSweepIntervalMs !== undefined
       ? options.staleSweepIntervalMs
@@ -358,6 +353,40 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     options.staleSweepThresholdMs !== undefined
       ? options.staleSweepThresholdMs
       : DEFAULT_STALE_SWEEP_THRESHOLD_MS;
+
+  // Bundle the forwarded instance-level options once at this public boundary.
+  // `createFlowState` passes a pre-built `runtimeConfig`; direct callers get
+  // it constructed from their flat options here.
+  const baseRuntimeConfig = options.runtimeConfig ?? createRuntimeConfig(options);
+
+  // Wire the request-host seam (FIX-999) on the shipped path. Without this the
+  // bundle is built only for callers that hand `runtimeConfig.requestHost` to
+  // `runAction` directly, so `requireRequestHost(ctx)` would throw for every
+  // normal request served by this router.
+  //
+  // The sweeper facts are supplied from the resolution above rather than from
+  // the caller: they describe the sweeper constructed below, and a caller-held
+  // copy could only describe a different one. `startOperation` and `parentTask`
+  // are carried through untouched — a host that wired them (a worker, a test)
+  // keeps them, and one that did not gets a bundle whose start verb refuses by
+  // name. That is the designed degraded-but-present state: the gate makes a
+  // real fail-closed decision instead of the seam being absent entirely.
+  const runtimeConfig: RuntimeConfig = {
+    ...baseRuntimeConfig,
+    requestHost: {
+      ...baseRuntimeConfig.requestHost,
+      staleThresholdMs: staleSweepThresholdMs,
+      staleSweepIntervalMs
+    }
+  };
+
+  const handlers = createFlowRouteHandlers({
+    ...options,
+    runtimeConfig,
+    internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
+    dispatcher: options.dispatcher
+  });
+
   const sweeper = createStaleRequestSweeper({
     stores: handlers.host.stores,
     intervalMs: staleSweepIntervalMs,

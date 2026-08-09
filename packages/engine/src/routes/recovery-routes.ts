@@ -9,6 +9,7 @@ import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
 import { isPublicReentryAllowed } from "./public-reentry";
+import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -36,9 +37,6 @@ type RecoveryRouteContext = {
 type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
-
-/** Transport source stamped by the scheduled-dispatch adapter (`@flow-state-dev/scheduled`). */
-const SCHEDULED_SOURCE = "scheduled";
 
 /**
  * Whether a request record is a dynamic (resolver-produced) scheduled

@@ -38,17 +38,12 @@
  * `runAction`'s `resolveAction`.
  */
 import type { ActionCore, FlowInstance } from "@flow-state-dev/core/types";
-import { WORKSTREAM_SOURCE } from "./transport-sources";
-
-/**
- * Transport sources set by their adapters on the dispatch envelope. Kept as
- * local literals (not imported from `transports/*`) to avoid an
- * `execution → transports` import cycle; they must stay in sync with each
- * adapter's `*_TRANSPORT_SOURCE`.
- */
-const WEBHOOK_SOURCE = "webhook";
-const CHAT_SOURCE = "chat";
-const SCHEDULED_SOURCE = "scheduled";
+import {
+  CHAT_SOURCE,
+  SCHEDULED_SOURCE,
+  WEBHOOK_SOURCE,
+  WORKSTREAM_SOURCE
+} from "./transport-sources";
 
 type WebhookDispatchMetadata = {
   webhook?: { provider?: string; eventType?: string | null };

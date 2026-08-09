@@ -43,13 +43,32 @@ import type {
 } from "../types";
 
 /**
- * How often the host beats an enqueue-time registry entry while an in-process
- * queued run waits behind its concurrency key (FIX-999).
+ * Fallback cadence for beating an enqueue-time registry entry while an
+ * in-process queued run waits behind its concurrency key (FIX-999).
  *
  * Matches `runAction`'s own default so the entry's freshness cadence does not
- * change when the worker body takes over.
+ * change when the worker body takes over. A flow that configures
+ * `request.heartbeatIntervalMs` overrides it — see `resolveQueuedHeartbeatMs`.
  */
-const QUEUED_HEARTBEAT_INTERVAL_MS = 10_000;
+const DEFAULT_QUEUED_HEARTBEAT_INTERVAL_MS = 10_000;
+
+/**
+ * The cadence to keep a queued entry warm at, for a given flow.
+ *
+ * Must track the flow's own heartbeat rather than the default: a deployment is
+ * free to pair a fast heartbeat with a correspondingly tight stale threshold
+ * (the liveness gate only requires `threshold >= 2 * heartbeat`), and a fixed
+ * 10s beat against a 3s threshold lets the sweeper reap a request that is
+ * merely waiting its turn. The queued entry would then read as not live while
+ * the work is still perfectly valid — the exact false negative the queued
+ * heartbeat was added to remove.
+ *
+ * `0` disables heartbeats for the flow, and is preserved here: the caller skips
+ * the timer entirely rather than falling back to a default the flow declined.
+ */
+function resolveQueuedHeartbeatMs(heartbeatIntervalMs: number | undefined): number {
+  return heartbeatIntervalMs ?? DEFAULT_QUEUED_HEARTBEAT_INTERVAL_MS;
+}
 
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
@@ -293,13 +312,22 @@ export function createInboundTransportHost(
           }
         };
 
+        const queuedHeartbeatMs = resolveQueuedHeartbeatMs(
+          flow.request?.heartbeatIntervalMs
+        );
+
         finished = materialized
           .then(() => {
-            queuedHeartbeat = setInterval(() => {
-              stores.activeRequests.heartbeat(requestId).catch(() => {});
-            }, QUEUED_HEARTBEAT_INTERVAL_MS);
-            if (typeof (queuedHeartbeat as { unref?: () => void }).unref === "function") {
-              (queuedHeartbeat as unknown as { unref: () => void }).unref();
+            // A flow that disables heartbeats gets no queued timer either —
+            // starting one here would keep an entry warm that the flow asked
+            // never to be kept warm.
+            if (queuedHeartbeatMs > 0) {
+              queuedHeartbeat = setInterval(() => {
+                stores.activeRequests.heartbeat(requestId).catch(() => {});
+              }, queuedHeartbeatMs);
+              if (typeof (queuedHeartbeat as { unref?: () => void }).unref === "function") {
+                (queuedHeartbeat as unknown as { unref: () => void }).unref();
+              }
             }
             return gateStart(() => {
               // `runAction` re-registers and starts its own heartbeat timer from

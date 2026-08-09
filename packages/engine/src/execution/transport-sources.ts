@@ -1,17 +1,25 @@
 /**
  * Transport sources stamped by the runtime, in one place (FIX-999).
  *
- * `resolve-action-core.ts` and `arbiter.ts` each keep local literals for the
- * three event sources, with a note that importing them from `transports/*` would
- * create an `execution → transports` cycle. This module imports nothing at all,
- * so depending on it cannot create a cycle in either direction — which is why
- * the new source is shared from here rather than duplicated a third time.
+ * Importing these from `transports/*` would create an `execution → transports`
+ * cycle, which is why they had been re-declared locally per consumer. This
+ * module imports nothing at all, so depending on it cannot create a cycle in
+ * either direction, and every runtime-stamped source lives here.
  *
  * A source is trusted precisely because a caller cannot set it: it is stamped by
  * the adapter (or, for the detached source below, by the injection seam itself)
  * and persisted on the request record. Every authorization branch that reads one
  * depends on that (BP-031).
  */
+
+/** Stamped by the webhook adapter. Resolves the flow's webhook event core. */
+export const WEBHOOK_SOURCE = "webhook";
+
+/** Stamped by the chat adapter. Resolves the flow's chat event core. */
+export const CHAT_SOURCE = "chat";
+
+/** Stamped by the scheduled adapter. Resolves the flow's schedule event core. */
+export const SCHEDULED_SOURCE = "scheduled";
 
 /**
  * Stamped by the injection seam on a detached dispatch — a request started from

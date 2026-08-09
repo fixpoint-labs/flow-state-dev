@@ -164,8 +164,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // Create-if-absent: this is how a caller wins or loses a create race,
       // rather than silently overwriting a concurrent adopter's child.
       const result = await stores.session.set(storageKey, record, "absent");
-      if (typeof result === "object" && result !== null && "conflict" in result) {
-        const current = (result as { conflict: { value?: SessionRecord } }).conflict?.value;
+      if (!result.ok) {
+        // `SetResult` is a discriminated union, so the conflict arm is reached
+        // by narrowing on `ok` — no cast, and the field name is checked against
+        // the store contract rather than asserted.
+        //
+        // An undefined `currentValue` means the row is TOMBSTONED, which
+        // `stores/types.ts` requires a caller to treat as deleted and stop on,
+        // never as "reuse what I had cached". So it refuses exactly like a
+        // mismatched record does; only a present, adoptable child is adopted.
+        const current = result.conflict.currentValue;
         if (current === undefined || !evaluateAdoption(current, expected).adoptable) {
           return {
             ok: false,
@@ -217,6 +225,7 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       readLiveness(requestIds, {
         registry: stores.activeRequests,
         staleThresholdMs,
+        flowKind: flow.kind,
         principal: { userId: identity.userId, tenantId: identity.tenantId },
         isDescendantSession: (sessionId) =>
           isDescendantSession(stores, sessionId, identity, flow.kind),
