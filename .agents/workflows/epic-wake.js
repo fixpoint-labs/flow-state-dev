@@ -1618,13 +1618,18 @@ const GATE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   // Everything the wake branches on is required — see the gating-field invariant in verify.mjs.
-  required: ['approved', 'approvedByLabel', 'humanChangesRequested', 'newReviewEvents', 'headSha', 'latestActivityAt'],
+  required: ['approved', 'approvedByLabel', 'labelPresent', 'humanChangesRequested', 'newReviewEvents', 'headSha', 'latestActivityAt'],
   properties: {
     approved: { type: 'boolean', description: 'A human approving comment or a current-head APPROVED review by a non-author human' },
     approvedByLabel: {
       type: 'boolean',
       description:
-        'The `epic approved` label is present on the PR. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
+        'The `epic approved` label is present on the PR AND the configured owner applied it. Presence alone — a label is standing state the owner can remove, so removal is the revocation and no staleness rule applies.',
+    },
+    labelPresent: {
+      type: 'boolean',
+      description:
+        'The `epic approved` label is currently on the PR, REGARDLESS of who applied it or whether provenance could be read at all. Reported separately from `approvedByLabel` so the wake can tell "the label is gone" (a revocation) from "the label is there but I could not attribute it" (ignorance). Never infer it from body text.',
     },
     humanChangesRequested: {
       type: 'boolean',
@@ -2023,6 +2028,7 @@ const [gate, linear, prScan] = await parallel([
             `  · WHEN — do NOT check. Once the actor is \`${approvalOwner}\`, presence is the whole test: do not compare the label against the head commit and do not treat a later push as invalidating it. An epic-spec PR takes commits continuously as feedback is folded, so a staleness rule would revoke the approval on the next edit and hold the entire set. A label is standing state the owner can REMOVE; removal is the revocation.\n` +
             `Check the labels even when you find no approving comment. Report it independently of \`approved\` — do not fold one into the other, and do not infer it from body text claiming approval.\n`
           : `The \`epic approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report approvedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
+        `SEPARATELY AND ALWAYS, report labelPresent:true whenever the \`epic approved\` label is on the PR right now — whoever applied it, and even if you could not read the timeline to find out. Read it off the PR's CURRENT label list, which is a plain read that does not need timeline access. This is NOT an approval signal and must never be inferred from body text; it exists only so the wake can distinguish a label that was REMOVED (the owner's revocation) from one it merely could not attribute. Report it even when approvedByLabel is false, and even when the label channel is off.\n` +
         `ALSO report humanChangesRequested:true when any human's LATEST review state is CHANGES_REQUESTED. It outranks the label, which is standing state that survives a later change request until the owner removes it. Bots never count.\n` +
         `ACTIVITY CURSOR: last seen activity at ${epic.lastSeenActivityAt || 'never'} (head ${epic.lastSeenSha || 'unknown'}). Set newReviewEvents ONLY for comments/reviews strictly newer than that TIMESTAMP — a comment never changes the head SHA, so the SHA alone cannot tell you what was already folded. Report latestActivityAt = the newest comment/review timestamp you saw.`,
       { label: 'gate:epic', phase: 'Refresh', schema: GATE_SCHEMA, agentType: 'scout' },
@@ -2139,7 +2145,25 @@ if (scanned && !gate.headSha) {
 // staleness rule would revoke the objective on the next edit and re-hold the whole set, which is the
 // stall this change exists to remove. A label is standing state the owner can remove at any time, so
 // REMOVAL is the revocation, and it is a control a comment does not have.
-const epicApproved = scanned && gateUsable && !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel)
+// A label the scan can SEE but cannot ATTRIBUTE is ignorance, not revocation — and conflating the
+// two silently un-approved an epic the owner had signed off days earlier. Provenance needs the PR's
+// `labeled` timeline; in an environment that exposes labels but not the timeline (no events API on
+// the MCP surface, REST events denied) `approvedByLabel` is false on EVERY wake, so the gate re-locked
+// a running epic forever and dispatched nothing. Fail-closed is right for an epic nobody approved; it
+// is wrong as a way to REVOKE one the coordinator durably recorded.
+// So the carried approval survives exactly one gap: the label is still on the PR and the only thing
+// missing is who put it there. Removal still revokes — `labelPresent` false drops it — and an epic
+// never approved has no carried `true` to survive, so this cannot manufacture a sign-off. A human
+// CHANGES_REQUESTED still outranks everything.
+const labelUnattributable = !!(gate && gate.labelPresent && !gate.approvedByLabel)
+const carriedApprovalHolds = labelUnattributable && !!epic.approved
+const epicApproved =
+  scanned && gateUsable && !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel || carriedApprovalHolds)
+if (carriedApprovalHolds && epicApproved) {
+  log(
+    `Epic gate: \`epic approved\` is on #${epic.prNumber} but its applier could not be verified (timeline unreadable). Holding the approval the coordinator already recorded rather than revoking it on an unreadable provenance check — removal of the label is still the revocation.`,
+  )
+}
 let headUnconfirmed = scanned ? !gateUsable : !!epic.headUnconfirmed
 if (!scanned && epic.approved) {
   log(
