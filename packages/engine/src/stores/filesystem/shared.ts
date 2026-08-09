@@ -161,10 +161,26 @@ export type FilesystemRecordStore<
   TListOptions extends StoreListOptions
 > = {
   get(id: string): Promise<TRecord | undefined>;
+  /**
+   * Write a record under the per-id write lock.
+   *
+   * `beforeWrite` runs inside that lock, immediately before the record file
+   * is written, and receives the record as it exists on disk right then. It
+   * is the write-side counterpart of `delete`'s `alsoDelete`: it lets a
+   * caller inspect or migrate what is already stored without a second,
+   * separately-locked round trip. Doing that work ahead of the call instead
+   * releases the lock in between, and a delete issued afterwards can run to
+   * completion in the gap — leaving this write to recreate the record it
+   * just removed.
+   *
+   * It does not run when a CAS conflict refuses the write, because nothing
+   * is written in that case.
+   */
   set(
     id: string,
     value: TRecord,
-    expectedVersion: ExpectedVersion
+    expectedVersion: ExpectedVersion,
+    beforeWrite?: (current: TRecord | undefined) => Promise<void>
   ): Promise<SetResult<TRecord>>;
   /**
    * Atomically read-modify-write a record under the per-id write lock.
@@ -280,11 +296,23 @@ function createWriteLock(): <T>(id: string, fn: () => Promise<T>) => Promise<T> 
   return <T>(id: string, fn: () => Promise<T>): Promise<T> => {
     const prior = inflight.get(id) ?? Promise.resolve();
     const next = prior.then(fn, fn);
-    const tracked = next.finally(() => {
-      if (inflight.get(id) === tracked) {
-        inflight.delete(id);
-      }
-    });
+    // `tracked` exists only to order the queue, so its rejection is nobody's
+    // to receive — the caller gets `next`, which carries the real outcome.
+    // Without the trailing `catch` a failed operation leaves a rejected
+    // promise with no handler attached, which Node reports as an unhandled
+    // rejection and, under the default `--unhandled-rejections=throw`, takes
+    // the process down. Locked operations do real I/O and can genuinely fail
+    // (EIO, ENOSPC, a rejecting `beforeWrite`/merge callback), so a store
+    // write that failed cleanly would otherwise kill the host it failed on.
+    // Swallowing here also keeps one failure from settling the next waiter,
+    // which `prior.then(fn, fn)` already assumes.
+    const tracked: Promise<unknown> = next
+      .finally(() => {
+        if (inflight.get(id) === tracked) {
+          inflight.delete(id);
+        }
+      })
+      .catch(() => undefined);
     inflight.set(id, tracked);
     return next;
   };
@@ -309,15 +337,19 @@ export function createFilesystemRecordStore<
     set: (
       id: string,
       value: TRecord,
-      expectedVersion: ExpectedVersion
+      expectedVersion: ExpectedVersion,
+      beforeWrite?: (current: TRecord | undefined) => Promise<void>
     ): Promise<SetResult<TRecord>> =>
       withLock(id, async () => {
+        // The read and the decision both sit inside the per-id lock, which
+        // is what makes `"absent"` atomic here — but only within this
+        // process. Two processes over one directory still race; the
+        // limitation is stated on the store contract and unchanged by this.
+        const needsCurrent = expectedVersion !== "any" || beforeWrite !== undefined;
+        const current = needsCurrent
+          ? await readRecord<TRecord>(rootDir, id)
+          : undefined;
         if (expectedVersion !== "any") {
-          // The read and the decision both sit inside the per-id lock, which
-          // is what makes `"absent"` atomic here — but only within this
-          // process. Two processes over one directory still race; the
-          // limitation is stated on the store contract and unchanged by this.
-          const current = await readRecord<TRecord>(rootDir, id);
           const refused = checkScopeWriteVersion(current, expectedVersion);
           if (refused !== undefined) {
             return {
@@ -326,6 +358,9 @@ export function createFilesystemRecordStore<
             };
           }
         }
+        // Same lock, same read. A hook that had to re-read or re-lock would
+        // reopen the window this parameter exists to close.
+        if (beforeWrite !== undefined) await beforeWrite(current);
         await writeRecord(rootDir, id, value);
         return { ok: true, version: value.version };
       }),

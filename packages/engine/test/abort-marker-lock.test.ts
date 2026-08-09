@@ -228,38 +228,28 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     writeLegacyRecord(requestId, "suspended");
     expect((await store.get(requestId))?.abortRequested).toBe(true);
 
-    // Park writer A after its detector read has observed the inline flag but
-    // before the migration has finished. The seam is the record store's own
-    // `get` because that read is the only step of the migration that runs
-    // OUTSIDE the per-id lock — the one window a second writer can enter.
-    // Parking at the marker write instead would prove nothing: by then the
-    // lock is held, and it already serializes everyone else behind it.
+    // Park writer A inside its migration, at the marker write. The migration
+    // runs within the same lock hold as the write it belongs to, so this is
+    // the whole window: a second writer can only be ahead of A if it took the
+    // lock first, and then A's own migration would see the record it left.
     const entered = createGate();
     const parked = createGate();
     const seam = store as unknown as {
-      store: { get: (id: string) => Promise<RequestRecord | undefined> };
+      writeAbortMarker: (id: string, requested: boolean) => Promise<void>;
     };
-    const originalGet = seam.store.get.bind(seam.store);
-    let parkedOnce = false;
-    seam.store.get = async (id: string) => {
-      const record = await originalGet(id);
-      if (!parkedOnce && id === requestId) {
-        parkedOnce = true;
-        entered.open();
-        await parked.wait;
-      }
-      return record;
+    const originalWriteMarker = seam.writeAbortMarker.bind(store);
+    seam.writeAbortMarker = async (id: string, requested: boolean) => {
+      entered.open();
+      await parked.wait;
+      await originalWriteMarker(id, requested);
     };
 
     const writeA = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
-    await entered.wait; // A is mid-migration, having already marked the memo
+    await entered.wait; // A holds the lock, mid-migration
 
-    // B is an ordinary second full-record write. It is launched and A released
-    // without awaiting B in between: once the migration is ordered correctly B
-    // cannot finish before A, so awaiting it here would hang on the fix rather
-    // than test it. Ordering stays deterministic anyway — B takes the per-id
-    // lock while A is parked outside it, so A's locked re-read is guaranteed to
-    // observe whatever B wrote.
+    // B is an ordinary second full-record write — the shape that does the
+    // damage, because it strips the inline flag without knowing the flag
+    // exists. It must queue behind A rather than slip past it.
     const writeB = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
     parked.open();
     await Promise.all([writeA, writeB]);
@@ -271,35 +261,40 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     expect((await store.get(requestId))?.abortRequested).toBe(true);
   });
 
-  it("retries the migration after a failed detector read rather than remembering the failure", async () => {
+  it("fails the write loudly rather than stripping intent it could not migrate", async () => {
     const requestId = "req_legacy_retry";
     writeLegacyRecord(requestId, "suspended");
 
-    // Fail the migration's detector read exactly once.
+    // Fail the migration's marker write exactly once. That write is the
+    // fallible step: the record it migrates from is handed to it by the lock
+    // the write already holds, so there is no separate read to fail.
     const seam = store as unknown as {
-      store: { get: (id: string) => Promise<RequestRecord | undefined> };
+      writeAbortMarker: (id: string, requested: boolean) => Promise<void>;
     };
-    const originalGet = seam.store.get.bind(seam.store);
-    let failNextRead = true;
-    seam.store.get = async (id: string) => {
-      if (failNextRead && id === requestId) {
-        failNextRead = false;
-        throw Object.assign(new Error("EIO: simulated read failure"), {
+    const originalWriteMarker = seam.writeAbortMarker.bind(store);
+    let failNextMarker = true;
+    seam.writeAbortMarker = async (id: string, requested: boolean) => {
+      if (failNextMarker && id === requestId) {
+        failNextMarker = false;
+        throw Object.assign(new Error("EIO: simulated marker failure"), {
           code: "EIO"
         });
       }
-      return originalGet(id);
+      await originalWriteMarker(id, requested);
     };
 
-    // The write fails loudly rather than stripping intent it could not migrate.
+    // Fail-closed: the migration runs before the record is replaced, so a
+    // failure leaves the inline copy intact instead of stripping a
+    // cancellation it could not move.
     await expect(
       store.set(requestId, makeRecord(requestId, "in_progress"), "any")
-    ).rejects.toThrow("simulated read failure");
+    ).rejects.toThrow("simulated marker failure");
     expect((await store.get(requestId))?.abortRequested).toBe(true);
 
-    // The next write must retry the migration. Remembering the outcome before
-    // knowing it — either as "checked" or as a memoized rejection — leaves the
-    // request permanently unable to move its intent to the marker.
+    // And the next write must still migrate. A failure that were remembered —
+    // as "checked" or as a cached rejection — would leave the request
+    // permanently unable to move its intent to the marker, where the
+    // cross-process poll is the only reader that matters.
     await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
     expect(await store.isAbortRequested(requestId)).toBe(true);
   });
@@ -344,6 +339,66 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     expect(await store.get(requestId)).toBeUndefined();
     expect(await store.isAbortRequested(requestId)).toBe(false);
     expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
+  });
+
+  /**
+   * `set` must claim its place in the per-id queue when it is CALLED, not
+   * after an `await`. The legacy migration used to run as its own locked
+   * operation ahead of the write, which released the lock in between — long
+   * enough for a delete issued afterwards to run to completion and for the
+   * trailing write to put the record straight back.
+   */
+  it("does not resurrect a record deleted while the legacy migration held the lock", async () => {
+    const requestId = "req_migrate_delete_resurrect";
+    writeLegacyRecord(requestId, "in_progress");
+
+    // Park the migration at its marker write, where it holds the per-id lock.
+    const entered = createGate();
+    const parked = createGate();
+    const seam = store as unknown as {
+      writeAbortMarker: (id: string, requested: boolean) => Promise<void>;
+    };
+    const originalWriteMarker = seam.writeAbortMarker.bind(store);
+    seam.writeAbortMarker = async (id: string, requested: boolean) => {
+      entered.open();
+      await parked.wait;
+      await originalWriteMarker(id, requested);
+    };
+
+    const writeA = store.set(requestId, makeRecord(requestId, "in_progress"), "any");
+    await entered.wait; // A is inside the lock, migrating
+
+    // Issued while A holds the lock, so it queues behind it. The lock is a
+    // FIFO chain, so the order is fixed here rather than raced: migration →
+    // delete → whatever A does next.
+    const deletion = store.delete(requestId);
+    parked.open();
+    await Promise.all([writeA, deletion]);
+
+    // The delete was issued last and reported success, so it is the final
+    // writer. A `set` that only reached for the lock after its migration
+    // released it lands third and recreates the request — a record that no
+    // caller asked to exist, and (since the delete swept the marker) one
+    // whose accepted cancellation is gone with it.
+    expect(await store.get(requestId)).toBeUndefined();
+    expect(await store.isAbortRequested(requestId)).toBe(false);
+    expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
+  });
+
+  it("lets a delete issued after an ordinary set be the final writer", async () => {
+    const requestId = "req_set_then_delete";
+    await store.set(requestId, makeRecord(requestId, "in_progress"), "any");
+
+    // No parking and no legacy record: the plainest possible statement of the
+    // ordering, and the one every caller relies on. Both calls are issued in
+    // program order without awaiting the first, which is how the request
+    // executor's terminal write and a cleanup delete actually overlap.
+    const writeA = store.set(requestId, makeRecord(requestId, "completed"), "any");
+    const deletion = store.delete(requestId);
+    await Promise.all([writeA, deletion]);
+
+    expect(await store.get(requestId)).toBeUndefined();
+    expect(readdirSync(rootDir)).toEqual([]);
   });
 
   it("does not create a marker for a request that does not exist", async () => {
@@ -421,5 +476,57 @@ describe("FilesystemRecordStore — delete takes the per-id write lock", () => {
     // writes the record straight back — a delete that reported success and
     // left the record on disk.
     expect(await store.get("r1")).toBeUndefined();
+  });
+
+  /**
+   * The queue tracks each operation with a promise derived from the caller's,
+   * purely for ordering. A locked operation that rejects therefore leaves TWO
+   * rejected promises: the caller's (handled) and the tracking one (nobody's).
+   * Node reports the second as an unhandled rejection and, on the default
+   * `--unhandled-rejections=throw`, takes the process down — so a store write
+   * that failed cleanly would kill the host it failed on.
+   *
+   * This only became reachable once fallible I/O moved inside the lock (the
+   * abort marker write, and the migration hook beside it).
+   */
+  it("does not leak an unhandled rejection when a locked operation fails", async () => {
+    const store = createFilesystemRecordStore<Row, Record<string, never>>({
+      rootDir
+    });
+    await store.set("r1", { id: "r1", updatedAt: Date.now(), version: 0 }, "any");
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await expect(
+        store.update("r1", () => {
+          throw Object.assign(new Error("EIO: simulated merge failure"), {
+            code: "EIO"
+          });
+        })
+      ).rejects.toThrow("simulated merge failure");
+
+      // Node flags unhandled rejections a macrotask after the microtask queue
+      // drains, so the check has to outlive both.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(
+        unhandled.map((reason) =>
+          reason instanceof Error ? reason.message : String(reason)
+        )
+      ).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+
+    // And the failure must not poison the queue for the next writer.
+    const after = await store.set(
+      "r1",
+      { id: "r1", updatedAt: Date.now(), version: 1 },
+      "any"
+    );
+    expect(after.ok).toBe(true);
   });
 });

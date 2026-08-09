@@ -145,21 +145,21 @@ export class FilesystemRequestStore implements RequestStore {
    */
   private readonly eventsFormatVerified = new Set<string>();
   /**
-   * The legacy-abort migration for a request, in flight or already finished
-   * (FIX-1026). Keyed by request id; migration runs lazily on the first write
-   * per request — `set` and `setFieldsIfStatus` share this memo — so the check
-   * costs one record read per request per process rather than one per write.
+   * Requests whose inline legacy abort intent has been dealt with by a write
+   * that completed (FIX-1026). Every write strips the inline field, so once
+   * one has landed the record can never carry it again and later writes can
+   * skip the check entirely — which is what keeps the legacy read at one per
+   * request per process instead of one per write, on an adapter whose records
+   * carry items and are therefore O(items) to read.
    *
-   * A promise rather than a "checked" flag, because concurrent writers must
-   * *wait* for the migration, not skip it. `set` strips the inline flag, so a
-   * second `set` that observed a flag meaning "someone is handling this" and
-   * proceeded would strip the only copy of a cancellation while the migration
-   * that was going to rescue it is still reading — and the migration's own
-   * locked re-read would then find nothing left to migrate. Sharing the promise
-   * makes "the migration has completed" the thing a writer waits on.
+   * A plain set of ids, checked synchronously, NOT a promise to await. The
+   * check has to stay synchronous: an `await` here would hand the per-id write
+   * lock to anything already queued, and a `delete` that slipped through would
+   * then be undone by the write that waited. Two writers both seeing "not yet"
+   * is harmless — they serialize on that lock, and the second finds the first
+   * has already stripped the field.
    */
-  private readonly legacyAbortMigrations = new Map<string, Promise<void>>();
-
+  private readonly abortIntentMigrated = new Set<string>();
   private readonly pollIntervalMs: number;
   private readonly onPersistError?: PersistErrorHandler;
 
@@ -314,49 +314,33 @@ export class FilesystemRequestStore implements RequestStore {
    * deliver, and a request cancelled before the upgrade that reached
    * `suspended` or `interrupted` would resume and run to completion.
    *
-   * The detecting read is unlocked and deliberately read-only; the authority
-   * is the re-read inside `update`, which runs under the per-id lock. That
-   * ordering is what keeps the marker write from outliving a concurrent
-   * `delete`: after a delete, `update` finds no record and the merge never
-   * runs, so no orphan marker is created.
+   * Runs inside the per-id lock the write has already taken, against the
+   * record that write is about to replace — never as an operation of its own.
+   * A separately-locked migration ahead of the write releases the lock in
+   * between, and a `delete` issued afterwards runs to completion in that gap;
+   * the trailing write then recreates the request the delete removed, with the
+   * deleted marker's cancellation gone. Sharing the caller's lock also means
+   * the strip and the migration that rescues the stripped value cannot be
+   * separated by another writer, which is what the memo used to buy.
    *
-   * Concurrent callers share one migration and await it. The detecting read is
-   * the only step outside the lock, so it is also the only window a second
-   * writer can enter — and a second write that skipped ahead through it would
-   * strip the inline flag before this had moved it.
+   * Takes no lock and reads nothing of its own, deliberately: reaching for
+   * either from in here would either deadlock against the lock the caller
+   * holds or reopen the window it exists to close.
    */
-  private migrateLegacyAbortIntent(id: string): Promise<void> {
-    const existing = this.legacyAbortMigrations.get(id);
-    if (existing !== undefined) return existing;
-
-    // Evict a failed migration rather than memoizing the rejection. A retained
-    // failure would disable migration for this id for the life of the process,
-    // and every later `set` would strip the inline flag with no marker to
-    // replace it — the same silent loss, just deferred. The error still
-    // propagates, so the write fails loudly instead of dropping intent.
-    const migration = this.runLegacyAbortMigration(id).catch((error: unknown) => {
-      this.legacyAbortMigrations.delete(id);
-      throw error;
-    });
-    this.legacyAbortMigrations.set(id, migration);
-    return migration;
-  }
-
-  /**
-   * The migration itself. Runs at most once per request per process; callers
-   * go through `migrateLegacyAbortIntent`, which owns the memo.
-   */
-  private async runLegacyAbortMigration(id: string): Promise<void> {
-    // Detector only. Records written by this store never carry the field, so
-    // this returns without writing anything for every non-legacy request.
-    const current = await this.store.get(id);
-    if (current?.abortRequested !== true) return;
-
-    await this.store.update(id, async (fresh) => {
-      if (fresh.abortRequested !== true) return fresh;
+  private async migrateLegacyAbortIntent(
+    id: string,
+    current: RequestRecord | undefined
+  ): Promise<void> {
+    // Records written by this store never carry the field, so this writes
+    // nothing for every non-legacy request.
+    if (current?.abortRequested === true) {
       await this.writeAbortMarker(id, true);
-      return withStoredAbortRequested(fresh, undefined);
-    });
+    }
+    // Only once the marker is safely on disk. A failed marker write must leave
+    // the id unmarked so the next write retries it — and because this runs
+    // before the record is replaced, that failure also aborts the write rather
+    // than stripping a cancellation it could not move.
+    this.abortIntentMigrated.add(id);
   }
 
   async set(
@@ -364,16 +348,21 @@ export class FilesystemRequestStore implements RequestStore {
     value: RequestRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
-    await this.migrateLegacyAbortIntent(id);
     // `abortRequested` is off `set`'s write surface (FIX-1026). The marker is
     // the only home, so the record body never carries the flag: stripping it
     // here means a full-record write can neither set the flag nor clear it,
-    // whatever snapshot the caller built its record from. Legacy intent has
-    // been moved to the marker just above, so stripping no longer discards it.
+    // whatever snapshot the caller built its record from. The `beforeWrite`
+    // hook moves a legacy record's inline copy to the marker first — under
+    // this same write's lock — so stripping never discards stored intent.
     return this.store.set(
       id,
       withStoredAbortRequested(value, undefined),
-      expectedVersion
+      expectedVersion,
+      // Omitted once this request is known migrated, which is what spares the
+      // store the O(items) read the hook would otherwise need on every write.
+      this.abortIntentMigrated.has(id)
+        ? undefined
+        : (current) => this.migrateLegacyAbortIntent(id, current)
     );
   }
 
@@ -387,17 +376,6 @@ export class FilesystemRequestStore implements RequestStore {
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number
   ): Promise<ConditionalWriteResult> {
-    // Same obligation as `set`, for the same reason: the merge below strips the
-    // inline flag unconditionally, but only writes the marker when `fields`
-    // carries `abortRequested`. A conditional write of any OTHER field would
-    // therefore strip a legacy record's only copy of its cancellation with
-    // nothing to replace it — gone from `get()` and from `isAbortRequested()`
-    // alike. Migrating first makes the strip safe whatever the field set is,
-    // so the guard holds for callers that do not exist yet: the verb is
-    // deliberately general, and today's two callers both happening to pass
-    // `abortRequested` is a property of the callers, not of this method.
-    await this.migrateLegacyAbortIntent(id);
-
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
 
@@ -416,8 +394,21 @@ export class FilesystemRequestStore implements RequestStore {
       // on a failed predicate is the price, and it only happens on a cancel
       // that arrives after the request is already terminal.
       if (!allowedStatuses.includes(current.status)) return current;
-      if (abortRequested !== undefined) {
+      // Same obligation as `set`, for the same reason: the strip below runs
+      // unconditionally, but the marker is only written when `fields` carries
+      // `abortRequested`. A conditional write of any OTHER field would
+      // therefore strip a legacy record's only copy of its cancellation with
+      // nothing to replace it — gone from `get()` and from `isAbortRequested()`
+      // alike. So the guard holds for callers that do not exist yet: the verb
+      // is deliberately general, and today's two callers both happening to
+      // pass `abortRequested` is a property of the callers, not of this
+      // method. An explicit value in `fields` is the caller's decision and
+      // wins outright; there is nothing to carry forward.
+      if (abortRequested === undefined) {
+        await this.migrateLegacyAbortIntent(id, current);
+      } else {
         await this.writeAbortMarker(id, abortRequested);
+        this.abortIntentMigrated.add(id);
       }
       // Drop any inline copy on the way out. The marker is the sole home, and
       // a pre-upgrade record that still carries the flag inline would
@@ -477,6 +468,10 @@ export class FilesystemRequestStore implements RequestStore {
     // outside the lock, where a conditional write can slip in between and be
     // left holding a marker whose record is already gone.
     await this.store.delete(id, () => this.deleteSidecars(id));
+    // The record and its marker are gone, so "already migrated" is no longer a
+    // fact about anything. Dropping it keeps the skip above answering a
+    // question about a record that exists.
+    this.abortIntentMigrated.delete(id);
   }
 
   /**
