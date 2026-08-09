@@ -102,6 +102,15 @@ const corruptionWarned = new Set<string>();
  * `SerializedWriteQueue`, so persistence cost is O(new events) rather than
  * O(total log) per write.
  *
+ * Abort intent diverges from the other adapters on purpose (FIX-1026). Items
+ * live inline on the record here, so `get()` is O(items) and keeping the flag
+ * on the record would put that cost on every heartbeat poll. It lives in an
+ * `.abort` marker file beside the record instead, making the poll a `stat`.
+ * That divergence is why this adapter carries more abort code than the others:
+ * `get`/`list` overlay the marker, and a pre-upgrade record carrying the flag
+ * inline is migrated to a marker on its first `set`. Reads never mutate
+ * storage; every write that touches a request's files takes the per-id lock.
+ *
  * Multi-process disclaimer: this store assumes a single writer per request.
  * Ordering and the FIX-399 durability barrier are enforced within one process
  * by the per-request queue and the per-id write lock. There is NO inter-process
