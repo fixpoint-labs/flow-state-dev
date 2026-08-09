@@ -193,6 +193,36 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     expect(await store.isAbortRequested(requestId)).toBe(true);
   });
 
+  it("preserves legacy inline abort intent across a conditional write of another field", async () => {
+    const requestId = "req_legacy_conditional_other_field";
+    // Cancelled before the upgrade: intent is inline, no marker exists.
+    writeLegacyRecord(requestId, "in_progress");
+    expect((await store.get(requestId))?.abortRequested).toBe(true);
+
+    // A conditional write that never mentions `abortRequested`. The verb is
+    // deliberately general — its field set is a parameter, not an abort-shaped
+    // `markAborted()` — so a caller writing any other field is exactly what it
+    // is for. Such a write skips the marker branch but still strips the inline
+    // copy on the way out, which is the whole loss: nothing moved the intent
+    // to the marker first.
+    const applied = await store.setFieldsIfStatus(
+      requestId,
+      { interruptedAt: Date.now() },
+      ["in_progress"],
+      Date.now()
+    );
+    expect(applied.applied).toBe(true);
+
+    // Same two halves as the full-record case above, and they discriminate
+    // differently. This one only asks that the intent survive somewhere
+    // readable...
+    expect((await store.get(requestId))?.abortRequested).toBe(true);
+    // ...this one asks that it reached the marker, which is the half that
+    // decides whether the cancellation can still be delivered: the
+    // cross-process poll is a bare `stat` and never parses the record.
+    expect(await store.isAbortRequested(requestId)).toBe(true);
+  });
+
   it("does not lose legacy inline intent to a write that overlaps the migration", async () => {
     const requestId = "req_legacy_overlap";
     writeLegacyRecord(requestId, "suspended");

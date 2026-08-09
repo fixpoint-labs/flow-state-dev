@@ -1503,6 +1503,30 @@ export async function runActionInternal<
     // still resolves.
     await drainRequestWorkPool(ctx);
 
+    // A cancel accepted during that drain is a cancellation, not a completion.
+    // The drain resolves normally on an abort BY DESIGN — in-flight `.work()`
+    // tasks self-cancel and `drainAll` collects their rejections into
+    // `failed[]` rather than rethrowing — so nothing below would otherwise
+    // learn that the wait it just finished was work being stopped. The success
+    // path would then persist `completed` for a request whose `/abort` was
+    // accepted and demonstrably honoured.
+    //
+    // Keyed on the request controller, which is exactly what fires the
+    // background signal that cancelled those tasks. Both delivery paths
+    // converge on it (the local endpoint and the heartbeat poll's
+    // `abortRequest`), while a transport-level disconnect never reaches it —
+    // FIX-663 deliberately lets background work settle through one, and that
+    // stays true. Throwing hands the run to the single classification in the
+    // catch below, which already distinguishes abort from disconnect, rather
+    // than growing a second copy of it here.
+    //
+    // `action.onCompleted` has already fired above, and correctly: the body did
+    // complete. It is the REQUEST that was cancelled, and `onFinished` reports
+    // that with status "aborted".
+    if (abortController.signal.aborted) {
+      throw abortController.signal.reason;
+    }
+
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 

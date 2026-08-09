@@ -7,6 +7,8 @@
 
 Cancelling a request now stops it even when it is running in another process (FIX-1026). `session.abortRequest()` and `POST /abort` previously recorded the cancellation durably but nothing read it while the run was alive, so a detached request on a worker ran to completion. The process running the work now checks for a recorded cancellation on the heartbeat tick it already performs and tears the run down through the same path a same-process abort uses. Delivery is bounded by the flow's `heartbeatIntervalMs` (default 10s) and requires a request store shared across processes.
 
+A cancellation accepted while a request is finishing its background work now settles that request as `aborted` rather than `completed`. A request that queued `.work()` tasks waits for them before writing its terminal status, and a cancel arriving during that wait does stop them — but the request still reported `completed`, telling the caller the opposite of what happened to their work.
+
 **Adapter authors: `RequestStore` gains two required members, so a custom adapter will not compile until it implements them.**
 
 - `isAbortRequested(requestId): Promise<boolean>` — whether cancellation has been requested. Runs on every heartbeat tick, so it must be O(1) in item count; reading the whole record is not an acceptable implementation on an adapter whose `get()` carries items.

@@ -108,7 +108,7 @@ const corruptionWarned = new Set<string>();
  * `.abort` marker file beside the record instead, making the poll a `stat`.
  * That divergence is why this adapter carries more abort code than the others:
  * `get`/`list` overlay the marker, and a pre-upgrade record carrying the flag
- * inline is migrated to a marker on its first `set`. Reads never mutate
+ * inline is migrated to a marker on its first write. Reads never mutate
  * storage; every write that touches a request's files takes the per-id lock.
  *
  * Multi-process disclaimer: this store assumes a single writer per request.
@@ -146,9 +146,9 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly eventsFormatVerified = new Set<string>();
   /**
    * The legacy-abort migration for a request, in flight or already finished
-   * (FIX-1026). Keyed by request id; migration runs lazily on the first `set`
-   * per request, so the check costs one record read per request per process
-   * rather than one per write.
+   * (FIX-1026). Keyed by request id; migration runs lazily on the first write
+   * per request — `set` and `setFieldsIfStatus` share this memo — so the check
+   * costs one record read per request per process rather than one per write.
    *
    * A promise rather than a "checked" flag, because concurrent writers must
    * *wait* for the migration, not skip it. `set` strips the inline flag, so a
@@ -254,12 +254,12 @@ export class FilesystemRequestStore implements RequestStore {
     // also put a locked read-modify-write on the hot read path, and `get` is
     // already the O(items) call the marker exists to keep off the poll.
     //
-    // Migration happens on the write path instead — `set` moves a legacy
-    // inline flag into the marker before stripping it, so a full-record write
-    // no longer discards stored intent. Between an upgrade and a request's
-    // first write, the flag is therefore visible here but not to
+    // Migration happens on the write path instead — every write that strips
+    // the inline flag (`set` and `setFieldsIfStatus` alike) moves it into the
+    // marker first, so no write discards stored intent. Between an upgrade and
+    // a request's first write, the flag is therefore visible here but not to
     // `isAbortRequested`, which is a bare `stat`. That gap is one write wide
-    // and closes on the first `set`, which every live request performs.
+    // and closes on the first write, which every live request performs.
     const inlineLegacy = record.abortRequested === true;
 
     return withRequestSourceDefault(
@@ -303,9 +303,11 @@ export class FilesystemRequestStore implements RequestStore {
    * Move a pre-upgrade inline `abortRequested: true` into the marker, once per
    * request per process (FIX-1026, BP-030).
    *
-   * `set` strips the inline field, and on a record written before the flag
-   * moved off `set`'s write surface that field is the *only* copy of the
-   * cancellation — so stripping it without migrating would let a full-record
+   * Both write paths strip the inline field — `set` always, and
+   * `setFieldsIfStatus` on every applied write regardless of whether its field
+   * set mentions `abortRequested`. On a record written before the flag moved
+   * off `set`'s write surface that field is the *only* copy of the
+   * cancellation, so stripping it without migrating would let an ordinary
    * write clear stored intent, which the `set` contract forbids in both
    * directions. It is not merely a lost read: `isAbortRequested` is a bare
    * `stat`, so intent left inline is intent the cross-process poll can never
@@ -320,7 +322,7 @@ export class FilesystemRequestStore implements RequestStore {
    *
    * Concurrent callers share one migration and await it. The detecting read is
    * the only step outside the lock, so it is also the only window a second
-   * writer can enter — and a second `set` that skipped ahead through it would
+   * writer can enter — and a second write that skipped ahead through it would
    * strip the inline flag before this had moved it.
    */
   private migrateLegacyAbortIntent(id: string): Promise<void> {
@@ -385,6 +387,17 @@ export class FilesystemRequestStore implements RequestStore {
     allowedStatuses: readonly RequestStatus[],
     updatedAt: number
   ): Promise<ConditionalWriteResult> {
+    // Same obligation as `set`, for the same reason: the merge below strips the
+    // inline flag unconditionally, but only writes the marker when `fields`
+    // carries `abortRequested`. A conditional write of any OTHER field would
+    // therefore strip a legacy record's only copy of its cancellation with
+    // nothing to replace it — gone from `get()` and from `isAbortRequested()`
+    // alike. Migrating first makes the strip safe whatever the field set is,
+    // so the guard holds for callers that do not exist yet: the verb is
+    // deliberately general, and today's two callers both happening to pass
+    // `abortRequested` is a property of the callers, not of this method.
+    await this.migrateLegacyAbortIntent(id);
+
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
 

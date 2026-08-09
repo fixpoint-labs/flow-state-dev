@@ -1488,3 +1488,199 @@ describe("cross-process abort accepted in the teardown window", () => {
     expect(record?.status).toBe("aborted");
   });
 });
+
+describe("cross-process abort delivered during the background drain", () => {
+  /**
+   * A promise plus its resolver, for parking the test at a chosen point so the
+   * interleave is deterministic instead of timing-dependent.
+   */
+  function createGate(): { wait: Promise<void>; open: () => void } {
+    let open: () => void = () => {};
+    const wait = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { wait, open };
+  }
+
+  /**
+   * The success path drains the request-scoped `.work()` pool before it writes
+   * the terminal status. A cancel accepted during that drain IS delivered — the
+   * poll fires the controller and the in-flight tasks self-cancel — but the
+   * drain collects their rejections into `failed[]`, logs them, and resolves
+   * normally. Nothing after it re-reads `deliveredAbort`, so the run persists
+   * `completed`: the caller is told the request finished while their cancel was
+   * busy stopping its background work.
+   *
+   * Distinct from the teardown window above, which is about intent that is
+   * never delivered at all. Here delivery demonstrably happened.
+   */
+  it("classifies the request aborted rather than completed", async () => {
+    const base = createInMemoryStores();
+    const requestId = "req_xproc_drain_window";
+
+    // The abort must stay invisible to the poll until the action body has
+    // finished. Delivered any earlier and the body itself throws, which is the
+    // ordinary abort path — a different window, already covered above.
+    let abortVisible = false;
+    const stores = withStoreOverrides(base, {
+      request: {
+        isAbortRequested: async (id: string) =>
+          abortVisible && (await base.request.isAbortRequested(id))
+      }
+    });
+
+    // Two gates make the interleave exact rather than timed. `bodyDone` fires
+    // when the last step of the body returns; the background task then holds
+    // the drain open until its signal fires, which only delivery can do. So the
+    // drain cannot finish before the abort lands, and the abort cannot land
+    // before the body is done.
+    const bodyDone = createGate();
+
+    const background = handler({
+      name: "bg-holds-the-drain",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async (_input, ctx) =>
+        new Promise<string>((_resolve, reject) => {
+          // `.work()` tasks run on the background signal (FIX-663), which fires
+          // only on an explicit cancel — exactly the delivery under test.
+          if (ctx.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true }
+          );
+        })
+    });
+
+    const finish = handler({
+      name: "body-done",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async () => {
+        bodyDone.open();
+        return "body succeeded";
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "xproc-drain-window",
+      request: { heartbeatIntervalMs: 20 },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: sequencer({ name: "seq" }).work(background).step(finish)
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_drain",
+      stores,
+      runtimeConfig: {}
+    });
+
+    await bodyDone.wait;
+    // The body has returned, so the run is in (or entering) the drain and the
+    // record is still `in_progress` — the drain is blocked on the task above.
+    // Record the intent the way a `/abort` on another process does, then let
+    // the poll see it.
+    await recordAbortIntent(stores, requestId);
+    abortVisible = true;
+
+    const result = await resultPromise;
+    expect(result.error).toBeUndefined();
+
+    const record = await stores.request.get(requestId);
+    // The cancel was accepted with a 202 and demonstrably stopped the
+    // background work. Reporting `completed` tells the caller the opposite.
+    expect(record?.status).toBe("aborted");
+    expect(record?.abortedAt).toBeTypeOf("number");
+  });
+
+  /**
+   * The same window reached the other way. `/abort` on the process that owns
+   * the run answers 204 and fires the controller directly, so `deliveredAbort`
+   * — the poll's own latch — is never set. Both delivery paths converge on the
+   * one registry controller by design, and the classification after the drain
+   * has to key on something both of them set, or the 204 case keeps writing
+   * `completed` over work it just stopped.
+   *
+   * `heartbeatIntervalMs: 0` removes the poll entirely, so the local fire is
+   * demonstrably the only thing that cancelled the drain.
+   */
+  it("classifies a locally fired abort in the same window", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_local_drain_window";
+    const bodyDone = createGate();
+
+    const background = handler({
+      name: "bg-holds-the-drain-local",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async (_input, ctx) =>
+        new Promise<string>((_resolve, reject) => {
+          if (ctx.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true }
+          );
+        })
+    });
+
+    const finish = handler({
+      name: "body-done-local",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async () => {
+        bodyDone.open();
+        return "body succeeded";
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "local-drain-window",
+      request: { heartbeatIntervalMs: 0 },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: sequencer({ name: "seq" }).work(background).step(finish)
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_local_drain",
+      stores,
+      runtimeConfig: {}
+    });
+
+    await bodyDone.wait;
+    // Exactly what `handleAbortRequest` does on its 204 leg: record the intent
+    // durably, then fire the in-process controller.
+    await recordAbortIntent(stores, requestId);
+    expect(abortRequest(requestId)).toBe(true);
+
+    const result = await resultPromise;
+    expect(result.error).toBeUndefined();
+
+    const record = await stores.request.get(requestId);
+    expect(record?.status).toBe("aborted");
+    expect(record?.abortedAt).toBeTypeOf("number");
+  });
+});
