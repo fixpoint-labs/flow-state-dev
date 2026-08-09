@@ -64,7 +64,11 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createInMemoryStores, type StoreRegistry } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores,
+  resolveSessionResourceScopeId,
+  type StoreRegistry,
+} from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
   ticketForClaim,
@@ -226,15 +230,22 @@ function run(
  * The durable row for a task, read straight from the store — not through any
  * participating execution's collection ref, whose per-execution cache is
  * exactly what a stale write exploits.
+ *
+ * The session here is always created through `run()` (a real `testFlow` /
+ * `createExecutionContext` call), so its record carries a minted
+ * `storageGeneration` (FIX-1000) and its resources address at
+ * `resolveSessionResourceScopeId(record)`, not the bare session id.
  */
 async function durableTask(
   stores: StoreRegistry,
   sessionId: string,
   id: string
 ): Promise<Task<{ goal: string }, unknown> | undefined> {
+  const record = await stores.session.get(sessionId);
+  const scopeId = record ? resolveSessionResourceScopeId(record) : sessionId;
   const row = await stores.resourceState.get(
     "session",
-    sessionId,
+    scopeId,
     `${COLLECTION_ID}/${id}`
   );
   return row?.state as Task<{ goal: string }, unknown> | undefined;

@@ -250,7 +250,7 @@ export async function handleCreateCollectionItem(
   // `ContentStore`, and its 409 is terminal — never retried into an overwrite.
   const inserted = await ctx.stores.resourceState.set(
     "session",
-    session.id,
+    resolveSessionResourceScopeId(session),
     storageKey,
     initialState,
     0
@@ -729,7 +729,7 @@ export async function handleDeleteCollectionItem(
   const existing = await ctx.stores.resourceState.get("session", resolveSessionResourceScopeId(session), storageKey);
   const removed = await ctx.stores.resourceState.delete(
     "session",
-    session.id,
+    resolveSessionResourceScopeId(session),
     storageKey,
     existing?.version ?? 0
   );
