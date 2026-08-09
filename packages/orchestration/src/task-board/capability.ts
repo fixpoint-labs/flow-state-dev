@@ -46,6 +46,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
   type TaskFilter,
@@ -109,12 +110,13 @@ export interface TaskBoardResourceCapabilityOptions {
   /** Internal resource-declaring capability composed via `uses`. */
   resourceCapability: DefinedCapability;
   /**
-   * Refuse reassignment on this board (FIX-982) — set when it declares detached
-   * workers. Carried here as well as on the drain's own factory because both
-   * reach the same ledger; guarding only the drain would leave
-   * `ctx.cap.<name>.setAssignee` as an unguarded way to the same write.
+   * The ledger declaration this board binds (FIX-982). Forwarded to
+   * `resolveResourceTaskCollection`, which reads the frozen-assignee policy off
+   * it at resolution time — this accessor and the drain's own factory reach the
+   * same rows, so a policy either of them could hold privately is one a caller
+   * routes around by picking the other.
    */
-  immutableAssignee?: boolean;
+  ledger: DefinedTaskCollection;
 }
 
 /**
@@ -252,7 +254,7 @@ export function createTaskBoardCapability<
   }
 
   if (options.backing === "resource") {
-    const { resourceKey, resourceCapability, immutableAssignee } = options;
+    const { resourceKey, resourceCapability, ledger } = options;
     return defineCapability({
       name: capabilityName,
       // Compose the internal resource-declaring capability so any block that
@@ -264,7 +266,7 @@ export function createTaskBoardCapability<
             boardName,
             resourceKey,
             collectionId,
-            immutableAssignee,
+            ledger,
           })
         ),
     });

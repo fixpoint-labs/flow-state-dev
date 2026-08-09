@@ -18,11 +18,13 @@ the routing derives from.
   children's up, and `defineFlow` reads the union off each action root into
   `flow.workstreamBindings`. Nothing is authored to get one, and the map lives
   outside `flow.actions`, so a detached worker is not reachable from an HTTP or
-  MCP caller. Two different worker blocks at one `(boardId, coordinate)` is
-  refused at flow definition — a coordinate that resolves to two blocks is a
-  routing question with no answer, and picking one silently runs the wrong
-  worker. New helpers: `declareWorkstreamBindings`, `mergeWorkstreamBindings`,
-  `workstreamBindingKey`.
+  MCP caller. Two separate board declarations at one `(boardId, coordinate)` are
+  refused at flow definition, whether or not they name the same worker block — a
+  coordinate that resolves to two declarations is a routing question with no
+  answer, and two boards sharing a board id address the same child session while
+  keeping separate task ledgers. Sharing a worker block between boards is still
+  fine; sharing a board id is not. New helpers: `declareWorkstreamBindings`,
+  `mergeWorkstreamBindings`, `workstreamBindingKey`.
 
 - `@flow-state-dev/orchestration`: `taskBoard` derives each worker's routing
   coordinate — a tagged `assignee` / `uniform` / `floor` value rather than a bare
@@ -34,13 +36,18 @@ the routing derives from.
   board dimension of its own — two boards sharing a topic and an assignee name
   would otherwise land in one session.
 
-- `@flow-state-dev/orchestration`: on a board with any detached worker,
-  `setAssignee` now declines with the new `immutable-assignee` reason, whatever
-  the task's status. Reassigning after admission does not redirect anything: work
-  already dispatched keeps running under the old coordinate and the new one
-  addresses a session nothing will wake, so the write succeeds and the task
-  simply never runs. The refusal is reported through the existing
+- `@flow-state-dev/orchestration`: once any board with a detached worker binds a
+  durable task collection, `setAssignee` on that collection declines with the new
+  `immutable-assignee` reason, whatever the task's status. Reassigning after
+  admission does not redirect anything: work already dispatched keeps running
+  under the old coordinate and the new one addresses a session nothing will wake,
+  so the write succeeds and the task simply never runs. The rule belongs to the
+  collection rather than to the board that declared it, so a second board sharing
+  the same `defineTaskCollection` value gets the same answer — those boards share
+  rows, and a reassignment through either one moves the coordinate the detached
+  board routes by. The refusal is reported through the existing
   `TaskWriteOutcome`, so callers that ignore the return value are unaffected.
 
-No execution changes. Boards that declare no detached workers behave exactly as
-before: no bindings, no coordinate, and `setAssignee` unrestricted.
+No execution changes. Boards that declare no detached workers, and durable
+collections no detached board binds, behave exactly as before: no bindings, no
+coordinate, and `setAssignee` unrestricted.

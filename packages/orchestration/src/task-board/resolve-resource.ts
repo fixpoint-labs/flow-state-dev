@@ -9,7 +9,9 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  hasFrozenLedgerAssignee,
   resolveResourceCollection,
+  type DefinedTaskCollection,
   type TaskCollectionRef,
 } from "../tasks";
 
@@ -20,13 +22,18 @@ export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknow
     resourceKey: string;
     collectionId: string;
     /**
-     * Refuse reassignment on this board (FIX-982) — set when the board declares
-     * detached workers. Threaded through here rather than applied at one call
-     * site because BOTH resolutions must carry it: the drain's own factory and
-     * the `ctx.cap.<name>` accessor reach the same ledger, and a guard present
-     * on one of them is a guard a caller routes around by picking the other.
+     * The ledger declaration this board binds (FIX-982). Carries the frozen-
+     * assignee policy, which is read HERE — at resolution — rather than passed
+     * in as a boolean the caller captured when it was constructed.
+     *
+     * Both of a durable board's routes to its rows come through this function
+     * (the drain's factory and the `ctx.cap.<name>` accessor), and so does every
+     * other board bound to the same declaration. Reading the policy off the
+     * shared declaration at the moment of resolution is what makes those agree:
+     * a boolean captured per call site guards only that call site, and one
+     * captured before the detached board was declared would be stale besides.
      */
-    immutableAssignee?: boolean;
+    ledger: DefinedTaskCollection;
   }
 ): Promise<TaskCollectionRef<TInput, TOutput>> {
   const collection = resolveResourceCollection(ctx, opts.resourceKey);
@@ -42,6 +49,6 @@ export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknow
     backing: "resource",
     collectionId: opts.collectionId,
     collection,
-    immutableAssignee: opts.immutableAssignee,
+    immutableAssignee: hasFrozenLedgerAssignee(opts.ledger),
   });
 }

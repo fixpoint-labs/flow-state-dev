@@ -43,16 +43,31 @@ function worker(name: string): TaskWorker {
 }
 
 const durable = defineTaskCollection({ id: "registry-tasks", scope: "user" });
+/**
+ * A second, independent ledger. Two boards that share a `boardId` while holding
+ * *different* ledgers is the shape that makes the collision consequential — same
+ * routing seed, two sets of rows.
+ */
+const separateLedger = defineTaskCollection({ id: "registry-tasks-b", scope: "user" });
 
 /** A board with one detached worker under `assignee: implement`. */
-function detachedBoard(options: { name: string; boardId: string; workerName?: string }) {
+function detachedBoard(options: {
+  name: string;
+  boardId: string;
+  workerName?: string;
+  /** Reuse an existing worker block, rather than building a fresh one. */
+  workerBlock?: TaskWorker;
+  /** Bind a ledger other than the shared `durable` one. */
+  collection?: typeof durable;
+}) {
   return taskBoard({
     name: options.name,
     boardId: options.boardId,
-    collection: durable,
+    collection: options.collection ?? durable,
     workers: {
       implement: {
-        worker: worker(options.workerName ?? `${options.name}-implement`),
+        worker:
+          options.workerBlock ?? worker(options.workerName ?? `${options.name}-implement`),
         dispatch: { mode: "detached" },
       },
     },
@@ -149,7 +164,8 @@ describe("registry bubble-up — a board reaches the flow from wherever it sits"
 
   it("deduplicates one board drained from two actions", () => {
     // Same board, two entry points. This is a duplicate, not a conflict, and
-    // must not throw — identity is the worker reference.
+    // must not throw — identity is the binding the board stamped, which both
+    // paths carry by reference.
     const board = detachedBoard({ name: "issue-work", boardId: "issue-work" });
 
     const flow = defineFlow({
@@ -277,5 +293,54 @@ describe("registry bubble-up — an unanswerable coordinate is refused at defini
     })({ id: "board" });
 
     expect(flow.workstreamBindings?.size).toBe(2);
+  });
+
+  it("throws when two boards share a boardId even though they share the worker block", () => {
+    // The dangerous case, because nothing about it looks wrong. Declaring a
+    // worker once and handing it to two boards is ordinary composition, so
+    // testing whether the two bindings name the same *worker* answers "yes" and
+    // merges them — while the boards keep separate ledgers.
+    //
+    // Nothing downstream can then separate them: the routing seed is derived
+    // from (boardId, coordinate) alone, so both boards address the same child
+    // session and tasks from two ledgers interleave in one history. Definition
+    // time is the last point where the author can see both declarations.
+    const shared = worker("shared-implement");
+    const a = detachedBoard({ name: "board-a", boardId: "shared", workerBlock: shared });
+    const b = detachedBoard({
+      name: "board-b",
+      boardId: "shared",
+      workerBlock: shared,
+      collection: separateLedger,
+    });
+
+    expect(() =>
+      defineFlow({
+        kind: "board",
+        actions: { runA: { block: a.drain }, runB: { block: b.drain } },
+      })({ id: "board" })
+    ).toThrow(/share boardId "shared"/);
+  });
+
+  it("says the boardId is the problem, not the worker, when the worker is shared", () => {
+    // The author sees one worker block and two boards. A message reading
+    // `two different detached workers ("shared-implement" and
+    // "shared-implement")` would send them hunting for a second worker that
+    // does not exist.
+    const shared = worker("shared-implement");
+    const a = detachedBoard({ name: "board-a", boardId: "shared", workerBlock: shared });
+    const b = detachedBoard({
+      name: "board-b",
+      boardId: "shared",
+      workerBlock: shared,
+      collection: separateLedger,
+    });
+
+    expect(() =>
+      defineFlow({
+        kind: "board",
+        actions: { runA: { block: a.drain }, runB: { block: b.drain } },
+      })({ id: "board" })
+    ).toThrow(/Give the boards distinct boardIds/);
   });
 });

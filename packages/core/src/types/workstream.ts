@@ -82,17 +82,28 @@ export function workstreamBindingKey(boardId: string, coordinateKey: string): st
  * Merge two binding sets, returning a new map (never mutating either input).
  *
  * The same binding arriving twice is the ordinary case, not an error: one board
- * drained from two actions bubbles its bindings up both paths. Identity is by
- * **worker reference**, so re-encountering the same declaration deduplicates
- * silently.
+ * drained from two actions bubbles its bindings up both paths. Identity is the
+ * **binding object**, which a board creates once when it stamps its drain, so
+ * every path that re-encounters that board carries the very same object and
+ * deduplicates silently.
  *
- * Two *different* workers at one coordinate is a build-time throw. It cannot be
- * resolved by picking one — a detached dispatch carrying that coordinate would
- * run whichever binding happened to merge last, and the loser's tasks would
- * execute the wrong worker with no error anywhere. Failing at flow definition is
- * the only point where the author can still see both declarations.
+ * Identity is deliberately NOT the worker reference. A worker block declared
+ * once and reused by two boards is ordinary composition, and under worker
+ * identity two such boards sharing a `boardId` would merge into one entry
+ * without a word — even though they hold **separate ledgers**. Nothing downstream
+ * could then tell the two apart: `workstreamRoutingSeed` frames only
+ * `(boardId, coordinate)`, so both boards derive the same child session and
+ * interleave two unrelated bodies of work in one history. Framing `boardId` into
+ * the seed exists precisely to keep boards apart; letting a shared worker
+ * reference collapse them here would hand that guarantee back.
  *
- * @throws {Error} when one coordinate carries two different worker blocks.
+ * Two *distinct* declarations at one coordinate are therefore a build-time throw,
+ * whether or not they name the same worker. It cannot be resolved by picking one
+ * — a detached dispatch carrying that coordinate would run whichever binding
+ * merged last, against whichever ledger came with it. Failing at flow definition
+ * is the only point where the author can still see both declarations.
+ *
+ * @throws {Error} when one coordinate carries two distinct binding declarations.
  */
 export function mergeWorkstreamBindings(
   target: WorkstreamBindings | undefined,
@@ -108,13 +119,20 @@ export function mergeWorkstreamBindings(
       merged.set(key, binding);
       continue;
     }
-    if (existing.worker === binding.worker) continue;
+    if (existing === binding) continue;
     throw new Error(
-      `[workstream] board "${binding.boardId}" declares two different detached workers at ` +
-        `coordinate "${binding.coordinateKey}" ("${existing.worker.name}" and ` +
-        `"${binding.worker.name}"). A detached dispatch names only the coordinate, so this ` +
-        `flow cannot say which block it should run. Give the boards distinct boardIds, or ` +
-        `the workers distinct coordinates.`
+      existing.worker === binding.worker
+        ? `[workstream] two separate boards share boardId "${binding.boardId}" and both bind ` +
+            `coordinate "${binding.coordinateKey}" (to worker "${binding.worker.name}"). Sharing ` +
+            `a worker block is fine; sharing a boardId is not — the routing seed is derived from ` +
+            `(boardId, coordinate) alone, so the two boards address the same child session and ` +
+            `tasks from their separate ledgers would interleave in one history. Give the boards ` +
+            `distinct boardIds.`
+        : `[workstream] board "${binding.boardId}" declares two different detached workers at ` +
+            `coordinate "${binding.coordinateKey}" ("${existing.worker.name}" and ` +
+            `"${binding.worker.name}"). A detached dispatch names only the coordinate, so this ` +
+            `flow cannot say which block it should run. Give the boards distinct boardIds, or ` +
+            `the workers distinct coordinates.`
     );
   }
   return merged;
@@ -133,6 +151,15 @@ export function mergeWorkstreamBindings(
  * sequencer builder already patches its own definition post-construction for the
  * same reason (a tracked output schema); copying instead would hand back an
  * object whose chaining methods still close over the unstamped original.
+ *
+ * The duplicate check below tests the **worker reference**, where
+ * `mergeWorkstreamBindings` tests the binding object — not an inconsistency. The
+ * bindings handed here are one board's own, freshly built in a single `.map()`,
+ * so no two are ever the same object and object identity could only ever throw.
+ * What it is worth catching at this altitude is one board putting two different
+ * workers behind coordinate spellings that encode alike. Across boards, where
+ * `mergeWorkstreamBindings` runs, a shared worker no longer implies a shared
+ * declaration, and object identity is the only test that separates them.
  */
 export function declareWorkstreamBindings<TBlock extends { workstreamBindings?: WorkstreamBindings }>(
   block: TBlock,

@@ -2288,7 +2288,13 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         // accumulatedRequiresOrg; forward only the constant own-resources set.
         undefined,
         undefined,
-        ownDeclaredResources
+        ownDeclaredResources,
+        // Bindings are NOT among the defaults dropped above (FIX-982). Read off
+        // `baseBlock` for the same reason `mergeWorkstreamBindingsFrom` does: a
+        // board stamps the finished drain, so the closure parameter predates the
+        // stamp and `board.drain.connectInput(...)` would return an executable
+        // sequencer with no route to its own worker.
+        baseBlock.workstreamBindings
       );
     },
 

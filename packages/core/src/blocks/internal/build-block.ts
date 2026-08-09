@@ -16,7 +16,7 @@ import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
-import type { WorkstreamBindings } from "../../types/workstream";
+import { mergeWorkstreamBindings, type WorkstreamBindings } from "../../types/workstream";
 import { getBaseCapability } from "../../capability/merge";
 import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
@@ -347,6 +347,14 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        // Detached worker bindings ride every rebuild `declaredResources` does
+        // (FIX-982). Read off `definition`, never `options`: a task board stamps
+        // its bindings onto the finished block via `declareWorkstreamBindings`,
+        // so the construction-time `options` value predates the stamp and
+        // rebuilding from it hands back a block that has silently forgotten the
+        // board it contains. Nothing throws — the symptom is a detached task
+        // that is admitted, claimed, dispatched and then never runs.
+        workstreamBindings: definition.workstreamBindings,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
         // output. Forward it through.
@@ -364,6 +372,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        workstreamBindings: definition.workstreamBindings,
         modelOutputMapper: mapper,
       });
     },
@@ -373,8 +382,18 @@ export function buildBlock<
       // time, mirroring the sequencer's chain-level `.rescue()`.
       let mergedResources = options.declaredResources;
       let mergedRequiresOrg = requiresOrg;
+      // Bindings merge rather than pass through: a rescue handler may itself
+      // contain a board, and a coordinate reachable only on the failure path is
+      // still one the flow must resolve after a restart. Seeded from
+      // `definition` (post-stamp), unlike `mergedResources` above — see the note
+      // in `connectInput`.
+      let mergedWorkstreamBindings = definition.workstreamBindings;
       for (const handler of handlers) {
         mergedResources = mergeDeclaredResources(mergedResources, handler.block.declaredResources);
+        mergedWorkstreamBindings = mergeWorkstreamBindings(
+          mergedWorkstreamBindings,
+          handler.block.workstreamBindings
+        );
         if (handler.block.requiresOrg === true) {
           mergedRequiresOrg = true;
         }
@@ -387,6 +406,7 @@ export function buildBlock<
         ownDeclaredResources: options.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: mergedRequiresOrg,
+        workstreamBindings: mergedWorkstreamBindings,
         modelOutputMapper: options.modelOutputMapper,
       });
     },
@@ -446,9 +466,9 @@ export function buildBlock<
         outputSchema: runtimeConfig.outputSchema,
       };
 
-      // declaredResources / resolvedCapabilities are forwarded so the inner
-      // block's resource declarations still bubble up to the flow when the
-      // wrapper is the surface added to a sequencer chain.
+      // declaredResources / resolvedCapabilities / workstreamBindings are
+      // forwarded so the inner block's declarations still bubble up to the flow
+      // when the wrapper is the surface added to a sequencer chain.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind: "handler",
         config: wrappedConfig,
@@ -457,6 +477,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        workstreamBindings: definition.workstreamBindings,
       });
     },
     connectOutput<TTo>(
@@ -486,6 +507,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        workstreamBindings: definition.workstreamBindings,
       });
     }
   };

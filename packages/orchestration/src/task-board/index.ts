@@ -78,6 +78,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { declareWorkstreamBindings } from "@flow-state-dev/core/types";
 import {
+  freezeLedgerAssignee,
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
   onTaskChangeFor,
@@ -1131,6 +1132,17 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     const definedCollection = collectionConfig;
     const resourceKey = definedCollection.__taskCollection.id;
     const collectionId = resourceKey;
+    // FIX-982 decision 10 — the frozen-assignee policy is recorded on the LEDGER
+    // declaration, not on the refs built from it. Two boards may bind the same
+    // durable collection, and only one of them need declare detached workers;
+    // the rows they share are routed by assignee either way, so a reassignment
+    // through the other board's ref would break the detached board's invariant
+    // just as thoroughly as one through its own. Marking here and reading at
+    // resolution also makes construction order irrelevant — the sibling board
+    // may well be built first.
+    if (immutableAssignee) {
+      freezeLedgerAssignee(definedCollection);
+    }
     // Internal resource-declaring capability — named distinctly from the public
     // `ctx.cap.<name>` board cap so the two never collide in `flattenCapabilities`.
     const resourceCapability = defineCapability({
@@ -1142,7 +1154,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         boardName,
         resourceKey,
         collectionId,
-        immutableAssignee,
+        ledger: definedCollection,
       });
     return {
       collectionFactory,
@@ -1154,7 +1166,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         collectionId,
         resourceKey,
         resourceCapability,
-        immutableAssignee,
+        ledger: definedCollection,
       }),
       drainUses: [resourceCapability],
     };

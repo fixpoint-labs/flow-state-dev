@@ -233,3 +233,172 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
     });
   });
 });
+
+/**
+ * The policy belongs to the LEDGER, not to whichever ref reached it.
+ *
+ * The two routes above — the drain's factory and `ctx.cap.<board>` — are the two
+ * a *single* board owns, and covering both is what makes the guard
+ * unbypassable from inside that board. It says nothing about a second board.
+ *
+ * Two boards may bind the same `defineTaskCollection` value, and only one of them
+ * need declare detached workers. They then share rows: the detached board routes
+ * those rows by assignee, and the sibling holds a ref that was built with no such
+ * rule. A `setAssignee` through the sibling succeeds, and the detached board
+ * watches its routing coordinate move underneath it — the exact failure the guard
+ * exists to prevent, reached by a ref the guard was never installed on.
+ *
+ * Construction order must not decide it either. Boards are declared in whatever
+ * order a module happens to read, so the sibling is as likely to be built before
+ * the detached board as after, and a policy captured when a board is constructed
+ * would be a policy that depends on which line came first.
+ */
+describe("assignee immutability is a property of the shared ledger", () => {
+  function workerBlock(name: string): TaskWorker {
+    return handler({
+      name,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.null(),
+      execute: () => null,
+    }) as TaskWorker;
+  }
+
+  function reassignThroughCapability(
+    boardHandle: ReturnType<typeof taskBoard>,
+    boardName: string
+  ) {
+    return handler({
+      name: `${boardName}-reassign`,
+      inputSchema: z.unknown(),
+      uses: [boardHandle.capability],
+      execute: async (_input, ctx) => {
+        const tasks: TaskCollectionRef = await (
+          ctx.cap as Record<string, { tasks: () => Promise<TaskCollectionRef> }>
+        )[boardName].tasks();
+        const task = await tasks.addTask({ goal: "work", assignee: "implement" });
+        const outcome: TaskWriteOutcome = await tasks.setAssignee(task.id, "review");
+        return { outcome, assignee: tasks.get(task.id)?.assignee ?? null };
+      },
+    });
+  }
+
+  it("declines through a sibling board that shares the ledger and declares nothing detached", async () => {
+    const ledger = defineTaskCollection({ id: "shared-ledger-a", scope: "session" });
+
+    taskBoard({
+      name: "detached-owner-a",
+      boardId: "detached-owner-a",
+      collection: ledger,
+      workers: {
+        implement: { worker: workerBlock("owner-impl-a"), dispatch: { mode: "detached" } },
+      },
+    });
+
+    const sibling = taskBoard({
+      name: "sibling-a",
+      collection: ledger,
+      workers: { implement: workerBlock("sibling-impl-a") },
+    });
+
+    const result = await testBlock(reassignThroughCapability(sibling, "sibling-a"), {
+      input: undefined,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toMatchObject({
+      outcome: { outcome: "declined", reason: "immutable-assignee" },
+      assignee: "implement",
+    });
+  });
+
+  it("declines through a sibling declared BEFORE the detached board", async () => {
+    // Order reversed. A policy captured at board-construction time passes the
+    // case above and fails this one, so the two are not redundant.
+    const ledger = defineTaskCollection({ id: "shared-ledger-b", scope: "session" });
+
+    const sibling = taskBoard({
+      name: "sibling-b",
+      collection: ledger,
+      workers: { implement: workerBlock("sibling-impl-b") },
+    });
+
+    taskBoard({
+      name: "detached-owner-b",
+      boardId: "detached-owner-b",
+      collection: ledger,
+      workers: {
+        implement: { worker: workerBlock("owner-impl-b"), dispatch: { mode: "detached" } },
+      },
+    });
+
+    const result = await testBlock(reassignThroughCapability(sibling, "sibling-b"), {
+      input: undefined,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toMatchObject({
+      outcome: { outcome: "declined", reason: "immutable-assignee" },
+      assignee: "implement",
+    });
+  });
+
+  it("leaves two boards sharing a ledger alone when neither is detached", async () => {
+    // The promotion is driven by a detached declaration, not by sharing. Without
+    // this, "freeze the ledger" could degrade into "freeze anything shared".
+    const ledger = defineTaskCollection({ id: "shared-ledger-c", scope: "session" });
+
+    taskBoard({
+      name: "plain-first-c",
+      collection: ledger,
+      workers: { implement: workerBlock("plain-impl-c") },
+    });
+
+    const second = taskBoard({
+      name: "plain-second-c",
+      collection: ledger,
+      workers: { implement: workerBlock("plain-impl-2-c") },
+    });
+
+    const result = await testBlock(reassignThroughCapability(second, "plain-second-c"), {
+      input: undefined,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toMatchObject({
+      outcome: { outcome: "recorded" },
+      assignee: "review",
+    });
+  });
+
+  it("does not leak the policy to a different ledger", async () => {
+    // Identity is the declaration object, not the collection id or the mere fact
+    // that some board somewhere is detached. A second ledger must be untouched.
+    const detachedLedger = defineTaskCollection({ id: "shared-ledger-d", scope: "session" });
+    const otherLedger = defineTaskCollection({ id: "other-ledger-d", scope: "session" });
+
+    taskBoard({
+      name: "detached-owner-d",
+      boardId: "detached-owner-d",
+      collection: detachedLedger,
+      workers: {
+        implement: { worker: workerBlock("owner-impl-d"), dispatch: { mode: "detached" } },
+      },
+    });
+
+    const unrelated = taskBoard({
+      name: "unrelated-d",
+      collection: otherLedger,
+      workers: { implement: workerBlock("unrelated-impl-d") },
+    });
+
+    const result = await testBlock(reassignThroughCapability(unrelated, "unrelated-d"), {
+      input: undefined,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toMatchObject({
+      outcome: { outcome: "recorded" },
+      assignee: "review",
+    });
+  });
+});
