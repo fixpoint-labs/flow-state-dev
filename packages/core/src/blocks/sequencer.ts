@@ -1085,7 +1085,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   const mergeWorkstreamBindingsFrom = (
     ...blocks: Array<BlockDefinition<any, any> | undefined>
   ): WorkstreamBindings | undefined => {
-    let merged = accumulatedWorkstreamBindings;
+    // Read off `baseBlock` rather than the `accumulatedWorkstreamBindings`
+    // parameter, so a stamp applied AFTER construction survives chaining. A
+    // board stamps its own bindings on the finished drain; reading the closure
+    // value would rebuild from the pre-stamp state, and `board.drain.tap(x)`
+    // would silently hand back a sequencer with the board's own bindings gone.
+    let merged = baseBlock.workstreamBindings;
     for (const block of blocks) {
       merged = mergeWorkstreamBindings(merged, block?.workstreamBindings);
     }
@@ -1100,7 +1105,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     newRequiresOrg?: boolean,
     newWorkstreamBindings?: WorkstreamBindings
   ): SequencerDefinition<TInput, TNext, TStateSchema> =>
-    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources, newWorkstreamBindings ?? accumulatedWorkstreamBindings);
+    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources, newWorkstreamBindings ?? baseBlock.workstreamBindings);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -1856,7 +1861,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       // (a cleanup drain, say), so its bindings bubble like every other child's.
       const rescueWorkstreamBindings = handlers.reduce<WorkstreamBindings | undefined>(
         (acc, h) => mergeWorkstreamBindings(acc, h.block.workstreamBindings),
-        accumulatedWorkstreamBindings
+        baseBlock.workstreamBindings
       );
       return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, rescueWorkstreamBindings);
     },

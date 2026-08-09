@@ -163,6 +163,23 @@ describe("registry bubble-up — a board reaches the flow from wherever it sits"
     expect(flow.workstreamBindings?.size).toBe(1);
   });
 
+  it("keeps its bindings when a consumer chains onto the drain", () => {
+    // A board stamps its bindings onto the drain AFTER the sequencer is built,
+    // so anything that rebuilds the sequencer has to read the stamped value
+    // rather than the state it was constructed with. Chaining is the shape that
+    // exposes it, and the failure would be silent: `.tap` returns a perfectly
+    // good sequencer that has simply forgotten the board it contains.
+    const board = detachedBoard({ name: "issue-work", boardId: "issue-work" });
+    const extended = board.drain.tap(handler({ name: "after", execute: () => undefined }));
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: extended } },
+    })({ id: "board" });
+
+    expect(bindingSummary(flow)).toEqual(["issue-work:issue-work-implement"]);
+  });
+
   it("keys a binding by board and coordinate", () => {
     const board = detachedBoard({ name: "issue-work", boardId: "issue-work" });
     const flow = defineFlow({
