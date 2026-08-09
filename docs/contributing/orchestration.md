@@ -483,6 +483,19 @@ open thread as implementer notes. Spend a third round only when round two surfac
 genuine **spec-level** finding — a new approach question, not more notes. Say so when you
 do, in one line, so the extra round is a visible decision rather than drift.
 
+**The budget bounds folding, not editing — for the epic-spec specifically**, which stays open
+for the life of the epic and has no other home. The zero-cost inline fix above still applies
+to it after convergence: an uncontested correction is a **commit on that open PR**, never a
+sub-issue and never its own spec. Contested means it is a *decision*, which goes to the human
+— also not to a new issue. (Taken once: a fold filed leftover restatements as a Linear issue
+for want of any other mechanism, and the uncategorized child was swept to `spec` and grew a
+300-line spec plus a second PR — two artifacts and a lifecycle to do the work of one commit.)
+
+**The coordinator has to notice and dispatch it** — an `epic-agent` fold, the same path every
+other edit to that document takes. Nothing automatic delivers it: at budget `epic-wake` routes
+converged epic-PR feedback to the sub-issues each item names, so an item concerning no
+sub-issue is dropped as the cursor advances.
+
 Two mechanics the budget depends on, or it misfires:
 
 - **Count rounds spent, not events dispatched.** A batch that was *only* factual corrections

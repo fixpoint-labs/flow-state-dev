@@ -545,6 +545,11 @@ trips it; a bot review on the epic PR neither holds it nor buys another round. A
 *direction* still flows continuously — the budget bounds the *folding*, not the epic's ability
 to receive and route feedback.
 
+**The budget bounds folding, not the document.** An uncontested correction to a converged
+epic-spec is a commit on its open PR — dispatch `epic-agent` to fold it, outside the budget.
+Never a sub-issue, never its own spec.
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "The convergence rule".
+
 ## Epic setup (the coordination layer every run has)
 
 The set belongs to one body of work with **cross-cutting concerns** — shared surface,
