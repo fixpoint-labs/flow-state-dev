@@ -5,7 +5,7 @@
 "@flow-state-dev/store-postgres": minor
 ---
 
-Capabilities can now reach runtime facilities — starting a child request, settling a durable row owned by another session, asking whether dispatched work is still running — through an interface `@flow-state-dev/core` declares and `@flow-state-dev/engine` implements. Read it with `requireRequestHost(ctx)`, which throws by name when a host wired none rather than failing as `undefined is not a function`. Nothing an app author writes changes.
+Capabilities can now reach runtime facilities — starting a child request, settling a durable row owned by another session, asking whether dispatched work is still running — through an interface `@flow-state-dev/core` declares and `@flow-state-dev/engine` implements (FIX-999). Read it with `requireRequestHost(ctx)`, which throws by name when a host wired none rather than failing as `undefined is not a function`. Nothing an app author writes changes.
 
 Flows gain a `workstream` entry: the single pre-assembled action core a detached dispatch resolves. A flow without one refuses that dispatch by name and never falls through to a caller-addressed action.
 
