@@ -42,6 +42,15 @@ import type {
   ResolvedPrincipal
 } from "../types";
 
+/**
+ * How often the host beats an enqueue-time registry entry while an in-process
+ * queued run waits behind its concurrency key (FIX-999).
+ *
+ * Matches `runAction`'s own default so the entry's freshness cadence does not
+ * change when the worker body takes over.
+ */
+const QUEUED_HEARTBEAT_INTERVAL_MS = 10_000;
+
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
   stores: StoreRegistry;
@@ -258,14 +267,53 @@ export function createInboundTransportHost(
           await terminateUnenqueuedRequest(stores, requestId);
           throw error;
         });
-        finished = materialized.then(() =>
-          gateStart(startRun).catch(async (error: unknown) => {
-            if (error instanceof ConcurrencyQueueTimeoutError) {
-              await terminateUnenqueuedRequest(stores, requestId);
+
+        // This branch defers a start, so it needs the same acceptance signal the
+        // external branch has (FIX-999). `accepted` was previously left
+        // `undefined` here, so a caller that awaits "where one exists" awaited
+        // nothing on the one in-process path that can defer — reporting Started
+        // before the record was discoverable, and before a failed materialization
+        // was known. Awaiting an absent promise is not a weaker guarantee, it is
+        // no guarantee.
+        accepted = materialized.then(() => undefined);
+
+        // Nothing heartbeats the enqueue-time entry while the run waits behind
+        // the concurrency key, so the stale sweeper reaps a perfectly valid
+        // queued request and a liveness read reports it not live. The rule this
+        // restores is "whoever owns the entry keeps it warm": the host
+        // registered it, so the host heartbeats it until the run starts and
+        // `runAction`'s own timer takes over. No sweeper exemption — an
+        // exemption for unstarted requests would reintroduce the never-reaped
+        // entry the liveness gate's sweep arm exists to prevent.
+        let queuedHeartbeat: ReturnType<typeof setInterval> | undefined;
+        const stopQueuedHeartbeat = (): void => {
+          if (queuedHeartbeat !== undefined) {
+            clearInterval(queuedHeartbeat);
+            queuedHeartbeat = undefined;
+          }
+        };
+
+        finished = materialized
+          .then(() => {
+            queuedHeartbeat = setInterval(() => {
+              stores.activeRequests.heartbeat(requestId).catch(() => {});
+            }, QUEUED_HEARTBEAT_INTERVAL_MS);
+            if (typeof (queuedHeartbeat as { unref?: () => void }).unref === "function") {
+              (queuedHeartbeat as unknown as { unref: () => void }).unref();
             }
-            throw error;
+            return gateStart(() => {
+              // `runAction` re-registers and starts its own heartbeat timer from
+              // here, so the host's stewardship of the entry ends exactly here.
+              stopQueuedHeartbeat();
+              return startRun();
+            }).catch(async (error: unknown) => {
+              if (error instanceof ConcurrencyQueueTimeoutError) {
+                await terminateUnenqueuedRequest(stores, requestId);
+              }
+              throw error;
+            });
           })
-        );
+          .finally(stopQueuedHeartbeat);
       } else {
         finished = gateStart(startRun);
       }

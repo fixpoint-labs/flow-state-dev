@@ -50,8 +50,7 @@ export type LivenessGateVerdict =
        * A nonzero sweep cadence is necessary but **not sufficient**: a cadence
        * much larger than this threshold leaves a worker that crashed just after
        * a sweep registered until the next tick, and a plain `get()` would report
-       * it alive for that whole window — blocking reconciliation and holding
-       * capacity for a dead request. Comparing freshness at the read is correct
+       * it alive for that whole window, blocking reconciliation on dead work. Comparing freshness at the read is correct
        * however the cadence is tuned, and adds nothing for an operator to tune.
        */
       staleThresholdMs: number;

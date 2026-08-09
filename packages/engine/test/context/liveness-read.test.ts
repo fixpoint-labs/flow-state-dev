@@ -15,8 +15,7 @@
  * **2. A nonzero sweep cadence is not enough.** If the cadence is much larger
  * than the stale threshold, a worker that crashed just after a sweep stays
  * registered until the next tick and a plain `get()` reports it alive for that
- * whole window — blocking reconciliation and holding ceiling capacity for a dead
- * request. The read compares `lastHeartbeatAt` itself, which is correct however
+ * whole window — blocking reconciliation on work that has already died. The read compares `lastHeartbeatAt` itself, which is correct however
  * the cadence is tuned.
  *
  * And the semantics the answer carries: `false` means "no live registration was

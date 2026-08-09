@@ -83,6 +83,7 @@ function resolveActionCore(flow, actionName, source, metadata): ActionCore | und
   if (source === "webhook")   { /* read flow.webhooks[md.webhook.provider].on[md.webhook.eventType] */ }
   if (source === "chat")      { /* read flow.chat.on[md.chat.eventKey] */ }
   if (source === "scheduled") { /* read flow.schedules.static[md.schedule.scheduleId] */ }
+  if (source === "workstream") { return flow.workstream; }   // TERMINAL — no fallback
   return flow.actions[actionName];   // caller-addressed fallback
 }
 ```
@@ -108,6 +109,40 @@ scheduler secret).
 The gate closes that pivot for every caller-addressed surface at once. A forged
 `metadata.chat` on an `http`-source dispatch is ignored, because the chat
 branch only runs when `source === "chat"`, which only the chat adapter sets.
+
+## Detached: the workstream core
+
+A running request can start another request from inside a block, through the
+runtime seam on `BlockContext`. That dispatch is stamped `source: "workstream"`
+by the seam — not by any caller — and resolves one pre-assembled entry,
+`flow.workstream`.
+
+It is `undefined` until something populates it, and that *off* state is a normal
+state rather than a gap: a flow with no workstream core refuses detached dispatch
+by name.
+
+**The branch is terminal, and that is the security property.** Note the shape
+difference above: an event branch falls through when its coordinate does not
+match, because an event whose binding is missing should still be able to resolve
+a named action. The detached branch returns unconditionally. A detached dispatch
+carries `actionName` as provenance only, and that name can collide with a public
+`flow.actions` key — so falling through would hand a framework-stamped dispatch a
+caller-addressed handler. Because the seam stamps its own source, that is not a
+caller forging anything; it is the runtime admitting everything through its own
+trusted source. There is no route from the seam to a caller-addressed action.
+
+Two neighbouring paths classify the source with the event forms for the same
+reason:
+
+- **Concurrency.** The arbiter takes the flow default rather than reading
+  `flow.actions[actionName]?.concurrency`, so detached work does not inherit an
+  unrelated action's `queue`/`reject` policy by name collision.
+- **Public re-entry.** `isPublicReentryAllowed(source)` is an allow-list
+  (`http` / `mcp` / `chat` / `scheduled`); retry, continue and resume all route
+  through it. A detached request is not re-enterable from a public surface —
+  retry accepts a caller-supplied `inputOverride`, so re-entry would feed a
+  detached handler caller-chosen input. The allow-list replaced three per-route
+  webhook deny-lists, which admitted every source nobody thought to name.
 
 ## The carried core: dynamic schedules
 

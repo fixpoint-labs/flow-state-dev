@@ -286,6 +286,43 @@ The full request execution sequence:
 
 `RuntimeConfig.errorCapture` (set via `createFlowState({ errorCapture })`) is an opt-in, provider-neutral sink for routing runtime block failures to an external observability service. It is wired in `createExecutionContext`: the per-block `_runtimeHooks.onBlockError` hook fires it for nested block failures (carrying the leaf block's identity), and `executeBlock`'s catch fires it via `ctx._captureError` for the root action block. Both paths dedupe on the raw thrown value through a per-request `Set`, so a single failure propagating up the block tree is reported once, at the leaf. Under a retry policy each failed attempt is a distinct throw and reports once (distinguished by `attempt`): nested blocks fire via `onBlockError` per attempt, and the root block's non-terminal attempts are captured from `retryWithPolicy`'s `onRetry` while the terminal attempt is captured in the catch. The callback is fire-and-forget: a throw or rejection is swallowed and logged, never affecting the request.
 
+## The request-host seam
+
+A capability's helper functions are typed against the `BlockContext` that `@flow-state-dev/core` declares, and `core` must not depend on `engine`. Facilities only the runtime can provide — starting a child request, settling a durable row owned by another session, asking whether dispatched work is still running — live on the engine's context type, so reaching them required casting the context to a shape TypeScript said it did not have. The cast was the only thing holding the package boundary, and nothing warned when the shape it asserted stopped being true.
+
+`core` now declares the interface (`RequestHost`, on the optional `BlockContext.requestHost` member) and `engine` implements it. The package graph is unchanged. Read it with `requireRequestHost(ctx)`, which throws by name when absent rather than failing as `undefined is not a function`.
+
+Two rules make the seam safe, and both are structural rather than validated:
+
+- **What crosses is behaviour, not handles.** No `core` type names a store, a flow instance, a session record, or a task row. A value read from another session crosses as `unknown` and the consumer parses it with its own schema.
+- **Identity is never a parameter, and neither is a session id.** Every verb closes over the running request's server-derived identity. A caller supplies a *routing seed*; the seam derives the child session id by hashing it together with the tenant, the principal, **and the parent session**. The parent session is in the key material because every other verb authorises by descent — omit it and one principal's second parent session derives the first's child key, adopts its child, and its work then settles onto the wrong board while its own interrupt and liveness calls refuse.
+
+Adoption validates the stored record's full identity — flow kind, principal, tenant, org, parent session — before reusing it. The derivation alone is not sufficient, because the seam is not the only writer: the public session-create route lets a caller choose a session id, so a record can be pre-created at the deterministic child key, and `createExecutionContext` validates user/tenant/org bindings but neither flow kind nor parent session. A mismatch is a named refusal, never a silent create.
+
+The member is optional in the *type* so a hand-built test context still type-checks. It is not optional in *deployment*: a process that executes requests without one is a construction failure, `worker-only` included — that mode constructs no dispatcher today, so a deployment whose capabilities dispatch must supply the start operation there explicitly.
+
+### The liveness enablement gate
+
+The liveness verb reads the active request registry, and three supported configurations make that read a lie. All three are checked once, at construction, and the verb is **absent and named** when any fails — never present and wrong. The other verbs are unaffected.
+
+| Arm | Failure it prevents | Direction of the lie |
+|---|---|---|
+| The registry declares itself shared across processes | A per-process registry cannot see another process's requests at all | Live work reads **dead** → double execution |
+| `heartbeatIntervalMs` is nonzero and the stale threshold is at least twice it | `heartbeatIntervalMs: 0` creates no timer while the sweeper still reaps | Live work reads **dead** |
+| A stale sweeper is running at a nonzero cadence | `staleSweepIntervalMs: 0` returns a no-op handle before creating any timer, so a crashed worker's entry is never removed | Dead work reads **alive** → reconciliation deadlocks |
+
+The third arm's failure deadlocks rather than merely overspending, which is why it is a hard gate arm and not a documented caveat. Sweep cadence is a construction input like the registry itself; a host that cannot answer is treated as not sweeping (fail-closed).
+
+A nonzero cadence is necessary but not sufficient — a cadence much larger than the threshold leaves a worker that crashed just after a sweep registered until the next tick. So the read also compares `lastHeartbeatAt` against the threshold, which is correct however the cadence is tuned and adds nothing for an operator to configure.
+
+The backing read is `ActiveRequestRegistry.get(requestId)`, issued for the ids the caller supplied — never `listStale()` and never `listAll()`. `listStale` returns *registered* entries older than the cutoff, and terminal requests are deregistered, so a completed request and a freshly-registered healthy one are both absent from it: complementing that set reports finished work as alive, and treating membership as alive reports healthy work as dead. `listAll()` is rejected separately because it enumerates across tenants.
+
+**Absence means "no live registration was found", never "definitely dead."** A completed request, one that never registered, and one whose registration was lost are indistinguishable by construction. A consumer may treat a not-live answer as permission to stop waiting; re-dispatching on it alone is how double execution ships, so anything that re-runs work must corroborate against durable state it owns.
+
+### Registry sharedness
+
+`ActiveRequestRegistry` carries a `sharedAcrossProcesses` declaration, read fail-closed through `isRegistrySharedAcrossProcesses` — **absent means not shared**, so an adapter compiled against the older contract gets liveness refused rather than silently wrong. The answer is a property of the *constructed store*, not of the adapter's package name: the Postgres adapter declares shared on the pooled and connection-string shapes and **not** shared when handed an injected `{ executor }` (PGlite is process-local). In-memory declares not shared definitively; filesystem and SQLite cannot tell a shared volume from a per-process path and therefore declare not shared.
+
 ## Canonical Authority
 
 This document is authoritative for execution and error semantics. For full type signatures, refer to the published types in `@flow-state-dev/core` and `@flow-state-dev/engine`.

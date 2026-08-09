@@ -39,7 +39,7 @@ export type LivenessReadInputs = {
  * cadence is independent of the threshold: a cadence much larger than the
  * threshold leaves a worker that died just after a sweep registered until the
  * next tick. A plain `get()` would report it alive for that entire window, which
- * blocks reconciliation and holds capacity for a dead request. Comparing
+ * blocks reconciliation on work that has already died. Comparing
  * `lastHeartbeatAt` here is correct however the cadence is configured, and adds
  * nothing for an operator to tune.
  */

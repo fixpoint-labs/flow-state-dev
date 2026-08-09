@@ -63,13 +63,15 @@ export type StartDetachedInput = {
  *   is nothing to dispatch into. Resolution never falls through to `flow.actions`.
  * - `no-start-operation` — this process executes requests but was not wired to
  *   start one. Normally a construction-time failure; this is the residual case.
- * - `fan-out-ceiling` — the caller is already at its detached-descendant ceiling.
+ *
+ * Note there is **no bound-related refusal**. This seam makes "a running request
+ * starts another request" expressible, and ships no ceiling on it. A spend brake
+ * is deferred to a cost/token budget rather than a concurrency count.
  */
 export type StartDetachedRefusal =
   | "key-occupied"
   | "no-workstream-core"
-  | "no-start-operation"
-  | "fan-out-ceiling";
+  | "no-start-operation";
 
 /**
  * Outcome of {@link RequestHost.startDetached}. `adopted` distinguishes a child
