@@ -154,38 +154,39 @@ await collection.addTask({ goal: "draft the post", deps: ["research"] });
 
 A claim carries a lease: how long the claimant may be gone before the task is
 handed to somebody else. A worker the substrate drives pushes that deadline out
-while it runs (`renewLease`), so a lease that runs out means no live worker is
-holding the task, and the next `claim` on any host takes it back as a fresh
-attempt. Nothing to schedule.
+while it runs (`renewLease`), so a lease that runs out means no worker is
+renewing it, and the next `claim` on any host takes it back as a fresh attempt.
+Nothing to schedule.
 
 `ClaimOptions.leaseDurationMs` is the knob, defaulting to two minutes. Shorter
-means a dead job comes back sooner and a merely-slow worker is likelier to lose
-its task; longer means the opposite. Values under a second, over about 74 days,
-or non-finite are rejected rather than rounded.
+means a stranded job comes back sooner and a merely-slow worker is likelier to
+lose its task; longer means the opposite. Values under a second, over about 74
+days, or non-finite throw rather than being rounded into range.
 
 Recovery is bounded at three re-dispatches, after which the task settles
-`errored`. That allowance is separate from `maxAttempts`, so a crashed machine
-does not spend the retries configured for real failures.
+`errored`. Three is fixed, and exported as `DEFAULT_MAX_ABANDONMENTS`. That
+allowance is separate from `maxAttempts`.
 
-**A task you claim by hand gets no renewal** — you hold it, so you call
+**A task you claim by hand gets no renewal.** You hold it, so you call
 `renewLease(id, deadline, { claim })` yourself, or size the lease to cover the
-work. Drive it with `withLeaseRenewal` (when your work is one call) or
-`startLeaseRenewal` (when it spans several steps); both carry the same cadence,
-single-flight and abort rules.
+work. Two helpers do it for you: `withLeaseRenewal` wraps work that is a single
+call, and `startLeaseRenewal` returns a `{ signal, stop }` driver for work that
+spans several steps. Both renew in the background while the work runs, keep one
+renewal in flight at a time, and stop when the signal you hand them aborts.
+Both also give you a second signal that fires the moment the claim is lost.
 
 `isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
-a custom `TaskCollectionRef` can read it rather than restating it. The `now` it
-takes comes from `collection.now()` — the clock the collection stamped
-`leaseUntil` with. Everything comparing against a lease reads that one clock;
-reaching for `Date.now()` instead is only ever right by coincidence.
+a custom `TaskCollectionRef` can read it rather than restating it. Compare
+leases against `collection.now()`, not `Date.now()`: it is the clock that
+stamped `leaseUntil`.
 
 ### Dispatchers
 
 `fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
 `classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. None of
-them claims a task whose `deps` aren't all `completed` — that eligibility rule lives
-on `collection.claim`, and a dispatcher's own `eligibility` narrows it rather than
-replacing it — so they differ only in ordering. `fifoDispatcher` and
+them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
+on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
+differ only in ordering. `fifoDispatcher` and
 `topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
 highest `priority` first, ties on `createdAt`.
 
