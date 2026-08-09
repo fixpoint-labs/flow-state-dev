@@ -52,6 +52,8 @@ export const flowstate = createFlowState({
 });
 ```
 
+Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to every sweep: the periodic one, the pass that runs when the server starts, and the on-demand `check-interrupted` call. A restart reaps on the same clock the running server used.
+
 ### Queued jobs and `queuedGraceMs`
 
 If you run actions through a background queue instead of in-process, a request is accepted and recorded before any worker picks it up. Nothing is executing it yet, so it has no executor heartbeat — and `staleSweepThresholdMs` measures heartbeat age, which for a queued job would only be measuring how long the queue has been busy.

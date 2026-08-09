@@ -84,3 +84,16 @@ Also in this change:
   get marked `interrupted` while the queue still holds them. It stays independent
   of `staleSweepThresholdMs` on purpose: that one measures how long since a
   running worker checked in, which a job no worker has claimed yet cannot answer.
+- `staleSweepThresholdMs` now governs the detection pass on server startup, the
+  same as it governs the periodic sweeper. That pass previously always used a
+  fixed 30 seconds, so a server whose threshold was anything else — including one
+  that configured nothing, since the default is 60 seconds — swept on a different
+  clock at startup than it used for the rest of its life. A restart could mark a
+  healthy cross-process request `interrupted` and deregister it, after which
+  liveness reported still-running work as dead and recovery could re-dispatch it.
+- Liveness-dependent behaviour is no longer enabled for a host that initializes
+  only its runtime (`getRuntime()`) and never its router. The stale sweeper is
+  started by the router, so a worker-only consumer — or a CLI run that resolves
+  the runtime alone — has nothing sweeping, and an abandoned queued entry there
+  would read as live indefinitely. Those hosts now get the same named refusal any
+  other unswept deployment gets. A host that serves HTTP is unaffected.

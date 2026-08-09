@@ -294,7 +294,21 @@ class InternalFlowState<TSettings extends object>
     // deliberately leaves queued entries unbounded so the sweep owns that
     // clock. It rides the config instead, which is what startup detection and
     // the `check-interrupted` route read.
-    const { queuedGraceMs, ...gateFacts } = resolveStaleSweep(this.#options);
+    //
+    // `staleSweepIntervalMs` is deliberately NOT stamped here, and its absence
+    // is the honest answer rather than an omission. The sweeper is constructed
+    // by `createFlowApiRouter`, which only `getRouter()` / `ready()` reach — a
+    // deployment that initializes solely through `getRuntime()` (`fsdev run`,
+    // `fsdev chat`, any worker-only consumer) has nothing sweeping at all.
+    // Stamping the resolved cadence here advertised a sweeper that does not
+    // exist, and the gate's third arm — the one that refuses precisely because
+    // an unswept shared registry reports a crashed worker as live forever —
+    // was satisfied by a number rather than by a fact. Left absent, the gate
+    // reports "this host cannot say", which is true of a runtime bundle: no
+    // sweeper exists when it is built and it cannot know whether a router will
+    // follow. The router restamps this pair from its own resolved options onto
+    // its own copy of the config, so the HTTP path is unaffected.
+    const { queuedGraceMs, staleThresholdMs } = resolveStaleSweep(this.#options);
 
     const runtimeConfig = createRuntimeConfig({
       modelResolver,
@@ -306,7 +320,7 @@ class InternalFlowState<TSettings extends object>
       durabilityRetention: this.#options.durabilityRetention,
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
-      requestHost: gateFacts
+      requestHost: { staleThresholdMs }
     });
 
     const runtime: FlowStateRuntime = {

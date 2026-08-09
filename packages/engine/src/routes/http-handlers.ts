@@ -249,7 +249,19 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   if (options.detectInterruptedOnStartup !== false) {
     void detectInterruptedRequests({
       stores,
-      staleThresholdMs: options.staleThresholdMs,
+      // Both sweep bounds come off the resolved config, not off flat options.
+      // `staleThresholdMs` here is the router's own `staleSweepThresholdMs`
+      // after `resolveStaleSweep`, which is the same value its periodic sweeper
+      // and its liveness gate use — a restart must not reap on a different
+      // clock than the running server, or it deregisters a healthy
+      // cross-process request and the next liveness read calls it dead.
+      // `options.staleThresholdMs` is kept as an explicit override for a direct
+      // `createFlowRouteHandlers` caller, but no shipped path sets it: it is
+      // absent from `CreateFlowApiRouterOptions`, which is exactly how this
+      // path silently kept `detectInterruptedRequests`' own 30s fallback while
+      // everything else in the process ran on 60s.
+      staleThresholdMs:
+        options.staleThresholdMs ?? runtimeConfig.requestHost?.staleThresholdMs,
       // Same grace the periodic sweeper runs with, so a restart cannot reap a
       // queued row the running server would have left alone.
       queuedGraceMs: runtimeConfig.queuedGraceMs
