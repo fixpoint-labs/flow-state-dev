@@ -1,7 +1,14 @@
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, beforeEach } from "vitest";
-import { createInMemoryStores, runAction, createFlowRegistry, createFlowApiRouter } from "../src";
+import {
+  continueRequest,
+  createInMemoryStores,
+  runAction,
+  createFlowRegistry,
+  createFlowApiRouter
+} from "../src";
+import { createCheckpointDurabilityProvider } from "../src/durability/checkpoint-durability-provider";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";
 import {
   registerAbortController,
@@ -1233,5 +1240,138 @@ describe("handleAbortRequest — conditional write", () => {
     expect(after?.status).toBe("completed");
     expect(after?.version).toBe(7);
     expect(await stores.request.isAbortRequested(requestId)).toBe(false);
+  });
+});
+
+describe("cross-process abort accepted in the teardown window", () => {
+  // Both terminal legs clear the heartbeat timer BEFORE writing the terminal
+  // status, so a cancel can be accepted while the record still says
+  // `in_progress` — the predicate holds, the intent is recorded, and no poll
+  // remains on that leg to deliver it.
+  //
+  // When the run settles `suspended`, the same-request continuation delivers on
+  // its first poll and settles `aborted`. That is the intended behaviour, not a
+  // leak: the intent was recorded against this request, was never delivered,
+  // and the continuation IS the same request. Nothing clears the flag on the
+  // suspended write, which is what makes the continuation able to honour it.
+  it("survives the suspend write and is delivered by the continuation", async () => {
+    const stores = createInMemoryStores();
+    const provider = createCheckpointDurabilityProvider({
+      checkpoints: stores.checkpoints,
+      suspensions: stores.suspensions,
+      leases: stores.leases
+    });
+
+    const gate = handler({
+      name: "gate",
+      inputSchema: z.any(),
+      outputSchema: z.unknown(),
+      execute: async (_input, ctx) =>
+        ctx.suspend!({ reason: "human_approval", message: "Approve?" })
+    });
+    const after = handler({
+      name: "after",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
+      // Long enough that a delivered abort is distinguishable from natural
+      // completion, and honouring an already-aborted signal the way a real
+      // block does.
+      execute: async (_input, ctx) =>
+        new Promise<string>((resolve, reject) => {
+          if (ctx.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          const timer = setTimeout(() => resolve("ran past the gate"), 1_000);
+          ctx.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        })
+    });
+
+    const flow = defineFlow({
+      kind: "teardown-window",
+      request: { heartbeatIntervalMs: 15 },
+      actions: {
+        run: {
+          inputSchema: z.any(),
+          block: sequencer({ name: "seq", durable: true }).step(gate).step(after)
+        }
+      }
+    })({ id: "teardown-window" });
+
+    // Reproduce the teardown window deterministically: record the intent on the
+    // very write that settles `suspended`, before it lands. The status is still
+    // `in_progress` at that moment, so the route's own predicate holds — which
+    // is exactly the ordering the window creates.
+    let intentRecorded = false;
+    const request = Object.create(stores.request) as StoreRegistry["request"];
+    Object.assign(request, {
+      async set(
+        this: StoreRegistry["request"],
+        id: string,
+        value: Parameters<StoreRegistry["request"]["set"]>[1],
+        expectedVersion: Parameters<StoreRegistry["request"]["set"]>[2]
+      ) {
+        if (!intentRecorded && value.status === "suspended") {
+          intentRecorded = true;
+          const accepted = await this.setFieldsIfStatus(
+            id,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+          expect(accepted.applied).toBe(true);
+        }
+        return Object.getPrototypeOf(this).set.call(this, id, value, expectedVersion);
+      }
+    });
+    const hookedStores = { ...stores, request };
+
+    const initial = await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u_teardown",
+      stores: hookedStores,
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const requestId = initial.requestId!;
+
+    expect(intentRecorded).toBe(true);
+    const suspended = await hookedStores.request.get(requestId);
+    expect(suspended?.status).toBe("suspended");
+    // Nothing clears the flag on the suspended write — this is the property the
+    // continuation depends on.
+    expect(suspended?.abortRequested).toBe(true);
+    expect(await hookedStores.request.isAbortRequested(requestId)).toBe(true);
+
+    // Now continue the same request, as an approval would.
+    const [suspension] = await provider.listSuspended({ status: "pending" });
+    await provider.suspend({
+      ...suspension,
+      status: "approved",
+      resolvedAt: Date.now(),
+      resumeData: undefined
+    });
+    const registry = createFlowRegistry();
+    registry.register(flow as never);
+    const { finished } = await continueRequest({
+      requestId,
+      stores: hookedStores,
+      flowRegistry: registry,
+      resumeContext: {
+        suspensionId: suspension.suspensionId,
+        action: "approve",
+        resumedBy: "reviewer"
+      },
+      runtimeConfig: { durabilityProvider: provider }
+    });
+    const continued = await finished;
+
+    expect(continued.output).not.toBe("ran past the gate");
+    const record = await hookedStores.request.get(requestId);
+    expect(record?.status).toBe("aborted");
   });
 });
