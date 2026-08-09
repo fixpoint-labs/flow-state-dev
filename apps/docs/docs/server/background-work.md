@@ -5,21 +5,29 @@ sidebar_label: Background work
 
 # Background work
 
-An action can start work that outlives the turn that asked for it — a long
-research pass, a document being drafted, an implementation running for an hour.
-That work runs in its own *session*: the record the framework keeps for one
-conversation, holding its state, its resources, and the history of every request
-that ran in it. A background job's session is attached to the conversation that
-launched it, as a child of it.
+Some work outlives the turn that asked for it: a long research pass, a document
+being drafted, an implementation running for an hour. That work runs in its own
+*session*, the record the framework keeps for one conversation, holding its
+state, its resources, and the history of every request that ran in it. A
+background job's session hangs off the conversation that started it, as a child
+of it.
 
-Reading them takes two calls. Ask a conversation for its jobs, then ask any one
-job for its history.
+Reading a conversation's jobs takes two calls. Ask the conversation for its
+jobs, then ask any one job for its history.
+
+Starting one is not something the HTTP API does. A job's session is created from
+inside a running request, through `ctx.requestHost.startDetached`, and the
+shipped HTTP router wires no start operation, so that call refuses
+`no-start-operation` there.
 
 ## Listing a conversation's jobs
 
 ```
 GET /api/flows/sessions/sess_abc/workstreams
 ```
+
+`workstream` is the API's word for a background job. It names the path segment
+and the response key, and means the same thing throughout this page.
 
 ```json
 {
@@ -46,12 +54,9 @@ GET /api/flows/sessions/sess_abc/workstreams
 ```
 
 `topic` names the body of work and `coordinate` names the worker handling it.
-The server stamps both when the job starts, so a value written by a caller never
-appears here. A row that carries neither is a child session that isn't a
-background job.
-
-Both are optional, as is `status`. Read them with `== null` guards rather than
-assuming every row has them.
+Both are optional, as is `status`, so read them with `== null` guards rather
+than assuming every row carries them. A row with neither label is a child
+session that isn't a background job.
 
 ### What `status` tells you
 
@@ -61,11 +66,10 @@ something. The endpoint does not distinguish those. If you need to know which,
 open the job and read its history, or read the task board the job is working
 from.
 
-Anything else is how the job ended:
+Every other value is how the job ended:
 
 | Value | Meaning |
 |---|---|
-| `active` | Not finished |
 | `completed` | Finished successfully |
 | `failed` | Ended with an error |
 | `aborted` | Cancelled |
@@ -78,12 +82,11 @@ A job that ran several times reports the outcome of its most recent run. A job
 that failed and was retried successfully reads `completed`; the failed attempt
 is still there in the job's own history.
 
-One thing to be careful about: `active` describes what the system recorded, not
-what a worker is doing right now. If a worker's process dies mid-job the row
-keeps reading `active` until the framework notices and either continues the run
-or a retry supersedes it. A job whose approval request expired without an answer
-reads `active` indefinitely, because nothing discharges an approval except
-answering it.
+`active` describes what the system recorded, not what a worker is doing right
+now. If a worker's process dies mid-job the row keeps reading `active` until the
+framework notices and either continues the run or a retry supersedes it. A job
+whose approval request expired without an answer reads `active` indefinitely,
+because nothing discharges an approval except answering it.
 
 ## Reading one job's history
 

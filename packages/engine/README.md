@@ -359,15 +359,15 @@ the full contract.
 
 ## Store list options
 
-`SessionListOptions` and `RequestListOptions` are part of the store contract, so
-a change that is invisible to existing callers is still one an adapter author
-needs to know about:
+`SessionListOptions` and `RequestListOptions` are part of the store contract.
+Adapters must implement all four options:
 
 - `RequestListOptions.status` accepts a `RequestStatus` **or an array** of them.
   An array matches set membership; an empty array matches nothing.
 - `RequestListOptions.orderBy` accepts `"none"` alongside `"startedAtMs"` and
-  `"updatedAt"`. `"none"` returns the matching set unordered — required for an
-  existence check, whose work must not grow with the set it selects on.
+  `"updatedAt"`. `"none"` returns the matching set unordered. An
+  existence check needs that: its work must not grow with the set it selects
+  on.
   `"startedAtMs"` orders by `(startedAtMs, id)` so an exact tie resolves
   deterministically.
 - `SessionListOptions.orderBy` accepts `"createdAt"` or `"updatedAt"` (default).
@@ -376,9 +376,6 @@ needs to know about:
 - Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
   as `tenantId`: an absent key filters nothing, a present key (including an
   explicit `undefined`) exact-matches.
-
-Adapters must implement all four. Every existing caller omits them and behaves
-exactly as before.
 
 ## Session retention policies
 
@@ -849,9 +846,9 @@ Runtime behaviour that reads "is this request still running?" from the registry 
 2. `request.heartbeatIntervalMs` is nonzero and the stale threshold is at least twice it;
 3. a stale-request sweeper is running at a nonzero cadence.
 
-Each corresponds to a supported configuration that makes the answer wrong in a different direction — the first two report live work as dead, the third reports dead work as live indefinitely. When any fails, the capability is **absent and says why**, rather than present and unreliable. On the default in-memory registry it is absent, which is expected rather than a fault.
+When any of the three fails, the capability is absent and names the condition that failed. On the default in-memory registry it is absent.
 
-Reads are bounded by the ids the caller supplies and compare each entry's heartbeat against the stale threshold, so a crashed worker is not reported live while waiting for the next sweep. A not-live answer means *no live registration was found* — never *definitely dead*.
+Reads are bounded by the ids the caller supplies and compare each entry's heartbeat against the stale threshold, so a crashed worker is not reported live while waiting for the next sweep. A not-live answer means *no live registration was found*, never *definitely dead*.
 
 ## Notes
 

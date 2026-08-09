@@ -150,17 +150,13 @@ The ordering columns are declared ascending and scanned backwards, which Postgre
 
 **No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
 
-**These two are built `CONCURRENTLY`.** They are the only indexes here that can land on an already-populated table — everything else ships with its `CREATE TABLE`, so on an upgrade its `IF NOT EXISTS` is a no-op. A plain build holds a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
+**These two are built `CONCURRENTLY`.** They are the only indexes here that can land on an already-populated table. Everything else ships with its `CREATE TABLE`, so on an upgrade its `IF NOT EXISTS` is a no-op. A plain build holds a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
 
 An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
 
-### The tenant and org filters are emitted as `= $n` or `IS NULL`
+### The tenant and org filters
 
-`tenant_id` and `org_id` are filtered NULL-safely: an absent option key filters nothing, and a present key (including an explicit `undefined`) exact-matches, with `undefined` matching only unbound rows. The emitted SQL is `column = $n` for a value and `column IS NULL` for an absent one, rather than `column IS NOT DISTINCT FROM $n`.
-
-The predicate is identical either way — that is what `IS NOT DISTINCT FROM` means — but the plans are not. `IS NOT DISTINCT FROM` is not an index condition on a plain btree and carries no statistics, so the planner falls back to a default selectivity. On a filtered ordered read that misestimate decides the plan: it concludes one row matches, prices the sort as free, and picks a bitmap scan that materializes a session's whole history before sorting it. The `= $n` / `IS NULL` forms are index conditions and carry real statistics.
-
-No caller sees a different row set. Only a different plan.
+`tenant_id` and `org_id` filter NULL-safely: an absent option key filters nothing, a present key (including an explicit `undefined`) exact-matches, and `undefined` matches only unbound rows.
 
 ### Resource state carries a version, and deletes leave a row behind
 
@@ -312,7 +308,7 @@ The registry answers `sharedAcrossProcesses` from **how the store was constructe
 | `{ pool }` | `true` |
 | `{ executor }` | `false` |
 
-An injected executor is documented as PGlite-capable and is process-local, so it is reported as not shared — the same reason that shape disables `LISTEN`. Declaring it shared would enable liveness-dependent behaviour on a registry no other worker can see, which is exactly the wrong answer to have.
+An injected executor is documented as PGlite-capable and is process-local, so it is reported as not shared. That is the same reason that shape disables `LISTEN`.
 
 ## Cross-process live tail
 

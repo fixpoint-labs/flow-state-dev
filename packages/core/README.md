@@ -470,13 +470,13 @@ The member is optional in the *type* so a hand-built test context still type-che
 
 **Which operations answer depends on the deployment, and each says so by name.** Getting a host is not the same as getting every verb on it:
 
-- `livenessOf` is **absent** unless the deployment can support a trustworthy answer — it needs a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. Check for it rather than asserting it.
-- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, and `no-start-operation` where the host wired no start operation. The shipped HTTP router does not wire one yet, so detached starts are not yet available on that path.
+- `livenessOf` is **absent** unless the deployment can support a trustworthy answer. It needs a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. Check for it rather than asserting it.
+- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, and `no-start-operation` where the host wired no start operation. The shipped HTTP router wires no start operation, so `startDetached` refuses `no-start-operation` on that path.
 - `parentTask()` resolves `undefined` and `settleParentTask` refuses `no-parent-task` unless the request was dispatched for a parent-board row.
 
-A refusal is always a named outcome you can branch on, never a thrown `undefined is not a function`.
+Every refusal is a named outcome you can branch on.
 
-Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id — a caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
+Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id. A caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
 
 ## Key design decisions
 

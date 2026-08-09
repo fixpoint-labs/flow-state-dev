@@ -312,8 +312,9 @@ sessions listed to an anonymous caller.
 
 ### Addressed routes, and what they scope by
 
-Every other read names a session or a request in the path, and the framework
-loads that record and checks its owner before your handler runs. `GET
+Every read outside those two flow-spanning endpoints names a session or a
+request in the path, and the framework loads that record and checks its owner
+before your handler runs. `GET
 /api/flows/sessions/:sessionId/workstreams` — a conversation's
 [background jobs](./background-work.md) — is one of these. Its answer is
 scoped to the addressed conversation's owner, tenant, org and flow, all read
