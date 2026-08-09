@@ -27,6 +27,24 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
    * SQL fragment.
    */
   resolveOrderBy?: (options?: TListOptions) => string;
+  /**
+   * Top-level `data` keys that `set` must not write (FIX-1026).
+   *
+   * The stored value wins in both directions: a written record that omits the
+   * key keeps the stored one, and a written record that carries it cannot
+   * change what is stored. Enforced inside the UPDATE itself rather than by a
+   * read-then-write, so a concurrent conditional write cannot land between the
+   * two and be overwritten.
+   *
+   * Used by the request store to take `abortRequested` off `set`'s write
+   * surface: every full-record writer builds its record from a snapshot taken
+   * before the flag existed, so a `set` that honoured the field would erase a
+   * cancellation nobody meant to touch.
+   *
+   * Keys are trusted, non-parameterized SQL literals — framework constants,
+   * never caller input.
+   */
+  preserveJsonKeys?: string[];
 };
 
 export type PgRecordStore<TRecord, TListOptions> = {
@@ -76,6 +94,38 @@ export function createPgRecordStore<
 ): PgRecordStore<TRecord, TListOptions> {
   const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
+  const preserveJsonKeys = config.preserveJsonKeys ?? [];
+  for (const key of preserveJsonKeys) {
+    // These are interpolated into SQL, so refuse anything that isn't a plain
+    // identifier rather than trusting the caller's discipline.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new Error(`preserveJsonKeys entry is not a plain identifier: ${key}`);
+    }
+  }
+
+  /**
+   * A `data` assignment that strips the preserved keys from the incoming value
+   * and re-applies whatever the stored row holds — all inside the one
+   * statement, so the read and the write cannot be separated. `jsonb_exists`
+   * rather than the `?` operator so no driver can mistake it for a placeholder.
+   */
+  function dataAssignment(source: string): string {
+    if (preserveJsonKeys.length === 0) return source;
+    const stripped = preserveJsonKeys.reduce(
+      (acc, key) => `(${acc} - '${key}')`,
+      `${source}::jsonb`
+    );
+    const restored = preserveJsonKeys
+      .map(
+        (key) =>
+          ` || (CASE WHEN jsonb_exists(${tableName}.data, '${key}')` +
+          ` THEN jsonb_build_object('${key}', ${tableName}.data -> '${key}')` +
+          ` ELSE '{}'::jsonb END)`
+      )
+      .join("");
+    return `${stripped}${restored}`;
+  }
+
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];
   const placeholders = allColumns.map((_, i) => `$${i + 1}`).join(", ");
   const updateSet = columns
@@ -83,7 +133,7 @@ export function createPgRecordStore<
     .concat([
       "version = EXCLUDED.version",
       "updated_at = EXCLUDED.updated_at",
-      "data = EXCLUDED.data"
+      `data = ${dataAssignment("EXCLUDED.data")}`
     ])
     .join(", ");
 
@@ -94,7 +144,7 @@ export function createPgRecordStore<
     ...columns.map((col, i) => `${col} = $${i + 1}`),
     `version = $${columns.length + 1}`,
     `updated_at = $${columns.length + 2}`,
-    `data = $${columns.length + 3}`
+    `data = ${dataAssignment(`$${columns.length + 3}`)}`
   ].join(", ");
   const idParam = columns.length + 4;
   const expectedVersionParam = columns.length + 5;

@@ -365,6 +365,35 @@ The `maxItems` check counts items through `RequestStore.countItems(requestId)` r
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 
+## Abort intent on `RequestStore` (adapter authors)
+
+`RequestStore` carries two required members for cancellation. An out-of-tree adapter that leaves either one out fails the build with a missing-member error.
+
+```ts
+isAbortRequested(requestId: string): Promise<boolean>;
+
+setFieldsIfStatus(
+  id: string,
+  fields: ConditionalRequestFields,
+  allowedStatuses: readonly RequestStatus[],
+  updatedAt: number
+): Promise<ConditionalWriteResult>;
+```
+
+Both named types are exported from `@flow-state-dev/engine`. `ConditionalRequestFields` is a `Partial` of `RequestRecord` minus the fields that have their own write path: `id`, `version`, `createdAt`, `updatedAt`, `state`, `items`, `status`, and the indexed access-path fields (`flowKind`, `userId`, `sessionId`, `orgId`, `tenantId`). `abortRequested` is in the set. `ConditionalWriteResult` is `{ applied: boolean; status?: RequestStatus }`.
+
+**`isAbortRequested`** answers whether cancellation has been requested, without materializing the request. It runs on the heartbeat tick for the life of every request, so it **must be O(1) in item count** — reading the record and deserializing a growing item array turns a long run into quadratic work. Return `false` for an unknown request. Read the flag with `=== true`; it is `boolean | undefined`.
+
+**`setFieldsIfStatus`** applies `fields` only while the record's status is one of `allowedStatuses`, evaluating the predicate and the write as one atomic step. Three outcomes: `{ applied: true, status }` when the predicate held; `{ applied: false, status }` when a record exists outside the predicate; `{ applied: false, status: undefined }` when no record exists.
+
+Do not implement it as a version CAS. Terminal transitions persist `version` **unchanged**, so a version-checked write still validates after a terminal commit and resurrects a dead record. The predicate has to read status.
+
+**`setFieldsIfStatus` is the only member that may write `abortRequested`.** `set` must ignore the field in both directions: a full record handed to `set` cannot set the flag and cannot clear a stored one. The compiler will not enforce this, since the field is still on `RequestRecord` for reading. An adapter that honours it on `set` lets a full-record write built from a stale snapshot erase a cancellation.
+
+How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
+
+The cross-store conformance suite (`createRequestStoreConformanceTests`, from `@flow-state-dev/engine/testing`) covers all of this.
+
 ## Custom model resolution
 
 ```ts
@@ -421,7 +450,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 **Request abort:**
 - `abortRequest(requestId)` — Signal an in-progress request to stop via `AbortController`
 - `hasActiveAbortController(requestId)` — Check if a request can be aborted
-- Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
+- Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 when the running process was signalled directly, 202 when the cancellation was recorded for another process to pick up, 404 when no request exists under that id, 409 when the request is no longer `in_progress`. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server) for the cross-process path and what a `202` does and doesn't promise
 - Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
 - Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See the [sequencer side-chains reference](https://flow-state.dev/docs/advanced/sequencer-side-chains) for the two-signal cancellation contract.
 

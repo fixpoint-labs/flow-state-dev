@@ -1,12 +1,15 @@
 /**
  * In-process registry of AbortControllers for active requests.
  *
- * Each runAction call registers a controller here. The abort endpoint
- * looks it up and calls .abort() to signal cancellation. The controller
- * is deregistered when the request reaches any terminal state.
+ * Each runAction call registers a controller here. The controller is
+ * deregistered when the request reaches any terminal state.
  *
- * This is an in-process map — it only works for single-server deployments.
- * Cross-process abort (multiple server instances) is out of scope for Wave 1.
+ * This map is per-process, and deliberately so: it is the single point a run
+ * is torn down at, not the channel a cancellation travels on. Both delivery
+ * paths converge here — the abort endpoint when the request is running in this
+ * process, and `runAction`'s heartbeat poll when the intent was recorded
+ * somewhere else — so a cross-process abort is indistinguishable downstream
+ * from a local one.
  */
 
 const controllers = new Map<string, AbortController>();

@@ -15,6 +15,8 @@
 import type Database from "better-sqlite3";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ExpectedVersion,
   RequestListOptions,
   RequestRecord,
@@ -50,6 +52,30 @@ function isTerminalRequestStatus(status: RequestStatus | undefined): boolean {
     status === "aborted" ||
     status === "suspended"
   );
+}
+
+/**
+ * Force `abortRequested` to the value already stored, whatever the incoming
+ * record says — the adapter half of `RequestStore.set`'s rule that the flag is
+ * off its write surface (FIX-1026).
+ *
+ * Mirrors the engine's `withStoredAbortRequested`, restated here for the same
+ * reason `isTerminalRequestStatus` is: this package keeps a TYPE-ONLY
+ * dependency on `@flow-state-dev/engine` (enforced by
+ * `scripts/validate-package-boundaries.mjs`), so it cannot import the runtime
+ * helper. Keep the two in step.
+ */
+function withStoredAbortRequested(
+  value: RequestRecord,
+  stored: boolean | undefined
+): RequestRecord {
+  if (stored === undefined) {
+    if (value.abortRequested === undefined) return value;
+    const { abortRequested: _dropped, ...rest } = value;
+    return rest as RequestRecord;
+  }
+  if (value.abortRequested === stored) return value;
+  return { ...value, abortRequested: stored };
 }
 
 /**
@@ -109,6 +135,12 @@ export function createSQLiteRequestStore(
 
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
+    // `abortRequested` is off `set`'s write surface (FIX-1026): the stored
+    // value wins in both directions, enforced inside the write statement.
+    // SQLite is a multi-process store, so a `SELECT` before the write would
+    // leave a window for a second connection's conditional write to be
+    // overwritten by a full-record blob built from the stale value.
+    preserveJsonKeys: ["abortRequested"],
     columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
@@ -217,6 +249,31 @@ export function createSQLiteRequestStore(
   const selectEventsAfterStmt = db.prepare(
     "SELECT event_data FROM request_events WHERE request_id = ? AND sequence_number > ? ORDER BY sequence_number ASC"
   );
+  // Abort intent (FIX-1026). The flag lives in the `requests.data` blob where
+  // it has always lived — `json_extract` on the primary key reads it without
+  // materializing anything else, and items live in `request_items`, so this
+  // read is O(1) in item count as the interface requires.
+  const selectAbortFlagStmt = db.prepare(
+    "SELECT json_extract(data, '$.abortRequested') AS flag FROM requests WHERE id = ?"
+  );
+  const selectStatusDataStmt = db.prepare(
+    "SELECT status, data FROM requests WHERE id = ?"
+  );
+  const updateDataStmt = db.prepare(
+    "UPDATE requests SET data = ?, updated_at = ? WHERE id = ?"
+  );
+
+  /**
+   * The stored abort flag, or `undefined` when the request or the key is
+   * absent. `json_extract` surfaces SQLite's JSON `true` as `1`.
+   */
+  function readAbortFlag(id: string): boolean | undefined {
+    const row = selectAbortFlagStmt.get(id) as { flag: unknown } | undefined;
+    if (row === undefined || row.flag === null || row.flag === undefined) {
+      return undefined;
+    }
+    return row.flag === 1 || row.flag === true;
+  }
   /** Accumulates new events between coalesced writes for incremental persistence. */
   const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
 
@@ -278,15 +335,55 @@ export function createSQLiteRequestStore(
       // item write for this request has already flushed within its
       // microtask before this async method body runs — no drain needed.
       const { items: _omitted, ...withoutItems } = value;
+      // Strip the abort flag before it is bound. `preserveJsonKeys` re-applies
+      // the stored value inside the write statement itself, so nothing here
+      // reads it first — a read would race a second connection's conditional
+      // write, which is the whole scenario this feature exists for.
       const result = await base.set(
         id,
-        withoutItems as RequestRecord,
+        withStoredAbortRequested(withoutItems as RequestRecord, undefined),
         expectedVersion
       );
       if (result.ok && isTerminalRequestStatus(value.status)) {
         clearItemMaps(id);
       }
       return result;
+    },
+
+    async isAbortRequested(requestId: string): Promise<boolean> {
+      return readAbortFlag(requestId) === true;
+    },
+
+    async setFieldsIfStatus(
+      id: string,
+      fields: ConditionalRequestFields,
+      allowedStatuses: readonly RequestStatus[],
+      updatedAt: number
+    ): Promise<ConditionalWriteResult> {
+      // One transaction, and it must be IMMEDIATE. A plain better-sqlite3
+      // transaction is DEFERRED: it takes only a read lock at the first
+      // SELECT, and upgrades on the UPDATE. Under WAL that upgrade fails with
+      // SQLITE_BUSY_SNAPSHOT when another connection committed in between —
+      // so `POST /abort` would throw where it owes the caller a clean 409.
+      // Reserving the write up front means the status the predicate reads is
+      // the status the write lands on, with no upgrade to lose.
+      //
+      // This is also what a version CAS cannot give: terminal transitions
+      // persist `version` unchanged, so a version-checked write still
+      // validates after a terminal commit and resurrects the record.
+      return db.transaction((): ConditionalWriteResult => {
+        const row = selectStatusDataStmt.get(id) as
+          | { status: RequestStatus; data: string }
+          | undefined;
+        if (row === undefined) return { applied: false, status: undefined };
+        if (!allowedStatuses.includes(row.status)) {
+          return { applied: false, status: row.status };
+        }
+        const record = JSON.parse(row.data) as RequestRecord;
+        const next = { ...record, ...fields, updatedAt };
+        updateDataStmt.run(JSON.stringify(next), updatedAt, id);
+        return { applied: true, status: row.status };
+      }).immediate();
     },
 
     patchField: base.patchField,
