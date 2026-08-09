@@ -238,8 +238,12 @@ Each detached worker also gets a routing coordinate the framework derives:
 into a flow-level binding map, so a worker stays addressable from strings alone
 after a restart, without appearing in `flow.actions` where a caller could reach
 it. Nothing is declared to make that happen. Two boards that share a `boardId`
-but bind different blocks to one coordinate are refused when the flow is defined,
-since that coordinate would have two possible answers.
+and land on the same coordinate are refused when the flow is defined, even when
+both hand that coordinate the same worker block: the coordinate is what a
+dispatch names, and two boards answering to it keep separate task ledgers while
+addressing one child session. Reusing a worker block across boards is fine on its
+own — give the boards distinct `boardId`s. One board reached from several places
+is a duplicate rather than a conflict and deduplicates silently.
 
 > Detached execution itself is not wired yet. This release ships the declaration,
 > its guards, and the routing registry; a worker marked detached still runs

@@ -179,10 +179,16 @@ Two properties are load-bearing:
   (BP-031). Routing over the bindings therefore happens at one convergence point
   inside the assembled core, not once per binding.
 
-One coordinate carrying two different blocks is refused when the flow is defined.
-It cannot be resolved by picking one: a dispatch names only the coordinate, so
-the loser's tasks would run the wrong worker with no error anywhere, and flow
+One coordinate carrying two separate board declarations is refused when the flow
+is defined, whether or not the two name the same worker block. It cannot be
+resolved by picking one: a dispatch names only the coordinate, so the loser's
+tasks would run against the wrong board with no error anywhere, and flow
 definition is the last point where both declarations are visible.
+
+Sharing a worker block between boards is fine — that is ordinary composition, and
+what is refused is the shared coordinate, not the shared block. One board reached
+from several places is a duplicate rather than a conflict, and deduplicates
+silently.
 
 ## The carried core: dynamic schedules
 

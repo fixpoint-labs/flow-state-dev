@@ -29,6 +29,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator, handler, sequencer } from "../src";
 import type { BlockDefinition } from "../src/types/block";
+import { defineResource } from "../src/types/resource";
 import {
   declareWorkstreamBindings,
   workstreamBindingKey,
@@ -36,6 +37,12 @@ import {
 } from "../src/types/workstream";
 
 type WorkstreamBindings = NonNullable<BlockDefinition<never, never>["workstreamBindings"]>;
+
+/** A resource a lifecycle observer declares, to pin the collection half. */
+const observerResource = defineResource({
+  scope: "session",
+  stateSchema: z.object({ entries: z.array(z.string()) }),
+});
 
 /** A stand-in for a board's detached worker block. */
 function workerBlock(name: string): BlockDefinition<never, never> {
@@ -228,6 +235,133 @@ describe("a stamped sequencer — the shape a board actually produces", () => {
     expect([...(rebuilt.workstreamBindings?.keys() ?? [])]).toEqual([
       workstreamBindingKey("issue-work", "assignee|9:implement"),
     ]);
+  });
+});
+
+/**
+ * The other axis: collection.
+ *
+ * Threading bindings through every rebuild is only half the invariant. The flow
+ * also has to *gather* them, and it gathers from a list of statically declared
+ * blocks. A block that runs in the request but is missing from that list is
+ * exactly as invisible as one whose bindings were dropped in a rebuild — the
+ * board runs, and nothing can route to it afterwards.
+ *
+ * Lifecycle observers are real blocks: `runAction` executes them, they declare
+ * resources, and they can contain a board. Each slot below is one `runAction`
+ * executes.
+ */
+describe("the flow collects bindings from every block it declares", () => {
+  /** A stamped sequencer standing in for a board's drain. */
+  function stampedDrain(workerName: string) {
+    const drain = sequencer({ name: `drain-${workerName}` }).tap(
+      handler({ name: `work-${workerName}`, execute: () => undefined })
+    );
+    declareWorkstreamBindings(drain, [
+      binding({
+        boardId: `board-${workerName}`,
+        coordinateKey: `assignee|${workerName.length}:${workerName}`,
+        worker: workerBlock(workerName),
+      }),
+    ]);
+    return drain;
+  }
+
+  const plainRoot = () => handler({ name: "root", execute: () => null });
+
+  /**
+   * Every slot a flow can statically declare a block in, other than the action
+   * roots the collector always covered. Each mounts a stamped drain and expects
+   * it to reach `flow.workstreamBindings`.
+   */
+  const LIFECYCLE_SLOTS: Array<{ slot: string; build: (b: never) => Record<string, unknown> }> = [
+    {
+      slot: "action.onCompleted",
+      build: (b) => ({ actions: { run: { block: plainRoot(), onCompleted: b } } }),
+    },
+    {
+      slot: "action.onErrored",
+      build: (b) => ({ actions: { run: { block: plainRoot(), onErrored: b } } }),
+    },
+    {
+      slot: "request.onStarted",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, request: { onStarted: b } }),
+    },
+    {
+      slot: "request.onCompleted",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, request: { onCompleted: b } }),
+    },
+    {
+      slot: "request.onErrored",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, request: { onErrored: b } }),
+    },
+    {
+      slot: "request.onFinished",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, request: { onFinished: b } }),
+    },
+    {
+      slot: "request.onStepErrored",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, request: { onStepErrored: b } }),
+    },
+    {
+      slot: "work.onStarted",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onStarted: b } }),
+    },
+    {
+      slot: "work.onCompleted",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onCompleted: b } }),
+    },
+    {
+      slot: "work.onErrored",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onErrored: b } }),
+    },
+    {
+      slot: "work.onFinished",
+      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onFinished: b } }),
+    },
+  ];
+
+  it.each(LIFECYCLE_SLOTS)("routes to a board mounted at $slot", ({ build }) => {
+    const flow = defineFlow({
+      kind: "board",
+      ...build(stampedDrain("implement") as never),
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual(["implement"]);
+  });
+
+  it("merges a board on the root with a different board on an observer", () => {
+    // The two must not shadow each other — an observer's board is additional to
+    // the root's, not an alternative to it.
+    const flow = defineFlow({
+      kind: "board",
+      actions: {
+        run: { block: stampedDrain("implement"), onCompleted: stampedDrain("audit") },
+      },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "audit",
+      "implement",
+    ]);
+  });
+
+  it("also installs an observer's declared resources", () => {
+    // Collection is shared: the same list feeds resources, `requiresOrg`, and
+    // bindings. A route to a board whose durable collection was never installed
+    // is only half a fix, so this pins the other half at the same time.
+    const observer = handler({
+      name: "observer",
+      resources: { auditLog: observerResource },
+      execute: () => null,
+    });
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: plainRoot(), onCompleted: observer } },
+    } as never)({ id: "board" });
+
+    expect(Object.keys(flow.resources ?? {})).toContain("auditLog");
   });
 });
 
