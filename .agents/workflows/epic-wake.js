@@ -2183,8 +2183,16 @@ const carriedApprovalHolds = labelUnattributable && !!epic.approved
 // duplicated into `epicOut.approved` and the copy missed `carriedApprovalHolds`, which made the
 // carry a one-shot (gate opens, `false` persists, next wake re-locks). Same reason
 // `specApprovalFor()` exists for the issue-level gate — a scattered OR gets updated in one place.
-const objectiveHolds = () =>
-  !gate.humanChangesRequested && (!!gate.approved || !!gate.approvedByLabel || carriedApprovalHolds)
+// Two different questions, and collapsing them destroyed durable state. `standingApproval` is what
+// the OWNER has signed off — revoked by removing the label or by a verified non-owner applier, and
+// nothing else. `objectiveHolds` is whether work may dispatch on THIS wake, which additionally
+// requires that nothing transient is holding it.
+// A change request is transient: reviews get dismissed. Persisting it into the standing approval
+// meant a CHANGES_REQUESTED landing while provenance was unreadable wrote `approved: false`, and
+// once that review was dismissed there was no carried `true` left to ride — every child locked
+// permanently, on a label still sitting on the PR, with no revocation ever performed.
+const standingApproval = () => !!gate.approved || !!gate.approvedByLabel || carriedApprovalHolds
+const objectiveHolds = () => !gate.humanChangesRequested && standingApproval()
 const epicApproved = scanned && gateUsable && objectiveHolds()
 // Guarded on the carry being what DECIDED it — otherwise this logs "holding a recorded approval"
 // on wakes where a live comment or an attributable label already signed the objective off.
@@ -3236,10 +3244,14 @@ const epicOut = {
     // approval re-opens the gate), which is the case failing closed actually protects.
     // Same rule as `epicApproved` above: a live scan decides, but a scan with no head is not a
     // usable observation, so it neither grants nor revokes — the durable value stands.
-    // Same `objectiveHolds()` the gate used, not a copy of it: computing this separately is what
-    // made the carry a ONE-SHOT — the gate opened, work dispatched, and this line persisted `false`
-    // next to a label still on the PR, so the next wake carried nothing and the stall returned.
-    approved: gateUsable ? objectiveHolds() : !!epic.approved,
+    // The STANDING approval, not this wake's effective gate — they are computed from one shared
+    // expression each (`standingApproval` / `objectiveHolds`) rather than written out twice, since
+    // a divergent copy of the gate term is what made the carry a one-shot the first time.
+    // Deliberately excludes `humanChangesRequested`: that holds dispatch for as long as it is the
+    // latest review, but it is not a revocation, and burning the durable approval on it left the
+    // epic locked forever once the review was dismissed. Revocation is label removal or a verified
+    // non-owner applier — both of which DO drop this to false, through `standingApproval`.
+    approved: gateUsable ? standingApproval() : !!epic.approved,
     // ...and the fact that it could not be confirmed is persisted WITH it, or the next wake's
     // dead-scout fallback reads the durable approval as good and releases work this wake refused to.
     // Clearing path: any scan that returns a head. (The coordinator persists this verbatim.)

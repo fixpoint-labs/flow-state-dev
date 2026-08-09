@@ -470,6 +470,34 @@ check('the `epic approved` label signs the objective off, and only its removal r
     }),
   })
   assert.equal(carriedButChangesRequested.result.epicApproved, false, 'a human change request outranks the carried approval')
+  // ...but it must not BURN it. A change request is transient — reviews get dismissed — while the
+  // standing approval is revoked only by label removal or a verified non-owner. Persisting `false`
+  // here left nothing to carry once the review cleared, so the epic stayed locked forever on a label
+  // still sitting on the PR, with no revocation ever performed.
+  assert.equal(
+    carriedButChangesRequested.result.epic.approved,
+    true,
+    'and holds dispatch without destroying the standing approval, which no revocation has touched',
+  )
+
+  // The other half of that: once the change request clears, the carried approval is still there and
+  // the gate reopens with no fresh sign-off needed — because none was ever withdrawn.
+  const changesRequestCleared = await run('epic-wake.js', {
+    args: epicArgs({
+      epic: { issueId: 'FIX-1', name: 'thing', branch: 'epic/thing', prNumber: 100, approved: true },
+      issues: [row('FIX-2', { phase: 'NEEDS_SPEC' })],
+    }),
+    respond: epicResponder({
+      approved: false,
+      approvedByLabel: false,
+      labelPresent: true,
+      labelProvenanceUnreadable: true,
+      gateChangesRequested: false, // the review was dismissed; nothing else changed
+      fresh: { 'FIX-2': { phase: 'NEEDS_SPEC' } },
+    }),
+  })
+  assert.equal(changesRequestCleared.result.epicApproved, true, 'a dismissed change request reopens the gate on the standing approval')
+  assert.deepEqual(changesRequestCleared.result.held, [], 'and the set is released')
 
   // Fold activity must not disturb it: the label still approves on a wake that is folding new
   // epic-PR feedback, which is exactly the wake a commit-based staleness rule would have broken.
