@@ -4,7 +4,7 @@
 ---
 
 Detached worker bindings now bubble up to the flow, and a detached board's task
-assignees are fixed at admission.
+assignees are fixed at admission (FIX-982).
 
 A task board can declare that a worker runs outside the request that claimed its
 task. When that work is woken later — after the originating request returned, or
