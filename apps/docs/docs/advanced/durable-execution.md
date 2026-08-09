@@ -285,6 +285,8 @@ The standard store adapters all implement the durability tables:
 
 For production use with crash recovery as a goal, you want SQLite at minimum and Postgres when running multiple instances or on a platform that doesn't guarantee local disk persistence.
 
+A run executing on a worker is also cancellable from anywhere, not only from the process running it. `session.abortRequest()` stops it within one heartbeat interval, so the setting that governs how often a run reports itself alive also governs how quickly a cancellation reaches it. It needs a request store shared across processes, which is the same SQLite-or-Postgres requirement above. See [Connection Resilience — stopping a request that runs on another server](/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server).
+
 ## Retention and cleanup
 
 Durability writes three kinds of records: checkpoints (sequencer state at step boundaries), suspension records (one per `ctx.suspend()` call), and leases (held briefly during a resume). On a host that runs for weeks, these accumulate. A completed run's checkpoints are dead weight, a resolved approval is only worth keeping for a while, and a process that crashes before it finishes leaves records that nothing comes back to clean up.

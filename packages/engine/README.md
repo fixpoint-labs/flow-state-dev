@@ -365,6 +365,33 @@ The `maxItems` check counts items through `RequestStore.countItems(requestId)` r
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 
+## Abort intent on `RequestStore` (adapter authors)
+
+`RequestStore` carries two required members for cancellation. Both are additions an out-of-tree adapter must implement — the build fails with a missing-member error until it does.
+
+```ts
+isAbortRequested(requestId: string): Promise<boolean>;
+
+setFieldsIfStatus(
+  id: string,
+  fields: ConditionalRequestFields,
+  allowedStatuses: readonly RequestStatus[],
+  updatedAt: number
+): Promise<{ applied: boolean; status?: RequestStatus }>;
+```
+
+**`isAbortRequested`** answers whether cancellation has been requested, without materializing the request. It runs on the heartbeat tick for the life of every request, so it **must be O(1) in item count** — reading the record and deserializing a growing item array turns a long run into quadratic work. Return `false` for an unknown request. Read the flag with `=== true`; it is `boolean | undefined`.
+
+**`setFieldsIfStatus`** applies `fields` only while the record's status is one of `allowedStatuses`, evaluating the predicate and the write as one atomic step. Three outcomes: `{ applied: true, status }` when the predicate held; `{ applied: false, status }` when a record exists outside the predicate; `{ applied: false, status: undefined }` when no record exists.
+
+Do not implement it as a version CAS. Terminal transitions persist `version` **unchanged**, so a version-checked write still validates after a terminal commit and resurrects a dead record. The predicate has to read status.
+
+**`set` must ignore `abortRequested` in both directions.** A full record handed to `set` cannot set the flag and cannot clear a stored one. The compiler will not enforce this — the field is still on `RequestRecord` for reading — and an adapter that "helpfully" honours it on `set` reintroduces the hazard the rule exists to remove: every full-record writer builds `{ ...heldRecord, ...patch }` from a snapshot taken before the flag existed, so honouring the field means erasing a cancellation nobody intended to touch.
+
+How you store the flag is yours. The shipped adapters differ: in-memory and the SQL pair keep it on the record and force the stored value through on `set`; the filesystem adapter keeps a marker file beside the record, because its `get()` loads inline items and would break the O(1) bound. Whichever you pick, `get()` must still surface the flag on the returned record.
+
+The cross-store conformance suite (`createRequestStoreConformanceTests`) covers all of this, including a case that sets the flag on a record with a large item set.
+
 ## Custom model resolution
 
 ```ts
