@@ -7,7 +7,7 @@ import type {
   RequestRecord,
   StoreRegistry
 } from "../stores/types";
-import type { RuntimeConfig } from "../runtime-config";
+import { DEFAULT_QUEUED_GRACE_MS, type RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
@@ -17,24 +17,6 @@ export type InterruptedRequestInfo = {
   entry: ActiveRequestEntry;
   requestRecord?: RequestRecord;
 };
-
-/**
- * How long a request may sit in an external queue, unclaimed, before the
- * sweeper treats it as lost rather than waiting (FIX-999).
- *
- * Deliberately NOT derived from `staleThresholdMs`. That threshold answers "how
- * long since a live worker checked in", tuned against the heartbeat cadence and
- * typically seconds. This answers "how long might a job legitimately queue
- * before a worker frees up", which is a property of the queue's depth and
- * worker count and has nothing to do with heartbeat cadence. Scaling one off
- * the other would couple two unrelated timescales and give a deployment that
- * tightened its heartbeat a queue grace it never asked to shorten.
- *
- * Ten minutes is generous for a backlog and still bounded, so a job the queue
- * genuinely dropped does not linger `in_progress` forever. A deployment that
- * knows its worst-case queue wait should pass `queuedGraceMs` explicitly.
- */
-export const DEFAULT_QUEUED_GRACE_MS = 10 * 60_000;
 
 /**
  * Scans the active request registry for stale entries and marks

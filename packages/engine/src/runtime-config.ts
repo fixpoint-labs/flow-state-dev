@@ -70,6 +70,14 @@ export interface RuntimeConfig {
    * then throws by name rather than failing as `undefined is not a function`.
    */
   requestHost?: RequestHostConstructionInputs;
+  /**
+   * Resolved queued grace (FIX-999), carried here because three shipped paths
+   * sweep and only this bundle reaches all of them: the router's periodic
+   * sweeper, startup detection in `createFlowRouteHandlers`, and the
+   * client-poked `check-interrupted` route. Absent → `detectInterruptedRequests`
+   * applies {@link DEFAULT_QUEUED_GRACE_MS}.
+   */
+  queuedGraceMs?: number;
 }
 
 /**
@@ -91,7 +99,8 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     durabilityProvider: options.durabilityProvider,
     durabilityRetention: options.durabilityRetention,
     errorCapture: options.errorCapture,
-    requestHost: options.requestHost
+    requestHost: options.requestHost,
+    queuedGraceMs: options.queuedGraceMs
   };
 }
 
@@ -100,15 +109,35 @@ export const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
 /** Heartbeat-age threshold (ms) for the stale-request sweeper by default. */
 export const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
 
-/** The public option pair describing the stale-request sweeper. */
+/**
+ * How long a request may sit in an external queue, unclaimed, before the
+ * sweeper treats it as lost rather than waiting (FIX-999).
+ *
+ * Deliberately NOT derived from the stale threshold. That threshold answers
+ * "how long since a live worker checked in", tuned against the heartbeat
+ * cadence and typically seconds. This answers "how long might a job
+ * legitimately queue before a worker frees up", which is a property of the
+ * queue's depth and worker count and has nothing to do with heartbeat cadence.
+ * Scaling one off the other would couple two unrelated timescales and give a
+ * deployment that tightened its heartbeat a queue grace it never asked to
+ * shorten.
+ *
+ * Ten minutes is generous for a backlog and still bounded, so a job the queue
+ * genuinely dropped does not linger `in_progress` forever. A deployment that
+ * knows its worst-case queue wait raises it with `queuedGraceMs`.
+ */
+export const DEFAULT_QUEUED_GRACE_MS = 10 * 60_000;
+
+/** The public options describing the stale-request sweeper. */
 export interface StaleSweepOptions {
   staleSweepIntervalMs?: number;
   staleSweepThresholdMs?: number;
+  queuedGraceMs?: number;
 }
 
 /**
- * Resolve the stale-sweep pair to the facts the request-host liveness gate
- * reasons about (FIX-999).
+ * Resolve the stale-sweep options to the facts the sweepers and the
+ * request-host liveness gate reason about (FIX-999).
  *
  * There are two entry points that construct a `RuntimeConfig` — `createFlowState`
  * (whose config reaches the router *and* `worker.startWorker`) and a direct
@@ -116,15 +145,24 @@ export interface StaleSweepOptions {
  * defaulting rule lives here rather than being restated at each one. `0` is
  * preserved, not defaulted: it means sweeping is deliberately disabled, which
  * the gate refuses liveness on.
+ *
+ * Only the first two are gate facts. `queuedGraceMs` governs which rows a sweep
+ * reaps and is deliberately kept out of `RequestHostConstructionInputs`: the
+ * liveness read leaves queued entries unbounded on purpose and defers the bound
+ * to the sweep, so a second copy of the grace on the read side is exactly the
+ * desynchronization that reintroduces the false negative being fixed. Callers
+ * destructure rather than spreading this whole result onto the seam.
  */
 export function resolveStaleSweep(options: StaleSweepOptions): {
   staleSweepIntervalMs: number;
   staleThresholdMs: number;
+  queuedGraceMs: number;
 } {
   return {
     staleSweepIntervalMs:
       options.staleSweepIntervalMs ?? DEFAULT_STALE_SWEEP_INTERVAL_MS,
     staleThresholdMs:
-      options.staleSweepThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS
+      options.staleSweepThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS,
+    queuedGraceMs: options.queuedGraceMs ?? DEFAULT_QUEUED_GRACE_MS
   };
 }

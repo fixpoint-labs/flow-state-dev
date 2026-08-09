@@ -288,6 +288,14 @@ class InternalFlowState<TSettings extends object>
     // and the sweeper cannot describe different cadences. `startOperation` and
     // `parentTask` stay unwired here: no host start operation exists yet, and
     // the verb refuses by name rather than pretending otherwise.
+    //
+    // Destructured rather than spread wholesale onto `requestHost`:
+    // `queuedGraceMs` is a sweep bound, not a gate fact, and the liveness read
+    // deliberately leaves queued entries unbounded so the sweep owns that
+    // clock. It rides the config instead, which is what startup detection and
+    // the `check-interrupted` route read.
+    const { queuedGraceMs, ...gateFacts } = resolveStaleSweep(this.#options);
+
     const runtimeConfig = createRuntimeConfig({
       modelResolver,
       voiceProvider,
@@ -297,7 +305,8 @@ class InternalFlowState<TSettings extends object>
       durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
       errorCapture: this.#options.errorCapture,
-      requestHost: resolveStaleSweep(this.#options)
+      queuedGraceMs,
+      requestHost: gateFacts
     });
 
     const runtime: FlowStateRuntime = {
@@ -340,6 +349,7 @@ class InternalFlowState<TSettings extends object>
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
+      queuedGraceMs: this.#options.queuedGraceMs,
       dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
     });
   }

@@ -249,7 +249,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   if (options.detectInterruptedOnStartup !== false) {
     void detectInterruptedRequests({
       stores,
-      staleThresholdMs: options.staleThresholdMs
+      staleThresholdMs: options.staleThresholdMs,
+      // Same grace the periodic sweeper runs with, so a restart cannot reap a
+      // queued row the running server would have left alone.
+      queuedGraceMs: runtimeConfig.queuedGraceMs
     }).then((interrupted) => {
       if (interrupted.length > 0) {
         console.warn(

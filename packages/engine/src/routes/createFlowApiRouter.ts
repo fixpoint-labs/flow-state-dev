@@ -148,6 +148,19 @@ export type CreateFlowApiRouterOptions = {
   staleSweepThresholdMs?: number;
 
   /**
+   * How long a request handed to an external dispatcher may sit unclaimed in
+   * the queue before a sweep treats it as lost (milliseconds).
+   *
+   * A queued request has no executor heartbeat — nothing is running it yet — so
+   * its age measures queue wait rather than worker death, and
+   * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
+   * backlog can exceed the default; too low and a valid queued job is marked
+   * `interrupted` and re-dispatched while the queue still holds it.
+   * Default: 600000 (10 minutes).
+   */
+  queuedGraceMs?: number;
+
+  /**
    * Enable the privileged read-only debug endpoint surface under
    * `/api/flows/sessions/:id/debug/resources*`. Fail-closed: default
    * `false`. Explicit `true` always wins over the env flag. When
@@ -348,8 +361,11 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // the runtime config it hands the worker — so a host author configures the
   // cadence and threshold once and no path can desynchronize the gate from the
   // sweeper it reasons about.
-  const { staleSweepIntervalMs, staleThresholdMs: staleSweepThresholdMs } =
-    resolveStaleSweep(options);
+  const {
+    staleSweepIntervalMs,
+    staleThresholdMs: staleSweepThresholdMs,
+    queuedGraceMs
+  } = resolveStaleSweep(options);
 
   // Bundle the forwarded instance-level options once at this public boundary.
   // `createFlowState` passes a pre-built `runtimeConfig`; direct callers get
@@ -373,8 +389,16 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // that did not gets a bundle whose start verb refuses by name. That is the
   // designed degraded-but-present state: the gate makes a real fail-closed
   // decision instead of the seam being absent entirely.
+  //
+  // `queuedGraceMs` rides the config rather than the seam. Startup detection
+  // and the `check-interrupted` route sweep too, and this bundle is the only
+  // thing that reaches all three; the seam deliberately does not carry it,
+  // because the liveness read leaves a queued entry unbounded and defers the
+  // bound to the sweep (a second clock there is the desync that would bring
+  // back the false negative).
   const runtimeConfig: RuntimeConfig = {
     ...baseRuntimeConfig,
+    queuedGraceMs,
     requestHost: {
       ...baseRuntimeConfig.requestHost,
       staleThresholdMs: staleSweepThresholdMs,
@@ -392,7 +416,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   const sweeper = createStaleRequestSweeper({
     stores: handlers.host.stores,
     intervalMs: staleSweepIntervalMs,
-    staleThresholdMs: staleSweepThresholdMs
+    staleThresholdMs: staleSweepThresholdMs,
+    queuedGraceMs
   });
 
   // Server-internal durability sweeper (FIX-141): enforces suspension expiry

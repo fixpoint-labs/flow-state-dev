@@ -75,5 +75,12 @@ Also in this change:
   them interrupted and recovery could retry work the queue was still holding.
   Registries gain a nullable `queued_at` column, added by an idempotent migration;
   existing rows read back as claimed and sweep exactly as before. A job that never
-  arrives is still reaped — after a queued grace of 10 minutes by default, which
-  `detectInterruptedRequests` accepts as `queuedGraceMs`.
+  arrives is still reaped — after a queued grace of 10 minutes by default.
+- That queued grace is now a host option, `queuedGraceMs`, on both
+  `createFlowState` and `createFlowApiRouter`. It governs every path that sweeps:
+  the periodic stale-request sweeper, the detection pass on server startup, and
+  the on-demand `check-interrupted` endpoint. A deployment whose legitimate
+  backlog outlasts ten minutes can raise it instead of watching valid queued jobs
+  get marked `interrupted` while the queue still holds them. It stays independent
+  of `staleSweepThresholdMs` on purpose: that one measures how long since a
+  running worker checked in, which a job no worker has claimed yet cannot answer.

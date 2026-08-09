@@ -121,7 +121,7 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 ### Connection resilience
 
-`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, `staleSweepThresholdMs`, and `queuedGraceMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
 
 ### DevTool connection (dev-only)
 
@@ -693,7 +693,10 @@ createFlowApiRouter({
   staleSweepIntervalMs: 30_000,
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
-  staleSweepThresholdMs: 60_000
+  staleSweepThresholdMs: 60_000,
+  // How long a request queued with an external dispatcher may wait, unclaimed,
+  // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
+  queuedGraceMs: 600_000
 });
 ```
 

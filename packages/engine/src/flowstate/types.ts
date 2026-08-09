@@ -177,6 +177,13 @@ export interface CreateFlowStateOptions<
   staleSweepIntervalMs?: number;
   /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
   staleSweepThresholdMs?: number;
+  /**
+   * How long an externally-queued request may sit unclaimed before a sweep
+   * treats it as lost (ms). A queued request has no heartbeat, so
+   * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
+   * backlog can outlast the default. Default 600000 (10 minutes).
+   */
+  queuedGraceMs?: number;
 
   /**
    * Enable durable execution. When `true`, `createFlowState` builds the

@@ -350,6 +350,12 @@ export async function handleCheckInterruptedRequests(
     stores: ctx.stores,
     userId,
     staleThresholdMs,
+    // The host's configured grace, not the caller's: a client poking this
+    // endpoint must not be able to reap a queued row the server's own sweeper
+    // is still waiting on. `staleThresholdMs` above stays caller-tunable
+    // because it only widens or narrows which heartbeat-governed entries are
+    // considered, never which queued ones survive.
+    queuedGraceMs: ctx.runtimeConfig.queuedGraceMs,
     anonymousFlowKinds: ctx.anonymousFlowKinds,
     logger: ctx.runtimeConfig.logger
   });
