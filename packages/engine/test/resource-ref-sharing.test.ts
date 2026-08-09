@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 describe("FIX-591: resource state keyed by ref, not accessor name", () => {
   it("two accessors of the same DefinedResource see shared state", async () => {
@@ -91,6 +92,7 @@ describe("FIX-591: resource state keyed by ref, not accessor name", () => {
     })();
 
     const stores = createInMemoryStores();
+    await seedLegacySession(stores.session, "sess_aliases", "user_aliases");
     const ctx = await createExecutionContext({
       flow,
       actionName: "run",

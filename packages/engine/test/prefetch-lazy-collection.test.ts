@@ -11,6 +11,7 @@ import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 function createStubModelResolver(): ModelResolver {
   const resolver = ((modelId: string): GeneratorModel => ({
@@ -40,8 +41,13 @@ const flow = defineFlow({
   }
 })();
 
-function spyStores() {
+// Session resources in this file are pre-seeded directly at the bare "s1"
+// key before `ctxFor` is called; a legacy (no-generation) session record
+// makes that address the one `createExecutionContext` actually reads
+// (FIX-1000 test fallout — see `./session-fixtures`).
+async function spyStores() {
   const stores = createInMemoryStores();
+  await seedLegacySession(stores.session, "s1", "u1");
   const get = vi.spyOn(stores.resourceState, "get");
   const getByPrefix = vi.spyOn(stores.resourceState, "getByPrefix");
   return { stores, get, getByPrefix };
@@ -73,7 +79,7 @@ const coll = (ctx: Awaited<ReturnType<typeof ctxFor>>): LazyColl =>
 
 describe("FIX-688: lazy collection accessor", () => {
   it("get() issues a single-row store read and returns a sync-readable ref", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 5 }, "any");
     const ctx = await ctxFor(stores);
     get.mockClear();
@@ -89,7 +95,7 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("single-flights concurrent get() of the same key", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     const ctx = await ctxFor(stores);
     get.mockClear();
@@ -99,7 +105,7 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("list() issues one prefix read and warms the cache for later gets", async () => {
-    const { stores, get, getByPrefix } = spyStores();
+    const { stores, get, getByPrefix } = await spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     await stores.resourceState.set("session", "s1", "lz/b", { n: 2 }, "any");
     const ctx = await ctxFor(stores);
@@ -118,7 +124,7 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("does not resurrect a key deleted while the prefix read was in flight", async () => {
-    const { stores } = spyStores();
+    const { stores } = await spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     await stores.resourceState.set("session", "s1", "lz/b", { n: 2 }, "any");
     const ctx = await ctxFor(stores);
@@ -164,14 +170,14 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("get() rejects (and getOptional resolves undefined) for a missing instance", async () => {
-    const { stores } = spyStores();
+    const { stores } = await spyStores();
     const ctx = await ctxFor(stores);
     await expect(coll(ctx).get("missing")).rejects.toThrow(/not found/);
     expect(await coll(ctx).getOptional("missing")).toBeUndefined();
   });
 
   it("negatively caches a missing key — one store read across repeated misses", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     const ctx = await ctxFor(stores);
     get.mockClear();
 
@@ -183,7 +189,7 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("treats a miss as authoritative after the prefix is bulk-loaded — zero extra reads", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     const ctx = await ctxFor(stores);
 
@@ -195,7 +201,7 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("create() persists and is readable without an extra store read", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     const ctx = await ctxFor(stores);
 
     const ref = await coll(ctx).create("x", { n: 7 });
@@ -209,7 +215,7 @@ describe("FIX-688: lazy collection accessor", () => {
   });
 
   it("does not preload a flow-level lazy collection at request start", async () => {
-    const { stores, getByPrefix } = spyStores();
+    const { stores, getByPrefix } = await spyStores();
     await stores.resourceState.set("session", "s1", "lz/a", { n: 1 }, "any");
     await ctxFor(stores);
     expect(getByPrefix.mock.calls.filter((c) => c[2] === "lz/").length).toBe(0);

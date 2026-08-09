@@ -21,6 +21,7 @@ import {
 import type { BlockTraceItem, ResourceLoadRecord } from "@flow-state-dev/core/items";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { createInMemoryStores, createResponseEmitter, runAction } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 function createStubModelResolver(): ModelResolver {
   const resolver = ((modelId: string): GeneratorModel => ({
@@ -38,6 +39,13 @@ function createStubModelResolver(): ModelResolver {
 type Stores = ReturnType<typeof createInMemoryStores>;
 
 async function run(flow: ReturnType<ReturnType<typeof defineFlow>>, stores: Stores, input: unknown = {}) {
+  // Session resources in this file are pre-seeded directly at the bare "s1"
+  // key before `run()` is called; a legacy (no-generation) session record
+  // makes that address the one `createExecutionContext` actually reads
+  // (FIX-1000 test fallout — see `./session-fixtures`).
+  if ((await stores.session.get("s1")) === undefined) {
+    await seedLegacySession(stores.session, "s1", "u1");
+  }
   const response = createResponseEmitter({ requestId: `req_${Math.random().toString(16).slice(2)}`, now: () => Date.now() });
   const result = await runAction({
     flow,
@@ -365,6 +373,7 @@ describe("FIX-701: per-block resource-load tracing", () => {
     })();
 
     const stores = createInMemoryStores();
+    await seedLegacySession(stores.session, "s1", "u1");
     await stores.resourceState.set("session", "s1", "off/a", { n: 1 }, "any");
 
     const response = createResponseEmitter({ requestId: "req_off", now: () => Date.now() });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores, toBareStates } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
@@ -59,6 +60,12 @@ function makeFlow(collections: Record<string, ReturnType<typeof defineResourceCo
 
 async function createCtx(collections: Record<string, ReturnType<typeof defineResourceCollection>>) {
   const stores = createInMemoryStores();
+  // A couple of tests below read `stores.resourceState.getAll("session", "sess_1")`
+  // directly, so the session record must already exist in the legacy
+  // (no-generation) shape or `createExecutionContext`'s implicit creation
+  // mints a fresh storage generation and that address goes stale (FIX-1000
+  // test fallout — see `./session-fixtures`).
+  await seedLegacySession(stores.session, "sess_1", "user_1");
   const flow = makeFlow(collections);
   const ctx = await createExecutionContext({
     flow,

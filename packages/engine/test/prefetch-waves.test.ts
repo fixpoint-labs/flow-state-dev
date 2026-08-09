@@ -17,6 +17,7 @@ import { z } from "zod";
 import { defineFlow, defineResource, defineResourceCollection, handler } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { createExecutionContext, createInMemoryStores, runAction } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 function createStubModelResolver(): ModelResolver {
   const resolver = ((modelId: string): GeneratorModel => ({
@@ -81,8 +82,14 @@ const flow = defineFlow({
   }
 })();
 
-function spyStores() {
+// Session resources in this file are pre-seeded directly at the bare "s1"
+// key before `createExecutionContext`/`runAction` is called; a legacy
+// (no-generation) session record makes that address the one
+// `createExecutionContext` actually reads (FIX-1000 test fallout — see
+// `./session-fixtures`).
+async function spyStores() {
   const stores = createInMemoryStores();
+  await seedLegacySession(stores.session, "s1", "u1");
   const getByPrefix = vi.spyOn(stores.resourceState, "getByPrefix");
   const get = vi.spyOn(stores.resourceState, "get");
   return { stores, getByPrefix, get };
@@ -90,7 +97,7 @@ function spyStores() {
 
 describe("FIX-688: three-wave loading", () => {
   it("Wave 2: loads only the dispatched action's collections, not siblings'", async () => {
-    const { stores, getByPrefix } = spyStores();
+    const { stores, getByPrefix } = await spyStores();
     await createExecutionContext({
       flow,
       actionName: "a",
@@ -106,7 +113,7 @@ describe("FIX-688: three-wave loading", () => {
   });
 
   it("Wave 2: dispatching the sibling action loads its collection, not the other", async () => {
-    const { stores, getByPrefix } = spyStores();
+    const { stores, getByPrefix } = await spyStores();
     await createExecutionContext({
       flow,
       actionName: "b",
@@ -122,7 +129,7 @@ describe("FIX-688: three-wave loading", () => {
   });
 
   it("Wave 1: loads the flow-level single resource regardless of action", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await createExecutionContext({
       flow,
       actionName: "b",
@@ -136,7 +143,7 @@ describe("FIX-688: three-wave loading", () => {
   });
 
   it("Wave 3: a lazy single is not loaded at context creation", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await stores.resourceState.set("session", "s1", "lazyS", { v: 42 }, "any");
     get.mockClear();
     await createExecutionContext({
@@ -152,7 +159,7 @@ describe("FIX-688: three-wave loading", () => {
   });
 
   it("Wave 3: loads a lazy single once at block dispatch, readable synchronously", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await stores.resourceState.set("session", "s1", "lazyS", { v: 42 }, "any");
     get.mockClear();
     const result = await runAction({
@@ -171,7 +178,7 @@ describe("FIX-688: three-wave loading", () => {
   });
 
   it("single-flights concurrent loads of the same resource", async () => {
-    const { stores, get } = spyStores();
+    const { stores, get } = await spyStores();
     await stores.resourceState.set("session", "s1", "lazyS", { v: 9 }, "any");
     const ctx = await createExecutionContext({
       flow,

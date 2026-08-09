@@ -31,6 +31,7 @@ import {
   createResponseEmitter,
   runAction
 } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 const memoSchema = z.object({ status: z.string() });
 
@@ -42,8 +43,14 @@ const memosCollection = defineResourceCollection({
   eviction: "none"
 });
 
-function makeCtx() {
+async function makeCtx() {
   const stores = createInMemoryStores();
+  // The tests below read `stores.resourceState.getAll("session", "sess_1")`
+  // directly, so the session record must already exist in the legacy
+  // (no-generation) shape or `createExecutionContext`'s implicit creation
+  // mints a fresh storage generation and that address goes stale (FIX-1000
+  // test fallout — see `./session-fixtures`).
+  await seedLegacySession(stores.session, "sess_1", "user_1");
   const flow = defineFlow({
     kind: "fix744-coll",
     actions: {
@@ -162,6 +169,7 @@ describe("FIX-744: parallel distinct-key collection writes survive in cache", ()
       eviction: "lru"
     });
     const stores = createInMemoryStores();
+    await seedLegacySession(stores.session, "sess_1", "user_1");
     const flow = defineFlow({
       kind: "fix744-lru",
       actions: {

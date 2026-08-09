@@ -16,12 +16,14 @@ import {
   handler
 } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 const noopHandler = handler({ name: "noop", execute: () => "ok" });
 
 describe("content load scoped to declared resources (Slice B)", () => {
   it("delivers declared content without a full-scope getAll", async () => {
     const stores = createInMemoryStores();
+    await seedLegacySession(stores.session, "sess_b", "user_b");
     await stores.content.set("session", "sess_b", "notes", "NOTES BODY");
     await stores.content.set("session", "sess_b", "secret", "SECRET BODY"); // undeclared
     await stores.content.set("user", "user_b", "profile", "PROFILE BODY");
@@ -95,6 +97,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
 
   it("loads collection content by pattern prefix", async () => {
     const stores = createInMemoryStores();
+    await seedLegacySession(stores.session, "sess_d", "user_d");
     await stores.content.set("session", "sess_d", "files/a.ts", "A");
     await stores.content.set("session", "sess_d", "files/b.ts", "B");
     await stores.content.set("session", "sess_d", "elsewhere", "E"); // undeclared
@@ -129,6 +132,7 @@ describe("content load scoped to declared resources (Slice B)", () => {
 
   it("loads all instances for a collection whose pattern has no static prefix", async () => {
     const stores = createInMemoryStores();
+    await seedLegacySession(stores.session, "sess_e", "user_e");
     await stores.content.set("session", "sess_e", "react/observations", "R");
 
     const flow = defineFlow({

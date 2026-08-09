@@ -30,6 +30,7 @@ import {
   ResourceDeletedError,
   type StoreRegistry
 } from "../src";
+import { seedLegacySession } from "./session-fixtures";
 
 const spine = defineResource({
   scope: "session",
@@ -69,6 +70,20 @@ function makeFlow() {
 }
 
 /**
+ * A fresh in-memory store with the "sess_1" session record already seeded in
+ * the legacy (no-generation) shape. `readStored`/direct `stores.resourceState`
+ * assertions below address the bare "sess_1" key, so the record must exist
+ * before the first `createExecutionContext` call or implicit session
+ * creation mints a fresh storage generation and those reads and writes talk
+ * past each other (FIX-1000 test fallout — see `./session-fixtures`).
+ */
+async function newStores(): Promise<StoreRegistry> {
+  const stores = createInMemoryStores();
+  await seedLegacySession(stores.session, "sess_1", "user_1");
+  return stores;
+}
+
+/**
  * One execution context over a shared store — i.e. one in-flight request.
  * Each call builds its own registry, caches and version map, so two of them
  * are genuinely two concurrent contexts rather than two handles on one.
@@ -94,7 +109,7 @@ async function readStored(
 
 describe("FIX-992: two concurrent contexts patching one resource", () => {
   it("both land — distinct fields survive a cross-context race", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     const ctxB = await makeCtx(stores, "req_b");
 
@@ -110,7 +125,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   });
 
   it("a write equal to a stale cache lands rather than reporting a silent no-op", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.spine as any).setState({ mode: "old" });
 
@@ -123,7 +138,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   });
 
   it("a patch racing another context's delete is terminal, not a resurrection", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { claimedBy: null });
 
@@ -144,7 +159,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   });
 
   it("a losing create raises already-exists instead of overwriting the winner", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     const ctxB = await makeCtx(stores, "req_b");
 
@@ -157,7 +172,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   });
 
   it("a delete chosen from a stale snapshot conflicts instead of tombstoning the replacement", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
 
@@ -179,7 +194,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // regression that took trading-desk's seed-session blocks red — the driver
     // read "no row" as "someone deleted it" and threw at every flow's first
     // touch of a defaulted resource.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctx = await makeCtx(stores, "req_a");
 
     await expect(
@@ -197,7 +212,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   it("a stale delete against a RECREATED row reports a concurrent modification, not a deletion", async () => {
     // The row demonstrably exists — it was deleted and recreated under us — so
     // `resource_deleted` would report the opposite of what happened.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
 
@@ -215,7 +230,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   });
 
   it("getOrCreate returns the winner's instance when its create loses", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     const ctxB = await makeCtx(stores, "req_b");
 
@@ -229,7 +244,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   });
 
   it("upsert applies its update when its create loses", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     const ctxB = await makeCtx(stores, "req_b");
 
@@ -256,7 +271,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // instance permanently gone — a net loss from an operation that never
     // happened. The losing context must genuinely be AT the cap for this to
     // exercise anything, so it loads both instances before the race.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.capped as any).create("c1", { n: 1 });
     await (ctxA.resources.capped as any).create("c2", { n: 2 });
@@ -286,7 +301,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // them leaves this request reading a value the store no longer holds and
     // holding a version that makes its next conditional write conflict for no
     // reason.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { mode: "old" });
 
@@ -314,7 +329,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // B still has t1 cached when A deletes it. B's create commits at "no live
     // row" — proving none existed — so it is a new generation, not an update of
     // the row A removed.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
 
@@ -331,7 +346,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // not close. If the victim was replaced by another context the delete is
     // refused — but the create already committed, so failing here would report
     // a create that demonstrably happened as a failure and still leave the row.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.capped as any).create("c1", { n: 1 });
     await (ctxA.resources.capped as any).create("c2", { n: 2 });
@@ -363,7 +378,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // Eight is chosen to clear the budget with margin, and every writer adds a
     // DISTINCT field so the assertion is positive: all eight landed. A test
     // that only asserted "no throw" could pass without any of them committing.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctx = await makeCtx(stores, "req_a");
     await (ctx.resources.tasks as any).create("t1", { base: true });
 
@@ -385,7 +400,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // context cache holds, or a caller inspecting the error would silently
     // change `ref.state` with no store write and no version bump — and a later
     // patch would persist the mutation.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     const ctxB = await makeCtx(stores, "req_b");
 
@@ -408,7 +423,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
     // The throw is already pinned elsewhere; the defect is in what is READABLE
     // after it. The store reported generation 2 on the conflict, so a caller
     // that catches the error must not then be served generation 1.
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctxA = await makeCtx(stores, "req_a");
     await (ctxA.resources.tasks as any).create("t1", { generation: 1 });
 
@@ -448,7 +463,7 @@ describe("FIX-992: two concurrent contexts patching one resource", () => {
   // successful delete and prove nothing about the branch it claimed to cover.
 
   it("does not bump the version for a verified no-op write", async () => {
-    const stores = createInMemoryStores();
+    const stores = await newStores();
     const ctx = await makeCtx(stores, "req_a");
     await (ctx.resources.tasks as any).create("t1", { status: "open" });
     const afterCreate = await stores.resourceState.get("session", "sess_1", "tasks/t1");
