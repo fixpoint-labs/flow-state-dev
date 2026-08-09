@@ -1699,7 +1699,8 @@ epic's BP-003 evidence path, so "every issue merged" is not "the epic is done" u
 S4 **FIX-1013** · S5 **FIX-1014**), and **this chain is a dependency order, not a dispatch list**:
 the owner deferred S1b, S2, S3 and S5 on 2026-08-07 and carried only S4. A coordinator must not read
 `S1b → S2 → S3` as work to start when FIX-991 lands — those are deferred, which is not the same as
-ready. That S4 is carried while the three it stands on are deferred is **OQ-H**, open for the owner.
+ready. That S4 is carried while the three it stands on are deferred was **OQ-H** — **resolved
+2026-08-08**: the chain stays in the epic and runs last, in dependency order, after FIX-982.
 FIX-991 is in the sequence because unconditional criterion 4b depends on it — and it appears twice
 because only its second half depends on FIX-982.
 Create-if-absent is on the prerequisite branch because Workstream get-or-create is the routing
@@ -2016,9 +2017,10 @@ background request as a task, distinct from the conversation.
 
 ## 6. Open questions
 
-**Exactly one is open and needs the owner: OQ-H.** OQ-A, OQ-C, OQ-E and OQ-G are decided; OQ-B is
+**None are open.** OQ-H was the last, **resolved 2026-08-08**. OQ-A, OQ-C, OQ-E and OQ-G are decided; OQ-B is
 answered; OQ-D-i/ii and OQ-F are deferred (D-i/ii with a design condition that binds every issue).
-OQ-C and OQ-E were both answered on **2026-08-07**, and OQ-H is what OQ-E's answer exposed.
+OQ-C and OQ-E were both answered on **2026-08-07**; OQ-H is what OQ-E's answer exposed, and it was
+answered on **2026-08-08**.
 
 | | Question | State |
 |---|---|---|
@@ -2030,7 +2032,7 @@ OQ-C and OQ-E were both answered on **2026-08-07**, and OQ-H is what OQ-E's answ
 | **OQ-D-ii** | Who owns the **`maxInstances` registry race**, and is it in scope here at all? | **DEFERRED by the owner, with a condition** — see below. |
 | **OQ-G** | **How does a detached board stay reachable for settlement *and* isolated per session?** (N68) | **DECIDED by the owner, 2026-08-07 — option A.** Session scope is **preserved**; the Workstream reaches the dispatching board through a **narrow trusted settlement seam** (resolve by the routing coordinate it already carries; expose `complete`/`fail` only; server-derived, `expectAttempt`-fenced). The user/org + `flowIsolation: false` alternative is rejected — it shares one ledger across all of that user's sessions. **The seam is FIX-982's scope**, and rule 15 no longer constrains a detached board's scope at all. |
 | **OQ-F** | **Can a parent session read a sub-session-scoped resource?** | **DEFERRED by the owner** (Decision 8). Not needed for the interim result path; revisit when a Workstream needs to expose more than its result. |
-| **OQ-H** | **S4 gates the wrap and three of its four prerequisites are deferred — so what unblocks finishing?** (exposed by OQ-E's scheduling answer) | **OPEN — needs the owner.** S4/FIX-1013 is the epic's BP-003 evidence path and gates the wrap; its own row sequences it *after S3 and after FIX-991*, and S1b/S2/S3 are **prerequisites** — the kitchen-sink demo cannot exist without the route, the client hop and the react hop. Those three are now **deferred**. Carrying S4 while deferring what it stands on means the wrap condition is unreachable until something gives. **Two permitted outcomes, neither taken here and neither priced:** (a) S1b/S2/S3 come off deferral before the wrap, in which case "deferred" means "later in this epic" and the sequence is unchanged; or (b) S4's pass criteria narrow to what exists without them, which changes what the epic's evidence proves and should be stated against §5's five pass criteria. **This is recorded, not decided** — it is a scheduling call the owner owns, and this document must not pick for them. |
+| **OQ-H** | **S4 gates the wrap and three of its four prerequisites are deferred — so what unblocks finishing?** (exposed by OQ-E's scheduling answer) | **ANSWERED by the owner, 2026-08-08 — outcome (a).** *"They are all important, though they probably should happen near the end of our work… we need to actually finish building the feature first and then we will build out these things afterwards, which makes it possible to actually use and prove what we built."* **The deferral always meant sequencing, not exclusion:** the whole S1b → S2 → S3 → S4 → S5 chain stays in this epic and runs **last**, in dependency order, after FIX-982 ships. The wrap gate stands as filed, nothing is dropped, and nothing is un-deferred as extra work. **There was never a deadlock** — the contradiction was bookkeeping, not the decision: the 2026-08-07 scheduling call was recorded here as *excluding* S1b/S2/S3/S5 while S4 stayed on as the wrap gate, which made the gate unsatisfiable on paper only. Option (b) — narrowing S4's pass criteria — was **not** taken; §5's five criteria are unchanged. **Do not re-raise.** |
 
 **OQ-D is deferred with a design condition, which is not the same as unanswered.** The owner's call:
 *"push these until later as long as we have confidence the design can accommodate them, but we need
@@ -2131,10 +2133,10 @@ deferral as a dependency is the error this document has made twice.
 | Issue | Delivers | Spec PR | Impl PR | State | Waiting on | Next move |
 |---|---|---|---|---|---|---|
 | **FIX-999** | **Owns and builds** the public injection seam (N18) — a capability can reach the runtime legally — plus the interrupt verb and the fan-out ceiling | [#1092](https://github.com/fixpoint-labs/flow-state-dev/pull/1092) approved | in flight on `fix/FIX-999` | **In Development** | — | agent |
-| **FIX-1026** | **Owns** cross-process interrupt *delivery* — a detached request on another worker can be cancelled | [#1095](https://github.com/fixpoint-labs/flow-state-dev/pull/1095) approved | in flight | **In Development** | — | agent |
+| **FIX-1026** | **Owns** cross-process interrupt *delivery* — a detached request on another worker can be cancelled | [#1095](https://github.com/fixpoint-labs/flow-state-dev/pull/1095) approved, closed | [#1100](https://github.com/fixpoint-labs/flow-state-dev/pull/1100) **merged 2026-08-09** | **Done** | — | — |
 | **FIX-982** (M3) | Out-of-request executor — a leased task runs outside the request that claimed it | [#1063](https://github.com/fixpoint-labs/flow-state-dev/pull/1063) closed, was approved | P1 [#1093](https://github.com/fixpoint-labs/flow-state-dev/pull/1093) **merged** | In Development | **No Linear blocker left.** P2 populates `flow.workstream` through FIX-999's seam — a practical gate, not a recorded one | agent |
 | **FIX-1005** (M2) | Reclamation joined to execution liveness — the non-stranding mechanism | [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083) **closed unmerged 2026-08-08** | — | Backlog | Blocked by **FIX-999** — the only `blocked-by` edge Linear records. Registry-oracle liveness was superseded by **lease renewal on the task row the worker owns**, which never reads `ActiveRequestRegistry`, so adapter sharedness is not a dependency of this issue at all | **owner** — re-spec or drop |
-| **FIX-1013** (S4) | Kitchen-sink demo — the epic's BP-003 evidence path | — | — | Backlog · **carried, gates the wrap** | S1b/S2/S3, all deferred → **OQ-H** | **owner** |
+| **FIX-1013** (S4) | Kitchen-sink demo — the epic's BP-003 evidence path | — | — | Backlog · **carried, gates the wrap** | S1b/S2/S3 — sequenced after FIX-982, **not deferred out** (OQ-H resolved 2026-08-08) | agent |
 | **FIX-991** | `TaskHandle.items()` returns the wrong request's items once tasks run out-of-request | — *(bug — no spec by design)* | — | Backlog | FIX-982 | — |
 | **FIX-983** (M4) | Blocking/background task disposition | — | — | Backlog · **deferred**, not blocked | The owner, not a landing (N52/N71) | **owner** |
 | **FIX-1010** (S1b) | Parent-to-child read route and request metadata | — | — | Backlog · **deferred** 2026-08-07 | The owner (also Linear-blocked by FIX-982) | **owner** |
@@ -2197,7 +2199,8 @@ as blocking FIX-1005, which was wrong twice over: lease renewal never reads
    worker owns — and the task-scoped `reclaim()` half split out as **FIX-1023**. It is blocked on
    FIX-999, and **whether it still consumes FIX-978's fenced `reclaim` is unanswerable until it is
    re-specced** (C3). Re-spec or drop — it is M2, so silence leaves clause 3 unowned.
-2. **OQ-H is open** (§6) — S4 gates the wrap and three of its four prerequisites are deferred.
+2. ~~**OQ-H is open** (§6)~~ — **resolved 2026-08-08.** The deferral meant *sequencing*, not
+   exclusion: S1b -> S2 -> S3 -> S4 -> S5 stay in the epic and run last, after FIX-982 ships.
 
 *The two missing `spec approved` labels this list carried on 2026-08-09 are spent: FIX-999 and
 FIX-1026 are both **In Development**.*
@@ -2237,7 +2240,8 @@ S1a **FIX-1009** · S1b **FIX-1010** · S2 **FIX-1011** · S3 **FIX-1012** · S4
 **FIX-1014**, every one parented under FIX-939 (this table was headed "New issues… None filed"). The
 first three are **prerequisites** — the kitchen-sink demo cannot exist without them; the last two are
 additive on top. **Scheduling (owner, 2026-08-07): S4 is carried; S1b, S2, S3 and S5 are deferred.**
-That combination is what **OQ-H** asks about, since S4 stands on three of the deferred four:
+That combination is what **OQ-H** asked about, since S4 stands on three of the deferred four. It is
+resolved: the chain runs last, in order, after FIX-982 — nothing is dropped and nothing is extra work.
 
 | | Proposed issue | Packages | Sequence | Prerequisite or polish? |
 |---|---|---|---|---|
@@ -2245,7 +2249,7 @@ That combination is what **OQ-H** asks about, since S4 stands on three of the de
 | **S1b** · **FIX-1010** *(deferred 2026-08-07)* | **The parent-to-child read surface.** The route over S1a's filter, and request **metadata** on the create/dispatch path. **The trusted `source` plumbing is NOT here — it moves to FIX-982**, because N6's admission gate is what keeps a worker action from being callable by any authenticated HTTP/MCP caller, and S1b lands *after* FIX-982. Leaving it here let a coordinator ship the worker action before its own authorization prerequisite existed, or build the same engine plumbing twice. Authorization travels with the surface it protects. **A separate issue from S1a, not a second phase of one** — S1a lands before FIX-982 and S1b after it, and an issue cannot stay open across another issue's whole lifecycle. Separate ids, separate PRs. **Lighter than an earlier draft:** the conversation-history policy S1 used to carry is no longer needed — isolation is structural under this model, not a filter (§1). | `engine` | after FIX-982 | **Prerequisite** for S2 upward. |
 | **S2** · **FIX-1011** *(deferred 2026-08-07)* | Declare detached work, and enumerate a session's **Workstreams** — then each Workstream's requests. Two hops, not one filtered list | `client` | after **S1b** (the route, not S1a's predicate) | **Prerequisite.** The isomorphic surface every consumer goes through. |
 | **S3** · **FIX-1012** *(deferred 2026-08-07)* | `useSession` exposes a parent's Workstreams as a distinct axis from its own items — a child session is not a filtered view of the parent, so this is a new read rather than a split of an existing one (still no new item type) | `react` | after S2 | **Prerequisite** for the UI half of the demo. The `latestRequest`-is-singular gap no longer applies here — N2 dissolved with the model change. |
-| **S4** · **FIX-1013** *(CARRIED — gates the wrap)* | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. **Its "after S3" sequencing now points into the deferred set — that is OQ-H, and it is open.** |
+| **S4** · **FIX-1013** *(CARRIED — gates the wrap)* | Kitchen-sink demo: a flow that launches background work plus a UI that visually distinguishes it — the epic's end-to-end evidence path | `apps/kitchen-sink` | after S3, and after FIX-991 for criterion 4b | **Prerequisite for the epic's own verification**, not for the substrate. Pass criteria in §5. **Its "after S3" sequencing points into the deferred set — that was OQ-H, resolved 2026-08-08: the chain runs last, in dependency order, so the sequence stands and the gate is reachable.** |
 | **S5** · **FIX-1014** *(deferred 2026-08-07)* | **Corpus polish only** — cross-page navigation, a coherent concept narrative across the new pages, and the epic-level guide that no single issue owns. **NOT the per-API documentation**, which ships with each API (see below). | `apps/docs` | after S4 | **Polish.** The always-document rule is satisfied issue-by-issue, not here. |
 
 > **Documentation ships with the API that introduces it, not in a trailing issue — and S5 as
