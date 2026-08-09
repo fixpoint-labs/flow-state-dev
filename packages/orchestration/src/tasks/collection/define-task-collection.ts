@@ -123,11 +123,32 @@ export function defineTaskCollection<
  * and two unrelated flows in one process may both call their collection `tasks`.
  * Within a flow the identity is not a choice — two boards sharing a ledger must
  * pass the same `defineTaskCollection` value, because the resource merge refuses
- * two different references under one accessor key. The boundary that buys is
- * per-flow: two *separate* declarations of the same id and non-isolated scope in
- * two flows address the same rows while counting as different ledgers here. That
- * configuration is already ambiguous for everything else the declaration carries
- * (its schema, its instance cap), so it is left alone rather than special-cased.
+ * two different references under one accessor key.
+ *
+ * ## Known limits — declaration identity is not storage identity
+ *
+ * Both are real and neither is fixable here; see the note below on where the
+ * policy would have to live instead.
+ *
+ * - **Over-reach.** One declaration reused across two flows whose storage does
+ *   NOT overlap — a session-scoped collection, or a flow-isolated user/org one —
+ *   freezes both, even though their rows are disjoint. A board in the second
+ *   flow then declines a `setAssignee` that would have been perfectly safe.
+ * - **Under-reach.** Two *separate* declarations of the same id at a
+ *   non-isolated user/org scope address the same rows while counting as
+ *   different ledgers here, so a freeze on one does not reach the other.
+ *
+ * Both need the **effective storage binding** — `(scope, ref, flowIsolation,
+ * flowKind)` — which is a per-flow fact. Nothing on this path can see it:
+ * `taskBoard()` runs before, and independently of, the `defineFlow` that will
+ * contain it, and `BlockContext` carries no flow identity at resolution time
+ * either. Fixing it properly means the policy riding the flow's resource
+ * installation rather than a side table, which is a change to the resource
+ * contract and not this module's to make.
+ *
+ * The behaviour chosen in the meantime fails **closed**: an unnecessary decline
+ * is visible immediately and recoverable by giving the second flow its own
+ * declaration, where a missed freeze silently strands detached work.
  *
  * A `WeakSet`, so a declaration that falls out of scope is collectable and tests
  * that build collections per-case do not accumulate policy.
