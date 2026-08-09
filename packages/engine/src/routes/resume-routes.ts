@@ -9,6 +9,7 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import type { InboundTransportHost } from "../transports/types";
 import type { DurabilityProvider } from "../durability/types";
+import { isPublicReentryAllowed } from "./public-reentry";
 import { generateId } from "../utils/generate-id";
 import {
   jsonResponse,
@@ -69,6 +70,12 @@ type ResumeRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   durabilityProvider?: DurabilityProvider;
+  /**
+   * The host's `publicReentrySources` (FIX-999), read straight off the runtime
+   * config like `durabilityProvider` above. Absent → only the built-in sources
+   * are re-enterable.
+   */
+  publicReentrySources?: readonly string[];
   seams: InternalRouteSeams;
   requestContext: RequestContext;
 };
@@ -88,13 +95,12 @@ export async function handleResumeSuspension(
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
-  // A webhook request is reachable only through a verified webhook, never this
-  // public surface — resuming one would re-enter the handler with
-  // caller-supplied gate data and no signature check. Reject like the
-  // retry/continue routes (and before anything else can act on the record),
-  // returning the same not-found shape as a missing record so webhook requests
-  // are indistinguishable here.
-  if (originalRequest.source === "webhook") {
+  // Only a caller-facing source may be resumed here: resuming re-enters the
+  // handler with caller-supplied gate data. Shares the allow-list with the
+  // retry/continue routes (FIX-999) and runs before anything else can act on the
+  // record, returning the same not-found shape as a missing record so a refused
+  // request is indistinguishable from one that does not exist.
+  if (!isPublicReentryAllowed(originalRequest.source, ctx.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 

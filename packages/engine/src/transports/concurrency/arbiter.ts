@@ -33,6 +33,7 @@ import type {
   ConcurrencyPolicyName
 } from "@flow-state-dev/core";
 import { createKeyedAsyncGate } from "../../utils/keyed-async-gate";
+import { WORKSTREAM_SOURCE } from "../../execution/transport-sources";
 import { ConcurrencyRejectedError } from "../errors";
 import type { DispatchEnvelope } from "../dispatcher";
 
@@ -144,7 +145,17 @@ export function createConcurrencyArbiter(): ConcurrencyArbiter {
         (view.source === "webhook" && view.metadata?.webhook !== undefined) ||
         (view.source === "chat" && view.metadata?.chat !== undefined) ||
         (view.source === "scheduled" && view.metadata?.schedule !== undefined);
-      const actionConfig = isEvent ? undefined : flow.actions[actionName]?.concurrency;
+      // A detached dispatch (FIX-999) carries its handler inline on the flow's
+      // workstream core and passes the handler block name as `actionName` —
+      // provenance only, exactly like an event. It takes the flow default for the
+      // same reason: that name can collide with a public action's key, and
+      // inheriting an unrelated action's `queue`/`reject` policy would let its
+      // back-pressure decide whether detached work runs. No metadata coordinate
+      // is required here because the source alone identifies the dispatch, and
+      // the source is stamped by the seam rather than by a caller.
+      const isDetached = view.source === WORKSTREAM_SOURCE;
+      const actionConfig =
+        isEvent || isDetached ? undefined : flow.actions[actionName]?.concurrency;
       const effective = actionConfig ?? flow.request?.concurrency;
       const { policy, key } = normalizeConfig(effective);
       return { policy, key: resolveKey(key, view) };

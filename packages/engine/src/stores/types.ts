@@ -699,9 +699,46 @@ export type ActiveRequestEntry = {
   metadata?: Record<string, unknown>;
   startedAt: number;
   lastHeartbeatAt: number;
+  /**
+   * When the entry was registered at enqueue time for an EXTERNAL dispatcher
+   * and no worker has claimed it yet (FIX-999).
+   *
+   * Present means "accepted into a queue, not yet being worked on". For such an
+   * entry `lastHeartbeatAt` measures how long the job has waited, not how long
+   * ago a worker died — nothing is beating for it because nothing is running
+   * it. Reading that age as death is how a valid queued job gets marked
+   * `interrupted` and re-dispatched alongside the job the queue still holds.
+   *
+   * **Absent means claimed (or in-process), which is the legacy shape.** An
+   * entry written before this field existed, and every entry `runAction`
+   * writes, omits it and is governed by `lastHeartbeatAt` exactly as before
+   * (BP-030). Guard with `!= null`, never truthiness — `0` is a valid instant.
+   *
+   * The claim transition needs no separate write: `runAction` re-registers the
+   * whole entry when the worker picks the job up, and that replacement simply
+   * has no `queuedAt`.
+   */
+  queuedAt?: number;
 };
 
 export interface ActiveRequestRegistry {
+  /**
+   * Whether entries written by one process are visible to every other process
+   * in the deployment (FIX-999).
+   *
+   * Read it with {@link isRegistrySharedAcrossProcesses}, never directly:
+   * **absent means NOT shared.** An adapter compiled against the older contract
+   * declares nothing, and treating that silence as "shared" is precisely the
+   * wrong direction — a per-process registry makes another process's healthy
+   * request look absent, and absence reads as "not running".
+   *
+   * Only the liveness enablement gate consumes this. An adapter that cannot tell
+   * from its own construction — a filesystem or SQLite registry that might sit on
+   * a shared volume or in a per-process temp dir — declares `false`. The answer
+   * is a property of the CONSTRUCTED store, not of the adapter's package name.
+   */
+  readonly sharedAcrossProcesses?: boolean;
+
   /** Register a new in-flight request. Called at the start of runAction. */
   register(entry: ActiveRequestEntry): Promise<void>;
 

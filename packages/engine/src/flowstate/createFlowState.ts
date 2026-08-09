@@ -17,7 +17,7 @@ import {
 } from "@flow-state-dev/core";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
-import { createRuntimeConfig } from "../runtime-config";
+import { createRuntimeConfig, resolveStaleSweep } from "../runtime-config";
 import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
@@ -75,6 +75,17 @@ class InternalFlowState<TSettings extends object>
   #runtimePromise: Promise<FlowStateRuntime> | null = null;
   #initPromise: Promise<FlowApiRouter> | null = null;
   #disposed = false;
+  /**
+   * Whether a router — and therefore a stale-request sweeper — has been asked
+   * for (FIX-999). Set by `#init()` BEFORE it awaits the runtime, so
+   * `#buildRuntime` can stamp the sweep cadence onto the shared config it is
+   * about to hand `worker.startWorker`. A colocated worker starts consuming the
+   * moment it is started, and the host a job builds is built once, so a job
+   * claimed before that stamp lands would carry `sweeper-not-running` for its
+   * whole life — after `ready()` started the very sweeper it was refusing on
+   * behalf of.
+   */
+  #routerRequested = false;
   /** Dispatcher built by the worker adapter during runtime init. */
   #workerDispatcher: FlowDispatcher | undefined;
   /** Started worker, closed by dispose() before store adapters. */
@@ -200,6 +211,10 @@ class InternalFlowState<TSettings extends object>
       );
     }
     if (this.#initPromise === null) {
+      // Before `#doInit()` is invoked, because it reaches `#buildRuntime` —
+      // and therefore `worker.startWorker` — inside its first await. See
+      // `#routerRequested`.
+      this.#routerRequested = true;
       this.#initPromise = this.#doInit();
     }
     return this.#initPromise;
@@ -275,6 +290,50 @@ class InternalFlowState<TSettings extends object>
       ? createCheckpointDurabilityProvider(stores)
       : undefined;
 
+    // The request-host seam (FIX-999) belongs on the SHARED config, not on the
+    // router's copy of it. This config is handed to `worker.startWorker` below
+    // and to `createFlowApiRouter` in `#doInit`, so a colocated or worker-only
+    // execution reaches `createExecutionContext` through the same construction
+    // inputs an HTTP request does. Stamping it only in the router left every
+    // worker-side `runAction` without the seam, so `requireRequestHost(ctx)`
+    // threw there for exactly the reason it used to throw everywhere.
+    //
+    // The sweeper facts come from `resolveStaleSweep` — the same rule the
+    // router applies to the pair it builds its own sweeper from — so the gate
+    // and the sweeper cannot describe different cadences. `startOperation` and
+    // `parentTask` stay unwired here: no host start operation exists yet, and
+    // the verb refuses by name rather than pretending otherwise.
+    //
+    // Destructured rather than spread wholesale onto `requestHost`:
+    // `queuedGraceMs` is a sweep bound, not a gate fact, and the liveness read
+    // deliberately leaves queued entries unbounded so the sweep owns that
+    // clock. It rides the config instead, which is what startup detection and
+    // the `check-interrupted` route read.
+    //
+    // `staleSweepIntervalMs` is stamped here ONLY when a router has been asked
+    // for, and its absence otherwise is the honest answer rather than an
+    // omission. The sweeper is constructed by `createFlowApiRouter`, which only
+    // `getRouter()` / `ready()` reach — a deployment that initializes solely
+    // through `getRuntime()` (`fsdev run`, `fsdev chat`) has nothing sweeping at
+    // all. Stamping unconditionally advertised a sweeper that does not exist,
+    // and the gate's third arm — the one that refuses precisely because an
+    // unswept shared registry reports a crashed worker as live forever — was
+    // then satisfied by a number rather than by a fact.
+    //
+    // `#routerRequested` is what separates the two cases, and it has to be read
+    // HERE rather than after this method returns: `worker.startWorker` is called
+    // a few lines below with this very config, a colocated worker begins
+    // consuming immediately, and the request host a job builds is built once. A
+    // cadence recorded after this method returns therefore arrives too late for
+    // every job claimed on the way up — each one carrying `sweeper-not-running`
+    // for its whole life, after `ready()` started the sweeper it was refusing on
+    // behalf of.
+    //
+    // The router restamps this pair from its own resolved options onto its own
+    // copy of the config, so the HTTP path is unaffected either way.
+    const { queuedGraceMs, staleThresholdMs, staleSweepIntervalMs } =
+      resolveStaleSweep(this.#options);
+
     const runtimeConfig = createRuntimeConfig({
       modelResolver,
       voiceProvider,
@@ -283,7 +342,13 @@ class InternalFlowState<TSettings extends object>
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
-      errorCapture: this.#options.errorCapture
+      errorCapture: this.#options.errorCapture,
+      queuedGraceMs,
+      publicReentrySources: this.#options.publicReentrySources,
+      requestHost: {
+        staleThresholdMs,
+        ...(this.#routerRequested ? { staleSweepIntervalMs } : {})
+      }
     });
 
     const runtime: FlowStateRuntime = {
@@ -315,6 +380,26 @@ class InternalFlowState<TSettings extends object>
   async #doInit(): Promise<FlowApiRouter> {
     const { registry, stores, runtimeConfig } = await this.#runtime();
 
+    // The SECOND of the two places the sweep cadence reaches the shared config,
+    // and the one that covers a caller who resolved the runtime first:
+    // `getRuntime()` builds and memoizes it with `#routerRequested` still
+    // false, so the stamp in `#buildRuntime` did not happen and this is the
+    // only chance. When `ready()` / `getRouter()` is the entry point instead,
+    // `#buildRuntime` already stamped the identical value and this is a no-op —
+    // both sides resolve it from `this.#options` through `resolveStaleSweep`.
+    //
+    // Mutating the shared object rather than replacing it is what makes the
+    // fact reach the worker at all: `worker.startWorker(runtime)` captured this
+    // exact reference, and `createExecutionContext` reads the cadence per
+    // request, so the worker's next job sees it.
+    //
+    // A host that only ever calls `getRuntime()` never reaches this line and
+    // keeps the named refusal (`runtime-only-liveness.test.ts`).
+    if (runtimeConfig.requestHost !== undefined) {
+      runtimeConfig.requestHost.staleSweepIntervalMs =
+        resolveStaleSweep(this.#options).staleSweepIntervalMs;
+    }
+
     return createFlowApiRouter({
       registry,
       stores,
@@ -326,6 +411,7 @@ class InternalFlowState<TSettings extends object>
       debugEndpointsEnabled: this.#options.debugEndpointsEnabled,
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
+      queuedGraceMs: this.#options.queuedGraceMs,
       dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
     });
   }

@@ -181,12 +181,22 @@ Each store must implement its interface from `@flow-state-dev/engine`:
 - `list(filters?)` — `userId` filter
 
 #### ActiveRequestRegistry
+- `sharedAcrossProcesses` — **declare this.** Whether entries written by one process are visible to every other process in the deployment
 - `register(entry)` — register an in-flight request (accepts an `ActiveRequestEntry` object)
 - `heartbeat(requestId)` — update heartbeat timestamp
 - `deregister(requestId)` — remove request from registry on terminal status
 - `listStale(thresholdMs)` — find entries whose `lastHeartbeatAt` is older than `Date.now() - thresholdMs`
 - `listAll()` — return all currently registered entries
 - `get(requestId)` — return a single entry by requestId, or undefined
+
+**Answering `sharedAcrossProcesses` is part of writing the adapter, not an optional extra.** Liveness-dependent runtime behaviour is enabled only on a registry that declares itself shared. Omitting the field is safe — absent is read as *not shared* — but it silently disables that behaviour, so an adapter that could have supported it quietly does not. A fail-closed default is right; a silent one is a bad teacher.
+
+Answer from **how the store was constructed**, not from what the adapter is called:
+
+- Entries in this process's memory → `false`, definitively.
+- A real database server every worker connects to → `true`.
+- A file or embedded database that might sit on a shared volume or in a per-process temp dir → `false`. Where the adapter cannot tell, it says not shared.
+- A constructor accepting several shapes → answer per shape. The Postgres adapter declares `true` for its pooled and connection-string shapes and `false` when handed an injected `{ executor }`, which is process-local (PGlite). Declaring that one shared would enable a liveness signal on a registry no other worker can see.
 
 #### ContentStore
 - `get(scopeType, scopeId, resourceKey)` — read a single resource's content (`Promise<string | undefined>`)

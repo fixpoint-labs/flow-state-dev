@@ -1075,6 +1075,78 @@ describe("PostgreSQL store adapter", () => {
       await s.activeRequests.heartbeat("nope"); // should not throw
     });
 
+    // FIX-999. The liveness gate only enables on a registry every process can
+    // see, so a persistent store is where the queued marker actually has to
+    // survive. If it is dropped in serialization the queued-request fix is
+    // silently inert exactly where it is needed.
+    it("round-trips queuedAt so a queued request stays distinguishable", async () => {
+      const s = await freshStores();
+      const ts = Date.now();
+      await s.activeRequests.register({
+        requestId: "req_queued",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        source: "http",
+        startedAt: ts,
+        lastHeartbeatAt: ts,
+        queuedAt: ts
+      });
+
+      expect((await s.activeRequests.get("req_queued"))?.queuedAt).toBe(ts);
+    });
+
+    it("an entry registered without queuedAt reads back without it", async () => {
+      const s = await freshStores();
+      const ts = Date.now();
+      await s.activeRequests.register({
+        requestId: "req_plain",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        source: "http",
+        startedAt: ts,
+        lastHeartbeatAt: ts
+      });
+
+      // Absent, not 0 or null — the sweeper's `!= null` guard has to see the
+      // legacy shape unchanged.
+      expect(await s.activeRequests.get("req_plain")).toBeDefined();
+      expect((await s.activeRequests.get("req_plain"))?.queuedAt).toBeUndefined();
+    });
+
+    it("the worker's claim clears queuedAt so the row stays reapable", async () => {
+      const s = await freshStores();
+      const ts = Date.now();
+      await s.activeRequests.register({
+        requestId: "req_claimed",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        source: "http",
+        startedAt: ts,
+        lastHeartbeatAt: ts,
+        queuedAt: ts
+      });
+
+      // Exactly what runAction writes when the worker picks the job up: a full
+      // re-register of the same requestId carrying no queued marker. This is
+      // the ON CONFLICT path — without `queued_at = EXCLUDED.queued_at` the old
+      // value survives and the row is forever-queued: never reaped, and
+      // reported live long after the worker died.
+      await s.activeRequests.register({
+        requestId: "req_claimed",
+        flowKind: "flow-a",
+        actionName: "run",
+        userId: "user_1",
+        source: "http",
+        startedAt: ts,
+        lastHeartbeatAt: ts
+      });
+
+      expect((await s.activeRequests.get("req_claimed"))?.queuedAt).toBeUndefined();
+    });
+
     it("deregister removes the entry", async () => {
       const s = await freshStores();
       await s.activeRequests.register({

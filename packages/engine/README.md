@@ -121,7 +121,9 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 ### Connection resilience
 
-`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, and `staleSweepThresholdMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
+`createFlowState` forwards the SSE heartbeat and stale-request sweeper knobs to the router: `defaultSseHeartbeatMs`, `staleSweepIntervalMs`, `staleSweepThresholdMs`, and `queuedGraceMs`. The defaults suit typical Vercel/Next.js deployments. See the [connection resilience guide](https://flow-state.dev/docs/server/connection-resilience) for tuning.
+
+It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
 
 ### DevTool connection (dev-only)
 
@@ -722,7 +724,16 @@ createFlowApiRouter({
   staleSweepIntervalMs: 30_000,
   // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
   // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
-  staleSweepThresholdMs: 60_000
+  staleSweepThresholdMs: 60_000,
+  // How long a request queued with an external dispatcher may wait, unclaimed,
+  // before a sweep treats it as lost. Default 600_000 ms (10 minutes).
+  queuedGraceMs: 600_000,
+  // Sources from your own inbound transports that `retry` / `continue` /
+  // `resume` may re-enter. The built-ins (`http`, `mcp`, `chat`, `scheduled`)
+  // are always admitted; every other source is refused with a not-found unless
+  // named here. `webhook` and the detached-dispatch source are never openable
+  // — naming one throws at construction.
+  publicReentrySources: ["echo"]
 });
 ```
 
@@ -774,6 +785,33 @@ defineFlow({
 ```
 
 The lock is non-reentrant: a mutator that calls `atomicState` again on the same container would await its own completion forever. Compose state mutations within a single mutator instead. Cross-scope mutator chains (scope A's mutator calls `atomicState` on scope B) are fine — different containers have independent queues.
+
+## Request registry sharedness
+
+`ActiveRequestRegistry` carries a `sharedAcrossProcesses` declaration: whether entries written by one process are visible to every other process in the deployment.
+
+Read it with `isRegistrySharedAcrossProcesses(registry)`, never directly — **absent is read as not shared.** An adapter written against the older contract keeps working and simply does not enable liveness-dependent behaviour, rather than enabling it on a registry that cannot support it.
+
+| Registry | Declares |
+|---|---|
+| In-memory | `false` (definitively — entries are in this process's heap) |
+| Filesystem | `false` (cannot tell a shared volume from a per-process dir) |
+| SQLite | `false` (same reason) |
+| Postgres | `true` for pooled / connection-string construction, `false` for an injected `{ executor }` |
+
+Sharedness is a property of the **constructed store**, not of the adapter's package name.
+
+## Liveness enablement
+
+Runtime behaviour that reads "is this request still running?" from the registry is enabled only when all three of these hold, checked once at construction:
+
+1. the registry declares itself shared across processes;
+2. `request.heartbeatIntervalMs` is nonzero and the stale threshold is at least twice it;
+3. a stale-request sweeper is running at a nonzero cadence.
+
+Each corresponds to a supported configuration that makes the answer wrong in a different direction — the first two report live work as dead, the third reports dead work as live indefinitely. When any fails, the capability is **absent and says why**, rather than present and unreliable. On the default in-memory registry it is absent, which is expected rather than a fault.
+
+Reads are bounded by the ids the caller supplies and compare each entry's heartbeat against the stale threshold, so a crashed worker is not reported live while waiting for the next sweep. A not-live answer means *no live registration was found* — never *definitely dead*.
 
 ## Notes
 

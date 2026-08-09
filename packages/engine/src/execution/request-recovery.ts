@@ -7,7 +7,7 @@ import type {
   RequestRecord,
   StoreRegistry
 } from "../stores/types";
-import type { RuntimeConfig } from "../runtime-config";
+import { DEFAULT_QUEUED_GRACE_MS, type RuntimeConfig } from "../runtime-config";
 import { createLiveRequestStream, type LiveRequestStream } from "../streaming/live-stream";
 import { generateId } from "../utils/generate-id";
 import { logRuntimeEvent, type RuntimeLogger, DEFAULT_RUNTIME_LOGGER } from "./logging";
@@ -31,12 +31,25 @@ export type InterruptedRequestInfo = {
  * caller in a mixed app reaches this with the app's open flows only, so it
  * cannot sweep an authenticated flow's in-flight requests.
  *
+ * A request queued with an external dispatcher and not yet claimed by a worker
+ * is skipped while it is within `queuedGraceMs` (FIX-999): it has no heartbeat
+ * because nothing is running it yet, so its age is queue wait rather than
+ * death. Marking it `interrupted` invites reconciliation to retry a job the
+ * queue is still holding — duplicate execution. Past the grace it is swept
+ * exactly like any other stale entry, so a job the queue dropped is still
+ * reaped and never lingers `in_progress` forever.
+ *
  * Returns the list of interrupted requests for optional retry.
  */
 export async function detectInterruptedRequests(options: {
   stores: StoreRegistry;
   /** Requests with no heartbeat for this duration are considered stale. Default: 30000 (30s). */
   staleThresholdMs?: number;
+  /**
+   * How long an unclaimed, externally-queued request may wait before it is
+   * treated as lost. Default: {@link DEFAULT_QUEUED_GRACE_MS}.
+   */
+  queuedGraceMs?: number;
   /** Restrict the sweep to entries owned by this userId. */
   userId?: string;
   /** Restrict the sweep to these flow kinds. Undefined means unrestricted. */
@@ -45,12 +58,17 @@ export async function detectInterruptedRequests(options: {
 }): Promise<InterruptedRequestInfo[]> {
   const { stores, userId, anonymousFlowKinds, logger = DEFAULT_RUNTIME_LOGGER } = options;
   const staleThresholdMs = options.staleThresholdMs ?? 30_000;
+  const queuedGraceMs = options.queuedGraceMs ?? DEFAULT_QUEUED_GRACE_MS;
 
   const allStale = await stores.activeRequests.listStale(staleThresholdMs);
+  const sweepStartedAt = Date.now();
   const stale = allStale.filter(
     (entry) =>
       (userId === undefined || entry.userId === userId) &&
-      (anonymousFlowKinds === undefined || anonymousFlowKinds.has(entry.flowKind))
+      (anonymousFlowKinds === undefined || anonymousFlowKinds.has(entry.flowKind)) &&
+      // `!= null` rather than truthiness: an entry from before this field
+      // existed has no `queuedAt` and is swept exactly as it was (BP-030).
+      (entry.queuedAt == null || sweepStartedAt - entry.queuedAt > queuedGraceMs)
   );
   const results: InterruptedRequestInfo[] = [];
 

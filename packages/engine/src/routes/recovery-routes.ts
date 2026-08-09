@@ -8,6 +8,8 @@ import { detectInterruptedRequests, retryRequest } from "../execution/request-re
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
+import { isPublicReentryAllowed } from "./public-reentry";
+import { SCHEDULED_SOURCE } from "../execution/transport-sources";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -35,19 +37,6 @@ type RecoveryRouteContext = {
 type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
-
-/**
- * Webhook-originated requests are event-addressed and transport-authenticated:
- * their handler is reached only through a verified webhook, never the public
- * action endpoint. The retry/continue routes are public re-dispatch surfaces
- * (retry even accepts an `inputOverride`), so re-running a webhook request from
- * here would bypass signature verification. Both routes reject such records,
- * matching the FIX-439 v1 "detached completion only" scope.
- */
-const WEBHOOK_SOURCE = "webhook";
-
-/** Transport source stamped by the scheduled-dispatch adapter (`@flow-state-dev/scheduled`). */
-const SCHEDULED_SOURCE = "scheduled";
 
 /**
  * Whether a request record is a dynamic (resolver-produced) scheduled
@@ -107,11 +96,13 @@ export async function handleRetryRequest(
     });
   }
 
-  // Webhook requests are reachable only through a verified webhook, never this
-  // public re-dispatch surface — retry's `inputOverride` would otherwise feed
-  // the handler attacker-controlled input without a signature check. Return the
+  // Only a source that arrived on a caller-facing transport may be re-entered
+  // here. This is an ALLOW-LIST (FIX-999): retry's `inputOverride` feeds the
+  // handler caller-controlled input, so a source nobody thought to name must be
+  // refused rather than admitted. Webhook stays refused for the original reason
+  // — its handler is reachable only behind signature verification. Return the
   // same not-found shape as a missing record so they're indistinguishable here.
-  if (originalRecord.source === WEBHOOK_SOURCE) {
+  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
@@ -203,9 +194,9 @@ export async function handleContinueRequest(
     });
   }
 
-  // Webhook requests must not be re-entered from a public HTTP surface — see
-  // `handleRetryRequest`. Treat as not found.
-  if (originalRecord.source === WEBHOOK_SOURCE) {
+  // Same allow-list as `handleRetryRequest` — see `public-reentry.ts`. Treat a
+  // source that is not caller-facing as not found.
+  if (!isPublicReentryAllowed(originalRecord.source, ctx.runtimeConfig.publicReentrySources)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
@@ -327,7 +318,9 @@ export async function handleListActiveRequests(
  * lets a client poke detection on demand — typically the DevTool calls it
  * when it mounts and on every session-list refresh.
  *
- * Optional query: `staleThresholdMs` (default 30_000).
+ * Optional query: `staleThresholdMs` (defaults to the host's configured
+ * `staleSweepThresholdMs`, so an unparameterised poke sweeps on the same clock
+ * the server's own sweeper uses).
  *
  * Response: `{ interrupted: [{ requestId, sessionId, flowKind, actionName, interruptedAt }] }`,
  * limited to records that this call actually transitioned to `interrupted`.
@@ -358,7 +351,20 @@ export async function handleCheckInterruptedRequests(
   const swept = await detectInterruptedRequests({
     stores: ctx.stores,
     userId,
-    staleThresholdMs,
+    // Caller-tunable, but it falls back to the HOST's resolved threshold rather
+    // than to a private default of this route's own. A client that asks for no
+    // particular window is asking for the server's answer, and reaping on a
+    // tighter clock than the server's own sweeper marks work `interrupted` that
+    // the deployment still considers healthy — on a DevTool refresh, which is
+    // the most frequent caller of this endpoint.
+    staleThresholdMs:
+      staleThresholdMs ?? ctx.runtimeConfig.requestHost?.staleThresholdMs,
+    // The host's configured grace, not the caller's: a client poking this
+    // endpoint must not be able to reap a queued row the server's own sweeper
+    // is still waiting on. `staleThresholdMs` above stays caller-tunable
+    // because it only widens or narrows which heartbeat-governed entries are
+    // considered, never which queued ones survive.
+    queuedGraceMs: ctx.runtimeConfig.queuedGraceMs,
     anonymousFlowKinds: ctx.anonymousFlowKinds,
     logger: ctx.runtimeConfig.logger
   });

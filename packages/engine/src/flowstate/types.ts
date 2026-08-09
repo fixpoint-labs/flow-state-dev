@@ -177,6 +177,28 @@ export interface CreateFlowStateOptions<
   staleSweepIntervalMs?: number;
   /** Heartbeat-age threshold (ms) for the stale-request sweeper. Default 60000. */
   staleSweepThresholdMs?: number;
+  /**
+   * How long an externally-queued request may sit unclaimed before a sweep
+   * treats it as lost (ms). A queued request has no heartbeat, so
+   * `staleSweepThresholdMs` cannot answer for it. Raise this when a legitimate
+   * backlog can outlast the default. Must be finite and non-negative — it is the
+   * only bound on a queued entry, so a value nothing can exceed would leave a
+   * lost job reported live indefinitely. Default 600000 (10 minutes).
+   */
+  queuedGraceMs?: number;
+
+  /**
+   * Transport sources this deployment adds to the public re-entry allow-list
+   * for `retry`, `continue` and `resume`.
+   *
+   * Name the sources your own out-of-tree `InboundTransportAdapter`s stamp —
+   * without this they are refused with a not-found, because a source the
+   * framework cannot enumerate is refused by default. `webhook` and the
+   * detached-dispatch source are refused: neither is caller-addressed, so
+   * re-entering one from a public route would run it with caller-supplied
+   * input. Default: only the built-in sources.
+   */
+  publicReentrySources?: readonly string[];
 
   /**
    * Enable durable execution. When `true`, `createFlowState` builds the

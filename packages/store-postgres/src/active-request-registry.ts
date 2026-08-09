@@ -22,7 +22,8 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
     entry.input !== undefined ? JSON.stringify(entry.input) : null,
     entry.metadata !== undefined ? JSON.stringify(entry.metadata) : null,
     entry.startedAt,
-    entry.lastHeartbeatAt
+    entry.lastHeartbeatAt,
+    entry.queuedAt ?? null
   ];
 }
 
@@ -61,21 +62,53 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
   if (row.metadata !== null) {
     entry.metadata = JSON.parse(row.metadata as string);
   }
+  // Pre-FIX-999 rows have no `queued_at`; absent means claimed, which is how
+  // every such row behaved before the field existed. Left undefined rather than
+  // defaulted so the sweeper's `!= null` guard sees the legacy shape unchanged.
+  if (row.queued_at !== null && row.queued_at !== undefined) {
+    entry.queuedAt = Number(row.queued_at);
+  }
 
   return entry;
 }
 
+export type PostgresActiveRequestRegistryOptions = {
+  /**
+   * Whether this registry's rows are visible to every process in the deployment
+   * (FIX-999).
+   *
+   * Answered by the CONSTRUCTION, not by the package name. A pooled or
+   * connection-string store talks to a real server every worker connects to, so
+   * it is shared. An injected `{ executor }` — documented as PGlite-capable —
+   * is process-local, and declaring it shared would enable liveness on a
+   * registry no other worker can see, which is exactly the false answer the gate
+   * exists to prevent. Defaults to `false`: a caller that does not say gets the
+   * fail-closed answer.
+   */
+  sharedAcrossProcesses?: boolean;
+};
+
 export function createPostgresActiveRequestRegistry(
-  executor: QueryExecutor
+  executor: QueryExecutor,
+  options: PostgresActiveRequestRegistryOptions = {}
 ): ActiveRequestRegistry {
   return {
+    sharedAcrossProcesses: options.sharedAcrossProcesses === true,
+
     async register(entry: ActiveRequestEntry): Promise<void> {
       const values = serializeEntry(entry);
       await executor.query(
+        // `queued_at = EXCLUDED.queued_at` is load-bearing on the conflict
+        // path, not boilerplate (FIX-999). The worker's claim IS this upsert
+        // colliding with the host's enqueue-time row, and the claiming entry
+        // carries no `queuedAt`. Omitting the assignment would leave the old
+        // marker in place, so the row would read as forever-queued: never
+        // reaped, and reported live long after the worker died.
         `INSERT INTO active_requests
           (request_id, flow_kind, action_name, session_id, user_id, org_id,
-           tenant_id, source, input, metadata, started_at, last_heartbeat_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           tenant_id, source, input, metadata, started_at, last_heartbeat_at,
+           queued_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT(request_id) DO UPDATE SET
           flow_kind = EXCLUDED.flow_kind,
           action_name = EXCLUDED.action_name,
@@ -87,7 +120,8 @@ export function createPostgresActiveRequestRegistry(
           input = EXCLUDED.input,
           metadata = EXCLUDED.metadata,
           started_at = EXCLUDED.started_at,
-          last_heartbeat_at = EXCLUDED.last_heartbeat_at`,
+          last_heartbeat_at = EXCLUDED.last_heartbeat_at,
+          queued_at = EXCLUDED.queued_at`,
         values
       );
     },

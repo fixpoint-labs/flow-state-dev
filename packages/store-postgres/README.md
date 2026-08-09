@@ -279,6 +279,16 @@ This adapter fully supports the interrupted request recovery feature. The `Activ
 
 A request executing on one instance can be cancelled from another. Both `RequestStore` abort-intent members are implemented: `isAbortRequested` probes `data -> 'abortRequested'` on the primary-key row without touching `request_items`, and `setFieldsIfStatus` evaluates its status predicate and applies the write in a single statement.
 
+The registry answers `sharedAcrossProcesses` from **how the store was constructed**, not from the package name:
+
+| Construction | `sharedAcrossProcesses` |
+|---|---|
+| `{ connectionString }` / connection config | `true` |
+| `{ pool }` | `true` |
+| `{ executor }` | `false` |
+
+An injected executor is documented as PGlite-capable and is process-local, so it is reported as not shared — the same reason that shape disables `LISTEN`. Declaring it shared would enable liveness-dependent behaviour on a registry no other worker can see, which is exactly the wrong answer to have.
+
 ## Cross-process live tail
 
 Multi-instance deployments can serve an SSE tail for a request started on a different instance. The adapter uses PostgreSQL's `LISTEN/NOTIFY` — the database's pub/sub primitive — to broadcast a small signal whenever a new request event is persisted, so other instances know when to pull fresh rows.

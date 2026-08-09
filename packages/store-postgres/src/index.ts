@@ -76,6 +76,16 @@ export async function createPostgresStores(
     }
   }
 
+  /**
+   * Sharedness answers from the construction shape, not the package name
+   * (FIX-999). A pooled or connection-string store reaches a Postgres server
+   * every worker connects to. An injected `{ executor }` is documented as
+   * PGlite-capable and is process-local — the same reason the live-tail branch
+   * below disables `LISTEN` for it — so it declares not shared and the liveness
+   * gate refuses rather than trusting a registry no other worker can see.
+   */
+  const registrySharedAcrossProcesses = !("executor" in options);
+
   if ("executor" in options) {
     executor = options.executor;
     closePool = closeLiveTailPool;
@@ -188,7 +198,9 @@ export async function createPostgresStores(
       request: createPostgresRequestStore(executor, { liveTailPool }),
       user: createPostgresUserStore(executor),
       org: createPostgresOrgStore(executor),
-      activeRequests: createPostgresActiveRequestRegistry(executor),
+      activeRequests: createPostgresActiveRequestRegistry(executor, {
+        sharedAcrossProcesses: registrySharedAcrossProcesses
+      }),
       content: createPostgresContentStore(executor),
       resourceState: createPostgresResourceStateStore(executor),
       checkpoints: createPostgresCheckpointStore(executor),
@@ -210,7 +222,9 @@ export async function createPostgresStores(
     request: createPostgresRequestStore(executor, { liveTailPool: liveTailPool ?? null }),
     user: createPostgresUserStore(executor),
     org: createPostgresOrgStore(executor),
-    activeRequests: createPostgresActiveRequestRegistry(executor),
+    activeRequests: createPostgresActiveRequestRegistry(executor, {
+      sharedAcrossProcesses: registrySharedAcrossProcesses
+    }),
     content: createPostgresContentStore(executor),
     resourceState: createPostgresResourceStateStore(executor),
     checkpoints: createPostgresCheckpointStore(executor),

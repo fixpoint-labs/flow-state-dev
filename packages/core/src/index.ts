@@ -112,6 +112,23 @@ export type {
   PersonaSource,
 } from "./types/agent";
 export { defineCapability, getBaseCapability } from "./capability";
+
+/**
+ * The request-host seam (FIX-999) — how a capability's helpers reach facilities
+ * only the runtime can provide, without casting the context.
+ */
+export { NoRequestHostError, requireRequestHost } from "./types/request-host";
+export type {
+  DetachedRoutingSeed,
+  LivenessAnswers,
+  ParentTaskOutcome,
+  RequestHost,
+  SettleParentTaskInput,
+  SettleParentTaskResult,
+  StartDetachedInput,
+  StartDetachedRefusal,
+  StartDetachedResult
+} from "./types/request-host";
 export type {
   CapabilityPresetCtx,
   CapabilityRef,

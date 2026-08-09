@@ -42,6 +42,34 @@ import type {
   ResolvedPrincipal
 } from "../types";
 
+/**
+ * Fallback cadence for beating an enqueue-time registry entry while an
+ * in-process queued run waits behind its concurrency key (FIX-999).
+ *
+ * Matches `runAction`'s own default so the entry's freshness cadence does not
+ * change when the worker body takes over. A flow that configures
+ * `request.heartbeatIntervalMs` overrides it — see `resolveQueuedHeartbeatMs`.
+ */
+const DEFAULT_QUEUED_HEARTBEAT_INTERVAL_MS = 10_000;
+
+/**
+ * The cadence to keep a queued entry warm at, for a given flow.
+ *
+ * Must track the flow's own heartbeat rather than the default: a deployment is
+ * free to pair a fast heartbeat with a correspondingly tight stale threshold
+ * (the liveness gate only requires `threshold >= 2 * heartbeat`), and a fixed
+ * 10s beat against a 3s threshold lets the sweeper reap a request that is
+ * merely waiting its turn. The queued entry would then read as not live while
+ * the work is still perfectly valid — the exact false negative the queued
+ * heartbeat was added to remove.
+ *
+ * `0` disables heartbeats for the flow, and is preserved here: the caller skips
+ * the timer entirely rather than falling back to a default the flow declined.
+ */
+function resolveQueuedHeartbeatMs(heartbeatIntervalMs: number | undefined): number {
+  return heartbeatIntervalMs ?? DEFAULT_QUEUED_HEARTBEAT_INTERVAL_MS;
+}
+
 export type CreateInboundTransportHostOptions = {
   registry: FlowRegistry;
   stores: StoreRegistry;
@@ -258,14 +286,62 @@ export function createInboundTransportHost(
           await terminateUnenqueuedRequest(stores, requestId);
           throw error;
         });
-        finished = materialized.then(() =>
-          gateStart(startRun).catch(async (error: unknown) => {
-            if (error instanceof ConcurrencyQueueTimeoutError) {
-              await terminateUnenqueuedRequest(stores, requestId);
-            }
-            throw error;
-          })
+
+        // This branch defers a start, so it needs the same acceptance signal the
+        // external branch has (FIX-999). `accepted` was previously left
+        // `undefined` here, so a caller that awaits "where one exists" awaited
+        // nothing on the one in-process path that can defer — reporting Started
+        // before the record was discoverable, and before a failed materialization
+        // was known. Awaiting an absent promise is not a weaker guarantee, it is
+        // no guarantee.
+        accepted = materialized.then(() => undefined);
+
+        // Nothing heartbeats the enqueue-time entry while the run waits behind
+        // the concurrency key, so the stale sweeper reaps a perfectly valid
+        // queued request and a liveness read reports it not live. The rule this
+        // restores is "whoever owns the entry keeps it warm": the host
+        // registered it, so the host heartbeats it until the run starts and
+        // `runAction`'s own timer takes over. No sweeper exemption — an
+        // exemption for unstarted requests would reintroduce the never-reaped
+        // entry the liveness gate's sweep arm exists to prevent.
+        let queuedHeartbeat: ReturnType<typeof setInterval> | undefined;
+        const stopQueuedHeartbeat = (): void => {
+          if (queuedHeartbeat !== undefined) {
+            clearInterval(queuedHeartbeat);
+            queuedHeartbeat = undefined;
+          }
+        };
+
+        const queuedHeartbeatMs = resolveQueuedHeartbeatMs(
+          flow.request?.heartbeatIntervalMs
         );
+
+        finished = materialized
+          .then(() => {
+            // A flow that disables heartbeats gets no queued timer either —
+            // starting one here would keep an entry warm that the flow asked
+            // never to be kept warm.
+            if (queuedHeartbeatMs > 0) {
+              queuedHeartbeat = setInterval(() => {
+                stores.activeRequests.heartbeat(requestId).catch(() => {});
+              }, queuedHeartbeatMs);
+              if (typeof (queuedHeartbeat as { unref?: () => void }).unref === "function") {
+                (queuedHeartbeat as unknown as { unref: () => void }).unref();
+              }
+            }
+            return gateStart(() => {
+              // `runAction` re-registers and starts its own heartbeat timer from
+              // here, so the host's stewardship of the entry ends exactly here.
+              stopQueuedHeartbeat();
+              return startRun();
+            }).catch(async (error: unknown) => {
+              if (error instanceof ConcurrencyQueueTimeoutError) {
+                await terminateUnenqueuedRequest(stores, requestId);
+              }
+              throw error;
+            });
+          })
+          .finally(stopQueuedHeartbeat);
       } else {
         finished = gateStart(startRun);
       }
@@ -282,12 +358,21 @@ export function createInboundTransportHost(
       // enqueueing a job with no discoverable record (no orphan). Resume and the
       // Vercel adapter route through here too, so both inherit the fix.
       //
-      // `lastHeartbeatAt` is stamped at enqueue, and nothing heartbeats until
-      // the worker claims the job and re-registers (runAction). So the
-      // request-recovery sweeper reaps this entry if the worker never starts —
-      // but also if a backed-up queue delays worker-start past the sweeper's
-      // staleness threshold (default 30s). That false-positive window is the
-      // accepted tradeoff of enqueue-time registration.
+      // `lastHeartbeatAt` is stamped at enqueue and nothing heartbeats until
+      // the worker claims the job and re-registers (runAction), so this entry's
+      // age measures queue wait, not worker death. `queuedAt` says so on the
+      // entry itself, which is what keeps a backed-up queue from reading as a
+      // pile of dead requests (FIX-999): the liveness read reports a queued job
+      // live, and the sweeper leaves it alone until it outlives the queued
+      // grace, at which point it is reaped like anything else.
+      //
+      // The in-process branch above keeps its entry warm with a timer instead,
+      // and that difference is not an inconsistency. There the host is holding
+      // the run and can honestly assert "this is still mine". Here it hands the
+      // job to another process and returns 202 — on a serverless host it may be
+      // frozen moments later. A timer here would make a queued job's survival
+      // depend on the liveness of a process that is not running it, and would
+      // beat on behalf of work it has no knowledge of.
       // `acceptance` resolves once the request is accepted: the enqueue-time
       // writes commit AND the dispatcher accepts the job. The response path
       // awaits the exposed `accepted` view before acking, so the 202 means
@@ -311,7 +396,8 @@ export function createInboundTransportHost(
           input: dispatchEnvelope.input,
           metadata: dispatchEnvelope.metadata,
           startedAt: ts,
-          lastHeartbeatAt: ts
+          lastHeartbeatAt: ts,
+          queuedAt: ts
         }),
         stores.request.set(
           requestId,

@@ -57,8 +57,9 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
-import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
+import { createRequestHost } from "./create-request-host";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -444,6 +445,13 @@ export async function createExecutionContext<
     flow,
     stores
   } = options;
+
+  // The request-host seam (FIX-999) is built further down, once the session
+  // and org bindings have been RESOLVED — see "the request-host seam" below.
+  // It cannot be built here: `options.sessionId` may be absent (an ephemeral
+  // session is generated below) and `options.orgId` may be absent on a request
+  // against an org-bound session, so both would be read before the authoritative
+  // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
   // any scope without a `persist` callback). Plumbed through to every
@@ -662,6 +670,69 @@ export async function createExecutionContext<
       updatedAt: now
     };
     await stores.org.set(orgRecord.id, orgRecord, "any");
+  }
+
+  // The request-host seam (FIX-999), built ONCE here. Every nested scope
+  // inherits this same reference below, exactly as `stores` does, so a
+  // memoized capability helper reached from a nested block sees the same
+  // request-bound operations as the root scope.
+  //
+  // Built HERE, after session and org binding resolution, rather than from the
+  // raw `options`. Every verb authorises by descent from the running session
+  // and inherits the parent's org, so the seam has to close over the values
+  // execution actually ran with:
+  //
+  //  - `sessionId` is the EFFECTIVE session. An HTTP action may omit it, in
+  //    which case an ephemeral session is generated and persisted above. Such a
+  //    request has a perfectly valid `ctx.session`, so gating the seam on
+  //    `options.sessionId` withheld it from a request that had lineage to
+  //    reason about. The approved decision — no seam without a session — is
+  //    unchanged and now checks the thing it meant: every context has a session
+  //    by this point, so the seam is present whenever the host wired it.
+  //  - `resolvedOrgId` is the session's authoritative org. A dispatch against an
+  //    org-bound session may omit `orgId` (only a *differing* value is
+  //    rejected, above), so capturing `options.orgId` left the host unbound and
+  //    `startDetached` created children outside the parent's org, contrary to
+  //    its inheritance contract.
+  //
+  // `userId` and `tenantId` need no such resolution: both are validated to be
+  // equal to the loaded record's above (`UserBindingMismatchError`, and
+  // `tenantMatches` is strict equality), so the option and the resolved value
+  // cannot differ. Org is the one identity field whose check permits a
+  // difference, which is why it is the one that had to change.
+  const requestHostBuild =
+    options.requestHost !== undefined
+      ? createRequestHost({
+          stores,
+          flow,
+          identity: {
+            userId,
+            tenantId: options.tenantId,
+            orgId: resolvedOrgId,
+            sessionId
+          },
+          startOperation: options.requestHost.startOperation,
+          parentTask: options.requestHost.parentTask,
+          liveness: {
+            heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
+            staleThresholdMs: options.requestHost.staleThresholdMs,
+            staleSweepIntervalMs: options.requestHost.staleSweepIntervalMs
+          }
+        })
+      : undefined;
+
+  if (requestHostBuild?.livenessRefusal !== undefined) {
+    // Named, not silent. An operator who never writes a capability still meets
+    // this, and a capability that is quietly missing reads as a bug.
+    logRuntimeEvent(
+      options.logger ?? DEFAULT_RUNTIME_LOGGER,
+      "info",
+      "[flow-state] request-host liveness capability not enabled",
+      {
+        reason: requestHostBuild.livenessRefusal.reason,
+        detail: requestHostBuild.livenessRefusal.detail
+      }
+    );
   }
 
   // FIX-701: per-block resource-load tracing. Records, per block dispatch,
@@ -2721,6 +2792,8 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      // Same reference in every nested scope (FIX-999).
+      ...(requestHostBuild !== undefined ? { requestHost: requestHostBuild.host } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,

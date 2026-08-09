@@ -66,6 +66,40 @@ describe("createFlowState — router option forwarding", () => {
     await fs.dispose();
   });
 
+  it("forwards queuedGraceMs to the router AND resolves it onto the shared config", async () => {
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: stubModelResolver,
+      queuedGraceMs: 30 * 60_000
+    });
+    await fs.ready();
+    // The router builds its own sweeper from the flat option...
+    expect(calls[0]?.queuedGraceMs).toBe(30 * 60_000);
+    // ...and the shared config carries the resolved value to the worker and to
+    // the sweep paths that read it there (startup detection, check-interrupted).
+    expect(calls[0]?.runtimeConfig?.queuedGraceMs).toBe(30 * 60_000);
+    // It is a sweep bound, not a liveness-gate fact: putting it on the seam
+    // would give the read a second clock on a question the sweep owns.
+    expect(
+      (calls[0]?.runtimeConfig?.requestHost as Record<string, unknown> | undefined)
+        ?.queuedGraceMs
+    ).toBeUndefined();
+    await fs.dispose();
+  });
+
+  it("defaults the shared config's grace to ten minutes when unset", async () => {
+    const fs = createFlowState({
+      flows: { noop: noopFlow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: stubModelResolver
+    });
+    await fs.ready();
+    expect(calls[0]?.queuedGraceMs).toBeUndefined();
+    expect(calls[0]?.runtimeConfig?.queuedGraceMs).toBe(10 * 60_000);
+    await fs.dispose();
+  });
+
   it("forwards durabilityRetention into the runtimeConfig bundle", async () => {
     const retention = { sweepIntervalMs: 1234, batchLimit: 7 };
     const fs = createFlowState({
