@@ -7,7 +7,7 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
-import type { Task, TaskStatus } from "../schema/task";
+import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
 import { isTerminalStatus, isTransitionAllowed } from "../schema/task-status";
@@ -419,17 +419,25 @@ export function defaultOrder(a: Task, b: Task): number {
 export const DEFAULT_LEASE_DURATION_MS = 30_000;
 
 /**
- * Apply a `claim` to a task — flip status, stamp lease, increment attempts.
+ * Apply a `claim` to a task — flip status, stamp lease, increment attempts,
+ * and record where this attempt is running (FIX-1005).
  *
  * Note: `task.assignee` is the worker-registry key (set at task creation by
  * the user), not the runtime worker identity. `claim`'s `workerId` is for
  * trace attribution; the lease itself is `leaseUntil`. So we don't touch
  * `task.assignee` here.
+ *
+ * `claimedBy` takes a **narrowed** identity rather than a `BlockContext` on
+ * purpose: the write path has no business holding a context, and a plain value
+ * is what makes the field testable without one. Omitted when the caller has no
+ * identity to supply (a directly-constructed backing in a test), in which case
+ * the field stays absent and nothing infers from it (BP-030).
  */
 export function applyClaimToTask<TInput, TOutput>(
   task: Task<TInput, TOutput>,
   now: number,
-  leaseDurationMs: number
+  leaseDurationMs: number,
+  claimedBy?: TaskClaimIdentity
 ): Task<TInput, TOutput> {
   return {
     ...task,
@@ -437,6 +445,7 @@ export function applyClaimToTask<TInput, TOutput>(
     attempts: task.attempts + 1,
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
+    ...(claimedBy !== undefined ? { claimedBy } : {}),
     updatedAt: now,
   };
 }

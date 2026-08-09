@@ -86,7 +86,7 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { Task, TaskStatus } from "../schema/task";
+import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
 import type {
@@ -166,6 +166,12 @@ export interface ResourceBackedOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  /**
+   * Execution coordinate stamped onto `task.claimedBy` at claim time
+   * (FIX-1005). The factory reads it off the `BlockContext` it already
+   * receives; omit it and claims record no coordinate.
+   */
+  claimIdentity?: TaskClaimIdentity;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -538,7 +544,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           // Re-check eligibility on the freshest state — another worker
           // may have claimed this task in the time between scan and CAS.
           if (!eligibility(task as Task)) return { state: current, result: undefined };
-          const next = applyClaimToTask(task, now(), leaseDurationMs);
+          const next = applyClaimToTask(task, now(), leaseDurationMs, options.claimIdentity);
           return {
             state: next as unknown as JsonObject,
             result: { task: next, prevStatus: task.status },
@@ -563,6 +569,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           output,
           completedAt: now(),
           leaseUntil: undefined,
+          claimedBy: undefined,
           error: undefined,
         }),
         options
@@ -602,6 +609,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               return {
                 feedback: error,
                 leaseUntil: undefined,
+                claimedBy: undefined,
                 error: undefined,
                 ...(counts ? { retryLedger: grantRetry(task as Task) } : {}),
               };
@@ -618,6 +626,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           error,
           completedAt: now(),
           leaseUntil: undefined,
+          claimedBy: undefined,
         }),
         options
       );
@@ -658,7 +667,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "pending",
         "resumed",
-        () => ({ feedback: feedback ?? undefined, leaseUntil: undefined }),
+        () => ({
+          feedback: feedback ?? undefined,
+          leaseUntil: undefined,
+          claimedBy: undefined,
+        }),
         options
       );
     },
@@ -673,8 +686,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "cancelled",
         () =>
           reason !== undefined
-            ? { error: reason, completedAt: now(), leaseUntil: undefined }
-            : { completedAt: now(), leaseUntil: undefined },
+            ? {
+                error: reason,
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              }
+            : {
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              },
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it
@@ -714,6 +736,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             ...t,
             status: "pending",
             leaseUntil: undefined,
+            claimedBy: undefined,
             updatedAt: at,
           };
           return { state: reset as unknown as JsonObject, result: reset };

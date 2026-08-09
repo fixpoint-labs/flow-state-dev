@@ -77,6 +77,48 @@ export const taskSchema = z.object({
   priority: z.number().optional(),
   leaseUntil: z.number().optional(),
 
+  /**
+   * Where the current attempt is running — the execution coordinate the
+   * substrate stamps inside the claim write (FIX-1005).
+   *
+   * A **fact** ("attempt N ran here"), never *policy* ("work should run
+   * here"). Written only by `applyClaimToTask`, cleared wherever the claim
+   * ends — the same set of sites that clear `leaseUntil`. No caller and no
+   * model ever writes it: it is absent from `TaskInit`, and every
+   * worker-callable write verb is typed to other fields.
+   *
+   * Distinct from **both** of the other "who has this" fields, which is the
+   * thing to keep straight when reading a claim:
+   * - `assignee` is the user-set worker-registry routing key, which `reclaim`
+   *   preserves on purpose. It says where work *should* run.
+   * - `claim(workerId)`'s argument is trace attribution — a label. It is not
+   *   stored here. `claimedBy` is the execution coordinate, so the name says
+   *   *by whom* while the value says *where*.
+   *
+   * **Server-only. Never sent to a client**, because schema membership is
+   * itself a publication — see `SERVER_ONLY_TASK_FIELDS` in
+   * `collection/change-event.ts`, which is canonical for why the redaction is
+   * an omission list and must stay one.
+   *
+   * **Absent on any task persisted before FIX-1005**, on any task never
+   * claimed, and on any row an older writer normalized (a Zod object drops a
+   * key it does not know, so a mixed-version deploy can strip it). Read it
+   * through one `== null` guard (BP-030): absent means "no coordinate", and
+   * nothing infers anything from it — no backfill, no fallback. The next claim
+   * re-stamps it.
+   *
+   */
+  claimedBy: z
+    .object({
+      /** Session the claiming execution ran under (`ctx.session.identity.id`). */
+      sessionId: z.string(),
+      /** Request that performed the claim (`ctx.request.identity.id`). */
+      requestId: z.string(),
+      /** Tenant the claim ran under, when the deployment is multi-tenant. */
+      tenantId: z.string().optional(),
+    })
+    .optional(),
+
   input: z.unknown().optional(),
   output: z.unknown().optional(),
   error: z.string().optional(),
@@ -103,5 +145,16 @@ export type Task<TInput = unknown, TOutput = unknown> = Omit<
   input?: TInput;
   output?: TOutput;
 };
+
+/**
+ * The execution coordinate stamped into a claim write (FIX-1005) — see
+ * {@link taskSchema}'s `claimedBy`.
+ *
+ * Named so the backings can accept it as a narrowed option rather than taking
+ * a whole `BlockContext` into the write path.
+ */
+export type TaskClaimIdentity = NonNullable<
+  z.infer<typeof taskSchema>["claimedBy"]
+>;
 
 export type { TaskStatus };

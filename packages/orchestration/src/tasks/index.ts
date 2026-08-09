@@ -15,6 +15,7 @@
 export {
   taskSchema,
   type Task,
+  type TaskClaimIdentity,
   type TaskStatus,
 } from "./schema/task";
 export {
@@ -42,6 +43,10 @@ export {
 
 // Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
 export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
+// The client-emission projection and the set it honours (FIX-1005). Exported so
+// a transport adapting `onChange` itself can apply the same omission; see
+// `collection/change-event.ts` for why it is a deny-list.
+export { toEmittedTask, SERVER_ONLY_TASK_FIELDS } from "./collection/change-event";
 
 // Item windowing (FIX-480 §3.1) — substrate utilities for `task.items()`
 // and renderer-side per-task expansion.

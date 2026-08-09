@@ -15,7 +15,7 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import { withOutcome } from "@flow-state-dev/core/helpers";
-import type { Task, TaskStatus } from "../schema/task";
+import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
 import type {
@@ -69,6 +69,12 @@ export interface SequencerBackedOptions extends TaskCapOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  /**
+   * Execution coordinate stamped onto `task.claimedBy` at claim time
+   * (FIX-1005). The factory reads it off the `BlockContext` it already
+   * receives; omit it and claims record no coordinate.
+   */
+  claimIdentity?: TaskClaimIdentity;
 }
 
 /**
@@ -427,7 +433,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         const next = applyClaimToTask(
           pick,
           now(),
-          claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS
+          claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS,
+          options.claimIdentity
         );
         return {
           state: { ...tasks, [next.id]: next },
@@ -449,6 +456,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           output,
           completedAt: now(),
           leaseUntil: undefined,
+          claimedBy: undefined,
           error: undefined,
         }),
         options
@@ -486,6 +494,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
               patch: (current: Task<TInput, TOutput>) => ({
                 feedback: error,
                 leaseUntil: undefined,
+                claimedBy: undefined,
                 error: undefined,
                 ...(routing.countsAgainstBudget
                   ? { retryLedger: grantRetry(current) }
@@ -502,6 +511,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
                 : error,
               completedAt: now(),
               leaseUntil: undefined,
+              claimedBy: undefined,
               ...(routing.deniedByBudget ? { retryLedger: denyRetry(current) } : {}),
             }),
           };
@@ -545,7 +555,11 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         id,
         "pending",
         "resumed",
-        () => ({ feedback: feedback ?? undefined, leaseUntil: undefined }),
+        () => ({
+          feedback: feedback ?? undefined,
+          leaseUntil: undefined,
+          claimedBy: undefined,
+        }),
         options
       );
     },
@@ -560,8 +574,17 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         "cancelled",
         () =>
           reason !== undefined
-            ? { error: reason, completedAt: now(), leaseUntil: undefined }
-            : { completedAt: now(), leaseUntil: undefined },
+            ? {
+                error: reason,
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              }
+            : {
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              },
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it
@@ -593,6 +616,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
               ...task,
               status: "pending",
               leaseUntil: undefined,
+              claimedBy: undefined,
               updatedAt: at,
             };
             next[task.id] = reset;

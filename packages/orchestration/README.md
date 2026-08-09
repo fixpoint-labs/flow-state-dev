@@ -77,6 +77,15 @@ is the common case), or resource-collection (outlives the request: a user's queu
 org work pool — declare one with `defineTaskCollection`). Every mutation that
 changes a field emits a `task-change` component item.
 
+**Server-only task fields.** A `task-change` item carries the whole post-mutation
+row, and that stream is client-visible. A few fields on `Task` are substrate
+bookkeeping that must not reach a browser — `claimedBy`, the execution coordinate a
+claim records — so the factory omits them from the emitted payload via
+`toEmittedTask`, which honours the exported `SERVER_ONLY_TASK_FIELDS` set. If you
+wire a backing's `onChange` to a client transport yourself, apply `toEmittedTask` to
+`event.task` before you publish it — a field that is server-only on one boundary is
+server-only on every one.
+
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
 `ResourceRef.updateState`, which chains writes per key within one execution context
