@@ -135,6 +135,12 @@ export function createSQLiteRequestStore(
 
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
+    // `abortRequested` is off `set`'s write surface (FIX-1026): the stored
+    // value wins in both directions, enforced inside the write statement.
+    // SQLite is a multi-process store, so a `SELECT` before the write would
+    // leave a window for a second connection's conditional write to be
+    // overwritten by a full-record blob built from the stale value.
+    preserveJsonKeys: ["abortRequested"],
     columns: ["flow_kind", "user_id", "session_id", "org_id", "tenant_id", "status"],
     toRow: (record) => [
       record.flowKind,
@@ -329,16 +335,13 @@ export function createSQLiteRequestStore(
       // item write for this request has already flushed within its
       // microtask before this async method body runs — no drain needed.
       const { items: _omitted, ...withoutItems } = value;
-      // `abortRequested` is off `set`'s write surface (FIX-1026). The read
-      // below and the write inside `base.set` are not separated by an `await`
-      // — better-sqlite3 is synchronous and `base.set` does its DB work before
-      // yielding — so no conditional write can land between them.
+      // Strip the abort flag before it is bound. `preserveJsonKeys` re-applies
+      // the stored value inside the write statement itself, so nothing here
+      // reads it first — a read would race a second connection's conditional
+      // write, which is the whole scenario this feature exists for.
       const result = await base.set(
         id,
-        withStoredAbortRequested(
-          withoutItems as RequestRecord,
-          readAbortFlag(id)
-        ),
+        withStoredAbortRequested(withoutItems as RequestRecord, undefined),
         expectedVersion
       );
       if (result.ok && isTerminalRequestStatus(value.status)) {

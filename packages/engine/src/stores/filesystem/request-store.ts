@@ -267,11 +267,14 @@ export class FilesystemRequestStore implements RequestStore {
     const { abortRequested, ...recordFields } = fields;
     let found: RequestStatus | undefined;
 
-    // `update` runs the merge under the per-id write lock, which is what makes
-    // the status check and the write one step against concurrent `set`s in
-    // this process. (Cross-process is out of scope for this adapter — see the
-    // single-writer disclaimer on the class.)
-    await this.store.update(id, (current) => {
+    // `update` runs the merge under the per-id write lock, and awaits it there.
+    // The marker write happens INSIDE that merge, so the status check, the
+    // record write and the marker write are one step. Writing the marker after
+    // `update` returned would put it outside the lock, where a terminal write
+    // or a `delete` can land in between — leaving a marker on a record that is
+    // already finished, or an orphan marker that would cancel a later run
+    // reusing the id.
+    await this.store.update(id, async (current) => {
       found = current.status;
       // Returning `current` unchanged still rewrites the file — `update` has no
       // "decline" path. Deciding outside the lock instead would reintroduce the
@@ -279,15 +282,14 @@ export class FilesystemRequestStore implements RequestStore {
       // on a failed predicate is the price, and it only happens on a cancel
       // that arrives after the request is already terminal.
       if (!allowedStatuses.includes(current.status)) return current;
+      if (abortRequested !== undefined) {
+        await this.writeAbortMarker(id, abortRequested);
+      }
       return { ...current, ...recordFields, updatedAt };
     });
 
     if (found === undefined) return { applied: false, status: undefined };
     if (!allowedStatuses.includes(found)) return { applied: false, status: found };
-
-    if (abortRequested !== undefined) {
-      await this.writeAbortMarker(id, abortRequested);
-    }
     return { applied: true, status: found };
   }
 

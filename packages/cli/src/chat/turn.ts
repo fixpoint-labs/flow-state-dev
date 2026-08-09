@@ -109,9 +109,13 @@ export function executeTurn(params: ExecuteTurnParams): RunningTurn {
       const result = await stores.request
         .setFieldsIfStatus(requestId, { abortRequested: true }, ["in_progress"], Date.now())
         .catch(() => undefined);
-      // A record that exists reports a status, whether or not the predicate
-      // held; either way there is nothing left to retry for.
-      if (result === undefined || result.status !== undefined) break;
+      // Break only on proof the record exists — a returned status. `undefined`
+      // means the call REJECTED, which is not the same as "nothing to write":
+      // treating it as done would fall through to the local abort below with no
+      // durable intent recorded, and the run would settle "interrupted" instead
+      // of "aborted". Retry those, exactly as a not-yet-materialized record is
+      // retried, until the turn settles.
+      if (result?.status !== undefined) break;
       await delay(ABORT_RETRY_MS);
     }
     // 2. Then fire the abort, retrying until the controller is registered or the

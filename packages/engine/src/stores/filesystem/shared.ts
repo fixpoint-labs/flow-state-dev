@@ -175,11 +175,17 @@ export type FilesystemRecordStore<
    * write that lands while the merge is pending is observed by `current`
    * here and preserved by the merge.
    *
+   * The merge may be async, and anything it awaits also runs inside the lock.
+   * That is what lets a caller keep a sidecar file (the request store's abort
+   * marker) in step with the record it belongs to: without it, the sidecar
+   * write lands after the lock is released, where a terminal write or a delete
+   * can slip in between the two.
+   *
    * Returns the new record, or `undefined` if the record does not exist.
    */
   update(
     id: string,
-    merge: (current: TRecord) => TRecord
+    merge: (current: TRecord) => TRecord | Promise<TRecord>
   ): Promise<TRecord | undefined>;
   /**
    * Version-predicated read-modify-write under the per-id lock. Unlike
@@ -311,7 +317,7 @@ export function createFilesystemRecordStore<
 
     update: (
       id: string,
-      merge: (current: TRecord) => TRecord
+      merge: (current: TRecord) => TRecord | Promise<TRecord>
     ): Promise<TRecord | undefined> =>
       withLock(id, async () => {
         // Re-read inside the lock so concurrent CAS writes (which take the
@@ -319,7 +325,7 @@ export function createFilesystemRecordStore<
         // with state-mutation writes and silently overwrite the state field.
         const current = await readRecord<TRecord>(rootDir, id);
         if (current === undefined) return undefined;
-        const next = merge(current);
+        const next = await merge(current);
         await writeRecord(rootDir, id, next);
         return next;
       }),

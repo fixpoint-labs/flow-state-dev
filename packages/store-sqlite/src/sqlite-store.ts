@@ -27,6 +27,25 @@ export type SQLiteRecordStoreConfig<TRecord, TListOptions> = {
    * SQL fragment.
    */
   resolveOrderBy?: (options?: TListOptions) => string;
+  /**
+   * Top-level `data` keys that `set` must not write (FIX-1026).
+   *
+   * The stored value wins in both directions: a written record that omits the
+   * key keeps the stored one, and a written record that carries it cannot
+   * change what is stored. Enforced **inside the write statement**, not by a
+   * read-then-write around it — SQLite is a multi-process store, so a separate
+   * `SELECT` before the `UPDATE` protects nothing against a second connection
+   * committing between the two.
+   *
+   * Used by the request store to take `abortRequested` off `set`'s write
+   * surface: every full-record writer builds its record from a snapshot taken
+   * before the flag existed, so a `set` that honoured the field would erase a
+   * cancellation nobody intended to touch.
+   *
+   * Keys are trusted, non-parameterized SQL literals — framework constants,
+   * never caller input.
+   */
+  preserveJsonKeys?: string[];
 };
 
 export type SQLiteRecordStore<TRecord, TListOptions> = {
@@ -76,11 +95,46 @@ export function createSQLiteRecordStore<
 ): SQLiteRecordStore<TRecord, TListOptions> {
   const { tableName, columns, toRow, toWhere, resolveOrderBy } = config;
 
+  const preserveJsonKeys = config.preserveJsonKeys ?? [];
+  for (const key of preserveJsonKeys) {
+    // Interpolated into SQL, so refuse anything that isn't a plain identifier
+    // rather than trusting the caller's discipline.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new Error(`preserveJsonKeys entry is not a plain identifier: ${key}`);
+    }
+  }
+
+  /**
+   * A `data` assignment that strips the preserved keys from the incoming value
+   * and re-applies whatever the stored row holds — in the one statement, so
+   * the read and the write cannot be separated by another connection.
+   *
+   * `json_patch` with `json('{}')` is a no-op for a key the stored row does not
+   * have, which is what removes it rather than writing a JSON `null`. The
+   * `->` operator returns the stored value's JSON representation, so a boolean
+   * survives as a boolean (`json_extract` would hand back `1`/`0` and quietly
+   * change the stored type).
+   */
+  function dataAssignment(source: string): string {
+    return preserveJsonKeys.reduce((acc, key) => {
+      const stripped = `json_remove(${acc}, '$.${key}')`;
+      return (
+        `json_patch(${stripped}, CASE WHEN json_type(${tableName}.data, '$.${key}') IS NULL` +
+        ` THEN json('{}')` +
+        ` ELSE json_object('${key}', json(${tableName}.data -> '$.${key}')) END)`
+      );
+    }, source);
+  }
+
   const allColumns = ["id", ...columns, "version", "created_at", "updated_at", "data"];
   const placeholders = allColumns.map(() => "?").join(", ");
   const updateSet = columns
     .map((col) => `${col} = excluded.${col}`)
-    .concat(["version = excluded.version", "updated_at = excluded.updated_at", "data = excluded.data"])
+    .concat([
+      "version = excluded.version",
+      "updated_at = excluded.updated_at",
+      `data = ${dataAssignment("excluded.data")}`
+    ])
     .join(", ");
 
   const upsertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`;
@@ -89,7 +143,9 @@ export function createSQLiteRecordStore<
     ...columns.map((col) => `${col} = ?`),
     "version = ?",
     "updated_at = ?",
-    "data = ?"
+    // Single bind of the incoming blob: the preserve expression reads the
+    // stored row, never the parameter, so the placeholder count is unchanged.
+    `data = ${dataAssignment("?")}`
   ].join(", ");
   const casUpdateSQL = `UPDATE ${tableName} SET ${updateAssignments} WHERE id = ? AND version = ?`;
   const casInsertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders})`;

@@ -344,24 +344,48 @@ export function createPostgresRequestStore(
       // are the same snapshot. A version CAS cannot stand in for this —
       // terminal transitions persist `version` unchanged, so a version-checked
       // write validates after a terminal commit and resurrects a dead record.
-      const result = await executor.query(
-        `WITH found AS (
-           SELECT status FROM requests WHERE id = $1
-         ), updated AS (
-           UPDATE requests
-              SET data = data || $2::jsonb, updated_at = $3
-            WHERE id = $1 AND status = ANY($4::text[])
-            RETURNING status
-         )
-         SELECT (SELECT status FROM found) AS found_status,
-                EXISTS (SELECT 1 FROM updated) AS applied`,
+      // The UPDATE alone decides whether the predicate held: under READ
+      // COMMITTED it re-evaluates its WHERE against the newest committed tuple
+      // after blocking on a concurrent writer, so `RETURNING` reports the row
+      // it actually matched.
+      //
+      // The status must NOT come from a read fused into the same statement. A
+      // statement takes one snapshot at its start, so a terminal commit landing
+      // after that snapshot would leave the read reporting `in_progress` while
+      // the UPDATE — re-checked against the newer tuple — applies nothing. That
+      // yields `{ applied: false, status: "in_progress" }`, which contradicts
+      // this verb's own contract and makes the abort route emit the nonsense
+      // `409 … terminal state "in_progress"`.
+      //
+      // `updatedAt` is merged into the blob as well as the indexed column.
+      // `get()` reads the blob, so writing only the column would leave the
+      // returned record's `updatedAt` stale — list ordering and the record
+      // would disagree, and a later full-record write built from `get()` would
+      // carry the old value back and move the indexed column BACKWARD.
+      const updated = await executor.query(
+        `UPDATE requests
+            SET data = data || $2::jsonb || jsonb_build_object('updatedAt', $3::bigint),
+                updated_at = $3
+          WHERE id = $1 AND status = ANY($4::text[])
+          RETURNING status`,
         [id, JSON.stringify(fields), updatedAt, [...allowedStatuses]]
       );
-      const row = result.rows[0] as
-        | { found_status: RequestStatus | null; applied: boolean }
-        | undefined;
-      const status = row?.found_status ?? undefined;
-      return { applied: row?.applied === true, status };
+      if (updated.rowCount > 0) {
+        const applied = updated.rows[0] as { status: RequestStatus };
+        return { applied: true, status: applied.status };
+      }
+
+      // Not applied. Report the status from a FRESH statement — a new snapshot,
+      // taken after the update resolved — so the caller is told the status the
+      // record actually holds. A request never returns from terminal to
+      // running, so this can only report a status outside the predicate, which
+      // is what the contract promises.
+      const current = await executor.query(
+        "SELECT status FROM requests WHERE id = $1",
+        [id]
+      );
+      const row = current.rows[0] as { status: RequestStatus } | undefined;
+      return { applied: false, status: row?.status };
     },
 
     patchField: base.patchField,

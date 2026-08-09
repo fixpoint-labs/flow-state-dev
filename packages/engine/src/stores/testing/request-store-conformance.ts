@@ -655,6 +655,12 @@ export function createRequestStoreConformanceTests(
           expect(await store.isAbortRequested(requestId)).toBe(false);
           // The record is not resurrected to the predicated status.
           expect((await store.get(requestId))?.status).toBe("completed");
+          // A not-applied result must never name a status inside the predicate:
+          // that combination is self-contradictory, and a caller turning it into
+          // an error emits nonsense like `409 … terminal state "in_progress"`.
+          // It is what an adapter produces when the status it reports comes
+          // from a read that is not the same observation as the write.
+          expect(["in_progress"]).not.toContain(result.status);
         });
       });
 
@@ -703,6 +709,33 @@ export function createRequestStoreConformanceTests(
 
           expect(result.applied).toBe(true);
           expect((await store.get(requestId))?.interruptedAt).toBe(4242);
+        });
+      });
+
+      // The record's own `updatedAt` must move with the write, not just any
+      // indexed column an adapter keeps beside it. An adapter that advances
+      // only its column leaves `get()` reporting the old timestamp — list
+      // ordering and the record disagree, and a later full-record write built
+      // from `get()` carries the stale value back and moves the column
+      // BACKWARD.
+      it("advances the record's updatedAt", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_cond_updated_at";
+          await seed(store, requestId);
+          const before = await store.get(requestId);
+          expect(before?.updatedAt).toBeTypeOf("number");
+
+          const stamp = (before as RequestRecord).updatedAt + 5_000;
+          const result = await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            stamp
+          );
+          expect(result.applied).toBe(true);
+
+          const after = await store.get(requestId);
+          expect(after?.updatedAt).toBe(stamp);
         });
       });
 
