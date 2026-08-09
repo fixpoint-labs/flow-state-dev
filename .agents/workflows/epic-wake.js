@@ -40,7 +40,7 @@ export const meta = {
   whenToUse:
     'Dispatched by the epic-lifecycle skill as steps 2–4 of its loop, once per wake. Not run standalone — it expects the coordinator status table as args and returns the updated one.',
   phases: [
-    { title: 'Refresh', detail: 'epic gate + Linear states + per-issue PR state (scout)' },
+    { title: 'Refresh', detail: 'epic gate + Linear states + one batched PR scan over the rows a fresh read can still move' },
     { title: 'Advance', detail: 'one bounded issue-worker per pending issue, up to the cap' },
     { title: 'Settle', detail: 'dedupe disputed claims, run POCs, route verdicts' },
   ],
@@ -338,6 +338,61 @@ function pendingAction(row) {
     return { action: 'apply-decision', why: `${row.blockerResolutions.length} answered decision(s) to apply` }
   }
   return null
+}
+
+/**
+ * Rows that get NO refresh scout this wake, because a fresh read of their PR cannot change what the
+ * wake does with them.
+ *
+ * `pendingAction` parks a row carrying an unresolved human decision, and it parks a terminal one with
+ * nothing left to apply — in both cases BEFORE it reads a single scan-derived field. One real wake
+ * dispatched twelve agents and spent five of them refreshing rows it then refused to dispatch, all
+ * five parked behind a `blocker`: ~40% of the spend, by construction, on answers nothing could act on.
+ * These rows are carried forward verbatim instead.
+ *
+ * Decided from the CARRIED row alone, because the decision has to be made before the scan barrier: the
+ * Linear children query runs in the same `parallel()` as the scouts, so this wake's Linear state does
+ * not exist yet. Every input here is coordinator state or the previous wake's Linear read.
+ *
+ * `linearTerminal`, deliberately, rather than `phase === 'DONE'`. Only a scan can move a phase off
+ * DONE, so keying on the phase would make the skip self-sustaining: a human reopening a finished issue
+ * mid-epic would never be looked at again. `linearTerminal` is refreshed every wake by the children
+ * query, which is not per-row and stays — so a reopened issue drops out of this set and is scanned on
+ * the next wake. The cost is that a row whose merge the coordinator has not yet mirrored to Linear
+ * keeps its scan for a wake or two, which is the safe direction.
+ *
+ * Three things deliberately keep their scan:
+ *
+ * 1. **A `closedBlocker`.** That blocker is a scan OBSERVATION (the impl PR was closed unmerged), not a
+ *    durable escalation — `foldMultiPrScan` clears it as soon as a scan sees the handle open again.
+ *    Skipping the scan would make the recovery its own blocker text advertises unreachable.
+ * 2. **A terminal row with a landed verdict or an answered decision.** `pendingAction` dispatches those
+ *    (`apply-verdict` / `apply-decision`), so the row is not parked at all.
+ * 3. **Anything another row is blocked by.** `openBlockers` clears a blocked-by relation only on LIVE
+ *    merge evidence — Linear state is a mirror, the merge is the fact — and reads a missing scan as
+ *    "unobserved", which keeps the dependent blocked. Since the terminal skip would never lift on its
+ *    own, that block would be permanent. One extra scan per prerequisite, and only while something is
+ *    actually waiting on it.
+ *
+ * An open `blockedBy` is deliberately NOT a skip, even though `pendingAction` parks on it too: that
+ * relation can go away in this very wake's children query, and the row becomes dispatchable
+ * immediately — with no fresh read of its PR to dispatch from.
+ *
+ * @param row            the carried record
+ * @param prerequisites  ids named by any carried row's `blockedBy`
+ */
+function noScanNeeded(row, prerequisites) {
+  if (prerequisites.has(row.id)) return false
+  // Checked BEFORE the terminal branch, not inside the non-terminal one. The three exceptions above are a
+  // flat list, and reading `closedBlocker` only on one path made a row that is both terminal in Linear and
+  // carrying a closed-PR observation skippable forever — the recovery its own blocker text advertises is
+  // a scan, so it became unreachable. That is the defect this file keeps producing: two predicates over
+  // the same state, disagreeing.
+  if (row.closedBlocker) return false
+  if (row.linearTerminal) {
+    return !(row.verdicts || []).length && !(row.blockerResolutions || []).length && !row.blockerResolution
+  }
+  return !!row.blocker
 }
 
 /**
@@ -1624,9 +1679,20 @@ const PR_STATE_SCHEMA = {
   // rule for any field an action depends on — and the epic gate's own schema has always required it.
   // `['string','null']` still lets a scout say "did not observe"; what it can no longer do is stay
   // silent and have the approval accepted anyway.
-  required: ['issueId', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
+  // `observed` is REQUIRED and it is what makes batching safe. With one scout per issue, a dead
+  // scout was a null result and invariant 1 handled it; in ONE scan covering ten issues there is no
+  // per-row null to return. A scan that ran out of room after six issues would otherwise report the
+  // last four as quiet — which reads as four confirmed-unchanged rows, advances four cursors past
+  // feedback nobody read, and clears four sets of flags. So every entry says whether it was actually
+  // looked at, and an unobserved one is discarded exactly as a dead scout's result was.
+  required: ['issueId', 'observed', 'phase', 'specApproved', 'specApprovedByLabel', 'humanChangesRequested', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'ciFailed', 'headSha'],
   properties: {
     issueId: { type: 'string' },
+    observed: {
+      type: 'boolean',
+      description:
+        'Did you ACTUALLY read this issue\'s PRs on this pass? false for any issue you did not reach — ran out of room, the read failed, anything. Everything else in the entry is then ignored. "Nothing changed" is `true` with the flags false; `false` means "I did not look", and reporting the second as the first advances a cursor past feedback nobody has read.',
+    },
     phase: { type: 'string', enum: LIFECYCLE_PHASES },
     // A PR CLOSED WITHOUT MERGING was unreportable: the scout reads PR metadata, but the only outcomes it
     // could express were merged / ready / not-ready. A single-PR row then sat in PR_FEEDBACK forever —
@@ -1688,6 +1754,28 @@ const PR_STATE_SCHEMA = {
         'ISO timestamp of the newest comment/review seen. REQUIRED to be non-null whenever newSpecReviewEvents or newPrEvents is true — without it the cursor cannot advance past the batch a worker just consumed, and the same events are rediscovered every wake.',
     },
     headSha: { type: ['string', 'null'], description: 'Current head SHA of the open PR this row is waiting on' },
+  },
+}
+
+/**
+ * The whole refresh, from ONE scan.
+ *
+ * `issues` is ORDERED to match the list the prompt gives, and each entry names its issue. Both,
+ * deliberately: the order is what binds a result to a row (→ `bindByPosition`), and the name is only
+ * a cross-check that discards a shifted or misattributed entry. Keying on the reported name instead
+ * would let one issue's approval land on another row, which is the one thing the refresh has an
+ * invariant against.
+ */
+const PR_SCAN_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['issues'],
+  properties: {
+    issues: {
+      type: 'array',
+      description: 'One entry per issue in the list, in the same order — including any you could not read (`observed: false`).',
+      items: PR_STATE_SCHEMA,
+    },
   },
 }
 
@@ -1898,9 +1986,34 @@ const requests = input.settleRequests || []
 
 phase('Refresh')
 
+// THREE states, not two, and the last two mean opposite things. Naming them apart is the whole
+// safety of this cut:
+//
+//   · scanned and returned       → `freshById.has(id)`; the live observation is authoritative.
+//   · CARRIED FORWARD on purpose → `carriedForward.has(id)`; no scout was dispatched, nothing was
+//     contradicted, and the row's own state is the best evidence there is.
+//   · the scout DIED             → in neither set. NOTHING happened (invariant 1): no cursor moves,
+//     no blocker clears, and scan-derived fields fall back to their fail-closed defaults.
+//
+// The `fresh = {}` path in the refresh below serves the third case: it CLEARS `readyToMerge`,
+// `ciFailed`, `specApproved` and the per-handle states, because a scan that failed is not evidence
+// those are still true. Applying it to the second case would be wrong in the opposite direction — it
+// would erase state this wake never looked at, on a row that is parked precisely so nothing acts on
+// it. So a carried-forward row takes its own branch there and never touches that path.
+const prerequisites = new Set(rows.flatMap((r) => r.blockedBy || []))
+const carriedForward = new Set(rows.filter((r) => noScanNeeded(r, prerequisites)).map((r) => r.id))
+const scannedRows = rows.filter((r) => !carriedForward.has(r.id))
+if (carriedForward.size) {
+  // No silent economies: a row nobody looked at says so, the same way a capped or deferred one does.
+  log(
+    `Refreshing ${scannedRows.length} of ${rows.length} row(s): ${[...carriedForward].join(', ')} carried forward without a PR scan — each is parked on an unresolved decision or already terminal, so a ` +
+      `fresh read could not change what this wake does with it. Their Linear state, blocked-ness and route still refresh from the children query, which is one agent for the whole set.`,
+  )
+}
+
 // Barrier, and justified: the epic gate holds EVERY issue, and the cap is a decision
 // across the whole set — nothing can be dispatched before all rows are known.
-const [gate, linear, ...prStates] = await parallel([
+const [gate, linear, prScan] = await parallel([
   () =>
     agent(
       `Scan epic PR #${epic.prNumber} in this repo for its objective sign-off. Report approved:true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a human who is not the PR author. Exclude bots (Bugbot, Codex, Copilot) and any historical approval invalidated by a later push or CHANGES_REQUESTED.\n` +
@@ -1921,39 +2034,62 @@ const [gate, linear, ...prStates] = await parallel([
         `The carried ids matter separately from the children: orchestration.md keeps an existing functional parent and links such a member to the epic with relates-to, so it is NEVER in the parent→children set. Omitting it froze its Linear state at whatever was last cached — a blocked member never noticed its prerequisite merge, and a cancelled one kept being dispatched.`,
       { label: 'linear:epic-children', phase: 'Refresh', schema: LINEAR_SCHEMA, agentType: 'scout' },
     ),
-  ...rows.map(
-    (row) => () =>
-      agent(
-        `Derive the current lifecycle phase of Linear issue ${row.id} from durable state only. Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
-          // A multi-PR issue has NO single `implPr` — the real handles are the sub-PR table. Told
-          // only "Impl PR: none", the scout has nothing to read, so a subscribed sub-PR event wakes
-          // the coordinator and the row still reports no activity: stuck in PR_FEEDBACK for good.
-          (row.subPrs && row.subPrs.length
-            ? `This issue implements as a DAG of sub-PRs; there is no single impl PR. Treat these as its implementation PRs and report activity, CI and merge state across ALL of them: ${row.subPrs
-                .map((s) => `${s.id}=${s.pr ? `#${s.pr}` : 'not opened'}${s.status ? ` (${s.status})` : ''}`)
-                .join(', ')}.\n` +
-              // An AGGREGATE readyToMerge cannot be acted on: a merge gate needs a PR NUMBER, and
-              // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
-              // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
-              // stops at its first merge-ready slice.
-              `Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
-            : '') +
-          // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
-          // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
-          // forever because nothing else can ever set `fixMerged`.
-          (row.assembledGoal && row.assembledGoal.fixPr
-            ? `This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
-            : '') +
-          `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
-          (approvalOwner
-            ? `SEPARATELY report specApprovedByLabel:true whenever the spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
-            : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
-          `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: the label is standing state that stays on the PR after a change request lands, so without this it carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
-          `ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n` +
-          `Also report whether CI is failing.`,
-        { label: `refresh:${row.id}`, phase: 'Refresh', schema: PR_STATE_SCHEMA, agentType: 'scout' },
-      ),
-  ),
+  // ONE scan for the whole set, not one per issue. Ten agents each reading one PR is the same
+  // information as one agent reading ten, at ten times the overhead — and the rules below are the
+  // bulk of the prompt, so stating them once instead of copying them per row makes the batched
+  // prompt SMALLER than the ones it replaces, not larger.
+  //
+  // What batching costs is that failure stops being per-row: a dead scan means NOTHING was observed
+  // for ANY of these issues. That is what invariant 1 already requires, and it is the direction the
+  // rest of the wake is built to survive — every unbound row falls back to its carried state and
+  // advances no cursor. The failure this must never become is the other one: a scan that came back
+  // half-done being read as a set of quiet rows. `observed` is what keeps those apart.
+  ...(scannedRows.length
+    ? [
+        () =>
+          agent(
+            `Scan ${scannedRows.length} issue(s) in this repo and derive each one's current lifecycle phase from durable state only.\n` +
+              `Return \`issues\`: ONE entry per issue below, IN THE SAME ORDER, each carrying its own issueId. Order is what binds your answer to the right issue, so never reorder, merge or drop an entry — if you could not read an issue, still return its entry with observed:false. Report observed:true only for an issue whose PRs you actually read on this pass; "nothing has changed" is observed:true with the flags false, and reporting an issue you never reached that way advances its cursor past feedback nobody has read.\n\n` +
+              scannedRows
+                .map(
+                  (row, i) =>
+                    `[${i + 1}] ${row.id} — Spec PR: ${row.specPr || 'none'}. Impl PR: ${row.implPr || 'none'}.\n` +
+                    // A multi-PR issue has NO single `implPr` — the real handles are the sub-PR table. Told
+                    // only "Impl PR: none", the scan has nothing to read, so a subscribed sub-PR event wakes
+                    // the coordinator and the row still reports no activity: stuck in PR_FEEDBACK for good.
+                    (row.subPrs && row.subPrs.length
+                      ? `    This issue implements as a DAG of sub-PRs; there is no single impl PR. Treat these as its implementation PRs and report activity, CI and merge state across ALL of them: ${row.subPrs
+                          .map((s) => `${s.id}=${s.pr ? `#${s.pr}` : 'not opened'}${s.status ? ` (${s.status})` : ''}`)
+                          .join(', ')}.\n` +
+                        // An AGGREGATE readyToMerge cannot be acted on: a merge gate needs a PR NUMBER, and
+                        // `implPr` is unset for these rows. Per-handle readiness is what lets the coordinator
+                        // surface "merge sub-PR a (#41)" — without it the gate carries `pr: null` and the DAG
+                        // stops at its first merge-ready slice.
+                        `    Report subPrStates: one entry per sub-PR id above — { id, merged, readyToMerge, ciFailed }. readyToMerge means THAT PR is approved, green and mergeable now.\n`
+                      : '') +
+                    // The repair PR is the other handle these rows wait on, and it is invisible in `subPrs`.
+                    // Its merge is what re-arms the assembled goal; unreported, the DAG sits in AWAITING_FIX
+                    // forever because nothing else can ever set `fixMerged`.
+                    (row.assembledGoal && row.assembledGoal.fixPr
+                      ? `    This issue also has an assembled-goal REPAIR PR #${row.assembledGoal.fixPr} open (the end-to-end goal failed after its sub-PRs merged). Report repairMerged and repairReadyToMerge for it, and repairClosedUnmerged if it was closed without merging.\n`
+                      : '') +
+                    // PER ISSUE, and it has to stay that way. The cursor is how this issue tells new
+                    // feedback from feedback a worker already handled; one cursor shared across the batch
+                    // would re-deliver one row's handled batch every time another row saw activity.
+                    `    ACTIVITY CURSOR — this is what separates new feedback from feedback already handled. Last seen: activity at ${row.lastSeenActivityAt || 'never'}, head ${row.lastSeenSha || 'unknown'}. Set newSpecReviewEvents / newPrEvents ONLY for activity strictly newer than that timestamp (or, if it is 'never', for any activity at all). Then report latestActivityAt = the newest comment/review timestamp you saw, and headSha = the current head, so the next wake can advance.\n`,
+                )
+                .join('') +
+              `\nFor EVERY issue above:\n` +
+              `Read the PRs' comments, reviews, check-runs and PR meta (state/mergedAt). specApproved is true ONLY for a human approving comment, or a review whose LATEST state is APPROVED on the CURRENT head by a non-author human. Collapse each human's reviews to their latest state first: if ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved, even when another human has a current-head approval and even when the same person approved earlier. A stale approval invalidated by a later push is not approval either, and no bot review counts.\n` +
+              (approvalOwner
+                ? `SEPARATELY report specApprovedByLabel:true whenever that issue's spec PR currently carries the \`spec approved\` LABEL **and \`${approvalOwner}\` applied it**. Same two independent checks as the epic gate. WHO: read the PR timeline for \`labeled\` events naming \`spec approved\`, take the MOST RECENT one, and require its actor's login to be exactly \`${approvalOwner}\` — not merely "a human". Labels are writable by every collaborator and every bot with write access, so a label from any other actor would release implementation without the sign-off the gate requires; if the timeline is unreadable, carries no \`labeled\` event for a present label, or names anybody else, report FALSE. WHEN: do not check — once the actor is \`${approvalOwner}\`, presence alone passes: do not compare the label against the head commit and do not treat a later push as invalidating it, since a spec PR takes commits while review is folded and expiring the label would revoke the approval on the next round. Removal is the revocation. Report it independently of specApproved.\n`
+                : `The \`spec approved\` LABEL channel is OFF for this run — no owner login was configured, so there is nobody to attribute a label to. Report specApprovedByLabel:false unconditionally, whatever labels the PR carries. Comment and review approval are unaffected.\n`) +
+              `ALSO report humanChangesRequested:true when any human's LATEST review state on the spec PR is CHANGES_REQUESTED. This OUTRANKS the label: the label is standing state that stays on the PR after a change request lands, so without this it carries the issue into implementation past feedback nobody addressed. Bots never count.\n` +
+              `Also report whether CI is failing.`,
+            { label: 'refresh:issues', phase: 'Refresh', schema: PR_SCAN_SCHEMA, agentType: 'scout' },
+          ),
+      ]
+    : []),
 ])
 
 // The epic gate holds every sub-issue at NEEDS_SPEC until the objective is signed off — but it
@@ -2019,11 +2155,43 @@ const epicHead = (gate && gate.headSha) || epic.headSha || null
 // Fold the scout reads into the carried table. Handles and counters come from `args`
 // (the coordinator's file); phase and freshness come from the scouts.
 const linearById = new Map((linear && linear.issues ? linear.issues : []).map((i) => [i.id, i]))
+// The batch, unpacked into the same per-row map the per-issue scouts used to produce — so every
+// reader downstream is unchanged, and the batching is invisible past this line.
+//
+// Bound BY POSITION against the rows that were actually dispatched, with the reported id as a
+// cross-check. Keying on the reported id would be the natural thing to do with an array that names
+// its entries, and it is precisely what the refresh has an invariant against: `issueId` is a
+// free-form string, so one issue's approval could land on another row's gate. Position decides; the
+// name only ever discards.
+const scanEntries = (prScan && prScan.issues) || []
+if (!prScan && scannedRows.length) {
+  // Batching's one real cost, said out loud. One dead scan is now every row's dead scout — which is
+  // the SAFE failure (nothing observed, nothing advanced) and not the dangerous one (rows read as
+  // quiet). The wake still does its Linear-derived work and the next wake retries the reads.
+  log(
+    `The batched PR refresh did not return — NOTHING was observed for any of the ${scannedRows.length} row(s) it covered this wake. Each keeps its carried state, no cursor advances, and no blocker clears; the next wake retries.`,
+  )
+}
+if (prScan && scanEntries.length !== scannedRows.length) {
+  log(
+    `The batched PR refresh returned ${scanEntries.length} entr${scanEntries.length === 1 ? 'y' : 'ies'} for ${scannedRows.length} issue(s) — the positional bind below keeps only the entries whose issueId still matches, so a dropped or reordered entry costs those rows their refresh rather than landing on the wrong one.`,
+  )
+}
+const unobserved = scanEntries.filter((e) => e && !e.observed).map((e) => e.issueId || '(unnamed)')
+if (unobserved.length) {
+  log(
+    `The batched PR refresh reported ${unobserved.join(', ')} as NOT observed — it did not reach ${unobserved.length === 1 ? 'that issue' : 'those issues'}. Treated exactly as a dead scout: carried state stands, no cursor advances.`,
+  )
+}
 const freshById = bindByPosition(
-  prStates,
-  rows.map((r) => r.id),
+  // An unobserved entry is discarded HERE rather than downstream, because "I did not look" and "a
+  // scout died" have to be the same thing to every reader: `refreshedLive` is what voids the
+  // scan-derived fields, and an entry that reached it with `observed: false` would have its empty
+  // flags read as a live, quiet observation.
+  scanEntries.map((e) => (e && e.observed ? e : null)),
+  scannedRows.map((r) => r.id),
   (id, reported) =>
-    log(`refresh:${id} reported issueId ${reported} — discarding the scan rather than binding another issue's read (and its approval) to this row.`),
+    log(`The batched PR refresh reported issueId ${reported} in ${id}'s position — discarding that entry rather than binding another issue's read (and its approval) to this row.`),
 )
 
 // Sub-issues Linear knows about that the carried table doesn't: `issue-manager` parented work
@@ -2126,7 +2294,18 @@ const openBlockers = (ids) =>
       const knownPr = (blockerScan && blockerScan.implPr) || carriedBlocker.implPr
       if (knownPr && !(blockerScan && blockerScan.merged === true)) {
         unmergedBlockers.add(
-          `${b} (Linear ${state}, but #${knownPr} is ${blockerScan ? 'not merged' : 'unobserved — its refresh did not return'})`,
+          // Three reasons there is no live merge, and the human acts on each differently.
+          // `noScanNeeded` scans every id named by a carried `blockedBy`, so the middle case only
+          // arises for a relation that appeared for the FIRST time in this wake's children query —
+          // the prerequisite was not yet a prerequisite when the skip set was computed. It corrects
+          // itself on the next wake, once the dependent carries the relation.
+          `${b} (Linear ${state}, but #${knownPr} is ${
+            blockerScan
+              ? 'not merged'
+              : carriedForward.has(b)
+                ? 'unobserved — it was carried forward without a scan, and is scanned again next wake now that something depends on it'
+                : 'unobserved — its refresh did not return'
+          })`,
         )
         return true
       }
@@ -2138,6 +2317,42 @@ const refreshed = [...rows, ...discovered].map((row) => {
   const fresh = freshById.get(row.id) || {}
   const refreshedLive = freshById.has(row.id)
   const li = linearById.get(row.id) || {}
+  const observedInLinear = linearById.has(row.id)
+  // Cancellation is read in ONE place for both branches below, so a carried-forward row and a
+  // scanned one cannot disagree about whether a question on cancelled work is still owed.
+  const cancelledNow = observedInLinear && CANCELLED_LINEAR.test((li.state || '').trim())
+  const dropQuestionsOnCancel =
+    cancelledNow && (row.blocker || (row.unsettled || []).length) ? { blocker: null, blockerFor: null, unsettled: [] } : {}
+
+  // CARRIED FORWARD ON PURPOSE — no scout was dispatched for this row (see `noScanNeeded`). Its own
+  // state is applied verbatim, and only what this wake genuinely re-observed is layered on top: the
+  // children query is not per-row, so Linear state, blocked-ness, cancellation and the route are as
+  // fresh here as on any scanned row.
+  //
+  // It must NOT fall through to the object below. That path treats every scan-derived field as void
+  // unless a live scan re-established it — right for a scout that DIED, and exactly wrong here. It
+  // would drop `specApproved`, which decides membership of the cross-spec set (whose two halves
+  // deadlock the epic when they disagree about who is still coming), and void the per-handle merge
+  // states — on a row nothing looked at and nothing contradicted.
+  if (carriedForward.has(row.id)) {
+    return {
+      ...row,
+      route: routeFor(row, li, observedInLinear, row.specPr),
+      linearState: li.state || row.linearState,
+      linearTerminal: observedInLinear ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+      ...dropQuestionsOnCancel,
+      blockedBy: openBlockers(observedInLinear ? li.blockedBy : row.blockedBy),
+      // The coordinator's own counters and the legacy-shape normalizations still run: they read the
+      // carried row, never a scan, so skipping them would leave a resumed epic's snake_case fields
+      // normalized on scanned rows and not on these.
+      specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
+      specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),
+      prFeedbackRounds: carriedCount(row, 'prFeedbackRounds', 'pr_feedback_rounds'),
+      blockerResolutions: normalizeResolutions(row),
+      blockerResolution: null,
+      blockerResolutionFor: null,
+    }
+  }
   // Hoisted because the phase guard below needs the approval decision, and an object literal cannot read
   // its own fields.
   const scanApproved = specApprovalFor(row, fresh, refreshedLive)
@@ -2145,7 +2360,7 @@ const refreshed = [...rows, ...discovered].map((row) => {
   // (an existing spec PR keeps the issue on the spec route whatever its label says), and an object
   // literal cannot read its own fields.
   const resolvedSpecPr = fresh.specPr == null ? row.specPr : fresh.specPr
-  const route = routeFor(row, li, linearById.has(row.id), resolvedSpecPr)
+  const route = routeFor(row, li, observedInLinear, resolvedSpecPr)
   return {
     ...row,
     ...fresh,
@@ -2205,22 +2420,20 @@ const refreshed = [...rows, ...discovered].map((row) => {
     // confirmed current. The last thing we actually saw is better evidence than nothing.
     headSha: (fresh && fresh.headSha) || row.headSha || null,
     linearState: li.state || row.linearState,
-    linearTerminal: linearById.has(row.id) ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
+    linearTerminal: observedInLinear ? TERMINAL_LINEAR.test((li.state || '').trim()) : !!row.linearTerminal,
     // CANCELLED work carries no unanswered question. `pendingAction` already refuses to dispatch it, so a
     // blocker left on the row could never be cleared by anything — and it kept the surfaced blockers list
     // non-empty, which held the whole epic short of wrap while a human was asked to answer a question about
     // work that no longer exists. Cleared here, in the one place cancellation is observed, so the blockers
     // list and `mayWrap` cannot disagree about it. Logged below, never silent — the same rule cancelled
     // verdicts already follow.
-    ...(linearById.has(row.id) && CANCELLED_LINEAR.test((li.state || '').trim()) && (row.blocker || (row.unsettled || []).length)
-      ? { blocker: null, blockerFor: null, unsettled: [] }
-      : {}),
+    ...dropQuestionsOnCancel,
     // Distinguish "the refresh didn't see this row" from "the refresh saw it and it has no
     // blockers". A present row is authoritative and CLEARS a resolved blocker (its absent
     // `blockedBy` is schema-valid and means none); an absent row means the scout died or
     // skipped it, so the carried relation stands. Getting this backwards either un-blocks an
     // issue on a failed refresh or blocks it forever after its prerequisite merged.
-    blockedBy: openBlockers(linearById.has(row.id) ? li.blockedBy : row.blockedBy),
+    blockedBy: openBlockers(observedInLinear ? li.blockedBy : row.blockedBy),
     // Counters are the coordinator's, never the scout's — they survive across wakes.
     specReviewRounds: carriedCount(row, 'specReviewRounds', 'spec_review_rounds'),
     specLevelFound: carriedFlag(row, 'specLevelFound', 'spec_level_found'),

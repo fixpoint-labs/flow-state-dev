@@ -275,13 +275,10 @@ function epicResponder({ approved = true, approvedByLabel = false, gateChangesRe
         }),
       }
     }
-    if (label.startsWith('refresh:')) {
-      const id = label.slice('refresh:'.length)
-      // Via `freshRow`, not a second copy of the same defaults. Keeping two lists is what let them
-      // drift: a newly required field was added to one and the other kept producing responses the real
-      // harness would reject, which the fixture validator then reported against every check at once.
-      return { issueId: id, ...freshRow(fresh[id] || {}) }
-    }
+    // Via `freshRow`, not a second copy of the same defaults. Keeping two lists is what let them
+    // drift: a newly required field was added to one and the other kept producing responses the real
+    // harness would reject, which the fixture validator then reported against every check at once.
+    if (label === 'refresh:issues') return prScan(prompt, (id) => fresh[id] || {})
     if (label.startsWith('poc:')) return { claim: 'c', verdict: 'CONFIRMED', evidence: 'ran it', ...poc }
     const id = label.split(':')[1]
     return { issueId: id, phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, multiPrPending: false, ...(worker[id] || {}) }
@@ -295,6 +292,9 @@ const row = (id, over = {}) => ({ id, phase: 'NEEDS_SPEC', specReviewRounds: 0, 
  * describe a response the real harness would reject — the failure mode Codex found in 11 tests.
  */
 const freshRow = (over = {}) => ({
+  // The batched scan's per-entry liveness. `true` is the default because it is what a working scan
+  // reports for every issue it read; a fixture exercising the half-done batch asks for `false`.
+  observed: true,
   phase: 'NEEDS_SPEC',
   specApproved: false,
   specApprovedByLabel: false,
@@ -314,6 +314,30 @@ const freshRow = (over = {}) => ({
   ...over,
 })
 const workerRes = (over = {}) => ({ phase: 'AWAITING_SPEC_APPROVAL', readyToMerge: false, multiPrPending: false, ...over })
+
+/**
+ * The issue ids the batched refresh was asked about, read off its own prompt.
+ *
+ * There is one refresh label now, so "which rows were scanned" is no longer visible in the call
+ * list — it is visible in the list the prompt carries, which is also what the real scan reads.
+ */
+const scannedIds = (prompt) => [...prompt.matchAll(/^\[\d+\] (\S+) —/gm)].map((m) => m[1])
+const scannedIn = (calls) => {
+  const c = calls.find((x) => x.label === 'refresh:issues')
+  return c ? scannedIds(c.prompt) : []
+}
+
+/**
+ * A batched-refresh response, built the way the real scan has to build it: one entry per issue in the
+ * PROMPT'S list, in that order.
+ *
+ * Taking the order from the prompt rather than from the fixture is what keeps these stubs honest
+ * about the positional bind — a fixture that imposed its own order would pass while the script bound
+ * every row to the wrong answer.
+ */
+const prScan = (prompt, per = () => ({})) => ({
+  issues: scannedIds(prompt).map((id) => ({ issueId: id, ...freshRow(per(id) || {}) })),
+})
 
 // ---------------------------------------------------------------------------
 // epic-wake
@@ -560,7 +584,7 @@ check('a finished prerequisite stops blocking; a cancelled one does not', async 
   const deadScout = await run('epic-wake.js', {
     args: epicArgs({ issues: [row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 7 }), row('FIX-3', { phase: 'NEEDS_SPEC' })] }),
     respond: epicResponder({
-      nulls: ['refresh:FIX-2'],
+      nulls: ['refresh:issues'],
       fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 7 }, 'FIX-3': { phase: 'NEEDS_SPEC' } },
       linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Backlog', blockedBy: ['FIX-2'] } },
     }),
@@ -669,7 +693,7 @@ check('an issue with an open blocked-by relation is tracked, not dispatched', as
           ],
         }
       }
-      if (label.startsWith('refresh:')) return { issueId: label.slice(8), ...freshRow() }
+      if (label === 'refresh:issues') return prScan(prompt)
       return { issueId: label.split(':')[1], ...workerRes() }
     },
   })
@@ -698,7 +722,7 @@ check('per-issue activity cursors are passed to the scout and advanced', async (
       },
     }),
   })
-  const refresh = calls.find((c) => c.label === 'refresh:FIX-2')
+  const refresh = calls.find((c) => c.label === 'refresh:issues')
   assert.match(refresh.prompt, /Last seen: activity at 2026-07-01T00:00:00Z, head sha1/)
   assert.match(refresh.prompt, /strictly newer than that timestamp/)
   assert.equal(result.issues[0].lastSeenActivityAt, '2026-07-02T00:00:00Z', 'the cursor advances to what was observed')
@@ -879,7 +903,7 @@ check('two verdicts on one issue both survive to be folded', async () => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK' }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK' }))
       if (label === 'poc:claim one') return { claim: 'claim one', verdict: 'CONFIRMED', evidence: 'a' }
       if (label === 'poc:claim two') return { claim: 'claim two', verdict: 'REFUTED', evidence: 'b' }
       return { issueId: 'FIX-2', ...workerRes({ phase: 'PR_FEEDBACK' }) }
@@ -915,7 +939,7 @@ check('a present Linear row clears a resolved blocker', async () => {
       // blockers. This fixture used to omit the field and assert the omission meant "none", which is
       // precisely the reading that admitted a still-blocked issue alongside its prerequisite.
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
+      if (label === 'refresh:issues') return prScan(prompt)
       return { issueId: 'FIX-2', ...workerRes() }
     },
   })
@@ -931,7 +955,7 @@ check("the issue scout is told a human's CHANGES_REQUESTED beats another's appro
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
   })
-  const scout = calls.find((c) => c.label === 'refresh:FIX-2')
+  const scout = calls.find((c) => c.label === 'refresh:issues')
   assert.ok(scout)
   assert.match(scout.prompt, /Collapse each human's reviews to their latest state first/)
   assert.match(scout.prompt, /ANY human's latest state is CHANGES_REQUESTED the spec is NOT approved/)
@@ -949,7 +973,7 @@ check('both scouts must attribute an approval label to a human before it passes 
     args: { ...epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }), owner: 'the-owner' },
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
   })
-  for (const label of ['gate:epic', 'refresh:FIX-2']) {
+  for (const label of ['gate:epic', 'refresh:issues']) {
     const scout = withOwner.calls.find((c) => c.label === label)
     assert.ok(scout, `${label} scout ran`)
     assert.match(scout.prompt, /`the-owner` applied it/, `${label} names the owner, not "a human"`)
@@ -965,7 +989,7 @@ check('both scouts must attribute an approval label to a human before it passes 
     args: epicArgs({ issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })] }),
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 } } }),
   })
-  for (const label of ['gate:epic', 'refresh:FIX-2']) {
+  for (const label of ['gate:epic', 'refresh:issues']) {
     const scout = noOwner.calls.find((c) => c.label === label)
     assert.ok(scout, `${label} scout ran`)
     assert.match(scout.prompt, /LABEL channel is OFF/, `${label} turns the label channel off`)
@@ -1318,9 +1342,7 @@ check('GATE: a stale specApproved can never survive a live refresh', async () =>
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'x', blockedBy: [] }] }
       // Schema-valid, reports the pushed head, omits nothing required — but says NOT approved.
-      if (label.startsWith('refresh:')) {
-        return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, headSha: 'pushed' }) }
-      }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, headSha: 'pushed' }))
       return { issueId: 'FIX-2', ...workerRes() }
     },
   })
@@ -1348,6 +1370,247 @@ check('a cleared blocker lets the issue resume', async () => {
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', newPrEvents: true, implPr: 9 } } }),
   })
   assert.deepEqual(workerLabels(calls), ['pr-feedback:FIX-2'])
+})
+
+check('a row parked on a human decision gets no refresh scout, and is still surfaced', async () => {
+  // One real wake dispatched twelve agents and spent five of them refreshing rows parked behind a
+  // `blocker` — rows it then refused to dispatch. The park IS the answer, so the scan buys nothing.
+  // Skipping the scan must not skip the SURFACING: the question is still owed to the human.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'PR_FEEDBACK', implPr: 9, blocker: 'one store or two?' }),
+        row('FIX-3', { phase: 'PR_FEEDBACK', implPr: 10 }),
+      ],
+    }),
+    respond: epicResponder({
+      // `headSha` is the marker: it is inert, and it only reaches the row if the one dispatched scan
+      // was bound to the right one. Skipping a row shortens the results array, so binding the
+      // remainder against the FULL table would offset every scan by each skipped row ahead of it —
+      // the exact failure `bindByPosition` exists to prevent, arriving through the door it doesn't watch.
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 }, 'FIX-3': { phase: 'PR_FEEDBACK', implPr: 10, headSha: 'sha-3' } },
+    }),
+  })
+  assert.deepEqual(scannedIn(calls), ['FIX-3'], 'only the row that could act on a fresh read is scanned')
+  assert.deepEqual(result.blockers, [{ issueId: 'FIX-2', blocker: 'one store or two?' }])
+  assert.equal(result.issues.find((r) => r.id === 'FIX-3').headSha, 'sha-3', 'the surviving scan landed on its own row')
+  assert.doesNotMatch(logs.join('\n'), /discarding the scan/)
+  assert.match(logs.join('\n'), /carried forward without a PR scan/)
+})
+
+check('a terminal row gets no refresh scout, and is not resurrected by being skipped', async () => {
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {} }, linear: { 'FIX-2': 'Done' } }),
+  })
+  assert.deepEqual(scannedIn(calls), [])
+  assert.equal(result.issues[0].phase, 'DONE')
+  assert.equal(result.issues[0].merged, true, 'the merge it was finished on is carried, not re-derived from an empty scan')
+  assert.equal(result.mayWrap, true, 'a carried-forward terminal row still counts as finished')
+})
+
+check('a terminal row with a verdict still owed a fold keeps its scan', async () => {
+  // `pendingAction` dispatches `apply-verdict` on a finished row, so this one is not parked at all —
+  // the terminal skip has to ask what is LEFT to apply, not just whether Linear says done.
+  const { calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'DONE',
+          implPr: 9,
+          merged: true,
+          linearTerminal: true,
+          verdicts: [{ claim: 'c', verdict: 'REFUTED', evidence: 'ran it' }],
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'DONE', merged: true, implPr: 9 } }, linear: { 'FIX-2': 'Done' } }),
+  })
+  assert.deepEqual(scannedIn(calls), ['FIX-2'])
+  assert.deepEqual(workerLabels(calls), ['apply-verdict:FIX-2'])
+})
+
+check('a blocker the SCAN observed keeps its scan, so reopening the PR clears it', async () => {
+  // `closedBlocker` tags a blocker that came from an observation (the impl PR was closed unmerged),
+  // not from a worker escalating a decision. Its own text advertises "reopen the PR and the next scan
+  // picks it up" — a recovery only a scan can see, so this one is not skippable.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blocker: 'Closed without merging: impl PR #9. Needs a human decision — either reopen the PR on GitHub...',
+          closedBlocker: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } } }),
+  })
+  assert.deepEqual(scannedIn(calls), ['FIX-2'])
+  assert.equal(result.issues[0].blocker, null, 'the scan no longer reports the handle closed, so the observation goes')
+  assert.deepEqual(result.blockers, [])
+})
+
+check('a closedBlocker keeps its scan even on a terminal row', async () => {
+  // The rule above is not conditional on the row being non-terminal, and the doc comment lists it as a
+  // flat exception — but the terminal branch returned before ever consulting `closedBlocker`, so a row
+  // that is BOTH terminal in Linear and carrying a closed-PR observation was skipped forever. Its
+  // blocker text advertises "reopen the PR"; only a scan sees that, so the recovery was unreachable and
+  // the code contradicted the comment directly above it. Reachable whenever a human marks the issue done
+  // while a sub-PR sits closed-unmerged.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          linearTerminal: true,
+          blocker: 'Closed without merging: impl PR #9. Needs a human decision — either reopen the PR on GitHub...',
+          closedBlocker: true,
+        }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } },
+      linear: { 'FIX-2': 'Done' },
+    }),
+  })
+  assert.deepEqual(scannedIn(calls), ['FIX-2'], 'terminal does not outrank the observation that only a scan can clear')
+  assert.equal(result.issues[0].blocker, null, 'and the reopened handle actually clears it')
+})
+
+check('a terminal prerequisite keeps its scan, so its dependent can unblock', async () => {
+  // `openBlockers` clears a blocked-by relation only on LIVE merge evidence — Linear state is a
+  // mirror a human can move by hand, the merge is the fact. A prerequisite with no scan reads as
+  // "unobserved", which keeps the dependent blocked; and since the terminal skip never lifts on its
+  // own, that block would be permanent. So anything another row waits on is scanned.
+  const { result, calls } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true }),
+        row('FIX-3', { phase: 'NEEDS_SPEC', blockedBy: ['FIX-2'] }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: { 'FIX-2': { phase: 'DONE', merged: true, implPr: 9 }, 'FIX-3': {} },
+      linear: { 'FIX-2': 'Done', 'FIX-3': { state: 'Todo', blockedBy: ['FIX-2'] } },
+    }),
+  })
+  assert.ok(scannedIn(calls).includes('FIX-2'), 'the prerequisite is scanned even though it is terminal')
+  assert.deepEqual(result.issues.find((r) => r.id === 'FIX-3').blockedBy, [], 'live merge evidence clears the relation')
+  assert.deepEqual(result.blocked, [])
+})
+
+check('a row carried forward on purpose is not a row the scan never reached', async () => {
+  // The two look identical from `freshById` and mean opposite things. FIX-2 was never dispatched, so
+  // nothing contradicted its state and it is carried verbatim. FIX-3 was dispatched and the scan came
+  // back saying it never got there — which re-establishes nothing, so every scan-derived field falls
+  // back to its fail-closed default, and the approval that gates implementation is the one that must
+  // not survive.
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, specApproved: true, ciFailed: true, blocker: 'which store?' }),
+        row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, specApproved: true, ciFailed: true, lastSeenActivityAt: 'T1' }),
+      ],
+    }),
+    respond: epicResponder({
+      fresh: {
+        'FIX-2': {},
+        // `observed: false` is authoritative and NOTHING else in the entry is read — an agent that
+        // ran out of room still has to emit an entry, and whatever it fills the rest with (here an
+        // approval, a green PR and a cursor) must not be believed. Left readable, this one entry
+        // releases implementation on a spec nobody looked at.
+        'FIX-3': { observed: false, specApproved: true, readyToMerge: true, latestActivityAt: 'BOGUS', headSha: 'abc' },
+      },
+    }),
+  })
+  assert.deepEqual(scannedIn(calls), ['FIX-3'])
+  const parked = result.issues.find((r) => r.id === 'FIX-2')
+  const unreached = result.issues.find((r) => r.id === 'FIX-3')
+  assert.equal(parked.specApproved, true, 'nothing looked at this row, so nothing revoked its approval')
+  assert.equal(parked.ciFailed, true, 'and nothing re-observed its CI either')
+  assert.equal(unreached.specApproved, false, 'an unobserved entry establishes nothing, so the gate stays shut')
+  assert.equal(unreached.readyToMerge, false)
+  assert.equal(unreached.ciFailed, false)
+  assert.equal(unreached.lastSeenActivityAt, 'T1', 'and its cursor never moves to a timestamp nobody read')
+  assert.deepEqual(workerLabels(calls), [], 'neither row dispatches off a read that did not happen')
+  assert.match(logs.join('\n'), /reported FIX-3 as NOT observed/)
+})
+
+check('a batch that dies refreshes nothing, and never reads as a set of quiet rows', async () => {
+  // Batching's real cost: one failure now costs every row it covered. That has to land on the SAFE
+  // side — nothing observed, nothing advanced — and never on the other one, where ten unread rows
+  // look like ten confirmed-unchanged ones and ten cursors move past feedback nobody read.
+  //
+  // Both rows are at their review budget, so nothing dispatches and the wake's own bookkeeping is the
+  // only thing that can touch them.
+  const carried = {
+    phase: 'AWAITING_SPEC_APPROVAL',
+    specReviewRounds: 2,
+    newSpecReviewEvents: true,
+    latestActivityAt: 'T2',
+    lastSeenActivityAt: 'T1',
+    specApproved: true,
+    readyToMerge: true,
+    ciFailed: true,
+  }
+  const { result, calls, logs } = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { ...carried, specPr: 7 }), row('FIX-3', { ...carried, specPr: 8 })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {}, 'FIX-3': {} }, nulls: ['refresh:issues'] }),
+  })
+  assert.deepEqual(workerLabels(calls), [], 'nothing is dispatched off a scan that did not happen')
+  for (const r of result.issues) {
+    assert.equal(r.lastSeenActivityAt, 'T1', `${r.id}: no cursor moves on a scan that did not happen`)
+    assert.equal(r.newSpecReviewEvents, true, `${r.id}: the batch stays LIVE to be re-derived, never cleared as though a scan had reported quiet`)
+    assert.equal(r.specApproved, false, `${r.id}: and nothing scan-derived survives`)
+    assert.equal(r.readyToMerge, false)
+    assert.equal(r.ciFailed, false)
+  }
+  assert.deepEqual(result.gates.filter((g) => g.kind === 'merge'), [], 'a dead batch offers nothing for merge')
+  assert.match(logs.join('\n'), /NOTHING was observed for any of the 2 row\(s\)/)
+})
+
+check('carrying a row forward never advances its activity cursor', async () => {
+  // Invariant 2 applies to a skipped row exactly as it does to a deferred one: nobody read that
+  // batch, so the cursor stays put and the flag stays live for the wake that un-parks the row.
+  const { result } = await run('epic-wake.js', {
+    args: epicArgs({
+      issues: [
+        row('FIX-2', {
+          phase: 'PR_FEEDBACK',
+          implPr: 9,
+          blocker: 'which store?',
+          newPrEvents: true,
+          latestActivityAt: 'T2',
+          lastSeenActivityAt: 'T1',
+        }),
+      ],
+    }),
+    respond: epicResponder({ fresh: { 'FIX-2': {} } }),
+  })
+  assert.equal(result.issues[0].lastSeenActivityAt, 'T1')
+  assert.equal(result.issues[0].newPrEvents, true)
+})
+
+check('a reopened terminal row is scanned again on the next wake', async () => {
+  // The skip is keyed on `linearTerminal`, which the children query refreshes for EVERY row —
+  // scanned or not, since that query is one agent for the whole set. Keying it on the carried phase
+  // would be self-sustaining instead: only a scan moves a phase off DONE, so a human reopening a
+  // finished issue mid-epic would never be looked at again.
+  const first = await run('epic-wake.js', {
+    args: epicArgs({ issues: [row('FIX-2', { phase: 'DONE', implPr: 9, merged: true, linearTerminal: true })] }),
+    respond: epicResponder({ fresh: { 'FIX-2': {} }, linear: { 'FIX-2': 'In Development' } }),
+  })
+  assert.deepEqual(scannedIn(first.calls), [], 'this wake was planned before the children query returned')
+  assert.equal(first.result.issues[0].linearTerminal, false, 'but the mirror still corrected itself')
+
+  const second = await run('epic-wake.js', {
+    args: epicArgs({ issues: first.result.issues }),
+    respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', implPr: 9 } }, linear: { 'FIX-2': 'In Development' } }),
+  })
+  assert.deepEqual(scannedIn(second.calls), ['FIX-2'])
 })
 
 check('a non-review worker cannot revoke the authorized third round', async () => {
@@ -1389,7 +1652,7 @@ check('a newly discovered epic child enters the table at NEEDS_SPEC', async () =
           ],
         }
       }
-      if (label.startsWith('refresh:')) return { issueId: label.slice(8), ...freshRow() }
+      if (label === 'refresh:issues') return prScan(prompt)
       return { issueId: label.split(':')[1], ...workerRes() }
     },
   })
@@ -2138,22 +2401,29 @@ check('a refresh scan echoing a sibling id is discarded, not bound to the wrong 
     args: epicArgs({
       issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }), row('FIX-3', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 8 })],
     }),
-    // FIX-3's scout reports FIX-2's id along with an approval. Keying on the reported value would
-    // land that approval on FIX-2 and start implementing a spec the human approved for FIX-3.
+    // The batch names FIX-2 in FIX-3's POSITION, along with an approval. Keying on the reported name
+    // — the natural thing to do with an array that names its entries — would land that approval on
+    // FIX-2 and start implementing a spec the human approved for FIX-3.
     respond: (prompt, opts) => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
       if (label === 'linear:epic-children') return { issues: [] }
-      if (label === 'refresh:FIX-2') return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) }
-      if (label === 'refresh:FIX-3') return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, specPr: 8 }) }
+      if (label === 'refresh:issues') {
+        return {
+          issues: [
+            { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) },
+            { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specApproved: true, specPr: 8 }) },
+          ],
+        }
+      }
       return workerRes({ issueId: label.split(':')[1] })
     },
   })
   const two = result.issues.find((r) => r.id === 'FIX-2')
   const three = result.issues.find((r) => r.id === 'FIX-3')
   assert.equal(two.specApproved, false, "FIX-2 must not inherit FIX-3's approval")
-  assert.equal(three.specApproved, false, 'a discarded scan fails closed on the row that requested it')
-  assert.match(logs.join('\n'), /refresh:FIX-3 reported issueId FIX-2 — discarding the scan/)
+  assert.equal(three.specApproved, false, 'a discarded entry fails closed on the row that requested it')
+  assert.match(logs.join('\n'), /reported issueId FIX-2 in FIX-3's position — discarding that entry/)
 })
 
 check('a worker echoing a sibling id is discarded and its settle request does not fan', async () => {
@@ -2163,7 +2433,7 @@ check('a worker echoing a sibling id is discarded and its settle request does no
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
       if (label === 'linear:epic-children') return { issues: [] }
-      if (label.startsWith('refresh:')) return { issueId: label.slice('refresh:'.length), ...freshRow() }
+      if (label === 'refresh:issues') return prScan(prompt)
       // FIX-3's worker reports FIX-2's id, and raises a claim while it's at it.
       if (label === 'spec:FIX-3') {
         return workerRes({ issueId: 'FIX-2', phase: 'AWAITING_SPEC_APPROVAL', specPr: 8, settleRequested: { claim: 'c', load: 'x', falsify: 'y', threads: 't' } })
@@ -2562,7 +2832,7 @@ check("a multi-PR issue's refresh scout is given every sub-PR to read", async ()
     }),
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK' } } }),
   })
-  const refresh = calls.find((c) => c.label === 'refresh:FIX-2').prompt
+  const refresh = calls.find((c) => c.label === 'refresh:issues').prompt
   assert.match(refresh, /a=#41 \(open\)/)
   assert.match(refresh, /b=not opened \(pending\)/)
   assert.match(refresh, /report activity, CI and merge state across ALL of them/)
@@ -2692,7 +2962,7 @@ check('a merged repair PR re-arms the assembled goal instead of waiting forever'
     respond: epicResponder({ fresh: { 'FIX-2': { phase: 'PR_FEEDBACK', repairMerged: true } } }),
   })
   assert.equal(result.issues[0].assembledGoal.fixMerged, true)
-  assert.match(calls.find((c) => c.label === 'refresh:FIX-2').prompt, /REPAIR PR #77/)
+  assert.match(calls.find((c) => c.label === 'refresh:issues').prompt, /REPAIR PR #77/)
 })
 
 check('an unmerged repair PR surfaces its own merge gate', async () => {
@@ -2779,7 +3049,7 @@ check('per-handle merge readiness never survives a wake as stale state', async (
   // Next wake, the scout dies: no live observation, so no gate.
   const second = await run('epic-wake.js', {
     args: epicArgs({ issues: [{ ...first.result.issues[0] }] }),
-    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+    respond: epicResponder({ nulls: ['refresh:issues'] }),
   })
   assert.deepEqual(second.result.gates, [], 'a gate must rest on a live observation')
 })
@@ -3075,7 +3345,7 @@ check('an in-session approval is refused once a newer head has been observed', a
         }),
       ],
     }),
-    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+    respond: epicResponder({ nulls: ['refresh:issues'] }),
   })
   assert.deepEqual(workerLabels(calls), [], 'a known-newer head invalidates the approval')
   assert.equal(result.issues[0].specApproved, false)
@@ -3095,7 +3365,7 @@ check('a headless live epic scan holds work even when the epic was already appro
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
+      if (label === 'refresh:issues') return prScan(prompt)
       return { issueId: 'FIX-2', ...workerRes() }
     },
   })
@@ -3258,7 +3528,7 @@ check('a parked row is never offered for merge', async () => {
         const label = opts.label || ''
         if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
         if (label === 'linear:epic-children') return { issues: [] }
-        if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', readyToMerge: true, implPr: 9 }) }
+        if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', readyToMerge: true, implPr: 9 }))
         return workerRes({ issueId: 'FIX-2' })
       },
     })
@@ -3976,7 +4246,7 @@ check('an in-session approval is refused when a live scan returns no head', asyn
     args: epicArgs({
       issues: [row('FIX-2', { phase: 'AWAITING_SPEC_APPROVAL', specPr: 7, approvedInSession: 'head1', headSha: 'head1' })],
     }),
-    respond: epicResponder({ nulls: ['refresh:FIX-2'], worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } } }),
+    respond: epicResponder({ nulls: ['refresh:issues'], worker: { 'FIX-2': { phase: 'NEEDS_IMPLEMENTATION', specPr: 7 } } }),
   })
   assert.deepEqual(workerLabels(dead.calls), [], 'held for this wake')
   assert.equal(dead.result.issues[0].approvedInSession, 'head1', 'and the approval itself is kept')
@@ -4046,7 +4316,7 @@ check('a headless scan does not erase the last confirmed head', async () => {
   // So a dead scout next wake still knows the approved SHA is stale.
   const second = await run('epic-wake.js', {
     args: epicArgs({ issues: [{ ...first.result.issues[0] }] }),
-    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+    respond: epicResponder({ nulls: ['refresh:issues'] }),
   })
   assert.deepEqual(workerLabels(second.calls), [], 'a known-newer head still invalidates the approval')
 })
@@ -4349,7 +4619,7 @@ check('a terminal issue stops asking the human to approve its spec', async () =>
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'AWAITING_SPEC_APPROVAL', specPr: 7 }))
       return workerRes({ issueId: 'FIX-2' })
     },
   })
@@ -5140,7 +5410,7 @@ check('an answered decision on a completed issue is still applied', async () => 
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
     },
   })
@@ -5157,7 +5427,7 @@ check('an answered decision on a completed issue is still applied', async () => 
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
     },
   })
@@ -5366,7 +5636,7 @@ check("a cancelled row's open question is dropped, out loud", async () => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
     },
   })
@@ -5425,7 +5695,7 @@ check('a cancelled row does not strand the epic short of wrap', async () => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
     },
   })
@@ -5451,7 +5721,7 @@ check('a carried epic verdict blocks wrap', async () => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       if (label === 'fold:epic') return null // the fold died, so the verdict is still carried
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
     },
@@ -5565,7 +5835,7 @@ check('an epic with an unanswered question may not wrap', async () => {
         const label = opts.label || ''
         if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
         if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
-        if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+        if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
         return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
       },
     })
@@ -5588,7 +5858,7 @@ check('an epic with an unanswered question may not wrap', async () => {
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       return null // the folding worker died, so the verdict is still owed
     },
   })
@@ -5634,7 +5904,7 @@ check('a dead or partial scan cannot clear a closed-handle blocker', async () =>
 
   const deadScout = await run('epic-wake.js', {
     args: epicArgs({ issues: [carried] }),
-    respond: epicResponder({ nulls: ['refresh:FIX-2'] }),
+    respond: epicResponder({ nulls: ['refresh:issues'] }),
   })
   assert.match(deadScout.result.issues[0].blocker || '', /Closed without merging/, 'a dead scout observed nothing')
   assert.equal(deadScout.result.issues[0].closedBlocker, true)
@@ -6856,7 +7126,7 @@ check('a POC verdict that lands after the issue completed is still folded', asyn
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Done', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'DONE', merged: true, implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'DONE', merged: true, implPr: 9 }))
       return workerRes({ issueId: 'FIX-2', phase: 'DONE' })
     },
   })
@@ -6871,7 +7141,7 @@ check('a POC verdict that lands after the issue completed is still folded', asyn
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, approver: 'jake', headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9 }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9 }))
       return workerRes({ issueId: 'FIX-2' })
     },
   })
@@ -7336,7 +7606,7 @@ check('a terminal Linear issue stops asking the human to merge it', async () => 
       const label = opts.label || ''
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Canceled', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }) }
+      if (label === 'refresh:issues') return prScan(prompt, () => ({ phase: 'PR_FEEDBACK', implPr: 9, readyToMerge: true }))
       return { issueId: 'FIX-2', ...workerRes() }
     },
   })
@@ -7359,7 +7629,7 @@ check('an approval with no current head holds work for the wake', async () => {
       // Schema-valid but headSha null: we cannot align workers to the approved objective.
       if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: null, newReviewEvents: false, latestActivityAt: null }
       if (label === 'linear:epic-children') return { issues: [{ id: 'FIX-2', state: 'Todo', blockedBy: [] }] }
-      if (label.startsWith('refresh:')) return { issueId: 'FIX-2', ...freshRow() }
+      if (label === 'refresh:issues') return prScan(prompt)
       return { issueId: 'FIX-2', ...workerRes() }
     },
   })
@@ -7609,7 +7879,10 @@ check('INVARIANT: every phase a row can hold is one the state machine handles', 
   for (const schema of ['PR_STATE_SCHEMA', 'WORKER_SCHEMA']) {
     const at = src.indexOf(`const ${schema} =`)
     assert.ok(at > 0, `${schema} not found`)
-    const body = src.slice(at, at + 1600)
+    // The whole declaration, not a fixed slice of it. A character window fails in both directions:
+    // it read into the NEXT declaration when the schema was short, and it stopped short of `phase`
+    // the moment a property was added above it — reporting the constraint missing when it was there.
+    const body = balancedDecl(src, at)
     assert.match(
       body,
       /phase: \{ type: 'string', enum: LIFECYCLE_PHASES \}/,
@@ -7692,7 +7965,11 @@ check('INVARIANT: every gating field is schema-required', async () => {
       // head cannot be shown to apply to the spec PR's current content, and the in-session channel had
       // enforced that from the start. A behavioural check cannot pin it — the shared fixture always
       // supplies a head — so this is the only place the requirement itself is asserted.
-      PR_STATE_SCHEMA: ['specApproved', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha'],
+      // `observed` joined when the per-issue scouts became one batched scan. It is the per-row
+      // liveness signal a null result used to be: optional, an entry that omitted it would be read as
+      // a live observation, and a scan that ran out of room after six of ten issues would report the
+      // other four as quiet — four cursors advanced past feedback nobody read.
+      PR_STATE_SCHEMA: ['specApproved', 'observed', 'newSpecReviewEvents', 'newPrEvents', 'readyToMerge', 'merged', 'headSha'],
       // `multiPrPending` earns its place here for a reason the others don't share: it was optional AND
       // had no clearing path, because the prompt asked only for the true case. So an omission had to
       // preserve the carried value (coercing it to false strands cap-deferred slices no event will
@@ -8153,13 +8430,18 @@ check('INVARIANT: an agent-reported id never decides which row a result lands on
             const label = opts.label || ''
             if (label === 'gate:epic') return { approved: true, approvedByLabel: false, humanChangesRequested: false, headSha: 'abc', newReviewEvents: false, latestActivityAt: '2026-07-05T00:00:00Z' }
             if (label === 'linear:epic-children') return { issues: [] }
-            if (label.startsWith('refresh:')) {
-              const self = label.slice('refresh:'.length)
-              const lying = kind === 'refresh' && self === liar
-              // The dangerous payload: an approval, and a merge-ready PR, attributed elsewhere.
+            if (label === 'refresh:issues') {
+              // The batch answers in the prompt's order — the bind is positional — but one entry
+              // NAMES a different issue than the position it sits in. The dangerous payload rides
+              // with the lie: an approval, and a merge-ready PR, attributed elsewhere.
               return {
-                issueId: lying ? claimed : self,
-                ...freshRow({ phase, specApproved: lying, readyToMerge: lying, specPr: ownPr[self] }),
+                issues: scannedIds(prompt).map((self) => {
+                  const lying = kind === 'refresh' && self === liar
+                  return {
+                    issueId: lying ? claimed : self,
+                    ...freshRow({ phase, specApproved: lying, readyToMerge: lying, specPr: ownPr[self] }),
+                  }
+                }),
               }
             }
             const self = label.split(':')[1]
