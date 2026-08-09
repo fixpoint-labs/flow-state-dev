@@ -1856,4 +1856,111 @@ describe("cross-process abort delivered during the background drain", () => {
       "request.finished:completed"
     ]);
   });
+
+  /**
+   * The window on the OTHER side of the abort check, pinned deliberately.
+   *
+   * The check sits immediately before `action.onCompleted` — there is no
+   * statement between them — so it is already the last instant at which
+   * `aborted` is a true statement about what the request did. A cancel that
+   * lands after it stops nothing: the body's output exists, the work pool has
+   * drained, and the only things left are the success hooks and the record
+   * write that reports them.
+   *
+   * So a cancel accepted here settles `completed`, and `/abort` answers 204
+   * because the record is still `in_progress` until that write commits. That
+   * pairing looks wrong and is not: the alternative is to fire `onCompleted`
+   * (committing its side effects) and then report `aborted`, telling the
+   * caller nothing happened while the success notification is already out.
+   * The record carries `abortRequested: true` beside `completed`, which is the
+   * honest account — someone asked, and they asked too late.
+   *
+   * Staged on two gates, so the cancel provably lands while the first hook is
+   * pending rather than on timing. Drives the real route handler, because the
+   * 204 is half of what is being pinned.
+   */
+  it("settles completed for a cancel that lands after the check, while a hook is pending", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_post_check_hook_window";
+    const inHook = createGate();
+    const releaseHook = createGate();
+    const events: string[] = [];
+
+    const flow = defineFlow({
+      kind: "post-check-hook-window",
+      request: {
+        heartbeatIntervalMs: 0,
+        onCompleted: recordingObserver(events, "request.completed"),
+        onFinished: recordingObserver(events, "request.finished")
+      },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "body-post-check",
+            inputSchema: z.object({}).passthrough(),
+            outputSchema: z.string(),
+            execute: async () => "body succeeded"
+          }),
+          // Parks the run inside the FIRST completion hook — past the abort
+          // check, before the terminal write.
+          onCompleted: handler({
+            name: "action-completed-parks",
+            inputSchema: z.any(),
+            outputSchema: z.any(),
+            execute: async () => {
+              events.push("action.completed");
+              inHook.open();
+              await releaseHook.wait;
+            }
+          })
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_post_check",
+      stores,
+      runtimeConfig: {}
+    });
+
+    await inHook.wait;
+
+    const response = await handleAbortRequest(
+      new Request(
+        `http://localhost/api/flows/post-check-hook-window/requests/${requestId}/abort`,
+        { method: "POST" }
+      ),
+      { kind: "abort_request", flowKind: "post-check-hook-window", requestId },
+      { stores }
+    );
+    // The record is still `in_progress`, so the cancel IS accepted and the
+    // controller IS fired. This is the interleave under discussion, reached on
+    // the real path rather than argued about.
+    expect(response.status).toBe(204);
+
+    releaseHook.open();
+    const result = await resultPromise;
+
+    // The output the body genuinely produced is returned, not discarded.
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe("body succeeded");
+
+    const record = await stores.request.get(requestId);
+    expect(record?.status).toBe("completed");
+    // Both halves on one record: the cancel was accepted, and it was too late.
+    expect(record?.abortRequested).toBe(true);
+
+    // Exact list. `onCompleted` and the status the request settles with agree —
+    // which is the property a re-check placed after these hooks would break.
+    expect(events).toEqual([
+      "action.completed",
+      "request.completed",
+      "request.finished:completed"
+    ]);
+  });
 });
