@@ -483,6 +483,25 @@ open thread as implementer notes. Spend a third round only when round two surfac
 genuine **spec-level** finding — a new approach question, not more notes. Say so when you
 do, in one line, so the extra round is a visible decision rather than drift.
 
+**The budget bounds folding *review feedback*. It does not close the document.** A converged
+spec — and especially a converged **epic**-spec, which stays open for the life of the epic —
+is still an editable artifact on an open PR. A correction nobody disputes (a decision that
+moved while a restatement lagged, a count that no longer matches the list it counts, a
+diagram contradicting the section it illustrates) is **maintenance, not a review round**: make
+it on the PR, in a commit, and spend no budget on it. Convergence means "stop grinding with
+reviewers", not "this document is now frozen and further corrections need a process".
+
+**So a correction to the epic-spec is never a sub-issue and never gets its own spec.** That
+route has been taken once and it is worth naming, because every step of it looked locally
+reasonable: a fold judged some remaining restatements *"below the bar for another pass but
+above the bar for silence"*, filed them as a Linear issue for lack of any other mechanism, and
+the issue — a non-terminal child of the epic, carrying no category, so routed by the
+fail-closed `spec` default — was swept into NEEDS_SPEC and grew a three-hundred-line spec and
+a second PR to make forty lines of edits to a document that was open and editable the whole
+time. **Two artifacts and a lifecycle to do the work of one commit.** If the correction is
+uncontested, commit it. If it is contested, it is a decision, and decisions go to the human —
+also not to a new issue.
+
 Two mechanics the budget depends on, or it misfires:
 
 - **Count rounds spent, not events dispatched.** A batch that was *only* factual corrections
