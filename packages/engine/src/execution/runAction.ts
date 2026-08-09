@@ -625,6 +625,12 @@ export async function runActionInternal<
     metadata: options.metadata,
     startedAt: Date.now(),
     lastHeartbeatAt: Date.now()
+    // No `queuedAt`, and that omission is load-bearing (FIX-999). When an
+    // external worker claims a job the host registered at enqueue time, this
+    // re-register replaces that entry wholesale — dropping the queued marker
+    // and handing the entry to the heartbeat timer below. That is the entire
+    // claim transition: from here a dead worker is reaped on the ordinary
+    // stale-heartbeat path, with no queued grace protecting it.
   });
 
   const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;

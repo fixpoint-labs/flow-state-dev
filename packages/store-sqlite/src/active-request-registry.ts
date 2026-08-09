@@ -17,7 +17,8 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
     entry.input !== undefined ? JSON.stringify(entry.input) : null,
     entry.metadata !== undefined ? JSON.stringify(entry.metadata) : null,
     entry.startedAt,
-    entry.lastHeartbeatAt
+    entry.lastHeartbeatAt,
+    entry.queuedAt ?? null
   ];
 }
 
@@ -56,6 +57,13 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
   if (row.metadata !== null) {
     entry.metadata = JSON.parse(row.metadata as string);
   }
+  // Pre-FIX-999 rows have no `queued_at` column value; absent means claimed,
+  // which is how every such row behaved before the field existed. Left
+  // undefined rather than defaulted so the sweeper's `!= null` guard sees the
+  // legacy shape unchanged.
+  if (row.queued_at !== null && row.queued_at !== undefined) {
+    entry.queuedAt = row.queued_at as number;
+  }
 
   return entry;
 }
@@ -66,8 +74,9 @@ export function createSQLiteActiveRequestRegistry(
   const registerStmt = db.prepare(`
     INSERT OR REPLACE INTO active_requests
       (request_id, flow_kind, action_name, session_id, user_id, org_id,
-       tenant_id, source, input, metadata, started_at, last_heartbeat_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       tenant_id, source, input, metadata, started_at, last_heartbeat_at,
+       queued_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const heartbeatStmt = db.prepare(

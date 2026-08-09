@@ -19,6 +19,24 @@ export type InterruptedRequestInfo = {
 };
 
 /**
+ * How long a request may sit in an external queue, unclaimed, before the
+ * sweeper treats it as lost rather than waiting (FIX-999).
+ *
+ * Deliberately NOT derived from `staleThresholdMs`. That threshold answers "how
+ * long since a live worker checked in", tuned against the heartbeat cadence and
+ * typically seconds. This answers "how long might a job legitimately queue
+ * before a worker frees up", which is a property of the queue's depth and
+ * worker count and has nothing to do with heartbeat cadence. Scaling one off
+ * the other would couple two unrelated timescales and give a deployment that
+ * tightened its heartbeat a queue grace it never asked to shorten.
+ *
+ * Ten minutes is generous for a backlog and still bounded, so a job the queue
+ * genuinely dropped does not linger `in_progress` forever. A deployment that
+ * knows its worst-case queue wait should pass `queuedGraceMs` explicitly.
+ */
+export const DEFAULT_QUEUED_GRACE_MS = 10 * 60_000;
+
+/**
  * Scans the active request registry for stale entries and marks
  * the corresponding request records as interrupted.
  *
@@ -31,12 +49,25 @@ export type InterruptedRequestInfo = {
  * caller in a mixed app reaches this with the app's open flows only, so it
  * cannot sweep an authenticated flow's in-flight requests.
  *
+ * A request queued with an external dispatcher and not yet claimed by a worker
+ * is skipped while it is within `queuedGraceMs` (FIX-999): it has no heartbeat
+ * because nothing is running it yet, so its age is queue wait rather than
+ * death. Marking it `interrupted` invites reconciliation to retry a job the
+ * queue is still holding — duplicate execution. Past the grace it is swept
+ * exactly like any other stale entry, so a job the queue dropped is still
+ * reaped and never lingers `in_progress` forever.
+ *
  * Returns the list of interrupted requests for optional retry.
  */
 export async function detectInterruptedRequests(options: {
   stores: StoreRegistry;
   /** Requests with no heartbeat for this duration are considered stale. Default: 30000 (30s). */
   staleThresholdMs?: number;
+  /**
+   * How long an unclaimed, externally-queued request may wait before it is
+   * treated as lost. Default: {@link DEFAULT_QUEUED_GRACE_MS}.
+   */
+  queuedGraceMs?: number;
   /** Restrict the sweep to entries owned by this userId. */
   userId?: string;
   /** Restrict the sweep to these flow kinds. Undefined means unrestricted. */
@@ -45,12 +76,17 @@ export async function detectInterruptedRequests(options: {
 }): Promise<InterruptedRequestInfo[]> {
   const { stores, userId, anonymousFlowKinds, logger = DEFAULT_RUNTIME_LOGGER } = options;
   const staleThresholdMs = options.staleThresholdMs ?? 30_000;
+  const queuedGraceMs = options.queuedGraceMs ?? DEFAULT_QUEUED_GRACE_MS;
 
   const allStale = await stores.activeRequests.listStale(staleThresholdMs);
+  const sweepStartedAt = Date.now();
   const stale = allStale.filter(
     (entry) =>
       (userId === undefined || entry.userId === userId) &&
-      (anonymousFlowKinds === undefined || anonymousFlowKinds.has(entry.flowKind))
+      (anonymousFlowKinds === undefined || anonymousFlowKinds.has(entry.flowKind)) &&
+      // `!= null` rather than truthiness: an entry from before this field
+      // existed has no `queuedAt` and is swept exactly as it was (BP-030).
+      (entry.queuedAt == null || sweepStartedAt - entry.queuedAt > queuedGraceMs)
   );
   const results: InterruptedRequestInfo[] = [];
 

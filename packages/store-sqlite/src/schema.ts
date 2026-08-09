@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS active_requests (
   input             TEXT,
   metadata          TEXT,
   started_at        INTEGER NOT NULL,
-  last_heartbeat_at INTEGER NOT NULL
+  last_heartbeat_at INTEGER NOT NULL,
+  queued_at         INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_active_requests_heartbeat  ON active_requests(last_heartbeat_at);
 CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(user_id);
@@ -121,6 +122,29 @@ function migrateAddActiveRequestsSource(db: Database.Database): void {
   const hasSource = cols.some((c) => c.name === "source");
   if (!hasSource) {
     db.exec("ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'http'");
+  }
+}
+
+/**
+ * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ *
+ * Nullable with no default, and **no backfill is possible or wanted**: the
+ * column marks a request that was registered at enqueue time and not yet
+ * claimed by a worker, and nothing can reconstruct that after the fact. NULL
+ * reads back as "claimed", which is the pre-existing behaviour for every row —
+ * they are swept on `last_heartbeat_at` exactly as before (BP-030).
+ */
+function migrateAddActiveRequestsQueuedAt(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'active_requests'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('active_requests')")
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "queued_at")) {
+    db.exec("ALTER TABLE active_requests ADD COLUMN queued_at INTEGER");
   }
 }
 
@@ -493,6 +517,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   // its target columns.
   migrateProjectToOrg(db);
   migrateAddActiveRequestsSource(db);
+  migrateAddActiveRequestsQueuedAt(db);
   migrateAddTenantId(db);
   migrateAddParentSessionId(db);
   migrateAddSuspensionStatusColumns(db);

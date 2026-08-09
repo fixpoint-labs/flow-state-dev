@@ -358,12 +358,21 @@ export function createInboundTransportHost(
       // enqueueing a job with no discoverable record (no orphan). Resume and the
       // Vercel adapter route through here too, so both inherit the fix.
       //
-      // `lastHeartbeatAt` is stamped at enqueue, and nothing heartbeats until
-      // the worker claims the job and re-registers (runAction). So the
-      // request-recovery sweeper reaps this entry if the worker never starts —
-      // but also if a backed-up queue delays worker-start past the sweeper's
-      // staleness threshold (default 30s). That false-positive window is the
-      // accepted tradeoff of enqueue-time registration.
+      // `lastHeartbeatAt` is stamped at enqueue and nothing heartbeats until
+      // the worker claims the job and re-registers (runAction), so this entry's
+      // age measures queue wait, not worker death. `queuedAt` says so on the
+      // entry itself, which is what keeps a backed-up queue from reading as a
+      // pile of dead requests (FIX-999): the liveness read reports a queued job
+      // live, and the sweeper leaves it alone until it outlives the queued
+      // grace, at which point it is reaped like anything else.
+      //
+      // The in-process branch above keeps its entry warm with a timer instead,
+      // and that difference is not an inconsistency. There the host is holding
+      // the run and can honestly assert "this is still mine". Here it hands the
+      // job to another process and returns 202 — on a serverless host it may be
+      // frozen moments later. A timer here would make a queued job's survival
+      // depend on the liveness of a process that is not running it, and would
+      // beat on behalf of work it has no knowledge of.
       // `acceptance` resolves once the request is accepted: the enqueue-time
       // writes commit AND the dispatcher accepts the job. The response path
       // awaits the exposed `accepted` view before acking, so the 202 means
@@ -387,7 +396,8 @@ export function createInboundTransportHost(
           input: dispatchEnvelope.input,
           metadata: dispatchEnvelope.metadata,
           startedAt: ts,
-          lastHeartbeatAt: ts
+          lastHeartbeatAt: ts,
+          queuedAt: ts
         }),
         stores.request.set(
           requestId,

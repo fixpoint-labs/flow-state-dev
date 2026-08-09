@@ -11,6 +11,10 @@
  * terminal requests are deregistered. A consumer may treat `false` as permission
  * to stop waiting; it must never treat it as proof the work did not happen.
  * Re-dispatching on a `false` answer alone is how double execution ships.
+ *
+ * **`true` means "still live", which includes "queued and not yet started."** A
+ * request handed to an external dispatcher is live from the moment it is
+ * accepted, not from the moment a worker picks it up (FIX-999).
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";
 import type { LivenessAnswers } from "@flow-state-dev/core/types";
@@ -48,8 +52,24 @@ export type LivenessReadInputs = {
  * blocks reconciliation on work that has already died. Comparing
  * `lastHeartbeatAt` here is correct however the cadence is configured, and adds
  * nothing for an operator to tune.
+ *
+ * A queued-but-unclaimed entry is the one case where that comparison asks the
+ * wrong question, so it is answered before the comparison rather than by tuning
+ * it — see `queuedAt` on `ActiveRequestEntry` (FIX-999).
  */
 function isFresh(entry: ActiveRequestEntry, nowMs: number, staleThresholdMs: number): boolean {
+  // Accepted into an external queue, not yet claimed. No worker exists to beat
+  // for it, so its age is queue wait, not death — it is live by construction.
+  //
+  // This is deliberately unbounded HERE. The bound lives in the one place that
+  // can act on it: `detectInterruptedRequests` reaps an unclaimed entry once it
+  // outlives the queued grace, and this read then sees no entry at all and says
+  // `false`. Duplicating the grace here would put a second clock on the same
+  // question, and the moment the two disagreed this read would start reporting
+  // a row that still exists as dead — reintroducing the exact false negative
+  // being fixed, just at a longer timescale.
+  if (entry.queuedAt != null) return true;
+
   return nowMs - entry.lastHeartbeatAt <= staleThresholdMs;
 }
 

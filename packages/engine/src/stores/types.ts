@@ -562,6 +562,26 @@ export type ActiveRequestEntry = {
   metadata?: Record<string, unknown>;
   startedAt: number;
   lastHeartbeatAt: number;
+  /**
+   * When the entry was registered at enqueue time for an EXTERNAL dispatcher
+   * and no worker has claimed it yet (FIX-999).
+   *
+   * Present means "accepted into a queue, not yet being worked on". For such an
+   * entry `lastHeartbeatAt` measures how long the job has waited, not how long
+   * ago a worker died — nothing is beating for it because nothing is running
+   * it. Reading that age as death is how a valid queued job gets marked
+   * `interrupted` and re-dispatched alongside the job the queue still holds.
+   *
+   * **Absent means claimed (or in-process), which is the legacy shape.** An
+   * entry written before this field existed, and every entry `runAction`
+   * writes, omits it and is governed by `lastHeartbeatAt` exactly as before
+   * (BP-030). Guard with `!= null`, never truthiness — `0` is a valid instant.
+   *
+   * The claim transition needs no separate write: `runAction` re-registers the
+   * whole entry when the worker picks the job up, and that replacement simply
+   * has no `queuedAt`.
+   */
+  queuedAt?: number;
 };
 
 export interface ActiveRequestRegistry {

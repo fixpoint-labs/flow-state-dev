@@ -176,10 +176,14 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
   it("an enqueue-time record whose worker never starts is reaped by the sweeper", async () => {
     const stores = createInMemoryStores();
     const requestId = "req_orphan";
-    const stale = Date.now() - 60_000;
+    // Past the queued grace, not merely past the stale threshold. An unclaimed
+    // enqueue-time entry is given room to sit in a backlog (FIX-999), so the
+    // age that proves it was dropped rather than queued is the longer one.
+    const stale = Date.now() - 11 * 60_000;
 
-    // Same shape the host writes at enqueue time, but stale: the worker never
-    // claimed the job, so it never heartbeat.
+    // Same shape the host writes at enqueue time — including `queuedAt`, which
+    // is what marks it unclaimed — but old: the worker never claimed the job,
+    // so it never heartbeat and never dropped the marker.
     await stores.activeRequests.register({
       requestId,
       flowKind: FLOW_KIND,
@@ -188,7 +192,8 @@ describe("external dispatch — enqueue-time stream discoverability (FIX-828)", 
       sessionId: "s_1",
       source: "http",
       startedAt: stale,
-      lastHeartbeatAt: stale
+      lastHeartbeatAt: stale,
+      queuedAt: stale
     });
     await stores.request.set(
       requestId,

@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS active_requests (
   input             TEXT,
   metadata          TEXT,
   started_at        BIGINT NOT NULL,
-  last_heartbeat_at BIGINT NOT NULL
+  last_heartbeat_at BIGINT NOT NULL,
+  queued_at         BIGINT
 );
 `;
 
@@ -124,6 +125,30 @@ BEGIN
     WHERE table_schema = current_schema() AND table_name = 'active_requests' AND column_name = 'source'
   ) THEN
     EXECUTE 'ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT ''http''';
+  END IF;
+END $$;
+`;
+
+/**
+ * Add the `queued_at` column to pre-FIX-999 `active_requests` tables.
+ *
+ * Nullable with no default, and **no backfill is possible or wanted**: the
+ * column marks a request registered at enqueue time and not yet claimed by a
+ * worker, which cannot be reconstructed after the fact. NULL reads back as
+ * "claimed", which is how every existing row already behaves — swept on
+ * `last_heartbeat_at` exactly as before (BP-030). Idempotent.
+ */
+const ADD_ACTIVE_REQUESTS_QUEUED_AT_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'active_requests'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'active_requests' AND column_name = 'queued_at'
+  ) THEN
+    EXECUTE 'ALTER TABLE active_requests ADD COLUMN queued_at BIGINT';
   END IF;
 END $$;
 `;
@@ -439,6 +464,11 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // FIX-438: ensure `active_requests.source` exists on pre-FIX-438 schemas.
   // Idempotent on fresh databases.
   ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION,
+
+  // FIX-999: add the nullable `queued_at` column to pre-FIX-999
+  // `active_requests`. Existing rows read back as claimed and are swept exactly
+  // as before. Idempotent — no-op once the column exists.
+  ADD_ACTIVE_REQUESTS_QUEUED_AT_MIGRATION,
 
   // FIX-682: add the nullable `tenant_id` column to pre-isolation `sessions`,
   // `requests`, and `active_requests` tables. Existing rows read back as

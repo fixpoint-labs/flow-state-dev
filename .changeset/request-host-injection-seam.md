@@ -68,3 +68,12 @@ Also in this change:
   `request.heartbeatIntervalMs` instead of a fixed 10s. A flow pairing a fast
   heartbeat with a tight stale threshold could previously have a valid queued
   request reaped and reported dead before its first beat.
+- A request handed to an external dispatcher is now recorded as queued until a
+  worker claims it, and counts as live for as long as it waits. Previously its
+  age was measured as though a worker were already running it, so a queue backlog
+  longer than the stale threshold made valid jobs read as dead: the sweeper marked
+  them interrupted and recovery could retry work the queue was still holding.
+  Registries gain a nullable `queued_at` column, added by an idempotent migration;
+  existing rows read back as claimed and sweep exactly as before. A job that never
+  arrives is still reaped — after a queued grace of 10 minutes by default, which
+  `detectInterruptedRequests` accepts as `queuedGraceMs`.
