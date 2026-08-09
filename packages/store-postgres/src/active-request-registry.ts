@@ -65,10 +65,29 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
   return entry;
 }
 
+export type PostgresActiveRequestRegistryOptions = {
+  /**
+   * Whether this registry's rows are visible to every process in the deployment
+   * (FIX-999).
+   *
+   * Answered by the CONSTRUCTION, not by the package name. A pooled or
+   * connection-string store talks to a real server every worker connects to, so
+   * it is shared. An injected `{ executor }` — documented as PGlite-capable —
+   * is process-local, and declaring it shared would enable liveness on a
+   * registry no other worker can see, which is exactly the false answer the gate
+   * exists to prevent. Defaults to `false`: a caller that does not say gets the
+   * fail-closed answer.
+   */
+  sharedAcrossProcesses?: boolean;
+};
+
 export function createPostgresActiveRequestRegistry(
-  executor: QueryExecutor
+  executor: QueryExecutor,
+  options: PostgresActiveRequestRegistryOptions = {}
 ): ActiveRequestRegistry {
   return {
+    sharedAcrossProcesses: options.sharedAcrossProcesses === true,
+
     async register(entry: ActiveRequestEntry): Promise<void> {
       const values = serializeEntry(entry);
       await executor.query(

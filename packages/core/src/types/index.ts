@@ -26,6 +26,20 @@ export type {
 export { asRuntime } from "./block";
 
 export type {
+  DetachedRoutingSeed,
+  LivenessAnswers,
+  ParentTaskOutcome,
+  RequestHost,
+  SettleParentTaskInput,
+  SettleParentTaskResult,
+  StartDetachedInput,
+  StartDetachedRefusal,
+  StartDetachedResult
+} from "./request-host";
+
+export { NoRequestHostError, requireRequestHost } from "./request-host";
+
+export type {
   ActionConfig,
   ActionCore,
   ActionMcpConfig,

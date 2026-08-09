@@ -2,6 +2,14 @@ import type { ActiveRequestEntry, ActiveRequestRegistry } from "../types";
 import { withActiveRequestSourceDefault } from "../shared";
 
 export class InMemoryActiveRequestRegistry implements ActiveRequestRegistry {
+  /**
+   * Entries live in this process's heap and nothing else can see them, so this
+   * is a definite `false` rather than a cautious one (FIX-999). This is the
+   * shipped default registry, which makes it the reason the liveness gate
+   * refuses out of the box.
+   */
+  readonly sharedAcrossProcesses = false;
+
   private readonly entries = new Map<string, ActiveRequestEntry>();
 
   async register(entry: ActiveRequestEntry): Promise<void> {

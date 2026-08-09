@@ -8,6 +8,7 @@ import { detectInterruptedRequests, retryRequest } from "../execution/request-re
 import { jsonResponse, parseJsonBody, SSE_HEADERS } from "./route-utils";
 import { generateId } from "../utils/generate-id";
 import { tenantMatches } from "../stores/scope-keys";
+import { isPublicReentryAllowed } from "./public-reentry";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeConfig } from "../runtime-config";
 
@@ -35,16 +36,6 @@ type RecoveryRouteContext = {
 type ContinueRouteContext = RecoveryRouteContext & {
   host: InboundTransportHost;
 };
-
-/**
- * Webhook-originated requests are event-addressed and transport-authenticated:
- * their handler is reached only through a verified webhook, never the public
- * action endpoint. The retry/continue routes are public re-dispatch surfaces
- * (retry even accepts an `inputOverride`), so re-running a webhook request from
- * here would bypass signature verification. Both routes reject such records,
- * matching the FIX-439 v1 "detached completion only" scope.
- */
-const WEBHOOK_SOURCE = "webhook";
 
 /** Transport source stamped by the scheduled-dispatch adapter (`@flow-state-dev/scheduled`). */
 const SCHEDULED_SOURCE = "scheduled";
@@ -107,11 +98,13 @@ export async function handleRetryRequest(
     });
   }
 
-  // Webhook requests are reachable only through a verified webhook, never this
-  // public re-dispatch surface — retry's `inputOverride` would otherwise feed
-  // the handler attacker-controlled input without a signature check. Return the
+  // Only a source that arrived on a caller-facing transport may be re-entered
+  // here. This is an ALLOW-LIST (FIX-999): retry's `inputOverride` feeds the
+  // handler caller-controlled input, so a source nobody thought to name must be
+  // refused rather than admitted. Webhook stays refused for the original reason
+  // — its handler is reachable only behind signature verification. Return the
   // same not-found shape as a missing record so they're indistinguishable here.
-  if (originalRecord.source === WEBHOOK_SOURCE) {
+  if (!isPublicReentryAllowed(originalRecord.source)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 
@@ -203,9 +196,9 @@ export async function handleContinueRequest(
     });
   }
 
-  // Webhook requests must not be re-entered from a public HTTP surface — see
-  // `handleRetryRequest`. Treat as not found.
-  if (originalRecord.source === WEBHOOK_SOURCE) {
+  // Same allow-list as `handleRetryRequest` — see `public-reentry.ts`. Treat a
+  // source that is not caller-facing as not found.
+  if (!isPublicReentryAllowed(originalRecord.source)) {
     return jsonResponse(404, { error: `Request "${route.requestId}" not found` });
   }
 

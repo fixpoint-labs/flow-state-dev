@@ -10,6 +10,7 @@ import type { DefinedResourceCollection, ResourceCollectionRef } from "./resourc
 import type { ExternalResourceCollectionRef } from "./external-resource-collection";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { RequestHost } from "./request-host";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -445,6 +446,27 @@ export interface BlockContext<
    * Only available in durable contexts.
    */
   saveCheckpoint?(): Promise<void>;
+
+  /**
+   * The one declared seam through which a capability reaches facilities only the
+   * runtime can provide — starting a detached child request, settling the row
+   * this request was dispatched for, asking whether dispatched work is still
+   * running (FIX-999).
+   *
+   * Framework-facing, not an app-author surface: there is nothing to declare to
+   * get one. A host built through the shipped entry points supplies it.
+   *
+   * Optional in the *type* so a hand-built test context still type-checks; not
+   * optional in *deployment* — a host that executes requests without one fails at
+   * construction. Read it with `requireRequestHost(ctx)`, which throws by name
+   * when it is absent rather than failing as `undefined is not a function`.
+   *
+   * What crosses is behaviour, never handles: no verb takes an identity or a
+   * session id, and nothing here names a store or a flow. That is the whole point
+   * — reaching the runtime used to require casting this context to a shape
+   * TypeScript said it did not have.
+   */
+  requestHost?: RequestHost;
 
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {

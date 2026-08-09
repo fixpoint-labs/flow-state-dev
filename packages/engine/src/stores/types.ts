@@ -565,6 +565,23 @@ export type ActiveRequestEntry = {
 };
 
 export interface ActiveRequestRegistry {
+  /**
+   * Whether entries written by one process are visible to every other process
+   * in the deployment (FIX-999).
+   *
+   * Read it with {@link isRegistrySharedAcrossProcesses}, never directly:
+   * **absent means NOT shared.** An adapter compiled against the older contract
+   * declares nothing, and treating that silence as "shared" is precisely the
+   * wrong direction — a per-process registry makes another process's healthy
+   * request look absent, and absence reads as "not running".
+   *
+   * Only the liveness enablement gate consumes this. An adapter that cannot tell
+   * from its own construction — a filesystem or SQLite registry that might sit on
+   * a shared volume or in a per-process temp dir — declares `false`. The answer
+   * is a property of the CONSTRUCTED store, not of the adapter's package name.
+   */
+  readonly sharedAcrossProcesses?: boolean;
+
   /** Register a new in-flight request. Called at the start of runAction. */
   register(entry: ActiveRequestEntry): Promise<void>;
 
