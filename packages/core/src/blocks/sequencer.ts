@@ -1101,6 +1101,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
       const resolveAbortSignal = shape.stepOptions?.abortSignal;
+      const onSettled = shape.stepOptions?.onSettled;
       const capturedInput = inferFirstBlockInput(block);
 
       return extend<TNext>(
@@ -1112,16 +1113,22 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // runtime fact (which claim this iteration holds), so a step
             // composed once and run many times gets its own each turn.
             const extraSignal = resolveAbortSignal?.(ctx);
-            const result = await runChild(
-              ctx,
-              { block, connector },
-              path,
-              value,
-              sequentialInputHint(ctx, runtime),
-              extraSignal
-            );
-            recordSequentialChild(runtime, path);
-            return result;
+            // `finally`, so it also runs on the one exit no composed handler
+            // sees: a `SuspensionError`, which bypasses `.rescue()` by design.
+            try {
+              const result = await runChild(
+                ctx,
+                { block, connector },
+                path,
+                value,
+                sequentialInputHint(ctx, runtime),
+                extraSignal
+              );
+              recordSequentialChild(runtime, path);
+              return result;
+            } finally {
+              onSettled?.(ctx);
+            }
           }
         },
         block.config.outputSchema,
@@ -1145,6 +1152,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
       const resolveAbortSignal = shape.stepOptions?.abortSignal;
+      const onSettled = shape.stepOptions?.onSettled;
 
       return extend<TOutput | TNext>(
         {
@@ -1157,16 +1165,22 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
-            const result = await runChild(
-              ctx,
-              { block, connector },
-              path,
-              value,
-              sequentialInputHint(ctx, runtime),
-              resolveAbortSignal?.(ctx)
-            );
-            recordSequentialChild(runtime, path);
-            return result;
+            // Below the condition gate on purpose: a step that was never
+            // dispatched has nothing to settle (see `StepOptions.onSettled`).
+            try {
+              const result = await runChild(
+                ctx,
+                { block, connector },
+                path,
+                value,
+                sequentialInputHint(ctx, runtime),
+                resolveAbortSignal?.(ctx)
+              );
+              recordSequentialChild(runtime, path);
+              return result;
+            } finally {
+              onSettled?.(ctx);
+            }
           }
         },
         block.config.outputSchema,

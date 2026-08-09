@@ -40,6 +40,7 @@ import { z, type ZodTypeAny } from "zod";
 import {
   currentLeaseRenewal,
   getOrCreateTaskCollection,
+  openLeaseRenewalScope,
   stampLeaseRenewal,
   startLeaseRenewal,
   ticketForClaim,
@@ -379,6 +380,10 @@ export function routedSpecialists<
     inputSchema: controllerOutputSchema,
     sequencerStateSchema: routedSpecialistsControlSchema,
     execute: async (input, ctx) => {
+      // FIRST STATEMENT, before any await (FIX-1005) — the slot the driver
+      // below is published through. Past the first `await` it would land on a
+      // scope that dies with this block and no later step could reach it.
+      openLeaseRenewalScope();
       const state = ctx.sequencer!.state;
       const nextIteration = state.iteration + 1;
 
@@ -557,6 +562,12 @@ export function routedSpecialists<
       // request's by the step dispatch (FIX-1005). Losing the claim stops the
       // specialist paying for work it can no longer record.
       abortSignal: () => currentLeaseRenewal()?.signal,
+      // `recordCompletion` / `dispatch-rescue` stop the driver on the exits
+      // they own, but a specialist that calls `ctx.suspend()` takes neither —
+      // `SuspensionError` bypasses `.rescue()` and a suspended request never
+      // aborts its signal — so without this the driver renews a parked row for
+      // as long as the host lives and nothing can recover it.
+      onSettled: () => currentLeaseRenewal()?.stop(),
     })
     .tap(recordCompletion)
     .tap(emitSnapshot)

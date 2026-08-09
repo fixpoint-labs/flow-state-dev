@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler, sequencer } from "../src";
+import { handler, sequencer, SuspensionError } from "../src";
 import { createMockContext, runForTest } from "./helpers";
 
 /** A block that reports whether the signal it ran under was already aborted. */
@@ -142,5 +142,99 @@ describe(".step(block, { abortSignal })", () => {
       });
 
     expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: true });
+  });
+});
+
+/** Throws the one error the sequencer treats as control flow, not failure. */
+const suspends = handler({
+  name: "suspends",
+  inputSchema: z.unknown(),
+  outputSchema: z.unknown(),
+  execute: async () => {
+    throw new SuspensionError({ suspensionId: "sus", reason: "human_approval" });
+  },
+});
+
+const throws = handler({
+  name: "throws",
+  inputSchema: z.unknown(),
+  outputSchema: z.unknown(),
+  execute: async () => {
+    throw new Error("boom");
+  },
+});
+
+describe(".step(block, { onSettled })", () => {
+  it("runs when the step RETURNS", async () => {
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      onSettled: () => {
+        calls += 1;
+      },
+    });
+
+    await runForTest(seq, null, createMockContext());
+    expect(calls).toBe(1);
+  });
+
+  it("runs when the step THROWS, and does not swallow the error", async () => {
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(throws, {
+      onSettled: () => {
+        calls += 1;
+      },
+    });
+
+    await expect(runForTest(seq, null, createMockContext())).rejects.toThrow("boom");
+    expect(calls).toBe(1);
+  });
+
+  it("runs when the step SUSPENDS — the exit no composed handler can see", async () => {
+    // The reason this option exists. `.rescue()` is deliberately never run for
+    // a `SuspensionError`, and a suspended request does not abort its signal,
+    // so without a `finally` here anything the step was holding open — a timer,
+    // a lease renewal, a subscription — outlives the request silently.
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .step(suspends, {
+        onSettled: () => {
+          calls += 1;
+        },
+      })
+      .rescue([{ block: reportsAbort }]);
+
+    await expect(runForTest(seq, null, createMockContext())).rejects.toBeInstanceOf(
+      SuspensionError
+    );
+    // The rescue did NOT fire (suspension is control flow) but the hook did.
+    expect(calls).toBe(1);
+  });
+
+  it("does NOT run when a .stepIf condition skips the dispatch", async () => {
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: false }))
+      .stepIf((out: { go: boolean }) => out.go, reportsAbort, {
+        onSettled: () => {
+          calls += 1;
+        },
+      });
+
+    await runForTest(seq, null, createMockContext());
+    expect(calls).toBe(0);
+  });
+
+  it("is recognised as an options bag on its own, without abortSignal", async () => {
+    // The two members are independent; discriminating on only one would make
+    // an `onSettled`-only bag get read as a block or a connector.
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      onSettled: () => {
+        calls += 1;
+      },
+    });
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+    expect(calls).toBe(1);
   });
 });

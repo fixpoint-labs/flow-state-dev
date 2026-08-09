@@ -428,6 +428,27 @@ Reach for it when the thing that should stop the step is known only at runtime �
 lease the step's claim depends on, an external cancellation the block itself has no
 way to see. A block that can decide for itself should just read `ctx.signal`.
 
+### Releasing what a step was holding
+
+The same bag takes `onSettled`, called once when the step's dispatch leaves by every
+path — returned, threw, or **suspended**:
+
+```ts
+sequencer({ name: "work" })
+  .tap(startSomethingCancellable)
+  .step(worker, { onSettled: () => stopSomethingCancellable() })
+  .tap(recordResult);
+```
+
+Suspension is why it exists. `.rescue()` is deliberately never run for a
+`SuspensionError` — suspension is control flow, not a failure — and a suspended
+request does not abort its signal either, so a step that parks on `ctx.suspend()`
+reaches no handler you can compose. Whatever the leading `.tap` started then
+outlives the request, silently.
+
+It runs in a `finally` and cannot change the step's outcome, and it is skipped when
+a `stepIf` condition means nothing was dispatched. For recovery, use `.rescue()`.
+
 ### Helpers (`@flow-state-dev/core/helpers`)
 
 State-shape primitives shared across the framework. All three operate on the same JSON-serializable state trees, so they live together as the single canonical home — no per-package copies.

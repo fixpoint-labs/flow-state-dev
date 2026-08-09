@@ -52,6 +52,18 @@ Two contracts changed:
   because a lease is a comparison, and everything comparing against `leaseUntil`
   has to read the same clock the claim write stamped it with.
 
-`@flow-state-dev/core` gains a per-step abort signal: `.step(block, {
-  abortSignal })` runs one step under an additional signal, composed with the
-request's rather than replacing it (FIX-1005).
+**A worker that pauses for a human releases its task.** If your worker calls
+`ctx.suspend()` — for an approval, a form, any human gate — it stops asserting
+that it is alive, so the task's lease runs out normally and another worker can
+recover it. Pausing is not the same as working. If you want a task held across a
+long human pause instead, park the task itself for review: the lease does not
+govern a task awaiting review, so it stays yours for as long as the review takes.
+
+`@flow-state-dev/core` gains two per-step dispatch options (FIX-1005):
+
+- `.step(block, { abortSignal })` runs one step under an additional signal,
+  composed with the request's rather than replacing it.
+- `.step(block, { onSettled })` runs a callback when the step's dispatch ends by
+  any path — returned, threw, or suspended. `.rescue()` deliberately never fires
+  for a suspension, so this is the only seam that sees one; use it to release
+  what a preceding step started.

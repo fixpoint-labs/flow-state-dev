@@ -47,10 +47,14 @@ import { taskBoardWorkerBodyStateSchema } from "../schemas";
  * AsyncLocalStorage seam rather than a closure is what makes that per-iteration
  * correct under concurrent fan-out.
  *
- * Deliberately not the *only* thing that stops a driver: it also stops when the
- * request's own signal aborts, and its timer is unref'd. A worker body that
- * exits through neither recorder — a suspension, which is control flow rather
- * than a failure — therefore leaks no timer and holds no runtime open.
+ * Deliberately not the *only* thing that stops a driver. It also stops when the
+ * request's own signal aborts, and — the case neither recorder can see — when
+ * the worker step's dispatch settles, via the `onSettled` option the board
+ * composes it with. A worker that calls `ctx.suspend()` exits through NEITHER
+ * recorder (`SuspensionError` bypasses `.rescue()` by design) and does not
+ * abort its signal either, so that third stop is what keeps a parked worker
+ * from renewing an `in_progress` row forever. The unref'd timer only keeps the
+ * runtime from being held open; it does not stop the renewals.
  */
 function stopLeaseRenewal(): void {
   currentLeaseRenewal()?.stop();

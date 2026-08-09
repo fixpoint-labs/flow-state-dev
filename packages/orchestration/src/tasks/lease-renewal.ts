@@ -293,19 +293,67 @@ export async function withLeaseRenewal<T>(
  * isolation, no new machinery. A closure would be wrong here for a concrete
  * reason: a worker body is built **once** and shared by every worker on a
  * board, so one cell would serve `concurrency` workers at once.
+ *
+ * The mechanism is right; the way it is entered is easy to get wrong, and the
+ * failure is silent. {@link openLeaseRenewalScope} carries that rule.
  */
-const renewalScope = new AsyncLocalStorage<LeaseRenewalDriver>();
+const renewalScope = new AsyncLocalStorage<RenewalSlot>();
 
 /**
- * Enter the current async scope with `driver`, so the steps that follow can
- * run under its signal and stop it when they settle the task.
+ * The per-iteration cell the driver is published through.
  *
- * `enterWith` mutates the *current* async resource, so every downstream `await`
- * chain in this worker iteration inherits it while a sibling iteration —
- * running on its own resource — never sees it.
+ * A **mutable slot** rather than the driver itself, and that indirection is
+ * the whole point — see {@link openLeaseRenewalScope}.
+ */
+type RenewalSlot = { driver?: LeaseRenewalDriver };
+
+/**
+ * Open this worker iteration's renewal slot. **Call it before the first
+ * `await` in the block that claims the task** — first statement, no
+ * exceptions.
+ *
+ * `enterWith` mutates the *current* async resource. At the top of a block's
+ * body you are still executing on the caller's resource, so the mutation is
+ * visible to the sequencer's later steps. After an `await` you are on a
+ * continuation resource that dies with the block, so the same call publishes
+ * to nobody — silently, with every reader simply seeing `undefined`.
+ *
+ * That is exactly how this seam failed on arrival: the board's setup tap
+ * stamped the driver after awaiting the collection and a `patchState`, so the
+ * worker never ran under the lease-loss signal and neither recorder could stop
+ * the driver. Nothing failed loudly, because a settled task makes renewal stop
+ * itself (the write is declined `terminal`) — so only a task that is never
+ * settled, which is precisely the suspension case, showed the leak.
+ *
+ * Splitting "open the slot" from "install the driver" is what makes the rule
+ * followable: opening takes no arguments, so it can always be hoisted above
+ * the awaits that produce the driver.
+ */
+export function openLeaseRenewalScope(): void {
+  renewalScope.enterWith({});
+}
+
+/**
+ * Publish `driver` into the slot {@link openLeaseRenewalScope} opened, so the
+ * steps that follow can run under its signal and stop it when they settle the
+ * task.
+ *
+ * Throws when no slot is open rather than returning quietly: a driver nobody
+ * can reach renews a lease forever, and that failure is invisible at runtime.
+ * Better to fail at the call site than to ship a mechanism that does nothing.
  */
 export function stampLeaseRenewal(driver: LeaseRenewalDriver): void {
-  renewalScope.enterWith(driver);
+  const slot = renewalScope.getStore();
+  if (slot === undefined) {
+    // Don't leave the caller's driver running when we are about to reject it.
+    driver.stop();
+    throw new Error(
+      `[tasks] stampLeaseRenewal() was called with no renewal scope open. ` +
+        `Call openLeaseRenewalScope() before the first await in the block that ` +
+        `claims the task — after an await the scope is published to nobody.`
+    );
+  }
+  slot.driver = driver;
 }
 
 /**
@@ -317,5 +365,5 @@ export function stampLeaseRenewal(driver: LeaseRenewalDriver): void {
  * task, to stop renewing.
  */
 export function currentLeaseRenewal(): LeaseRenewalDriver | undefined {
-  return renewalScope.getStore();
+  return renewalScope.getStore()?.driver;
 }

@@ -143,6 +143,41 @@ function packWorkerInput(
 }
 
 /**
+ * The context the worker runs under, carrying `signal` all the way down
+ * (FIX-1005).
+ *
+ * Spreading `signal` onto a copy of `ctx` is necessary but **not sufficient**,
+ * and the gap only shows on a composite worker. A spread copy sets the
+ * worker's own `ctx.signal`, which is all a leaf handler ever reads. But a
+ * sequencer worker dispatches its nested steps through `_withExecutionScope`,
+ * and that function is a closure bound to the ORIGINAL context object — it
+ * derives each child scope's signal from `context.signal`, the original's, not
+ * from the copy it was invoked on. So every descendant of a composite worker
+ * kept running under the request signal: a worker whose claim was displaced
+ * mid-run would abort its outermost step and its generators would keep making
+ * model calls underneath.
+ *
+ * Re-binding the closure to default the override to this signal closes it at
+ * one level, which is all it takes: the child scope's own `ctx.signal` becomes
+ * the composed one, and the engine propagates from there (an explicit override
+ * from a nested `.work()` or `.step(…, { abortSignal })` still wins, so this
+ * widens nothing).
+ *
+ * A unit-test context installs no scope at all, and there the spread already is
+ * the whole story — nested steps run on the context they were handed.
+ */
+function workerCtx(ctx: BlockContext, signal: AbortSignal): BlockContext {
+  const withScope = ctx._withExecutionScope;
+  if (withScope === undefined) return { ...ctx, signal };
+  return {
+    ...ctx,
+    signal,
+    _withExecutionScope: (parent, execute, signalOverride) =>
+      withScope.call(ctx, parent, execute, signalOverride ?? signal),
+  };
+}
+
+/**
  * Build a block that performs one claim → execute → record cycle.
  * Patterns compose this via `.step(dispatchAndExecuteBlock(...))` in
  * their own sequencer chains. Replaces the pre-FIX-503 free-function
@@ -200,7 +235,7 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
               ctx.signal === undefined
                 ? leaseLost
                 : AbortSignal.any([ctx.signal, leaseLost]);
-            return asRuntime(worker).run(workerInput, { ...ctx, signal });
+            return asRuntime(worker).run(workerInput, workerCtx(ctx, signal));
           },
         })) as TOut;
         // Advisory write-back (FIX-951): the task may have been settled or

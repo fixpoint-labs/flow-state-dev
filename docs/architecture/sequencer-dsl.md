@@ -82,6 +82,24 @@ statically composed child cannot be handed a signal that only exists at runtime,
 and no other seam carries one (`.work()` takes none either). `stepIf` accepts the
 same bag.
 
+**Per-step settle hook.** The same bag takes `{ onSettled }`, called once when
+the step's dispatch leaves by **every** path — returned, threw, or suspended:
+
+```ts
+pipeline.step(worker, { onSettled: (ctx) => releaseWhateverTheTapStarted(ctx) });
+```
+
+Suspension is the path that needs it. `.rescue()` is deliberately never run for
+a `SuspensionError` (suspension is control flow, not a failure), and a suspended
+request does not abort its signal either — so a step that parks on
+`ctx.suspend()` passes through no handler you can compose. Anything a preceding
+step started and this step's completion was supposed to stop outlives the
+request without this.
+
+It runs in a `finally`, so it cannot change the step's outcome, and it is not
+called when a `stepIf` condition skips the dispatch. Use it to release what the
+dispatch was holding, not for recovery — that is `.rescue()`'s job.
+
 ### `stepIf(condition, block)` — Conditional Step
 
 Execute only when condition returns true. Output type is union of current and step output.

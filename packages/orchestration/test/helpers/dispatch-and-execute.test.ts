@@ -1,10 +1,11 @@
 /**
  * dispatchAndExecute tests — covers happy path (claim → worker →
- * complete), the rescue path (worker throw → fail), and registry
- * routing by `task.assignee`.
+ * complete), the rescue path (worker throw → fail), registry
+ * routing by `task.assignee`, and the reach of the lease-loss signal
+ * into a composite worker's nested steps (FIX-1005).
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
@@ -12,7 +13,9 @@ import {
   createSequencerBackedTaskCollection,
   dispatchAndExecuteBlock,
   fifoDispatcher,
+  MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
+  type TaskDispatcher,
 } from "../../src/tasks";
 import {
   createCapturedChanges,
@@ -286,4 +289,98 @@ describe("dispatchAndExecuteBlock", () => {
       )
     ).rejects.toThrow(/no worker registered/);
   });
+});
+
+/**
+ * A stand-in for the server-installed execution scope, faithful in the one
+ * respect this suite turns on: a child scope's signal is
+ * `signalOverride ?? <the context this closure belongs to>.signal`.
+ *
+ * The engine builds that closure per context (`createExecutionContext`), so it
+ * resolves children against the signal of the context it was BUILT for — not
+ * of whatever spread copy it is invoked on. That is the whole defect:
+ * `dispatchAndExecute` handed the worker a `{ ...ctx, signal }` copy, which
+ * sets the worker's own `ctx.signal` but leaves this closure resolving
+ * children against the original's. A leaf worker never notices; a sequencer
+ * worker's nested steps kept the request signal.
+ */
+function installExecutionScope(base: BlockContext): BlockContext {
+  const ctx = { ...base } as BlockContext;
+  (ctx as {
+    _withExecutionScope?: (
+      parent: unknown,
+      execute: (child: BlockContext) => Promise<unknown>,
+      signalOverride?: AbortSignal
+    ) => Promise<unknown>;
+  })._withExecutionScope = async (_parent, execute, signalOverride) =>
+    execute(installExecutionScope({ ...ctx, signal: signalOverride ?? ctx.signal }));
+  return ctx;
+}
+
+/** Claims under the shortest permitted lease, so renewal ticks in ~333ms. */
+const shortLeaseDispatcher: TaskDispatcher = {
+  async claim(collection, workerId) {
+    return collection.claim(workerId, { leaseDurationMs: MIN_LEASE_DURATION_MS });
+  },
+};
+
+describe("losing the claim stops a COMPOSITE worker, not just its outermost step", () => {
+  it("aborts a nested step of a sequencer worker when the claim is lost (FIX-1005)", async () => {
+    // The point of the lease-loss signal is to stop a worker paying for work it
+    // can no longer record. A sequencer worker is where that money actually
+    // goes — its nested generators are the model calls — so a signal that stops
+    // only the top-level context stops nothing that costs anything.
+    //
+    // Neuter `workerCtx` back to a plain `{ ...ctx, signal }` spread and this
+    // fails with `ended: "timeout"`: the claim is long gone, renewal has
+    // aborted, and the nested step is still running on the request's signal.
+    const c = buildCollection();
+    await c.addTask({ id: "t", goal: "expensive work" });
+
+    // Never aborts. So the ONLY thing that can stop the nested step is the
+    // lease-loss signal — which is what makes the assertion below mean
+    // something rather than catching an incidental cancellation.
+    const request = new AbortController();
+
+    const nested = handler({
+      name: "nested-step",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ended: z.string() }),
+      execute: async (_input: unknown, ctx: BlockContext) =>
+        new Promise<{ ended: string }>((resolve) => {
+          if (ctx.signal?.aborted === true) return resolve({ ended: "already" });
+          ctx.signal?.addEventListener("abort", () => resolve({ ended: "aborted" }), {
+            once: true,
+          });
+          setTimeout(() => resolve({ ended: "timeout" }), 3_000);
+        }),
+    });
+
+    const compositeWorker = sequencer({
+      name: "composite-worker",
+      inputSchema: z.any(),
+    }).step(nested);
+
+    // Settle the row out from under the worker while it runs. The next renewal
+    // tick is refused, and that refusal is what aborts the lease-loss signal.
+    setTimeout(() => void c.fail("t", "settled by someone else"), 50);
+
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection: c,
+        dispatcher: shortLeaseDispatcher,
+        workers: compositeWorker as never,
+      }),
+      undefined,
+      installExecutionScope({
+        signal: request.signal,
+        // `executeBlock` keys a child's block-instance id off this.
+        request: { identity: { id: "test-request" } },
+      } as unknown as BlockContext)
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.claimed).toBe(true);
+    expect((result.output as { ended: string }).ended).toBe("aborted");
+  }, 20_000);
 });

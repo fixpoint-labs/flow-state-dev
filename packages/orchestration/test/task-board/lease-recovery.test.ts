@@ -25,11 +25,12 @@
  * supplies one through a dispatcher, which is how a caller would.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { handler, SuspensionError } from "@flow-state-dev/core";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createSequencerBackedTaskCollection,
+  leaseLapsed,
   MIN_LEASE_DURATION_MS,
   type TaskCollectionRef,
   type TaskDispatcher,
@@ -147,4 +148,139 @@ describe("a live worker is never disturbed — the anti-vacuity guard", () => {
     expect(settled.attempts).toBe(1);
     expect(settled.abandonments ?? 0).toBe(0);
   }, 20_000);
+});
+
+describe("the board's worker really runs under the lease-loss signal", () => {
+  it("aborts the worker when the claim is taken from under it (FIX-1005)", async () => {
+    // The reachability guard. Every other lease test here passes whether or not
+    // the driver is reachable from the steps that read it, because a settled
+    // task makes renewal stop itself — the write is declined `terminal`. So the
+    // wiring can be inert and the suite stays green.
+    //
+    // Move `openLeaseRenewalScope()` in the board's setup tap below its first
+    // `await` and this fails with `ended: "timeout"`: `enterWith` then
+    // publishes to a scope that dies with the tap, `currentLeaseRenewal()`
+    // returns undefined in the step's `abortSignal` resolver, and the worker
+    // runs on the request's signal alone.
+    const collection = liveCollection("lease-loss-signal");
+    let ended = "never-ran";
+
+    const watcher = handler({
+      name: "signal-watcher",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ended: z.string() }),
+      execute: async (_input, ctx) =>
+        new Promise<{ ended: string }>((resolve) => {
+          const finish = (how: string) => {
+            ended = how;
+            resolve({ ended: how });
+          };
+          if (ctx.signal?.aborted === true) return finish("already");
+          ctx.signal?.addEventListener("abort", () => finish("aborted"), { once: true });
+          setTimeout(() => finish("timeout"), 4_000);
+        }),
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "lease-loss-board",
+      collection: () => collection,
+      concurrency: 1,
+      dispatcher: leasingDispatcher(MIN_LEASE_DURATION_MS),
+      initialTasks: [{ id: "t", goal: "watch the signal" }],
+      workers: watcher,
+    });
+
+    // Settle the row out from under the running worker. The next renewal tick
+    // is refused, and that refusal is what aborts the lease-loss signal.
+    setTimeout(() => void collection.fail("t", "reclaimed by someone else"), 200);
+
+    await testBlock(board.drain, { input: undefined });
+
+    expect(ended).toBe("aborted");
+  }, 30_000);
+});
+
+describe("a worker that parks on a suspension stops holding its task", () => {
+  it("lets the lease lapse so another worker recovers it, instead of renewing forever", async () => {
+    // The third exit, and the only one no composed handler can see.
+    // `ctx.suspend()` throws a `SuspensionError`, which bypasses `.rescue()` by
+    // design (suspension is control flow, not a failure), and a suspended
+    // request does not abort its signal either. So neither recorder runs and
+    // the renewal driver has nothing telling it to stop.
+    //
+    // Left alone it renews an `in_progress` row for as long as the host lives.
+    // The task is then held by a worker that is parked and never coming back on
+    // its own, and NO other worker can recover it — the exact deadlock this
+    // issue exists to remove, rebuilt out of a park.
+    //
+    // Neuter the `onSettled` option on the board's worker step and this fails
+    // at the `leaseLapsed` assertion: the driver is still ticking every ~333ms
+    // and the deadline it writes is always in the future.
+    const collection = liveCollection("suspend-parks");
+
+    const parkingWorker = handler({
+      name: "parking-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ done: z.boolean() }),
+      execute: async () => {
+        throw new SuspensionError({
+          suspensionId: "needs-a-human",
+          reason: "human_approval",
+        });
+      },
+    }) as TaskWorker;
+
+    const parked = taskBoard({
+      name: "parked-board",
+      collection: () => collection,
+      concurrency: 1,
+      dispatcher: leasingDispatcher(MIN_LEASE_DURATION_MS),
+      initialTasks: [{ id: "t", goal: "needs a human" }],
+      workers: parkingWorker,
+    });
+
+    // The suspension really does escape the whole board rather than being
+    // recorded as a failure — otherwise `recordError` would have stopped the
+    // driver and this test would be proving nothing.
+    const parked_escape = await testBlock(parked.drain, { input: undefined }).then(
+      () => undefined,
+      (err: unknown) => err
+    );
+    expect(parked_escape).toBeInstanceOf(SuspensionError);
+    expect(collection.get("t")!.status).toBe("in_progress");
+
+    // Two full leases' worth of renewal opportunities. A live driver ticks six
+    // times in this window; a stopped one lets the deadline pass.
+    await sleep(MIN_LEASE_DURATION_MS * 2);
+
+    expect(leaseLapsed(collection.get("t")!, Date.now())).toBe(true);
+
+    // Not merely "the deadline passed": a second worker actually picks the row
+    // up and carries it to completion, which is what "recoverable" has to mean.
+    const ran: string[] = [];
+    const liveWorker = handler({
+      name: "live-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ done: z.boolean() }),
+      execute: async (input) => {
+        ran.push(input.taskId);
+        return { done: true };
+      },
+    }) as TaskWorker;
+
+    const rescuer = taskBoard({
+      name: "rescuer-board",
+      collection: () => collection,
+      concurrency: 1,
+      workers: liveWorker,
+    });
+
+    const rescueRun = await testBlock(rescuer.drain, { input: undefined });
+
+    expect(rescueRun.error).toBeNull();
+    expect(ran).toEqual(["t"]);
+    const settled = collection.get("t")!;
+    expect(settled.status).toBe("completed");
+    expect(settled.abandonments).toBe(1);
+  }, 30_000);
 });

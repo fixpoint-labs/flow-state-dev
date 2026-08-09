@@ -76,6 +76,7 @@ export type { ResourceBackedOptions } from "./collection/resource-backed";
 // bounds the substrate enforces.
 export {
   isClaimable,
+  claimDisposition,
   isReady,
   leaseLapsed,
   readAbandonments,
@@ -161,6 +162,7 @@ export {
 export {
   startLeaseRenewal,
   withLeaseRenewal,
+  openLeaseRenewalScope,
   stampLeaseRenewal,
   currentLeaseRenewal,
   RENEWAL_DIVISOR,

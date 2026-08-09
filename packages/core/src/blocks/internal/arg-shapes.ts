@@ -84,8 +84,8 @@ export type ChildCallShape = {
  * Per-step dispatch options for `.step()` (FIX-1005).
  *
  * Deliberately tiny. This is not a general escape hatch for per-step config —
- * it carries the one thing a step's *dispatch* owns and the block itself
- * cannot: the signal the step runs under.
+ * both members carry something a step's *dispatch* owns and the block itself
+ * cannot see: the signal it runs under, and the moment its dispatch ends.
  */
 export type StepOptions = {
   /**
@@ -100,22 +100,43 @@ export type StepOptions = {
    * The resolver runs once per dispatch, immediately before the child is
    * invoked, so it can read state a preceding step wrote.
    */
-  abortSignal: (ctx: BlockContext) => AbortSignal | undefined;
+  abortSignal?: (ctx: BlockContext) => AbortSignal | undefined;
+  /**
+   * Called once when this step's dispatch leaves, **by every path** — it
+   * returned, it threw, or it suspended.
+   *
+   * The last of those is the one that needs a seam at all. `.rescue()` is
+   * deliberately not run for a `SuspensionError` (suspension is control flow,
+   * not a failure), and a suspended request does not abort its signal either,
+   * so a step that parks on `ctx.suspend()` passes through no handler a caller
+   * can compose. Anything a preceding step started and this step's completion
+   * was supposed to stop — a timer, a lease renewal, a subscription — outlives
+   * the request without this.
+   *
+   * Runs in a `finally`, so it cannot change the step's outcome; it is for
+   * releasing what the dispatch was holding, not for recovery. A throw from it
+   * would mask the in-flight error, so throwing here is a caller bug.
+   *
+   * Not called when a `.stepIf()` condition is false — nothing was dispatched.
+   */
+  onSettled?: (ctx: BlockContext) => void;
 };
 
 /**
  * True when `value` is a `.step()` options bag rather than a block, a
  * connector, or an inline config.
  *
- * Keyed on the one member the type declares. That keeps the discrimination
- * exact — an inline config never carries `abortSignal`, and a block is
- * excluded outright — so adding this shape cannot silently re-route an
- * existing `step(connector, block)` or `step(factory, config)` call.
+ * Keyed on the members the type declares. That keeps the discrimination
+ * exact — an inline config carries neither, and a block is excluded outright —
+ * so this shape cannot silently re-route an existing `step(connector, block)`
+ * or `step(factory, config)` call. The inline-config arm is resolved before
+ * this is ever consulted, so a block config can never reach it.
  */
 function isStepOptions(value: unknown): value is StepOptions {
   if (typeof value !== "object" || value === null) return false;
   if (isBlockDefinition(value)) return false;
-  return typeof (value as { abortSignal?: unknown }).abortSignal === "function";
+  const bag = value as { abortSignal?: unknown; onSettled?: unknown };
+  return typeof bag.abortSignal === "function" || typeof bag.onSettled === "function";
 }
 
 /** The resolved shape for a background method (`work`, `workIf`). */

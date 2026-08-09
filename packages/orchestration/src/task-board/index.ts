@@ -80,6 +80,7 @@ import {
   isDefinedTaskCollection,
   onTaskChangeFor,
   currentLeaseRenewal,
+  openLeaseRenewalScope,
   resolveTaskCapDefaults,
   stampLeaseRenewal,
   startLeaseRenewal,
@@ -797,6 +798,12 @@ export function taskBoard<
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
     .tap(async (task: Task, ctx) => {
+      // FIRST STATEMENT, before any await (FIX-1005). This publishes the slot
+      // the driver below is installed into; past the first `await` it would
+      // land on a continuation scope that dies with this tap, and every reader
+      // — the step's `abortSignal`, both recorders, `onSettled` — would see
+      // `undefined`. See `openLeaseRenewalScope`.
+      openLeaseRenewalScope();
       // The ONE mint site for this board's claim tickets (FIX-981). `task` is
       // what `claim()` returned, so `attempts` is already incremented and this
       // is this worker's attempt, not the pre-claim one.
@@ -849,7 +856,27 @@ export function taskBoard<
     // request's by the step dispatch (FIX-1005). Losing the claim stops the
     // worker paying for work it can no longer record; it is not what makes the
     // hand-off safe, which is the substrate's write fence.
-    .step(workerStep, { abortSignal: () => currentLeaseRenewal()?.signal })
+    .step(workerStep, {
+      abortSignal: () => currentLeaseRenewal()?.signal,
+      // The recorders below stop the driver on the two exits they own, but a
+      // worker that calls `ctx.suspend()` takes neither: `SuspensionError`
+      // bypasses `.rescue()` by design and a suspended request never aborts
+      // its signal. Without this the driver would go on renewing an
+      // `in_progress` row for as long as the host lives — the task would be
+      // held by a worker that is parked, and no other worker could ever
+      // recover it. That is the exact deadlock this issue exists to remove,
+      // rebuilt out of a park.
+      //
+      // Stopping is the honest answer rather than parking the renewal: the
+      // lease means "a live worker is on this row right now", and a suspended
+      // worker is not one. The row lapses, another worker recovers it, and the
+      // suspended worker's own write-back is refused by the fence when it
+      // resumes — bounded duplicate work, which is inside the mechanism's
+      // stated cost. A board that wants a long human pause without that should
+      // park the TASK (`awaitReview`), which the lease deliberately does not
+      // govern.
+      onSettled: () => currentLeaseRenewal()?.stop(),
+    })
     .tap(recordSuccess)
     .rescue([{ block: recordError }]);
 

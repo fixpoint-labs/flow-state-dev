@@ -175,10 +175,21 @@ spans several steps. Both renew in the background while the work runs, keep one
 renewal in flight at a time, and stop when the signal you hand them aborts.
 Both also give you a second signal that fires the moment the claim is lost.
 
+A worker composed as several steps reaches its driver through
+`currentLeaseRenewal()`. Publishing it is two calls, and the order matters:
+`openLeaseRenewalScope()` **before the first `await`** in the block that claims
+the task, then `stampLeaseRenewal(driver)` once the driver exists. The scope
+rides `AsyncLocalStorage`, which only propagates to later steps when it is
+entered before the claiming block awaits anything; stamping with no scope open
+throws rather than publishing to nobody.
+
 `isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
-a custom `TaskCollectionRef` can read it rather than restating it. Compare
-leases against `collection.now()`, not `Date.now()`: it is the clock that
-stamped `leaseUntil`.
+a custom `TaskCollectionRef` can read it rather than restating it. It answers
+admission only — whether an admitted row is handed out or settled because its
+allowance is spent is `claimDisposition(task, now, max)`, exported alongside it.
+Anything that reports *which* task runs next needs both; anything asking only
+*whether* there is work to do needs the first. Compare leases against
+`collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
 
 ### Dispatchers
 
