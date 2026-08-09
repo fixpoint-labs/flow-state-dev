@@ -545,17 +545,8 @@ trips it; a bot review on the epic PR neither holds it nor buys another round. A
 *direction* still flows continuously — the budget bounds the *folding*, not the epic's ability
 to receive and route feedback.
 
-**A converged epic-spec is still editable, and correcting it is not a lifecycle.** The budget
-stops you grinding with reviewers; it does not freeze the document. An uncontested correction —
-a decision that moved while a restatement lagged, a count that no longer matches its list, a
-diagram contradicting the section it illustrates — is a **commit on the open epic PR**, spending
-no budget. **Never file it as a sub-issue and never give it a spec.** That has happened once:
-a fold judged some remaining restatements *"below the bar for another pass but above the bar
-for silence"*, filed them for lack of another mechanism, and the resulting child issue — no
-category, so routed by the fail-closed `spec` default — was picked up by the discovery pass and
-grew a 300-line spec and a second PR to make ~40 lines of edits to a document that was open the
-whole time. If a correction is contested it is a *decision*, which goes to the user, still not
-to a new issue. Canonical:
+**The budget bounds folding, not the document.** An uncontested correction to a converged
+epic-spec is a commit on its open PR — never a sub-issue, never its own spec.
 [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The convergence rule".
 
 ## Epic setup (the coordination layer every run has)
