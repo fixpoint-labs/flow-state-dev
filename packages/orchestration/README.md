@@ -126,8 +126,9 @@ advisory whether or not options are passed: cancelling a settled task declines
 with reason `terminal`.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a
-terminal task, and on a board with any detached worker it declines every
-reassignment whatever the task's status (see "Declaring detached work" below).
+terminal task, and on a durable collection any detached board draws from it
+declines every reassignment whatever the task's status (see "Declaring detached
+work" below).
 `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
 a terminal task, so a post-drain failure audit can label what went wrong; those four
 answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
@@ -225,6 +226,12 @@ session the work runs in. Changing it afterwards redirects nothing — work alre
 dispatched keeps running under the old coordinate, and the new one addresses a
 session nothing will wake — so the write is refused rather than silently
 stranding the task. File a new task instead of reassigning.
+
+The rule belongs to the collection, not to the board that declared it. Point a
+second board at the same `defineTaskCollection` value and it declines too, even
+if that board declares nothing detached: the two share task rows, so reassigning
+through either one moves a coordinate the detached board routes by. If a board
+needs freely reassignable tasks, give it its own collection.
 
 Each detached worker also gets a routing coordinate the framework derives:
 `assignee:<name>`, `uniform`, or `floor`. These bubble up from the board's drain

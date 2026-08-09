@@ -688,16 +688,10 @@ export function taskBoard<
   const defaultWorker = resolvedWorkers.defaultWorker;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
-  // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
-  // because it is what the routing coordinate derives from. Decided here, where
-  // the declarations are, and enforced on the collection so every writer that
-  // reaches this ledger is covered rather than just the drain.
-  const immutableAssignee = resolvedWorkers.detached.length > 0;
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
     collectionConfig,
-    caps,
-    immutableAssignee
+    caps
   );
   const { collectionFactory, collectionId, capability, backing, drainUses } =
     binding;
@@ -990,6 +984,26 @@ export function taskBoard<
     );
   }
 
+  // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
+  // because it is what the routing coordinate derives from. Recorded on the
+  // LEDGER declaration rather than on the refs built from it: two boards may
+  // bind the same durable collection and only one need declare detached
+  // workers, yet they share rows, so a reassignment through either board's ref
+  // moves a coordinate the detached board routes by. Reading it back at
+  // resolution time (`resolveResourceTaskCollection`) also makes construction
+  // order irrelevant — the sibling board is as likely to be declared first.
+  //
+  // Deliberately the LAST thing this function does. The mark is one-way and
+  // outlives a failed construction, so it must not run until everything that
+  // can throw has not: `assertDetachedBoardSupported` refuses a durable
+  // detached board that omits a `boardId` or whose worker declares
+  // `sessionStateSchema`, and a caller that catches either — a config fallback,
+  // a hot reload, a test — would otherwise be left with a declaration that
+  // declines valid `setAssignee` calls for a board that was never created.
+  if (resolvedWorkers.detached.length > 0 && isDefinedTaskCollection(collectionConfig)) {
+    freezeLedgerAssignee(collectionConfig);
+  }
+
   // Capability, collectionId, and (for durable boards) the drain's resource
   // `uses` all come from `resolveCollectionBinding` — one place that maps the
   // once-chosen backing onto every downstream wiring, so no call site restates
@@ -1103,12 +1117,7 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
 function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
   boardName: TName,
   collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"],
-  caps: TaskCapOptions,
-  // FIX-982: only the resource branch reads this. A detached board is refused
-  // at construction unless its backing is durable, so the other three branches
-  // cannot host one and are deliberately left alone rather than given a guard
-  // that could never fire.
-  immutableAssignee = false
+  caps: TaskCapOptions
 ): CollectionBinding<TInput, TOutput, TName> {
   // 1. Caller-supplied factory. Sync-or-async, normalized via `Promise.resolve`.
   if (typeof collectionConfig === "function") {
@@ -1132,17 +1141,6 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
     const definedCollection = collectionConfig;
     const resourceKey = definedCollection.__taskCollection.id;
     const collectionId = resourceKey;
-    // FIX-982 decision 10 — the frozen-assignee policy is recorded on the LEDGER
-    // declaration, not on the refs built from it. Two boards may bind the same
-    // durable collection, and only one of them need declare detached workers;
-    // the rows they share are routed by assignee either way, so a reassignment
-    // through the other board's ref would break the detached board's invariant
-    // just as thoroughly as one through its own. Marking here and reading at
-    // resolution also makes construction order irrelevant — the sibling board
-    // may well be built first.
-    if (immutableAssignee) {
-      freezeLedgerAssignee(definedCollection);
-    }
     // Internal resource-declaring capability — named distinctly from the public
     // `ctx.cap.<name>` board cap so the two never collide in `flattenCapabilities`.
     const resourceCapability = defineCapability({

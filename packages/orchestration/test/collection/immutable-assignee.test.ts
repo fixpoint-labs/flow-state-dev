@@ -370,6 +370,83 @@ describe("assignee immutability is a property of the shared ledger", () => {
     });
   });
 
+  it("does not freeze the ledger when the detached board failed to construct", async () => {
+    // The freeze is one-way and outlives the call that set it, so it must not
+    // run until every refusal has had its chance. `assertDetachedBoardSupported`
+    // rejects a durable detached board with no `boardId` — and a caller that
+    // catches that (a config fallback, a hot reload, a test asserting the
+    // refusal) would otherwise be left holding a declaration that declines valid
+    // reassignment for a board that never came into existence.
+    const ledger = defineTaskCollection({ id: "shared-ledger-e", scope: "session" });
+
+    expect(() =>
+      taskBoard({
+        name: "invalid-detached-e",
+        // no boardId — refused
+        collection: ledger,
+        workers: {
+          implement: { worker: workerBlock("owner-impl-e"), dispatch: { mode: "detached" } },
+        },
+      })
+    ).toThrow(/no boardId/);
+
+    const survivor = taskBoard({
+      name: "survivor-e",
+      collection: ledger,
+      workers: { implement: workerBlock("survivor-impl-e") },
+    });
+
+    const result = await testBlock(reassignThroughCapability(survivor, "survivor-e"), {
+      input: undefined,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toMatchObject({
+      outcome: { outcome: "recorded" },
+      assignee: "review",
+    });
+  });
+
+  it("does not freeze when a detached worker is refused for its session state", async () => {
+    // The second refusal that fires on a durable board, so the deferral cannot
+    // be satisfied by special-casing the missing-boardId check alone.
+    const ledger = defineTaskCollection({ id: "shared-ledger-f", scope: "session" });
+    const statefulWorker = handler({
+      name: "stateful-impl-f",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.null(),
+      sessionStateSchema: z.object({ seen: z.number().nullable().default(null) }),
+      execute: () => null,
+    }) as TaskWorker;
+
+    expect(() =>
+      taskBoard({
+        name: "invalid-detached-f",
+        boardId: "invalid-detached-f",
+        collection: ledger,
+        workers: {
+          implement: { worker: statefulWorker, dispatch: { mode: "detached" } },
+        },
+      })
+    ).toThrow(/sessionStateSchema/);
+
+    const survivor = taskBoard({
+      name: "survivor-f",
+      collection: ledger,
+      workers: { implement: workerBlock("survivor-impl-f") },
+    });
+
+    const result = await testBlock(reassignThroughCapability(survivor, "survivor-f"), {
+      input: undefined,
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output).toMatchObject({
+      outcome: { outcome: "recorded" },
+      assignee: "review",
+    });
+  });
+
   it("does not leak the policy to a different ledger", async () => {
     // Identity is the declaration object, not the collection id or the mere fact
     // that some board somewhere is detached. A second ledger must be untouched.

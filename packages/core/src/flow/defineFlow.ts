@@ -12,7 +12,11 @@ import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
-import { mergeWorkstreamBindings, type WorkstreamBindings } from "../types/workstream";
+import {
+  declareWorkstreamBindings,
+  mergeWorkstreamBindings,
+  type WorkstreamBindings,
+} from "../types/workstream";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -197,10 +201,21 @@ function withFlowTools(
 
   const generatorConfig = block.config as unknown as GeneratorConfig;
   const mergedTools = mergeToolsConfig(flowTools, generatorConfig.flowTools);
-  return generator({
+  const rebuilt = generator({
     ...generatorConfig,
     flowTools: mergedTools
   });
+
+  // Carry definition-only metadata across the rebuild (FIX-982).
+  //
+  // `declaredResources` needs no forwarding here and is a misleading guide:
+  // `generator()` recomputes it from the config it is handed, so it survives on
+  // its own. Bindings have no config half — a board reaches a generator only by
+  // way of a rescue handler, and that lands on the built definition. Rebuilding
+  // without carrying them means a flow silently loses a route the moment it
+  // declares `tools`, and only for the boards behind a generator's failure path.
+  declareWorkstreamBindings(rebuilt, [...(block.workstreamBindings?.values() ?? [])]);
+  return rebuilt;
 }
 
 function mergeActions(
