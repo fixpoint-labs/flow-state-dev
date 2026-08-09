@@ -483,19 +483,23 @@ open thread as implementer notes. Spend a third round only when round two surfac
 genuine **spec-level** finding — a new approach question, not more notes. Say so when you
 do, in one line, so the extra round is a visible decision rather than drift.
 
-**The budget bounds folding, not editing.** The zero-cost inline fix above still applies after
-convergence, on the still-open spec or epic PR: an uncontested correction is a **commit the
-coordinator makes**, never a sub-issue and never its own spec. Contested means it is a
-*decision*, which goes to the human — also not to a new issue. (Taken once: a fold filed
-leftover restatements as a Linear issue for want of any other mechanism, and the uncategorized
-child was swept to `spec` and grew a 300-line spec plus a second PR — two artifacts and a
-lifecycle to do the work of one commit.)
+**The budget bounds folding, not editing — for the epic-spec specifically**, which stays open
+for the life of the epic and has no other home. The zero-cost inline fix above still applies
+to it after convergence: an uncontested correction is a **commit the coordinator makes**,
+never a sub-issue and never its own spec. Contested means it is a *decision*, which goes to
+the human — also not to a new issue. (Taken once: a fold filed leftover restatements as a
+Linear issue for want of any other mechanism, and the uncategorized child was swept to `spec`
+and grew a 300-line spec plus a second PR — two artifacts and a lifecycle to do the work of
+one commit.)
 
-**The wake cannot make that commit, so the coordinator must.** At budget, `epic-wake` reads
-converged epic-PR feedback with a read-only scout and routes it to the sub-issues each item
-names; an item that concerns no sub-issue returns an empty `fanOut` and is dropped as the
-cursor advances. Epic-level corrections therefore reach nobody automatically — they are the
-coordinator's to commit.
+**Nothing automatic delivers such a correction, which is why it says *coordinator*.** At
+budget `epic-wake` reads converged epic-PR feedback with a read-only scout and routes it to
+the sub-issues each item names, so an item concerning no sub-issue is dropped as the cursor
+advances. An **ordinary issue spec** has no such path at all and does not need one: its
+converged review events are deliberately ignored until the gate, and a factual error found
+then is carried as a §13 implementer note — judged against real code, which is the better
+altitude for it. The epic-spec is the exception because it has no implementer to carry a note
+to.
 
 Two mechanics the budget depends on, or it misfires:
 
