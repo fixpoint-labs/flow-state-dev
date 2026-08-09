@@ -353,6 +353,30 @@ class InternalFlowState<TSettings extends object>
   async #doInit(): Promise<FlowApiRouter> {
     const { registry, stores, runtimeConfig } = await this.#runtime();
 
+    // Building the router constructs the stale-request sweeper, so from here
+    // this process really is sweeping — and a COLOCATED worker is running in
+    // this same process against the config above.
+    //
+    // `#buildRuntime` left `staleSweepIntervalMs` off deliberately: at that
+    // moment nothing swept, and stamping a cadence there advertised a sweeper
+    // that did not exist. That reasoning expires exactly here. Without this
+    // stamp the omission outlives its truth — the router puts the cadence on
+    // its own copy of the config, so every job the colocated worker executes
+    // keeps failing the liveness gate with `sweeper-not-running` while the
+    // router beside it sweeps on schedule.
+    //
+    // Mutating the shared object rather than replacing it is what makes the
+    // fact reach the worker at all: `worker.startWorker(runtime)` captured this
+    // exact reference during runtime init, and `createExecutionContext` reads
+    // the cadence per request, so the worker's next job sees it.
+    //
+    // A host that only ever calls `getRuntime()` never reaches this line and
+    // keeps the named refusal (`runtime-only-liveness.test.ts`).
+    if (runtimeConfig.requestHost !== undefined) {
+      runtimeConfig.requestHost.staleSweepIntervalMs =
+        resolveStaleSweep(this.#options).staleSweepIntervalMs;
+    }
+
     return createFlowApiRouter({
       registry,
       stores,

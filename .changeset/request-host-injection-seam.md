@@ -108,3 +108,11 @@ Also in this change:
   the runtime alone — has nothing sweeping, and an abandoned queued entry there
   would read as live indefinitely. Those hosts now get the same named refusal any
   other unswept deployment gets. A host that serves HTTP is unaffected.
+- A **colocated worker** gets liveness back once its own process starts
+  sweeping. `worker.mode: "colocated"` runs the worker and the router together,
+  and the sweeper the router starts is a real sweeper for both — but the worker
+  captured the runtime config before the router existed, so it kept the refusal
+  above and every job it ran lost `livenessOf` even while the router beside it
+  swept on schedule. `createFlowState` now records the sweeper on the config it
+  shares with the worker when it builds the router. A host that never builds one
+  still refuses, which is the case that refusal is for.
