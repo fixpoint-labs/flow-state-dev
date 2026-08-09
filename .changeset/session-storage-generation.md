@@ -7,8 +7,8 @@
 
 Delete a session and create a new one with the same id, and the new session now
 starts on a clean scope even when an action from the deleted session is still
-running. Previously that action could write into the scope after the delete
-purged it, and the recreated session read the row back as its own — a create
+running (FIX-1000). Previously that action could write into the scope after the
+delete purged it, and the recreated session read the row back as its own — a create
 carries `expectedVersion: 0` ("no live row"), which a never-existed key
 satisfies against a purged scope exactly as against a fresh one, so no per-key
 predicate could close it.
