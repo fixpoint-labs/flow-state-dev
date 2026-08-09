@@ -309,6 +309,32 @@ send the header are unaffected — keys are unchanged and no migration runs.
 Read the value in a block via `ctx.session.identity.tenantId`. See the
 [state and scopes guide](https://flow-state.dev/docs/fundamentals/state-and-scopes#multi-tenant-isolation).
 
+## Session resource addressing
+
+Session ids are caller-supplied and reusable, so a session can be deleted and
+another created under the same id. `SessionRecord` carries an optional
+`storageGeneration` — an opaque nonce minted once when the record is created —
+and session-scoped resource state and content address at
+`${sessionKey}#${storageGeneration}` rather than at the session key alone. Two
+sessions that share an id therefore never share a resource address, and a write
+from an action still running when the first was deleted lands in the address
+nothing reads again. Recreating a session starts clean.
+
+```ts
+import { resolveSessionResourceScopeId } from "@flow-state-dev/engine";
+
+const scopeId = resolveSessionResourceScopeId(record); // "sess_42#9f1c…"
+await stores.content.get("session", scopeId, "notes");
+```
+
+Take the address from `resolveSessionResourceScopeId(record)` rather than
+building it — it takes the record because the record is what carries the
+generation, and it folds in the tenant prefix the session key may already have.
+A record persisted before this field existed has no generation and addresses the
+bare session key, exactly as before; nothing is backfilled and no migration
+runs. Custom stores need no change: `scopeId` was already an opaque string, and
+it stays one.
+
 ## Store configuration
 
 ```ts

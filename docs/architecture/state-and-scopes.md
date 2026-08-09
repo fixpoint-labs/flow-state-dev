@@ -403,6 +403,23 @@ The `${tenantId}:${sessionId}` scheme is ambiguous because session ids may thems
 
 Stream attach (`GET .../requests/:id/stream`) and suspension resume are authorized by `requestId` alone — an unguessable capability token — and are **not** re-checked against the tenant header. This is the pre-existing request-as-capability model and is deliberate: a `requestId` is only obtainable by the caller who created it. Resume re-dispatches under the original request's stored `tenantId`, so a resumed run still lands in the correct tenant's session. Session, state, and resource reads (addressed by the caller-supplied `sessionId`) do enforce the tenant binding, because their identifier is guessable.
 
+## Session Storage Generation
+
+A session id is caller-supplied and reusable: delete a session, create another with the same id, and the second is meant to start empty. It did not always. An action still in flight when the delete landed could write into the scope afterwards, and the new session was born holding that row. Per-key CAS cannot fence it — a create carries `expectedVersion: 0` ("no live row"), and a key that never existed satisfies that against a purged scope exactly as against a fresh one.
+
+**So the scope stops being re-addressable instead of being defended** (FIX-1000). Every session record mints a `storageGeneration` when it is created — an opaque `crypto.randomUUID()` nonce, never derived from the id and never inverted — and session-scoped resource state and content are addressed by `${recordKey}#${generation}` rather than by the record key alone. A recreated session reads a different address, so the straggler's write still commits, into a generation nothing will ever address again. Unreachable, not fenced.
+
+Two things follow from choosing an address over a predicate:
+
+- **It reaches `ContentStore`.** Content is last-write-wins and carries no version at all, so no predicate could fence it; an address change fences both stores identically.
+- **It costs no migration.** `scope_id` is an opaque string in every adapter — `TEXT NOT NULL` on SQLite and Postgres, a map key in memory, an encoded directory on the filesystem. No schema changes; a string gets longer. Custom stores need no change either.
+
+The derivation lives in one place, `resolveSessionResourceScopeId(record)` in `stores/scope-keys.ts`, and it takes the **record** rather than the id — the record is what carries the generation, so a caller holding only a `sessionId` has to load one. It is the sibling of `resolveResourceScopeId` (user/org scope) and is deliberately **not** `resolveSessionStorageKey`, which keeps its one meaning: the session *record* key. One function answering both questions is the ambiguity the defect grew in. The generation composes onto a key that may already be tenant-namespaced, so multi-tenancy is unaffected; `#` rather than `:` because `:` is already load-bearing for tenant and flow namespacing.
+
+The field is **optional** on `SessionRecord`, and that is a decision rather than laziness. A missed *mint* site degrades to today's behaviour and breaks nothing; a missed *read* site makes writer and reader disagree, which is silent data loss. A required field enumerates only the first set. What converges instead is the read path — one derivation — plus a shared `mintStorageGeneration()` and one test per production mint path. A stored record with no generation is legacy: it addresses the bare scope id, byte-identical to before (BP-030). Nothing is backfilled, so a pre-upgrade session stays unfenced until it is recreated.
+
+The purge itself is unchanged: `deleteAll` still bulk-marks, and a dead generation's tombstones are unreachable garbage that nothing reclaims yet. That is the same retention cost as [above](#cas-and-concurrency), scoped to a generation rather than a key.
+
 ## Cross-Flow State: Shared vs Isolated
 
 User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key.
