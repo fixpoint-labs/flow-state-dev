@@ -135,6 +135,13 @@ export class FilesystemRequestStore implements RequestStore {
    * process. Migration runs lazily on the first `persistEvents` per request.
    */
   private readonly eventsFormatVerified = new Set<string>();
+  /**
+   * Requests whose record has been checked once this process for a pre-upgrade
+   * inline `abortRequested` (FIX-1026). Mirrors `eventsFormatVerified`:
+   * migration runs lazily, on the first `set` per request, and the check costs
+   * one record read per request per process rather than one per write.
+   */
+  private readonly legacyAbortChecked = new Set<string>();
 
   private readonly pollIntervalMs: number;
   private readonly onPersistError?: PersistErrorHandler;
@@ -223,22 +230,19 @@ export class FilesystemRequestStore implements RequestStore {
 
     // BP-030 dual-read. The marker is authoritative once it exists; a record
     // written before the flag moved off `set`'s surface still carries it
-    // inline, and must still read as requested. Nothing is rewritten — but
-    // this is also the point the record becomes migrated, because the record
-    // has already been paid for here. `isAbortRequested` can then stay a
-    // `stat` instead of inheriting this read's cost on every tick.
-    // Read-only. An earlier revision created the marker here to "migrate" the
-    // record, and that was a bug of the same shape as the one the conditional
-    // write already had: `delete` takes no lock, so a write issued from an
-    // unlocked read can land after a deletion and leave an orphan marker —
-    // which would then read as a cancellation on a later request reusing the
-    // id. A read does not mutate storage.
+    // inline, and must still read as requested.
     //
-    // The consequence, stated rather than worked around: a record written
-    // before the flag moved off `set`'s surface is reported here, but
-    // `isAbortRequested` (a bare `stat`) does not see it, and the record's
-    // next write drops the inline value. That window is one upgrade wide on an
-    // adapter that does not support cross-process execution anyway.
+    // Read-only. An earlier revision created the marker here to "migrate" the
+    // record; a read does not mutate storage. Migrating from this path would
+    // also put a locked read-modify-write on the hot read path, and `get` is
+    // already the O(items) call the marker exists to keep off the poll.
+    //
+    // Migration happens on the write path instead — `set` moves a legacy
+    // inline flag into the marker before stripping it, so a full-record write
+    // no longer discards stored intent. Between an upgrade and a request's
+    // first write, the flag is therefore visible here but not to
+    // `isAbortRequested`, which is a bare `stat`. That gap is one write wide
+    // and closes on the first `set`, which every live request performs.
     const inlineLegacy = record.abortRequested === true;
 
     return withRequestSourceDefault(
@@ -278,15 +282,52 @@ export class FilesystemRequestStore implements RequestStore {
     });
   }
 
+  /**
+   * Move a pre-upgrade inline `abortRequested: true` into the marker, once per
+   * request per process (FIX-1026, BP-030).
+   *
+   * `set` strips the inline field, and on a record written before the flag
+   * moved off `set`'s write surface that field is the *only* copy of the
+   * cancellation — so stripping it without migrating would let a full-record
+   * write clear stored intent, which the `set` contract forbids in both
+   * directions. It is not merely a lost read: `isAbortRequested` is a bare
+   * `stat`, so intent left inline is intent the cross-process poll can never
+   * deliver, and a request cancelled before the upgrade that reached
+   * `suspended` or `interrupted` would resume and run to completion.
+   *
+   * The detecting read is unlocked and deliberately read-only; the authority
+   * is the re-read inside `update`, which runs under the per-id lock. That
+   * ordering is what keeps the marker write from outliving a concurrent
+   * `delete`: after a delete, `update` finds no record and the merge never
+   * runs, so no orphan marker is created.
+   */
+  private async migrateLegacyAbortIntent(id: string): Promise<void> {
+    if (this.legacyAbortChecked.has(id)) return;
+    this.legacyAbortChecked.add(id);
+
+    // Detector only. Records written by this store never carry the field, so
+    // this returns without writing anything for every non-legacy request.
+    const current = await this.store.get(id);
+    if (current?.abortRequested !== true) return;
+
+    await this.store.update(id, async (fresh) => {
+      if (fresh.abortRequested !== true) return fresh;
+      await this.writeAbortMarker(id, true);
+      return withStoredAbortRequested(fresh, undefined);
+    });
+  }
+
   async set(
     id: string,
     value: RequestRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<RequestRecord>> {
+    await this.migrateLegacyAbortIntent(id);
     // `abortRequested` is off `set`'s write surface (FIX-1026). The marker is
     // the only home, so the record body never carries the flag: stripping it
     // here means a full-record write can neither set the flag nor clear it,
-    // whatever snapshot the caller built its record from.
+    // whatever snapshot the caller built its record from. Legacy intent has
+    // been moved to the marker just above, so stripping no longer discards it.
     return this.store.set(
       id,
       withStoredAbortRequested(value, undefined),
@@ -378,8 +419,11 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async delete(id: string): Promise<void> {
-    await this.store.delete(id);
-    await this.deleteSidecars(id);
+    // Sidecars are swept inside the per-id lock, alongside the record file.
+    // Sweeping them after `delete` returned would put the marker removal
+    // outside the lock, where a conditional write can slip in between and be
+    // left holding a marker whose record is already gone.
+    await this.store.delete(id, () => this.deleteSidecars(id));
   }
 
   /**

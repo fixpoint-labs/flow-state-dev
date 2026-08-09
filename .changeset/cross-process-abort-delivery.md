@@ -14,4 +14,4 @@ Cancelling a request now stops it even when it is running in another process (FI
 
 `set` must now ignore `abortRequested` in both directions — a full record can neither set the flag nor clear a stored one. This is not compiler-enforced, because the field is still readable on `RequestRecord`. `createRequestStoreConformanceTests` covers all of it.
 
-No data migration: the flag is stored where it always was, and only its write path changed.
+No migration step to run. On memory, SQLite and Postgres the flag is stored where it always was and only its write path changed. The filesystem adapter is the exception: because its `get()` carries items, keeping the flag on the record would have put an O(items) read on every heartbeat tick, so it lives in an `.abort` marker file beside the record and the narrow read is a `stat`. A request cancelled before the upgrade carries the flag inline instead; that record is migrated to a marker lazily, on its first write, so the cancellation is still delivered to a run that resumes after the upgrade.

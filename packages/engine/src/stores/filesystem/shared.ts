@@ -235,7 +235,22 @@ export type FilesystemRecordStore<
     expectedVersion: ExpectedVersion,
     updatedAt: number
   ): Promise<SetResult<T>>;
-  delete(id: string): Promise<void>;
+  /**
+   * Remove a record under the per-id write lock.
+   *
+   * The lock matters as much here as it does on the write verbs. Deleting
+   * outside it lets the removal land *inside* another writer's
+   * read-modify-write — between its read and its trailing `writeRecord` — and
+   * that write then puts the record straight back, so a delete that reported
+   * success leaves the record on disk.
+   *
+   * `alsoDelete` runs inside the same lock, immediately after the record file
+   * is removed. It is the delete-side counterpart of `update`'s async merge:
+   * a store with sidecar files (the request store's abort marker, event log
+   * and runOnce results) uses it to sweep them in the same serialized step, so
+   * no concurrent writer can observe the record and its sidecars disagreeing.
+   */
+  delete(id: string, alsoDelete?: () => Promise<void>): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
 
@@ -476,9 +491,13 @@ export function createFilesystemRecordStore<
       );
     },
 
-    delete: async (id: string): Promise<void> => {
-      await deleteRecord(rootDir, id);
-    },
+    delete: (id: string, alsoDelete?: () => Promise<void>): Promise<void> =>
+      withLock(id, async () => {
+        await deleteRecord(rootDir, id);
+        if (alsoDelete !== undefined) {
+          await alsoDelete();
+        }
+      }),
 
     list: async (listOptions?: TListOptions): Promise<TRecord[]> => {
       const all = await listRecords<TRecord>(rootDir, skipSidecars);
