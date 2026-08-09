@@ -15,7 +15,11 @@ import type {
 import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
-import { createRuntimeConfig, type RuntimeConfig } from "../runtime-config";
+import {
+  createRuntimeConfig,
+  resolveStaleSweep,
+  type RuntimeConfig
+} from "../runtime-config";
 import type { ErrorCaptureHandler } from "../errors/error-capture";
 import {
   createFlowRouteHandlers,
@@ -330,9 +334,6 @@ export async function dispatchDedicatedRoute(
   return dispatch(req, hostBasePath);
 }
 
-const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
-const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
-
 /**
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
@@ -342,35 +343,36 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   //
   // Resolved BEFORE the handlers are built, because the request-host seam's
   // liveness gate needs this same pair and must describe the sweeper this
-  // router actually constructs. One resolution, two consumers — a host author
-  // configures the cadence and threshold once, here, and cannot desynchronize
-  // the gate from the sweeper it is reasoning about.
-  const staleSweepIntervalMs =
-    options.staleSweepIntervalMs !== undefined
-      ? options.staleSweepIntervalMs
-      : DEFAULT_STALE_SWEEP_INTERVAL_MS;
-  const staleSweepThresholdMs =
-    options.staleSweepThresholdMs !== undefined
-      ? options.staleSweepThresholdMs
-      : DEFAULT_STALE_SWEEP_THRESHOLD_MS;
+  // router actually constructs. The defaulting rule is shared with
+  // `createFlowState` (`resolveStaleSweep`), which stamps the same facts onto
+  // the runtime config it hands the worker — so a host author configures the
+  // cadence and threshold once and no path can desynchronize the gate from the
+  // sweeper it reasons about.
+  const { staleSweepIntervalMs, staleThresholdMs: staleSweepThresholdMs } =
+    resolveStaleSweep(options);
 
   // Bundle the forwarded instance-level options once at this public boundary.
   // `createFlowState` passes a pre-built `runtimeConfig`; direct callers get
   // it constructed from their flat options here.
   const baseRuntimeConfig = options.runtimeConfig ?? createRuntimeConfig(options);
 
-  // Wire the request-host seam (FIX-999) on the shipped path. Without this the
-  // bundle is built only for callers that hand `runtimeConfig.requestHost` to
-  // `runAction` directly, so `requireRequestHost(ctx)` would throw for every
-  // normal request served by this router.
+  // Wire the request-host seam (FIX-999) for a DIRECT `createFlowApiRouter`
+  // caller — one that never went through `createFlowState` and so has no
+  // shared runtime config to inherit the seam from. Without this the bundle
+  // would be built only for callers that hand `runtimeConfig.requestHost` to
+  // `runAction` themselves, and `requireRequestHost(ctx)` would throw for
+  // every normal request served by such a router.
   //
-  // The sweeper facts are supplied from the resolution above rather than from
-  // the caller: they describe the sweeper constructed below, and a caller-held
-  // copy could only describe a different one. `startOperation` and `parentTask`
-  // are carried through untouched — a host that wired them (a worker, a test)
-  // keeps them, and one that did not gets a bundle whose start verb refuses by
-  // name. That is the designed degraded-but-present state: the gate makes a
-  // real fail-closed decision instead of the seam being absent entirely.
+  // Via `createFlowState` these facts are already on `baseRuntimeConfig` and
+  // this restamps them to the identical pair: both sides call
+  // `resolveStaleSweep` on the same forwarded options. The stamp stays because
+  // the router is a public entry point in its own right, and the facts must
+  // describe the sweeper constructed below rather than whatever a caller
+  // happened to hold. `startOperation` and `parentTask` are carried through
+  // untouched — a host that wired them (a worker, a test) keeps them, and one
+  // that did not gets a bundle whose start verb refuses by name. That is the
+  // designed degraded-but-present state: the gate makes a real fail-closed
+  // decision instead of the seam being absent entirely.
   const runtimeConfig: RuntimeConfig = {
     ...baseRuntimeConfig,
     requestHost: {

@@ -20,7 +20,14 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
-import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../../src";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  createFlowState,
+  createInMemoryStores,
+  inMemoryStores,
+  runAction
+} from "../../src";
 import type { StoreRegistry } from "../../src/stores/types";
 
 /** A registry that declares itself shared, as a real Postgres-backed one does. */
@@ -82,16 +89,49 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
   });
 }
 
+/**
+ * Assemble a workstream core onto a flow instance.
+ *
+ * `workstream` is not an app-author surface — the framework builds it from a
+ * board's drain bindings, which nothing populates yet. Detached dispatch
+ * refuses `no-workstream-core` without it, so a test that needs to reach the
+ * child-session write has to stand it up the way the framework will. This is
+ * the precondition, not the thing under test.
+ */
+function withWorkstreamCore<T>(flow: T): T {
+  (flow as { workstream?: unknown }).workstream = {
+    block: handler({
+      name: "core",
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.object({}),
+      execute: async () => ({})
+    })
+  };
+  return flow;
+}
+
+/**
+ * A real HTTP action request. `sessionId: undefined` OMITS the field, which is
+ * a supported call — execution generates and persists an ephemeral session for
+ * it. `orgId` goes through the default principal resolver, which reads it from
+ * the body for an unauthenticated app.
+ */
 async function post(
   router: ReturnType<typeof createFlowApiRouter>,
   kind: string,
-  sessionId: string
+  sessionId: string | undefined,
+  orgId?: string
 ): Promise<void> {
   const res = await router.POST(
     new Request(`http://localhost/api/flows/${kind}/actions/run`, {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
-      body: JSON.stringify({ userId: "u_alice", sessionId, input: {} })
+      body: JSON.stringify({
+        userId: "u_alice",
+        ...(sessionId !== undefined ? { sessionId } : {}),
+        ...(orgId !== undefined ? { orgId } : {}),
+        input: {}
+      })
     }),
     { params: { path: [kind, "actions", "run"] } }
   );
@@ -196,5 +236,131 @@ describe("request-host seam on the shipped router path", () => {
     // admission refuses before the missing start operation is even reached.
     // Either way a capability meets a named refusal, never a broken verb.
     expect(seen.startRefusal).toMatchObject({ ok: false });
+  });
+
+  it("an OMITTED sessionId still gets the seam — the ephemeral session is a real session", async () => {
+    const seen: Seen = {};
+    const registry = createFlowRegistry();
+    registry.register(probeFlow("shipped-ephemeral", seen, []));
+
+    const router = createFlowApiRouter({
+      registry,
+      stores: withSharedRegistry(createInMemoryStores())
+    });
+
+    // No `sessionId` in the body. Execution generates and PERSISTS one, so the
+    // request has a valid `ctx.session` and real lineage to authorise by.
+    // Gating the seam on `options.sessionId` withheld it from exactly these
+    // requests, and `requireRequestHost` threw inside an otherwise normal call.
+    await post(router, "shipped-ephemeral", undefined);
+
+    expect(seen.error).toBeUndefined();
+    expect(seen.hasHost).toBe(true);
+  });
+
+  it("the seam binds the session's RESOLVED org, not the dispatch's omitted one", async () => {
+    const seen: Seen = {};
+    const registry = createFlowRegistry();
+    registry.register(withWorkstreamCore(probeFlow("shipped-org", seen, [])()));
+
+    const stores = withSharedRegistry(createInMemoryStores());
+    const started: string[] = [];
+
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      // A wired host start operation, as an orchestration deployment has. The
+      // router carries `startOperation` through untouched, so `startDetached`
+      // reaches the point where it writes the child session record.
+      runtimeConfig: {
+        requestHost: {
+          startOperation: async (spec: { sessionId: string }) => {
+            started.push(spec.sessionId);
+            return { requestId: "req_child" };
+          }
+        }
+      }
+    });
+
+    // A session already bound to an org, as any earlier request left it.
+    const ts = Date.now();
+    await stores.session.set(
+      "s_org_bound",
+      {
+        id: "s_org_bound",
+        state: {},
+        version: 0,
+        createdAt: ts,
+        updatedAt: ts,
+        flowKind: "shipped-org",
+        userId: "u_alice",
+        orgId: "org_acme",
+        journal: []
+      },
+      "any"
+    );
+
+    // The dispatch OMITS orgId. That is legal — only a *differing* org is
+    // rejected — and execution resolves the authoritative org from the session
+    // record. The seam must close over that, not over the absent option.
+    await post(router, "shipped-org", "s_org_bound");
+
+    expect(seen.error).toBeUndefined();
+    // Dispatch was admitted — otherwise the org assertion below would pass
+    // vacuously on a refusal that never wrote a child.
+    expect(seen.startRefusal).toMatchObject({ ok: true });
+    expect(started).toHaveLength(1);
+
+    // The observable: the child the seam created carries the parent's org.
+    // Reading `options.orgId` here left it undefined, so `startDetached`
+    // produced a child outside the parent's org — org-scoped child work then
+    // runs without the org context its inheritance contract promises.
+    const child = await stores.session.get(started[0]!);
+    expect(child?.orgId).toBe("org_acme");
+  });
+});
+
+/**
+ * The WORKER path (FIX-999). `createFlowState` hands one runtime config to both
+ * `createFlowApiRouter` and `worker.startWorker`; the BullMQ adapter forwards it
+ * unchanged to worker-side `runAction`. Stamping the seam onto the router's
+ * local copy therefore fixed HTTP and left every colocated / worker-only
+ * execution without it.
+ *
+ * This drives the worker's call shape directly: the runtime config the adapter
+ * would receive, passed to `runAction` exactly as `bullmq/src/worker.ts` does.
+ */
+describe("request-host seam on the shipped worker path", () => {
+  it("the runtime handed to worker.startWorker carries the seam", async () => {
+    const seen: Seen = {};
+    const flow = probeFlow("worker-seam", seen, [])();
+
+    const state = createFlowState({
+      flows: { workerSeam: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: (() => undefined) as never
+    });
+
+    // The exact object `worker.startWorker(runtime)` is given.
+    const runtime = await state.getRuntime();
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "u_alice",
+      sessionId: "s_worker",
+      source: "bullmq",
+      stores: runtime.stores,
+      runtimeConfig: runtime.runtimeConfig
+    });
+
+    // Before the shared-config fix this threw with the production symptom —
+    // the same "no runtime host is wired" failure the router fix removed from
+    // the HTTP path, still live on every worker execution.
+    expect(seen.error).toBeUndefined();
+    expect(seen.hasHost).toBe(true);
+
+    await state.dispose();
   });
 });

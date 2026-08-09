@@ -94,3 +94,37 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     requestHost: options.requestHost
   };
 }
+
+/** Stale-request sweeper cadence (ms) when the host configures none. */
+export const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
+/** Heartbeat-age threshold (ms) for the stale-request sweeper by default. */
+export const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
+
+/** The public option pair describing the stale-request sweeper. */
+export interface StaleSweepOptions {
+  staleSweepIntervalMs?: number;
+  staleSweepThresholdMs?: number;
+}
+
+/**
+ * Resolve the stale-sweep pair to the facts the request-host liveness gate
+ * reasons about (FIX-999).
+ *
+ * There are two entry points that construct a `RuntimeConfig` — `createFlowState`
+ * (whose config reaches the router *and* `worker.startWorker`) and a direct
+ * `createFlowApiRouter` call. Both must describe the same sweeper, so the
+ * defaulting rule lives here rather than being restated at each one. `0` is
+ * preserved, not defaulted: it means sweeping is deliberately disabled, which
+ * the gate refuses liveness on.
+ */
+export function resolveStaleSweep(options: StaleSweepOptions): {
+  staleSweepIntervalMs: number;
+  staleThresholdMs: number;
+} {
+  return {
+    staleSweepIntervalMs:
+      options.staleSweepIntervalMs ?? DEFAULT_STALE_SWEEP_INTERVAL_MS,
+    staleThresholdMs:
+      options.staleSweepThresholdMs ?? DEFAULT_STALE_SWEEP_THRESHOLD_MS
+  };
+}

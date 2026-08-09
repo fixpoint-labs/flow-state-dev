@@ -45,12 +45,21 @@ Also in this change:
   heartbeats are on and fast enough for the stale threshold, and stale sweeping is
   running. When any of those does not hold the capability is absent and says why at
   construction, rather than answering with a value that can be wrong.
-- `createFlowApiRouter` (and so `createFlowState`) now builds the seam for every
-  request it serves, supplying the liveness gate from the same stale-sweep cadence
-  and threshold it configures its own sweeper with. A deployment configures those
-  once, and the gate can no longer reason about a sweeper that does not exist.
-  Detached starts still refuse by name on this path — no host start operation is
-  wired to it yet.
+- `createFlowState` now builds the seam onto the runtime config it shares with
+  both the HTTP router and the execution backend, so a request served over HTTP,
+  a colocated worker job and a worker-only job all reach a block with the same
+  seam. `createFlowApiRouter` supplies it too for a host built directly on the
+  router. The liveness gate is fed from the same stale-sweep cadence and threshold
+  the sweeper is configured with, resolved by one shared rule, so a deployment
+  configures those once and the gate cannot reason about a sweeper that does not
+  exist. Detached starts still refuse by name on these paths — no host start
+  operation is wired to them yet.
+- The seam is built from the session and org the request actually resolved to,
+  not from the dispatch's raw arguments. An action that omits `sessionId` runs
+  under a generated session and now gets the seam (previously it was withheld and
+  `requireRequestHost` threw inside an otherwise normal request), and a dispatch
+  that omits `orgId` against an org-bound session now inherits that session's org,
+  so a detached child is created inside the parent's org as its contract promises.
 - A liveness answer is now scoped to the asking flow. A session id is not a flow
   boundary (a reused session is validated for user, tenant and org, but not flow
   kind), so a request belonging to another flow under the same session id is no

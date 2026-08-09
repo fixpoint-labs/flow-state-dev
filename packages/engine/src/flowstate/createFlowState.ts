@@ -17,7 +17,7 @@ import {
 } from "@flow-state-dev/core";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
-import { createRuntimeConfig } from "../runtime-config";
+import { createRuntimeConfig, resolveStaleSweep } from "../runtime-config";
 import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
@@ -275,6 +275,19 @@ class InternalFlowState<TSettings extends object>
       ? createCheckpointDurabilityProvider(stores)
       : undefined;
 
+    // The request-host seam (FIX-999) belongs on the SHARED config, not on the
+    // router's copy of it. This config is handed to `worker.startWorker` below
+    // and to `createFlowApiRouter` in `#doInit`, so a colocated or worker-only
+    // execution reaches `createExecutionContext` through the same construction
+    // inputs an HTTP request does. Stamping it only in the router left every
+    // worker-side `runAction` without the seam, so `requireRequestHost(ctx)`
+    // threw there for exactly the reason it used to throw everywhere.
+    //
+    // The sweeper facts come from `resolveStaleSweep` — the same rule the
+    // router applies to the pair it builds its own sweeper from — so the gate
+    // and the sweeper cannot describe different cadences. `startOperation` and
+    // `parentTask` stay unwired here: no host start operation exists yet, and
+    // the verb refuses by name rather than pretending otherwise.
     const runtimeConfig = createRuntimeConfig({
       modelResolver,
       voiceProvider,
@@ -283,7 +296,8 @@ class InternalFlowState<TSettings extends object>
       defaultSseHeartbeatMs: this.#options.defaultSseHeartbeatMs,
       durabilityProvider,
       durabilityRetention: this.#options.durabilityRetention,
-      errorCapture: this.#options.errorCapture
+      errorCapture: this.#options.errorCapture,
+      requestHost: resolveStaleSweep(this.#options)
     });
 
     const runtime: FlowStateRuntime = {
