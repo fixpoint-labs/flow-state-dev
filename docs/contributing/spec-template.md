@@ -156,6 +156,70 @@ framing, not a gate; it's allowed to conclude the problem isn't worth solving an
 > old items and re-render from scratch) loses scroll position and any local edits,
 > so nobody uses it twice.
 
+> **§6 comes first on purpose.** It is the only section the product owner must *act* on,
+> so it precedes the sections that justify it. Everything below §6 is the derivation —
+> read it if the sign-off is not obvious, skip it if it is.
+
+### 6. Decisions & rules — the sign-off surface
+
+Numbered, ≤ 8, only the calls that **shape the outcome** — some interpretation room for
+the implementer is expected. Each: the decision, the alternative rejected, the
+ramification. Part II must not introduce a decision that isn't here.
+
+**Each one is a business decision or it does not belong here.** The test: could the owner
+explain the choice, and what it costs them, to a customer — without the file names? If a
+row only makes sense in terms of types, modules or call sites, it is an implementer's call
+and belongs in Part II. A spec whose §6 reads like a design review has put the owner in the
+engineer's chair, which [`asking-for-decisions.md`](asking-for-decisions.md) says should be
+rare and announced. **Most specs should have two or three rows here, not eight** — eight
+calls that genuinely reshape the outcome is a sign the issue is really several.
+
+**Write *Locks in* as a consequence, not a mechanism.** It is the only line that tells a
+product owner what signing this off costs them, so it names what we can no longer change
+cheaply, who is affected, and when the bill arrives — never just which code would have to
+move. "Changing it later is a breaking change to a string we don't validate" prices the
+decision; "both entry points would need updating" asks the reader to price it themselves.
+
+**Most of these are being ratified, not decided.** The human is confirming the direction is
+the one they want, which is why eight one-liners is a reasonable ask. **A row that is a genuine
+live fork** — you can't settle it alone, and the answer turns on something they know — is
+**pulled out and asked properly** in the spec PR description (block 3) using the six-part
+shape in [`asking-for-decisions.md`](asking-for-decisions.md), with the row itself left in
+place so §6 stays the complete sign-off surface. Zero to two per spec; more than that and the
+direction isn't ready for review.
+
+> 1. **Resume filters server-side by sequence number.**
+>    *Rejected:* client-side dedupe.
+>    *Locks in:* every transport we add later needs a monotonic per-request sequence.
+>
+> 2. **The cursor is `{requestId}:{sequence}`, accepted on `Last-Event-ID` and on a
+>    `starting_after` query param; the query param wins when both are sent.**
+>    *Rejected:* header only — an intermediary that strips `Last-Event-ID` would silently
+>    disable resume, which is worse than carrying two encodings of one value.
+>    *Locks in:* the format is load-bearing for any client, ours or not, and both entry
+>    points have to stay in step. Changing it later is a breaking change to a string we
+>    don't validate.
+>
+> 3. **A reattach to a completed request replays from the persisted log and closes.**
+>    *Rejected:* a distinct "already finished" status code the client has to branch on.
+>    *Locks in:* one response shape for every reattach — a cursor past the end of the
+>    log is an ordinary empty replay, not an error, so the client needs no special case.
+>
+> 4. **No cursor means today's behavior, byte for byte.**
+>    *Rejected:* defaulting to resume-from-last-seen server-side.
+>    *Locks in:* the server holds no per-client state, so nothing to expire.
+>
+> **Non-goals** — serving a finished response to a client that was never attached (that's
+> a history read, and it stays the store's job), and client-side reconnect *policy*
+> (backoff, retry limits). Reattaching to a request that completed mid-flight *is* in
+> scope — see decision 3.
+>
+> **Size:** Medium (multi-file, one PR, ~250 LOC).
+
+*(Large only: declare the §8 PR plan and record its shape as a decision here.)*
+
+---
+
 ### 2. Solution in plain terms
 
 What we'll do and why, in everyday terms — the shape a reviewer needs before any detail.
@@ -235,58 +299,6 @@ against the framework changes.
 > after   reattach with cursor 41  → items 42..N
 >         reattach with cursor 999 → 200 with no events; the log is exhausted
 > ```
-
-### 6. Decisions & rules — the sign-off surface
-
-Numbered, ≤ 8, only the calls that **shape the outcome** — some interpretation room for
-the implementer is expected. Each: the decision, the alternative rejected, the
-ramification. Part II must not introduce a decision that isn't here.
-
-**Write *Locks in* as a consequence, not a mechanism.** It is the only line that tells a
-product owner what signing this off costs them, so it names what we can no longer change
-cheaply, who is affected, and when the bill arrives — never just which code would have to
-move. "Changing it later is a breaking change to a string we don't validate" prices the
-decision; "both entry points would need updating" asks the reader to price it themselves.
-
-**Most of these are being ratified, not decided.** The human is confirming the direction is
-the one they want, which is why eight one-liners is a reasonable ask. **A row that is a genuine
-live fork** — you can't settle it alone, and the answer turns on something they know — is
-**pulled out and asked properly** in the spec PR description (block 3) using the six-part
-shape in [`asking-for-decisions.md`](asking-for-decisions.md), with the row itself left in
-place so §6 stays the complete sign-off surface. Zero to two per spec; more than that and the
-direction isn't ready for review.
-
-> 1. **Resume filters server-side by sequence number.**
->    *Rejected:* client-side dedupe.
->    *Locks in:* every transport we add later needs a monotonic per-request sequence.
->
-> 2. **The cursor is `{requestId}:{sequence}`, accepted on `Last-Event-ID` and on a
->    `starting_after` query param; the query param wins when both are sent.**
->    *Rejected:* header only — an intermediary that strips `Last-Event-ID` would silently
->    disable resume, which is worse than carrying two encodings of one value.
->    *Locks in:* the format is load-bearing for any client, ours or not, and both entry
->    points have to stay in step. Changing it later is a breaking change to a string we
->    don't validate.
->
-> 3. **A reattach to a completed request replays from the persisted log and closes.**
->    *Rejected:* a distinct "already finished" status code the client has to branch on.
->    *Locks in:* one response shape for every reattach — a cursor past the end of the
->    log is an ordinary empty replay, not an error, so the client needs no special case.
->
-> 4. **No cursor means today's behavior, byte for byte.**
->    *Rejected:* defaulting to resume-from-last-seen server-side.
->    *Locks in:* the server holds no per-client state, so nothing to expire.
->
-> **Non-goals** — serving a finished response to a client that was never attached (that's
-> a history read, and it stays the store's job), and client-side reconnect *policy*
-> (backoff, retry limits). Reattaching to a request that completed mid-flight *is* in
-> scope — see decision 3.
->
-> **Size:** Medium (multi-file, one PR, ~250 LOC).
-
-*(Large only: declare the §8 PR plan and record its shape as a decision here.)*
-
----
 
 ## Part II — The Build Plan *(for the implementing agent)*
 
