@@ -84,13 +84,18 @@ Also in this change:
   get marked `interrupted` while the queue still holds them. It stays independent
   of `staleSweepThresholdMs` on purpose: that one measures how long since a
   running worker checked in, which a job no worker has claimed yet cannot answer.
-- `staleSweepThresholdMs` now governs the detection pass on server startup, the
-  same as it governs the periodic sweeper. That pass previously always used a
-  fixed 30 seconds, so a server whose threshold was anything else — including one
-  that configured nothing, since the default is 60 seconds — swept on a different
-  clock at startup than it used for the rest of its life. A restart could mark a
-  healthy cross-process request `interrupted` and deregister it, after which
-  liveness reported still-running work as dead and recovery could re-dispatch it.
+- `staleSweepThresholdMs` now governs every path that sweeps, matching
+  `queuedGraceMs`: the periodic sweeper, the detection pass on server startup,
+  and the on-demand `check-interrupted` endpoint. The latter two each carried a
+  private 30-second default, so a server whose threshold was anything else —
+  including one that configured nothing, since the default is 60 seconds — reaped
+  on a tighter clock at startup and on every DevTool refresh than it used for the
+  rest of its life. Either could mark a healthy cross-process request
+  `interrupted` and deregister it, after which liveness reported still-running
+  work as dead and recovery could re-dispatch it. **`check-interrupted`'s
+  documented default changes** from a fixed 30 seconds to the host's configured
+  threshold; an explicit `staleThresholdMs` query parameter still wins, so a
+  caller that wants a narrower window keeps it.
 - Liveness-dependent behaviour is no longer enabled for a host that initializes
   only its runtime (`getRuntime()`) and never its router. The stale sweeper is
   started by the router, so a worker-only consumer — or a CLI run that resolves

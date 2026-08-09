@@ -318,7 +318,9 @@ export async function handleListActiveRequests(
  * lets a client poke detection on demand — typically the DevTool calls it
  * when it mounts and on every session-list refresh.
  *
- * Optional query: `staleThresholdMs` (default 30_000).
+ * Optional query: `staleThresholdMs` (defaults to the host's configured
+ * `staleSweepThresholdMs`, so an unparameterised poke sweeps on the same clock
+ * the server's own sweeper uses).
  *
  * Response: `{ interrupted: [{ requestId, sessionId, flowKind, actionName, interruptedAt }] }`,
  * limited to records that this call actually transitioned to `interrupted`.
@@ -349,7 +351,14 @@ export async function handleCheckInterruptedRequests(
   const swept = await detectInterruptedRequests({
     stores: ctx.stores,
     userId,
-    staleThresholdMs,
+    // Caller-tunable, but it falls back to the HOST's resolved threshold rather
+    // than to a private default of this route's own. A client that asks for no
+    // particular window is asking for the server's answer, and reaping on a
+    // tighter clock than the server's own sweeper marks work `interrupted` that
+    // the deployment still considers healthy — on a DevTool refresh, which is
+    // the most frequent caller of this endpoint.
+    staleThresholdMs:
+      staleThresholdMs ?? ctx.runtimeConfig.requestHost?.staleThresholdMs,
     // The host's configured grace, not the caller's: a client poking this
     // endpoint must not be able to reap a queued row the server's own sweeper
     // is still waiting on. `staleThresholdMs` above stays caller-tunable

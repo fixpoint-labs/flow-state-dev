@@ -201,3 +201,61 @@ describe("the resolved stale threshold reaches startup detection (FIX-999)", () 
     expect(await isRegistered(stores)).toBe(false);
   });
 });
+
+/**
+ * The DevTool's on-demand sweep is the third path that reaps, and it carried a
+ * private 30-second fallback of its own. The query parameter stays
+ * caller-tunable — that was a deliberate decision, since the threshold only
+ * widens or narrows which heartbeat-governed entries are considered — but a
+ * caller that supplies nothing must not reap on a tighter clock than the
+ * server's own sweeper, or a DevTool refresh marks healthy work `interrupted`.
+ */
+describe("the check-interrupted route defaults to the host's threshold (FIX-999)", () => {
+  async function poke(router: FlowApiRouter, query = ""): Promise<Response> {
+    return router.POST(
+      new Request(
+        `http://localhost/api/flows/users/${USER_ID}/check-interrupted${query}`,
+        { method: "POST", headers: { "content-type": "application/json" } }
+      ),
+      { params: { path: ["users", USER_ID, "check-interrupted"] } }
+    );
+  }
+
+  it("a poke with no query param leaves a row the host considers healthy", async () => {
+    const stores = createInMemoryStores();
+    await seedBeatingRequest(stores, FORTY_FIVE_SECONDS_MS);
+
+    activeRouter = createFlowApiRouter({
+      registry: buildRegistry(),
+      stores,
+      detectInterruptedOnStartup: false,
+      staleSweepIntervalMs: 0,
+      staleSweepThresholdMs: CONFIGURED_THRESHOLD_MS
+    });
+
+    const res = await poke(activeRouter);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ interrupted: [] });
+    expect(await statusOf(stores)).toBe("in_progress");
+  });
+
+  it("an EXPLICIT query param still overrides the host's threshold", async () => {
+    const stores = createInMemoryStores();
+    await seedBeatingRequest(stores, FORTY_FIVE_SECONDS_MS);
+
+    activeRouter = createFlowApiRouter({
+      registry: buildRegistry(),
+      stores,
+      detectInterruptedOnStartup: false,
+      staleSweepIntervalMs: 0,
+      staleSweepThresholdMs: CONFIGURED_THRESHOLD_MS
+    });
+
+    // The caller narrows the window deliberately: to them 45s of silence is stale.
+    const res = await poke(activeRouter, "?staleThresholdMs=1000");
+
+    expect(res.status).toBe(200);
+    expect(await statusOf(stores)).toBe("interrupted");
+  });
+});
