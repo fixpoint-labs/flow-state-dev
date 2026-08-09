@@ -6,9 +6,21 @@ is carried in the epic-spec's §7 running index or in a Linear issue. Split out 
 [`durable-jobs.md`](durable-jobs.md) on 2026-08-09: at ~86,000 characters it was a quarter of the
 epic-spec and the single reason the Linear mirror could not carry the whole document.
 
-**Still unresolved** (all routed to FIX-982): **N1** the per-Workstream request lane · **N9** the
-restart-safe binding surface · **N15** the canonical board identifier · **N18** the missing public
-seam. Everything else is recorded as resolved, dissolved, or superseded.
+**Still unresolved — seven rows, all routed to FIX-982:**
+
+| | Still owed |
+|---|---|
+| **N1** | The per-Workstream request lane — durable, cross-process, renewable, checkable |
+| **N3** | An **activity** query: per-parent, or a join against the enumeration. FIX-1009's parentage filter answers *which Workstreams exist*, never *which are live* |
+| **N4** | A named wake source for the **reclamation** wake — a reclaimed task has no initiating request |
+| **N9** | The restart-safe binding surface |
+| **N15** | The canonical board identifier |
+| **N18** | The missing public seam |
+| **N37** | A **pending-task reconciler** — a task admitted and never claimed is invisible to `reclaim()` permanently. N4 one step earlier |
+
+**N3, N4 and N37 are the non-stranding half**, and an earlier version of this summary listed only
+four rows, which would have let an implementer read them as history and skip them. Everything not
+in that table is recorded below as resolved, dissolved, or superseded.
 
 ## Read this before acting on any row
 
@@ -23,8 +35,9 @@ repeating.
 | **Decision 7, as corrected (`27a4e86b`): settlement is *Workstream-side*, not parent-side.** The Workstream settles its own task through the **narrow trusted parent-board seam** — resolved from the server-derived routing coordinate, exposing `complete`/`fail` only, `expectAttempt`-fenced. It holds the return value in a live context and writes `Task.output` directly, so nothing crosses a request boundary. | **N26** (both of its prescribed remedies) and the second half of **N10**. Any row that reads as "the parent settles the task" is pre-correction |
 | **N68 / OQ-G decided option A** (owner, 2026-08-07): session scope preserved; the seam above is FIX-982's scope; rule 15 no longer constrains a detached board's scope | Options B and C wherever they are still weighed |
 | **FIX-1008 (the cross-boundary result-read surface) is cancelled** (N64); **FIX-991 is not split** | Any row implying a result must be read back across the request boundary |
+| **Three POC suites were retired on 2026-08-09** — `poc-workstream-routing`, `poc-workstream-execution`, `poc-worker-dispatch-config` — as rot from FIX-1009's top-level-only session-listing default, which their lookups predate. Findings kept in the epic-spec §8; the load-bearing one is the evidence under FIX-999's Decision 2 | **N57**'s count of seven suites (now four) and **N50**, whose `@ts-expect-error` lived in `poc-workstream-execution`. N50's underlying point — that the assertion N18 rests on is never evaluated — stands and belongs to **N18** |
 
-**A finding here is history unless it is one of the four unresolved rows above.** An implementer
+**A finding here is history unless it is one of the seven unresolved rows above.** An implementer
 takes scope from the issue's own spec and from the epic-spec's §7, not from this appendix.
 
 **Two of these dissolved when the model moved from sibling requests to Workstreams**, and are kept

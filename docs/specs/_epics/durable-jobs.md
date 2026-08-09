@@ -1636,8 +1636,14 @@ M1–M5 are the epic description's milestones. **M2 now has an issue — [FIX-10
   branch, after FIX-981 and parallel to FIX-982.** It was absent from this sequence until N66, so a
   coordinator following it could reach the consumer work and wrap **without ever dispatching M2** —
   the epic finishing with its non-stranding mechanism unbuilt, which is the exact failure N61 was
-  filed to prevent. It needs FIX-981's fenced primitive and nothing else here; it does not gate
-  FIX-982.
+  filed to prevent. FIX-981's fenced primitive is **Done**, and it does not gate FIX-982.
+  **It is not dispatchable, and "nothing else here" is no longer true (2026-08-09):** its spec PR
+  [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083) closed **unmerged** when the
+  mechanism changed under it — registry-oracle liveness became lease renewal on the task row the
+  worker owns — and Linear records **FIX-999** as its one live `blocked-by` edge. So M2 is **owner
+  work before it is coordinator work**: it needs re-speccing or dropping (§7 → "What needs the
+  owner"). Dispatching it against this sequence alone would build against a design that no longer
+  exists.
 
 **FIX-925 runs independently of both branches** and may start any
 time after the gate.
@@ -2068,9 +2074,12 @@ of scope. **FIX-981 must not start cap work until these are answered.**
 directory, same branch.** At ~86,000 characters the table was a quarter of the epic-spec and the
 only reason the Linear mirror could not carry the full text. Nothing was dropped.
 
-**Still unresolved, all routed to FIX-982:** **N1** the per-Workstream request lane · **N9** the
-restart-safe binding surface · **N15** the canonical board identifier · **N18** the missing public
-seam. Every other finding is recorded there as resolved, dissolved, or superseded.
+**Still unresolved — seven rows, all routed to FIX-982:** **N1** the per-Workstream request lane ·
+**N3** an activity query (*which Workstreams are live*, which FIX-1009's parentage filter does not
+answer) · **N4** the reclamation wake source · **N9** the restart-safe binding surface · **N15** the
+canonical board identifier · **N18** the missing public seam · **N37** the pending-task reconciler.
+**N3, N4 and N37 are the non-stranding half.** Every other finding is recorded there as resolved,
+dissolved, or superseded.
 
 ---
 
@@ -2250,24 +2259,43 @@ deliberately idempotent so multiple calls can share one store registry
 setup. The gap is "resource-backed + two concurrent executions": an extension, plus 1b's distinct-ID
 contention test.
 
-### Workstream evidence — re-runnable, and committed alongside this spec
+### Workstream evidence — partly retired, and the findings outlived the harnesses
 
-The model in §1 and Decision 0 was **executed, not read**. Unlike the harness above, these live in
-the tree, so the mistake that section opens with is not repeated:
+The model in §1 and Decision 0 was **executed, not read**. Two POCs still live in the tree; **three
+were retired on 2026-08-09** and their findings are recorded below and in the specs that consumed
+them.
 
-| POC | Establishes |
-|---|---|
-| `packages/engine/test/spike-background-isolation.test.ts` | Why a sub-session rather than a background sibling |
-| `packages/engine/test/poc-workstream-routing.test.ts` | Keyed get-or-create, and the create race |
-| `packages/engine/test/poc-workstream-execution.test.ts` | Cross-flow Workstreams on the real `runAction` path |
-| `packages/engine/test/poc-forked-session-history.test.ts` | Forked sessions — both strategies, and the fork point |
-| `packages/orchestration/test/poc-worker-dispatch-config.test.ts` | The board's worker config surface |
+| POC | Establishes | State |
+|---|---|---|
+| `packages/engine/test/spike-background-isolation.test.ts` | Why a sub-session rather than a background sibling | **Live** — reads `RequestStore`, untouched by the change below |
+| `packages/engine/test/poc-forked-session-history.test.ts` | Forked sessions — both strategies, and the fork point | **Live** — same reason |
+| ~~`packages/engine/test/poc-workstream-routing.test.ts`~~ | Keyed get-or-create, and the create race | **Retired 2026-08-09** |
+| ~~`packages/engine/test/poc-workstream-execution.test.ts`~~ | Cross-flow Workstreams on the real `runAction` path | **Retired 2026-08-09** |
+| ~~`packages/orchestration/test/poc-worker-dispatch-config.test.ts`~~ | The board's worker config surface | **Retired 2026-08-09** |
 
-Run the first four with `npx vitest run test/spike-background-isolation.test.ts
-test/poc-workstream-routing.test.ts test/poc-workstream-execution.test.ts
-test/poc-forked-session-history.test.ts` from `packages/engine`, and the last from
-`packages/orchestration` (build `contracts` then `core` first — `core/src/items/types.ts` is a
-re-export shim). **67 tests, all passing** (plus the full engine suite: 148 files, 1744 tests).
+**Why the three were retired, precisely: [FIX-1009](https://linear.app/fixpoint-labs/issue/FIX-1009)'s
+top-level-only session-listing default, which the POC lookups predate.** Each of the three found an
+existing Workstream with `sessionStore.list({ tenantId })` and no `parentage` mode. Since #1078
+merged, absence of `parentage` means `"top-level"`, and `matchesParentageFilter` reads top-level as
+`parentSessionId == null` — so a lookup for child sessions returns **nothing**. Every failure was an
+empty result (`length 2 → 0`, `ws_3` where `ws_2` was expected because the reuse lookup never found
+its Workstream), never a contradicted assertion.
+
+**That is rot, not falsification, and the one-word repair is the proof**: passing
+`parentage: "all"` restores all eleven tests. They were deleted rather than repaired because a
+throwaway harness that breaks whenever a listing default moves has ongoing maintenance cost and no
+ongoing benefit — the direction it validated is approved and being implemented now. **Nothing they
+established was lost:** the measurements are in the table below, and the load-bearing one (*a derived
+id collapses both callers onto one key*) is the evidence under **FIX-999's Decision 2**, whose
+reasoning is written into that spec's own text. A POC's job is to settle a direction; these did.
+
+Run the two live ones with `npx vitest run test/spike-background-isolation.test.ts
+test/poc-forked-session-history.test.ts` from `packages/engine`.
+
+**The measurements below are the record.** The last five came from the three retired harnesses and
+are no longer re-runnable from this branch; they are kept because they are what the POCs were for,
+and because a reader finding the files gone should see the results rather than wonder whether a
+failing POC was quietly hidden. The first two still re-run.
 
 | Finding | Measurement |
 |---|---|
