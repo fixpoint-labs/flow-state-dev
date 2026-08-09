@@ -56,6 +56,16 @@ coordinator and an implementer actually read. The guard is not more prose: it is
 decision is not done when its own section is edited, only when every surface restating it has been
 re-derived.
 
+**One section lags more than any other: §5's execution sequence.** Two of the four instances lived
+there — FIX-1005's prerequisite list, and a `(FIX-978, elsewhere)` blocker plus "both branches must
+land before FIX-982" that survived every one of those prerequisites landing. It lags because it
+encodes *ordering*, which every dependency change touches, while reading like settled narrative that
+nobody re-opens. It is also the section with the sharpest failure mode: a stale ordering does not
+merely misinform, it **stalls live work** behind an issue that cannot move. **Whenever a dependency
+changes anywhere in this epic, re-derive §5's sequence before considering the change done** — and
+when a step is spent, mark it historical rather than deleting it, so the record of what an issue
+waited on survives without reading as a live gate.
+
 **Two of these dissolved when the model moved from sibling requests to Workstreams**, and are kept
 with their resolution recorded rather than deleted, so a later reader does not re-derive them.
 

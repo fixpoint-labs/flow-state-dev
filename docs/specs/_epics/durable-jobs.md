@@ -1601,7 +1601,7 @@ M1–M5 are the epic description's milestones. **M2 now has an issue — [FIX-10
 | **M4** — blocking / background disposition | FIX-983 | **Halved, and the surviving half re-homed.** Disposition is board worker config (§1), so it lands with M3 rather than being its own mechanism. What remains under FIX-983 is cross-request *waiting* only. | Small |
 | **M5** — progress across the request boundary | FIX-984 | **DISSOLVED — fully, as of the owner's OQ-C decision (2026-08-07).** Completed-item progress is the background request's own item stream; the in-flight-delta residue (N35) is **accepted as a known limit and documented**, not built. FIX-984 closes as dissolved; the *lifetime* residue moves to FIX-991 as it always did. | none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's **lifetime** residue (never the delta one — that is not built by anyone). | Medium |
-| **(new prerequisite)** — create-if-absent at the **scope** store boundary | **[FIX-1007](https://linear.app/fixpoint-labs/issue/FIX-1007)** *(filed; In Spec Review)* | **Still blocks Workstream routing, but halved by FIX-992 (N62).** `ResourceStateStore` now has it: `expectedVersion: 0` means *no live row*, satisfied by absent or tombstoned and conflicting against a live one (`resource-state-predicate.ts:119`), on all four adapters. The **scope** stores did not get it — `casWriteToMap` still reads `current?.version ?? 0` (`memory/shared.ts:19`), so `0` cannot tell absent from live-at-0. Workstream get-or-create is a `SessionStore` write, so the gap is real. **An earlier draft called it a port of FIX-992's pattern; that was wrong and is corrected in N62** — the two stores disagree about `0` for a structural reason, so a distinct `"absent"` sentinel is needed. Owned by **[FIX-1007](https://linear.app/fixpoint-labs/issue/FIX-1007)**, specced, **Medium**. | Medium |
+| **(new prerequisite)** — create-if-absent at the **scope** store boundary | **[FIX-1007](https://linear.app/fixpoint-labs/issue/FIX-1007)** — **DONE**, [#1079](https://github.com/fixpoint-labs/flow-state-dev/pull/1079) merged 2026-08-08 | **Still blocks Workstream routing, but halved by FIX-992 (N62).** `ResourceStateStore` now has it: `expectedVersion: 0` means *no live row*, satisfied by absent or tombstoned and conflicting against a live one (`resource-state-predicate.ts:119`), on all four adapters. *(Both halves have since shipped — this row is the record of the gap, not a live one.)* The **scope** stores did not get it — `casWriteToMap` still reads `current?.version ?? 0` (`memory/shared.ts:19`), so `0` cannot tell absent from live-at-0. Workstream get-or-create is a `SessionStore` write, so the gap is real. **An earlier draft called it a port of FIX-992's pattern; that was wrong and is corrected in N62** — the two stores disagree about `0` for a structural reason, so a distinct `"absent"` sentinel is needed. Owned by **[FIX-1007](https://linear.app/fixpoint-labs/issue/FIX-1007)**, specced, **Medium**. | Medium |
 | **(no milestone)** — declare a tool as a board participant | FIX-925 | **Moved in by the owner; spec written and reviewed but its PR is unmerged (§7), implementation never built.** The registry's other end — see §7. | Medium |
 
 **Execution sequence — two branches converging on FIX-982, not one total order:**
@@ -1609,13 +1609,24 @@ M1–M5 are the epic description's milestones. **M2 now has an issue — [FIX-10
 - **Claim-safety branch: `(FIX-995 → FIX-992, external) → FIX-981` — and the external half is DONE**
   (FIX-995 2026-08-03, FIX-992 2026-08-06). That was FIX-981's *entire* upstream, so **FIX-981's
   upstream is now empty and the branch starts at FIX-981.**
-- **M3-prerequisite branch, parallel to it:** `create-if-absent + S1a (the parent-session store
-  filter)`, plus `(FIX-978, elsewhere)`. These are **FIX-982's** blockers, per its row in §7 — none of
-  them is a blocker of FIX-981. **FIX-991a is no longer among them:** the result-read surface was
-  filed as FIX-1008 and then cancelled once Workstream-side settlement removed the boundary crossing
-  (N64), so FIX-991 needs no split and stays one issue, wholly after FIX-982.
-- **Both branches must land before FIX-982**, then `FIX-991 (the accessor fix, unsplit — N64) →
-  S1b → S2 → S3 → S4 → S5`.
+- **M3-prerequisite branch, parallel to it — ALL OF IT HAS LANDED (2026-08-09):** `create-if-absent`
+  is **FIX-1007, Done** ([#1079](https://github.com/fixpoint-labs/flow-state-dev/pull/1079)) and
+  `S1a (the parent-session store filter)` is **FIX-1009, Done**
+  ([#1078](https://github.com/fixpoint-labs/flow-state-dev/pull/1078)). **FIX-978 is NOT on this
+  branch and must not be treated as a blocker** — Linear records no such edge, and §7 lists FIX-982
+  as having no blocker left. **FIX-991a is not among them either:** the result-read surface was filed
+  as FIX-1008 and then cancelled once Workstream-side settlement removed the boundary crossing (N64),
+  so FIX-991 needs no split and stays one issue, wholly after FIX-982.
+- **Both branches have landed, so this ordering is now HISTORICAL and gates nothing.** FIX-981 is
+  Done, FIX-1007 and FIX-1009 are Done, and **FIX-982 is In Development with P1 merged** — it is
+  past this sequence, not waiting on it. What follows FIX-982 is unchanged: `FIX-991 (the accessor
+  fix, unsplit — N64) → S1b → S2 → S3 → S4 → S5`.
+
+  > **This bullet said `plus (FIX-978, elsewhere)` and "both branches must land before FIX-982"
+  > until 2026-08-09.** Read literally while FIX-982 was already building, it stalls live M3 work
+  > behind a frozen issue in another epic — the fourth instance tonight of a decision moving without
+  > its restatements, and the second in *this* section. The prerequisite branch is kept above as the
+  > record of what FIX-982 waited on, not as a live gate.
 - **FIX-983 is NOT in the chain** (N69). The gate accepted **N52** — cross-request waiting has no
   caller, and *"the primitive is absent"* is not a reason to build it — yet this chain kept it as a
   prerequisite for S1b and therefore for the entire consumer and evidence path. A coordinator
