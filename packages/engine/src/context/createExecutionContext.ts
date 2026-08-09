@@ -80,6 +80,8 @@ import {
   resolveOrgStorageKey,
   resolveResourceIsolation,
   resolveResourceScopeId,
+  mintStorageGeneration,
+  resolveSessionResourceScopeId,
   resolveSessionStorageKey,
   tenantMatches
 } from "../stores/scope-keys";
@@ -493,9 +495,9 @@ export async function createExecutionContext<
 
   // Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
   // single-tenant requests; `${tenantId}:${sessionId}` when a tenant is
-  // present. This is the key used for the session record and the session-scoped
-  // content/resource-state `scopeId`, so two tenants sharing a session id never
-  // collide. The bare `sessionId` is preserved for the public identity
+  // present. This is the key of the session *record* — its resources address
+  // through `resolveSessionResourceScopeId(sessionRecord)` below, which fences
+  // them by generation (FIX-1000). The bare `sessionId` is preserved for the public identity
   // (`ctx.session.identity.id`), emitted events, and the request record's
   // (bare) `sessionId` field; request history isolates by the `tenantId` filter
   // instead of a namespaced field.
@@ -592,6 +594,7 @@ export async function createExecutionContext<
       userId,
       orgId: options.orgId,
       tenantId: options.tenantId,
+      storageGeneration: mintStorageGeneration(),
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
@@ -632,6 +635,15 @@ export async function createExecutionContext<
   // create a new one. The previous code (`optionsOrgId ?? sessionRecord?.orgId`)
   // silently let the request override the session's stored value, vacating
   // the immutability guarantee FIX-428 promises.
+  // The address this session's resources live at (FIX-1000) — derived once,
+  // here, because this is the first point where the record is settled (loaded
+  // or freshly minted just above). Every session-scope `resourceState`/`content`
+  // call below uses this, never `sessionKey`: the record key and the resource
+  // address are different questions, and conflating them is what let a
+  // recreated session inherit a deleted one's rows. A legacy record with no
+  // generation resolves to `sessionKey`, so behaviour is unchanged for it.
+  const sessionResourceScopeId = resolveSessionResourceScopeId(sessionRecord);
+
   const sessionOrgId = sessionRecord.orgId;
   if (optionsOrgId !== undefined && optionsOrgId !== sessionOrgId) {
     throw new OrgBindingMismatchError(sessionId, sessionOrgId ?? "<unbound>", optionsOrgId);
@@ -812,7 +824,7 @@ export async function createExecutionContext<
   // per-resource bucket. `undefined` when the scope is absent this request
   // (org with no orgId).
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
-    scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
+    scope === "session" ? sessionResourceScopeId : scope === "user" ? userId : resolvedOrgId;
 
   // Per scope: which storage keys (singles) and collection prefixes are
   // isolated. Built once from the full config maps so any read/write can map a
@@ -874,7 +886,7 @@ export async function createExecutionContext<
     scope: ContentScopeType,
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
-    if (scope === "session") return sessionKey;
+    if (scope === "session") return sessionResourceScopeId;
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const isolated = resolveResourceIsolation(
@@ -896,7 +908,7 @@ export async function createExecutionContext<
     scope: ContentScopeType,
     storageKey: string
   ): string | undefined => {
-    if (scope === "session") return sessionKey;
+    if (scope === "session") return sessionResourceScopeId;
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const buckets = isolationBuckets[scope];
@@ -963,7 +975,7 @@ export async function createExecutionContext<
 
   const wave1Start = Date.now();
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    loadDeclaredScopeContent(stores.content, "session", sessionKey, sessionFlowLevelConfigs),
+    loadDeclaredScopeContent(stores.content, "session", sessionResourceScopeId, sessionFlowLevelConfigs),
     loadScopeContentByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeContentByBuckets("org", orgFlowLevelConfigs)
@@ -989,7 +1001,7 @@ export async function createExecutionContext<
   // per-scope caches; in-execution reads/writes hit the cache and persist
   // per-key, never rewriting the whole scope record.
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
-    loadDeclaredResourceState(stores.resourceState, "session", sessionKey, sessionFlowLevelConfigs),
+    loadDeclaredResourceState(stores.resourceState, "session", sessionResourceScopeId, sessionFlowLevelConfigs),
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)
@@ -1898,7 +1910,7 @@ export async function createExecutionContext<
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
-    scopeId: sessionKey,
+    scopeId: sessionResourceScopeId,
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
     readResourceContent: readSessionResourceContent,

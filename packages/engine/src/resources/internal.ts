@@ -25,6 +25,7 @@ import type { StoreRegistry } from "../stores/types";
 import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
+  resolveSessionResourceScopeId,
   resolveSessionStorageKey,
   resourceScopeIds,
   tenantMatches
@@ -193,8 +194,8 @@ export async function getPersistedData(
 
   if (scope === "session") {
     const [resources, content] = await Promise.all([
-      ctx.stores.resourceState.getAll("session", session.id).then(toBareStates),
-      ctx.stores.content.getAll("session", session.id)
+      ctx.stores.resourceState.getAll("session", resolveSessionResourceScopeId(session)).then(toBareStates),
+      ctx.stores.content.getAll("session", resolveSessionResourceScopeId(session))
     ]);
     return { resources, content };
   }

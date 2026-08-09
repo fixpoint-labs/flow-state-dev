@@ -74,8 +74,10 @@ export type {
 } from "./types";
 
 export {
-  resolveUserStorageKey,
-  resolveOrgStorageKey
+  mintStorageGeneration,
+  resolveOrgStorageKey,
+  resolveSessionResourceScopeId,
+  resolveUserStorageKey
 } from "./scope-keys";
 export type { IsolationFlow } from "./scope-keys";
 

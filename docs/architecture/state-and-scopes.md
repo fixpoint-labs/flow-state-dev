@@ -124,6 +124,8 @@ Two orderings are load-bearing and quiet when regressed. `create()` defers its `
 
 **What per-key CAS honestly does not close**, recorded so this is not read as full coverage: a create of a *previously-absent* key racing `deleteAll` still lands, because `expectedVersion: 0` is satisfied by a key that never existed and a bulk mark only touches rows that already exist. That is a cross-key invariant, and no per-key predicate expresses one. The `maxInstances` cap is the same shape — a read-then-act on a set.
 
+The consequence that mattered — a session deleted and recreated under the same id inheriting a straggler's write — **is closed, by an address rather than a predicate** ([Session storage generation](#session-storage-generation)). The straggler still commits; it commits somewhere nothing will read again. The per-key statement above is unchanged: nothing gained a predicate, and the `maxInstances` cap stays open.
+
 Per-adapter guarantee: real CAS on memory, SQLite and Postgres; the filesystem adapter compares under a per-key mutex on the store instance, which closes the in-process race and not a cross-process one.
 
 ```ts
@@ -385,7 +387,7 @@ The axis is optional. Single-tenant apps never send the header and `tenantId` st
 
 When a `tenantId` is present, it namespaces session storage so two tenants sharing a session id never share data:
 
-- The **session record** key and the **session-scoped** content / resource-state `scopeId` become `${tenantId}:${sessionId}` (via `resolveSessionStorageKey`). The session store is fetched by primary key, so the tenant lives in the key.
+- The **session record** key becomes `${tenantId}:${sessionId}` (via `resolveSessionStorageKey`). The session store is fetched by primary key, so the tenant lives in the key. The **session-scoped** content / resource-state `scopeId` composes onto that key rather than repeating its derivation — see [Session storage generation](#session-storage-generation).
 - **Request records** keep a bare `sessionId` and carry a separate `tenantId` field. Cross-turn history isolates by filtering `request.list({ sessionId, tenantId })`, not by namespacing the field — which keeps request recovery a clean pass-through (recovery re-derives the key from the bare `sessionId` + `tenantId`). The `tenantId` list filter exact-matches when present (an explicit `undefined` matches only no-tenant records) and is skipped when absent.
 - **User and org** scopes stay shared across tenants by design — org-level policy and quota, and user preferences, are meant to span tenants.
 

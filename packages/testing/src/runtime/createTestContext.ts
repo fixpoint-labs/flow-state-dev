@@ -8,6 +8,8 @@ import {
   createExecutionContext,
   createInMemoryStores,
   createResponseEmitter,
+  mintStorageGeneration,
+  resolveSessionResourceScopeId,
   type ExecutionContext,
   type StoreRegistry
 } from "@flow-state-dev/engine";
@@ -233,6 +235,7 @@ async function seedStores(options: {
   }
 
   if (options.sessionId !== undefined) {
+    const storageGeneration = mintStorageGeneration();
     await options.stores.session.set(options.sessionId, {
       id: options.sessionId,
       flowKind: options.flow.kind,
@@ -241,12 +244,21 @@ async function seedStores(options: {
       metadata: undefined,
       latestRequestId: undefined,
       state: toJsonObject(cloneValue(options.seed.session?.state ?? {})),
+      storageGeneration,
       version: 0,
       createdAt: now,
       updatedAt: now,
       journal: []
     }, "any");
-    await seedResourceState("session", options.sessionId, options.seed.session?.resources);
+    // Seed at the fenced address (FIX-1000), not the bare session id — the
+    // execution context reads session-scope resources via
+    // `resolveSessionResourceScopeId`, so seeding the bare id would make the
+    // seeded resources invisible to the flow under test.
+    const sessionResourceScopeId = resolveSessionResourceScopeId({
+      id: options.sessionId,
+      storageGeneration
+    });
+    await seedResourceState("session", sessionResourceScopeId, options.seed.session?.resources);
   }
 
   if (options.seed.request !== undefined) {

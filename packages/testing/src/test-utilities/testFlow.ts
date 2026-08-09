@@ -8,7 +8,13 @@
  * — `set()` only fires when the entity is missing, so prior journal entries
  * and resources survive subsequent runs.
  */
-import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
+import {
+  createInMemoryStores,
+  mintStorageGeneration,
+  resolveSessionResourceScopeId,
+  runAction,
+  type StoreRegistry
+} from "@flow-state-dev/engine";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { cloneValue } from "@flow-state-dev/core/helpers";
@@ -134,22 +140,30 @@ async function seedFlowStores(options: {
 
   if (options.sessionId !== undefined) {
     const existing = await options.stores.session.get(options.sessionId);
+    // The record carries the generation that fences its resource address
+    // (FIX-1000). On a fresh session, mint one and store it; on a reused
+    // session (session-resume scenarios, `stores` shared across calls),
+    // reuse the existing record's generation so reseeding lands at the same
+    // address the first call's resources are already at.
+    const record = existing ?? {
+      id: options.sessionId,
+      flowKind: options.flow.kind,
+      userId: options.userId,
+      orgId: options.orgId,
+      metadata: undefined,
+      latestRequestId: undefined,
+      state: toJsonObject(cloneValue(options.seed?.session?.state ?? {})),
+      storageGeneration: mintStorageGeneration(),
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: []
+    };
     if (existing === undefined) {
-      await options.stores.session.set(options.sessionId, {
-        id: options.sessionId,
-        flowKind: options.flow.kind,
-        userId: options.userId,
-        orgId: options.orgId,
-        metadata: undefined,
-        latestRequestId: undefined,
-        state: toJsonObject(cloneValue(options.seed?.session?.state ?? {})),
-        version: 0,
-        createdAt: now,
-        updatedAt: now,
-        journal: []
-      }, "any");
+      await options.stores.session.set(options.sessionId, record, "any");
     }
-    await seedResourceState("session", options.sessionId, options.seed?.session?.resources);
+    const sessionResourceScopeId = resolveSessionResourceScopeId(record);
+    await seedResourceState("session", sessionResourceScopeId, options.seed?.session?.resources);
   }
 
   if (options.seed?.request !== undefined) {

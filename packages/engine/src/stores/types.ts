@@ -48,6 +48,25 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * namespacing this field.
    */
   parentSessionId?: string;
+  /**
+   * Opaque nonce fencing this session's *resource* storage (FIX-1000). Minted
+   * once per record by {@link mintStorageGeneration}; never reused, never
+   * derived from the session id, and never inverted.
+   *
+   * Session-scoped resource state and content are addressed by
+   * {@link resolveSessionResourceScopeId}, which folds this in. Deleting a
+   * session and recreating it under the same caller-supplied id therefore
+   * yields a *different* resource address, so a write from an action still
+   * in flight across the delete lands where nothing will read it again.
+   *
+   * Optional because it is not backfilled (D7): a record persisted before this
+   * field existed reads back as `undefined`, and a store that nulls absent keys
+   * hands back `null`. Both mean *legacy* — address at the bare scope id,
+   * byte-identical to pre-FIX-1000 behaviour. Guard with `== null` rather than
+   * a truthy test (BP-030), or an empty-string generation would silently
+   * address `${id}#`.
+   */
+  storageGeneration?: string;
   title?: string;
   description?: string;
   tags?: string[];

@@ -10,6 +10,7 @@ import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
   resolveOrgStorageKey,
+  resolveSessionResourceScopeId,
   resolveUserStorageKey,
   resourceScopeIds
 } from "../stores/scope-keys";
@@ -146,12 +147,12 @@ export async function handleGetSessionState(
     session.orgId !== undefined ? resourceScopeIds(session.orgId, isoFlow, "org") : [];
 
   const [sessionContent, userContent, orgContent] = await Promise.all([
-    ctx.stores.content.getAll("session", session.id),
+    ctx.stores.content.getAll("session", resolveSessionResourceScopeId(session)),
     mergeScopeReads(userScopeIds.map((id) => ctx.stores.content.getAll("user", id))),
     mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   const [sessionState, userState, orgState] = await Promise.all([
-    ctx.stores.resourceState.getAll("session", session.id).then(toBareStates),
+    ctx.stores.resourceState.getAll("session", resolveSessionResourceScopeId(session)).then(toBareStates),
     mergeScopeReads(
       userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))
     ),

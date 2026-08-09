@@ -21,9 +21,15 @@
  * Before FIX-735 both concerns shared one key derived from a flow-wide OR, so
  * a `flowIsolation: false` resource was silently isolated whenever any sibling
  * was isolated. The opt-out direction is now honored.
+ *
+ * **Session scope splits the same two ways** (FIX-1000), and for the same
+ * reason: `resolveSessionStorageKey` is the session *record* key, while
+ * `resolveSessionResourceScopeId` is its *resource* address, fenced by a
+ * per-record `storageGeneration`. One function used to answer both, which is
+ * how a recreated session came to inherit a deleted one's rows.
  */
 
-import type { SessionParentage } from "./types";
+import type { SessionParentage, SessionRecord } from "./types";
 
 /** Minimal flow shape carrying the scope-isolation flags plus its own `kind`. */
 export interface IsolationFlow {
@@ -62,11 +68,18 @@ export function resolveOrgStorageKey(
 }
 
 /**
- * Tenant-namespaced session storage key (FIX-682). Bare `sessionId` for
+ * Tenant-namespaced session **record** key (FIX-682). Bare `sessionId` for
  * single-tenant requests (no tenant header, or an empty one); when a tenant is
- * present, `${tenantId}:${sessionId}`. Used for the session record key and the
- * session-scoped content / resource-state `scopeId`, so two tenants sharing a
- * session id never collide on one record.
+ * present, `${tenantId}:${sessionId}`, so two tenants sharing a session id
+ * never collide on one record.
+ *
+ * This is the key of the record in `stores.session` — and *only* that. It is
+ * **not** the address of the session's resources: those route through
+ * {@link resolveSessionResourceScopeId}, which fences them by generation
+ * (FIX-1000). Before FIX-1000 one function served both questions, and a
+ * recreated session inheriting a purged session's rows is the defect that
+ * ambiguity grew. Deriving this key without a record in hand is still correct
+ * and expected — the key is how you load one.
  *
  * Mirrors the user/org storage-key convention above — the `:` separator and the
  * "bare unless namespaced" shape are identical, and the same caveat applies:
@@ -97,6 +110,62 @@ export function toBareSessionId(
   if (tenantId === undefined || tenantId.length === 0) return storageKey;
   const prefix = `${tenantId}:`;
   return storageKey.startsWith(prefix) ? storageKey.slice(prefix.length) : storageKey;
+}
+
+/**
+ * Separator between a session's record key and its storage generation
+ * (FIX-1000). `#` rather than the `:` used for tenant and flow namespacing:
+ * `:` is already load-bearing in this module and ids carrying one are an
+ * accepted ambiguity, so reusing it here would make `${tenant}:${id}#${gen}`
+ * parseable two ways. Nothing inverts a session-scope resource address, so the
+ * separator is an internal detail — but it must not collide with one that is.
+ */
+const STORAGE_GENERATION_SEPARATOR = "#";
+
+/**
+ * Mint a fresh storage generation for a new session record (FIX-1000).
+ *
+ * **Every production site that creates a `SessionRecord` must call this.** The
+ * field is optional on the type, so the compiler will not enumerate the mint
+ * sites for you (D3) — that is a deliberate trade, because a missed mint site
+ * degrades to legacy behaviour and breaks nothing, whereas a missed *read* site
+ * makes writer and reader disagree, which is silent data loss. One test per
+ * production mint path covers the former.
+ *
+ * A nonce, not a counter (D2): a counter has to read the previous value, and
+ * deleting the session removes the record that held it, so two successive
+ * generations would both be `1` and reproduce the very collision being fenced.
+ */
+export function mintStorageGeneration(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * The `scopeId` a session's resources (`stores.resourceState` / `stores.content`)
+ * live at (FIX-1000) — the **only** producer of a session-scope resource
+ * address, and the reason it takes the record rather than the session id.
+ *
+ * `${recordKey}#${storageGeneration}` for a fenced record; the bare record key
+ * for a legacy one (no generation), which is byte-identical to pre-FIX-1000
+ * behaviour. The generation composes onto a key that may already be
+ * tenant-namespaced, so multi-tenancy is unaffected.
+ *
+ * Sibling to {@link resolveResourceScopeId}, which answers the same question
+ * for user/org scope; the naming pairing is what tells the next reader these
+ * are different questions from {@link resolveSessionStorageKey}.
+ *
+ * A caller holding only a `sessionId` cannot produce an address without loading
+ * the record. That is the point: the record is what carries the generation.
+ */
+export function resolveSessionResourceScopeId(
+  record: Pick<SessionRecord, "id" | "storageGeneration">
+): string {
+  // `== null` so a store that nulls absent keys reads as legacy, and an
+  // empty-string generation never silently addresses `${id}#` (BP-030).
+  const generation = record.storageGeneration;
+  return generation == null || generation.length === 0
+    ? record.id
+    : `${record.id}${STORAGE_GENERATION_SEPARATOR}${generation}`;
 }
 
 /**

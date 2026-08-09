@@ -829,13 +829,20 @@ export function createResourceStateStoreConformanceTests(
       });
     });
 
-    it("deleteAll racing a create of a never-existed key: the create LANDS — the residual this design does not close", async () => {
+    it("deleteAll racing a create of a never-existed key: the create LANDS at the store layer — a per-key predicate cannot fence this; the address is what fences it (FIX-1000)", async () => {
       await withStore(async (store) => {
         // (ii) `expectedVersion: 0` means "no live row", which a key that
         // never existed satisfies trivially, and a bulk mark only touches
-        // rows that already exist. So this create commits into a scope that
-        // was already purged. Pinned by a test rather than carried as prose:
-        // closing it needs a scope generation, not a per-key predicate.
+        // rows that already exist. So this create commits into the same
+        // store-level scope that was already purged. This is unchanged by
+        // FIX-1000 and stays true: no per-key CAS predicate can fence a
+        // purged scope's create, because a never-existed key has no version
+        // to conflict on. FIX-1000 closes the hole one level up, by giving
+        // each session record a fresh generation and addressing its
+        // resources by that (`resolveSessionResourceScopeId`) — a recreated
+        // scope reads a different address rather than this one, so the
+        // straggler above still lands but is never seen. See the route-level
+        // coverage for the closed case.
         await seed(store, "existing", makeState(1));
         await store.deleteAll("session", "s1");
 

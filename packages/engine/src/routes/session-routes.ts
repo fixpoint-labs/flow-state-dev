@@ -18,6 +18,8 @@ import {
   parseJsonBody
 } from "./route-utils";
 import {
+  mintStorageGeneration,
+  resolveSessionResourceScopeId,
   resolveSessionStorageKey,
   toBareSessionId
 } from "../stores/scope-keys";
@@ -173,6 +175,7 @@ export async function handleCreateSession(
     // trusts. An authenticated caller gets the principal's org or none.
     orgId: ctx.principal === undefined ? getString(body.orgId) : ctx.principal.orgId,
     tenantId: ctx.tenantId,
+    storageGeneration: mintStorageGeneration(),
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),
@@ -219,10 +222,13 @@ export async function handleDeleteSession(
 
   // Delete per-resource content and state first — if either fails, the session
   // record still exists and the operation can be retried. The reverse (orphaned
-  // content/state) is a leak. All keyed by the namespaced session key (FIX-682).
+  // content/state) is a leak. Keyed by this record's fenced resource address
+  // (FIX-1000), so the purge only ever reaches the generation being deleted;
+  // for a legacy record that is the bare namespaced key, exactly as before.
+  const resourceScopeId = resolveSessionResourceScopeId(existing);
   await Promise.all([
-    ctx.stores.content.deleteAll("session", sessionKey),
-    ctx.stores.resourceState.deleteAll("session", sessionKey)
+    ctx.stores.content.deleteAll("session", resourceScopeId),
+    ctx.stores.resourceState.deleteAll("session", resourceScopeId)
   ]);
   await ctx.stores.session.delete(sessionKey);
   return emptyResponse(204);

@@ -33,7 +33,9 @@ export {
   createStateContainer,
   filesystemStores,
   inMemoryStores,
+  mintStorageGeneration,
   resolveOrgStorageKey,
+  resolveSessionResourceScopeId,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
   runWithCAS

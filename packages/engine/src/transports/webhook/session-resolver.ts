@@ -14,6 +14,7 @@
  */
 import type { ResolvedPrincipal } from "../types";
 import type { StoreRegistry } from "../../stores/types";
+import { mintStorageGeneration } from "../../stores/scope-keys";
 
 export interface EnsureWebhookSessionArgs {
   stores: StoreRegistry;
@@ -39,6 +40,7 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
       userId: principal.userId,
       ...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),
       state: {},
+      storageGeneration: mintStorageGeneration(),
       version: 1,
       createdAt: now,
       updatedAt: now,

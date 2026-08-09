@@ -16,6 +16,7 @@ import { resolveClientProjection } from "@flow-state-dev/core/helpers";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import { toBareState, toBareStates } from "../stores/resource-state-views";
+import { resolveSessionResourceScopeId } from "../stores/scope-keys";
 import {
   extractBareTopic,
   jsonResponse,
@@ -283,7 +284,7 @@ export async function handleCreateCollectionItem(
   // All three are pinned by tests in `resource-collection-routes.test.ts`.
   // Client-facing guidance: `apps/docs` -> resources / client access.
   if (content !== undefined) {
-    await ctx.stores.content.set("session", session.id, storageKey, content);
+    await ctx.stores.content.set("session", resolveSessionResourceScopeId(session), storageKey, content);
   }
 
   return jsonResponse(201, { topic: topic.trim() });
@@ -341,13 +342,13 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  const existing = await ctx.stores.resourceState.get("session", resolveSessionResourceScopeId(session), storageKey);
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
   }
 
   // Write to ContentStore (the canonical content location during execution).
-  await ctx.stores.content.set("session", session.id, storageKey, content);
+  await ctx.stores.content.set("session", resolveSessionResourceScopeId(session), storageKey, content);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
@@ -454,8 +455,8 @@ export async function handleListCollectionState(
     const keyPrefix = getPatternPrefix(config.pattern);
     persisted = toBareStates(
       keyPrefix
-        ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
-        : await ctx.stores.resourceState.getAll("session", session.id)
+        ? await ctx.stores.resourceState.getByPrefix("session", resolveSessionResourceScopeId(session), `${keyPrefix}/`)
+        : await ctx.stores.resourceState.getAll("session", resolveSessionResourceScopeId(session))
     );
   } else {
     // User/org scope: resolve the persisted record via the shared scope
@@ -548,7 +549,7 @@ export async function handleGetCollectionItemState(
       extCtx
     );
   } else if (scope === "session") {
-    value = toBareState(await ctx.stores.resourceState.get("session", session.id, storageKey));
+    value = toBareState(await ctx.stores.resourceState.get("session", resolveSessionResourceScopeId(session), storageKey));
   } else {
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present
@@ -725,7 +726,7 @@ export async function handleDeleteCollectionItem(
   // the window closed is this route's own: a DELETE issued from an already
   // stale client view still reads the live row here and removes it. A
   // caller-supplied precondition is separate surface (FIX-1006).
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  const existing = await ctx.stores.resourceState.get("session", resolveSessionResourceScopeId(session), storageKey);
   const removed = await ctx.stores.resourceState.delete(
     "session",
     session.id,
@@ -742,7 +743,7 @@ export async function handleDeleteCollectionItem(
   // around: a recreation landing between these two statements loses its content
   // to this delete. `ContentStore` is last-write-wins by decision, so no state
   // predicate fences it, and closing it is cross-record atomicity (FIX-854).
-  await ctx.stores.content.delete("session", session.id, storageKey);
+  await ctx.stores.content.delete("session", resolveSessionResourceScopeId(session), storageKey);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

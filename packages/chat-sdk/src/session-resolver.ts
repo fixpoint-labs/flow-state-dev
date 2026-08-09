@@ -21,6 +21,7 @@
  */
 import type { ResolvedPrincipal } from "@flow-state-dev/engine";
 import type { StoreRegistry } from "@flow-state-dev/engine";
+import { mintStorageGeneration } from "@flow-state-dev/engine";
 import type { ChatInboundEvent } from "./types";
 
 export interface EnsureSessionArgs {
@@ -45,6 +46,7 @@ export async function ensureSessionForChat(args: EnsureSessionArgs): Promise<voi
       userId: principal.userId,
       ...(principal.orgId !== undefined ? { orgId: principal.orgId } : {}),
       state: {},
+      storageGeneration: mintStorageGeneration(),
       version: 1,
       createdAt: now,
       updatedAt: now,
