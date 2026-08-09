@@ -40,6 +40,22 @@ repeating.
 **A finding here is history unless it is one of the seven unresolved rows above.** An implementer
 takes scope from the issue's own spec and from the epic-spec's §7, not from this appendix.
 
+### The recurring class — name it, because it keeps coming back
+
+Every correction in the table above, and most of the N-rows that begin "an earlier draft said", are
+**one defect: a decision moved and its restatements did not.** Three consecutive review passes over
+this epic-spec (2026-08-09) found fresh instances — an invented `blocked-by` edge, two rows
+instructing an implementer to build a superseded settlement model, an under-counted unresolved set,
+and three deliverables claimed by two owners at once. None was a new disagreement; each was an old
+answer still sitting in a surface nobody re-read.
+
+**Two shapes cause almost all of it.** A *deferral rendered as a dependency* — identical to
+"blocked by X" in a table, opposite in meaning. And a *decision corrected in its owning section
+while the summary that restates it is left alone* — which is worse, because summaries are what a
+coordinator and an implementer actually read. The guard is not more prose: it is that changing a
+decision is not done when its own section is edited, only when every surface restating it has been
+re-derived.
+
 **Two of these dissolved when the model moved from sibling requests to Workstreams**, and are kept
 with their resolution recorded rather than deleted, so a later reader does not re-derive them.
 

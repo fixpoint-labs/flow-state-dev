@@ -421,7 +421,7 @@ Anything not listed here is unconditional.
 | **C1** | clause 1 ownership · criterion 1 | ~~OQ-A~~ ~~FIX-992 landing~~ **RESOLVED — FIX-992 merged** · the store adapter · the backing | Ownership holds only on a board the framework can fence, and the fence now exists: `ResourceStateStore.set/delete` take `expectedVersion` and return `SetResult` on all four adapters. **The filesystem caveat here was wrong and is corrected** — an earlier draft said a store *without* the verb refuses the durable board. Filesystem **has** the verb (`filesystem/resource-state-store.ts` uses the shared `checkWriteVersion`), but guards it with a per-key mutex held on the **store instance**: *"closes the in-process race … and does **not** protect two OS processes over one directory"* (`:44-47`). Since Decision 8 puts out-of-process in scope, that is **silently weaker, not refused** — the more dangerous shape. §4's filesystem row already said this; this row had not caught up. A `factory`-backed board is unverifiable and out of scope by default (Decision 3). |
 | **C1b-i** | criterion 1b-i — **task ceilings** (`maxTotalTasks` / `maxEnqueuedTasks`) | **OQ-D-i** only — **no longer conditional on OQ-A** | May be narrowed-but-unbounded, or not delivered. Neither ceiling is enforced on a resource-backed board today (`tasks/collection/task-caps.ts:52-65`). |
 | **C1b-ii** | criterion 1b-ii — **the `maxInstances` registry race** | **OQ-D-ii** only — **no longer conditional on OQ-A** | May be narrowed-but-unbounded, or not delivered. This is the contract §8 measured. |
-| **C3** | clause 3 non-stranding · criterion 3 | **[FIX-1005](https://linear.app/fixpoint-labs/issue/FIX-1005)** (M2, in this epic) — with **FIX-978** (external) as its *prerequisite*, not its owner | **Corrected (N71): this row named FIX-978 alone, and FIX-978 explicitly excludes automatic recovery** (N61). FIX-978 converts `reclaim` to the fenced primitive; **FIX-1005 owns liveness-joined reclamation and redelivery**, which is what clause 3 actually requires. Read the old way, a coordinator could mark non-stranding **satisfied once FIX-978 landed** and wrap the epic with the mechanism unbuilt — the precise failure N61 was filed to prevent. |
+| **C3** | clause 3 non-stranding · criterion 3 | **[FIX-1005](https://linear.app/fixpoint-labs/issue/FIX-1005)** (M2, in this epic) — with **FIX-978** (external) as its *prerequisite*, not its owner | **Corrected (N71): this row named FIX-978 alone, and FIX-978 explicitly excludes automatic recovery** (N61). FIX-978 converts `reclaim` to the fenced primitive; **FIX-1005 owns liveness-joined reclamation and redelivery**, which is what clause 3 actually requires. Read the old way, a coordinator could mark non-stranding **satisfied once FIX-978 landed** and wrap the epic with the mechanism unbuilt — the precise failure N61 was filed to prevent. **The owner attribution above still holds; the FIX-978 prerequisite does NOT, and is now UNDECIDED (2026-08-09).** Two changes landed under it. [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083) closed unmerged, replacing registry-oracle liveness with **lease renewal on the task row the worker owns** — a different mechanism, which may or may not need a fenced `reclaim` underneath it; and that PR's closure split the task-scoped `reclaim()` defect out as **[FIX-1023](https://linear.app/fixpoint-labs/issue/FIX-1023)** (unparented, Todo, `related` to FIX-978), which is where that verb's behaviour is now being fixed. **No `blocked-by` edge to FIX-978 exists in Linear and none is asserted here** — inventing one is the defect this index was rebuilt to remove. What FIX-1005 consumes is genuinely unknown until it is re-specced, which is already owner work (§7 → "What needs the owner"), and #1083 had itself moved FIX-978's conversion *into* FIX-1005 precisely because FIX-978 is frozen. |
 
 > **OQ-A's answer does not reach criterion 1b, and this table used to imply it did.** Both 1b rows were conditional on the conditional write arriving. It arrives (FIX-992) and they are **still open**, because
 > FIX-992's Decision 7 states the position outright: the `maxInstances` cap is *"explicitly not closed — a **set**-level invariant per-key CAS cannot enforce."* That is the same distinction §4 draws between
@@ -471,7 +471,7 @@ ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource r
    verb** — **and a worker actually starts on it again, with no manual dispatch.** Asserting only the
    status flip tests FIX-978's write and nothing about this substrate's liveness. **This criterion
    said "via FIX-978's mechanism" until 2026-08-07**, which is the same misattribution clause 3
-   carried: FIX-978 ships the verb, FIX-1005 ships the recovery. **A pending task with no live initiating request has no
+   carried: FIX-978 ships the verb, FIX-1005 ships the recovery. **"Over FIX-978's fenced `reclaim` verb" is now provisional — see C3.** The mechanism it described was superseded when [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083) closed unmerged, and whether the replacement consumes that verb is not decided anywhere. **A pending task with no live initiating request has no
    wake source, and FIX-978 closes none of the three ways one arises** — including the admission
    window, which is unconditional rather than C3-conditional because no lease ever existed to
    reclaim. See Decision 6.
@@ -1597,7 +1597,7 @@ M1–M5 are the epic description's milestones. **M2 now has an issue — [FIX-10
 |---|---|---|---|
 | **M1** — cross-execution claim safety | FIX-981 | **Unchanged, and more necessary.** | Large |
 | **M2** — reclamation joined to liveness | **[FIX-1005](https://linear.app/fixpoint-labs/issue/FIX-1005)** | **NOT consumed — an earlier draft of this row said it was, and FIX-978 says otherwise in writing (N61).** FIX-978 ships the honest-reporting half only; its scope boundaries put reclamation, renewal and liveness-joined ownership *here*, at M2. Now filed. | Medium |
-| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the **three** measured missing pieces — resolve a worker, invoke it, **and a public injection seam for the engine-only `stores`/`flow` a capability cannot legally name (N18)** — plus routing by `(tenantId, parentSessionId, boardId, coordinate, topic)` over a **derived** session id, the fork decision, and interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. | Medium |
+| **M3** — the Workstream spawn seam | FIX-982 | **Reframed and narrowed three times:** inject a capability over the **three** measured missing pieces — resolve a worker, invoke it, and **consume** the public injection seam for the engine-only `stores`/`flow` a capability cannot legally name (N18) — plus routing by `(tenantId, parentSessionId, boardId, coordinate, topic)` over a **derived** session id, the fork decision, and *requesting* interrupt on task cancellation. **M4 folds into this**: disposition is the same axis seen from the other side. **Two deliverables this row used to claim are owned elsewhere, and FIX-982 must not build either:** the N18 seam itself is **FIX-999's** (in implementation on `fix/FIX-999`) — FIX-982 P2 populates `flow.workstream` *through* it and defines no second runtime contract; and **cross-process interrupt delivery is FIX-1026's** (in implementation). | Medium |
 | **M4** — blocking / background disposition | FIX-983 | **Halved, and the surviving half re-homed.** Disposition is board worker config (§1), so it lands with M3 rather than being its own mechanism. What remains under FIX-983 is cross-request *waiting* only. | Small |
 | **M5** — progress across the request boundary | FIX-984 | **DISSOLVED — fully, as of the owner's OQ-C decision (2026-08-07).** Completed-item progress is the background request's own item stream; the in-flight-delta residue (N35) is **accepted as a known limit and documented**, not built. FIX-984 closes as dissolved; the *lifetime* residue moves to FIX-991 as it always did. | none |
 | **(no milestone)** — `items()` across the boundary | FIX-991 | **Principled rather than a patch**, and it absorbs M5's **lifetime** residue (never the delta one — that is not built by anyone). | Medium |
@@ -2103,9 +2103,9 @@ deferral as a dependency is the error this document has made twice.
 
 | Issue | Delivers | Spec PR | Impl PR | State | Waiting on | Next move |
 |---|---|---|---|---|---|---|
-| **FIX-999** | Public injection seam — a capability can reach the runtime legally | [#1092](https://github.com/fixpoint-labs/flow-state-dev/pull/1092) open | — | In Spec Review | Round-3 fold in flight. **No approval signal on the PR** — see "What needs the owner" | agent → owner |
-| **FIX-1026** | Cross-process interrupt actually delivers | [#1095](https://github.com/fixpoint-labs/flow-state-dev/pull/1095) open | — | In Spec Review | Round-3 fold in flight; same missing approval signal | agent → owner |
-| **FIX-982** (M3) | Out-of-request executor — a leased task runs outside the request that claimed it | [#1063](https://github.com/fixpoint-labs/flow-state-dev/pull/1063) closed, was approved | P1 [#1093](https://github.com/fixpoint-labs/flow-state-dev/pull/1093) **merged** | In Development | **No Linear blocker left.** P2 needs `flow.workstream`, which FIX-999 declares — a practical gate, not a recorded one | agent |
+| **FIX-999** | **Owns and builds** the public injection seam (N18) — a capability can reach the runtime legally — plus the interrupt verb and the fan-out ceiling | [#1092](https://github.com/fixpoint-labs/flow-state-dev/pull/1092) approved | in flight on `fix/FIX-999` | **In Development** | — | agent |
+| **FIX-1026** | **Owns** cross-process interrupt *delivery* — a detached request on another worker can be cancelled | [#1095](https://github.com/fixpoint-labs/flow-state-dev/pull/1095) approved | in flight | **In Development** | — | agent |
+| **FIX-982** (M3) | Out-of-request executor — a leased task runs outside the request that claimed it | [#1063](https://github.com/fixpoint-labs/flow-state-dev/pull/1063) closed, was approved | P1 [#1093](https://github.com/fixpoint-labs/flow-state-dev/pull/1093) **merged** | In Development | **No Linear blocker left.** P2 populates `flow.workstream` through FIX-999's seam — a practical gate, not a recorded one | agent |
 | **FIX-1005** (M2) | Reclamation joined to execution liveness — the non-stranding mechanism | [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083) **closed unmerged 2026-08-08** | — | Backlog | Blocked by **FIX-999** — the only `blocked-by` edge Linear records. Registry-oracle liveness was superseded by **lease renewal on the task row the worker owns**, which never reads `ActiveRequestRegistry`, so adapter sharedness is not a dependency of this issue at all | **owner** — re-spec or drop |
 | **FIX-1013** (S4) | Kitchen-sink demo — the epic's BP-003 evidence path | — | — | Backlog · **carried, gates the wrap** | S1b/S2/S3, all deferred → **OQ-H** | **owner** |
 | **FIX-991** | `TaskHandle.items()` returns the wrong request's items once tasks run out-of-request | — *(bug — no spec by design)* | — | Backlog | FIX-982 | — |
@@ -2128,6 +2128,24 @@ Spec PR cell on FIX-991 is correct, not a gap.*
 
 **FIX-982's PR plan:** P1 ✅ → P2 → P3a *(needs P1 **and** P2)* → P3b → P4 · P5.
 
+**Three issues now run in parallel on one seam, so the boundary is stated once here and binds all
+three.** Two deliverables were claimed by both a milestone row and an index row, and with FIX-999,
+FIX-1026 and FIX-982 all in implementation simultaneously that is competing runtime contracts, not
+a documentation tidy:
+
+| Deliverable | Owner | Everyone else |
+|---|---|---|
+| The public injection seam for `stores`/`flow` (**N18**) | **FIX-999** | FIX-982 P2 **consumes** it to populate `flow.workstream`. It does not define a second contract |
+| **Cross-process** interrupt delivery | **FIX-1026** | FIX-999 ships the interrupt *verb* over it; FIX-982 *requests* cancellation through that verb |
+
+**Cross-process cancellation is therefore OUT of FIX-982's completion contract** — it may be marked
+complete without it. M3 and Decision 5 require task cancellation to interrupt a clientless request
+across instances, and FIX-982 owns none of the delivery mechanism, so leaving that in its contract
+would either block a complete issue or invite it to build FIX-1026 a second time. **Removed rather
+than added as a dependency**, because FIX-982 does not consume the delivery path directly — it calls
+FIX-999's verb, and that verb's own contract already reports `signalled` versus `recorded`. The
+epic's clause is satisfied when FIX-1026 lands, which the index tracks on FIX-1026's own row.
+
 ### Depended on, not members
 
 | Issue | Relationship | State |
@@ -2146,15 +2164,16 @@ as blocking FIX-1005, which was wrong twice over: lease renewal never reads
 
 ### What needs the owner
 
-1. **FIX-999 and FIX-1026 carry no approval signal a wake can read.** Both were approved in session,
-   but neither PR has a `spec approved` label, an approving review, or an approving comment — the
-   three channels a gate turns on ([`orchestration.md`](../../contributing/orchestration.md) →
-   Gates). The next wake re-derives the gate from GitHub and holds both. **Applying the label is the
-   owner's act alone**, which is why this sits here rather than being fixed.
-2. **FIX-1005 has no live spec.** [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083)
-   closed unmerged when the mechanism changed under it — registry-oracle liveness became lease
-   renewal on the task row the worker owns — and it is blocked on FIX-999. Re-spec or drop.
-3. **OQ-H is open** (§6) — S4 gates the wrap and three of its four prerequisites are deferred.
+1. **FIX-1005 has no live spec, and its dependency set is now undecided.**
+   [#1083](https://github.com/fixpoint-labs/flow-state-dev/pull/1083) closed unmerged when the
+   mechanism changed under it — registry-oracle liveness became lease renewal on the task row the
+   worker owns — and the task-scoped `reclaim()` half split out as **FIX-1023**. It is blocked on
+   FIX-999, and **whether it still consumes FIX-978's fenced `reclaim` is unanswerable until it is
+   re-specced** (C3). Re-spec or drop — it is M2, so silence leaves clause 3 unowned.
+2. **OQ-H is open** (§6) — S4 gates the wrap and three of its four prerequisites are deferred.
+
+*The two missing `spec approved` labels this list carried on 2026-08-09 are spent: FIX-999 and
+FIX-1026 are both **In Development**.*
 
 **The wrap condition** *(what condition 2b was restated as, and §6 points here for it)*: the epic is
 not done when every issue has merged. It is done when **S4/FIX-1013 has RUN and produced §5's five
