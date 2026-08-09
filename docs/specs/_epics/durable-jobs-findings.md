@@ -56,6 +56,15 @@ coordinator and an implementer actually read. The guard is not more prose: it is
 decision is not done when its own section is edited, only when every surface restating it has been
 re-derived.
 
+**Correcting the authoritative row is only half the fix.** The pass that produced this rule is its
+own evidence: four findings, every one of them a *restatement* of a row corrected in the same commit
+that introduced the restatement's staleness. The canonical surfaces were right — Decision 5, the
+proposed-scope row, clause 3 and the FIX-925 milestone row still carried the superseded answer.
+**So a decision change is not done until every section that restates it has been re-derived in the
+same pass**, and the two places restatements concentrate are **§5's execution sequence** and the
+**proposed-scope rows** in §7. Search for the issue id and the deliverable's name, not just the
+section you edited.
+
 **One section lags more than any other: §5's execution sequence.** Two of the four instances lived
 there — FIX-1005's prerequisite list, and a `(FIX-978, elsewhere)` blocker plus "both branches must
 land before FIX-982" that survived every one of those prerequisites landing. It lags because it
