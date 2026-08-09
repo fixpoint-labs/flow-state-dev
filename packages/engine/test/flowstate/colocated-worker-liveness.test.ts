@@ -162,6 +162,51 @@ describe("a colocated worker sees its own process's sweeper (FIX-999)", () => {
     expect(seen.hasLiveness).toBe(true);
   });
 
+  it("hands the worker a config that already describes the sweeper, at startWorker time", async () => {
+    // `#buildRuntime` calls `startWorker` and returns; `#doInit` only resumes
+    // after that, so a cadence recorded there arrives too late for anything the
+    // worker consumes on the way up. A real colocated worker starts consuming
+    // the moment it is started, and the host it builds for such a job is
+    // constructed once — so a job claimed in that window carries the
+    // `sweeper-not-running` refusal for its whole life, after `ready()` has
+    // started the sweeper it was refusing on behalf of.
+    //
+    // Asserted on the value the worker is HANDED, synchronously, rather than by
+    // racing a job against the rest of init: the defect is that the config
+    // handed over is false at the moment of handover, and a race would make
+    // this test pass or fail on scheduling.
+    const seen: Seen = {};
+    let cadenceAtStartWorker: number | undefined;
+    let sawStartWorker = false;
+    let startupJob: Promise<void> | undefined;
+
+    const state = createFlowState({
+      flows: { probe: probeFlow("colocated-startup", seen)() },
+      stores: { default: { primary: sharedInMemoryStores() } },
+      modelResolver: (() => undefined) as never,
+      worker: {
+        mode: "colocated",
+        createDispatcher: () => undefined as never,
+        startWorker: (runtime) => {
+          sawStartWorker = true;
+          cadenceAtStartWorker = runtime.runtimeConfig.requestHost?.staleSweepIntervalMs;
+          // And drive a job from inside the window, as a consuming worker does.
+          startupJob = runAsWorker(runtime, "colocated-startup", "s_startup");
+          return { close: async () => {} };
+        }
+      }
+    });
+    disposeState = () => state.dispose();
+
+    await state.ready();
+    await startupJob;
+
+    expect(sawStartWorker).toBe(true);
+    expect(cadenceAtStartWorker).toBe(30_000);
+    expect(seen.error).toBeUndefined();
+    expect(seen.hasLiveness).toBe(true);
+  });
+
   it("OTHER DIRECTION: the same topology still refuses before ready() starts one", async () => {
     const seen: Seen = {};
     const { state, captured } = colocatedState("colocated-not-ready", seen);
