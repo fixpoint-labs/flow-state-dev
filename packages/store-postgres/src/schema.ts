@@ -61,6 +61,57 @@ const REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at)"
 ];
 
+/**
+ * FIX-1010 — the two composite indexes the parent-to-child read adds, built
+ * **concurrently**.
+ *
+ * They are the only indexes in this file that can land on an already-populated
+ * table: everything else ships with its `CREATE TABLE`, so on an upgrade its
+ * `IF NOT EXISTS` is a no-op. A plain `CREATE INDEX` takes a lock that blocks
+ * writes for the duration of the build — on exactly the large `requests` and
+ * `sessions` histories this read exists to page through — so an upgrade would
+ * interrupt production writes. `CONCURRENTLY` trades that for two table
+ * passes and cannot run inside a transaction, which is why these are issued
+ * one statement at a time outside any `BEGIN` (the initializers below run
+ * autocommit; the advisory lock is not a transaction).
+ *
+ * Ordering columns are declared ASC and scanned backwards, which Postgres does
+ * for an `ORDER BY` that reverses every key uniformly.
+ *
+ * Paired with {@link DROP_INVALID_FIX_1010_INDEXES}: an interrupted concurrent
+ * build leaves an *invalid* index that `IF NOT EXISTS` would then skip
+ * forever, so the planner would never use it and nothing would say so.
+ */
+const CONCURRENT_INDEXES = [
+  // The child listing: one parent's children, ordered on immutable keys.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_created ON sessions(parent_session_id, created_at, id)",
+  // The most-recent-run read. The existence check that precedes it is already
+  // served by `idx_requests_session_status` and needs nothing new.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)"
+];
+
+/**
+ * Drop a FIX-1010 index left `indisvalid = false` by an interrupted concurrent
+ * build, so the `CREATE INDEX CONCURRENTLY IF NOT EXISTS` below rebuilds it
+ * instead of skipping a dead one. A no-op on every healthy database.
+ */
+const DROP_INVALID_FIX_1010_INDEXES = `DO $$
+DECLARE
+  n TEXT;
+BEGIN
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_requests_session_created']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM pg_class c
+      JOIN pg_index i ON i.indexrelid = c.oid
+      JOIN pg_namespace ns ON ns.oid = c.relnamespace
+      WHERE c.relname = n AND ns.nspname = current_schema() AND NOT i.indisvalid
+    ) THEN
+      EXECUTE format('DROP INDEX %I', n);
+    END IF;
+  END LOOP;
+END $$;`;
+
 const USERS_TABLE = `
 CREATE TABLE IF NOT EXISTS users (
   id          TEXT PRIMARY KEY,
@@ -485,7 +536,11 @@ const PROJECT_TO_ORG_MIGRATIONS = [
 
   // FIX-992: add `version` / `lifecycle` to a pre-CAS `resource_state`.
   // Purely additive; existing rows become live at version 1.
-  ADD_RESOURCE_STATE_VERSIONING_MIGRATION
+  ADD_RESOURCE_STATE_VERSIONING_MIGRATION,
+
+  // FIX-1010: clear an invalid index left by an interrupted concurrent build
+  // so it is rebuilt below rather than skipped by `IF NOT EXISTS`.
+  DROP_INVALID_FIX_1010_INDEXES
 ];
 
 /**
@@ -498,7 +553,12 @@ const PROJECT_TO_ORG_MIGRATIONS = [
  */
 const SCHEMA_LOCK_KEY = 819297; // arbitrary stable integer
 
-function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: string[] } {
+function getSchemaDDL(): {
+  migrations: string[];
+  tables: string[];
+  indexes: string[];
+  concurrentIndexes: string[];
+} {
   return {
     migrations: PROJECT_TO_ORG_MIGRATIONS,
     tables: [
@@ -532,7 +592,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...SCHEDULE_INDEX_INDEXES,
       ...SUSPENSION_RECORDS_INDEXES,
       ...LEASES_INDEXES
-    ]
+    ],
+    concurrentIndexes: CONCURRENT_INDEXES
   };
 }
 
@@ -543,7 +604,7 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
  * you have direct pg.Pool access.
  */
 export async function initializeSchema(executor: QueryExecutor): Promise<void> {
-  const { migrations, tables, indexes } = getSchemaDDL();
+  const { migrations, tables, indexes, concurrentIndexes } = getSchemaDDL();
 
   await executor.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
   try {
@@ -554,6 +615,12 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
       await executor.query(ddl);
     }
     for (const ddl of indexes) {
+      await executor.query(ddl);
+    }
+    // Concurrent builds last, and one statement at a time: they cannot run
+    // inside a transaction, and they are the only DDL here that can land on a
+    // populated table (FIX-1010).
+    for (const ddl of concurrentIndexes) {
       await executor.query(ddl);
     }
   } finally {
@@ -574,7 +641,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
 export async function initializeSchemaWithDedicatedClient(
   pool: import("pg").Pool
 ): Promise<void> {
-  const { migrations, tables, indexes } = getSchemaDDL();
+  const { migrations, tables, indexes, concurrentIndexes } = getSchemaDDL();
   const client = await pool.connect();
 
   try {
@@ -611,6 +678,11 @@ export async function initializeSchemaWithDedicatedClient(
         await client.query(ddl);
       }
       for (const ddl of indexes) {
+        await client.query(ddl);
+      }
+      // See `initializeSchema` — concurrent builds run outside a transaction,
+      // one statement at a time (FIX-1010).
+      for (const ddl of concurrentIndexes) {
         await client.query(ddl);
       }
     } finally {

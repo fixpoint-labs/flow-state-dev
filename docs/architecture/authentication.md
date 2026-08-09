@@ -100,7 +100,7 @@ Route subjects, and the owner each is checked against:
 | Subject | Routes | Owner |
 | --- | --- | --- |
 | exempt | `list_flows`, `capabilities`, `execute_action` | — (the action route resolves its own principal) |
-| session | session CRUD/state/requests, all resource routes, debug | `session.userId` |
+| session | session CRUD/state/requests/workstreams, all resource routes, debug | `session.userId` |
 | request | stream, abort, resume, status, retry, continue | `record.userId` |
 | flow | `create_session` | none yet — the caller becomes the owner |
 | user | `user_stream`, `check_interrupted_requests` | the `:userId` path segment |

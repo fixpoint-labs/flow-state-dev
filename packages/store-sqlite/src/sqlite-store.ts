@@ -23,10 +23,18 @@ export type SQLiteRecordStoreConfig<TRecord, TListOptions> = {
   toWhere: (options?: TListOptions) => { clause: string; params: unknown[] };
   /**
    * Resolve the ORDER BY clause (column + direction) from list options.
-   * Defaults to `updated_at DESC`. Must return a trusted, non-parameterized
-   * SQL fragment.
+   * Returns `undefined` for the `updated_at DESC` default, or **`null` to emit
+   * no `ORDER BY` at all** (FIX-1010). Must return a trusted,
+   * non-parameterized SQL fragment.
+   *
+   * The unordered mode is a correctness bound, not a nicety: a `LIMIT 1`
+   * existence check over a status set stops at the first matching row only if
+   * nothing sorts first, and the rows such a check selects are exactly the
+   * ones that accumulate (a request whose approval gate expires stays
+   * non-terminal forever). With a trailing sort on an uncovered column that
+   * read grows with the history it sits on.
    */
-  resolveOrderBy?: (options?: TListOptions) => string;
+  resolveOrderBy?: (options?: TListOptions) => string | null | undefined;
   /**
    * Top-level `data` keys that `set` must not write (FIX-1026).
    *
@@ -401,7 +409,12 @@ export function createSQLiteRecordStore<
       if (clause.length > 0) {
         sql += ` WHERE ${clause}`;
       }
-      sql += ` ORDER BY ${resolveOrderBy?.(options) ?? "updated_at DESC"}`;
+      // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
+      const orderBy =
+        resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
+      if (orderBy !== null) {
+        sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
+      }
 
       const offset = Math.max(0, options?.offset ?? 0);
       const limit = options?.limit;

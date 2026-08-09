@@ -38,7 +38,7 @@ import {
 } from "@flow-state-dev/engine";
 import type { Pool, PoolClient } from "pg";
 import type { QueryExecutor } from "./types";
-import { createPgRecordStore } from "./pg-store";
+import { createPgRecordStore, nullSafeEqualsClause } from "./pg-store";
 
 const DEFAULT_LIVENESS_TIMEOUT_MS = 30_000;
 const DEFAULT_POLL_INTERVAL_MS = 250;
@@ -145,12 +145,36 @@ export function createPostgresRequestStore(
       }
       // Tenant filter (FIX-682): present (incl. explicit undefined) → NULL-safe
       // exact match; absent → no filter. Isolates cross-turn history between
-      // two tenants sharing a bare session id.
+      // two tenants sharing a bare session id. Emitted in the indexable form —
+      // see `nullSafeEqualsClause`.
       if (options !== undefined && "tenantId" in options) {
-        parts.push(`tenant_id IS NOT DISTINCT FROM $${p++}`);
-        params.push(options.tenantId ?? null);
+        const tenant = nullSafeEqualsClause("tenant_id", options.tenantId, p);
+        parts.push(tenant.clause);
+        params.push(...tenant.params);
+        p = tenant.nextParam;
       }
-      if (options?.status !== undefined) {
+      // Org filter (FIX-1010): same present-vs-absent NULL-safe semantics as
+      // the tenant clause — `orgId` is optional on the record and written as
+      // `?? null`, so a bare `=` against an absent value would never match an
+      // unbound request.
+      if (options !== undefined && "orgId" in options) {
+        const org = nullSafeEqualsClause("org_id", options.orgId, p);
+        parts.push(org.clause);
+        params.push(...org.params);
+        p = org.nextParam;
+      }
+      // Status filter: a single value by equality, an array by set membership
+      // (FIX-1010). An empty array matches nothing, which is what an explicit
+      // empty filter means.
+      if (Array.isArray(options?.status)) {
+        const statuses = options.status;
+        if (statuses.length === 0) {
+          parts.push("1 = 0");
+        } else {
+          parts.push(`status IN (${statuses.map(() => `$${p++}`).join(", ")})`);
+          params.push(...statuses);
+        }
+      } else if (options?.status !== undefined) {
         parts.push(`status = $${p++}`);
         params.push(options.status);
       }
@@ -159,9 +183,17 @@ export function createPostgresRequestStore(
     },
     // `started_at` is not a column — startedAtMs lives in the record blob and
     // equals `created_at` (set together at creation, never mutated). Order by
-    // created_at to honor `orderBy: "startedAtMs"`.
-    resolveOrderBy: (options) =>
-      options?.orderBy === "startedAtMs" ? "created_at DESC" : "updated_at DESC"
+    // created_at to honor `orderBy: "startedAtMs"`, with `id` breaking an
+    // exact same-millisecond tie so a `LIMIT 1` read is stable across repeated
+    // reads rather than arbitrary (FIX-1010).
+    //
+    // `null` emits no ORDER BY at all — see `resolveOrderBy` on the config.
+    resolveOrderBy: (options) => {
+      if (options?.orderBy === "none") return null;
+      return options?.orderBy === "startedAtMs"
+        ? "created_at DESC, id DESC"
+        : "updated_at DESC";
+    }
   });
 
   /**

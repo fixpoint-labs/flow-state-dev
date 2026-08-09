@@ -36,6 +36,12 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
         parts.push("tenant_id IS ?");
         params.push(options.tenantId ?? null);
       }
+      // Org filter (FIX-1010): same present-vs-absent NULL-safe semantics as
+      // the tenant clause, mirroring the server-side `matchesOrgFilter`.
+      if (options !== undefined && "orgId" in options) {
+        parts.push("org_id IS ?");
+        params.push(options.orgId ?? null);
+      }
       // Parentage filter (FIX-1009). Mirrors the server-side
       // `matchesParentageFilter` predicate, which is the source of truth — this
       // package cannot import it across the type-only boundary. Note absence
@@ -51,6 +57,11 @@ export function createSQLiteSessionStore(db: Database.Database): SessionStore {
       // `"all"` emits no clause at all — today's unrestricted query, unchanged.
 
       return { clause: parts.join(" AND "), params };
-    }
+    },
+    // FIX-1010: `createdAt` orders on two immutable columns so a session
+    // record rewritten mid-walk (a run starting stamps `updated_at`) cannot
+    // reorder a caller's pages. Anything else keeps the shipped default.
+    resolveOrderBy: (options) =>
+      options?.orderBy === "createdAt" ? "created_at DESC, id DESC" : "updated_at DESC"
   });
 }

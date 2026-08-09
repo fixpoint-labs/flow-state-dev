@@ -135,6 +135,26 @@ export function matchesTenantFilter(
 }
 
 /**
+ * Org list-filter predicate (FIX-1010), with exactly the present-vs-absent
+ * semantics of {@link matchesTenantFilter} — deliberately, because `orgId` is
+ * optional on both session and request records and a plain equality test would
+ * silently drop every unbound one.
+ *
+ * Org is an enforced identity boundary at adoption (`createExecutionContext`
+ * throws `OrgBindingMismatchError` on a mismatch), so a read that enumerates
+ * across it treats as one conversation what the runtime treats as two
+ * identities. The SQL adapters mirror this as a NULL-safe `org_id IS ?` /
+ * `org_id IS NOT DISTINCT FROM $n` clause.
+ */
+export function matchesOrgFilter(
+  options: { orgId?: string } | undefined,
+  recordOrgId: string | undefined
+): boolean {
+  if (options === undefined || !("orgId" in options)) return true;
+  return recordOrgId === options.orgId;
+}
+
+/**
  * Parentage list-filter predicate (FIX-1009). The canonical definition of the
  * three modes; the memory and filesystem session stores call it directly, and
  * the SQLite / Postgres adapters mirror it in their `WHERE` builders because

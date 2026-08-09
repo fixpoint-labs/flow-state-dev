@@ -283,6 +283,11 @@ export type CreateFilesystemRecordStoreOptions<
    */
   sort?: (left: TRecord, right: TRecord, options?: TListOptions) => number;
   /**
+   * Whether these list options ask for an **unordered** result (FIX-1010),
+   * in which case `sort` is skipped entirely. Defaults to always ordering.
+   */
+  unordered?: (options?: TListOptions) => boolean;
+  /**
    * Skip `.events.json`/`.runonce.*.json` sidecar files in `list`. Only the
    * request store (which co-locates sidecars with records and uses
    * framework-generated `req_*` ids) should enable this; see `isSidecarFile`.
@@ -327,6 +332,7 @@ export function createFilesystemRecordStore<
   const { rootDir } = options;
   const filter = options.filter;
   const sort = options.sort ?? sortByUpdatedAtDesc;
+  const unordered = options.unordered;
   const skipSidecars = options.skipSidecars ?? false;
   const withLock = createWriteLock();
 
@@ -541,7 +547,9 @@ export function createFilesystemRecordStore<
           ? all
           : all.filter((entry) => filter(entry, listOptions));
 
-      filtered.sort((left, right) => sort(left, right, listOptions));
+      if (unordered?.(listOptions) !== true) {
+        filtered.sort((left, right) => sort(left, right, listOptions));
+      }
       return applyOffsetLimit(filtered, listOptions);
     }
   };

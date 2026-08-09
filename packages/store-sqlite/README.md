@@ -121,6 +121,21 @@ The `request_items` table was added for incremental item persistence: instead of
 
 `sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
 
+### Indexes for the ordered listings
+
+Two composite indexes serve the ordered reads behind a session's background-job listing. Both are plain btrees, added by `initializeSchema`; no column and no data migration comes with them.
+
+| Index | Serves |
+| --- | --- |
+| `idx_sessions_parent_created (parent_session_id, created_at, id)` | One parent's children, ordered newest-created first. The single-column parent index serves the equality but not the order, so a page limit would apply after sorting the parent's whole child set. |
+| `idx_requests_session_created (session_id, created_at, id)` | One session's most recent request. The `(session_id, status)` and `(session_id, tenant_id)` composites stop before the ordering column. |
+
+The ordering columns are declared ascending and scanned backwards — SQLite does that for an `ORDER BY` that reverses every key uniformly.
+
+**No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
+
+**The cost guarantee is unverified on this adapter.** The property those indexes exist for — examined work bounded independently of the history it sits on — cannot be measured here. There is no `EXPLAIN ANALYZE`, `better-sqlite3` exposes no per-node row counters, and `EXPLAIN QUERY PLAN` output is insensitive to filtered rows: it reports the same plan whether a query discards one row or five hundred. The adapter's suite asserts *index selection* (a `SEARCH` naming the expected index, no temporary b-tree for the ordered shapes) and nothing stronger. The Postgres adapter is gated on the cost property directly. If `better-sqlite3` ever exposes `sqlite3_stmt_scanstatus` or a progress-handler step count, this is closeable.
+
 ## Individual Store Constructors
 
 For advanced use cases, individual store constructors are also exported:

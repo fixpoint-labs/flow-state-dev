@@ -1,4 +1,28 @@
-import type { ActiveRequestEntry, ActiveRequestRegistry, RequestRecord } from "./types";
+import type {
+  ActiveRequestEntry,
+  ActiveRequestRegistry,
+  RequestRecord,
+  RequestStatus
+} from "./types";
+
+/**
+ * Request-status list-filter predicate (FIX-1010). A single status matches by
+ * equality; an array matches set membership, which is what lets "does any
+ * non-terminal run exist" be one read instead of one per member. An absent
+ * filter passes everything; an empty array passes nothing.
+ *
+ * The in-memory and filesystem stores call this directly; the SQL adapters
+ * mirror it as `status = ?` / `status IN (…)` because they cannot import
+ * across the type-only package boundary.
+ */
+export function matchesRequestStatusFilter(
+  filter: RequestStatus | readonly RequestStatus[] | undefined,
+  recordStatus: RequestStatus
+): boolean {
+  if (filter === undefined) return true;
+  if (Array.isArray(filter)) return filter.includes(recordStatus);
+  return recordStatus === filter;
+}
 
 export function applyOffsetLimit<TValue>(
   values: TValue[],

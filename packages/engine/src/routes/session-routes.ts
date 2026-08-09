@@ -292,6 +292,20 @@ export async function handleListSessionRequests(
     // (always present, possibly undefined) so history never crosses tenants.
     sessionId: route.sessionId,
     tenantId: ctx.tenantId,
+    // Conjoin the *stored session's* flow kind (FIX-1046). Nothing binds a
+    // request's flow kind to its session's — the adopt-an-existing-session
+    // branch of `createExecutionContext` validates user, org and tenant, and
+    // the engine defines no flow-kind binding error — while route
+    // authorization picks its resolver from the **session's** flow kind. So a
+    // request dispatched under a flow that authenticates, into a session
+    // stored under one that does not, was served here in full (items
+    // included) to a caller authorized only for the permissive flow.
+    //
+    // BP-030: this narrows an existing endpoint's results. A request whose
+    // recorded flow kind differs from its session's no longer appears — which
+    // is the point, and which no shipped writer produces on the ordinary path.
+    // Taken from the loaded record, never from the caller (BP-031).
+    flowKind: session.flowKind,
     status: getString(url.searchParams.get("status")) as
       | RequestStatus
       | undefined,

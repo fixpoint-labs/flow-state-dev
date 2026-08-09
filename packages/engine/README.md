@@ -340,6 +340,46 @@ const stores = createFilesystemStores({
 });
 ```
 
+## Background jobs on a session
+
+`GET /api/flows/sessions/:sessionId/workstreams` lists the background jobs
+started by a session — the child sessions attached to it. Each row carries the
+child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
+`status` of `active` (not finished) or a terminal outcome (`completed`,
+`failed`, `aborted`, `incomplete`). A job with no runs has no `status`.
+
+The route is session-addressed: the parent is loaded and ownership-checked
+before the handler runs, and the answer is scoped to the stored parent's owner,
+tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
+0–10000; anything outside returns `400`. Use each row's `id` with the existing
+`/sessions/:id/requests` endpoint to read that job's history.
+
+See [Background work](https://flow-state.dev/docs/server/background-work) for
+the full contract.
+
+## Store list options
+
+`SessionListOptions` and `RequestListOptions` are part of the store contract, so
+a change that is invisible to existing callers is still one an adapter author
+needs to know about:
+
+- `RequestListOptions.status` accepts a `RequestStatus` **or an array** of them.
+  An array matches set membership; an empty array matches nothing.
+- `RequestListOptions.orderBy` accepts `"none"` alongside `"startedAtMs"` and
+  `"updatedAt"`. `"none"` returns the matching set unordered — required for an
+  existence check, whose work must not grow with the set it selects on.
+  `"startedAtMs"` orders by `(startedAtMs, id)` so an exact tie resolves
+  deterministically.
+- `SessionListOptions.orderBy` accepts `"createdAt"` or `"updatedAt"` (default).
+  `"createdAt"` orders by `(createdAt, id)`, both immutable, so a record written
+  during a caller's walk cannot reorder its pages.
+- Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
+  as `tenantId`: an absent key filters nothing, a present key (including an
+  explicit `undefined`) exact-matches.
+
+Adapters must implement all four. Every existing caller omits them and behaves
+exactly as before.
+
 ## Session retention policies
 
 Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.

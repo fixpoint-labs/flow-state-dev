@@ -137,6 +137,31 @@ The schema uses:
 
 `sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
 
+### Indexes for the ordered listings, and how they are built
+
+Two composite indexes serve the ordered reads behind a session's background-job listing. Both are plain btrees; no column and no data migration comes with them.
+
+| Index | Serves |
+| --- | --- |
+| `idx_sessions_parent_created (parent_session_id, created_at, id)` | One parent's children, ordered newest-created first. The single-column parent index serves the equality but not the order, so a page limit would apply after sorting the parent's whole child set. |
+| `idx_requests_session_created (session_id, created_at, id)` | One session's most recent request. The `(session_id, status)` and `(session_id, tenant_id)` composites stop before the ordering column. |
+
+The ordering columns are declared ascending and scanned backwards, which Postgres does for an `ORDER BY` that reverses every key uniformly.
+
+**No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
+
+**These two are built `CONCURRENTLY`.** They are the only indexes here that can land on an already-populated table — everything else ships with its `CREATE TABLE`, so on an upgrade its `IF NOT EXISTS` is a no-op. A plain build holds a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
+
+An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
+
+### The tenant and org filters are emitted as `= $n` or `IS NULL`
+
+`tenant_id` and `org_id` are filtered NULL-safely: an absent option key filters nothing, and a present key (including an explicit `undefined`) exact-matches, with `undefined` matching only unbound rows. The emitted SQL is `column = $n` for a value and `column IS NULL` for an absent one, rather than `column IS NOT DISTINCT FROM $n`.
+
+The predicate is identical either way — that is what `IS NOT DISTINCT FROM` means — but the plans are not. `IS NOT DISTINCT FROM` is not an index condition on a plain btree and carries no statistics, so the planner falls back to a default selectivity. On a filtered ordered read that misestimate decides the plan: it concludes one row matches, prices the sort as free, and picks a bitmap scan that materializes a session's whole history before sorting it. The `= $n` / `IS NULL` forms are index conditions and carry real statistics.
+
+No caller sees a different row set. Only a different plan.
+
 ### Resource state carries a version, and deletes leave a row behind
 
 `resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.

@@ -16,8 +16,13 @@ import {
   type FilesystemRecordStore
 } from "./shared";
 import { atomicWrite, ensureDirectory, toRecordPath } from "./shared";
-import { withRequestSourceDefault, withStoredAbortRequested } from "../shared";
-import { matchesTenantFilter } from "../scope-keys";
+import {
+  matchesRequestStatusFilter,
+  withRequestSourceDefault,
+  withStoredAbortRequested
+} from "../shared";
+import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { compareRequestsForListing } from "../list-order";
 import { pollEvents } from "../subscribe-helpers";
 import { appendFile, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
@@ -172,9 +177,12 @@ export class FilesystemRequestStore implements RequestStore {
       rootDir: options.rootDir,
       skipSidecars: true,
       sort: (left, right, listOptions) =>
-        listOptions?.orderBy === "startedAtMs"
-          ? right.startedAtMs - left.startedAtMs
-          : right.updatedAt - left.updatedAt,
+        compareRequestsForListing(left, right, listOptions),
+      // `orderBy: "none"` (FIX-1010) returns the matching set unordered. This
+      // adapter scans by construction so it is not a cost bound here; it is
+      // declared so every adapter answers the option, and so a caller that
+      // depends on the *absence* of an order cannot be surprised by one.
+      unordered: (listOptions) => listOptions?.orderBy === "none",
       filter: (record, listOptions): boolean => {
         if (
           listOptions?.flowKind !== undefined &&
@@ -197,14 +205,15 @@ export class FilesystemRequestStore implements RequestStore {
           return false;
         }
 
-        if (
-          listOptions?.status !== undefined &&
-          record.status !== listOptions.status
-        ) {
+        if (!matchesRequestStatusFilter(listOptions?.status, record.status)) {
           return false;
         }
 
         if (!matchesTenantFilter(listOptions, record.tenantId)) {
+          return false;
+        }
+
+        if (!matchesOrgFilter(listOptions, record.orgId)) {
           return false;
         }
 
