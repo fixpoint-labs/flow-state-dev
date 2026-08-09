@@ -360,10 +360,17 @@ export function createSQLiteRequestStore(
       allowedStatuses: readonly RequestStatus[],
       updatedAt: number
     ): Promise<ConditionalWriteResult> {
-      // One transaction: the status the predicate reads is the status the
-      // write lands on. This is what a version CAS cannot give — terminal
-      // transitions persist `version` unchanged, so a version-checked write
-      // still validates after a terminal commit and resurrects the record.
+      // One transaction, and it must be IMMEDIATE. A plain better-sqlite3
+      // transaction is DEFERRED: it takes only a read lock at the first
+      // SELECT, and upgrades on the UPDATE. Under WAL that upgrade fails with
+      // SQLITE_BUSY_SNAPSHOT when another connection committed in between —
+      // so `POST /abort` would throw where it owes the caller a clean 409.
+      // Reserving the write up front means the status the predicate reads is
+      // the status the write lands on, with no upgrade to lose.
+      //
+      // This is also what a version CAS cannot give: terminal transitions
+      // persist `version` unchanged, so a version-checked write still
+      // validates after a terminal commit and resurrects the record.
       return db.transaction((): ConditionalWriteResult => {
         const row = selectStatusDataStmt.get(id) as
           | { status: RequestStatus; data: string }
@@ -376,7 +383,7 @@ export function createSQLiteRequestStore(
         const next = { ...record, ...fields, updatedAt };
         updateDataStmt.run(JSON.stringify(next), updatedAt, id);
         return { applied: true, status: row.status };
-      })();
+      }).immediate();
     },
 
     patchField: base.patchField,

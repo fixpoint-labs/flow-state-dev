@@ -1632,7 +1632,13 @@ export async function runActionInternal<
 
     if (signalAborted) {
       const record = await options.stores.request.get(requestId).catch(() => undefined);
-      const wasIntentionalAbort = record?.abortRequested === true;
+      // `deliveredAbort` is first-hand proof: this process read the durable
+      // intent and fired the controller itself (FIX-1026). Falling back to it
+      // matters because the read above is allowed to fail — without it, a
+      // transient store error at exactly this moment would file a request we
+      // demonstrably cancelled as an accidental disconnect (`interrupted`),
+      // which is a resumable state.
+      const wasIntentionalAbort = deliveredAbort || record?.abortRequested === true;
 
       if (wasIntentionalAbort) {
         // --- Abort path: user explicitly stopped the request ---

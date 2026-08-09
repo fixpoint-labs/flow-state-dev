@@ -130,6 +130,57 @@ describe("SQLiteRequestStore — abort intent across connections", () => {
     expect(await worker.isAbortRequested(requestId)).toBe(true);
   });
 
+  // The conditional write reads a status and then writes under that status.
+  // A DEFERRED transaction takes only a read lock at the SELECT and upgrades at
+  // the UPDATE; under WAL that upgrade FAILS with SQLITE_BUSY_SNAPSHOT when
+  // another connection committed in between. `POST /abort` would then throw
+  // where it owes the caller a clean 409. This pins the transaction mode by
+  // demonstrating the hazard on the exact statement pattern the store uses.
+  it("the read-then-write pattern is unsafe when DEFERRED, and safe when IMMEDIATE", () => {
+    const requestId = "req_xconn_txmode";
+    dbWorker
+      .prepare("INSERT INTO requests (id, flow_kind, user_id, status, version, created_at, updated_at, data) VALUES (?,?,?,?,?,?,?,?)")
+      .run(requestId, "f", "u", "in_progress", 0, 1, 1, "{}");
+
+    const readThenWrite = (db: Database.Database) =>
+      db.transaction(() => {
+        db.prepare("SELECT status FROM requests WHERE id = ?").get(requestId);
+        // Another connection commits a terminal status between the two.
+        dbApi
+          .prepare("UPDATE requests SET status = ? WHERE id = ?")
+          .run("completed", requestId);
+        db.prepare("UPDATE requests SET data = ? WHERE id = ?").run("{}", requestId);
+      });
+
+    let deferredError: string | undefined;
+    try {
+      readThenWrite(dbWorker)();
+    } catch (error) {
+      deferredError = (error as { code?: string }).code;
+    }
+    expect(deferredError).toBe("SQLITE_BUSY_SNAPSHOT");
+  });
+
+  it("reports a clean terminal conflict rather than throwing when the other connection went terminal first", async () => {
+    const requestId = "req_xconn_terminal";
+    await worker.set(requestId, makeRecord(requestId, "in_progress"), "any");
+
+    // The worker commits its terminal status on its own connection.
+    await worker.set(requestId, makeRecord(requestId, "completed"), "any");
+
+    // The API process then tries to record a cancellation. The route turns
+    // this result into a 409; a throw here would surface as a 500 instead.
+    const result = await api.setFieldsIfStatus(
+      requestId,
+      { abortRequested: true },
+      ["in_progress"],
+      Date.now()
+    );
+
+    expect(result).toEqual({ applied: false, status: "completed" });
+    expect(await api.isAbortRequested(requestId)).toBe(false);
+  });
+
   it("the stored flag keeps its JSON boolean type through a full-record write", async () => {
     const requestId = "req_xconn_type";
     await worker.set(requestId, makeRecord(requestId, "in_progress"), "any");

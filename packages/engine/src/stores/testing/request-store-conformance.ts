@@ -571,6 +571,31 @@ export function createRequestStoreConformanceTests(
         });
       });
 
+      // A cross-adapter consistency claim, not an adapter detail. Adapters that
+      // keep the flag on the record get this for free; one that stores it
+      // beside the record has to overlay it onto listed records too, or the
+      // same request reads as cancelled through `get` and not cancelled
+      // through `list` — including through the session request-list endpoint.
+      it("agrees with list() on the same record", async () => {
+        await withStore(async (store) => {
+          const requestId = "req_abort_list_agrees";
+          await seed(store, requestId);
+          await store.setFieldsIfStatus(
+            requestId,
+            { abortRequested: true },
+            ["in_progress"],
+            Date.now()
+          );
+
+          const listed = (await store.list()).find((r) => r.id === requestId);
+          expect(listed).toBeDefined();
+          expect(listed?.abortRequested).toBe(true);
+          expect(listed?.abortRequested).toBe(
+            (await store.get(requestId))?.abortRequested
+          );
+        });
+      });
+
       it("agrees with get() on the same record", async () => {
         await withStore(async (store) => {
           const requestId = "req_abort_agrees";

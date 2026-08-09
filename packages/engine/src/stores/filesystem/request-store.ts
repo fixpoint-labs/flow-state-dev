@@ -227,15 +227,55 @@ export class FilesystemRequestStore implements RequestStore {
     // this is also the point the record becomes migrated, because the record
     // has already been paid for here. `isAbortRequested` can then stay a
     // `stat` instead of inheriting this read's cost on every tick.
+    // Read-only. An earlier revision created the marker here to "migrate" the
+    // record, and that was a bug of the same shape as the one the conditional
+    // write already had: `delete` takes no lock, so a write issued from an
+    // unlocked read can land after a deletion and leave an orphan marker —
+    // which would then read as a cancellation on a later request reusing the
+    // id. A read does not mutate storage.
+    //
+    // The consequence, stated rather than worked around: a record written
+    // before the flag moved off `set`'s surface is reported here, but
+    // `isAbortRequested` (a bare `stat`) does not see it, and the record's
+    // next write drops the inline value. That window is one upgrade wide on an
+    // adapter that does not support cross-process execution anyway.
     const inlineLegacy = record.abortRequested === true;
-    if (inlineLegacy && !marked) {
-      // Best-effort: a read must never fail because the migration write did.
-      await this.writeAbortMarker(id, true).catch(() => {});
-    }
 
     return withRequestSourceDefault(
       withStoredAbortRequested(record, marked || inlineLegacy ? true : undefined)
     );
+  }
+
+  /**
+   * Overlay abort markers onto records that did not come through `get`.
+   *
+   * One `readdir` rather than a `stat` per record, and it keeps `list()`
+   * agreeing with `get()` — on every other adapter the flag rides the record,
+   * so a listing that omitted it would make this adapter the odd one out for
+   * any caller reading `abortRequested` off a list (the session request-list
+   * endpoint among them).
+   */
+  private async overlayAbortMarkers(
+    records: RequestRecord[]
+  ): Promise<RequestRecord[]> {
+    if (records.length === 0) return records;
+    let entries: string[];
+    try {
+      entries = await readdir(this.rootDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return records;
+      throw err;
+    }
+    const marked = new Set(entries.filter((name) => name.endsWith(".abort")));
+    return records.map((record) => {
+      const isMarked = marked.has(
+        path.basename(toAbortMarkerPath(this.rootDir, record.id))
+      );
+      return withStoredAbortRequested(
+        record,
+        isMarked || record.abortRequested === true ? true : undefined
+      );
+    });
   }
 
   async set(
@@ -285,7 +325,15 @@ export class FilesystemRequestStore implements RequestStore {
       if (abortRequested !== undefined) {
         await this.writeAbortMarker(id, abortRequested);
       }
-      return { ...current, ...recordFields, updatedAt };
+      // Drop any inline copy on the way out. The marker is the sole home, and
+      // a pre-upgrade record that still carries the flag inline would
+      // otherwise outlive an applied `{ abortRequested: false }`: the marker
+      // would be removed, the inline `true` would remain, and the next `get`
+      // would report the cancellation as still standing.
+      return withStoredAbortRequested(
+        { ...current, ...recordFields, updatedAt },
+        undefined
+      );
     });
 
     if (found === undefined) return { applied: false, status: undefined };
@@ -374,7 +422,8 @@ export class FilesystemRequestStore implements RequestStore {
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
     const records = await this.store.list(options);
-    return records.map((record) => withRequestSourceDefault(record));
+    const overlaid = await this.overlayAbortMarkers(records);
+    return overlaid.map((record) => withRequestSourceDefault(record));
   }
 
   persistItems(requestId: string, items: OutputItem[]): void {

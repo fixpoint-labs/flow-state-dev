@@ -1097,6 +1097,60 @@ describe("runAction — cross-process abort delivery", () => {
     expect(record?.status).toBe("aborted");
   });
 
+  it("still classifies as aborted when the classification read fails after delivery", async () => {
+    const base = createInMemoryStores();
+    const requestId = "req_xproc_classify";
+    let delivered = false;
+    let failedOnce = false;
+
+    // Fail exactly the classification read — the `get` the terminal `catch`
+    // makes to decide intentional-abort vs accidental-disconnect. Everything
+    // after it (the terminal write's own read) must still work, or the record
+    // would never be written at all and the test would prove nothing.
+    const stores = withStoreOverrides(base, {
+      request: {
+        async isAbortRequested(this: StoreRegistry["request"], id: string) {
+          const requested = await Object.getPrototypeOf(this).isAbortRequested.call(this, id);
+          if (requested) delivered = true;
+          return requested;
+        },
+        async get(this: StoreRegistry["request"], id: string) {
+          if (delivered && !failedOnce) {
+            failedOnce = true;
+            throw new Error("store unavailable");
+          }
+          return Object.getPrototypeOf(this).get.call(this, id);
+        }
+      }
+    });
+    const flow = makeBlockingFlow({
+      kind: "xproc-classify",
+      heartbeatIntervalMs: 20
+    });
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_xproc",
+      stores,
+      runtimeConfig: {}
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    await recordAbortIntent(stores, requestId);
+    await resultPromise;
+
+    expect(failedOnce).toBe(true);
+    // This process read the durable intent and fired the controller itself, so
+    // it does not need the store to tell it what happened. Without that
+    // fallback the run files as `interrupted` — a RESUMABLE state — for a
+    // request the operator demonstrably cancelled.
+    const record = await base.request.get(requestId);
+    expect(record?.status).toBe("aborted");
+  });
+
   it("keeps the intent across a worker full-record write taken from a stale snapshot", async () => {
     const stores = createInMemoryStores();
     const requestId = "req_xproc_stale_write";

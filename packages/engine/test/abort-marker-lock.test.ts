@@ -9,7 +9,7 @@
  * request that has already finished — or an orphan marker with no record at
  * all, which would cancel a later run that reuses the id.
  */
-import { mkdtempSync, rmSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -93,6 +93,62 @@ describe("FilesystemRequestStore — abort marker is written under the record lo
     // An orphan marker would report a cancellation for a request that no longer
     // exists, and would cancel a later run that reused the id.
     expect(await store.isAbortRequested(requestId)).toBe(false);
+    expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
+  });
+
+  /**
+   * Write a record file directly, carrying `abortRequested` INLINE — the shape
+   * a record persisted before the flag moved off `set`'s write surface has.
+   * The store's own `set` strips the field, so this is the only way to produce
+   * one.
+   */
+  function writeLegacyRecord(requestId: string, status: RequestRecord["status"]): void {
+    writeFileSync(
+      path.join(rootDir, `${encodeURIComponent(requestId)}.json`),
+      JSON.stringify({ ...makeRecord(requestId, status), abortRequested: true })
+    );
+  }
+
+  it("an applied clear survives a re-read of a legacy inline record", async () => {
+    const requestId = "req_marker_clear_legacy";
+    writeLegacyRecord(requestId, "in_progress");
+
+    // Record the cancellation, then withdraw it.
+    await store.setFieldsIfStatus(
+      requestId,
+      { abortRequested: true },
+      ["in_progress"],
+      Date.now()
+    );
+    const cleared = await store.setFieldsIfStatus(
+      requestId,
+      { abortRequested: false },
+      ["in_progress"],
+      Date.now()
+    );
+    expect(cleared.applied).toBe(true);
+
+    // Removing the marker is not enough while the record still carries the
+    // flag inline: the next read would treat the inline copy as authoritative
+    // and the withdrawn cancellation would come back.
+    expect(await store.isAbortRequested(requestId)).toBe(false);
+    expect((await store.get(requestId))?.abortRequested).not.toBe(true);
+    // ...and it must stay withdrawn across repeated reads.
+    expect(await store.isAbortRequested(requestId)).toBe(false);
+  });
+
+  it("reading a legacy inline record does not create a marker", async () => {
+    const requestId = "req_marker_read_only";
+    writeLegacyRecord(requestId, "in_progress");
+
+    // The dual-read reports the flag...
+    expect((await store.get(requestId))?.abortRequested).toBe(true);
+
+    // ...but a read must not mutate storage. `delete` takes no lock, so a
+    // write issued from an unlocked read can land after a deletion and leave an
+    // orphan marker, which a later request reusing the id would read as an
+    // already-requested cancellation.
+    expect(existsSync(path.join(rootDir, `${encodeURIComponent(requestId)}.abort`))).toBe(false);
     expect(readdirSync(rootDir).filter((f) => f.endsWith(".abort"))).toEqual([]);
   });
 
