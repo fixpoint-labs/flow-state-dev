@@ -109,17 +109,15 @@ The session store key becomes `${tenantId}:${sessionId}`; request records keep a
 
 ## Reusing a session id
 
-Session ids are yours to choose, so nothing stops you deleting a session and creating another with the same id. The replacement starts empty. It does not pick up state, resources, or content from the session it replaced, and that holds even if work from the old session was still running when the delete landed.
+Session ids are yours to choose, so nothing stops you deleting a session and creating another with the same id. The replacement starts empty. It does not pick up state, resources, or content from the session it replaced. In-flight work from the deleted session cannot write into the replacement.
 
 Every session record is created with a *storage generation*, an opaque id unique to that record, and the session's resources are addressed by the session key plus that generation. In SQLite or Postgres you will see `scope_id` values like `sess_42#9f1c8d0e-…` on session-scoped resource state and content rows. Two sessions that share an id never share a `scope_id`.
-
-Upgrading takes no migration and no manual step: existing session records keep their addresses and read back unchanged, and `scope_id` is opaque to a store, so custom stores need nothing special.
 
 ## Custom stores
 
 The store interface is pluggable. If you need Redis, an alternative SQL backend, or another store, implement the `StoreRegistry` shape and pass it in. The contracts are documented per-method in `@flow-state-dev/engine`. A custom store isolates by tenant the same way the built-ins do: namespace records by their `id` (already tenant-prefixed for sessions) and honor the `tenantId` field on `SessionListOptions` / `RequestListOptions` (present means exact-match, including `undefined`; absent means no filter).
 
-Round-trip session records whole rather than projecting the fields you use. `SessionRecord.storageGeneration` is one the runtime reads back to address the session's resources, and a store that drops it silently gives up the guarantee in [Reusing a session id](#reusing-a-session-id).
+Round-trip session records whole rather than projecting the fields you use. The runtime reads `SessionRecord.storageGeneration` back to address the session's resources. A store that drops it breaks the guarantee in [Reusing a session id](#reusing-a-session-id).
 
 A custom store also has to honor session parentage. A session can belong to another session instead of to a person — `SessionRecord.parentSessionId` carries the parent's id, and is undefined on a session someone started directly. `SessionListOptions.parentage` picks which of those a listing returns:
 
