@@ -5,9 +5,9 @@
  *
  * Each turn gets a fresh `requestId` (threaded into `runAction`, unlike
  * `fsdev run`) and a fresh `ResponseEmitter` — reusing an emitter corrupts
- * sequence numbers. Abort is the real thing: patch the request record's
- * `abortRequested` flag first, THEN call `abortRequest(requestId)`, so the run
- * settles `"aborted"` (a persistent "Request was stopped." status) rather than
+ * sequence numbers. Abort is the real thing: record the `abortRequested`
+ * intent first, THEN call `abortRequest(requestId)`, so the run settles
+ * `"aborted"` (a persistent "Request was stopped." status) rather than
  * `"interrupted"` (which the engine treats as a resumable disconnect).
  */
 import {
@@ -106,11 +106,12 @@ export function executeTurn(params: ExecuteTurnParams): RunningTurn {
     //    (fast Ctrl-C, slow setup) or the turn settles — so the run's catch reads
     //    the flag and settles "aborted", never "interrupted".
     while (!settled) {
-      const record = await stores.request.get(requestId).catch(() => undefined);
-      if (record !== undefined) {
-        await stores.request.set(requestId, { ...record, abortRequested: true }, "any").catch(() => {});
-        break;
-      }
+      const result = await stores.request
+        .setFieldsIfStatus(requestId, { abortRequested: true }, ["in_progress"], Date.now())
+        .catch(() => undefined);
+      // A record that exists reports a status, whether or not the predicate
+      // held; either way there is nothing left to retry for.
+      if (result === undefined || result.status !== undefined) break;
       await delay(ABORT_RETRY_MS);
     }
     // 2. Then fire the abort, retrying until the controller is registered or the

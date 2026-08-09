@@ -49,6 +49,7 @@ import { createExecutionMetadata } from "./types";
 import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 import { generateId } from "../utils/generate-id";
 import {
+  abortRequest,
   registerAbortController,
   deregisterAbortController
 } from "./abort-registry";
@@ -628,13 +629,70 @@ export async function runActionInternal<
   });
 
   const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;
+
+  // --- Cross-process abort delivery (FIX-1026) ---
+  // `/abort` records the intent durably wherever it is called; this is the
+  // reader that makes it land on the process actually running the work. It
+  // rides the heartbeat tick rather than adding a cadence of its own, so
+  // worst-case cancellation latency is `heartbeatIntervalMs`.
+  //
+  // Latched on DELIVERY, not on detection. `runAction` installs this timer
+  // well before `registerAbortController` below, so a tick can legitimately
+  // read a pre-set flag and find no controller to fire; latching there would
+  // suppress every later poll and silently defeat pre-start cancellation. A
+  // tick that cannot deliver changes nothing and tries again next interval.
+  let deliveredAbort = false;
+  // Ticks can overlap: `setInterval` fires again while an earlier callback is
+  // still awaiting, which is exactly what happens when the store is slow. Both
+  // would read the flag and both would call `abortRequest` (which keeps
+  // returning true while the controller is registered, aborted or not),
+  // doubling store reads precisely when the store is already degrading.
+  let abortPollInFlight = false;
+
+  /**
+   * One abort-intent poll. Reads the narrow projection rather than the record —
+   * `get()` materializes the whole item history on the persistent adapters, and
+   * this runs for the life of every request.
+   *
+   * Failures are swallowed with a warning: a transient store error must never
+   * abort or fail a healthy run, which would be a worse outcome than the gap
+   * this closes.
+   */
+  const pollAbortIntent = async (): Promise<void> => {
+    if (deliveredAbort || abortPollInFlight) return;
+    abortPollInFlight = true;
+    try {
+      if (!(await options.stores.request.isAbortRequested(requestId))) return;
+      // Returns false when no controller is registered yet. Not a delivery, so
+      // the latch stays unset and the next tick retries.
+      if (!abortRequest(requestId)) return;
+      deliveredAbort = true;
+      logRuntimeEvent(logger, "info", "[flow-state] [abort] cross-process abort delivered", {
+        requestId
+      });
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] abort-intent poll failed", {
+        requestId, error: String(err)
+      });
+    } finally {
+      abortPollInFlight = false;
+    }
+  };
+
   const heartbeatTimer = heartbeatIntervalMs > 0
     ? setInterval(() => {
+        // The two halves share a timer, not a fate. The heartbeat writes to the
+        // active-request registry; the poll reads the request store. They are
+        // different stores and fail independently, so the heartbeat keeps its
+        // own `.catch()` and is deliberately not awaited here — a registry
+        // outage must not silently disable cancellation on a deployment that
+        // meets every documented requirement.
         registry.heartbeat(requestId).catch((err) => {
           logRuntimeEvent(logger, "warn", "[flow-state] heartbeat write failed", {
             requestId, error: String(err)
           });
         });
+        void pollAbortIntent();
       }, heartbeatIntervalMs)
     : undefined;
 
@@ -850,6 +908,13 @@ export async function runActionInternal<
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
   const abortController = registerAbortController(requestId);
+  // First poll (FIX-1026). Placed here rather than beside the timer because a
+  // poll before this line has no controller to fire and therefore cannot
+  // deliver — it would be a guaranteed-useless store read on every request.
+  // Here it closes the window where the cancel was recorded between admission
+  // and the run starting, without waiting a full interval. Gated on the timer
+  // so `heartbeatIntervalMs: 0` really is off.
+  if (heartbeatTimer !== undefined) void pollAbortIntent();
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;

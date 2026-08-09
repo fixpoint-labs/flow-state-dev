@@ -16,16 +16,19 @@ type AbortRouteContext = {
 /**
  * POST /api/flows/:flowKind/requests/:requestId/abort
  *
- * Marks a request as abort-requested in the persistent store and, when
- * available, fires the in-memory AbortController. On single-server
- * deployments the controller fires immediately. On serverless (where
- * this handler may run on a different instance), the persistent flag
- * tells the running instance to treat the next client disconnect as
- * an intentional abort rather than an accidental one.
+ * Records the cancellation durably on the request record and, when the request
+ * is running in this process, fires its in-memory AbortController immediately.
  *
- * Returns 202 when the flag was set (abort will happen when the running
- * instance detects it), 204 when the in-memory controller was also
- * fired, 404 if the request doesn't exist, 409 if it's already terminal.
+ * When it is running somewhere else, the process that owns the run picks the
+ * intent up on its next heartbeat tick and fires the same controller there, so
+ * a cancel issued anywhere stops a run anywhere. Delivery is bounded by the
+ * flow's `heartbeatIntervalMs` and needs a request store shared across
+ * processes; with `heartbeatIntervalMs: 0` there is no tick and therefore no
+ * delivery.
+ *
+ * Returns 204 when the in-memory controller was fired here, 202 when the
+ * intent was recorded for the running process to pick up, 404 if the request
+ * doesn't exist, 409 if it's already terminal.
  */
 export async function handleAbortRequest(
   _request: Request,
@@ -34,27 +37,28 @@ export async function handleAbortRequest(
 ): Promise<Response> {
   const { requestId } = route;
 
-  const record = await ctx.stores.request.get(requestId);
+  // One atomic step: record the intent only while the request is still
+  // running. A read-then-write cannot express this — the worker can commit a
+  // terminal status between the two, and writing afterwards would restore an
+  // `in_progress` record over a finished one.
+  const result = await ctx.stores.request.setFieldsIfStatus(
+    requestId,
+    { abortRequested: true },
+    ["in_progress"],
+    Date.now()
+  );
 
-  if (record === undefined) {
+  if (result.status === undefined) {
     return jsonResponse(404, {
       error: `Request "${requestId}" is not in progress`
     });
   }
 
-  if (record.status !== "in_progress") {
+  if (!result.applied) {
     return jsonResponse(409, {
-      error: `Request "${requestId}" is already in terminal state "${record.status}"`
+      error: `Request "${requestId}" is already in terminal state "${result.status}"`
     });
   }
-
-  // Persist intent so the running instance can distinguish intentional
-  // abort from accidental disconnect (browser reload, network drop).
-  await ctx.stores.request.set(
-    requestId,
-    { ...record, abortRequested: true },
-    "any"
-  );
 
   // Fire the in-memory controller if this is the same instance.
   if (hasActiveAbortController(requestId)) {
@@ -62,7 +66,5 @@ export async function handleAbortRequest(
     return new Response(null, { status: 204 });
   }
 
-  // Cross-instance: flag is set, abort will happen when the client
-  // closes the SSE connection and request.signal fires.
   return new Response(null, { status: 202 });
 }
