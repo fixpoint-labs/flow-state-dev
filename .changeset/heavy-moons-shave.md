@@ -14,4 +14,4 @@ backing's `onChange` to your own client transport, run `event.task` through the
 exported `toEmittedTask` projection so the same omission applies.
 
 Tasks stored before this release have no coordinate, and nothing infers one for
-them — the next claim records it.
+them — the next claim records it (FIX-1005).
