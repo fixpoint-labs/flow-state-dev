@@ -8,7 +8,7 @@ A task write can commit and then throw. Both collection backings announce the ch
 
 Two new exports close it. `beginTaskWrite(task)` mints a token before the write; pass it as `write` on the same `TaskTransitionOptions` argument the advisory guards already use. `didWriteLand(task, token)` then answers `true` (it committed), `false` (it changed nothing) or `undefined` (cannot tell). The token is recorded inside the same atomic write that changes the task, so the answer is exactly as durable as the task and survives the next worker's claim — which is the case a later read cannot reason about on its own.
 
-`undefined` is a first-class answer, not a shrug: surface it as its own condition rather than collapsing it into either boolean. It means the task carries no provenance, or the receipt may have aged out. A task retains its four most recent receipts.
+`undefined` is a first-class answer, not a shrug: surface it as its own condition rather than collapsing it into either boolean. It means the task carries no provenance, the token was minted for a task that has since been deleted and recreated under the same id, or the receipt may have aged out. A task retains its four most recent receipts.
 
 Correlation is available on the seven methods that take `TaskTransitionOptions` — `complete`, `fail`, `block`, `unblock`, `awaitReview`, `resumeFromReview`, `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators still advance the task's `revision` on every committed write, but take no options object and so carry no token.
 

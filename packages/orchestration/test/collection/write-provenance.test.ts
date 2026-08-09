@@ -72,9 +72,16 @@ describe("didWriteLand — the three answers", () => {
     } as Task;
   }
 
-  const token = (id: string, sinceRevision: number | undefined): TaskWriteToken => ({
+  // `createdAt` defaults to 0 to match `record`'s default, so every existing
+  // call below is implicitly minted against the same incarnation it reads.
+  const token = (
+    id: string,
+    sinceRevision: number | undefined,
+    createdAt: number | undefined = 0
+  ): TaskWriteToken => ({
     id,
     sinceRevision,
+    createdAt,
   });
 
   it("answers landed when the receipt is in the log", () => {
@@ -177,6 +184,23 @@ describe("didWriteLand — the three answers", () => {
       writeLogTruncated: true,
     });
     expect(didWriteLand(task, token("never-written", 2))).toBeUndefined();
+  });
+
+  it("answers cannot-tell when the token names a different incarnation of this id", () => {
+    // The ABA case (FIX-989 follow-up): a row deleted and recreated under the
+    // same id restarts at revision 1, so a stale token whose baseline happens
+    // to match the replacement's revision would otherwise satisfy "nothing
+    // committed since the baseline" (the arm right below this one) for a write
+    // that landed on the row that no longer exists. `createdAt` is identity
+    // here, not freshness — same guard `ticketNamesTask` in `claim-ticket.ts`
+    // applies on the claim side.
+    const task = record({
+      createdAt: 2_000,
+      revision: 1,
+      writeLog: [],
+      writeLogTruncated: false,
+    });
+    expect(didWriteLand(task, token("mine", 1, 1_000))).toBeUndefined();
   });
 
   it("answers cannot-tell when the record's revision went backwards", () => {
@@ -560,6 +584,58 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
 
     expect(provenanceOf(collection, "t").writeLog.some((r) => r.id === first.id)).toBe(false);
     expect(didWriteLand(collection.get("t"), first)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The ABA case
+// ---------------------------------------------------------------------------
+
+/**
+ * Resource-backed only: `TaskCollectionRef` exposes no `delete`, so the
+ * removal half of the ABA case is reachable only through the underlying
+ * resource collection (explicit `delete()`, or capacity eviction, which
+ * reaches the store through the same per-key delete — `resource-backed.ts`'s
+ * file header). The sequencer backing has no such seam and is not
+ * parameterized here for the same reason `advisory-write.test.ts` scopes its
+ * claim-ticket ABA case to this backing.
+ */
+describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
+  it("withholds rather than answering false when the id is recycled by a delete and recreate", async () => {
+    const resources = createFakeResourceCollection();
+    const first = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: resources,
+      now: () => 1_000,
+    });
+    await first.addTask({ id: "t", goal: "t" });
+
+    // A caller reads the task and opens a correlated write against it, exactly
+    // as `beginTaskWrite`'s own usage example does.
+    const write = beginTaskWrite(first.get("t"));
+    expect(write.sinceRevision).toBe(1);
+    expect(write.createdAt).toBe(1_000);
+
+    // The row is removed and a replacement is created under the same id —
+    // standing in for either removal path per the file header above.
+    await resources.delete("t");
+    const second = await createResourceBackedTaskCollection({
+      collectionId: "tasks",
+      collection: resources,
+      now: () => 2_000,
+    });
+    await second.addTask({ id: "t", goal: "t" });
+
+    // The replacement restarts at revision 1 — exactly the caller's baseline —
+    // which is precisely the state that would satisfy "nothing committed since
+    // the baseline" (`didWriteLand`'s arm 4) for a write that in fact committed
+    // on the row that no longer exists. Confirmed here so this test fails for
+    // the intended reason and not because the fixture drifted.
+    const recreated = second.get("t")!;
+    expect(recreated.revision).toBe(write.sinceRevision);
+    expect(recreated.createdAt).not.toBe(write.createdAt);
+
+    expect(didWriteLand(recreated, write)).toBeUndefined();
   });
 });
 

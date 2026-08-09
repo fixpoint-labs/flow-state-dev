@@ -83,6 +83,16 @@ export interface TaskWriteToken {
    * receipt membership.
    */
   readonly sinceRevision: number | undefined;
+  /**
+   * `task.createdAt` as observed before the write, or `undefined` for a task
+   * that was not there at mint time — task identity across delete/recreate.
+   * A task removed (explicit `delete()`, or capacity eviction on the
+   * resource-backed collection) and recreated under the same id resets
+   * `revision`, so a stale token could otherwise satisfy the coverage arms
+   * against a row it never wrote to (the ABA case; `ticketNamesTask` in
+   * `claim-ticket.ts` guards the identical case on the claim side).
+   */
+  readonly createdAt: number | undefined;
 }
 
 /**
@@ -111,7 +121,7 @@ export interface TaskWriteToken {
  * than forcing a null check at every call site.
  */
 export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
-  return { id: generateId("tw"), sinceRevision: task?.revision };
+  return { id: generateId("tw"), sinceRevision: task?.revision, createdAt: task?.createdAt };
 }
 
 /**
@@ -122,7 +132,8 @@ export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
  *   (provenance is stamped only on a write that changed a field, so those two
  *   are deliberately one answer — see the note below).
  * - `undefined` — **cannot tell.** No provenance on this record, no baseline on
- *   the token, or the receipt may have been evicted.
+ *   the token, the token was minted for a different incarnation of this id, or
+ *   the receipt may have been evicted.
  *
  * `undefined` is a first-class result, not a shrug, and a consumer must surface
  * it as its own condition rather than collapsing it into either boolean.
@@ -147,6 +158,17 @@ export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
  * Membership is tested **first**, ahead of the baseline guard: a present
  * receipt proves the write landed whatever the token knows, and a legacy task's
  * first upgraded write has a receipt but no baseline.
+ *
+ * The **incarnation check runs second**, ahead of every arm below it that
+ * reasons about `revision`. A task removed (explicit `delete()`, or capacity
+ * eviction on the resource-backed collection) and recreated under the same id
+ * resets `revision` — a replacement can restart at the token's own baseline,
+ * which would otherwise satisfy "nothing committed since the baseline" for a
+ * write that landed on the row that no longer exists (the ABA case;
+ * `ticketNamesTask` in `claim-ticket.ts` guards the identical case on the claim
+ * side). It cannot run ahead of membership: a receipt actually present in the
+ * *current* row's log proves that row committed this exact write, whatever the
+ * token's stale `createdAt` says.
  *
  * ## Sound, deliberately not complete
  *
@@ -175,7 +197,14 @@ export function didWriteLand(
   // 1. Membership — the only arm that needs nothing from the token.
   if (log.some((receipt) => receipt.id === token.id)) return true;
 
-  // 2. Nothing to reason from: no record on the task, or no baseline on the token.
+  // 2. Incarnation — is this even the task the token was minted for? A
+  //    recycled id (delete/recreate, or capacity eviction) resets `revision`,
+  //    so every arm below reasons about a basis that never applied to this
+  //    row. Skipped when the token carries no `createdAt` (task was undefined
+  //    at mint time), which already means arm 3 answers cannot-tell too.
+  if (token.createdAt !== undefined && token.createdAt !== task.createdAt) return undefined;
+
+  // 3. Nothing to reason from: no record on the task, or no baseline on the token.
   const { revision } = task;
   const baseline = token.sinceRevision;
   if (revision == null || baseline == null) return undefined;
@@ -187,19 +216,19 @@ export function didWriteLand(
   // revision, so on a record that broke that assumption they prove nothing.
   if (revision < baseline) return undefined;
 
-  // 3. Nothing committed at all since the baseline.
+  // 4. Nothing committed at all since the baseline.
   if (revision === baseline) return false;
 
-  // 4. A retained receipt older than my baseline — oldest-first eviction cannot
+  // 5. A retained receipt older than my baseline — oldest-first eviction cannot
   //    have dropped mine while keeping that one.
   if (log.some((receipt) => receipt.revision <= baseline)) return false;
 
-  // 5. The log has never dropped a receipt, so the retained window covers
+  // 6. The log has never dropped a receipt, so the retained window covers
   //    everything. `=== false` rather than `!== true`: an ABSENT marker is a
   //    legacy or non-provenance record, which must fall through to cannot-tell.
   if (task.writeLogTruncated === false) return false;
 
-  // 6. My receipt may have been evicted. Say so.
+  // 7. My receipt may have been evicted. Say so.
   return undefined;
 }
 
