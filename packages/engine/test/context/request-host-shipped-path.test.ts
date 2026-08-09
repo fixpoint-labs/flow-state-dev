@@ -64,9 +64,9 @@ function probeFlow(kind: string, seen: Seen, ask: string[]) {
         const host = requireRequestHost(ctx);
         seen.hasHost = true;
         seen.hasLiveness = host.livenessOf !== undefined;
-        if (host.livenessOf !== undefined) {
-          seen.answers = await host.livenessOf(ask);
-        }
+        // Optional-call syntax is the shape a real capability wants: absence is
+        // a supported deployment state, not a wiring bug, so no `!` here.
+        seen.answers = await host.livenessOf?.(ask);
         seen.startRefusal = await host.startDetached({ seed: { topic: "t" }, input: {} });
       } catch (err) {
         seen.error = err instanceof Error ? err.message : String(err);

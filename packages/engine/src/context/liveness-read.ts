@@ -14,6 +14,7 @@
  */
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../stores/types";
 import type { LivenessAnswers } from "@flow-state-dev/core/types";
+import { tenantMatches } from "../stores/scope-keys";
 
 export type LivenessReadInputs = {
   /**
@@ -89,9 +90,10 @@ export async function readLiveness(
         answers[requestId] = false;
         return;
       }
-      const entryTenant = entry.tenantId ?? undefined;
-      const callerTenant = inputs.principal.tenantId ?? undefined;
-      if (entryTenant !== callerTenant) {
+      // The same null-vs-undefined-tolerant comparison every other
+      // tenant-boundary check in the engine uses (BP-030), rather than a
+      // second hand-rolled copy of it.
+      if (!tenantMatches(entry.tenantId, inputs.principal.tenantId)) {
         answers[requestId] = false;
         return;
       }
