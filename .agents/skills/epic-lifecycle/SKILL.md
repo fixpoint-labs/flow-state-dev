@@ -124,8 +124,8 @@ The epic-specific delta:
   row's pending action from durable state — which worker, which budget, whether to dispatch at
   all — and that depends on the row's phase *and* the kind of activity. Don't restate those
   routes here and don't predict them from the event text; run the wake and let it classify.
-  Don't relay comment text into `args` either — the refresh scouts re-read each PR off the
-  activity cursor themselves, so a pasted copy is only a staler one.
+  Don't relay comment text into `args` either — the wake's refresh scan re-reads each PR off its
+  own activity cursor, so a pasted copy is only a staler one.
 - **The PR you have to recognize includes the epic PR, which has no row.** It lives in the
   `epic` handle beside them; its events are the objective sign-off and the epic-spec's own
   feedback. Drop one as "not mine" and the whole set sits at AWAITING_OBJECTIVE until a
