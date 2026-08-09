@@ -32,7 +32,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { runAction } from "@flow-state-dev/engine";
+import { resolveSessionResourceScopeId, runAction } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import {
   defineTaskCollection,
@@ -347,10 +347,16 @@ await runGoal(async (): Promise<GoalResult> => {
     // and the persisted row is what the next execution reads.
     stores.close();
     stores = createSQLiteStores({ filename: dbFile });
+    // The `runAction` executions above created SESSION_ID through the real
+    // `createExecutionContext` path, so its record carries a minted
+    // `storageGeneration` (FIX-1000) and its resources address at
+    // `resolveSessionResourceScopeId(record)`, not the bare session id.
+    const sessionRecord = await stores.session.get(SESSION_ID);
+    const scopeId = sessionRecord ? resolveSessionResourceScopeId(sessionRecord) : SESSION_ID;
     const readBack = async (id: string): Promise<Task | undefined> => {
       const row = await stores.resourceState.get(
         "session",
-        SESSION_ID,
+        scopeId,
         `${COLLECTION_ID}/${id}`
       );
       return row?.state as Task | undefined;

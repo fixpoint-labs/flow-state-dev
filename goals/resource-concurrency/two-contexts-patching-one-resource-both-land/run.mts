@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import { createExecutionContext } from "@flow-state-dev/engine";
+import { createExecutionContext, resolveSessionResourceScopeId } from "@flow-state-dev/engine";
 import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
 import { runGoal, stripIntentOverrides, type GoalResult } from "../../lib/index.mts";
 
@@ -93,7 +93,13 @@ async function main(): Promise<GoalResult> {
     // persisted value has lost a field.
     stores.close();
     const reopened = createSQLiteStores({ filename: join(dir, "goal.db") });
-    const row = await reopened.resourceState.get("session", "sess_goal", "spine");
+    // The three contexts above created "sess_goal" through the real
+    // `createExecutionContext` path, so its record carries a minted
+    // `storageGeneration` (FIX-1000) and its resources address at
+    // `resolveSessionResourceScopeId(record)`, not the bare session id.
+    const sessionRecord = await reopened.session.get("sess_goal");
+    const scopeId = sessionRecord ? resolveSessionResourceScopeId(sessionRecord) : "sess_goal";
+    const row = await reopened.resourceState.get("session", scopeId, "spine");
     reopened.close();
 
     if (row === undefined) {

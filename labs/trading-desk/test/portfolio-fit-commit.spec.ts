@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import type { PortfolioRepository } from "@/db/repository";
 
 // Accounts + holdings + quotes moved to the app-owned repository (FIX-772/
@@ -444,7 +445,8 @@ async function runAndReadPmMemo(opts: {
     unmockedGeneratorPolicy: "error",
   });
   expect(result.status).toBe("completed");
-  const resources = toBareStates(await stores.resourceState.getAll("session", opts.sessionId));
+  const scopeId = await sessionResourceScopeId(stores, opts.sessionId);
+  const resources = toBareStates(await stores.resourceState.getAll("session", scopeId));
   return resources["memos/p5/portfolio-manager"] as PmMemo | undefined;
 }
 

@@ -45,6 +45,7 @@ import { beforeEach } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import { toAccountStates, type PortfolioRepository } from "@/db/repository";
 
 // Accounts + holdings moved to the app-owned repository (FIX-772). Mock the
@@ -135,9 +136,10 @@ describe("extractHoldingsFromPdf action", () => {
     expect(result.status).toBe("completed");
 
     // The extraction landed on the session-scoped resource for the dialog.
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
     const sessionResources = (toBareStates(await stores.resourceState.getAll(
       "session",
-      sessionId,
+      scopeId,
     ))) as Record<string, { extraction?: PdfExtraction }>;
     const extraction = sessionResources.pdfImport?.extraction;
     expect(extraction?.rows).toHaveLength(4);

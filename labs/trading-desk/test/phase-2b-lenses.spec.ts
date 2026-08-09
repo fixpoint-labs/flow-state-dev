@@ -14,6 +14,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
 
@@ -296,7 +297,8 @@ describe("phase-2b lens pack", () => {
     });
     expect(result.status).toBe("completed");
 
-    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     for (const id of LENS_IDS) {
       const memo = resources[`memos/p2b/${id}`] as { status?: string } | undefined;
       expect(memo?.status).toBe("published");
@@ -327,7 +329,8 @@ describe("phase-2b lens pack", () => {
     });
     expect(result.status).toBe("completed");
 
-    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     for (const id of LENS_IDS) {
       expect(resources[`memos/p2b/${id}`]).toBeUndefined();
     }
@@ -360,7 +363,8 @@ describe("phase-2b lens pack", () => {
     });
     expect(result.status).toBe("completed");
 
-    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const resources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     expect((resources["memos/p2b/forensic-skeptic"] as { status?: string })?.status).toBe("error");
     for (const id of ["quality-value", "cycle-risk", "macro-reflexive"]) {
       expect((resources[`memos/p2b/${id}`] as { status?: string })?.status).toBe("published");

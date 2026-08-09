@@ -13,6 +13,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
 
@@ -529,7 +530,8 @@ describe("Phase 5 end-to-end", () => {
     expect(sessionState.runComplete).toBe(true);
     expect(sessionState.activePhase).toBe("phase-5");
 
-    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | {
           status?: string;
@@ -625,7 +627,8 @@ describe("Phase 5 end-to-end", () => {
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.riskAssessment.memoKey)).toBe("published");
     expect(sessionState.runComplete).toBe(false);
 
-    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     const pmMemo = memoResources["memos/p5/portfolio-manager"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

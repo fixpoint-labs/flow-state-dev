@@ -12,6 +12,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
 
@@ -376,7 +377,8 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(0);
 
-    const resourceState = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const resourceState = toBareStates(await stores.resourceState.getAll("session", scopeId));
     expect(resourceState["memos/p6/thesis-alignment"]).toBeUndefined();
   });
 
@@ -407,7 +409,8 @@ describe("Phase 6 gating", () => {
     expect(result.status).toBe("completed");
     expect(validator.calls).toHaveLength(1);
 
-    const resourceState = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const resourceState = toBareStates(await stores.resourceState.getAll("session", scopeId));
     const memo = resourceState["memos/p6/thesis-alignment"] as
       | { status?: string; alignment?: string | null }
       | undefined;

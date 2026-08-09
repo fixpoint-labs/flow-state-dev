@@ -13,6 +13,7 @@ import { defineFlow } from "@flow-state-dev/core";
 import { createInMemoryStores, toBareState } from "@flow-state-dev/engine";
 import { testBlock, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository, seedAccount } from "./_helpers/portfolio-repo";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import type { PortfolioRepository } from "@/db/repository";
 
 const repoState = vi.hoisted(() => ({
@@ -712,8 +713,9 @@ describe("seedSession portfolio snapshot (server-side)", () => {
     expect(result.error).toBeUndefined();
     // Nullable single resources persist their reset value as an empty object;
     // the schema hydrates that representation back to null for consumers.
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
     expect(
-      toBareState(await stores.resourceState.get("session", sessionId, "rewardToRisk")),
+      toBareState(await stores.resourceState.get("session", scopeId, "rewardToRisk")),
     ).toEqual({});
   });
 

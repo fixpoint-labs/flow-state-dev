@@ -18,6 +18,7 @@ import { defineFlow, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { testFlow } from "@flow-state-dev/testing";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 
 const spcxHtml = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -181,7 +182,8 @@ describe("critical-financials recovery on the live statement chain", () => {
     });
     expect(result.error).toBeUndefined();
 
-    const financials = (toBareStates(await stores.resourceState.getAll("session", sessionId)))[
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const financials = (toBareStates(await stores.resourceState.getAll("session", scopeId)))[
       "financialsData"
     ] as Record<string, any>;
 
@@ -219,7 +221,8 @@ describe("critical-financials recovery on the live statement chain", () => {
       unmockedGeneratorPolicy: "allow", // model resolved but unused (extractor mocked)
     });
     expect(result.error).toBeUndefined();
-    const financials = (toBareStates(await stores.resourceState.getAll("session", sessionId)))[
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const financials = (toBareStates(await stores.resourceState.getAll("session", scopeId)))[
       "financialsData"
     ] as Record<string, any>;
     expect(financials.incomeStatement.source).toBe("edgar-prospectus");
@@ -268,7 +271,8 @@ describe("critical-financials recovery on the live statement chain", () => {
     });
     expect(result.error).toBeUndefined();
 
-    const financials = (toBareStates(await stores.resourceState.getAll("session", sessionId)))[
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const financials = (toBareStates(await stores.resourceState.getAll("session", scopeId)))[
       "financialsData"
     ] as Record<string, any>;
     // Income + cashflow recovered from the prospectus...
@@ -299,7 +303,8 @@ describe("critical-financials recovery on the live statement chain", () => {
     // "the authoritative provider answered".
     expect((result.output as { source?: string }).source).toBe("unavailable");
 
-    const financials = (toBareStates(await stores.resourceState.getAll("session", sessionId)))[
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const financials = (toBareStates(await stores.resourceState.getAll("session", scopeId)))[
       "financialsData"
     ] as Record<string, any>;
     expect(financials.incomeStatement.source).toBe("unavailable");
@@ -329,7 +334,8 @@ describe("critical-financials recovery on the live statement chain", () => {
     expect(out.revenue ?? null).toBeNull();
     expect(stubs.fetchCandidates).not.toHaveBeenCalled();
 
-    const financials = (toBareStates(await stores.resourceState.getAll("session", sessionId)))[
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const financials = (toBareStates(await stores.resourceState.getAll("session", scopeId)))[
       "financialsData"
     ] as Record<string, unknown> | undefined;
     expect(financials?.incomeStatement).toBeUndefined();

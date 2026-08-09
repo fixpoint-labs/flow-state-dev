@@ -25,6 +25,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import type { PortfolioRepository } from "@/db/repository";
 
 // Collateral: this spec locks the session-resource layout after an analyze run
@@ -204,7 +205,8 @@ describe("session resources are persisted after analyze run", () => {
 
     // Collection-instance and single-resource state live in the
     // ResourceStateStore (FIX-689), keyed per-resource, not inline on the record.
-    const resources = (toBareStates(await stores.resourceState.getAll("session", sessionId))) as Record<
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const resources = (toBareStates(await stores.resourceState.getAll("session", scopeId))) as Record<
       string,
       unknown
     >;

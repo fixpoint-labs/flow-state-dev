@@ -10,6 +10,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, toBareStates } from "@flow-state-dev/engine";
 import { mockGenerator, testFlow } from "@flow-state-dev/testing";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 import { makeTestRepository } from "./_helpers/portfolio-repo";
 import type { PortfolioRepository } from "@/db/repository";
 
@@ -252,7 +253,8 @@ describe("Phase 3 end-to-end", () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe("completed");
 
-    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     const traderMemo = memoResources["memos/p3/trader"] as
       | {
           status?: string;
@@ -332,7 +334,8 @@ describe("Phase 3 end-to-end", () => {
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.bear.memoKey)).toBe("published");
     expect(latestMemoStatus(result.items, ALL_MEMO_KEYS.researchManager.memoKey)).toBe("published");
 
-    const memoResources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const scopeId = await sessionResourceScopeId(stores, sessionId);
+    const memoResources = toBareStates(await stores.resourceState.getAll("session", scopeId));
     const traderMemo = memoResources["memos/p3/trader"] as
       | { status?: string; errorMessage?: string | null }
       | undefined;

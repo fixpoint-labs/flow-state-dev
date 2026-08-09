@@ -24,6 +24,7 @@ import { get_price_history } from "../flows/analysis/tools/data/get_price_histor
 import { priceHistoryResource } from "../flows/analysis/price-history-resource";
 import { technicalDataResource } from "../flows/analysis/technical-data-resource";
 import { sessionStateSchema } from "../flows/analysis/state";
+import { sessionResourceScopeId } from "./_helpers/session-resources";
 
 const priceFlow = defineFlow({
   kind: "trading-desk-price-history-test",
@@ -59,7 +60,8 @@ async function readSlice(
   stores: ReturnType<typeof createInMemoryStores>,
   sessionId: string,
 ): Promise<StoredSlice | null | undefined> {
-  const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+  const scopeId = await sessionResourceScopeId(stores, sessionId);
+  const resources = toBareStates(await stores.resourceState.getAll("session", scopeId));
   return resources["priceHistory"] as StoredSlice | null | undefined;
 }
 
