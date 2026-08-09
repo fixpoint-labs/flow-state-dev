@@ -156,9 +156,24 @@ framing, not a gate; it's allowed to conclude the problem isn't worth solving an
 > old items and re-render from scratch) loses scroll position and any local edits,
 > so nobody uses it twice.
 
-> **§6 comes first on purpose.** It is the only section the product owner must *act* on,
-> so it precedes the sections that justify it. Everything below §6 is the derivation —
-> read it if the sign-off is not obvious, skip it if it is.
+### 2. Solution in plain terms
+
+What we'll do and why, in everyday terms — the shape a reviewer needs before any detail.
+Then name the 1–3 `docs/philosophy.md` tenets it leans on. **If it's in tension with a
+tenet, say which and why that's justified** — don't hide it.
+
+> The client already knows the last item it saw. On reconnect it tells the server,
+> and the server resumes from the next one instead of starting over. Nothing is
+> re-sent, nothing is skipped.
+>
+> **Philosophy** — tenet 2 (composition over features): resume is a property of the
+> existing streaming seam, not a new subsystem beside it. Tenet 3 (earn every
+> addition): the cursor rides on a header the SSE spec already defines, so the
+> public surface grows by zero options.
+
+> **§2 then §6 lead, and the rest is derivation.** The owner needs the direction before the
+> ask — problem, then what we propose, then what they are signing. Everything from §3 down
+> justifies it: read it if the sign-off is not obvious, skip it if it is.
 
 ### 6. Decisions & rules — the sign-off surface
 
@@ -219,21 +234,6 @@ direction isn't ready for review.
 *(Large only: declare the §8 PR plan and record its shape as a decision here.)*
 
 ---
-
-### 2. Solution in plain terms
-
-What we'll do and why, in everyday terms — the shape a reviewer needs before any detail.
-Then name the 1–3 `docs/philosophy.md` tenets it leans on. **If it's in tension with a
-tenet, say which and why that's justified** — don't hide it.
-
-> The client already knows the last item it saw. On reconnect it tells the server,
-> and the server resumes from the next one instead of starting over. Nothing is
-> re-sent, nothing is skipped.
->
-> **Philosophy** — tenet 2 (composition over features): resume is a property of the
-> existing streaming seam, not a new subsystem beside it. Tenet 3 (earn every
-> addition): the cursor rides on a header the SSE spec already defines, so the
-> public surface grows by zero options.
 
 ### 3. Tradeoffs & alternatives
 
