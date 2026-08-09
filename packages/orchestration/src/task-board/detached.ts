@@ -40,6 +40,7 @@
  * this whole issue exists to remove.
  */
 import type { TaskWorker, TaskWorkerRegistry } from "../tasks";
+import { coordinateLabel, type WorkerCoordinate } from "./coordinate";
 import type { TaskBoardBacking } from "./index";
 
 /**
@@ -117,11 +118,20 @@ export function resolveWorkerSlot(slot: TaskWorkerSlot): {
 
 /**
  * One declared worker, flattened: the block the drain composes, plus the
- * coordinate label the refusals report it under. The label is for error
- * messages only — the durable routing coordinate is P2's.
+ * routing coordinate that addresses it.
  */
 export interface ResolvedWorkerSlot {
-  /** `assignee:<name>`, `uniform`, or `floor`. Used in refusal messages. */
+  /**
+   * The durable routing coordinate (FIX-982 P2). Derived from the board's own
+   * declarations — this is what a detached binding is keyed by, and what a wake
+   * arriving after a restart resolves the worker through.
+   */
+  coordinate: WorkerCoordinate;
+  /**
+   * `assignee:<name>`, `uniform`, or `floor` — the readable form of
+   * {@link coordinate}, used in refusal messages. Derived, not a second source
+   * of truth.
+   */
   label: string;
   worker: TaskWorker;
   detached: boolean;
@@ -147,16 +157,18 @@ export function resolveWorkerSlots(config: {
   detached: ResolvedWorkerSlot[];
 } {
   const slots: ResolvedWorkerSlot[] = [];
+  const push = (coordinate: WorkerCoordinate, rest: { worker: TaskWorker; detached: boolean }) => {
+    slots.push({ coordinate, label: coordinateLabel(coordinate), ...rest });
+  };
 
   let workers: TaskWorker | TaskWorkerRegistry;
   if (typeof (config.workers as { run?: unknown }).run === "function") {
     const worker = config.workers as TaskWorker;
     workers = worker;
-    slots.push({
-      label: "uniform",
-      worker,
-      detached: config.dispatch?.mode === "detached",
-    });
+    push(
+      { kind: "uniform" },
+      { worker, detached: config.dispatch?.mode === "detached" }
+    );
   } else {
     const registry: TaskWorkerRegistry = {};
     for (const [assignee, slot] of Object.entries(
@@ -164,7 +176,7 @@ export function resolveWorkerSlots(config: {
     )) {
       const resolved = resolveWorkerSlot(slot);
       registry[assignee] = resolved.worker;
-      slots.push({ label: `assignee:${assignee}`, ...resolved });
+      push({ kind: "assignee", name: assignee }, resolved);
     }
     workers = registry;
   }
@@ -173,7 +185,7 @@ export function resolveWorkerSlots(config: {
   if (config.defaultWorker !== undefined) {
     const resolved = resolveWorkerSlot(config.defaultWorker);
     defaultWorker = resolved.worker;
-    slots.push({ label: "floor", ...resolved });
+    push({ kind: "floor" }, resolved);
   }
 
   return {

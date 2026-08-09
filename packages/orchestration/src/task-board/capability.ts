@@ -108,6 +108,13 @@ export interface TaskBoardResourceCapabilityOptions {
   resourceKey: string;
   /** Internal resource-declaring capability composed via `uses`. */
   resourceCapability: DefinedCapability;
+  /**
+   * Refuse reassignment on this board (FIX-982) — set when it declares detached
+   * workers. Carried here as well as on the drain's own factory because both
+   * reach the same ledger; guarding only the drain would leave
+   * `ctx.cap.<name>.setAssignee` as an unguarded way to the same write.
+   */
+  immutableAssignee?: boolean;
 }
 
 /**
@@ -245,7 +252,7 @@ export function createTaskBoardCapability<
   }
 
   if (options.backing === "resource") {
-    const { resourceKey, resourceCapability } = options;
+    const { resourceKey, resourceCapability, immutableAssignee } = options;
     return defineCapability({
       name: capabilityName,
       // Compose the internal resource-declaring capability so any block that
@@ -257,6 +264,7 @@ export function createTaskBoardCapability<
             boardName,
             resourceKey,
             collectionId,
+            immutableAssignee,
           })
         ),
     });

@@ -151,6 +151,39 @@ reason:
   refused at router construction, because the reason each is excluded is a
   property of the framework rather than of the deployment.
 
+### Where the workstream core comes from: the binding registry
+
+`flow.workstream` is one entry, but the work behind it is heterogeneous — a flow
+may host several task boards, each with several detached workers. The map that
+holds them is `flow.workstreamBindings`, keyed by `(boardId, coordinateKey)`.
+
+It is produced **by construction, not by declaration**. Bindings ride the same
+rail resource declarations already use: a board stamps its bindings on its drain
+sequencer, each enclosing sequencer and router merges its children's up as the
+tree is composed, and `defineFlow` reads the accumulated union off each action
+root. There is no tree walk and no author-facing surface — an app declares a
+board, and the registry follows.
+
+Two properties are load-bearing:
+
+- **Addressing is strings only.** A binding is `(boardId, coordinateKey) →
+  block`, so a wake that arrives carrying nothing but a durable task row can
+  still find the block that runs it. This is what makes detached routing survive
+  a restart, and why the coordinate is a tagged `assignee`/`uniform`/`floor`
+  value rather than a bare name — a board may legally name an assignee `uniform`.
+- **The registry is not a dispatch-time lookup table.** Resolution for the
+  detached source is terminal on `flow.workstream` alone; nothing indexes this
+  map by a coordinate carried on an envelope. The coordinate on a dispatch
+  matters only *upstream*, where it feeds the child-session derivation, and the
+  worker a request actually runs is selected from the durable task row instead
+  (BP-031). Routing over the bindings therefore happens at one convergence point
+  inside the assembled core, not once per binding.
+
+One coordinate carrying two different blocks is refused when the flow is defined.
+It cannot be resolved by picking one: a dispatch names only the coordinate, so
+the loser's tasks would run the wrong worker with no error anywhere, and flow
+definition is the last point where both declarations are visible.
+
 ## The carried core: dynamic schedules
 
 Three of the four event coordinates point at something declared statically on

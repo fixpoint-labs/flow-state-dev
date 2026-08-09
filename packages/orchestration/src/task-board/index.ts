@@ -72,9 +72,11 @@ import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/cor
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
+  BlockDefinition,
   MaybePromise,
   StateRef,
 } from "@flow-state-dev/core/types";
+import { declareWorkstreamBindings } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
@@ -131,6 +133,7 @@ import {
   type TaskWorkerSlot,
   type TaskWorkerSlotRegistry,
 } from "./detached";
+import { coordinateKey } from "./coordinate";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -222,6 +225,8 @@ export type {
   TaskWorkerSlot,
   TaskWorkerSlotRegistry,
 } from "./detached";
+export { coordinateKey, coordinateLabel, workstreamRoutingSeed } from "./coordinate";
+export type { WorkerCoordinate } from "./coordinate";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -682,10 +687,16 @@ export function taskBoard<
   const defaultWorker = resolvedWorkers.defaultWorker;
 
   const dispatcher: TaskDispatcher = resolveDispatcher(dispatcherInput);
+  // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
+  // because it is what the routing coordinate derives from. Decided here, where
+  // the declarations are, and enforced on the collection so every writer that
+  // reaches this ledger is covered rather than just the drain.
+  const immutableAssignee = resolvedWorkers.detached.length > 0;
   const binding = resolveCollectionBinding<TInput, TOutput, TName>(
     name,
     collectionConfig,
-    caps
+    caps,
+    immutableAssignee
   );
   const { collectionFactory, collectionId, capability, backing, drainUses } =
     binding;
@@ -956,6 +967,28 @@ export function taskBoard<
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
 
+  // FIX-982 P2 — stamp this board's detached bindings onto the drain so they
+  // bubble to the flow. From here they ride the same rail resource declarations
+  // do: enclosing sequencers merge them as steps are added, and `defineFlow`
+  // reads the union off each action root. Nothing is authored to make that
+  // happen, and nothing downstream has to re-walk the block tree to find a
+  // board.
+  //
+  // The `boardId !== undefined` narrowing is a type-level formality, not a
+  // second guard: `assertDetachedBoardSupported` above already refused a
+  // detached board without one, because the value lands in a persisted routing
+  // key. A board with no detached workers stamps nothing.
+  if (boardId !== undefined) {
+    declareWorkstreamBindings(
+      drain,
+      resolvedWorkers.detached.map((slot) => ({
+        boardId,
+        coordinateKey: coordinateKey(slot.coordinate),
+        worker: slot.worker as unknown as BlockDefinition<never, never>,
+      }))
+    );
+  }
+
   // Capability, collectionId, and (for durable boards) the drain's resource
   // `uses` all come from `resolveCollectionBinding` — one place that maps the
   // once-chosen backing onto every downstream wiring, so no call site restates
@@ -1069,7 +1102,12 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
 function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
   boardName: TName,
   collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"],
-  caps: TaskCapOptions
+  caps: TaskCapOptions,
+  // FIX-982: only the resource branch reads this. A detached board is refused
+  // at construction unless its backing is durable, so the other three branches
+  // cannot host one and are deliberately left alone rather than given a guard
+  // that could never fire.
+  immutableAssignee = false
 ): CollectionBinding<TInput, TOutput, TName> {
   // 1. Caller-supplied factory. Sync-or-async, normalized via `Promise.resolve`.
   if (typeof collectionConfig === "function") {
@@ -1104,6 +1142,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         boardName,
         resourceKey,
         collectionId,
+        immutableAssignee,
       });
     return {
       collectionFactory,
@@ -1115,6 +1154,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         collectionId,
         resourceKey,
         resourceCapability,
+        immutableAssignee,
       }),
       drainUses: [resourceCapability],
     };

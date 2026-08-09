@@ -16,6 +16,7 @@ import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { JsonObject } from "../../schema/common";
 import type { CapabilityRef } from "../../capability/types";
+import type { WorkstreamBindings } from "../../types/workstream";
 import { getBaseCapability } from "../../capability/merge";
 import { matchesRescueHandler, toError } from "./utils";
 import { emitToolOutputAround } from "./emit-tool-output";
@@ -106,6 +107,12 @@ export type BuildBlockOptions<
    */
   requiresOrg?: boolean;
   /**
+   * Pre-computed detached worker bindings derived from child blocks (FIX-982).
+   * Sequencer builders pass their accumulator; leaves omit it. A board stamps
+   * its own onto the built drain afterwards via `declareWorkstreamBindings`.
+   */
+  workstreamBindings?: WorkstreamBindings;
+  /**
    * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
    * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
    * and forwards it to the AI SDK as `toModelOutput`.
@@ -191,6 +198,7 @@ export function buildBlock<
     declaredResources: options.declaredResources,
     ownDeclaredResources: options.ownDeclaredResources,
     requiresOrg,
+    workstreamBindings: options.workstreamBindings,
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {

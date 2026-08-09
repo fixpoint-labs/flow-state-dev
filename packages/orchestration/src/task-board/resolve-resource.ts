@@ -15,7 +15,19 @@ import {
 
 export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknown>(
   ctx: BlockContext,
-  opts: { boardName: string; resourceKey: string; collectionId: string }
+  opts: {
+    boardName: string;
+    resourceKey: string;
+    collectionId: string;
+    /**
+     * Refuse reassignment on this board (FIX-982) — set when the board declares
+     * detached workers. Threaded through here rather than applied at one call
+     * site because BOTH resolutions must carry it: the drain's own factory and
+     * the `ctx.cap.<name>` accessor reach the same ledger, and a guard present
+     * on one of them is a guard a caller routes around by picking the other.
+     */
+    immutableAssignee?: boolean;
+  }
 ): Promise<TaskCollectionRef<TInput, TOutput>> {
   const collection = resolveResourceCollection(ctx, opts.resourceKey);
   if (collection === undefined) {
@@ -30,5 +42,6 @@ export function resolveResourceTaskCollection<TInput = unknown, TOutput = unknow
     backing: "resource",
     collectionId: opts.collectionId,
     collection,
+    immutableAssignee: opts.immutableAssignee,
   });
 }

@@ -12,6 +12,7 @@ import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
+import { mergeWorkstreamBindings, type WorkstreamBindings } from "../types/workstream";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -356,6 +357,28 @@ function collectBlockResources(
   return collected;
 }
 
+/**
+ * Collect detached worker bindings from every action block in the flow (FIX-982).
+ *
+ * Reads the already-accumulated union off each action root rather than walking
+ * the block tree — sequencers and routers merge their children's bindings as
+ * they are composed, so by the time a flow is defined the root carries them all.
+ * Event-addressed roots are included for the same reason caller actions are: a
+ * board drained from a webhook handler is still a board this flow must route to.
+ */
+function collectWorkstreamBindings(
+  actions: AnyActions,
+  webhooks: WebhookConfig | undefined,
+  chat: ChatConfig | undefined,
+  schedules: SchedulesConfig | undefined
+): WorkstreamBindings | undefined {
+  let collected: WorkstreamBindings | undefined;
+  for (const block of actionBlocks(actions, webhooks, chat, schedules)) {
+    collected = mergeWorkstreamBindings(collected, block.workstreamBindings);
+  }
+  return collected;
+}
+
 /** True when any action block (caller or event-addressed) opted into `requireOrg`. */
 function collectRequiresOrg(
   actions: AnyActions,
@@ -695,6 +718,7 @@ function createFlowInstance(
     requiresOrg: collectRequiresOrg(actions, webhooks, chat, schedules),
     authentication,
     actions,
+    workstreamBindings: collectWorkstreamBindings(actions, webhooks, chat, schedules),
     session,
     request: requestMerged,
     user,

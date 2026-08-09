@@ -166,6 +166,18 @@ export interface ResourceBackedOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  /**
+   * Refuse every `setAssignee` on this collection (FIX-982).
+   *
+   * Set by a task board that declares detached workers. The assignee is what a
+   * detached task's routing coordinate derives from, so reassigning after
+   * admission silently strands the task — see `TaskCollectionRef.setAssignee`.
+   *
+   * Only the resource backing carries this, and that is deliberate rather than
+   * an omission: a detached board is refused at construction unless its backing
+   * is durable, so no other backing can host one.
+   */
+  immutableAssignee?: boolean;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -729,6 +741,24 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setAssignee(id, assignee) {
+      // FIX-982: on a detached board the assignee is fixed at admission, and
+      // this arm is checked FIRST because it holds whatever the task's status
+      // is (see `TaskWriteDeclineReason`). Answered without touching the store —
+      // the board either runs detached work or it does not, so there is nothing
+      // to read and nothing to race. The task must still exist, though: a
+      // decline for a task that was never there would be a different kind of
+      // lie, and every sibling patch throws on an unknown id.
+      if (options.immutableAssignee === true) {
+        const ref = mirror.get(id);
+        if (ref === undefined) {
+          throw new Error(`[tasks] task "${id}" not found`);
+        }
+        return {
+          outcome: "declined",
+          reason: "immutable-assignee",
+          status: readTaskState<TInput, TOutput>(ref).status,
+        };
+      }
       // The one guarded patch operation (FIX-976 / A1): reassigning a finished
       // task is refused, because its work will never run again.
       return patchRef(
