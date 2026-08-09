@@ -235,7 +235,7 @@ work is the test surface. This is the number the human budgets against.
 > (backoff, retry limits). Reattaching to a request that completed mid-flight *is* in
 > scope — see decision 3.
 >
-> **Size:** Medium — 4 production files · 9 test behaviours · 3 doc surfaces · 1 PR.
+> **Size:** Medium — 4 production files · 9 test behaviours · 2 doc surfaces · 1 PR.
 
 *(Large only: declare the §8 PR plan and record its shape as a decision here.)*
 
