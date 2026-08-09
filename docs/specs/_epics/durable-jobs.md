@@ -212,8 +212,7 @@ expressed by omitting the field."* Forking is how that survives detachment. With
 worker declaring `contextSupply: "conversation"` would need the parent session id threaded into its
 history slot by hand; a fork gives it structurally.
 
-> **DECIDED — the owner took this at the objective gate, 2026-08-06 (N38 accepted, §2). Read
-> everything below as the argument for a decision already made, not as an open recommendation.**
+> **DECIDED — the owner took this at the objective gate, 2026-08-06 (N38 accepted, §2). Read everything below as the argument for a decision already made, not as an open recommendation.**
 > Forking is deferred; FIX-982 builds the loud refusal and nothing else on this axis (§5).
 >
 > *Recommendation as put to the owner:* ship isolated Workstreams first and defer forking, a scope
@@ -484,8 +483,7 @@ ceilings are the task layer's (`task-caps.ts`), `maxInstances` is the resource r
    **This criterion said "via FIX-978's mechanism" until 2026-08-07**, which is the same
    misattribution clause 3 carried: FIX-1005 ships the recovery, and as of 2026-08-09 it ships it
    with no FIX-978 prerequisite under it (C3).
-   **A pending task with no live initiating request has no wake source, and nothing in flight closes
-   any of the ways one arises** — including the admission window, which is unconditional rather than
+   **A pending task with no live initiating request has no wake source, and nothing in flight closes any of the ways one arises** — including the admission window, which is unconditional rather than
    C3-conditional because no lease ever existed to act on. *This read "FIX-978 closes none of the
    three ways" until 2026-08-09, which credited FIX-978 with a mechanism that merely missed these
    cases; it ships none at all.* The gap is FIX-982's, which is also where FIX-1005's own non-goals
@@ -542,11 +540,8 @@ Collected here so no issue has to hunt for them. Each is argued where it is deci
 1. **No issue may infer "abandoned" from the expiry of a lease nothing was renewing.** Absent a
    renewal contract an expired lease is the normal state of a healthy worker — nothing renews it
    during execution and `DEFAULT_LEASE_DURATION_MS` is 30s while a model call routinely exceeds it —
-   so inferring abandonment there trades a hang for silent duplicate execution. **Where a renewal
-   contract *is* in force the inference reverses: a missed renewal is the abandonment signal, and
-   acting on expiry is correct.** That reversal is FIX-1005's mechanism and this rule must not be
-   read to forbid it. *In force* means the row is held under FIX-1005's substrate renewal **and
-   FIX-1005 has landed**; until then no row qualifies and the first sentence binds unchanged. Not
+   so inferring abandonment there trades a hang for silent duplicate execution. **Where a renewal contract *is* in force the inference reverses: a missed renewal is the abandonment signal, and acting on expiry is correct.** That reversal is FIX-1005's mechanism and this rule must not be
+   read to forbid it. *In force* means the row is held under FIX-1005's substrate renewal **and FIX-1005 has landed**; until then no row qualifies and the first sentence binds unchanged. Not
    transferable to the request-lane `LeaseStore`, which still has no `renew`. (Decision 1.)
 
    > **This rule was inverted by the owner's decision, and the scoping above is the repair.** It
@@ -728,13 +723,11 @@ that a stranded claim has a recovery path.
 > that verb. Left as written above with the correction beside it, because the *decision* — one owner
 > for the conversion, no second mechanism — is unchanged; only the boundary moved.
 
-> **THE PREMISE UNDER "the reasoning worth keeping" HAS BEEN REMOVED ON PURPOSE (2026-08-09), and
-> rule 1 is scoped accordingly.** *"An expired lease is the normal state of a healthy worker"* held
+> **THE PREMISE UNDER "the reasoning worth keeping" HAS BEEN REMOVED ON PURPOSE (2026-08-09), and rule 1 is scoped accordingly.** *"An expired lease is the normal state of a healthy worker"* held
 > **because nothing renewed one.** The owner took worker-side renewal on FIX-1005, so the premise no
 > longer describes a claimed row: the worker renews the lease on the row it holds, fenced by the
 > claim ticket it already carries, and renewal is substrate-only and never a model-facing tool
-> (`spec/FIX-1005-respec` §6 decision 1). **A missed renewal is therefore exactly the liveness
-> signal recovery consumes** — an `in_progress` row whose lease has lapsed becomes a claim
+> (`spec/FIX-1005-respec` §6 decision 1). **A missed renewal is therefore exactly the liveness signal recovery consumes** — an `in_progress` row whose lease has lapsed becomes a claim
 > candidate, and the claim's atomic write resets and re-claims it in one step (§6 decision 2). The
 > reasoning above is not *wrong*; it is **why renewal had to be built**, and it still governs every
 > lease no one renews.
@@ -1225,8 +1218,7 @@ Under Decision 0, most of "name your wake model" collapses: **the wake is reques
 initiating request creates a background sibling, and that request runs the task. No scheduler, no
 board-to-queue producer, no polling loop.
 
-> **THE FIX-978 REASONING IN THIS SECTION IS WITHDRAWN AS FALSE (2026-08-09). The conclusion
-> survives; it never rested on it.** Three passages below argued from *"FIX-978's reclamation"* — a
+> **THE FIX-978 REASONING IN THIS SECTION IS WITHDRAWN AS FALSE (2026-08-09). The conclusion survives; it never rested on it.** Three passages below argued from *"FIX-978's reclamation"* — a
 > mechanism FIX-978 does not ship. Its own Decision 4: *"this issue ships no recovery path at all,
 > and does not recommend one"*, and its non-goals route reclamation here (C3, §2). What actually
 > carries this section is the **shipped `reclaim()` verb's construction**, true on `main` today and
@@ -1234,8 +1226,7 @@ board-to-queue producer, no polling loop.
 > which name *"the never-claimed `pending` reconciler and any wake for a board with no live drain"*
 > as **FIX-982's**. So the binding requirement is unchanged and, in one place, wider than before:
 > the false premise was being used to *narrow* the hole (the `concurrency: "reject"` paragraph), and
-> removing it puts that case back in. **Nothing here was softened to survive; one exemption was
-> withdrawn and one candidate mechanism was deleted for not existing.**
+> removing it puts that case back in. **Nothing here was softened to survive; one exemption was withdrawn and one candidate mechanism was deleted for not existing.**
 
 **One path does not collapse, and clause 3 depends on it: a pending task with no *live* initiating
 request has no wake source.** Two ways in, and nothing in flight closes either:
@@ -1252,21 +1243,18 @@ does not exist until after the claim (N25), so the early-spawned request has not
 on. Order is **addTask → claim (+ build payload) → spawn**. The crash-after-claim window is what
 reconciliation covers; it is not a reason to spawn early.
 
-**The `concurrency: "reject"` case moved when the ordering changed, and its exemption was then
-granted on a false premise.** It was first classified here as a never-claimed `pending` row with no
+**The `concurrency: "reject"` case moved when the ordering changed, and its exemption was then granted on a false premise.** It was first classified here as a never-claimed `pending` row with no
 lease — invisible to `reclaim` by construction. Under **claim-before-spawn** that much is no longer
 true: the task is already `in_progress` **with a lease** when the arbiter rejects the dispatch. But
 the sentence that followed — *"so FIX-978 reclaims it on lease expiry like any other abandoned
 claim"* — **is withdrawn.** FIX-978 reclaims nothing; it ships no recovery path.
 
-**Re-argued on FIX-1005, the exemption survives only conditionally, and the condition is the whole
-point.** A lapsed `in_progress` row is admitted by FIX-1005's widened claim predicate (`deps
+**Re-argued on FIX-1005, the exemption survives only conditionally, and the condition is the whole point.** A lapsed `in_progress` row is admitted by FIX-1005's widened claim predicate (`deps
 satisfied AND (pending OR lapsed)`) and the claim's atomic write resets and re-claims it in one
 step. So rejection is a *slow* recovery — bounded at `lease + up to one idle-wake period`, ~125 s at
 FIX-1005's defaults — **wherever a live drain exists to ask for work.** Where the board has no live
 drain it is a stranding, because FIX-1005 ships no sweeper and says so: *"recovery only happens
-where something is asking for work. A board nobody drains stays stranded."* **A detached board
-between Workstreams is exactly that board.** Rejection is therefore **not** removed from the set —
+where something is asking for work. A board nobody drains stays stranded."* **A detached board between Workstreams is exactly that board.** Rejection is therefore **not** removed from the set —
 it is removed only on the live-drain branch, and on the other branch it needs the same wake as
 everything else here.
 
@@ -1343,12 +1331,10 @@ does not choose. Without both, the unconditional "no way to strand it" half is u
 > a guarantee enforced anywhere but the `taskTools` path is not enforced.
 
 **Binding on FIX-982: name the reclamation wake explicitly and state its cost.** This section does
-not choose, and the choice is now narrower than it was — **the candidate this document called "the
-natural fit" has been deleted for not existing.**
+not choose, and the choice is now narrower than it was — **the candidate this document called "the natural fit" has been deleted for not existing.**
 
 > **DELETED 2026-08-09: *liveness-triggered, hooking onto FIX-978's reclaim/sweeper pass.*** There
-> is no such pass. FIX-978 ships no recovery path, and **FIX-1005 rejects a sweeper from the other
-> end too** — *"Recovery happens inside `claim`, not in a sweeper… Rejected: a periodic sweep pass,
+> is no such pass. FIX-978 ships no recovery path, and **FIX-1005 rejects a sweeper from the other end too** — *"Recovery happens inside `claim`, not in a sweeper… Rejected: a periodic sweep pass,
 > **and sharing a sweep frame with FIX-982's reconciler**."* So no sweep frame exists anywhere in
 > this epic to hook onto, and FIX-1005 has explicitly declined to create one for FIX-982 to share.
 > An implementer following the old text would have gone looking for a pass that was never going to
@@ -1359,8 +1345,7 @@ natural fit" has been deleted for not existing.**
 interval, the scan cost, and the idle-board behaviour) and illegitimate as a silent default.
 **FIX-1005 narrows what that poll must cover, and this is the one thing the correction gives back:**
 on a board *with* a live drain, the existing idle-wake loop already re-evaluates the claimable
-predicate and recovers lapsed rows, so FIX-982's mechanism is needed for the **never-claimed
-`pending`** case and the **no-live-drain** case — precisely the two FIX-1005 non-goals to it — not
+predicate and recovers lapsed rows, so FIX-982's mechanism is needed for the **never-claimed `pending`** case and the **no-live-drain** case — precisely the two FIX-1005 non-goals to it — not
 for every recovery. That narrowing is contingent on FIX-1005 landing as specced. Three others are available but priced higher than they look:
 event-driven `task-change` → dispatch *is* FIX-825 / Conductor M3, which §2 excludes; a schedule tick
 needs an externally configured scheduler plus a new beat-to-board mapping, because FSD supplies no
@@ -1600,8 +1585,7 @@ is a candidate this document proposed one revision ago and now retracts.**
   routinely outlive leases (rule 1's first sentence, which binds here undiminished) — so the lease
   expires under a still-running action, another process acquires the freed key, and the next
   continuation starts alongside the first. Generalizing the key buys a lock that lets go while you
-  are holding it. **FIX-1005 does not close this, and reading its renewal as closing it is the
-  mistake this paragraph now guards against:** that renewal is on the **task row**, fenced by the
+  are holding it. **FIX-1005 does not close this, and reading its renewal as closing it is the mistake this paragraph now guards against:** that renewal is on the **task row**, fenced by the
   claim ticket, and `LeaseStore` is a different object keyed by `requestId`. The lane owner needs
   *renewable* ownership; one object in this epic acquires renewal and it is not this one.
 
@@ -1933,13 +1917,10 @@ worker action so only a board dispatch may enter it (rule 9's mechanism, applied
 than display), or a worker-only registry resolved outside `flow.actions` — re-resolvable by string
 but never routable from a transport. This is N6, un-dissolved.
 
-**FIX-982 does not decide whether the Workstream forks — the owner already did, and this instruction
-had not caught up.** The objective gate (§2, 2026-08-06) accepted **N38: defer forking**. What
+**FIX-982 does not decide whether the Workstream forks — the owner already did, and this instruction had not caught up.** The objective gate (§2, 2026-08-06) accepted **N38: defer forking**. What
 FIX-982 owes is the **loud refusal** — `contextSupply: "conversation"` on a detached participant must
 be refused at build or admission **by name**, never run silently with an empty history — and nothing
-else on this axis. **Out of scope, explicitly: picking a fork strategy, the batched-vs-N+1 cursor
-read (N36), fork-cursor security (N17), snapshot retention (N19, N32), and the window budget across
-a fork chain.** §7's FIX-982 row is canonical and says the same.
+else on this axis. **Out of scope, explicitly: picking a fork strategy, the batched-vs-N+1 cursor read (N36), fork-cursor security (N17), snapshot retention (N19, N32), and the window budget across a fork chain.** §7's FIX-982 row is canonical and says the same.
 
 > **This paragraph told an implementer to build four of those five until 2026-08-09.** It read
 > *"FIX-982 must also decide whether the Workstream forks and pick the fork strategy… batch the
@@ -1947,10 +1928,8 @@ a fork chain.** §7's FIX-982 row is canonical and says the same.
 > solve."* The **add list** in §7 was trimmed of N17/N19/N32/N36 when the gate took N38; this separate
 > instruction was not, so the deferred machinery survived in prose. An implementer following it
 > faithfully builds what the epic decided not to build — the same shape as N66 and N69, a deferral
-> accepted at the gate that never reached the surface that dispatches work. **The measured comparison
-> in §8 stays on record and stays correct** — it points at the reference form on correctness,
-> retention and provenance, and against it on read cost (N36) — but it is **evidence for a decision
-> already taken, not an instruction.** Deferring forking costs a re-read of that evidence later, not
+> accepted at the gate that never reached the surface that dispatches work. **The measured comparison in §8 stays on record and stays correct** — it points at the reference form on correctness,
+> retention and provenance, and against it on read cost (N36) — but it is **evidence for a decision already taken, not an instruction.** Deferring forking costs a re-read of that evidence later, not
 > a re-derivation.
 
 **M4 / FIX-983 — halves.** Disposition becomes request metadata rather than a mechanism. The
