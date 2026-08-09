@@ -135,6 +135,53 @@ describe("executeTurn", () => {
     expect(records[0]?.status).toBe("aborted");
   });
 
+  it("settles \"aborted\" when the first intent writes fail transiently", async () => {
+    const stores = createInMemoryStores();
+    const renderer = createPlainTextRenderer(sink().stream);
+
+    // A store that rejects the first few conditional writes, the way a
+    // momentarily unavailable database does. A rejection is NOT proof there is
+    // nothing to write: treating it as done drops the durable intent, and the
+    // run then classifies the Ctrl-C as an accidental disconnect
+    // ("interrupted") rather than a deliberate stop ("aborted").
+    let failures = 0;
+    const request = Object.create(stores.request) as typeof stores.request;
+    Object.assign(request, {
+      async setFieldsIfStatus(
+        this: typeof stores.request,
+        ...args: Parameters<typeof stores.request.setFieldsIfStatus>
+      ) {
+        if (failures < 3) {
+          failures += 1;
+          throw new Error("store unavailable");
+        }
+        return Object.getPrototypeOf(this).setFieldsIfStatus.apply(this, args);
+      },
+    });
+    const flakyStores = { ...stores, request };
+
+    const turn = executeTurn({
+      flow: slowFlow(),
+      target: { flowKind: "slow", actionName: "chat" },
+      text: "hang",
+      sessionId: "sess_flaky",
+      userId: "cli-user",
+      stores: flakyStores,
+      runtimeConfig: {},
+      renderer,
+    });
+
+    await delay(50);
+    turn.requestAbort();
+    const result = await turn.done;
+
+    expect(failures).toBe(3);
+    expect(result.aborted).toBe(true);
+    const records = await flakyStores.request.list();
+    expect(records[0]?.status).toBe("aborted");
+    expect(records[0]?.abortRequested).toBe(true);
+  });
+
   it("keeps the session usable — a turn after an abort still succeeds", async () => {
     const gen = mockGenerator({ name: "chat-generator", script: [{ text: "recovered" }] });
     const modelResolver = createMockModelResolver({

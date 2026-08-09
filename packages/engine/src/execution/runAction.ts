@@ -49,6 +49,7 @@ import { createExecutionMetadata } from "./types";
 import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 import { generateId } from "../utils/generate-id";
 import {
+  abortRequest,
   registerAbortController,
   deregisterAbortController
 } from "./abort-registry";
@@ -628,32 +629,113 @@ export async function runActionInternal<
   });
 
   const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;
+
+  // --- Cross-process abort delivery (FIX-1026) ---
+  // `/abort` records the intent durably wherever it is called; this is the
+  // reader that makes it land on the process actually running the work. It
+  // rides the heartbeat tick rather than adding a cadence of its own, so
+  // worst-case cancellation latency is `heartbeatIntervalMs`.
+  //
+  // Latched on DELIVERY, not on detection. `runAction` installs this timer
+  // well before `registerAbortController` below, so a tick can legitimately
+  // read a pre-set flag and find no controller to fire; latching there would
+  // suppress every later poll and silently defeat pre-start cancellation. A
+  // tick that cannot deliver changes nothing and tries again next interval.
+  let deliveredAbort = false;
+  // Ticks can overlap: `setInterval` fires again while an earlier callback is
+  // still awaiting, which is exactly what happens when the store is slow. Both
+  // would read the flag and both would call `abortRequest` (which keeps
+  // returning true while the controller is registered, aborted or not),
+  // doubling store reads precisely when the store is already degrading.
+  let abortPollInFlight = false;
+
+  /**
+   * One abort-intent poll. Reads the narrow projection rather than the record —
+   * `get()` materializes the whole item history on the persistent adapters, and
+   * this runs for the life of every request.
+   *
+   * Failures are swallowed with a warning: a transient store error must never
+   * abort or fail a healthy run, which would be a worse outcome than the gap
+   * this closes.
+   */
+  const pollAbortIntent = async (): Promise<void> => {
+    if (deliveredAbort || abortPollInFlight) return;
+    abortPollInFlight = true;
+    try {
+      if (!(await options.stores.request.isAbortRequested(requestId))) return;
+      // Returns false when no controller is registered yet. Not a delivery, so
+      // the latch stays unset and the next tick retries.
+      if (!abortRequest(requestId)) return;
+      deliveredAbort = true;
+      logRuntimeEvent(logger, "info", "[flow-state] [abort] cross-process abort delivered", {
+        requestId
+      });
+    } catch (err) {
+      logRuntimeEvent(logger, "warn", "[flow-state] abort-intent poll failed", {
+        requestId, error: String(err)
+      });
+    } finally {
+      abortPollInFlight = false;
+    }
+  };
+
   const heartbeatTimer = heartbeatIntervalMs > 0
     ? setInterval(() => {
+        // The two halves share a timer, not a fate. The heartbeat writes to the
+        // active-request registry; the poll reads the request store. They are
+        // different stores and fail independently, so the heartbeat keeps its
+        // own `.catch()` and is deliberately not awaited here — a registry
+        // outage must not silently disable cancellation on a deployment that
+        // meets every documented requirement.
         registry.heartbeat(requestId).catch((err) => {
           logRuntimeEvent(logger, "warn", "[flow-state] heartbeat write failed", {
             requestId, error: String(err)
           });
         });
+        void pollAbortIntent();
       }, heartbeatIntervalMs)
     : undefined;
 
+  /**
+   * Stop the shared heartbeat/abort-poll timer.
+   *
+   * Everything between the timer install above and `registerAbortController`
+   * below runs with the timer live and no controller to fire, and it touches
+   * the stores (the session update, the initial status emits). A rejection
+   * there leaves through NEITHER cleanup path — the pre-transition catch and
+   * the terminal paths all sit further down — so without this the timer
+   * outlives the request that owns it and keeps polling the request store on
+   * every interval for the life of the process. One orphaned reader per failed
+   * request, and the outage that fails them is the moment the store can least
+   * afford the extra load. Any await added in this window belongs inside one
+   * of the guards below.
+   */
+  const stopHeartbeatTimer = (): void => {
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+  };
+
   // --- Update session's latestRequestId for auto-resume discovery ---
   if (options.sessionId !== undefined) {
-    // Tenant-namespaced key (FIX-682) so this lands on the same record the
-    // execution context reads/writes; a bare key would miss a tenant session.
-    const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
-    const session = await options.stores.session.get(sessionKey);
-    // Tenant-binding guard (FIX-682): this write runs before
-    // createExecutionContext's binding check, so without it a no-tenant caller
-    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
-    // latestRequestId (an auto-resume hijack) even though the run then fails.
-    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
-      await options.stores.session.set(
-        sessionKey,
-        { ...session, latestRequestId: requestId, updatedAt: Date.now() },
-        "any"
-      );
+    try {
+      // Tenant-namespaced key (FIX-682) so this lands on the same record the
+      // execution context reads/writes; a bare key would miss a tenant session.
+      const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+      const session = await options.stores.session.get(sessionKey);
+      // Tenant-binding guard (FIX-682): this write runs before
+      // createExecutionContext's binding check, so without it a no-tenant caller
+      // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+      // latestRequestId (an auto-resume hijack) even though the run then fails.
+      if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
+        await options.stores.session.set(
+          sessionKey,
+          { ...session, latestRequestId: requestId, updatedAt: Date.now() },
+          "any"
+        );
+      }
+    } catch (setupError) {
+      // Pre-controller window — see `stopHeartbeatTimer`.
+      stopHeartbeatTimer();
+      throw setupError;
     }
   }
 
@@ -792,8 +874,14 @@ export async function runActionInternal<
   // Emit initial status events early — before the potentially expensive
   // createExecutionContext call. This ensures the SSE stream starts delivering
   // events as fast as possible.
-  await response.emitRequestCreated();
-  await response.emitRequestStatus("in_progress");
+  try {
+    await response.emitRequestCreated();
+    await response.emitRequestStatus("in_progress");
+  } catch (setupError) {
+    // Pre-controller window — see `stopHeartbeatTimer`.
+    stopHeartbeatTimer();
+    throw setupError;
+  }
 
   // Same-request continuation detection (FIX-811), computed BEFORE the
   // request-start emits below so a continuation does not re-echo the initial
@@ -850,6 +938,23 @@ export async function runActionInternal<
   // If anything between here and the main try block throws, the outer
   // try/catch below cleans it up.
   const abortController = registerAbortController(requestId);
+  // First poll (FIX-1026). Placed here rather than beside the timer because a
+  // poll before this line has no controller to fire and therefore cannot
+  // deliver — it would be a guaranteed-useless store read on every request.
+  // Here it closes the window where the cancel was recorded between admission
+  // and the run starting, without waiting a full interval. Gated on the timer
+  // so `heartbeatIntervalMs: 0` really is off.
+  //
+  // AWAITED, not fired and forgotten. The read is issued either way; awaiting
+  // is what makes "a cancel recorded before the run started stops the run" a
+  // guarantee instead of a race the store's latency decides. Left unawaited, an
+  // action shorter than one `isAbortRequested` round trip runs to completion —
+  // model calls included — clears the post-drain abort check, and persists
+  // `completed` before the read that would have stopped it returns; by then the
+  // controller is deregistered and the delivery has nowhere to land. The cost
+  // is one narrow read on the start path, and `pollAbortIntent` swallows its
+  // own failures, so this can delay a request start but can never fail one.
+  if (heartbeatTimer !== undefined) await pollAbortIntent();
   const composedSignal = options.signal
     ? AbortSignal.any([options.signal, abortController.signal])
     : abortController.signal;
@@ -1178,12 +1283,27 @@ export async function runActionInternal<
     input: summarizeForLog(options.input)
   });
 
-  await emitActionLifecycleSeam(internalSeams, "started", metadata);
+  // The last awaits before the main try, and covered by neither cleanup path on
+  // their own: the pre-transition catch above has already closed, and every
+  // terminal path lives inside the try below. A rejection here — an `onStarted`
+  // observer that throws, an instrumentation seam that rejects — would leave
+  // the heartbeat/abort-poll timer running for the life of the process, reading
+  // the request store once per interval for a request that is already gone.
+  // Same leak the pre-controller guards close, one window further down; the
+  // difference is that the abort controller is registered by now, so this guard
+  // has to release that too. Rethrows, so the caller still sees the failure.
+  try {
+    await emitActionLifecycleSeam(internalSeams, "started", metadata);
 
-  await runObserver(options.flow.request?.onStarted, {
-    requestId,
-    actionName: options.actionName
-  }, ctx, { internalSeams, logger });
+    await runObserver(options.flow.request?.onStarted, {
+      requestId,
+      actionName: options.actionName
+    }, ctx, { internalSeams, logger });
+  } catch (startupError) {
+    stopHeartbeatTimer();
+    deregisterAbortController(requestId);
+    throw startupError;
+  }
 
   try {
     // Re-throw deferred parse error now that we have ctx for error handling.
@@ -1375,25 +1495,6 @@ export async function runActionInternal<
       }
     }
 
-    if (terminalStatus === "completed") {
-      await runObserver(action.onCompleted, {
-      requestId,
-      actionName: options.actionName,
-      output: result.output
-    }, ctx, { internalSeams, logger });
-
-      await runObserver(options.flow.request?.onCompleted, {
-      requestId,
-      actionName: options.actionName,
-      output: result.output
-    }, ctx, { internalSeams, logger });
-
-    // Flush and drain TTS pipeline before marking request as completed
-    if (ttsHook !== undefined) {
-      await ttsHook.finalize();
-    }
-    }
-
     // Drain the request-scoped background work pool before terminal status.
     // Inner sequencers no longer auto-await their `.work()` tasks (FIX-554) —
     // the pool consolidates them and we wait once here. Skipped on the
@@ -1406,6 +1507,77 @@ export async function runActionInternal<
     // arrives mid-drain, in-flight tasks self-cancel via their own
     // `ctx.signal` (the background signal) and settle as rejections — drain
     // still resolves.
+    await drainRequestWorkPool(ctx);
+
+    // A cancel accepted during that drain is a cancellation, not a completion.
+    // The drain resolves normally on an abort BY DESIGN — in-flight `.work()`
+    // tasks self-cancel and `drainAll` collects their rejections into
+    // `failed[]` rather than rethrowing — so nothing below would otherwise
+    // learn that the wait it just finished was work being stopped. The success
+    // path would then persist `completed` for a request whose `/abort` was
+    // accepted and demonstrably honoured.
+    //
+    // Keyed on the request controller, which is exactly what fires the
+    // background signal that cancelled those tasks. Both delivery paths
+    // converge on it (the local endpoint and the heartbeat poll's
+    // `abortRequest`), while a transport-level disconnect never reaches it —
+    // FIX-663 deliberately lets background work settle through one, and that
+    // stays true. Throwing hands the run to the single classification in the
+    // catch below, which already distinguishes abort from disconnect, rather
+    // than growing a second copy of it here.
+    if (abortController.signal.aborted) {
+      throw abortController.signal.reason;
+    }
+
+    // Terminal success is only known here — after the drain, and after the
+    // abort check above. `onCompleted` "fires only on terminal success"
+    // (docs/architecture/execution-and-errors.md, "Request Lifecycle"), so it
+    // cannot run any earlier: a cancel accepted during the drain ends this
+    // request as `aborted`, and firing a success hook for it would commit
+    // business side effects or send a success notification for a request whose
+    // own `onFinished` reports `aborted`.
+    //
+    // The TTS finalize moves with them for the same reason. It runs the
+    // pipeline to completion against the client's connection, which is
+    // precisely what the abort path then undoes with `ttsHook.cancel()` — so
+    // leaving it above meant an aborted request finalized AND cancelled,
+    // paying for synthesis nobody would hear.
+    //
+    // `terminalStatus === "incomplete"` (a token budget with `onExceeded:
+    // "stop"`) skips the hooks by the same rule and is covered by
+    // run-action-edge.test.ts.
+    if (terminalStatus === "completed") {
+      await runObserver(action.onCompleted, {
+        requestId,
+        actionName: options.actionName,
+        output: result.output
+      }, ctx, { internalSeams, logger });
+
+      await runObserver(options.flow.request?.onCompleted, {
+        requestId,
+        actionName: options.actionName,
+        output: result.output
+      }, ctx, { internalSeams, logger });
+
+      if (ttsHook !== undefined) {
+        await ttsHook.finalize();
+      }
+    }
+
+    // Second barrier, for work the completion hooks themselves queued. Moving
+    // the hooks below the drain above took them out from under it: an
+    // `onCompleted` that is a sequencer dispatching `.work()` now enqueues into
+    // a pool nothing is waiting on, so the request would emit `completed` and
+    // return while a notification or state write was still running — and the
+    // flushes below could miss its items. Cheap when the hooks queued nothing:
+    // `drainAll` is a no-op on an empty pool and the helper only emits a
+    // `backgroundTasks` status when it actually drained something.
+    //
+    // Deliberately NOT paired with a second abort check. The first one guards a
+    // wait that precedes every success hook; by here `onCompleted` has run and
+    // may have committed side effects, so flipping the request to `aborted`
+    // would report a cancellation for work that demonstrably succeeded. A
+    // cancel arriving this late is the teardown window, which §9 covers.
     await drainRequestWorkPool(ctx);
 
     // Clear heartbeat
@@ -1567,7 +1739,13 @@ export async function runActionInternal<
 
     if (signalAborted) {
       const record = await options.stores.request.get(requestId).catch(() => undefined);
-      const wasIntentionalAbort = record?.abortRequested === true;
+      // `deliveredAbort` is first-hand proof: this process read the durable
+      // intent and fired the controller itself (FIX-1026). Falling back to it
+      // matters because the read above is allowed to fail — without it, a
+      // transient store error at exactly this moment would file a request we
+      // demonstrably cancelled as an accidental disconnect (`interrupted`),
+      // which is a resumable state.
+      const wasIntentionalAbort = deliveredAbort || record?.abortRequested === true;
 
       if (wasIntentionalAbort) {
         // --- Abort path: user explicitly stopped the request ---

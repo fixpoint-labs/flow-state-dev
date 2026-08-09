@@ -36,7 +36,8 @@ export {
   resolveOrgStorageKey,
   resolveTraceMaxRequests,
   resolveUserStorageKey,
-  runWithCAS
+  runWithCAS,
+  withStoredAbortRequested
 } from "./stores";
 export type {
   CapabilitySlot,
@@ -60,6 +61,8 @@ export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
   CheckpointStore,
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ContentScopeType,
   ContentStore,
   LeaseStore,

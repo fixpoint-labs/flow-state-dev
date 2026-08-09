@@ -38,10 +38,14 @@ import { createScopeStateOps, createStateContainer } from "./state-container";
 import type { PersistErrorHandler, StoreRegistry } from "./types";
 import type { StoreAdapter } from "./store-adapter";
 
+export { withStoredAbortRequested } from "./shared";
+
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
   CheckpointStore,
+  ConditionalRequestFields,
+  ConditionalWriteResult,
   ContentScopeType,
   ContentStore,
   LeaseStore,

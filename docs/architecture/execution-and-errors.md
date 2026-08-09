@@ -183,12 +183,14 @@ pipeline
 
 Background `.work()` tasks are decoupled from the request's transport-level abort signal (FIX-663). Each request constructs two `AbortController`s:
 
-- `abortController` — the abort-registry controller. Fires on the explicit `/abort` endpoint / `session.abortRequest()` only.
+- `abortController` — the abort-registry controller. Fires on an explicit cancellation only, never on a transport signal. Two paths reach it and they converge here: the `/abort` endpoint / `session.abortRequest()` when the request is running in this process, and `runAction`'s heartbeat-tick poll when the intent was recorded by another process (FIX-1026). A cross-process abort is therefore indistinguishable downstream from a local one.
 - `backgroundController` — fires only when `abortController` fires.
 
 ```
 runActionInternal
-  abortController        ← registry; fires on /abort only
+  abortController        ← registry; fires on /abort here, or on the
+                           heartbeat poll reading abortRequested from
+                           the request store (cross-process delivery)
   composedSignal = AbortSignal.any([options.signal, abortController.signal])
                          ← foreground chain; also fires on transport signal
   backgroundController   ← NEW; listens on abortController.signal ({ once: true })
