@@ -681,6 +681,7 @@ function withStoreOverrides(
   overrides: {
     request?: Partial<StoreRegistry["request"]>;
     activeRequests?: Partial<StoreRegistry["activeRequests"]>;
+    session?: Partial<StoreRegistry["session"]>;
   }
 ): StoreRegistry {
   const request = Object.create(stores.request) as StoreRegistry["request"];
@@ -689,7 +690,9 @@ function withStoreOverrides(
     stores.activeRequests
   ) as StoreRegistry["activeRequests"];
   Object.assign(activeRequests, overrides.activeRequests ?? {});
-  return { ...stores, request, activeRequests };
+  const session = Object.create(stores.session) as StoreRegistry["session"];
+  Object.assign(session, overrides.session ?? {});
+  return { ...stores, request, activeRequests, session };
 }
 
 /** Record the abort intent the way a `/abort` on another process would. */
@@ -1194,6 +1197,62 @@ describe("runAction — cross-process abort delivery", () => {
     await resultPromise;
     const record = await stores.request.get(requestId);
     expect(record?.status).toBe("aborted");
+  });
+
+  // The poll rides a timer installed BEFORE the run has an abort controller, and
+  // the setup between the two touches the stores (the session update, the
+  // initial status emits). A rejection there returns through neither the
+  // pre-transition cleanup nor a terminal path — both sit further down — so the
+  // timer outlives the request that owns it and keeps reading the request store
+  // on every interval, forever. The failure mode compounds exactly when it can
+  // least afford to: a store outage fails many requests, and each one leaves
+  // behind another permanent reader of the store that is already degrading.
+  it("stops polling the store when setup fails before the controller is registered", async () => {
+    const base = createInMemoryStores();
+    const requestId = "req_xproc_setup_fails";
+    let reads = 0;
+    const stores = withStoreOverrides(base, {
+      request: {
+        isAbortRequested: async (id: string) => {
+          reads += 1;
+          return base.request.isAbortRequested(id);
+        }
+      },
+      session: {
+        get: async () => {
+          throw new Error("session store unavailable");
+        }
+      }
+    });
+    const flow = makeBlockingFlow({
+      kind: "xproc-setup-fails",
+      heartbeatIntervalMs: 20
+    });
+
+    await expect(
+      runAction({
+        flow,
+        actionName: "run",
+        input: {},
+        requestId,
+        userId: "u_xproc",
+        // The session update is the first store await after the timer is
+        // installed; `sessionId` is what puts the run on that path.
+        sessionId: "sess_xproc_setup_fails",
+        stores,
+        runtimeConfig: {}
+      })
+    ).rejects.toThrow("session store unavailable");
+
+    // Precondition: the run really did die in the pre-controller window. If it
+    // got as far as registration, this test is asserting about a window that
+    // was never open.
+    expect(hasActiveAbortController(requestId)).toBe(false);
+
+    const readsAtFailure = reads;
+    // Several intervals' worth. A surviving timer polls once per interval.
+    await new Promise((r) => setTimeout(r, 120));
+    expect(reads).toBe(readsAtFailure);
   });
 });
 

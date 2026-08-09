@@ -696,22 +696,46 @@ export async function runActionInternal<
       }, heartbeatIntervalMs)
     : undefined;
 
+  /**
+   * Stop the shared heartbeat/abort-poll timer.
+   *
+   * Everything between the timer install above and `registerAbortController`
+   * below runs with the timer live and no controller to fire, and it touches
+   * the stores (the session update, the initial status emits). A rejection
+   * there leaves through NEITHER cleanup path — the pre-transition catch and
+   * the terminal paths all sit further down — so without this the timer
+   * outlives the request that owns it and keeps polling the request store on
+   * every interval for the life of the process. One orphaned reader per failed
+   * request, and the outage that fails them is the moment the store can least
+   * afford the extra load. Any await added in this window belongs inside one
+   * of the guards below.
+   */
+  const stopHeartbeatTimer = (): void => {
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+  };
+
   // --- Update session's latestRequestId for auto-resume discovery ---
   if (options.sessionId !== undefined) {
-    // Tenant-namespaced key (FIX-682) so this lands on the same record the
-    // execution context reads/writes; a bare key would miss a tenant session.
-    const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
-    const session = await options.stores.session.get(sessionKey);
-    // Tenant-binding guard (FIX-682): this write runs before
-    // createExecutionContext's binding check, so without it a no-tenant caller
-    // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
-    // latestRequestId (an auto-resume hijack) even though the run then fails.
-    if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
-      await options.stores.session.set(
-        sessionKey,
-        { ...session, latestRequestId: requestId, updatedAt: Date.now() },
-        "any"
-      );
+    try {
+      // Tenant-namespaced key (FIX-682) so this lands on the same record the
+      // execution context reads/writes; a bare key would miss a tenant session.
+      const sessionKey = resolveSessionStorageKey(options.sessionId, options.tenantId);
+      const session = await options.stores.session.get(sessionKey);
+      // Tenant-binding guard (FIX-682): this write runs before
+      // createExecutionContext's binding check, so without it a no-tenant caller
+      // passing `sessionId = "${tenant}:${id}"` would overwrite another tenant's
+      // latestRequestId (an auto-resume hijack) even though the run then fails.
+      if (session !== undefined && tenantMatches(session.tenantId, options.tenantId)) {
+        await options.stores.session.set(
+          sessionKey,
+          { ...session, latestRequestId: requestId, updatedAt: Date.now() },
+          "any"
+        );
+      }
+    } catch (setupError) {
+      // Pre-controller window — see `stopHeartbeatTimer`.
+      stopHeartbeatTimer();
+      throw setupError;
     }
   }
 
@@ -850,8 +874,14 @@ export async function runActionInternal<
   // Emit initial status events early — before the potentially expensive
   // createExecutionContext call. This ensures the SSE stream starts delivering
   // events as fast as possible.
-  await response.emitRequestCreated();
-  await response.emitRequestStatus("in_progress");
+  try {
+    await response.emitRequestCreated();
+    await response.emitRequestStatus("in_progress");
+  } catch (setupError) {
+    // Pre-controller window — see `stopHeartbeatTimer`.
+    stopHeartbeatTimer();
+    throw setupError;
+  }
 
   // Same-request continuation detection (FIX-811), computed BEFORE the
   // request-start emits below so a continuation does not re-echo the initial

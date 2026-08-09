@@ -10,7 +10,7 @@ Cancelling a request now stops it even when it is running in another process (FI
 **Adapter authors: `RequestStore` gains two required members, so a custom adapter will not compile until it implements them.**
 
 - `isAbortRequested(requestId): Promise<boolean>` — whether cancellation has been requested. Runs on every heartbeat tick, so it must be O(1) in item count; reading the whole record is not an acceptable implementation on an adapter whose `get()` carries items.
-- `setFieldsIfStatus(id, fields, allowedStatuses, updatedAt)` — apply fields only while the record's status matches, atomically, returning whether the predicate held and the status found. Do not implement it as a version CAS: terminal transitions persist `version` unchanged, so a version-checked write validates after a terminal commit and resurrects a dead record.
+- `setFieldsIfStatus(id, fields, allowedStatuses, updatedAt)` — apply fields only while the record's status matches, atomically, returning whether the predicate held and the status found. The status it reports back must come from the same observation the predicate used: report it from a later read and the verb can name a status the record only reached afterwards, including one that is inside the predicate. Do not implement it as a version CAS either: terminal transitions persist `version` unchanged, so a version-checked write validates after a terminal commit and resurrects a dead record.
 
 `set` must now ignore `abortRequested` in both directions — a full record can neither set the flag nor clear a stored one. This is not compiler-enforced, because the field is still readable on `RequestRecord`. `createRequestStoreConformanceTests` covers all of it.
 
