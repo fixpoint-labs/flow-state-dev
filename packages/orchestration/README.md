@@ -132,6 +132,17 @@ the task record — on a resource backing the write reaches the resource either 
 so a `resource_change` can fire for an `unchanged` write. A missing task throws on
 all eight.
 
+A verdict only reaches a call that *returned*. For the path where a write commits
+and the call then **throws**, pass `write: beginTaskWrite(collection.get(id))` on
+the same options argument and ask `didWriteLand(collection.get(id), write)`
+afterwards. It answers `true` (committed), `false` (changed nothing), or
+`undefined` (cannot tell — no provenance on the record, or the receipt aged out of
+the task's four-entry log). Mint the token before the write; report `undefined`
+rather than guessing. Correlation is available on the seven methods that take
+`TaskTransitionOptions`; the rest still advance `task.revision` but carry no token.
+A hand-written `TaskCollectionRef` that maintains no provenance needs no migration
+— its callers get `undefined`, never a false `false`.
+
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
 

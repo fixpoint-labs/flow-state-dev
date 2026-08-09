@@ -42,6 +42,10 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
 | `createdAt` / `updatedAt` | `number` | Epoch ms. |
 | `startedAt` / `completedAt` | `number?` | Epoch ms, stamped on first claim and on `complete`. |
+| `revision` | `number?` | Counter advanced by every write that changed the task. |
+| `writeLog` / `writeLogTruncated` | | Recent write receipts. Read them through `didWriteLand`, not directly. |
+
+The last three are write provenance. They exist so a caller can find out whether its own write committed, and they are maintained by the collection rather than by you. See [telling whether your write landed](#telling-whether-your-write-landed).
 
 `input` and `output` validate as `unknown` on the schema. The runtime type `Task<TInput, TOutput>` narrows them at your call site, so a board over a typed collection surfaces real payload types at the worker boundary.
 
@@ -233,6 +237,57 @@ if (outcome.outcome === "declined") {
 A missing task throws on every one of these methods; those four reasons are the whole set of refusals.
 
 If you hand `taskBoard` a `TaskCollectionRef` of your own, callers see whatever your methods return. One whose methods resolve to nothing gives no verdict, and the framework won't invent one.
+
+### Telling whether your write landed
+
+A write can commit and then throw. The task record changes, and something after the write falls over: the change announcement, a result recorder, your own code. What reaches you is a rejected promise, and a rejected promise carries no value, so the `TaskWriteOutcome` above never gets to you.
+
+Reading the task back afterwards doesn't settle it. Say you were failing a task with retry budget left, and by the time you look, another worker has claimed it. Two different stories produce that exact record:
+
+1. Your write committed, the task went back to the queue, and another worker took it.
+2. Your write never landed, the lease expired, a reclaim re-queued the task, and another worker took it.
+
+The first is a real failure someone needs to hear about. The second is routine. They read identically.
+
+To tell them apart, open a write before you make it.
+
+```ts
+import { beginTaskWrite, didWriteLand } from "@flow-state-dev/orchestration";
+
+const write = beginTaskWrite(tasks.get(taskId));
+
+try {
+  await tasks.fail(taskId, "the worker gave up", { ifAllowed: true, claim, write });
+} catch (cause) {
+  switch (didWriteLand(tasks.get(taskId), write)) {
+    case true:
+      // It committed. Something after the write failed, and that is worth reporting.
+      throw new Error("recorded the failure, then fell over", { cause });
+    case false:
+      return; // Nothing was written. Routine.
+    case undefined:
+      throw new Error("cannot tell whether the failure was recorded", { cause });
+  }
+}
+```
+
+`beginTaskWrite` hands back a token: a fresh id, plus the task's revision as you observed it. Pass the token on the write's options and the collection records it on the task, inside the same atomic write that changes the task. The record is therefore exactly as durable as the task, and it survives the next worker's claim, which is the case a later read can't reason about on its own.
+
+Mint the token *before* the write. You can't make one after the fact, because the observed revision is half of what proves the answer.
+
+**Three answers, and the third is the point.**
+
+- `true` — your write committed. Its receipt is on the task.
+- `false` — your write changed nothing. Either it never landed, or the task already held the state you asked for.
+- `undefined` — cannot tell.
+
+Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance (written before this existed, or by a collection ref that maintains none), or your receipt may have aged out. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one, which is the only direction it can safely err in.
+
+A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above, and the two are worth reading together.
+
+**Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `block`, `unblock`, `awaitReview`, `resumeFromReview`, and `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators still advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+
+**A collection ref you wrote yourself** maintains none of this, and needs no migration to stay correct. Absence of a record reads as `undefined`, never as "your write did not land" — the same posture as a missing verdict.
 
 ## The three backings
 

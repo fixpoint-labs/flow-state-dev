@@ -7,6 +7,8 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
+import { generateId } from "../generate-id";
+import { initialWriteProvenance } from "../write-provenance";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
@@ -19,10 +21,8 @@ import type {
   TaskWriteDeclineReason,
 } from "./types";
 
-let idCounter = 0;
 function generateTaskId(): string {
-  idCounter += 1;
-  return `task_${Date.now().toString(36)}_${idCounter}_${Math.random().toString(16).slice(2, 8)}`;
+  return generateId("task");
 }
 
 /**
@@ -46,12 +46,19 @@ export function createTaskHandleWrapper<TInput, TOutput>(
   });
 }
 
-/** Build a fresh task from a `TaskInit`, stamping defaults and timestamps. */
+/**
+ * Build a fresh task from a `TaskInit`, stamping defaults and timestamps.
+ *
+ * The convergence point for a task's *initial* write provenance (FIX-989):
+ * every add path on both backings builds its task here, so revision 1 and the
+ * truncation marker are set once rather than at four call sites.
+ */
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
   now: number
 ): Task<TInput, TOutput> {
   return {
+    ...initialWriteProvenance(),
     id: init.id ?? generateTaskId(),
     goal: init.goal,
     title: init.title,

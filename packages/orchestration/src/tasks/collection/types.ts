@@ -10,6 +10,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TaskClaimTicket } from "../claim-ticket";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
+import type { TaskWriteToken } from "../write-provenance";
 
 /**
  * Why a write was refused (FIX-976; `not-my-task` added by FIX-981). Resolved
@@ -170,6 +171,32 @@ export interface TaskTransitionOptions {
    * for a coordinator writing to a board it never claimed from.
    */
   claim?: TaskClaimTicket;
+  /**
+   * Record this write on the task, so the caller can find out afterwards
+   * whether it committed — **even if this call throws** (FIX-989).
+   *
+   * Mint one with `beginTaskWrite(tasks.get(id))` *before* the write and read
+   * the answer with `didWriteLand(tasks.get(id), write)` after. The returned
+   * {@link TaskWriteOutcome} already says what a call that *returned* did; this
+   * covers the path it cannot reach, where the durable write commits and the
+   * change announcement then rejects.
+   *
+   * Three answers come back, and the third is the point: landed, did not land,
+   * or **cannot tell**. See `didWriteLand` for the rule and for what a `false`
+   * precisely means.
+   *
+   * Correlation is available on the seven methods that take this options
+   * object. `addTask`, `addTasks`, `claim`, `reclaim` and the five field
+   * mutators still bump the task's `revision` but mint no receipt, so a caller
+   * of those cannot correlate its own write. Widening means adding an options
+   * argument to nine more methods on an already-large interface; it waits for a
+   * consumer that needs it.
+   *
+   * A `TaskCollectionRef` written by hand maintains no provenance, and needs no
+   * migration to stay correct: absence of a record reads as "cannot tell", not
+   * as "your write did not land".
+   */
+  write?: TaskWriteToken;
 }
 
 /**
