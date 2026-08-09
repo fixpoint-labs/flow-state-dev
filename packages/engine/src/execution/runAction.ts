@@ -1037,7 +1037,8 @@ export async function runActionInternal<
       logger,
       tracingLevel: options.runtimeConfig.tracingLevel,
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
-      errorCapture: options.runtimeConfig.errorCapture
+      errorCapture: options.runtimeConfig.errorCapture,
+      requestHost: options.runtimeConfig.requestHost
     });
 
     // Resume mode: load the suspension record + checkpoint to restore the durable

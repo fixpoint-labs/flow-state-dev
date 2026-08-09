@@ -11,6 +11,7 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
+import type { DetachedStartOperation, ParentTaskBinding } from "./create-request-host";
 
 export type RequestRuntime = {
   requestId: string;
@@ -94,4 +95,40 @@ export type CreateExecutionContextOptions<
    * delivered to it with provider-neutral context. Absent → no capture.
    */
   errorCapture?: ErrorCaptureHandler;
+  /**
+   * Construction inputs for the request-host seam (FIX-999). Hosts supply the
+   * inputs; `createExecutionContext` builds the bundle once and every nested
+   * scope inherits the same reference.
+   *
+   * Absent → no seam is attached, and `requireRequestHost(ctx)` throws by name.
+   * That is the correct state for a caller that does not execute requests
+   * through a host (a unit test, a hand-built context).
+   */
+  requestHost?: RequestHostConstructionInputs;
+};
+
+/**
+ * What a host has to travel to `createExecutionContext` for the seam to be
+ * built (FIX-999).
+ *
+ * The sweeper facts are here rather than read from a global because the sweeper
+ * is built by the router while the gate runs in the context factory, so the fact
+ * has to be passed. A host that cannot answer leaves them undefined, which the
+ * gate reads as *not sweeping* — fail-closed, like the registry's undeclared
+ * sharedness.
+ */
+export type RequestHostConstructionInputs = {
+  /**
+   * Starts a detached request through the host-level arbiter and enqueue-time
+   * materialization. Absent → `startDetached` refuses `no-start-operation`,
+   * which is the `worker-only` case: that mode constructs no dispatcher, so a
+   * deployment whose capabilities dispatch must supply this there explicitly.
+   */
+  startOperation?: DetachedStartOperation;
+  /** The parent-board row this request was dispatched for, stamped at spawn. */
+  parentTask?: ParentTaskBinding;
+  /** The stale-request sweeper's threshold. */
+  staleThresholdMs?: number;
+  /** The sweeper's cadence. Undefined or 0 → liveness is refused. */
+  staleSweepIntervalMs?: number;
 };

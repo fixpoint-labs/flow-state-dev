@@ -24,6 +24,7 @@ import type { RuntimeLogger } from "./execution/logging";
 import type { DurabilityProvider } from "./durability/types";
 import type { DurabilityRetentionConfig } from "./durability/durability-sweeper";
 import type { ErrorCaptureHandler } from "./errors/error-capture";
+import type { RequestHostConstructionInputs } from "./context/types";
 
 export interface RuntimeConfig {
   modelResolver?: ModelResolver;
@@ -62,6 +63,13 @@ export interface RuntimeConfig {
    * `createExecutionContext`; absent → no capture.
    */
   errorCapture?: ErrorCaptureHandler;
+  /**
+   * Construction inputs for the request-host seam (FIX-999), forwarded to
+   * `createExecutionContext` (BP-026). A host that executes requests but wires
+   * none leaves capabilities unable to reach the runtime — `requireRequestHost`
+   * then throws by name rather than failing as `undefined is not a function`.
+   */
+  requestHost?: RequestHostConstructionInputs;
 }
 
 /**
@@ -82,6 +90,7 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     onBackgroundWork: options.onBackgroundWork,
     durabilityProvider: options.durabilityProvider,
     durabilityRetention: options.durabilityRetention,
-    errorCapture: options.errorCapture
+    errorCapture: options.errorCapture,
+    requestHost: options.requestHost
   };
 }

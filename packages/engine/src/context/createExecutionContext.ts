@@ -57,8 +57,9 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
-import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
+import { createRequestHost } from "./create-request-host";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -444,6 +445,51 @@ export async function createExecutionContext<
     flow,
     stores
   } = options;
+
+  // The request-host seam (FIX-999), built ONCE here. Every nested scope
+  // inherits this same reference below, exactly as `stores` does, so a
+  // memoized capability helper reached from a nested block sees the same
+  // request-bound operations as the root scope.
+  //
+  // Built only when the host supplied construction inputs AND the request has a
+  // session: every verb on the seam authorises by descent from the running
+  // session, so a sessionless request has no lineage to reason about and gets
+  // no seam. `requireRequestHost(ctx)` then throws by name, which is the honest
+  // outcome rather than a bundle whose verbs can only refuse.
+  const requestHostBuild =
+    options.requestHost !== undefined && options.sessionId !== undefined
+      ? createRequestHost({
+          stores,
+          flow,
+          identity: {
+            userId: options.userId ?? "",
+            tenantId: options.tenantId,
+            orgId: options.orgId,
+            sessionId: options.sessionId
+          },
+          startOperation: options.requestHost.startOperation,
+          parentTask: options.requestHost.parentTask,
+          liveness: {
+            heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
+            staleThresholdMs: options.requestHost.staleThresholdMs,
+            staleSweepIntervalMs: options.requestHost.staleSweepIntervalMs
+          }
+        })
+      : undefined;
+
+  if (requestHostBuild?.livenessRefusal !== undefined) {
+    // Named, not silent. An operator who never writes a capability still meets
+    // this, and a capability that is quietly missing reads as a bug.
+    logRuntimeEvent(
+      options.logger ?? DEFAULT_RUNTIME_LOGGER,
+      "info",
+      "[flow-state] request-host liveness capability not enabled",
+      {
+        reason: requestHostBuild.livenessRefusal.reason,
+        detail: requestHostBuild.livenessRefusal.detail
+      }
+    );
+  }
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
   // any scope without a `persist` callback). Plumbed through to every
@@ -2721,6 +2767,8 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
+      // Same reference in every nested scope (FIX-999).
+      ...(requestHostBuild !== undefined ? { requestHost: requestHostBuild.host } : {}),
       settings: options.settings ?? {},
       request: requestHandle,
       session: sessionHandle,
