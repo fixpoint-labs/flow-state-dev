@@ -1470,25 +1470,6 @@ export async function runActionInternal<
       }
     }
 
-    if (terminalStatus === "completed") {
-      await runObserver(action.onCompleted, {
-      requestId,
-      actionName: options.actionName,
-      output: result.output
-    }, ctx, { internalSeams, logger });
-
-      await runObserver(options.flow.request?.onCompleted, {
-      requestId,
-      actionName: options.actionName,
-      output: result.output
-    }, ctx, { internalSeams, logger });
-
-    // Flush and drain TTS pipeline before marking request as completed
-    if (ttsHook !== undefined) {
-      await ttsHook.finalize();
-    }
-    }
-
     // Drain the request-scoped background work pool before terminal status.
     // Inner sequencers no longer auto-await their `.work()` tasks (FIX-554) —
     // the pool consolidates them and we wait once here. Skipped on the
@@ -1519,12 +1500,43 @@ export async function runActionInternal<
     // stays true. Throwing hands the run to the single classification in the
     // catch below, which already distinguishes abort from disconnect, rather
     // than growing a second copy of it here.
-    //
-    // `action.onCompleted` has already fired above, and correctly: the body did
-    // complete. It is the REQUEST that was cancelled, and `onFinished` reports
-    // that with status "aborted".
     if (abortController.signal.aborted) {
       throw abortController.signal.reason;
+    }
+
+    // Terminal success is only known here — after the drain, and after the
+    // abort check above. `onCompleted` "fires only on terminal success"
+    // (docs/architecture/execution-and-errors.md, "Request Lifecycle"), so it
+    // cannot run any earlier: a cancel accepted during the drain ends this
+    // request as `aborted`, and firing a success hook for it would commit
+    // business side effects or send a success notification for a request whose
+    // own `onFinished` reports `aborted`.
+    //
+    // The TTS finalize moves with them for the same reason. It runs the
+    // pipeline to completion against the client's connection, which is
+    // precisely what the abort path then undoes with `ttsHook.cancel()` — so
+    // leaving it above meant an aborted request finalized AND cancelled,
+    // paying for synthesis nobody would hear.
+    //
+    // `terminalStatus === "incomplete"` (a token budget with `onExceeded:
+    // "stop"`) skips the hooks by the same rule and is covered by
+    // run-action-edge.test.ts.
+    if (terminalStatus === "completed") {
+      await runObserver(action.onCompleted, {
+        requestId,
+        actionName: options.actionName,
+        output: result.output
+      }, ctx, { internalSeams, logger });
+
+      await runObserver(options.flow.request?.onCompleted, {
+        requestId,
+        actionName: options.actionName,
+        output: result.output
+      }, ctx, { internalSeams, logger });
+
+      if (ttsHook !== undefined) {
+        await ttsHook.finalize();
+      }
     }
 
     // Clear heartbeat

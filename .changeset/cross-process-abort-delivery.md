@@ -9,6 +9,8 @@ Cancelling a request now stops it even when it is running in another process (FI
 
 A cancellation accepted while a request is finishing its background work now settles that request as `aborted` rather than `completed`. A request that queued `.work()` tasks waits for them before writing its terminal status, and a cancel arriving during that wait does stop them — but the request still reported `completed`, telling the caller the opposite of what happened to their work.
 
+The completion hooks follow that status. `onCompleted` fires only on terminal success, so an action's `onCompleted` and the flow's `request.onCompleted` no longer run for a request cancelled in that window — previously they ran, and could commit business side effects or send a success notification for a request whose own `onFinished` reported `aborted`. If you relied on `onCompleted` to mean "the action body finished", move that work to `onFinished` and branch on its `status`, which fires exactly once for every outcome. Text-to-speech synthesis for such a request is now abandoned rather than run to completion and then discarded.
+
 **Adapter authors: `RequestStore` gains two required members, so a custom adapter will not compile until it implements them.**
 
 - `isAbortRequested(requestId): Promise<boolean>` — whether cancellation has been requested. Runs on every heartbeat tick, so it must be O(1) in item count; reading the whole record is not an acceptable implementation on an adapter whose `get()` carries items.

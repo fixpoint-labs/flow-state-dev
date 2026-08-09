@@ -1683,4 +1683,177 @@ describe("cross-process abort delivered during the background drain", () => {
     expect(record?.status).toBe("aborted");
     expect(record?.abortedAt).toBeTypeOf("number");
   });
+
+  /**
+   * Records each lifecycle hook that fires, tagging the ones carrying a
+   * terminal `status` so `onFinished`'s verdict is visible in the same list.
+   */
+  function recordingObserver(events: string[], name: string) {
+    return handler({
+      name,
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: (input) => {
+        const status =
+          typeof input === "object" && input !== null && "status" in input
+            ? String((input as { status?: unknown }).status)
+            : undefined;
+        events.push(status === undefined ? name : `${name}:${status}`);
+      }
+    });
+  }
+
+  /** Holds the drain open until the returned gate is opened or the signal fires. */
+  function drainHolder(name: string, release?: Promise<void>) {
+    return handler({
+      name,
+      inputSchema: z.object({}).passthrough(),
+      outputSchema: z.string(),
+      execute: async (_input, ctx) => {
+        if (release !== undefined) {
+          await release;
+          return "bg settled";
+        }
+        return new Promise<string>((_resolve, reject) => {
+          if (ctx.signal.aborted) {
+            reject(new DOMException("Aborted", "AbortError"));
+            return;
+          }
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true }
+          );
+        });
+      }
+    });
+  }
+
+  /**
+   * `onCompleted` "fires only on terminal success"
+   * (docs/architecture/execution-and-errors.md → Request Lifecycle). A cancel
+   * accepted during the drain ends the request as `aborted`, so the completion
+   * hooks must not run for it — otherwise a flow's `onCompleted` commits
+   * business side effects or sends a success notification for a request whose
+   * own `onFinished` reports `aborted`, in the same breath.
+   */
+  it("skips the completion hooks for a cancel accepted in that window", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_drain_window_hooks_aborted";
+    const bodyDone = createGate();
+    const events: string[] = [];
+
+    const flow = defineFlow({
+      kind: "drain-window-hooks-aborted",
+      request: {
+        heartbeatIntervalMs: 0,
+        onCompleted: recordingObserver(events, "request.completed"),
+        onFinished: recordingObserver(events, "request.finished")
+      },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: sequencer({ name: "seq" })
+            .work(drainHolder("bg-holds-the-drain-hooks"))
+            .step(handler({
+              name: "body-done-hooks",
+              inputSchema: z.object({}).passthrough(),
+              outputSchema: z.string(),
+              execute: async () => {
+                bodyDone.open();
+                return "body succeeded";
+              }
+            })),
+          onCompleted: recordingObserver(events, "action.completed")
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_drain_hooks",
+      stores,
+      runtimeConfig: {}
+    });
+
+    await bodyDone.wait;
+    await recordAbortIntent(stores, requestId);
+    expect(abortRequest(requestId)).toBe(true);
+
+    const result = await resultPromise;
+    expect(result.error).toBeUndefined();
+    expect((await stores.request.get(requestId))?.status).toBe("aborted");
+
+    // Exact list, so this also pins `onFinished` firing exactly once and
+    // reporting the terminal status the record actually carries.
+    expect(events).toEqual(["request.finished:aborted"]);
+  });
+
+  /**
+   * The other half of the discriminator: the same flow, the same queued work,
+   * the same drain — settled normally instead of cancelled. Without this a fix
+   * that simply stopped calling `onCompleted` would pass the test above.
+   */
+  it("still fires them when the same drain settles without a cancel", async () => {
+    const stores = createInMemoryStores();
+    const requestId = "req_drain_window_hooks_completed";
+    const bodyDone = createGate();
+    const releaseWork = createGate();
+    const events: string[] = [];
+
+    const flow = defineFlow({
+      kind: "drain-window-hooks-completed",
+      request: {
+        heartbeatIntervalMs: 0,
+        onCompleted: recordingObserver(events, "request.completed"),
+        onFinished: recordingObserver(events, "request.finished")
+      },
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: sequencer({ name: "seq" })
+            .work(drainHolder("bg-settles-normally", releaseWork.wait))
+            .step(handler({
+              name: "body-done-hooks-ok",
+              inputSchema: z.object({}).passthrough(),
+              outputSchema: z.string(),
+              execute: async () => {
+                bodyDone.open();
+                return "body succeeded";
+              }
+            })),
+          onCompleted: recordingObserver(events, "action.completed")
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "u_drain_hooks_ok",
+      stores,
+      runtimeConfig: {}
+    });
+
+    // Same interleave as the abort case — the task is still pending when the
+    // drain starts — but released rather than cancelled.
+    await bodyDone.wait;
+    releaseWork.open();
+
+    const result = await resultPromise;
+    expect(result.error).toBeUndefined();
+    expect((await stores.request.get(requestId))?.status).toBe("completed");
+
+    // Order matters: action before request, both before `onFinished`.
+    expect(events).toEqual([
+      "action.completed",
+      "request.completed",
+      "request.finished:completed"
+    ]);
+  });
 });
