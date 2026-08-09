@@ -139,9 +139,10 @@ afterwards. It answers `true` (committed), `false` (changed nothing), or
 `undefined` (cannot tell — no provenance on the record, or the receipt aged out of
 the task's four-entry log). Mint the token before the write; report `undefined`
 rather than guessing. Correlation is available on the seven methods that take
-`TaskTransitionOptions`; the rest still advance `task.revision` but carry no token.
-A hand-written `TaskCollectionRef` that maintains no provenance needs no migration
-— its callers get `undefined`, never a false `false`.
+`TaskTransitionOptions`. `setAssignee` — the eighth method able to decline, above
+— takes no options object at all, so it and the other four field mutators advance
+`task.revision` but carry no token. A hand-written `TaskCollectionRef` that
+maintains no provenance leaves its callers with `undefined`, never a false `false`.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";

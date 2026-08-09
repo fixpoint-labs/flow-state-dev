@@ -43,7 +43,8 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `createdAt` / `updatedAt` | `number` | Epoch ms. |
 | `startedAt` / `completedAt` | `number?` | Epoch ms, stamped on first claim and on `complete`. |
 | `revision` | `number?` | Counter advanced by every write that changed the task. |
-| `writeLog` / `writeLogTruncated` | | Recent write receipts. Read them through `didWriteLand`, not directly. |
+| `writeLog` | `{ id: string; revision: number }[]?` | Bounded, newest-last log of write receipts. Read through `didWriteLand`, not directly. |
+| `writeLogTruncated` | `boolean?` | Whether the log has ever dropped a receipt. |
 
 The last three are write provenance. They exist so a caller can find out whether its own write committed, and they are maintained by the collection rather than by you. See [telling whether your write landed](#telling-whether-your-write-landed).
 
@@ -240,7 +241,7 @@ If you hand `taskBoard` a `TaskCollectionRef` of your own, callers see whatever 
 
 ### Telling whether your write landed
 
-A write can commit and then throw. The task record changes, and something after the write falls over: the change announcement, a result recorder, your own code. What reaches you is a rejected promise, and a rejected promise carries no value, so the `TaskWriteOutcome` above never gets to you.
+A write can commit and the call still throw — the failure happens after the record changed. What reaches you is a rejected promise, and a rejected promise carries no value, so the `TaskWriteOutcome` above never gets to you.
 
 Reading the task back afterwards doesn't settle it. Say you were failing a task with retry budget left, and by the time you look, another worker has claimed it. Two different stories produce that exact record:
 
@@ -271,23 +272,21 @@ try {
 }
 ```
 
-`beginTaskWrite` hands back a token: a fresh id, plus the task's revision as you observed it. Pass the token on the write's options and the collection records it on the task, inside the same atomic write that changes the task. The record is therefore exactly as durable as the task, and it survives the next worker's claim, which is the case a later read can't reason about on its own.
+`beginTaskWrite` hands back a token: a fresh id, plus the task's revision as you observed it. Pass the token on the write's options. The receipt is stored on the task itself, so it survives a later worker claiming the task.
 
-Mint the token *before* the write. You can't make one after the fact, because the observed revision is half of what proves the answer.
-
-**Three answers, and the third is the point.**
+Mint the token **before** the write. A token minted afterwards can't answer.
 
 - `true` — your write committed. Its receipt is on the task.
 - `false` — your write changed nothing. Either it never landed, or the task already held the state you asked for.
 - `undefined` — cannot tell.
 
-Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance (written before this existed, or by a collection ref that maintains none), or your receipt may have aged out. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one, which is the only direction it can safely err in.
+Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance, or your receipt has aged out. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one.
 
 A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above, and the two are worth reading together.
 
-**Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `block`, `unblock`, `awaitReview`, `resumeFromReview`, and `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators still advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+**Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `block`, `unblock`, `awaitReview`, `resumeFromReview`, and `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
 
-**A collection ref you wrote yourself** maintains none of this, and needs no migration to stay correct. Absence of a record reads as `undefined`, never as "your write did not land" — the same posture as a missing verdict.
+**A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 
 ## The three backings
 
