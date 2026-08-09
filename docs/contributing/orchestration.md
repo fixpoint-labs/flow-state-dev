@@ -495,11 +495,7 @@ one commit.)
 **Nothing automatic delivers such a correction, which is why it says *coordinator*.** At
 budget `epic-wake` reads converged epic-PR feedback with a read-only scout and routes it to
 the sub-issues each item names, so an item concerning no sub-issue is dropped as the cursor
-advances. An **ordinary issue spec** has no such path at all and does not need one: its
-converged review events are deliberately ignored until the gate, and a factual error found
-then is carried as a §13 implementer note — judged against real code, which is the better
-altitude for it. The epic-spec is the exception because it has no implementer to carry a note
-to.
+advances.
 
 Two mechanics the budget depends on, or it misfires:
 
