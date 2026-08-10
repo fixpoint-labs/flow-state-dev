@@ -502,7 +502,10 @@ function assertWorkstreamBindingsReachable(
     // `childBlocks` by `buildBlock`. Generator `config.tools` is deliberately
     // NOT walked: a generator is a leaf that does not bubble its tools' rails at
     // all, so walking that edge would report a different, pre-existing gap
-    // rather than the propagation failure this assertion is for.
+    // rather than the propagation failure this assertion is for. Keeping the
+    // scope tight is the point — an assertion that fires for two unrelated
+    // reasons is one people learn to route around, and this one has to stay
+    // worth stopping for. Widen it only together with the rail it checks.
   }
 }
 
