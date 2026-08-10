@@ -525,7 +525,7 @@ The member is optional in the *type* so a hand-built test context still type-che
 **Which operations answer depends on the deployment, and each says so by name.** Getting a host is not the same as getting every verb on it:
 
 - `livenessOf` is **absent** unless the deployment can support a trustworthy answer. It needs a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. Check for it rather than asserting it.
-- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, and `no-start-operation` where the host wired no start operation. The shipped HTTP router wires no start operation, so `startDetached` refuses `no-start-operation` on that path.
+- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, and `no-start-operation` where the host wired no start operation. The shipped HTTP router wires one, so a flow that declares detached work can start it there. A `worker-only` runtime builds no router and so wires none — that deployment must supply its own start operation.
 - `parentTask()` resolves `undefined` and `settleParentTask` refuses `no-parent-task` unless the request was dispatched for a parent-board row.
 
 Every refusal is a named outcome you can branch on.

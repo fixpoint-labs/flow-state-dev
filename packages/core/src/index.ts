@@ -196,7 +196,6 @@ export { composeBackgroundSignal } from "./blocks/sequencer";
 export {
   defineFlow,
   buildWorkstreamCore,
-  bindingsForBoard,
   workstreamDispatchInputSchema,
   type WorkstreamDispatchInput,
 } from "./flow";

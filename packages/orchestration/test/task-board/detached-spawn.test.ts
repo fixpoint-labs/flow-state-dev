@@ -17,7 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { taskBoard } from "../../src/task-board";
+import { taskBoard, coordinateKey } from "../../src/task-board";
 import { defineTaskCollection } from "../../src/tasks";
 import { assertJsonSafe } from "../../src/task-board/blocks/json-safe";
 
@@ -52,6 +52,31 @@ describe("a detached slot routes to the spawn, not to the worker", () => {
     expect(binding!.worker).toBe(implement);
     // ...but the runner the dispatch enters is not the worker itself.
     expect(binding!.runner).not.toBe(implement);
+  });
+
+  it("detaches only the coordinate that asked, when one block sits at two", () => {
+    // A block may legitimately be registered twice with different dispatch
+    // modes. Keying the substitution by block identity detaches BOTH — and the
+    // wrongly-detached assignee then fails inside the Workstream, where the gate
+    // routes on the row's assignee and finds no binding for it.
+    const shared = worker("shared");
+    const board = taskBoard({
+      name: "mixed-board",
+      boardId: "mixed-board",
+      collection: ledger(),
+      workers: {
+        inline: shared,
+        background: { worker: shared, dispatch: { mode: "detached" } },
+      },
+    });
+
+    // Exactly one coordinate detached, and it is the one that declared it.
+    expect(board.detachedWorkers).toHaveLength(1);
+    expect(board.detachedWorkers[0]!.label).toBe("assignee:background");
+
+    const bindings = [...(board.drain.workstreamBindings?.values() ?? [])];
+    expect(bindings).toHaveLength(1);
+    expect(bindings[0]!.coordinateKey).toBe(coordinateKey({ kind: "assignee", name: "background" }));
   });
 
   it("leaves an inline board's routing untouched", () => {
@@ -135,6 +160,17 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     const node: Record<string, unknown> = { id: "a" };
     node.self = node;
     expect(() => assertJsonSafe(node, { label })).toThrow(/contains itself/);
+  });
+
+  it("rejects a hole in a sparse array, which serializes to null", () => {
+    // `forEach` SKIPS holes, so the obvious walk accepts this and the worker
+    // receives `[null, 2]` where the author wrote a hole — a silent change to
+    // the input, which is the class this gate exists for.
+    const sparse: unknown[] = [];
+    sparse[1] = 2;
+    expect(() => assertJsonSafe({ rows: sparse }, { label })).toThrow(
+      /\.rows\[0\] is a hole in a sparse array/
+    );
   });
 
   it("accepts the same object appearing twice on separate branches", () => {

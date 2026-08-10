@@ -39,7 +39,7 @@ import { keyedRouter } from "../utility/keyed-router";
 import { z } from "zod";
 import type { BlockDefinition } from "../types/block";
 import type { ActionCore } from "../types/flow";
-import type { WorkstreamBinding, WorkstreamBindings } from "../types/workstream";
+import type { WorkstreamBindings } from "../types/workstream";
 
 /**
  * What the seam hands a detached dispatch as its input.
@@ -163,7 +163,12 @@ export function buildWorkstreamCore(
     return { block: only, inputSchema: workstreamDispatchInputSchema };
   }
 
-  const routes: Record<string, BlockDefinition<any, any>> = {};
+  // Null-prototype, because `boardId` is author-chosen and unrestricted. On a
+  // normal `{}`, a board legitimately named `__proto__` would hit the prototype
+  // setter instead of creating an own key: the route would be missing from
+  // `Object.values`, and `keyedRouter`'s own-property lookup would then refuse
+  // every dispatch for that board while the flow still defined successfully.
+  const routes: Record<string, BlockDefinition<any, any>> = Object.create(null);
   for (const [boardId, runner] of runners) {
     routes[boardId] = runner as BlockDefinition<any, any>;
   }
@@ -185,19 +190,4 @@ function singleEntry<K, V>(map: Map<K, V>): V | undefined {
   if (map.size !== 1) return undefined;
   for (const value of map.values()) return value;
   return undefined;
-}
-
-/**
- * Every binding's coordinate, for the board that declared it.
- *
- * Exposed for the runner's own lookup: a board holds its bindings before
- * `defineFlow` ever sees them, but the *reconciler* re-deriving a routing tuple
- * after a restart reads them back off the flow.
- */
-export function bindingsForBoard(
-  bindings: WorkstreamBindings | undefined,
-  boardId: string
-): readonly WorkstreamBinding[] {
-  if (bindings === undefined) return [];
-  return [...bindings.values()].filter((binding) => binding.boardId === boardId);
 }

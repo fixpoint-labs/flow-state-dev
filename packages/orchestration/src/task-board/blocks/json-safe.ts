@@ -67,7 +67,13 @@ export function assertJsonSafe(
   // copies — while one that contains itself does not terminate.
   const onPath = new Set<object>();
 
-  const walk = (node: unknown, path: string[]): void => {
+  // A single mutable path, pushed and popped as the walk descends. The obvious
+  // `[...path, segment]` at each node allocates a fresh array per node and is
+  // quadratic in depth; a detached payload carrying a deep dependency graph is
+  // exactly where that would be paid.
+  const path: string[] = [];
+
+  const walk = (node: unknown): void => {
     if (node === null) return;
 
     const type = typeof node;
@@ -100,11 +106,22 @@ export function assertJsonSafe(
     onPath.add(obj);
 
     if (Array.isArray(node)) {
-      node.forEach((entry, index) => {
-        // A hole in a sparse array serializes to null; treat it as the value it
-        // becomes rather than skipping it.
-        walk(entry, [...path, `[${index}]`]);
-      });
+      // Indexed rather than `forEach`, which SKIPS holes. A sparse array's hole
+      // is not absent on the other side — `JSON.stringify` writes it as `null`,
+      // so `[ , 2]` arrives as `[null, 2]`. That is a silent change to the
+      // worker's input, which is the whole class this gate rejects, and
+      // `forEach` would have walked straight past it.
+      for (let index = 0; index < node.length; index += 1) {
+        path.push(`[${index}]`);
+        if (!Object.prototype.hasOwnProperty.call(node, index)) {
+          throw new Error(
+            `${options.label} is not JSON-safe: ${joinPath(path)} is a hole in a sparse array, ` +
+              `which serializes to null. Fill it, or use a shorter array.`
+          );
+        }
+        walk(node[index]);
+        path.pop();
+      }
       onPath.delete(obj);
       return;
     }
@@ -118,16 +135,18 @@ export function assertJsonSafe(
     for (const [key, entry] of Object.entries(obj)) {
       // `undefined` in object position is dropped by `JSON.stringify`, so the
       // key silently vanishes rather than arriving empty.
+      path.push(`.${key}`);
       if (entry === undefined) {
         throw new Error(
-          `${options.label} is not JSON-safe: ${joinPath([...path, `.${key}`])} is undefined, ` +
+          `${options.label} is not JSON-safe: ${joinPath(path)} is undefined, ` +
             `so the key would be dropped entirely. Omit it, or use null.`
         );
       }
-      walk(entry, [...path, `.${key}`]);
+      walk(entry);
+      path.pop();
     }
     onPath.delete(obj);
   };
 
-  walk(value, []);
+  walk(value);
 }

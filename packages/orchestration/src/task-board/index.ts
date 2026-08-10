@@ -143,7 +143,7 @@ import {
 } from "./detached";
 import { buildDetachedRunner } from "./detached-runner";
 import { createSpawnDetached } from "./blocks/spawn-detached";
-import { coordinateKey } from "./coordinate";
+import { coordinateKey, type WorkerCoordinate } from "./coordinate";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -774,11 +774,19 @@ export function taskBoard<
   // table is the one place that already maps a coordinate to a block. The
   // substitute receives the same packed `TaskWorkerInput` an inline worker
   // would, which is what makes the two paths agree on what the worker sees.
-  const detachedByWorker = new Map<TaskWorker, TaskWorker>();
+  // Keyed by COORDINATE, never by block identity. A block may legitimately sit
+  // at two coordinates with different dispatch modes — `{ inline: shared,
+  // background: { worker: shared, dispatch: { mode: "detached" } } }` is a valid
+  // board — and keying by the block would substitute the spawn at BOTH, so the
+  // inline assignee would silently detach. It would then fail in the Workstream
+  // rather than here, because the gate routes on the row's assignee and finds no
+  // binding for it. Two detached coordinates sharing one block collapse the same
+  // way, keeping only the last.
+  const spawnByCoordinate = new Map<string, TaskWorker>();
   if (boardId !== undefined) {
     for (const slot of resolvedWorkers.detached) {
-      detachedByWorker.set(
-        slot.worker,
+      spawnByCoordinate.set(
+        coordinateKey(slot.coordinate),
         createSpawnDetached({
           name: `${name}-spawn-${slot.label}`,
           boardId,
@@ -787,20 +795,20 @@ export function taskBoard<
       );
     }
   }
-  const spawnFor = (worker: TaskWorker): TaskWorker =>
-    detachedByWorker.get(worker) ?? worker;
+  const spawnAt = (coordinate: WorkerCoordinate, worker: TaskWorker): TaskWorker =>
+    spawnByCoordinate.get(coordinateKey(coordinate)) ?? worker;
 
   const dispatchWorkers: TaskWorker | TaskWorkerRegistry =
     typeof (workers as { run?: unknown }).run === "function"
-      ? spawnFor(workers as TaskWorker)
+      ? spawnAt({ kind: "uniform" }, workers as TaskWorker)
       : Object.fromEntries(
           Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
             assignee,
-            spawnFor(worker),
+            spawnAt({ kind: "assignee", name: assignee }, worker),
           ])
         );
   const dispatchDefaultWorker =
-    defaultWorker !== undefined ? spawnFor(defaultWorker) : undefined;
+    defaultWorker !== undefined ? spawnAt({ kind: "floor" }, defaultWorker) : undefined;
 
   const workerStep = buildWorkerStep({
     name,

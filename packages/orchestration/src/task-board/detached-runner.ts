@@ -49,6 +49,8 @@ import { startLeaseRenewal } from "../tasks/lease-renewal";
 import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
 import { stampCurrentClaim } from "./flow-policy-wiring";
 import { coordinateKey, type WorkerCoordinate } from "./coordinate";
+import { createRecordError, createRecordSuccess } from "./blocks/record-result";
+import { taskBoardWorkerBodyStateSchema } from "./schemas";
 import type { ResolvedWorkerSlot } from "./detached";
 import type { Task, TaskCollectionRef } from "../tasks";
 
@@ -82,10 +84,18 @@ export class StaleDetachedClaimError extends Error {
  * cell for all of them, which is the concurrency bug the drain's own worker body
  * avoids the same way.
  */
-const detachedRunnerStateSchema = z.object({
-  /** The verified row, as the gate read it. `null` until the gate runs. */
-  verifiedTask: z.unknown().nullable().default(null),
-  /** The coordinate the row's assignee resolved to. `null` until the gate runs. */
+const detachedRunnerStateSchema = taskBoardWorkerBodyStateSchema.extend({
+  /**
+   * The coordinate the verified row's assignee resolved to. `null` until the
+   * gate runs.
+   *
+   * The only thing the gate has to hand forward beyond the claim, because it is
+   * the only thing a later step needs and cannot re-derive: the router runs
+   * after the tap and has no board read of its own. The verified row itself is
+   * deliberately NOT kept — the worker receives the payload the parent packed,
+   * so a copy of the row would be checkpointed on every detached request with no
+   * consumer.
+   */
   routedCoordinateKey: z.string().nullable().default(null),
 });
 
@@ -107,10 +117,15 @@ export interface BuildDetachedRunnerOptions {
    * nothing.
    */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
-  /** Every worker this board declared detached, with its coordinate. */
+  /**
+   * Every worker this board declared detached, with its coordinate.
+   *
+   * The floor and uniform cases are read off these coordinates rather than
+   * passed separately: a floor worker that was never declared detached is not
+   * reachable here at all, so a second parameter naming one could disagree with
+   * the slots and route a dispatch at a worker with no binding.
+   */
   detached: readonly ResolvedWorkerSlot[];
-  /** The board's floor worker, when it declared one. */
-  defaultCoordinate?: WorkerCoordinate;
 }
 
 /**
@@ -154,6 +169,24 @@ export function buildDetachedRunner(
 ): BlockDefinition<any, any> | undefined {
   const { name, boardId, collection: collectionFactory, detached } = options;
   if (detached.length === 0) return undefined;
+
+  // The same recorders the inline drain composes, bound to this board's
+  // collection. Reused rather than reimplemented: they own the ticket-fenced
+  // write-back and the rule for when lease renewal stops, and a second copy of
+  // that rule is how the two paths drift.
+  const recordSuccess = createRecordSuccess({
+    name: `${name}-workstream-record-success`,
+    collection: collectionFactory,
+  });
+  const recordError = createRecordError({
+    name: `${name}-workstream-record-error`,
+    collection: collectionFactory,
+    // Swallow after writing the failure. Rethrowing would fail the Workstream's
+    // request as well, and the request is not the thing that failed — the task
+    // is, and the row now says so. A failed detached request would additionally
+    // look to recovery like work to retry.
+    onError: "skip",
+  });
 
   const declaredAssignees = new Set<string>();
   let uniform = false;
@@ -241,10 +274,40 @@ export function buildDetachedRunner(
         // authority for it.
         const ticket = ticketForClaim(board.collectionId, row);
         const routed = coordinateForTask(row, declaredAssignees, hasFloor, uniform);
+        const routedKey = coordinateKey(routed);
 
+        // The envelope's coordinate is checked, not trusted — routing above
+        // already came from the row. This asserts the two agree.
+        //
+        // They can only disagree if the row's assignee moved between spawn and
+        // start, which a detached board forbids: `freezeLedgerAssignee` makes
+        // the assignee immutable after admission precisely because it is what
+        // the routing coordinate derives from. So a mismatch is not a stale
+        // claim in the ordinary sense — it means that guard did not hold, and
+        // the consequence is specific and bad: the child session was derived
+        // from the SPAWN's coordinate, so the work would run as a different
+        // worker inside a Workstream addressed for the original one, mixing two
+        // workers' histories under one topic.
+        //
+        // Cheap to check and it needs no read, since both values are already in
+        // hand. Without it the field would be decorative — persisted on every
+        // detached dispatch and consulted by nothing.
+        if (dispatch.coordinateKey !== routedKey) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            `this dispatch was addressed to ${dispatch.coordinateKey} but the row now routes to ` +
+              `${routedKey}. A detached board freezes a task's assignee at admission, so this ` +
+              `means that guard was bypassed — the Workstream it would run in belongs to a ` +
+              `different worker.`
+          );
+        }
+
+        // The ticket rides the state under the SAME key the drain's worker body
+        // uses, which is what lets the shipped recorders below settle this row
+        // without a second implementation of the fence.
         await ctx.sequencer!.patchState({
-          verifiedTask: row,
-          routedCoordinateKey: coordinateKey(routed),
+          currentClaim: ticket,
+          routedCoordinateKey: routedKey,
         });
 
         // Marks this scope so every item the detached worker emits carries the
@@ -271,5 +334,16 @@ export function buildDetachedRunner(
       workerRouter.connectInput<WorkstreamDispatchInput>(
         (dispatch: WorkstreamDispatchInput) => dispatch.payload
       )
-    );
+    )
+    // The Workstream settles its own task, through the SAME fenced recorders the
+    // inline drain uses — not a second settlement path. Both read the claim off
+    // `currentClaim`, which the gate stamped above, so a displaced attempt
+    // declines here exactly as it would inline.
+    //
+    // Without these two the row would sit `in_progress` forever while the
+    // renewal driver kept asserting a lease for a worker that had finished: the
+    // task never completes, nothing can reclaim it, and the detached path would
+    // be strictly worse than running inline.
+    .tap(recordSuccess)
+    .rescue([{ block: recordError }]);
 }
