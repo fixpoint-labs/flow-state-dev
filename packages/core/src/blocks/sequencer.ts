@@ -1061,7 +1061,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     // `config.rescue` (which `buildBlock` folds in on its own) because a
     // sequencer keeps its handlers outside the config, in the operation loop.
     childBlocks: [...childBlocks, ...rescueHandlers.map((handler) => handler.block)],
-    workstreamBindings: ownWorkstreamBindings,
+    ownWorkstreamBindings,
   });
 
   // Override the informational schema on the block definition so devtools and consumers

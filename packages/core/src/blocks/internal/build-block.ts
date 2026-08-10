@@ -127,7 +127,7 @@ export type BuildBlockOptions<
    * The bubble-up set on the definition is derived from this plus
    * `childBlocks` — callers never pre-merge it.
    */
-  workstreamBindings?: WorkstreamBindings;
+  ownWorkstreamBindings?: WorkstreamBindings;
   /**
    * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
    * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
@@ -221,7 +221,7 @@ export function buildBlock<
   // whole tree — and a composition site that forgets to pass a child drops it
   // from every rail at once, which `defineFlow`'s reachability assertion then
   // refuses at definition time rather than at a detached wake weeks later.
-  let workstreamBindings = options.workstreamBindings;
+  let workstreamBindings = options.ownWorkstreamBindings;
   for (const child of childBlocks) {
     workstreamBindings = mergeWorkstreamBindings(workstreamBindings, child.workstreamBindings);
   }
@@ -239,7 +239,7 @@ export function buildBlock<
     requiresOrg,
     childBlocks,
     workstreamBindings,
-    ownWorkstreamBindings: options.workstreamBindings,
+    ownWorkstreamBindings: options.ownWorkstreamBindings,
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
@@ -397,7 +397,7 @@ export function buildBlock<
         // throws — the symptom is a detached task that is admitted, claimed,
         // dispatched and then never runs.
         childBlocks: options.childBlocks,
-        workstreamBindings: definition.ownWorkstreamBindings,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
         // output. Forward it through.
@@ -416,7 +416,7 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
-        workstreamBindings: definition.ownWorkstreamBindings,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
         modelOutputMapper: mapper,
       });
     },
@@ -449,7 +449,7 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: mergedRequiresOrg,
         childBlocks: options.childBlocks,
-        workstreamBindings: definition.ownWorkstreamBindings,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
         modelOutputMapper: options.modelOutputMapper,
       });
     },
@@ -553,7 +553,7 @@ export function buildBlock<
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
         childBlocks: options.childBlocks,
-        workstreamBindings: definition.ownWorkstreamBindings,
+        ownWorkstreamBindings: definition.ownWorkstreamBindings,
       });
     }
   };
