@@ -141,6 +141,7 @@ import {
   type TaskWorkerSlot,
   type TaskWorkerSlotRegistry,
 } from "./detached";
+import { buildDetachedRunner } from "./detached-runner";
 import { coordinateKey } from "./coordinate";
 
 // ---------------------------------------------------------------------------
@@ -1037,15 +1038,31 @@ export function taskBoard<
   // second guard: `assertDetachedBoardSupported` above already refused a
   // detached board without one, because the value lands in a persisted routing
   // key. A board with no detached workers stamps nothing.
+  //
+  // Each binding also carries this board's ONE detached runner (FIX-982 P3a) —
+  // the same object on every binding, because the runner belongs to the board
+  // rather than to a worker. That is what lets the flow-level assembly route a
+  // dispatch to a board and never to a bare worker, so the start gate, the task
+  // scope mark and the claim-ticket re-mint cannot be bypassed by adding a
+  // worker later.
   if (boardId !== undefined) {
-    declareWorkstreamBindings(
-      drain,
-      resolvedWorkers.detached.map((slot) => ({
-        boardId,
-        coordinateKey: coordinateKey(slot.coordinate),
-        worker: slot.worker as unknown as BlockDefinition<never, never>,
-      }))
-    );
+    const runner = buildDetachedRunner({
+      name,
+      boardId,
+      collection: collectionFactory,
+      detached: resolvedWorkers.detached,
+    });
+    if (runner !== undefined) {
+      declareWorkstreamBindings(
+        drain,
+        resolvedWorkers.detached.map((slot) => ({
+          boardId,
+          coordinateKey: coordinateKey(slot.coordinate),
+          worker: slot.worker as unknown as BlockDefinition<never, never>,
+          runner: runner as unknown as BlockDefinition<never, never>,
+        }))
+      );
+    }
   }
 
   // FIX-982 decision 10 — a detached board's assignee is fixed at admission,

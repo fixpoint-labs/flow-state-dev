@@ -39,11 +39,29 @@ function workerBlock(name: string): BlockDefinition<never, never> {
   return handler({ name, execute: () => null }) as unknown as BlockDefinition<never, never>;
 }
 
+/**
+ * One runner per board, standing in for what `taskBoard()` stamps.
+ *
+ * Memoized by `boardId` because that is the real invariant: a board builds its
+ * runner once and puts the SAME object on every binding it declares. A fixture
+ * that minted a fresh runner per binding would make a one-board flow look like a
+ * boardId collision to the assembly.
+ */
+const runners = new Map<string, BlockDefinition<never, never>>();
+function runnerBlock(boardId: string): BlockDefinition<never, never> {
+  const existing = runners.get(boardId);
+  if (existing !== undefined) return existing;
+  const runner = workerBlock(`runner-${boardId}`);
+  runners.set(boardId, runner);
+  return runner;
+}
+
 function binding(boardId: string, workerName: string): WorkstreamBinding {
   return {
     boardId,
     coordinateKey: `assignee|${workerName.length}:${workerName}`,
     worker: workerBlock(workerName),
+    runner: runnerBlock(boardId),
   };
 }
 

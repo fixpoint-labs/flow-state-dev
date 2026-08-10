@@ -1,0 +1,275 @@
+/**
+ * The block a detached dispatch for one board enters (FIX-982 P3a).
+ *
+ * `taskBoard()` builds exactly one of these per board and stamps it onto every
+ * binding that board declares, so `core`'s flow-level assembly routes to a
+ * *board* and never to a worker. That is what makes the pre-worker sequence
+ * below unbypassable: there is no path from a detached dispatch to a bare worker
+ * block, and adding a worker to a board that already has a runner is covered by
+ * construction rather than by remembering to wrap it.
+ *
+ * ## The four things that must happen before a detached worker runs
+ *
+ * All four are the same read, which is the point — one durable read per detached
+ * request, doing four jobs:
+ *
+ * 1. **The start gate.** Between claim and spawn there is no request, so a
+ *    cancel or a reclaim landing in that gap leaves the claimant proceeding from
+ *    a stale snapshot — a cancelled task running to completion. The gate re-reads
+ *    the row and aborts unless the claim is still current: `attempts` matches,
+ *    `createdAt` matches, and the status is still `in_progress`.
+ * 2. **Worker selection.** The route comes from the row's own `assignee`, not
+ *    from the dispatch envelope (BP-031). The envelope names a board; the ledger
+ *    names the worker.
+ * 3. **The task-scope mark.** `_markTaskScope` walks up to the first sequencer
+ *    parent, so the runner's root must be a sequencer and this must happen in
+ *    its leading `.tap`, before any child scope exists. Without it every item the
+ *    detached worker emits is unattributed and the task's own item view is empty.
+ * 4. **The claim-ticket re-mint.** The parent stamped its ticket into an
+ *    `AsyncLocalStorage`, which is per-process and per-async-chain and therefore
+ *    cannot reach here — deliberately, since a ticket carried on a payload is the
+ *    forgeable shape the substrate rejects. The ticket is re-minted from the row
+ *    the gate just verified, which makes it server-derived. Skipping it would
+ *    leave every `completeTask` / `failTask` / `updateTask` the worker's model
+ *    calls running unfenced, silently: "no ticket presented" and "not a claimed
+ *    worker" are the same condition to the guard.
+ *
+ * ## `createdAt` is why this is an identity check and not a counter check
+ *
+ * A task deleted and recreated under the same id inside the claim→spawn window
+ * passes an attempt-only gate. Comparing `createdAt` closes that with a fact the
+ * ticket already carries, so it costs no extra read.
+ */
+import { sequencer, utility } from "@flow-state-dev/core";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { WorkstreamDispatchInput } from "@flow-state-dev/core";
+import { z } from "zod";
+import { ticketForClaim } from "../tasks/claim-ticket";
+import { startLeaseRenewal } from "../tasks/lease-renewal";
+import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
+import { stampCurrentClaim } from "./flow-policy-wiring";
+import { coordinateKey, type WorkerCoordinate } from "./coordinate";
+import type { ResolvedWorkerSlot } from "./detached";
+import type { Task, TaskCollectionRef } from "../tasks";
+
+/**
+ * Thrown by the start gate when the claim this dispatch names is no longer the
+ * row's current claim.
+ *
+ * A named error rather than a silent return: a detached request that stops
+ * because its claim was superseded is a *correct* outcome, but one that stops
+ * with no trace is indistinguishable from one that never ran. The board's
+ * recorder path is not reached — the successor owns the row now, and writing
+ * anything against it is precisely what the fence exists to refuse.
+ */
+export class StaleDetachedClaimError extends Error {
+  readonly code = "stale-detached-claim";
+
+  constructor(
+    readonly taskId: string,
+    detail: string
+  ) {
+    super(`[task-board] detached dispatch for task "${taskId}" is stale: ${detail}`);
+    this.name = "StaleDetachedClaimError";
+  }
+}
+
+/**
+ * The runner's own sequencer state: the row the gate verified.
+ *
+ * Held as state rather than in a closure because the runner is built once and
+ * shared by every detached request on the board — a closure cell would be one
+ * cell for all of them, which is the concurrency bug the drain's own worker body
+ * avoids the same way.
+ */
+const detachedRunnerStateSchema = z.object({
+  /** The verified row, as the gate read it. `null` until the gate runs. */
+  verifiedTask: z.unknown().nullable().default(null),
+  /** The coordinate the row's assignee resolved to. `null` until the gate runs. */
+  routedCoordinateKey: z.string().nullable().default(null),
+});
+
+export interface BuildDetachedRunnerOptions {
+  /** Board name, used to name the assembled blocks. */
+  name: string;
+  /** The board's stable id — what a dispatch for this board carries. */
+  boardId: string;
+  /**
+   * Resolve this board's collection from a block context.
+   *
+   * **Resolved against the running context, which inside a Workstream is the
+   * Workstream's own.** A session-scoped board is therefore not reachable here,
+   * and that is a real bound rather than an oversight: the general
+   * resolve-the-parent's-board seam is settlement's, and a board whose rows a
+   * detached worker must reach has to be addressable from the child — user or
+   * org scope, or a session-scoped board keyed by the parent session id. The
+   * refusal below names it rather than hydrating an empty board and settling
+   * nothing.
+   */
+  collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
+  /** Every worker this board declared detached, with its coordinate. */
+  detached: readonly ResolvedWorkerSlot[];
+  /** The board's floor worker, when it declared one. */
+  defaultCoordinate?: WorkerCoordinate;
+}
+
+/**
+ * Resolve which coordinate a row's `assignee` routes to, using the board's own
+ * three-case resolution.
+ *
+ * Deliberately not `dispatch-and-execute`'s helper, which throws on an unknown
+ * assignee and has no floor. The `Object.hasOwn` shape matters for the same
+ * reason it does in the drain: `assignee` arrives from a model-facing tool, so a
+ * bare index would resolve an inherited `Object.prototype` member and return a
+ * non-worker while skipping both the floor and the error.
+ */
+function coordinateForTask(
+  task: Task,
+  declared: ReadonlySet<string>,
+  hasFloor: boolean,
+  uniform: boolean
+): WorkerCoordinate {
+  if (uniform) return { kind: "uniform" };
+  if (task.assignee !== undefined && declared.has(task.assignee)) {
+    return { kind: "assignee", name: task.assignee };
+  }
+  if (hasFloor) return { kind: "floor" };
+  throw new StaleDetachedClaimError(
+    task.id,
+    task.assignee === undefined
+      ? "the row carries no assignee and this board declares no floor worker"
+      : `no detached worker is declared for assignee "${task.assignee}" and this board declares no floor worker`
+  );
+}
+
+/**
+ * Build the board's detached runner.
+ *
+ * Returns `undefined` when the board declared no detached workers — the same
+ * "honest absence" the flow-level core relies on, since a board with nothing
+ * detached must stamp no binding and contribute no route.
+ */
+export function buildDetachedRunner(
+  options: BuildDetachedRunnerOptions
+): BlockDefinition<any, any> | undefined {
+  const { name, boardId, collection: collectionFactory, detached } = options;
+  if (detached.length === 0) return undefined;
+
+  const declaredAssignees = new Set<string>();
+  let uniform = false;
+  let hasFloor = false;
+  for (const slot of detached) {
+    if (slot.coordinate.kind === "assignee") declaredAssignees.add(slot.coordinate.name);
+    if (slot.coordinate.kind === "uniform") uniform = true;
+    if (slot.coordinate.kind === "floor") hasFloor = true;
+  }
+
+  // Route by the board's own encoded coordinate rather than by raw assignee, so
+  // a board that legally declares an assignee spelled `"uniform"` or `"floor"`
+  // cannot alias the slot of the same name.
+  const routes: Record<string, BlockDefinition<any, any>> = {};
+  for (const slot of detached) {
+    routes[coordinateKey(slot.coordinate)] = slot.worker as BlockDefinition<any, any>;
+  }
+
+  const workerRouter = utility.keyedRouter({
+    name: `${name}-workstream-router`,
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    blocks: routes,
+    select: (_input: unknown, ctx: BlockContext) => {
+      const routed = ctx.sequencer?.state?.routedCoordinateKey;
+      if (typeof routed !== "string") {
+        // Unreachable through the assembled runner — the gate writes this before
+        // the router is reached. Named anyway, because the failure it guards
+        // against is the router being composed somewhere the gate is not.
+        throw new Error(
+          `[task-board] detached runner for board "${boardId}" reached its worker router ` +
+            `without a verified route. The router must run inside the runner's sequencer, ` +
+            `after the start gate.`
+        );
+      }
+      return routed;
+    },
+  });
+
+  return sequencer({
+    name: `${name}-workstream-runner`,
+    stateSchema: detachedRunnerStateSchema,
+  })
+    .tap(async (dispatch: WorkstreamDispatchInput, ctx) =>
+      // Same first-statement discipline the drain's worker body uses: the lease
+      // renewal slot has to be published before the first `await`, or it lands
+      // on a continuation scope that dies with this tap and every later reader
+      // sees `undefined`.
+      withLeaseRenewalScope(async () => {
+        const board = await collectionFactory(ctx);
+        const row = board.get(dispatch.taskId) as Task | undefined;
+
+        // THE START GATE. Three facts, and each closes a different window.
+        if (row === undefined) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            `no such row on board "${boardId}" — it was deleted, or this board resolved to a ` +
+              `different ledger than the one that claimed it (a session-scoped detached board ` +
+              `is not reachable from its Workstream)`
+          );
+        }
+        if (row.attempts !== dispatch.attempt) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            `attempt ${dispatch.attempt} was superseded by attempt ${row.attempts}`
+          );
+        }
+        if (row.createdAt !== dispatch.createdAt) {
+          // Not a counter check: the id was reused, so this is a different task
+          // wearing the same name.
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            "the row was deleted and recreated under the same id after this dispatch was addressed"
+          );
+        }
+        if (row.status !== "in_progress") {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            `the row is "${row.status}", so no claim is outstanding on it`
+          );
+        }
+
+        // The ticket is minted from the row just verified, never carried on the
+        // envelope — the envelope supplied the target of the check and never the
+        // authority for it.
+        const ticket = ticketForClaim(board.collectionId, row);
+        const routed = coordinateForTask(row, declaredAssignees, hasFloor, uniform);
+
+        await ctx.sequencer!.patchState({
+          verifiedTask: row,
+          routedCoordinateKey: coordinateKey(routed),
+        });
+
+        // Marks this scope so every item the detached worker emits carries the
+        // task id at emit time. Must be inside the runner's own sequencer, which
+        // is why the runner's root is one.
+        ctx._markTaskScope?.(row.id);
+        stampCurrentClaim(ticket);
+        stampLeaseRenewal(
+          startLeaseRenewal({
+            collection: board,
+            ticket,
+            claimedTask: row,
+            signal: ctx.signal,
+          })
+        );
+      })
+    )
+    // The worker receives the payload the parent packed at claim time, not a
+    // re-pack: dependency outputs and flow-policy `priorWork` are selected
+    // against the parent's live board and its run state, neither of which exists
+    // here. That payload is what the parent validated as JSON-safe before it
+    // spawned, so what arrives is what was checked.
+    .step(
+      workerRouter.connectInput<WorkstreamDispatchInput>(
+        (dispatch: WorkstreamDispatchInput) => dispatch.payload
+      )
+    );
+}

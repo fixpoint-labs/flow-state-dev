@@ -638,6 +638,12 @@ export type FlowType<
    * value is copied from the base instance, so the two never disagree.
    */
   workstreamBindings?: WorkstreamBindings;
+  /**
+   * Mirror of `FlowInstance.workstream` — the single assembled entry a detached
+   * dispatch resolves, present exactly when {@link workstreamBindings} is
+   * non-empty.
+   */
+  workstream?: ActionCore;
   authentication?: AuthenticationConfig;
   actions: TActions;
   session?: TSession;

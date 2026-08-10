@@ -18,6 +18,7 @@ import {
   workstreamBindingKey,
   type WorkstreamBindings,
 } from "../types/workstream";
+import { buildWorkstreamCore } from "./workstream-core";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -849,6 +850,12 @@ function createFlowInstance(
 
   const workstreamBindings = collectWorkstreamBindings(declaredBlocks);
   assertWorkstreamBindingsReachable(kind, declaredBlocks, workstreamBindings);
+  // The one core a detached dispatch resolves (FIX-982 P3a). Assembled here
+  // because this is the only point that holds every board's bindings at once,
+  // and `undefined` for a flow that declares no detached work — which is what
+  // makes `startDetached`'s `no-workstream-core` refusal a real answer rather
+  // than a placeholder.
+  const workstream = buildWorkstreamCore(kind, workstreamBindings);
 
   return {
     id: options?.id ?? kind,
@@ -858,6 +865,7 @@ function createFlowInstance(
     authentication,
     actions,
     workstreamBindings,
+    ...(workstream !== undefined ? { workstream } : {}),
     session,
     request: requestMerged,
     user,
@@ -913,6 +921,12 @@ export function defineFlow<
     // directly, and a missing field reads as an absent feature rather than as an
     // unmirrored one.
     workstreamBindings: baseInstance.workstreamBindings,
+    // Mirrored alongside the bindings it is assembled from, so a reader of the
+    // blueprint can tell "declares detached work" from "declares none" without
+    // instantiating the flow.
+    ...(baseInstance.workstream !== undefined
+      ? { workstream: baseInstance.workstream }
+      : {}),
     authentication: baseInstance.authentication,
     actions: baseInstance.actions as TActions,
     session: baseInstance.session as TSession,

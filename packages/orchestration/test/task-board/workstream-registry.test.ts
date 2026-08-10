@@ -240,7 +240,12 @@ describe("registry bubble-up — the off state (BP-030 / BP-035)", () => {
     expect(flow.workstreamBindings).toBeUndefined();
   });
 
-  it("does not populate the workstream core — that is not P2's to assemble", () => {
+  it("assembles the workstream core a detached dispatch resolves", () => {
+    // P2 asserted this stayed undefined, because P2 shipped no execution. P3a is
+    // what fills it, and the assertion has to flip rather than be deleted: an
+    // absent core makes `startDetached` refuse `no-workstream-core`, so a board
+    // that declares detached workers and produces no core is detachment that
+    // silently never runs — the failure class this epic exists to remove.
     const board = detachedBoard({ name: "issue-work", boardId: "issue-work" });
     const flow = defineFlow({
       kind: "board",
@@ -248,7 +253,25 @@ describe("registry bubble-up — the off state (BP-030 / BP-035)", () => {
     })({ id: "board" });
 
     expect(flow.workstreamBindings?.size).toBe(1);
-    expect(flow.workstream).toBeUndefined();
+    expect(flow.workstream).toBeDefined();
+  });
+
+  it("routes the core at the board's runner, never at a bare worker", () => {
+    // The security property the assembly exists for: a detached dispatch cannot
+    // reach a worker except through its board's runner, which is what carries
+    // the start gate, the task-scope mark and the claim-ticket re-mint. If the
+    // core ever pointed straight at a worker, all three would be skipped with no
+    // error anywhere.
+    const board = detachedBoard({ name: "issue-work", boardId: "issue-work" });
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: board.drain } },
+    })({ id: "board" });
+
+    const binding = [...(flow.workstreamBindings?.values() ?? [])][0];
+    expect(binding).toBeDefined();
+    expect(flow.workstream?.block).toBe(binding!.runner);
+    expect(flow.workstream?.block).not.toBe(binding!.worker);
   });
 });
 
