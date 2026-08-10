@@ -185,6 +185,50 @@ const snapshot = await sessions.getState(sessionId, {
 });
 ```
 
+#### Background work (Workstreams)
+
+A Workstream is a child session that outlives the turn that started it. Reading
+one is two hops: `listWorkstreams` for the rows, then the shipped
+`listSessionRequests` with a row's `id` for that work's own history. Detachment
+is declared by the flow author — the client has no way to request it.
+
+```ts
+// Same-origin: the client's paths are already absolute from the root.
+const sessions = createSessionClient();
+
+const workstreams = await sessions.listWorkstreams(parentSessionId, {
+  limit: 25,
+  offset: 0,
+});
+
+// One request for the whole list — the row carries what a list renders.
+for (const ws of workstreams) {
+  render(ws.topic ?? ws.id, ws.status ?? null);
+}
+```
+
+`WorkstreamSummary` is `{ id, parentSessionId, createdAt, updatedAt, topic?,
+coordinate?, status? }` — a named field set, not a `SessionSummary`.
+
+- **`status`** is `"active" | "completed" | "incomplete" | "failed" | "aborted"`,
+  and is **absent** when the Workstream has not run anything yet. `"active"`
+  means *not finished* and nothing more: it does not separate running from
+  queued from paused waiting for a person, and it is the last state the server
+  recorded rather than a liveness check. It is its own `WorkstreamStatus`
+  union rather than `RequestStatus` — that union's run states
+  (`"in_progress"`, `"suspended"`, `"interrupted"`) collapse into `"active"`
+  and can never appear here, so reusing it would hand consumers an exhaustive
+  switch over branches that cannot fire. A finer breakdown arrives later as a
+  separate optional field, never as new members of this union.
+- **`topic` / `coordinate`** are display-only labels. They route, authorize and
+  identify nothing, and are absent on any session that is not background work.
+- Every optional field is `== null`-guarded by consumers (BP-030).
+
+The client's one piece of filtering is a compatibility check: a row whose
+`parentSessionId` does not match the requested parent is dropped rather than
+relabelled as that conversation's background work. Authorization is the
+server's, resolved from the stored parent record (BP-031).
+
 ### SSE Stream Client
 
 ```ts
