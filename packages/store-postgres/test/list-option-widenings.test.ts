@@ -312,6 +312,21 @@ const SHAPES = {
       limit: 25,
       offset: 0,
       ...IDENTITY
+    }),
+  /**
+   * The same listing for a **tenant-bound** caller. Every other shape here is
+   * unbound, which is what left the cross-tenant axis unreachable: with no
+   * tenant on the caller there is no foreign tenant to be crowded out by, so a
+   * single-tenant fixture cannot express the failure.
+   */
+  listingBound: (store: PostgresStoreRegistry) =>
+    store.session.list({
+      parentage: { parentOf: "p_bound" },
+      orderBy: "createdAt",
+      limit: 25,
+      offset: 0,
+      ...IDENTITY,
+      tenantId: "acme"
     })
 } as const;
 
@@ -490,6 +505,53 @@ describe("Postgres cost property — examined work does not grow with history", 
    * and — the part that actually matters — it does not multiply by the child's
    * own history. A regression that made it worse than linear fails here.
    */
+  /**
+   * Axis 4 — the **cross-tenant** boundary on the child listing, which axis 2
+   * does not reach: axis 2 measures `read1` and adds only request records, so
+   * nothing in this gate ever put another tenant's rows under the target
+   * parent.
+   *
+   * `parent_session_id` stores the **bare** session id — the route queries it
+   * with the id straight off the URL path — so two tenants that reuse a
+   * predictable parent id produce rows sharing an index prefix. Without
+   * `tenant_id`/`org_id` in the index, those rows sit ahead of the caller's
+   * own in `created_at DESC` order and are walked and discarded, which makes
+   * one tenant's history grow another tenant's nominally bounded read. That is
+   * a stronger failure than axis 2's accepted linear bound: the rows belong to
+   * a different customer, so the caller cannot cap them by their own
+   * behaviour.
+   *
+   * Asserted **flat**, not linear-bounded, because unlike axis 2 this one *is*
+   * open to a correct implementation — the boundary keys are equality and
+   * `IS NULL` predicates a btree can serve as index conditions when they sit
+   * between the parent and the ordering columns. Both dimensions are added
+   * together because the route supplies both keys and fixing one would leave
+   * the other amplifying.
+   */
+  it("axis 4: a foreign tenant's children under the same parent id move nothing", async () => {
+    const h = await harness();
+    // The bound caller's own children. Seeded here rather than in the shared
+    // baseline so the other axes keep measuring exactly what they measured.
+    await h.addSession({ id: "p_bound", parent: null, tenant: "acme" });
+    for (let i = 0; i < 200; i++) {
+      await h.addSession({ parent: "p_bound", tenant: "acme", createdAt: 1_000 + i });
+    }
+    const before = await h.measure("listingBound");
+
+    // Newer than every child the caller owns, so a scan that cannot exclude
+    // them by index condition meets them *first* — the realistic shape, a
+    // different customer actively starting work now.
+    const added = 400;
+    for (let i = 0; i < added / 2; i++) {
+      await h.addSession({ parent: "p_bound", tenant: "other", createdAt: 5_000 + i });
+      await h.addSession({ parent: "p_bound", tenant: "acme", org: "globex", createdAt: 6_000 + i });
+    }
+
+    const after = await h.measure("listingBound");
+    expect(after.rows + after.removed).toBe(before.rows + before.removed);
+    await h.db.close();
+  }, 60_000);
+
   it("axis 2: the boundary costs at most one examined row each, never more", async () => {
     const h = await harness();
     const before = await h.measure("read1");

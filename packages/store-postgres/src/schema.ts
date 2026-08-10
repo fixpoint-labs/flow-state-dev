@@ -84,7 +84,32 @@ const REQUESTS_INDEXES = [
  */
 const CONCURRENT_INDEXES = [
   // The child listing: one parent's children, ordered on immutable keys.
+  // Serves the caller whose tenant and org are unbound, which is every
+  // single-tenant deployment.
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_created ON sessions(parent_session_id, created_at, id)",
+  // The same listing for a caller that **is** tenant- or org-bound, which the
+  // index above cannot serve: `parent_session_id` holds the *bare* session id
+  // (the route queries it with the id straight off the URL path), so two
+  // tenants reusing a predictable parent id share that index's whole key
+  // prefix. Their rows are then walked and discarded in `created_at` order and
+  // one tenant's history grows another tenant's nominally bounded read.
+  //
+  // Both indexes, not one, because they are not substitutes — measured on
+  // PGlite with the gate's own fixture, examined rows for the listing:
+  //
+  //   index set        unbound caller        tenant-bound caller
+  //   this one only    50, no sort           450 + sort, and the planner
+  //                                          does not pick it at all
+  //   scope one only   450 + sort            flat under a foreign tenant
+  //   both             50, no sort           flat under a foreign tenant
+  //
+  // The scope index alone is a 9x regression on the common single-tenant read,
+  // because Postgres does not treat `IS NULL` as an equality for sort-order
+  // purposes: with `tenant_id`/`org_id` ahead of `created_at`, an all-unbound
+  // caller loses the ordering and sorts the parent's whole child set — the
+  // exact failure the first index exists to prevent. With both present the
+  // planner picks per query, which is what the axis-4 differential pins.
+  "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_parent_scope_created ON sessions(parent_session_id, tenant_id, org_id, created_at, id)",
   // The most-recent-run read. The existence check that precedes it is already
   // served by `idx_requests_session_status` and needs nothing new.
   "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_requests_session_created ON requests(session_id, created_at, id)"
@@ -99,7 +124,7 @@ const DROP_INVALID_FIX_1010_INDEXES = `DO $$
 DECLARE
   n TEXT;
 BEGIN
-  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_requests_session_created']
+  FOREACH n IN ARRAY ARRAY['idx_sessions_parent_created', 'idx_sessions_parent_scope_created', 'idx_requests_session_created']
   LOOP
     IF EXISTS (
       SELECT 1 FROM pg_class c

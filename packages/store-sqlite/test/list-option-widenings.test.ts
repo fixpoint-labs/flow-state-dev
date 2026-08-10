@@ -267,9 +267,35 @@ describe("SQLite index selection for the FIX-1010 query shapes", () => {
     );
     expect(detail).toContain("SEARCH");
     expect(detail).not.toContain("SCAN sessions");
-    expect(detail).toContain("idx_sessions_parent_created");
+    // The scope index, because the route always sends the tenant and org keys.
+    // SQLite differs from Postgres here and the difference is the reason both
+    // indexes exist: SQLite accepts `IS ?` against NULL as an index equality,
+    // so this one index serves the bound and unbound callers alike, while
+    // Postgres will not use it for an unbound caller at all (a `NULL` test is
+    // not an equality for sort-order purposes there) and falls back to the
+    // parent-only index. Neither adapter is served by one index alone.
+    expect(detail).toContain("idx_sessions_parent_scope_created");
     // A temporary b-tree here means the page limit applies after sorting the
     // parent's whole child set.
+    expect(detail).not.toContain("USE TEMP B-TREE FOR ORDER BY");
+  });
+
+  /**
+   * The caller that omits the tenant and org keys entirely — an admin or debug
+   * listing, where absence means "no filter" rather than "match unbound". The
+   * scope index cannot serve it (its second and third columns are
+   * unconstrained, so the ordering suffix is unreachable), which is what keeps
+   * the parent-only index earning its place on this adapter too.
+   */
+  it("the key-absent child listing still searches an ordered index", () => {
+    const detail = plan(
+      db(),
+      `SELECT data FROM sessions WHERE parent_session_id = ? AND user_id = ? AND flow_kind = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      ["p_3", "alice", "chat", 25, 0]
+    );
+    expect(detail).toContain("SEARCH");
+    expect(detail).not.toContain("SCAN sessions");
+    expect(detail).toContain("idx_sessions_parent_created");
     expect(detail).not.toContain("USE TEMP B-TREE FOR ORDER BY");
   });
 

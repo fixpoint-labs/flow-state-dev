@@ -41,6 +41,21 @@ CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_ses
 -- that reverses every key uniformly.
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_created
   ON sessions(parent_session_id, created_at, id);
+-- The same listing for a caller whose tenant or org **is** bound, which the
+-- index above cannot serve: \`parent_session_id\` holds the bare session id, so
+-- two tenants reusing a predictable parent id share that index's whole key
+-- prefix and one tenant's children are walked and discarded ahead of the
+-- other's. Both indexes are kept because they are not substitutes — on
+-- Postgres, where the cost is measurable, the scope index alone regresses the
+-- unbound (single-tenant) read 9x, since \`IS NULL\` is not an equality for
+-- sort-order purposes and the ordering suffix stops being usable.
+--
+-- **Here the structure is mirrored, not verified.** SQLite's plan output
+-- reports which index was selected, never how many rows a scan examined and
+-- discarded, so this adapter cannot observe the cost property the Postgres
+-- axis-4 differential measures. Asserted only as index selection.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_created
+  ON sessions(parent_session_id, tenant_id, org_id, created_at, id);
 `;
 
 const REQUESTS_TABLE = `
