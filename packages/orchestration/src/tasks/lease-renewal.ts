@@ -242,11 +242,37 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
     }
   }
 
+  /**
+   * When the tick that is currently scheduled was DUE, on the collection's
+   * clock. The next one is phased against this rather than against the moment
+   * the previous write happened to finish.
+   *
+   * A renewal is a network write, and a slow one eats the interval that was
+   * supposed to carry the retry. Scheduling `cadence` from *settle* time pushes
+   * every subsequent tick out by however long the failure took, so the
+   * tolerance this driver advertises — `RENEWAL_DIVISOR - 2` consecutive
+   * failures survived — silently does not hold for the failure mode most likely
+   * to need it. Worked through: a 3 s lease renews every 1 s; a write issued at
+   * 1 s that rejects at 2.5 s schedules the retry for 3.5 s, half a second
+   * after the lease it was meant to save has already gone. Phased against the
+   * due time instead, the retry goes out immediately with 500 ms of lease left.
+   */
+  let dueAt = now();
+
   function schedule(delayMs: number): void {
     if (stopped) return;
+    dueAt = now() + delayMs;
     cancelTimer = timer(() => {
       cancelTimer = undefined;
-      void renew().then(() => schedule(cadence));
+      void renew().then(() => {
+        // The grid position this tick's successor should land on, then the wait
+        // that gets there. Floored rather than clamped at zero: a driver that
+        // is already past due should retry at once, but a store failing
+        // instantly would otherwise spin, and `MIN_RENEWAL_DELAY_MS` is exactly
+        // the interval below which a timer cannot be trusted to mean anything.
+        const nextDueAt = dueAt + cadence;
+        schedule(Math.max(nextDueAt - now(), MIN_RENEWAL_DELAY_MS));
+      });
     }, delayMs);
   }
 
@@ -258,7 +284,9 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
     // this is what makes the loss prompt — the write is declined on the
     // driver's first instruction and the worker stops at once, instead of
     // running another two-thirds of what was left before finding out.
-    void renew().then(() => schedule(cadence));
+    void renew().then(() =>
+      schedule(Math.max(dueAt + cadence - now(), MIN_RENEWAL_DELAY_MS))
+    );
   } else {
     schedule(firstDelay);
   }

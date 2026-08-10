@@ -69,4 +69,12 @@ govern a task awaiting review, so it stays yours for as long as the review takes
   seam that sees one; use it to release what a preceding step started. Check the
   outcome before releasing: the hook runs before the steps that follow, so on
   the other two exits there is usually a recorder downstream that still needs
-  whatever you are about to let go of.
+  whatever you are about to let go of. It is skipped entirely when nothing was
+  dispatched — a `stepIf` that was gated off, or a step replayed from a durable
+  resume — so cleanup does not re-run on every re-entry.
+
+Both options now reach a step's whole subtree, including the background work it
+dispatches. `.work()`, `.workIf()` and `.forEachBackground()` deliberately run
+under the request's background signal so they outlive a disconnected client;
+they now run under that signal composed with the step's, so they still stop when
+the step's own signal fires.

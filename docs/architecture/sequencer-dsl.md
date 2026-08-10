@@ -109,7 +109,8 @@ releases too early on those two. The usual shape is the one above: release on
 `"suspended"`, and let the downstream handler release the rest once it is done.
 
 It runs in a `finally`, so it cannot change the step's outcome, and it is not
-called when a `stepIf` condition skips the dispatch. Use it to release what the
+called when nothing was dispatched — a `stepIf` condition that skipped the
+step, or a child injected from the resume replay log rather than executed. Use it to release what the
 dispatch was holding, not for recovery — that is `.rescue()`'s job.
 
 ### `stepIf(condition, block)` — Conditional Step

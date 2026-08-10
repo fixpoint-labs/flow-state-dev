@@ -24,7 +24,7 @@
  * helper compatible with both the uniform-worker and registry shapes
  * without forcing patterns to pre-declare every worker.
  */
-import { handler } from "@flow-state-dev/core";
+import { composeBackgroundSignal, handler } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { ticketForClaim } from "../claim-ticket";
@@ -172,25 +172,48 @@ function packWorkerInput(
  * the fence will refuse. Composing keeps both promises — the task still
  * survives transport teardown, and it still stops when the claim is gone.
  *
+ * **The background signal is composed at its source too**, not only at this
+ * closure. Composing here alone reaches a `.work()` dispatched by the worker
+ * itself and nothing deeper: the scope this closure builds hands descendants
+ * the engine's own `_withExecutionScope`, and a background dispatch two levels
+ * down substitutes the request's background signal again with this one nowhere
+ * in it. Setting `_requestBackgroundSignal` on the worker's context is what
+ * makes it hold at any depth, because every scope now inherits that field from
+ * its parent.
+ *
  * A unit-test context installs no scope at all, and there the spread already is
  * the whole story — nested steps run on the context they were handed.
  */
 function workerCtx(ctx: BlockContext, signal: AbortSignal): BlockContext {
+  const background = composeBackgroundSignal(ctx, signal);
   const withScope = ctx._withExecutionScope;
-  if (withScope === undefined) return { ...ctx, signal };
-  return {
-    ...ctx,
-    signal,
-    _withExecutionScope: (parent, execute, signalOverride) =>
-      withScope.call(
-        ctx,
-        parent,
-        execute,
-        signalOverride === undefined
-          ? signal
-          : AbortSignal.any([signalOverride, signal])
-      ),
-  };
+  const base: BlockContext =
+    withScope === undefined
+      ? { ...ctx, signal }
+      : {
+          ...ctx,
+          signal,
+          _withExecutionScope: (parent, execute, signalOverride, backgroundOverride) =>
+            withScope.call(
+              ctx,
+              parent,
+              execute,
+              signalOverride === undefined
+                ? signal
+                : AbortSignal.any([signalOverride, signal]),
+              // Same composition on the background channel. The scope this
+              // builds is where a descendant's `_requestBackgroundSignal` is
+              // stamped, so passing it here is what makes it hold at depth.
+              backgroundOverride === undefined
+                ? background
+                : AbortSignal.any([backgroundOverride, signal])
+            ),
+        };
+  if (background !== undefined) {
+    (base as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
+      background;
+  }
+  return base;
 }
 
 /**

@@ -455,8 +455,10 @@ so releasing on `"returned"` would stop the thing while the step that still need
 it is running. Release on `"suspended"` — the exit with nothing downstream — and
 let the downstream handler release the other two when it is finished.
 
-It runs in a `finally` and cannot change the step's outcome, and it is skipped when
-a `stepIf` condition means nothing was dispatched. For recovery, use `.rescue()`.
+It runs in a `finally` and cannot change the step's outcome, and it is skipped
+whenever nothing was dispatched — a `stepIf` condition that skipped the step, or
+a step replayed from a durable resume rather than executed (so cleanup does not
+re-run on every re-entry). For recovery, use `.rescue()`.
 
 ### Helpers (`@flow-state-dev/core/helpers`)
 

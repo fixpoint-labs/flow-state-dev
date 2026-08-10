@@ -855,3 +855,130 @@ describe("classifierDispatcher and abandonment-exhausted rows", () => {
     expect(claimed?.id).toBe("recoverable");
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Retry phasing after a slow renewal
+// ---------------------------------------------------------------------------
+
+describe("a slow renewal does not push the retry past the deadline", () => {
+  // The driver advertises that `RENEWAL_DIVISOR - 2` consecutive failures are
+  // survived. That holds only if ticks keep landing on their grid. Scheduling
+  // the next one a full cadence after the previous write SETTLED lets a slow
+  // failure eat the interval that was supposed to carry the retry — and a slow
+  // failure is the exact case the tolerance exists for.
+
+  /** Records every scheduled tick as an absolute time on the harness clock. */
+  function recordingTimer(h: Harness) {
+    const ticks: { firesAt: number; delay: number }[] = [];
+    let pending: (() => void) | undefined;
+    const timer: RenewalTimer = (fn, ms) => {
+      ticks.push({ firesAt: h.now() + ms, delay: ms });
+      pending = fn;
+      return () => {
+        pending = undefined;
+      };
+    };
+    return {
+      timer,
+      ticks,
+      fire: async (index: number) => {
+        h.setNow(ticks[index].firesAt);
+        const fn = pending;
+        pending = undefined;
+        fn?.();
+        await new Promise((r) => setTimeout(r, 20));
+      },
+    };
+  }
+
+  it("phases the retry from when the tick was DUE, not when the write settled", async () => {
+    // 3s lease claimed at t=1000 → deadline 4000, cadence 1000, first tick due
+    // at 2000. The write issued then takes 1.5s and fails, settling at 3500.
+    //
+    // Measured from settle time the retry would be scheduled for 4500 — half a
+    // second after the lease it was meant to save. Phased from the due time it
+    // goes out immediately instead, with 450ms of lease still in hand.
+    const h = harness();
+    await h.collection.addTask({ id: "t", goal: "t" });
+    const task = (await h.collection.claim("w", { leaseDurationMs: 3_000 }))!;
+    const deadline = task.leaseUntil!;
+    const clock = recordingTimer(h);
+
+    const slowFailing = {
+      ...h.collection,
+      renewLease: async () => {
+        h.setNow(h.now() + 1_500);
+        throw new Error("store hiccup");
+      },
+    } as unknown as TaskCollectionRef;
+
+    startLeaseRenewal({
+      collection: slowFailing,
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      now: h.now,
+      timer: clock.timer,
+    });
+
+    expect(clock.ticks[0].firesAt).toBe(2_000);
+    await clock.fire(0);
+
+    expect(clock.ticks).toHaveLength(2);
+    expect(clock.ticks[1].firesAt).toBeLessThan(deadline);
+  });
+
+  it("does not spin when a store fails instantly and forever", async () => {
+    // The floor that makes the above safe. Retrying "as soon as due" past a
+    // deadline that has already gone would otherwise be a hot loop of failing
+    // writes, so no retry is ever scheduled closer than MIN_RENEWAL_DELAY_MS.
+    const h = harness();
+    await h.collection.addTask({ id: "t", goal: "t" });
+    const task = (await h.collection.claim("w", { leaseDurationMs: 3_000 }))!;
+    const clock = recordingTimer(h);
+
+    const instantlyFailing = {
+      ...h.collection,
+      renewLease: async () => {
+        throw new Error("down");
+      },
+    } as unknown as TaskCollectionRef;
+
+    startLeaseRenewal({
+      collection: instantlyFailing,
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      now: h.now,
+      timer: clock.timer,
+    });
+
+    // Well past the deadline, so every subsequent tick is "overdue".
+    h.setNow(10_000);
+    await clock.fire(0);
+    await clock.fire(1);
+
+    expect(clock.ticks[2].delay).toBeGreaterThanOrEqual(MIN_RENEWAL_DELAY_MS);
+  });
+
+  it("leaves a healthy worker's cadence alone", async () => {
+    // The control: when writes are fast, ticks stay one cadence apart.
+    const h = harness();
+    await h.collection.addTask({ id: "t", goal: "t" });
+    const task = (await h.collection.claim("w", { leaseDurationMs: 3_000 }))!;
+    const clock = recordingTimer(h);
+
+    startLeaseRenewal({
+      collection: h.collection,
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      now: h.now,
+      timer: clock.timer,
+    });
+
+    expect(clock.ticks[0].firesAt).toBe(2_000);
+    await clock.fire(0);
+    expect(clock.ticks[1].firesAt).toBe(3_000);
+    await clock.fire(1);
+    expect(clock.ticks[2].firesAt).toBe(4_000);
+  });
+});

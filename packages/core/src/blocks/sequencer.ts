@@ -414,7 +414,12 @@ export async function executeBlock(
   input: unknown,
   ctx: BlockContext,
   path: string,
-  options?: { phase?: "main" | "work"; signalOverride?: AbortSignal }
+  options?: {
+    phase?: "main" | "work";
+    signalOverride?: AbortSignal;
+    /** The background signal this child's SUBTREE dispatches read (FIX-1005). */
+    backgroundSignalOverride?: AbortSignal;
+  }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
@@ -445,6 +450,8 @@ export async function executeBlock(
   if (replayLog !== undefined) {
     const cached = replayLog.getCompletedOutput(`${requestId}:${path}`);
     if (cached !== undefined && cached.kind === "inline") {
+      // Keep this condition and `childWillReplay` in agreement — the dispatch
+      // sites ask that predicate whether this child is about to be injected.
       // `buildReplayLog` materialises recorded outputs to `inline`, so the
       // value is read directly with no live item lookup.
       //
@@ -635,7 +642,8 @@ export async function executeBlock(
     run,
     // FIX-663: thread the background signal override (set at `.work()`
     // dispatch) into the child scope so the entire descendant tree sees it.
-    options?.signalOverride
+    options?.signalOverride,
+    options?.backgroundSignalOverride
   );
 }
 
@@ -700,6 +708,37 @@ function createRuntimeState(): SequencerRuntimeState {
  * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
  * threaded into `executeBlock` so descendant scopes inherit the same signal.
  */
+/**
+ * The background signal a subtree's `.work()` dispatches should read, once
+ * `extra` has been composed into it (FIX-1005).
+ *
+ * `.work()` / `.workIf()` / `.forEachBackground()` deliberately do NOT run
+ * under `ctx.signal` — they substitute the request's background signal so a
+ * task tree survives transport teardown (FIX-663). That substitution is right
+ * about the transport signal and wrong about everything else composed on top:
+ * a caller that added a signal to this subtree via `.step(block, { abortSignal })`
+ * has that signal silently dropped the moment the subtree dispatches background
+ * work, which is precisely where the un-cancelled work goes on costing money.
+ *
+ * Composing rather than substituting keeps both promises: the task still
+ * outlives a disconnected client, and it still stops when the caller's signal
+ * fires.
+ *
+ * Returns `undefined` when the request installed no background signal (unit
+ * contexts). That case must stay untouched — there, `backgroundTaskCtx` runs
+ * the task on `ctx.signal`, which already carries `extra`, and installing one
+ * here would substitute `extra` for the request signal instead of adding to it.
+ */
+export function composeBackgroundSignal(
+  ctx: BlockContext,
+  extra: AbortSignal
+): AbortSignal | undefined {
+  const background = (ctx as { _requestBackgroundSignal?: AbortSignal })
+    ._requestBackgroundSignal;
+  if (background === undefined) return undefined;
+  return AbortSignal.any([background, extra]);
+}
+
 export function backgroundTaskCtx(ctx: BlockContext): {
   taskCtx: BlockContext;
   signalOverride: AbortSignal | undefined;
@@ -709,6 +748,29 @@ export function backgroundTaskCtx(ctx: BlockContext): {
     return { taskCtx: ctx, signalOverride: undefined };
   }
   return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
+}
+
+/**
+ * True when the child at `path` will be INJECTED from the resume replay log
+ * rather than executed (FIX-811).
+ *
+ * A pure query over the same log and the same key `executeBlock`'s
+ * short-circuit uses — deliberately a shared predicate rather than a flag the
+ * short-circuit sets, because sibling dispatches run concurrently and a
+ * context-level marker could not say which of them it belonged to.
+ *
+ * The dispatch sites need it because a replayed child is not a dispatch: its
+ * body never runs, it emits nothing, and it mutates nothing. Anything a caller
+ * hangs off the *act* of dispatching — `StepOptions.onSettled` — must not fire
+ * for it, exactly as it does not fire for a `.stepIf()` whose condition was
+ * false. Both are "nothing was dispatched"; a resume would otherwise re-run
+ * every completed step's cleanup on every re-entry.
+ */
+export function childWillReplay(ctx: BlockContext, path: string): boolean {
+  const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+  if (replayLog === undefined) return false;
+  const cached = replayLog.getCompletedOutput(`${ctx.request.identity.id}:${path}`);
+  return cached !== undefined && cached.kind === "inline";
 }
 
 /**
@@ -1144,6 +1206,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const path = childBlockPath(ctx, runtime, "step", stepIndex);
+            // A replayed child is injected, not dispatched, so it has no
+            // settle to report — see `childWillReplay`.
+            const replayed = childWillReplay(ctx, path);
             // Resolved per dispatch, not at definition time — the signal is a
             // runtime fact (which claim this iteration holds), so a step
             // composed once and run many times gets its own each turn.
@@ -1169,7 +1234,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               outcome = error instanceof SuspensionError ? "suspended" : "threw";
               throw error;
             } finally {
-              runOnSettled(onSettled, ctx, outcome, block.name);
+              if (!replayed) runOnSettled(onSettled, ctx, outcome, block.name);
             }
           }
         },
@@ -1209,6 +1274,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
             // Below the condition gate on purpose: a step that was never
             // dispatched has nothing to settle (see `StepOptions.onSettled`).
+            // A replayed child is the same situation one layer over.
+            const replayed = childWillReplay(ctx, path);
             let outcome: StepOutcome = "returned";
             try {
               const result = await runChild(
@@ -1225,7 +1292,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               outcome = error instanceof SuspensionError ? "suspended" : "threw";
               throw error;
             } finally {
-              runOnSettled(onSettled, ctx, outcome, block.name);
+              if (!replayed) runOnSettled(onSettled, ctx, outcome, block.name);
             }
           }
         },

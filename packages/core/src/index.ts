@@ -188,6 +188,11 @@ export {
 // `executeBlock` can honor `config.rescue` on a bare action-root block; in-flow
 // children are rescued by the core `executeBlock` seam.
 export { runRescue } from "./blocks/sequencer";
+// Exported for the one first-party seam that dispatches a worker WITHOUT going
+// through the sequencer kernel (`dispatchAndExecuteBlock`'s substrate cast), so
+// it composes a subtree's background signal by the same rule the kernel uses
+// rather than a second copy of it.
+export { composeBackgroundSignal } from "./blocks/sequencer";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";

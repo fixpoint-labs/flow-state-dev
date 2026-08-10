@@ -134,7 +134,12 @@ export type StepOptions = {
    * here). Awaiting it is deliberately not offered: it would move when the step
    * settles, and *when* is the whole point of this hook.
    *
-   * Not called when a `.stepIf()` condition is false — nothing was dispatched.
+   * **Not called when nothing was dispatched**, which is two situations, not
+   * one: a `.stepIf()` whose condition was false, and a step whose child is
+   * injected from the resume replay log instead of executed. The second matters
+   * because a durable request can re-enter many times, and a hook that fired on
+   * every re-entry would run non-idempotent cleanup — releasing a semaphore,
+   * decrementing a refcount — once per resume for work that ran once.
    */
   onSettled?: (ctx: BlockContext, outcome: StepOutcome) => void;
 };

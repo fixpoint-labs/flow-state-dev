@@ -60,6 +60,8 @@ interface Fixture {
   /** One entry per settlement: whether renewal was still scheduled then. */
   seen: string[];
   sequencer: StateRef<{ currentClaim?: unknown }>;
+  /** Ticks still scheduled — non-zero means the driver has not been stopped. */
+  pending: () => number;
 }
 
 /**
@@ -118,6 +120,7 @@ async function claimedUnderRenewal(): Promise<Fixture> {
     collection,
     seen,
     sequencer: bodyState as unknown as StateRef<{ currentClaim?: unknown }>,
+    pending: clock.pending,
   };
 }
 
@@ -154,5 +157,79 @@ describe("the board's recorders stop renewal AFTER the fenced write", () => {
 
     expect((result as { recorded: string }).recorded).toBe("errored");
     expect(fx.seen).toEqual(["fail:renewing"]);
+  });
+});
+
+describe("a recorder whose own write FAILS leaves renewal for its successor", () => {
+  // The second half of the same boundary. `recordSuccess` stopping renewal on
+  // the way out is right when `complete()` settled, and wrong when it threw:
+  // the worker body's `.rescue()` then runs `recordError`, whose `fail()` is
+  // fenced on the same claim. Stopping first hands that recovery write a lapsed
+  // lease, so it is declined `lost-claim` and finished work is recovered and
+  // repeated — the same failure as before, one exception path over.
+  //
+  // The rule this pins is not "stop on the way out" but "stop once no further
+  // fenced write can follow".
+
+  it("recordSuccess leaves the driver RUNNING when complete() throws", async () => {
+    openLeaseRenewalScope();
+    const fx = await claimedUnderRenewal();
+
+    const exploding = {
+      ...fx.collection,
+      complete: async () => {
+        throw new Error("store unreachable");
+      },
+    } as unknown as TaskCollectionRef;
+
+    const block = createRecordSuccess({
+      name: "record-success",
+      collection: async () => exploding,
+    });
+
+    await expect(
+      runForTest(block, { ok: true }, {
+        sequencer: fx.sequencer,
+      } as unknown as BlockContext)
+    ).rejects.toThrow("store unreachable");
+
+    // Still renewing, so the rescue's fenced `fail()` will not be refused.
+    expect(fx.pending()).toBe(1);
+  });
+
+  it("and the rescue's fail() then runs while renewal is still live", async () => {
+    // End to end over the two handlers, in the order the worker body runs them.
+    openLeaseRenewalScope();
+    const fx = await claimedUnderRenewal();
+
+    const exploding = {
+      ...fx.collection,
+      complete: async () => {
+        throw new Error("store unreachable");
+      },
+    } as unknown as TaskCollectionRef;
+
+    const success = createRecordSuccess({
+      name: "record-success",
+      collection: async () => exploding,
+    });
+    await expect(
+      runForTest(success, { ok: true }, {
+        sequencer: fx.sequencer,
+      } as unknown as BlockContext)
+    ).rejects.toThrow("store unreachable");
+
+    const rescue = createRecordError({
+      name: "record-error",
+      collection: async () => fx.collection,
+      onError: "skip",
+    });
+    await runForTest(rescue, new Error("store unreachable"), {
+      sequencer: fx.sequencer,
+    } as unknown as BlockContext);
+
+    expect(fx.seen).toEqual(["fail:renewing"]);
+    // And only now is the driver released.
+    expect(fx.pending()).toBe(0);
   });
 });

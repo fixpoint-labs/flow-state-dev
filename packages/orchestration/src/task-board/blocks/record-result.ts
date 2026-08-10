@@ -58,6 +58,13 @@ import { taskBoardWorkerBodyStateSchema } from "../schemas";
  * a row that has just been settled the fence declines it and the driver stops
  * itself.
  *
+ * **The rule is "once no further fenced write can follow", not "on the way
+ * out".** Those coincide for this handler's success path and for `recordError`,
+ * which nothing follows — but not for `recordSuccess` when its own `complete()`
+ * throws, because the body's `.rescue()` then runs `recordError` and that
+ * `fail()` is fenced on the same claim. So `recordSuccess` stops renewal only
+ * once its write has settled, and leaves the driver running when it throws.
+ *
  * Deliberately not the *only* thing that stops a driver. It also stops when the
  * request's own signal aborts, and — the case neither recorder can see — when
  * the worker step's dispatch reports that it SUSPENDED, via the `onSettled`
@@ -100,17 +107,23 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
         stopLeaseRenewal();
         return;
       }
-      try {
-        await (await collectionFactory(ctx)).complete(claim.taskId, output, {
-          ifAllowed: true,
-          claim,
-        });
-        await ctx.sequencer!.patchState({ currentClaim: undefined });
-      } finally {
-        // Only now: the ticket-fenced write has settled, so the claim has
-        // nothing left to assert. See `stopLeaseRenewal`.
-        stopLeaseRenewal();
-      }
+      await (await collectionFactory(ctx)).complete(claim.taskId, output, {
+        ifAllowed: true,
+        claim,
+      });
+      // Only now, and deliberately NOT in a `finally`. The write has settled —
+      // recorded or declined — so this claim has nothing left to assert.
+      //
+      // A `finally` would stop renewal on the one path where it must not: if
+      // `complete()` THREW, this block did not settle the task, and the worker
+      // body's `.rescue()` is about to run `recordError`, whose `fail()` is
+      // fenced on this same claim. Stopping here would hand that recovery write
+      // a lapsed lease, so it would be declined `lost-claim`, and work that
+      // actually finished would be recovered and repeated. The rule is not
+      // "stop on the way out", it is "stop once no further fenced write can
+      // follow" — and after a throw, one can.
+      stopLeaseRenewal();
+      await ctx.sequencer!.patchState({ currentClaim: undefined });
     },
   });
 }

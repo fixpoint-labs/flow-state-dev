@@ -173,3 +173,117 @@ describe("FIX-1005: step abortSignal through nested scopes", () => {
     expect(marker.abortedWhenDone).toBe(false);
   });
 });
+
+describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
+  // `.work()` / `.workIf()` / `.forEachBackground()` do not run under
+  // `ctx.signal`. They substitute the request's background signal so a task
+  // tree survives transport teardown (FIX-663) — and that substitution used to
+  // discard anything a caller had composed on top, including the signal that
+  // says "stop, this work can no longer be recorded".
+  //
+  // This is the expensive place for it to be wrong: foreground steps stop and
+  // the background generators keep calling models.
+  //
+  // These run through `runAction` — a unit context installs no background
+  // signal at all, so it cannot reproduce the substitution that causes this.
+
+  function backgroundFlow(
+    build: (probe: Marker) => ReturnType<typeof sequencer>
+  ) {
+    const marker: Marker = { ran: false, abortedWhenDone: false };
+    const extra = new AbortController();
+    const root = sequencer({ name: "root", inputSchema: z.unknown() }).step(
+      build(marker),
+      { abortSignal: () => extra.signal }
+    );
+    return { marker, extra, root };
+  }
+
+  it("aborts a .work() task dispatched by the child", async () => {
+    const { marker, extra, root } = backgroundFlow((probe) =>
+      sequencer({ name: "bg-child", inputSchema: z.unknown() })
+        .work(slowLeaf("bg", probe))
+        .map(() => ({ done: true }))
+    );
+
+    setTimeout(() => extra.abort(), 20);
+    const result = await runWith(root);
+
+    expect(result.error).toBeUndefined();
+    expect(marker.ran).toBe(true);
+    expect(marker.abortedWhenDone).toBe(true);
+  });
+
+  it("aborts a .workIf() task dispatched by the child", async () => {
+    const { marker, extra, root } = backgroundFlow((probe) =>
+      sequencer({ name: "bgif-child", inputSchema: z.unknown() })
+        .workIf(() => true, slowLeaf("bg-if", probe))
+        .map(() => ({ done: true }))
+    );
+
+    setTimeout(() => extra.abort(), 20);
+    const result = await runWith(root);
+
+    expect(result.error).toBeUndefined();
+    expect(marker.ran).toBe(true);
+    expect(marker.abortedWhenDone).toBe(true);
+  });
+
+  it("aborts a .forEachBackground() task dispatched by the child", async () => {
+    const { marker, extra, root } = backgroundFlow((probe) =>
+      sequencer({ name: "feb-child", inputSchema: z.unknown() })
+        .map(() => [1])
+        .forEachBackground(slowLeaf("bg-feb", probe))
+        .map(() => ({ done: true }))
+    );
+
+    setTimeout(() => extra.abort(), 20);
+    const result = await runWith(root);
+
+    expect(result.error).toBeUndefined();
+    expect(marker.ran).toBe(true);
+    expect(marker.abortedWhenDone).toBe(true);
+  });
+
+  it("aborts background work dispatched THREE scopes down", async () => {
+    // The depth guard. Composing at the dispatch alone survives one scope: each
+    // nested scope re-derives the background signal, so a `.work()` deeper in
+    // the tree used to get the request's again with the extra signal gone.
+    const { marker, extra, root } = backgroundFlow((probe) => {
+      const inner = sequencer({ name: "deep-inner", inputSchema: z.unknown() })
+        .work(slowLeaf("bg-deep", probe))
+        .map(() => ({ done: true }));
+      const middle = sequencer({
+        name: "deep-middle",
+        inputSchema: z.unknown(),
+      }).step(inner);
+      return sequencer({ name: "deep-outer", inputSchema: z.unknown() }).step(
+        middle
+      );
+    });
+
+    setTimeout(() => extra.abort(), 20);
+    const result = await runWith(root);
+
+    expect(result.error).toBeUndefined();
+    expect(marker.ran).toBe(true);
+    expect(marker.abortedWhenDone).toBe(true);
+  });
+
+  it("does NOT abort background work when only the transport signal fires", async () => {
+    // The promise this must not break: composing the extra signal in must not
+    // re-couple background work to transport teardown. No extra signal is
+    // supplied here, so the task runs to completion as FIX-663 requires.
+    const marker: Marker = { ran: false, abortedWhenDone: false };
+    const child = sequencer({ name: "bg-clean", inputSchema: z.unknown() })
+      .work(slowLeaf("bg-untouched", marker))
+      .map(() => ({ done: true }));
+    const root = sequencer({ name: "root", inputSchema: z.unknown() }).step(child);
+
+    const result = await runWith(root);
+
+    expect(result.error).toBeUndefined();
+    expect(marker.ran).toBe(true);
+    expect(marker.abortedWhenDone).toBe(false);
+  });
+});

@@ -468,3 +468,98 @@ describe("a THROWING onSettled hook cannot change the step's outcome", () => {
     expect(String(log.seen[0][1])).toContain("cleanup exploded");
   });
 });
+
+
+describe("a REPLAYED step does not settle", () => {
+  // On a durable resume, `executeBlock` injects a completed child's recorded
+  // output instead of running it — no body, no emit, no state mutation. There
+  // was never a dispatch, so there is nothing to settle, and firing the hook
+  // anyway re-runs cleanup for work that ran once. A request that re-enters
+  // five times would release a semaphore five times.
+  //
+  // The hook cannot defend itself here: it receives `(ctx, outcome)` and would
+  // see `"returned"`, indistinguishable from a real dispatch. `ctx._replayLog`
+  // only says the REQUEST is a resume, not that THIS step was injected — a step
+  // that genuinely re-executes during a resume carries it too. So the contract
+  // is only implementable if the dispatch site makes the distinction.
+
+  /** A replay log that reports `path` as already completed with `value`. */
+  function replayLogFor(path: string, value: unknown) {
+    return {
+      // Keys are `${requestId}:${blockPath}` — match the trailing path segment.
+      getCompletedOutput: (key: string) =>
+        key.endsWith(`/${path}`) || key.endsWith(`:${path}`)
+          ? { kind: "inline" as const, value }
+          : undefined,
+    };
+  }
+
+  function ctxWithReplay(path: string, value: unknown) {
+    const ctx = createMockContext() as Record<string, unknown>;
+    ctx._replayLog = replayLogFor(path, value);
+    return ctx as unknown as ReturnType<typeof createMockContext>;
+  }
+
+  it("skips onSettled for a step whose output is injected", async () => {
+    let calls = 0;
+    let ran = 0;
+    const body = handler({
+      name: "counts-runs",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ n: z.number() }),
+      execute: async () => {
+        ran += 1;
+        return { n: 1 };
+      },
+    });
+
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(body, {
+      onSettled: () => {
+        calls += 1;
+      },
+    });
+
+    // Sanity: a real dispatch runs the body and settles once.
+    await runForTest(seq, null, createMockContext());
+    expect(ran).toBe(1);
+    expect(calls).toBe(1);
+
+    // Now the same step under a replay log that already holds its output.
+    const replayed = await runForTest(seq, null, ctxWithReplay("step[0]", { n: 99 }));
+
+    expect(replayed).toEqual({ n: 99 });
+    expect(ran).toBe(1); // body did NOT re-run
+    expect(calls).toBe(1); // and the hook did NOT fire again
+  });
+
+  it("skips it on .stepIf too", async () => {
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: true }))
+      .stepIf((out: { go: boolean }) => out.go, reportsAbort, {
+        onSettled: () => {
+          calls += 1;
+        },
+      });
+
+    await runForTest(seq, null, ctxWithReplay("stepIf[1]", { aborted: false }));
+
+    expect(calls).toBe(0);
+  });
+
+  it("still settles a step that genuinely runs during a resume", async () => {
+    // The guard against over-suppressing: being inside a resumed request is not
+    // the same as being replayed. A step with no recorded output executes
+    // normally and must settle normally.
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      onSettled: () => {
+        calls += 1;
+      },
+    });
+
+    await runForTest(seq, null, ctxWithReplay("some-other-path[7]", { n: 1 }));
+
+    expect(calls).toBe(1);
+  });
+});
