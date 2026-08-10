@@ -628,6 +628,16 @@ export type FlowType<
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
+  /**
+   * Mirror of `FlowInstance.workstreamBindings` — every detached worker binding
+   * declared anywhere in this flow's block tree.
+   *
+   * Present because this blueprint is inspected directly, not only called: code
+   * reading it saw actions, resources, schedules and `requiresOrg` here and
+   * reasonably concluded a flow with none of it declared no detached work. The
+   * value is copied from the base instance, so the two never disagree.
+   */
+  workstreamBindings?: WorkstreamBindings;
   authentication?: AuthenticationConfig;
   actions: TActions;
   session?: TSession;

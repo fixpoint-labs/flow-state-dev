@@ -24,7 +24,7 @@ import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
-import { mergeWorkstreamBindings, type WorkstreamBindings } from "../types/workstream";
+import type { WorkstreamBindings } from "../types/workstream";
 import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
 import {
   blockPathBranch,
@@ -1106,11 +1106,22 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   // prefetch hook (FIX-688), which must load this block's own declarations
   // without re-loading descendants'.
   ownDeclaredResources?: DeclaredResources,
-  // Detached worker bindings accumulated from child blocks (FIX-982). Rides the
-  // same rail as `accumulatedResources`: children merge up as steps are added,
-  // so by definition time the action root carries the union and `defineFlow`
-  // reads it off without walking the tree.
-  accumulatedWorkstreamBindings?: WorkstreamBindings
+  // This sequencer's OWN detached worker bindings (FIX-982) — the set a task
+  // board stamps on the drain it just built. Carried across every rebuild;
+  // the bubble-up set is NOT carried, it is re-derived from `childBlocks` by
+  // `buildBlock`, so a chained step can never hand back a sequencer that has
+  // silently forgotten one of its children's boards.
+  ownWorkstreamBindings?: WorkstreamBindings,
+  // Every child block this chain has composed so far — one per `.step()`,
+  // `.tap()`, `.branch()` arm, and so on, in the order they were added.
+  //
+  // Retained because a `SequencerOperation` is `{name, run}`: the child lives
+  // inside the closure and nowhere else, which made the sequencer edge opaque to
+  // any definition-time traversal. Since a board's drain IS a sequencer, that
+  // opacity is what stopped "every reachable detached board resolves to a
+  // binding" from being checkable at all. It is also the single input the
+  // bindings rail is derived from, which is why the two are one change.
+  childBlocks: readonly BlockDefinition<any, any>[] = []
 ): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -1142,7 +1153,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     ownDeclaredResources,
     resolvedCapabilities: capabilityRefs,
     requiresOrg: accumulatedRequiresOrg,
-    workstreamBindings: accumulatedWorkstreamBindings,
+    // A chain-level rescue handler is a child like any other — it runs as a real
+    // block and may itself contain a board. It is listed here rather than in
+    // `config.rescue` (which `buildBlock` folds in on its own) because a
+    // sequencer keeps its handlers outside the config, in the operation loop.
+    childBlocks: [...childBlocks, ...rescueHandlers.map((handler) => handler.block)],
+    ownWorkstreamBindings,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -1173,36 +1189,50 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   };
 
   /**
-   * Merge child blocks' detached worker bindings into the sequencer's
-   * accumulator (FIX-982). Called at every site `mergeFrom` is, on the same
-   * blocks — a board nested anywhere in the tree must reach the action root, and
-   * a step whose bindings are dropped becomes a coordinate nothing can resolve
-   * after a restart.
+   * Append one operation and the block(s) it dispatches, returning the extended
+   * chain.
+   *
+   * **Every chaining method funnels through here, and hands over the child
+   * blocks themselves rather than per-rail projections of them.** That is the
+   * whole point: a child block carries `declaredResources`, `requiresOrg` and
+   * `workstreamBindings`, and each rail used to be re-derived and re-passed by
+   * hand at every one of the ~16 call sites — so the defect rate was sites ×
+   * rails, and a site that remembered two rails out of three failed silently.
+   * With the block itself as the argument, a site can only forget the block, and
+   * forgetting the block drops all rails at once — which `defineFlow`'s
+   * reachability assertion refuses at definition time.
+   *
+   * `undefined` entries are accepted and skipped: `.tap()` and `.forEach()` take
+   * a plain function or a per-item factory in some shapes, and there is no child
+   * block to hand over in those.
    */
-  const mergeWorkstreamBindingsFrom = (
-    ...blocks: Array<BlockDefinition<any, any> | undefined>
-  ): WorkstreamBindings | undefined => {
-    // Read off `baseBlock` rather than the `accumulatedWorkstreamBindings`
-    // parameter, so a stamp applied AFTER construction survives chaining. A
-    // board stamps its own bindings on the finished drain; reading the closure
-    // value would rebuild from the pre-stamp state, and `board.drain.tap(x)`
-    // would silently hand back a sequencer with the board's own bindings gone.
-    let merged = baseBlock.workstreamBindings;
-    for (const block of blocks) {
-      merged = mergeWorkstreamBindings(merged, block?.workstreamBindings);
-    }
-    return merged;
-  };
-
   const extend = <TNext>(
     operation: SequencerOperation,
     newOutputSchema?: ZodTypeAny,
     newInputSchema?: ZodTypeAny,
-    newResources?: DeclaredResources,
-    newRequiresOrg?: boolean,
-    newWorkstreamBindings?: WorkstreamBindings
-  ): SequencerDefinition<TInput, TNext, TStateSchema> =>
-    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources, newWorkstreamBindings ?? baseBlock.workstreamBindings);
+    ...stepBlocks: Array<BlockDefinition<any, any> | undefined>
+  ): SequencerDefinition<TInput, TNext, TStateSchema> => {
+    const children = stepBlocks.filter(
+      (block): block is BlockDefinition<any, any> => block !== undefined
+    );
+    return createSequencer<TInput, TNext, TStateSchema>(
+      config,
+      [...operations, operation],
+      rescueHandlers,
+      newOutputSchema,
+      newInputSchema ?? resolvedInputSchema,
+      mergeFrom(...children),
+      capabilityRefs,
+      mergeRequiresOrgFrom(...children),
+      ownDeclaredResources,
+      // The stamp, read off `baseBlock` rather than the closure parameter so a
+      // board that stamped the finished drain survives chaining. The bubble-up
+      // set is not threaded at all — `buildBlock` re-derives it from the
+      // children below.
+      baseBlock.ownWorkstreamBindings,
+      [...childBlocks, ...children]
+    );
+  };
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -1278,9 +1308,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         block.config.outputSchema,
         capturedInput,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+        block
       );
     },
 
@@ -1340,9 +1368,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+        block
       );
     },
 
@@ -1435,9 +1461,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         compositeSchema,
         undefined,
-        mergeFrom(...stepBlocks),
-        mergeRequiresOrgFrom(...stepBlocks),
-        mergeWorkstreamBindingsFrom(...stepBlocks)
+        ...stepBlocks
       );
     },
 
@@ -1518,9 +1542,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         arraySchema,
         undefined,
-        mergeFrom(elementBlock),
-        mergeRequiresOrgFrom(elementBlock),
-        mergeWorkstreamBindingsFrom(elementBlock)
+        elementBlock
       );
     },
 
@@ -1625,9 +1647,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(elementBlock),
-        mergeRequiresOrgFrom(elementBlock),
-        mergeWorkstreamBindingsFrom(elementBlock)
+        elementBlock
       );
     },
 
@@ -1676,9 +1696,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+        block
       );
     },
 
@@ -1723,9 +1741,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+        block
       );
     },
 
@@ -1791,9 +1807,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+        block
       );
     },
 
@@ -1831,9 +1845,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+        block
       );
     },
 
@@ -1919,9 +1931,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           },
           lastOutputSchema,
           undefined,
-          mergeFrom(block),
-        mergeRequiresOrgFrom(block),
-        mergeWorkstreamBindingsFrom(block)
+          block
         );
       }
 
@@ -1957,9 +1967,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapBlock),
-        mergeRequiresOrgFrom(tapBlock),
-        mergeWorkstreamBindingsFrom(tapBlock)
+        tapBlock
       );
     },
 
@@ -2002,9 +2010,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapIfBlock),
-        mergeRequiresOrgFrom(tapIfBlock),
-        mergeWorkstreamBindingsFrom(tapIfBlock)
+        tapIfBlock
       );
     },
 
@@ -2019,13 +2025,16 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         (acc, h) => acc || Boolean(h.block.requiresOrg),
         accumulatedRequiresOrg ?? false
       );
-      // A rescue handler is an ordinary block and may itself contain a board
-      // (a cleanup drain, say), so its bindings bubble like every other child's.
-      const rescueWorkstreamBindings = handlers.reduce<WorkstreamBindings | undefined>(
-        (acc, h) => mergeWorkstreamBindings(acc, h.block.workstreamBindings),
-        baseBlock.workstreamBindings
-      );
-      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, rescueWorkstreamBindings);
+      // A rescue handler is an ordinary block and may itself contain a board (a
+      // cleanup drain, say), so its bindings bubble like every other child's —
+      // but `handlers` REPLACES the installed set, so the rail is re-derived
+      // from them rather than accumulated. Accumulating (seeding from
+      // `baseBlock.workstreamBindings`, which already folds in the handlers this
+      // call is dropping) is what made `.rescue([a]).rescue([b])` advertise a
+      // worker nothing could reach. `createSequencer` lists `handlers` among the
+      // children, so `a` disappears by not being passed rather than by being
+      // removed.
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, baseBlock.ownWorkstreamBindings, childBlocks);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -2069,9 +2078,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         firstBranchSchema,
         undefined,
-        mergeFrom(...branchBlocks),
-        mergeRequiresOrgFrom(...branchBlocks),
-        mergeWorkstreamBindingsFrom(...branchBlocks)
+        ...branchBlocks
       );
     },
 
@@ -2126,9 +2133,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         undefined,
         undefined,
-        mergeFrom(...stepBlocks),
-        mergeRequiresOrgFrom(...stepBlocks),
-        mergeWorkstreamBindingsFrom(...stepBlocks)
+        ...stepBlocks
       );
     },
 
@@ -2168,9 +2173,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         undefined,
         undefined,
-        mergeFrom(...blocks),
-        mergeRequiresOrgFrom(...blocks),
-        mergeWorkstreamBindingsFrom(...blocks)
+        ...blocks
       );
     },
 
@@ -2288,9 +2291,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         },
         undefined,
         undefined,
-        mergeFrom(...blocks),
-        mergeRequiresOrgFrom(...blocks),
-        mergeWorkstreamBindingsFrom(...blocks)
+        ...blocks
       );
     },
 
@@ -2452,11 +2453,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         ownDeclaredResources,
         // Bindings are NOT among the defaults dropped above (FIX-982). Read off
-        // `baseBlock` for the same reason `mergeWorkstreamBindingsFrom` does: a
-        // board stamps the finished drain, so the closure parameter predates the
-        // stamp and `board.drain.connectInput(...)` would return an executable
-        // sequencer with no route to its own worker.
-        baseBlock.workstreamBindings
+        // `baseBlock` rather than the closure parameter: a board stamps the
+        // finished drain, so the parameter predates the stamp and
+        // `board.drain.connectInput(...)` would return an executable sequencer
+        // with no route to its own worker.
+        baseBlock.ownWorkstreamBindings,
+        childBlocks
       );
     },
 
