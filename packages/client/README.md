@@ -108,11 +108,9 @@ const requests = await sessions.listSessionRequests("sess_1", {
 
 ### Background work
 
-Some flows start work that outlives the turn that kicked it off. A long research
-pass, a document being drafted, a job that runs for an hour. Work like that runs in
-its own session hanging off the one the user is in, so it never appears in the
-parent session's requests. `listWorkstreams` asks a session what background work
-belongs to it.
+`listWorkstreams` lists the background work running under a session. Work that
+outlives the turn that started it runs in its own session hanging off the parent, so
+it never appears in the parent's requests.
 
 ```ts
 // Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
@@ -134,15 +132,14 @@ happening right now. `"active"` asserts only that the work hasn't finished: queu
 mid-run, and paused waiting for a person all read `"active"`, and so does a job whose
 worker died, until the server records otherwise. The terminal values are
 `"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A workstream that has
-never run anything carries no `status` at all; render no state rather than
-substituting one.
+never run anything carries no `status` at all. Don't fold that absence into one of
+the five values. Your own label for it, like `"Not started"`, is fine; mapping it to
+`"active"` claims work is under way before it started.
 
-A session with no background work resolves to `[]`. A session id that doesn't exist,
-or one the caller isn't allowed to read, rejects with `ClientHttpError`. So `[]`
-means there is none, not that the lookup failed.
-
-There is no client call that starts background work. Whether a piece of work detaches
-is the flow author's decision, declared on the server when the flow is wired up.
+A session with no background work resolves to `[]`; an unknown session, or one the
+caller isn't allowed to read, rejects with `ClientHttpError`. No client call starts
+background work: whether a piece of work detaches is declared on the server when the
+flow is wired up.
 
 ## `createClient` vs `createTypedClient`
 

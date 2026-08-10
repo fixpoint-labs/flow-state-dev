@@ -158,9 +158,9 @@ type WorkstreamSummary = {
 };
 ```
 
-Each row carries what a list needs to render, so a list costs one request no matter how many rows come back. Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset` runs 0–10000.
+Paging is `{ limit, offset }`: `limit` runs 1–100 and defaults to 25, `offset` runs 0–10000.
 
-To drill into one, hand its `id` to any session call. A workstream's `id` is a session id, so the same reads work on it:
+A workstream's `id` is a session id, so hand it to any session read to drill in:
 
 ```ts
 const [workstream] = await sessions.listWorkstreams("sess_1");
@@ -172,7 +172,7 @@ if (workstream) {
 
 **What `status` tells you.** It's the last state the server recorded for the work, not a check on what's happening right now. `active` asserts only that the work hasn't finished: queued, mid-run, and paused waiting for a person all read `active`, and so does a job whose worker died, until the server records otherwise. The terminal values are `completed`, `failed`, `aborted`, and `incomplete`.
 
-A workstream that has never run anything carries no `status` at all. Absence means nothing has run, which is not what any of the values mean, so keep it as absence.
+A workstream that has never run anything carries no `status` at all. Don't fold that absence into one of the five values. Your own label for it, like "Not started", is fine; mapping it to `active` claims work is under way before it started.
 
 `topic` and `coordinate` are optional too. `topic` names the body of work, `coordinate` names the worker handling it. Both are display labels, and a row can arrive without either. Guard all three with `== null`:
 
