@@ -330,6 +330,68 @@ describe("an EMPTY step-options bag", () => {
     expect(seen).toEqual([7]);
   });
 
+  it("recognises a bag whose only key is present but UNDEFINED", async () => {
+    // The form a conditionally-assembled bag actually takes when the caller
+    // writes `{ abortSignal: maybeResolver }` rather than spreading. The key is
+    // there; the value is not a function. Discriminating on the VALUE misses
+    // it, and the bag is then read as the child block — the same
+    // definition-time crash as the empty case, one form over.
+    const maybeResolver: (() => AbortSignal | undefined) | undefined = undefined;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      abortSignal: maybeResolver,
+    });
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+  });
+
+  it("recognises an onSettled-only bag that is present but UNDEFINED", async () => {
+    const maybeHook: (() => void) | undefined = undefined;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      onSettled: maybeHook,
+    });
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+  });
+
+  it("recognises BOTH keys present and undefined", async () => {
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      abortSignal: undefined,
+      onSettled: undefined,
+    });
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+  });
+
+  it("recognises an undefined-valued bag on .stepIf too", async () => {
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: true }))
+      .stepIf((out: { go: boolean }) => out.go, reportsAbort, { abortSignal: undefined });
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+  });
+
+  it("still resolves the connector with an undefined-valued bag", async () => {
+    // The trailing bag is peeled off whatever its values are, so the two
+    // arguments in front of it keep their meaning.
+    const seen: unknown[] = [];
+    const echo = handler({
+      name: "echo-undef",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (input) => {
+        seen.push(input);
+        return { ok: true };
+      },
+    });
+
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ n: 3 }))
+      .step((out: { n: number }) => out.n, echo, { onSettled: undefined });
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ ok: true });
+    expect(seen).toEqual([3]);
+  });
+
   it("handles a bag assembled conditionally down to nothing", async () => {
     // The way this reaches real code: the caller spreads in whichever options
     // apply, and on some paths none of them do.

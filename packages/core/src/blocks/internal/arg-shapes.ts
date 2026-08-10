@@ -164,25 +164,37 @@ export type StepOutcome = "returned" | "threw" | "suspended";
  * or `step(factory, config)` call. The inline-config arm is resolved before
  * this is ever consulted, so a block config can never reach it.
  *
- * An **empty** object counts, and has to. Every `StepOptions` member is
- * optional, so `.step(block, {})` is a well-typed call, and it is the shape
- * that falls out of assembling the bag conditionally
- * (`{ ...(sig ? { abortSignal: sig } : {}) }`). Reading it as anything else
- * promotes the block to a connector and hands `{}` to the child slot, which
- * dies at composition time on `block.config` — a valid call crashing the
- * sequencer that contains it. `isConcurrencyOptions` already treats a trailing
- * `{}` as options for the same reason. There is no ambiguity to trade away:
- * an empty object is not a block (excluded above), not a connector (not a
- * function), and not an inline config (no `outputSchema`, no `execute`).
+ * **Keyed on presence, not on value type**, and that distinction is the whole
+ * correctness of it. Every `StepOptions` member is optional, so all three of
+ * these are well-typed calls and all three must resolve the same way:
+ *
+ * ```ts
+ * .step(block, { abortSignal: resolver })   // a function value
+ * .step(block, { abortSignal: maybe })      // key present, value undefined
+ * .step(block, {})                          // no keys at all
+ * ```
+ *
+ * The middle one is what conditional configuration actually produces — a caller
+ * writing `{ abortSignal: enabled ? resolver : undefined }` rather than
+ * spreading. Testing `typeof … === "function"` matches only the first, so the
+ * other two fall through, the bag is promoted to the child slot, and `.step()`
+ * dies at composition time on `block.config` — a valid call taking down the
+ * sequencer that contains it, before anything runs.
+ *
+ * This is exactly the form {@link isConcurrencyOptions} already gets right, a
+ * few lines above, by asking `in` rather than asking what the value is. Same
+ * question, same answer, same shape.
+ *
+ * There is no ambiguity to trade away: such an object is not a block (excluded
+ * above), not a connector (not a function), and not an inline config (which
+ * carries `outputSchema` or `execute`, and is resolved before this is ever
+ * consulted).
  */
 function isStepOptions(value: unknown): value is StepOptions {
   if (typeof value !== "object" || value === null) return false;
   if (isBlockDefinition(value)) return false;
-  const bag = value as { abortSignal?: unknown; onSettled?: unknown };
-  if (typeof bag.abortSignal === "function" || typeof bag.onSettled === "function") {
-    return true;
-  }
-  return Object.keys(value).length === 0;
+  const bag = value as Record<string, unknown>;
+  return "abortSignal" in bag || "onSettled" in bag || Object.keys(bag).length === 0;
 }
 
 /** The resolved shape for a background method (`work`, `workIf`). */
