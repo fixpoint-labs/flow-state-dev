@@ -106,6 +106,44 @@ const requests = await sessions.listSessionRequests("sess_1", {
 });
 ```
 
+### Background work
+
+Some flows start work that outlives the turn that kicked it off. A long research
+pass, a document being drafted, a job that runs for an hour. Work like that runs in
+its own session hanging off the one the user is in, so it never appears in the
+parent session's requests. `listWorkstreams` asks a session what background work
+belongs to it.
+
+```ts
+// Paging only: `limit` is 1–100 (25 by default), `offset` is 0–10000.
+const workstreams = await sessions.listWorkstreams("sess_1", { limit: 25 });
+
+for (const workstream of workstreams) {
+  // A row's `id` is a session id, so the reads you already use work on it.
+  const requests = await sessions.listSessionRequests(workstream.id);
+}
+```
+
+Each row is a `WorkstreamSummary`: `id`, `parentSessionId`, `createdAt`,
+`updatedAt`, and the optional `topic`, `coordinate`, and `status`. `topic` names the
+body of work and `coordinate` names the worker handling it; both are display labels,
+and a row can arrive without either. Guard all three with `== null`.
+
+`status` is the last state the server recorded for the work, not a check on what is
+happening right now. `"active"` asserts only that the work hasn't finished: queued,
+mid-run, and paused waiting for a person all read `"active"`, and so does a job whose
+worker died, until the server records otherwise. The terminal values are
+`"completed"`, `"failed"`, `"aborted"`, and `"incomplete"`. A workstream that has
+never run anything carries no `status` at all; render no state rather than
+substituting one.
+
+A session with no background work resolves to `[]`. A session id that doesn't exist,
+or one the caller isn't allowed to read, rejects with `ClientHttpError`. So `[]`
+means there is none, not that the lookup failed.
+
+There is no client call that starts background work. Whether a piece of work detaches
+is the flow author's decision, declared on the server when the flow is wired up.
+
 ## `createClient` vs `createTypedClient`
 
 | | `createClient` | `createTypedClient` |
