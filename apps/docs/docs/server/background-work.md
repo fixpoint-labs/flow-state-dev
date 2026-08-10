@@ -137,6 +137,9 @@ labels, timestamps and status. Fetch the session itself if you need more.
 
 ## Related
 
+- [Work that outlives the turn](/guides/background-work) — how jobs relate to the other
+  things this framework calls background work
+- [Client overview](../client/overview.md#background-work) — the same two calls from an app
 - [Server setup](./setup.md) — the full HTTP route table
 - [Authentication](./authentication.md) — how addressed routes scope by owner
 - [Persistence](../persistence/overview.md) — where sessions and requests are stored

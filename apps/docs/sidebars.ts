@@ -186,6 +186,7 @@ const sidebars: SidebarsConfig = {
             "tools/fetch",
             "tools/crawl",
             "tools/bash",
+            "tools/mcp",
             "tools/claude-code-cli",
             "tools/claude-code-sdk",
           ],

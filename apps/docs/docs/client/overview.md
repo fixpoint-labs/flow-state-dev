@@ -132,6 +132,8 @@ The typed client includes a session client when created with a flow. Use it for 
 
 Some flows start work that outlives the turn that kicked it off. A long research pass, a document being drafted, a job that runs for an hour. Work like that runs in its own session hanging off the one the user is in, so it never shows up in the parent session's own requests. `listWorkstreams` asks a session what background work belongs to it.
 
+[Work that outlives the turn](/guides/background-work) covers where these jobs come from and how they differ from the other things the docs call background work; [Background work](/docs/server/background-work) is the HTTP surface underneath the two calls below.
+
 ```ts
 const workstreams = await sessions.listWorkstreams("sess_1");
 

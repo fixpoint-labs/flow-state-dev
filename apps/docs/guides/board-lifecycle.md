@@ -241,6 +241,9 @@ it, dispatch a fresh flow run (see [Background jobs](./background-jobs-bullmq))
 that constructs and drains its own board; that's a new request with its own
 drain, not a shared board with a separate drainer.
 
+[Work that outlives the turn](./background-work) lays out the options side by
+side, including what a board's detached workers address and what they don't.
+
 ## Related
 
 - [Building a research team](./building-a-research-team) — a board from scratch, three ways.

@@ -49,6 +49,8 @@ Dependencies are how you say "this can't start until that finishes." A task list
 
 A board also needs a rule for when to stop. By default it drains until either every task completed or nothing runnable is left (a failure upstream can strand the tasks that depended on it). You can also tell a board to wait indefinitely for work that arrives from outside. Those termination modes are covered in [Task board](./task-board).
 
+A drain runs inside the request that mounted it, so every worker's task finishes before that request does. A board can declare a worker's tasks as work that belongs outside the claiming request, in a session of its own, but that declaration is groundwork today — such a worker is validated, routed, and then still run inline. [Work that outlives the turn](/guides/background-work) covers where that is headed alongside the background-work paths that do ship.
+
 ## Start here
 
 - **[Task board](./task-board)** — the primitive, its config, and its termination modes.
