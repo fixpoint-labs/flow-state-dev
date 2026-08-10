@@ -20,9 +20,24 @@ that, several figures the report *does* show are blunter than they look, and a f
 computed from data that was never there.
 
 When this epic lands, a reader can answer one question from the report alone: **does this
-faithfully represent the analysis that ran?** Nothing new is added — no new provider, no new
-agent, no new capability. Every previous trading-desk epic added a capability; this one
-finishes the report we already build.
+faithfully represent the analysis that ran?** No new provider and no new data lane — that
+fence is absolute (§2 theme 5). Every previous trading-desk epic added a capability; this one
+almost entirely finishes the report we already build.
+
+**Almost, not entirely — and the objective has to say so.** Ten of the twelve issues add
+nothing; they make an existing figure honest. Two do add analysis, and both are named here
+rather than left in an issue, because *"this epic adds no capability"* is the sentence the
+objective gate signs off:
+
+- **FIX-826** adds trend characterization (strength, persistence, inflection). Already flagged
+  below as the weakest issue in the set.
+- **FIX-1066** is the one the original framing hid. Taking the lens pack from four to six
+  activates two generator-backed lenses that `agents/lenses/lenses.ts` currently defers to
+  FIX-705 — so it adds two real analyses and roughly half again as much phase-2b model spend
+  on the `full` preset. That is a capability add and a recurring cost, not a rendering change.
+
+Neither is disqualifying, and neither is being smuggled. But the gate is signing off a set
+that adds two analyses, not zero.
 
 **Holistic necessity.** Twelve issues, and the honest check is whether the set overbuilds. It
 splits three ways and the three groups earn their place differently.
@@ -45,11 +60,11 @@ cheap on data nobody has. It is the one outright real-money hazard in the set, a
 of C is downstream of it being fixed.
 
 **The weakest issue is FIX-826** (trend depth). The desk labels its moving-average stack but
-cannot characterize strength, persistence, or inflection. That is a real gap — but it is the
-only issue here that adds analytical *capability*, where the other eleven make an existing
-figure honest. **Kept, scoped to the honesty framing**: characterize the trend, or say plainly
-that the desk can't. If it grows a new indicator suite during implementation, that is the
-signal it belonged in a later epic.
+cannot characterize strength, persistence, or inflection. That is a real gap — but it is one
+of only two issues here that add analytical *capability* (FIX-1066 is the other), where the
+remaining ten make an existing figure honest. **Kept, scoped to the honesty framing**:
+characterize the trend, or say plainly that the desk can't. If it grows a new indicator suite
+during implementation, that is the signal it belonged in a later epic.
 
 **Not doing.** Five fences, each a real boundary rather than a gap in this epic: **provider
 acquisition and paywalled data lanes** (Reddit has no live provider; options chain and futures
@@ -76,7 +91,7 @@ in the payload, in the derived math, in the prompt, and in the renderer — and 
 a reader as "unavailable", visually distinct from a measured zero.** No consumer may
 re-collapse a null into a zero to keep a chart or a ratio drawing.
 
-Three things this rule has to reach that a narrow reading of FIX-1063 would miss:
+Four things this rule has to reach that a narrow reading of FIX-1063 would miss:
 
 - **The tool output *schemas*, not just the empty-payload builders.** `marketCap`,
   `priceToSales`, `returnOnEquity`, `operatingMargin`, `grossMargin` and the macro and
@@ -89,12 +104,35 @@ Three things this rule has to reach that a narrow reading of FIX-1063 would miss
 - **Downstream consumers each present "unavailable" distinctly**: the valuation math, the
   factor/setup scores, the analyst and PM prompt context, the Summary renderers, and the
   lens convergence read.
+- **The live math path, not only the empty-payload builders.** This is the reach the epic's
+  first draft missed, and it is the one that fabricates figures on a *successful* fetch.
+  `indicators-math.ts` returns a literal `0` whenever there isn't enough history — `sma(…)`
+  and `rsi(…)` short-circuit on `values.length < period`, `macd` on `< 35` bars, `bollinger`,
+  `stochastic` and `kdj` likewise — and `trendLabel` maps `sma50 === 0 || sma200 === 0`
+  straight to `"flat"`. A recent IPO with fewer than 200 daily bars therefore persists zeroed
+  indicators and an asserted flat trend **tagged with a live source**, which is strictly worse
+  than the unavailable case: nothing marks it as missing. Widening the schemas and nulling the
+  empty payloads does not satisfy this contract. Insufficient history must emit `null` and no
+  trend, on the same footing as a provider miss.
 
-**This is a BP-030 tolerate-the-old-shape change.** Recorded fixture snapshots under
-`fixtures/<TICKER>/<DATE>/` and every persisted memo, valuation spine, and decision snapshot
-already carry the zero-filled shape. Dual-read them: an old record's `0` must not be
-re-interpreted as a *new* honest zero, and a new record's `null` must not crash a legacy read
-path. Whichever issue lands the schema change owns the dual-read.
+**This is a BP-030 tolerate-the-old-shape change, and FIX-1063 owns it.** Recorded fixture
+snapshots under `fixtures/<TICKER>/<DATE>/` and every persisted memo, valuation spine, and
+decision snapshot already carry the zero-filled shape. Dual-read them: an old record's `0`
+must not be re-interpreted as a *new* honest zero, and a new record's `null` must not crash a
+legacy read path.
+
+**One owner, one boundary — not twelve consumers each writing `if (x === 0)`.** "Whichever
+issue lands the schema change" was too vague to coordinate against: the payloads have many
+readers, and a per-consumer coercion is how the zero-fill quietly survives in the one path
+nobody updated. FIX-1063 owns the legacy coercion and it lands at the **ingest boundaries**
+(fixture load and valuation-spine ingest), so every downstream issue may assume it is reading
+normalized, honestly-null inputs. An issue in group A or C that finds itself writing its own
+legacy-zero check has hit a gap in FIX-1063, not a task of its own — comment up.
+
+**Reuse the two sentinels that exist; do not invent a third.** The UI already renders missing
+values as `—` (`portfolio-format.ts`, `mandate-helpers.ts`) and the prompt formatters already
+render `"n/a"`. "Unavailable" presents through those, per surface. A new marker string would
+give the same fact three spellings across the set.
 
 ### 2. The honesty rule for a displayed figure — observed · approximated · invented
 
@@ -127,7 +165,8 @@ than negotiated in three specs:
 | Owner | Files |
 |---|---|
 | **FIX-1060** | `labs/trading-desk/components/summary/**` — including `aggregate.ts` |
-| **FIX-1061**, **FIX-1062** | `labs/trading-desk/components/theses/**` |
+| **FIX-1061** | `labs/trading-desk/components/theses/**` — the trader + risk memo renderers |
+| **FIX-1062** | the cross-pane navigation contract: the header button in `components/theses/**`, `mobileTab` in `app/page.tsx`, and the scroll target in `components/transcript/**` |
 | **FIX-783** | the PM prompt + writer under `flows/analysis/agents/portfolio-manager/` |
 
 **The code says these do not collide, and the epic's framing overstated the risk.**
@@ -135,6 +174,15 @@ than negotiated in three specs:
 `components/summary/*` — it is not a shared surface between A's two halves. The Theses pane
 reads `ClientDataOf<typeof memosCollection>` straight off the resource, so it needs nothing
 from the aggregate. Treat that as the boundary and it holds without coordination.
+
+**FIX-1062 is not a theses-local change, and the first draft of this table said it was.**
+`app/page.tsx` owns `mobileTab` and renders *either* `ThesesPane` *or* `TranscriptPane` below
+the `lg` breakpoint — they are never mounted together. So a change confined to
+`components/theses/**` cannot reveal, scroll to, or focus the target: on mobile the target
+isn't in the tree. FIX-1062 therefore owns a small navigation contract spanning three
+surfaces, and that is the boundary FIX-1061 must not cross. The two still don't collide —
+FIX-1061 renders memo bodies, FIX-1062 moves the viewport — but they are adjacent inside
+`components/theses/**`, so FIX-1062 lands its header-button edit first if both are in flight.
 
 **One thing genuinely is shared, and it is upstream of both:** the memos collection ships the
 *whole* memo state to the client (no projection declared). So every field either pane needs
@@ -190,14 +238,17 @@ it; the risk assessment shows its own calibration. Every memo's "jump to transcr
 somewhere.
 
 Below that, the numbers are labeled for what they are. A multiple built on a blunt proxy says
-which proxy. A figure whose input was never fetched reads `—` rather than `0` or `$0`, and a
-fundamentals miss can no longer make a name look cheap by dropping its equity value out of
-enterprise value. The lens convergence read says it is four lenses of six and which of them
-flagged a data gap. The trend read either characterizes strength and persistence or says the
-desk cannot.
+which proxy. A figure whose input was never fetched — or whose ticker had too little history
+to compute it — reads `—` rather than `0` or `$0`, and a fundamentals miss can no longer make
+a name look cheap by dropping its equity value out of enterprise value. A name with three
+months of bars no longer asserts a flat trend it never measured. The lens convergence read
+names how many lenses actually returned a verdict and which of them flagged a data gap. The
+trend read either characterizes strength and persistence or says the desk cannot.
 
-Nothing on that list is a new capability. Every sentence describes a value the desk already
-computes, shown honestly.
+**Ten of those twelve sentences describe a value the desk already computes, shown honestly.**
+Two do not: the sixth lens pack is two analyses that do not run today, and trend
+characterization is a read the desk cannot currently produce. Both are called out in §1 —
+this section is the picture of the end state, and the picture includes them.
 
 ## 4. Running index
 
@@ -206,7 +257,7 @@ computes, shown honestly.
 | **A — render what we already compute** | | | | | |
 | [FIX-1060](https://linear.app/fixpoint-labs/issue/FIX-1060) | Summary renders the stored structured fields it silently drops | **bug** | — | — | Backlog |
 | [FIX-1061](https://linear.app/fixpoint-labs/issue/FIX-1061) | Dedicated renderer for the trader + risk-persona memos | spec | — | — | Backlog |
-| [FIX-1062](https://linear.app/fixpoint-labs/issue/FIX-1062) | Jump-to-transcript actually jumps | **bug** | — | — | Backlog |
+| [FIX-1062](https://linear.app/fixpoint-labs/issue/FIX-1062) | Jump-to-transcript actually jumps — spans theses + `page.tsx` + transcript (§2 theme 3) | **bug** | — | — | Backlog |
 | [FIX-783](https://linear.app/fixpoint-labs/issue/FIX-783) | PM memo prose stops reading as a template; `items` arrays used | spec | — | — | Todo |
 | **B — visible correctness & grounding** | | | | | |
 | [FIX-782](https://linear.app/fixpoint-labs/issue/FIX-782) | `priceHistory` persists on every run, so the price chart is there | **bug** | — | — | Todo |
@@ -215,7 +266,7 @@ computes, shown honestly.
 | **C — analytical depth & data honesty** | | | | | |
 | [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads null instead of zero-fill *(sequence first)* | **bug** ⚠ | — | — | Backlog |
 | [FIX-1064](https://linear.app/fixpoint-labs/issue/FIX-1064) | Valuation multiples labeled or sharpened, not silently blunt | spec | — | — | Backlog |
-| [FIX-1066](https://linear.app/fixpoint-labs/issue/FIX-1066) | Lens pack to 6; convergence accounts for per-lens data gaps | spec | — | — | Backlog |
+| [FIX-1066](https://linear.app/fixpoint-labs/issue/FIX-1066) | Lens pack to 6 *(activates the two lenses `lenses.ts` defers to FIX-705 — a capability add, §1)*; convergence accounts for per-lens data gaps | spec | — | — | Backlog |
 | [FIX-1065](https://linear.app/fixpoint-labs/issue/FIX-1065) | The reward-to-risk figure stops resting on invented inputs | spec | — | — | Backlog |
 | [FIX-826](https://linear.app/fixpoint-labs/issue/FIX-826) | Trend strength / persistence / inflection, or an honest "can't" | spec | — | — | Backlog |
 
@@ -241,6 +292,17 @@ here so it is not missed. Nothing else in the set carries this flag.
   decision about how conservative the desk is — not FIX-1065's alone. **Blocks nothing**;
   FIX-1065 specs it and the ask below is put to the product owner at the spec gate.
 
+  **Corrected after epic review — the gates are downward-only in *effect*, not in *error*.**
+  The first draft argued that a soft input driving a conservative-only check is a small sin,
+  because both gates cap size and never inflate it. That reasoning does not hold. A gate that
+  only ever caps still has to *decide whether to fire*, and both decide on the invented
+  number: `computeEvidenceGate` clears its reward-to-risk layer on
+  `rewardToRiskEvidenceBasis === "sufficient"`, which an optimistic distribution with enough
+  finite buckets produces; `computeMandateGates` clears its soft cap when the GLR beats the
+  mandate's `rewardToRiskFloor`. So an optimistic invention makes the protections **silently
+  fail to fire** — permissive relative to a fail-closed treatment, even though nothing in the
+  code path ever increases a size. The recommendation below is rewritten around that.
+
   > ### Reward-to-risk: fix the inputs, or stop calling it a measurement?
   >
   > **Plain terms.** The desk shows a reward-to-risk number and treats it as a hard fact — it
@@ -248,31 +310,48 @@ here so it is not missed. Nothing else in the set carries this flag.
   > underneath it are not measured from anything. An AI wrote them. So a figure the desk
   > presents as arithmetic is, at its base, a guess wearing a decimal point.
   >
-  > **The trade-off.** Two ways out. Ground the odds in something real — historical outcome
-  > distributions, option-implied probabilities — which is genuinely new analytical work and
-  > pulls a data lane this epic has fenced off. Or demote the figure: keep it, label it as
-  > model-estimated rather than measured, and decide whether two automatic safety checks
-  > should still be allowed to gate a position size on it. Demoting is honest immediately;
-  > grounding is honest *and* keeps the safety checks, at the cost of a much bigger piece of
-  > work than this epic was scoped for.
+  > **Worse than it first looked.** Two automatic safety checks decide whether to shrink a
+  > position by reading this number. When the AI's guess is optimistic, both checks quietly
+  > conclude everything is fine and don't fire. So the number can't inflate a position
+  > directly, but it can switch off the things that would have cut it. That is not a
+  > cosmetic labeling problem.
   >
-  > **My recommendation: demote it, and keep both gates running on the demoted figure.**
-  > Relabel it as an estimate, surface that on the report, and leave the gates wired. Both
-  > gates only ever move *downward* — they cap size, they never inflate it — so a soft input
-  > driving a conservative-only check is a much smaller sin than the same input wearing the
-  > word "deterministic". Grounding the odds properly is real work and deserves its own issue
-  > outside this epic.
+  > **The trade-off.** Three ways out. **Ground the odds** in something real — historical
+  > outcome distributions, option-implied probabilities — which is genuinely new analytical
+  > work and pulls a data lane this epic has fenced off. **Demote and fail closed** — label
+  > the figure as model-estimated, and stop letting an estimate *satisfy* a safety check: it
+  > may still trigger one, it may no longer clear one. **Demote and accept** — relabel it,
+  > leave the checks reading it as they do today, and write down that optimistic guesses can
+  > bypass them.
   >
-  > **What would change my mind:** if we have told anyone — a design partner, a demo audience
-  > — that this specific number is computed rather than estimated. Then the label is a
-  > correction we owe them promptly, and turning the gates off while we ground it properly is
-  > the safer read.
+  > **My recommendation: demote it and fail closed.** An estimate is not a measurement, so it
+  > should not be able to answer a question that asks for one — that is exactly the rule the
+  > rest of this epic is built on, and applying it anywhere but here would be arbitrary. In
+  > practice this means more runs land on "don't add", which is the correct direction to be
+  > wrong in for real money. Grounding the odds properly is a real piece of work and deserves
+  > its own issue outside this epic.
   >
-  > **Cost of being wrong: moderate, and it runs one way.** Demote it when we should have
-  > grounded it, and the desk keeps sizing off a soft number for another quarter — visible,
-  > recoverable, and always conservative in direction. Rip the gates out when we didn't need
-  > to, and the desk loses two of the checks that stop a thin thesis authorizing a real
-  > position. Worth a minute; not worth an afternoon.
+  > **What would change my mind:** if failing closed turns out to gate most runs rather than
+  > the thin ones. A check that fires nearly always has stopped discriminating and become
+  > noise people learn to ignore, which is worse than the status quo. That is measurable —
+  > run the eval suite over the fixture corpus before and after and count. If it does gate
+  > most runs, "demote and accept", with the bypass written down, is the honest interim.
+  >
+  > **Cost of being wrong: moderate, and it now runs both ways** — the first version of this
+  > ask claimed it ran one way, which was the mistake above. Fail closed when we didn't need
+  > to, and the desk under-sizes good setups and trains people to override the gate. Leave
+  > the checks reading an optimistic guess, and they keep silently not firing on exactly the
+  > thin theses they exist to catch. Worth twenty minutes of your time; not worth an
+  > afternoon.
+
+- **~~Should FIX-1062 fold into FIX-1061?~~** *Resolved: no, keep them separate.* Both
+  reviewers proposed merging them on the premise that jump-to-transcript is ten lines inside
+  `components/theses/**`, the same surface FIX-1061 owns. The premise is wrong: on mobile
+  `app/page.tsx` renders the theses pane and the transcript pane exclusively, so the fix
+  spans the header button, `mobileTab`, and the transcript's scroll target (§2 theme 3). It
+  is a small navigation contract across three files, not a stub swap inside one. Merging it
+  into a memo-rendering issue would bury a cross-pane behavior change inside a renderer PR.
+  Recorded here so a third reviewer doesn't reopen it. The epic is twelve issues.
 
 ---
 
@@ -288,3 +367,16 @@ here so it is not missed. Nothing else in the set carries this flag.
   arithmetic**, it does not merely display badly; and `aggregate.ts` is inside
   `components/summary/`, so group A's two halves do not share a file after all. Recorded the
   end-state POC as a deliberate skip.
+- **After epic review (round 1)** — corrected the objective and four decisions the review
+  falsified. §1 no longer claims the epic adds no capability: FIX-1066's lens pack 4→6
+  activates two generator-backed lenses deferred to FIX-705, which is an analysis add and a
+  standing model-cost increase, and FIX-826 is a second one — the gate is signing off two
+  additions, not zero. Theme 1 now reaches the **live** indicator math (`indicators-math.ts`
+  zero-returns on short history and `trendLabel` asserts `"flat"` from them, persisted with a
+  live source — a fabrication on a *successful* fetch that the empty-payload framing missed),
+  names FIX-1063 as the single dual-read owner at the ingest boundaries, and pins the two
+  existing sentinels. Theme 3 widens FIX-1062 to the cross-pane navigation contract, because
+  `page.tsx` never mounts the theses and transcript panes together on mobile. §5's
+  reward-to-risk recommendation flipped to demote-and-fail-closed: the gates are downward-only
+  in effect but decide whether to fire on the invented number, so an optimistic estimate
+  switches the protections off rather than merely wearing a wrong label.
