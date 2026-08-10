@@ -29,6 +29,7 @@ import {
   getOrCreateTaskCollection,
   taskSchema,
   toEmittedTask,
+  IllegalTaskTransitionError,
   SERVER_ONLY_TASK_FIELDS,
   type Task,
   type TaskClaimIdentity,
@@ -226,6 +227,80 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
       sessionId: "sess_42",
       requestId: "req_88",
     });
+  });
+
+  /**
+   * `unblock` owns ONE edge: `blocked → pending`.
+   *
+   * The status table maps status to status, not verb to edge, so it also calls
+   * `in_progress → pending` and `awaiting_review → pending` legal — those are
+   * `reclaim`'s and `resumeFromReview`'s edges, and both of those verbs clear
+   * the lease and the coordinate. `unblock` clears neither, and correctly so:
+   * `blocked` is reachable only from `pending`, and every path into `pending`
+   * already clears both, so a genuinely blocked row holds neither field.
+   *
+   * Without the source guard, `unblock` on a claimed row is a `reclaim`
+   * spelled wrong — it re-pends the task while leaving the previous attempt's
+   * session and request ids on it, and a later reader takes that stale
+   * coordinate for the current execution. The lease leaks the same way, which
+   * is why both are asserted here.
+   */
+  it("refuses to unblock a claimed task, writing nothing", async () => {
+    const { collection } = await makeBacking();
+    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    await collection.claim("worker-1");
+    const leaseBefore = collection.get(task.id)?.leaseUntil;
+
+    await expect(collection.unblock(task.id)).rejects.toThrow(
+      IllegalTaskTransitionError
+    );
+
+    // Nothing moved, and neither field was stranded onto a pending row.
+    expect(collection.get(task.id)?.status).toBe("in_progress");
+    expect(collection.get(task.id)?.claimedBy).toEqual({
+      sessionId: "sess_42",
+      requestId: "req_88",
+    });
+    expect(collection.get(task.id)?.leaseUntil).toBe(leaseBefore);
+  });
+
+  it("refuses to unblock a task parked for review, writing nothing", async () => {
+    const { collection } = await makeBacking();
+    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    await collection.claim("worker-1");
+    await collection.awaitReview(task.id, "please look");
+
+    await expect(collection.unblock(task.id)).rejects.toThrow(
+      IllegalTaskTransitionError
+    );
+
+    expect(collection.get(task.id)?.status).toBe("awaiting_review");
+  });
+
+  it("still unblocks a genuinely blocked task, which carries neither field", async () => {
+    // The control. A guard that refused everything would pass the two above.
+    const { collection } = await makeBacking();
+    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    await collection.block(task.id, "deps not ready");
+
+    await collection.unblock(task.id);
+
+    expect(collection.get(task.id)?.status).toBe("pending");
+    expect(collection.get(task.id)?.claimedBy).toBeUndefined();
+    expect(collection.get(task.id)?.leaseUntil).toBeUndefined();
+  });
+
+  it("declines rather than throws when the caller made the unblock advisory", async () => {
+    // An advisory write must never throw for a refused transition — it reports.
+    const { collection } = await makeBacking();
+    const [task] = await collection.addTasks([{ goal: "do a thing" }]);
+    await collection.claim("worker-1");
+
+    expect(await collection.unblock(task.id, { ifAllowed: true })).toMatchObject({
+      outcome: "declined",
+      reason: "disallowed",
+    });
+    expect(collection.get(task.id)?.status).toBe("in_progress");
   });
 });
 

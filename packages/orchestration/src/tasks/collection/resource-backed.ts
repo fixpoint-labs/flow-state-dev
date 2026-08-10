@@ -106,6 +106,7 @@ import {
   grantRetry,
   listTasks,
   routeFailure,
+  assertTransitionFrom,
   transitionDeclineReason,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -391,7 +392,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     targetStatus: TaskStatus,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions
+    guards?: TaskTransitionOptions,
+    requireFrom?: TaskStatus
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -407,11 +409,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           task as Task,
           targetStatus,
           guards,
-          options.collectionId
+          options.collectionId,
+          requireFrom
         );
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
         }
+        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
         return {
@@ -648,7 +652,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "pending",
         "unblocked",
         () => ({ error: undefined }),
-        options
+        options,
+        // `blocked` is the ONLY status this may run from. The other two paths
+        // to `pending` have their own verbs (`reclaim`, `resumeFromReview`),
+        // and those clear the lease and the claim coordinate; this one has
+        // nothing to clear because `blocked` is reachable only from `pending`.
+        "blocked"
       );
     },
 
