@@ -113,16 +113,32 @@ Four things this rule has to reach that a narrow reading of FIX-1063 would miss:
 - **Downstream consumers each present "unavailable" distinctly**: the valuation math, the
   factor/setup scores, the analyst and PM prompt context, the Summary renderers, and the
   lens convergence read.
-- **The live math path, not only the empty-payload builders.** This is the reach the epic's
-  first draft missed, and it is the one that fabricates figures on a *successful* fetch.
-  `indicators-math.ts` returns a literal `0` whenever there isn't enough history — `sma(…)`
-  and `rsi(…)` short-circuit on `values.length < period`, `macd` on `< 35` bars, `bollinger`,
-  `stochastic` and `kdj` likewise — and `trendLabel` maps `sma50 === 0 || sma200 === 0`
-  straight to `"flat"`. A recent IPO with fewer than 200 daily bars therefore persists zeroed
-  indicators and an asserted flat trend **tagged with a live source**, which is strictly worse
-  than the unavailable case: nothing marks it as missing. Widening the schemas and nulling the
-  empty payloads does not satisfy this contract. Insufficient history must emit `null` and no
-  trend, on the same footing as a provider miss.
+- **Every producer that reports a live source while defaulting a field it did not observe —
+  not only the empty-payload builders.** This is the reach the epic's first draft missed, and
+  it is the one that fabricates on a *successful* fetch, which is strictly worse than the
+  unavailable case because nothing marks the value as missing. **The test is provenance, not
+  the file.** Two instances are confirmed against the code:
+
+  - **Insufficient history.** `indicators-math.ts` returns a literal `0` whenever there isn't
+    enough history — `sma(…)` and `rsi(…)` short-circuit on `values.length < period`, `macd`
+    on `< 35` bars, `bollinger`, `stochastic` and `kdj` likewise — and `trendLabel` maps
+    `sma50 === 0 || sma200 === 0` straight to `"flat"`. A recent IPO with fewer than 200 daily
+    bars persists zeroed indicators and an asserted flat trend tagged with a live source.
+    Insufficient history must emit `null` and no trend, on the same footing as a provider miss.
+  - **A partially-successful fetch.** `get_macro_indicators` pulls nine FRED series, degrades
+    each to `[]` on failure, and returns `emptyPayload` **only when every series fails**.
+    Otherwise it stamps `source: "fred"` and `?? 0`s whatever is missing — unemployment, fed
+    funds, the 10-year, WTI, the 2s10s slope, the HY spread, the dollar index, industrial
+    production — plus a `cpiYoy` that resolves to `0` when the year-ago print is absent. Its
+    own module header records the symptom this already caused once: *"the payload came back
+    tagged `fred` but with 7-of-9 fields zeroed."* A partial provider miss is a miss.
+
+  Widening the schemas and nulling the empty payloads satisfies neither, so neither is
+  optional. FIX-1063 owns both. One adjacent case was checked and is deliberately **outside**
+  the contract: `composite-math.ts` zero-weights a missing term but returns `missingInputs`
+  alongside the score, so it already labels rather than fabricates — FIX-1063 need not touch
+  it, and an issue that finds a third fabricating producer should comment up rather than
+  widen the contract locally.
 
 **This is a BP-030 tolerate-the-old-shape change, and FIX-1063 owns it.** Recorded fixture
 snapshots under `fixtures/<TICKER>/<DATE>/` and every persisted memo, valuation spine, and
@@ -196,7 +212,7 @@ than negotiated in three specs:
 
 | Owner | Files |
 |---|---|
-| **FIX-1060** | `labs/trading-desk/components/summary/**` — including `aggregate.ts` |
+| **FIX-1060** | `labs/trading-desk/components/summary/**` — including `aggregate.ts` — **except** the pre-fix marker seam in `report-summary.tsx`, which is FIX-1063's (below) |
 | **FIX-1061** | `labs/trading-desk/components/theses/**` — the trader + risk memo renderers |
 | **FIX-1062** | the cross-pane navigation contract: the header button in `components/theses/**`, `mobileTab` in `app/page.tsx`, and the scroll target in `components/transcript/**` |
 | **FIX-783** | the PM prompt + writer under `flows/analysis/agents/portfolio-manager/` |
@@ -215,6 +231,17 @@ isn't in the tree. FIX-1062 therefore owns a small navigation contract spanning 
 surfaces, and that is the boundary FIX-1061 must not cross. The two still don't collide —
 FIX-1061 renders memo bodies, FIX-1062 moves the viewport — but they are adjacent inside
 `components/theses/**`, so FIX-1062 lands its header-button edit first if both are in flight.
+
+**One seam inside `components/summary/` is FIX-1063's, and the round-two fold created that
+overlap without saying so.** Theme 1 handed FIX-1063 the persisted-report boundary; that
+boundary *is* `report-summary.tsx`, which this table had already given to FIX-1060 whole. They
+are two seams in one file. `report-summary.tsx` hydrates the stored spine
+(`useResource(session, "valuationSpine")`) and hands it to `buildReportSummary` — **FIX-1063
+owns that read and the pre-fix marker it keys on**, and **FIX-1060 owns which stored fields the
+view renders**. Neither rewrites the view model, so they don't collide semantically; they are
+simply adjacent in one file, so **FIX-1063 lands its marker edit first if both are in flight**
+— which costs nothing, since it already sequences first. A group-A issue writing its own
+version or provenance check has hit the gap theme 1 names: comment up, don't build a second one.
 
 **One thing genuinely is shared, and it is upstream of both:** the memos collection ships the
 *whole* memo state to the client (no projection declared). So every field either pane needs
@@ -261,6 +288,12 @@ landed. A fifth is weaker but worth stating: **FIX-1065 should be specced before
 in C is built against the reward-to-risk figure** — it may remove or reframe a value two
 deterministic gates currently consume (§5).
 
+**"Parallel" here means no ordering, not no adjacency.** Two pairs share a file without
+sharing a seam, and §2 theme 3 carries both: FIX-1062 lands its header-button edit before
+FIX-1061, and FIX-1063 lands its pre-fix marker in `report-summary.tsx` before FIX-1060. Read
+this section alone and both pairs look unconstrained, which is how the second one reached
+round three unnoticed. Neither is a blocking relation and neither belongs in Linear as one.
+
 ### 5. No new data lane
 
 This epic works on the data the desk already has. No issue here adds a provider, a paid
@@ -280,7 +313,8 @@ each against a separately observed report defect, and four of those are already 
 surfaces (§2 theme 3) turned out on inspection to be *less* entangled than the framing
 assumed. The question an end-state POC exists to answer — *does the division into issues hold
 once it's all there?* — is answerable from the code, and it does: the set is still twelve
-issues and no two of them own the same seam.
+issues, and where two of them touch one file they own different seams in it (§2 theme 3 splits
+`report-summary.tsx` between FIX-1060 and FIX-1063, and names the order they land in).
 
 **The skip stands; the confidence behind it was overstated, and review proved it.** This
 section first said a grep confirmed what a POC would have. It didn't quite — reading
@@ -303,7 +337,8 @@ somewhere.
 
 Below that, the numbers are labeled for what they are. A multiple built on a blunt proxy says
 which proxy. A figure whose input was never fetched — or whose ticker had too little history
-to compute it — reads `—` rather than `0` or `$0`, and a fundamentals miss can no longer make
+to compute it, or whose provider answered for only some of its series — reads `—` rather than
+`0` or `$0`, and a fundamentals miss can no longer make
 a name look cheap by dropping its equity value out of enterprise value. A name with three
 months of bars no longer asserts a flat trend it never measured. The lens convergence read
 names how many lenses actually returned a verdict and which of them flagged a data gap. The
@@ -325,16 +360,16 @@ in §1 — this section is the picture of the end state, and the picture include
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | **A — render what we already compute** | | | | | |
-| [FIX-1060](https://linear.app/fixpoint-labs/issue/FIX-1060) | Summary renders the stored structured fields it silently drops | **bug** | — | — | Backlog |
+| [FIX-1060](https://linear.app/fixpoint-labs/issue/FIX-1060) | Summary renders the stored structured fields it silently drops *(owns `components/summary/**` except the pre-fix marker seam in `report-summary.tsx`, §2 theme 3)* | **bug** | — | — | Backlog |
 | [FIX-1061](https://linear.app/fixpoint-labs/issue/FIX-1061) | Dedicated renderer for the trader + risk-persona memos | spec | — | — | Backlog |
 | [FIX-1062](https://linear.app/fixpoint-labs/issue/FIX-1062) | Jump-to-transcript actually jumps — spans theses + `page.tsx` + transcript (§2 theme 3) | **bug** | — | — | Backlog |
 | [FIX-783](https://linear.app/fixpoint-labs/issue/FIX-783) | PM memo prose stops reading as a template; `items` arrays used | spec | — | — | Todo |
 | **B — visible correctness & grounding** | | | | | |
-| [FIX-782](https://linear.app/fixpoint-labs/issue/FIX-782) | `priceHistory` persists on every run, so the price chart is there | **bug** | — | — | Todo |
+| [FIX-782](https://linear.app/fixpoint-labs/issue/FIX-782) | `priceHistory` persists on every run, so the price chart is there — *its filed cause is stale; the row survives on a different one (below)* | **bug** | — | — | Todo |
 | [FIX-780](https://linear.app/fixpoint-labs/issue/FIX-780) | Flat-stance runs stop overloading stop/target with a range | spec | — | — | Todo |
 | [FIX-779](https://linear.app/fixpoint-labs/issue/FIX-779) | Entity-identity validation on discovery snippets | **bug** | — | — | Todo |
 | **C — analytical depth & data honesty** | | | | | |
-| [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads *and* short-history live math null instead of zero-fill; owns the BP-030 dual-read at all three boundaries — fixture load, spine ingest, and the persisted report — plus the version stamp new records carry *(sequence first, §2 theme 1)* | spec ⚠ | — | — | Backlog |
+| [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads *and* every live-tagged producer that defaults an unobserved field — short-history indicator math, partial-FRED macro — null instead of zero-fill; owns the BP-030 dual-read at all three boundaries — fixture load, spine ingest, and the persisted report — plus the version stamp new records carry *(sequence first, §2 theme 1)* | spec ⚠ | — | — | Backlog |
 | [FIX-1064](https://linear.app/fixpoint-labs/issue/FIX-1064) | Valuation multiples labeled or sharpened, not silently blunt *(after FIX-1063)* | spec | — | — | Backlog |
 | [FIX-1066](https://linear.app/fixpoint-labs/issue/FIX-1066) | Lens pack to 6 *(activates the two lenses `lenses.ts` defers to FIX-705 — an analysis add the objective owns, §1)*; owns putting EV multiples / earnings yield / ROIC / PEG on the lens surface, so **after FIX-1064** (§2 theme 4); convergence accounts for per-lens data gaps | spec | — | — | Backlog |
 | [FIX-1065](https://linear.app/fixpoint-labs/issue/FIX-1065) | The reward-to-risk figure stops resting on invented inputs | spec | — | — | Backlog |
@@ -342,17 +377,34 @@ in §1 — this section is the picture of the end state, and the picture include
 
 *A `bug` row carries no spec PR by design — it routes straight to implementation
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
-An empty Spec PR cell on a bug row is correct, not a gap.*
+An empty Spec PR cell on a bug row is correct, not a gap. No spec or implementation branch
+exists for any of the twelve issues yet, so every PR cell is empty; Route and State are
+re-derived from Linear on each refresh.*
 
-**⚠ FIX-1063's route, corrected against Linear.** Earlier drafts of this table said the issue
-is labeled `Bug` and flagged the routing for the worker to re-check before building. It
-carries **no category label at all** (`examples` is not one), so the route derives to **spec**
-by the fail-closed rule — *"when the category can't be read, the route defaults to spec"*
-([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
-The worry the flag existed to raise is therefore already answered: the issue that widens a
-tool output schema, owns the BP-030 dual-read at three boundaries and stamps new records does
-**not** reach code without a spec gate. Both round-one reviewers argued for promoting it;
-there is nothing to promote.
+**FIX-782's filed cause is stale, and the row survives on a different one. The set is still
+twelve.** Review argued the issue is already done: `storePriceHistory` is wired into
+`analyze.ts`, persists a thinned slice, and is tested — all on `main`. That is half right, and
+the half it gets right is the *diagnosis*, not the issue. FIX-782 was filed against a warm-cache
+dependency (all three of its suspects are cache-related), and the FIX-758 spine migration
+removed that cache from this path — the tap now reads the session `technicalData` spine, so the
+description no longer describes the code. But the acceptance criteria are not met. The spine
+write is gated on the subject ticker **at the canonical summary range**
+(`SUMMARY_PRICE_RANGE = "1mo"`), so an analyst that fetched prices at any other range satisfies
+the issue's first criterion — *"the technical analyst successfully fetched prices"* — while
+leaving the tap nothing to find; and the tap still returns silently on a miss, so the second
+criterion, an observable miss, is unmet outright. The corrected starting point is routed to the
+issue as an implementer note rather than carried here.
+
+**⚠ FIX-1063's route, corrected against Linear — twice.** Earlier drafts of this table said
+the issue is labeled `Bug` and flagged the routing for the worker to re-check before building.
+Round two corrected that to "no category label at all", and concluded the route derives to
+**spec** by the fail-closed rule. The conclusion was right and the fact was not: the missing
+label was the residue of a failed label write, not the issue's condition. Read back from
+Linear, **FIX-1063 carries `Improvement` (Kind)**, so the route is `spec` outright rather than
+by failing closed. Either way the worry the flag existed to raise is answered — the issue that
+widens a tool output schema, owns the BP-030 dual-read at three boundaries and stamps new
+records does **not** reach code without a spec gate. Both round-one reviewers argued for
+promoting it; there is nothing to promote.
 
 **The ⚠ stays for one reason.** The route is re-derived from the Linear category label on
 every refresh, so a label added later re-routes the issue — and if `Bug` is ever applied, this
@@ -487,3 +539,16 @@ promote it*) has to be the worker's call. Nothing else in the set carries this f
   and `formatValuation` shows them to analysts, but `formatValuationSpine` does not, so
   FIX-1066 owns that surfacing. And §4's route for FIX-1063 was **wrong**: the issue carries
   no category label, so it derives to `spec`, not `bug`.
+- **After epic review (round 3)** — the authorized third round, spent on two above-the-bar
+  findings and two corrections. Theme 1's live-path reach is now stated **by provenance rather
+  than by file**: any producer that reports a live source while defaulting an unobserved field
+  is inside the contract, and `get_macro_indicators` is a second confirmed instance — it stamps
+  `source: "fred"` whenever *one* of nine series survives and `?? 0`s the rest, a fabrication
+  the short-history framing did not reach. Theme 3 resolves an overlap the round-two fold
+  created and did not declare: `report-summary.tsx` was owned whole by FIX-1060 *and* handed to
+  FIX-1063 as the persisted-report boundary, so the two seams are now split and FIX-1063 lands
+  its marker edit first. Two corrections cost nothing: **FIX-782's filed cause is stale** — the
+  FIX-758 spine migration removed the warm cache its diagnosis rests on — but the row survives,
+  because the summary-range gate and the silent miss leave both acceptance criteria unmet, so
+  the set is still twelve; and **FIX-1063 does carry `Improvement` (Kind)** — the earlier "no
+  category label" reading was a failed label write, not the issue's state.
