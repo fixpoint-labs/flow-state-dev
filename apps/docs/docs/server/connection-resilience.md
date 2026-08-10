@@ -58,11 +58,11 @@ Both sweep bounds — `staleSweepThresholdMs` and `queuedGraceMs` — apply to e
 
 If you run actions through a background queue instead of in-process, a request is accepted and recorded before any worker picks it up. Nothing is executing it yet, so it has no executor heartbeat — and `staleSweepThresholdMs` measures heartbeat age, which for a queued job would only be measuring how long the queue has been busy.
 
-`queuedGraceMs` is the separate answer for those: how long a job may sit unclaimed before the sweeper decides the queue lost it. It defaults to 10 minutes and applies to every sweep — the periodic one, the pass on server startup, and the on-demand `check-interrupted` call.
+`queuedGraceMs` is the separate answer for those: how long a job may sit unclaimed before the sweeper decides the queue lost it. It defaults to 10 minutes.
 
-Raise it if your worst-case backlog can run longer than 10 minutes. Set too low, a valid job is marked `interrupted` while the queue is still holding it, and recovery can re-dispatch work that later runs anyway. The two knobs are deliberately independent: tightening your heartbeat should not silently shorten how long a queue is allowed to be backed up.
+Raise it if your worst-case backlog can run longer than 10 minutes. Set too low, a valid job is marked `interrupted` while the queue is still holding it, and recovery can re-dispatch work that later runs anyway.
 
-It has to be a finite, non-negative number of milliseconds, and the host throws at startup if it isn't. This grace is the only bound on a queued request: a queued request counts as live until a sweep clears it, so a value nothing can exceed — `Infinity`, or a `NaN` from arithmetic on an unset variable — would leave a job the queue lost sitting `in_progress` forever with nothing able to notice. Use `0` if you want queued requests reaped as soon as they go stale.
+It has to be a finite, non-negative number of milliseconds, and the host throws at startup if it isn't. Use `0` if you want queued requests reaped as soon as they go stale.
 
 Per-flow overrides win over the host default:
 

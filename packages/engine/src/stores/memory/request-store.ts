@@ -18,8 +18,13 @@ import {
   patchFieldInMap,
   pushToArrayInMap
 } from "./shared";
-import { withRequestSourceDefault, withStoredAbortRequested } from "../shared";
-import { matchesTenantFilter } from "../scope-keys";
+import {
+  matchesRequestStatusFilter,
+  withRequestSourceDefault,
+  withStoredAbortRequested
+} from "../shared";
+import { matchesOrgFilter, matchesTenantFilter } from "../scope-keys";
+import { compareRequestsForListing } from "../list-order";
 import { BoundedQueue } from "../../utils/bounded-queue";
 import { StoreSubscriptionError } from "../../errors/store-subscription-error";
 import { endsRequestStream } from "../subscribe-helpers";
@@ -265,17 +270,23 @@ export class InMemoryRequestStore implements RequestStore {
         return false;
       }
 
-      if (options?.status !== undefined && record.status !== options.status) {
+      if (!matchesOrgFilter(options, record.orgId)) {
+        return false;
+      }
+
+      if (!matchesRequestStatusFilter(options?.status, record.status)) {
         return false;
       }
 
       return true;
     });
 
-    if (options?.orderBy === "startedAtMs") {
-      filtered.sort((left, right) => right.startedAtMs - left.startedAtMs);
-    } else {
-      filtered.sort((left, right) => right.updatedAt - left.updatedAt);
+    // `orderBy: "none"` skips the sort outright (FIX-1010) — an existence
+    // check has no ordering preference, and sorting the set it selects on is
+    // what makes such a read grow with history on the SQL adapters. Kept
+    // symmetric here so a behaviour proved in memory holds in production.
+    if (options?.orderBy !== "none") {
+      filtered.sort((left, right) => compareRequestsForListing(left, right, options));
     }
     return applyOffsetLimit(filtered, options).map((record) =>
       withRequestSourceDefault(cloneValue(record))

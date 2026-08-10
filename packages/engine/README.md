@@ -340,6 +340,50 @@ const stores = createFilesystemStores({
 });
 ```
 
+## Background jobs on a session
+
+`GET /api/flows/sessions/:sessionId/workstreams` lists the background jobs
+started by a session — the child sessions attached to it. Each row carries the
+child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
+`status` of `active` (not finished) or a terminal outcome (`completed`,
+`failed`, `aborted`, `incomplete`). A job with no runs has no `status`.
+
+`topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
+creates the job's session, taken from the routing seed that session's id was
+derived from (`seed.topic` and `seed.key`). The caller's `record` bag lands in
+the record's `metadata` and never becomes a label. Both are display only —
+nothing routes, authorizes or adopts on them — and both are optional, so guard
+with `== null`.
+
+The route is session-addressed: the parent is loaded and ownership-checked
+before the handler runs, and the answer is scoped to the stored parent's owner,
+tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
+0–10000; anything outside returns `400`. Use each row's `id` with the existing
+`/sessions/:id/requests` endpoint to read that job's history.
+
+See [Background work](https://flow-state.dev/docs/server/background-work) for
+the full contract.
+
+## Store list options
+
+`SessionListOptions` and `RequestListOptions` are part of the store contract.
+Adapters must implement all four options:
+
+- `RequestListOptions.status` accepts a `RequestStatus` **or an array** of them.
+  An array matches set membership; an empty array matches nothing.
+- `RequestListOptions.orderBy` accepts `"none"` alongside `"startedAtMs"` and
+  `"updatedAt"`. `"none"` returns the matching set unordered. An
+  existence check needs that: its work must not grow with the set it selects
+  on.
+  `"startedAtMs"` orders by `(startedAtMs, id)` so an exact tie resolves
+  deterministically.
+- `SessionListOptions.orderBy` accepts `"createdAt"` or `"updatedAt"` (default).
+  `"createdAt"` orders by `(createdAt, id)`, both immutable, so a record written
+  during a caller's walk cannot reorder its pages.
+- Both types accept `orgId`, with the same present-vs-absent NULL-safe matching
+  as `tenantId`: an absent key filters nothing, a present key (including an
+  explicit `undefined`) exact-matches.
+
 ## Session retention policies
 
 Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.
@@ -809,9 +853,9 @@ Runtime behaviour that reads "is this request still running?" from the registry 
 2. `request.heartbeatIntervalMs` is nonzero and the stale threshold is at least twice it;
 3. a stale-request sweeper is running at a nonzero cadence.
 
-Each corresponds to a supported configuration that makes the answer wrong in a different direction — the first two report live work as dead, the third reports dead work as live indefinitely. When any fails, the capability is **absent and says why**, rather than present and unreliable. On the default in-memory registry it is absent, which is expected rather than a fault.
+When any of the three fails, the capability is absent and names the condition that failed. On the default in-memory registry it is absent.
 
-Reads are bounded by the ids the caller supplies and compare each entry's heartbeat against the stale threshold, so a crashed worker is not reported live while waiting for the next sweep. A not-live answer means *no live registration was found* — never *definitely dead*.
+Reads are bounded by the ids the caller supplies and compare each entry's heartbeat against the stale threshold, so a crashed worker is not reported live while waiting for the next sweep. A not-live answer means *no live registration was found*, never *definitely dead*.
 
 ## Notes
 

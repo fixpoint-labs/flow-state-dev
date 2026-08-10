@@ -39,6 +39,7 @@ import {
   handleListSessions,
   handlePatchSessionMetadata
 } from "./session-routes";
+import { handleListSessionWorkstreams } from "./workstream-routes";
 import { handleGetSessionState } from "./state-routes";
 import {
   handleGetResourceContent,
@@ -384,6 +385,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "list_session_requests") {
         return await handleListSessionRequests(request, route, {
+          registry: options.registry,
+          stores,
+          tenantId
+        });
+      }
+
+      if (route.kind === "list_session_workstreams") {
+        return await handleListSessionWorkstreams(request, route, {
           registry: options.registry,
           stores,
           tenantId

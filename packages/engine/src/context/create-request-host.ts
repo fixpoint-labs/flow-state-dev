@@ -139,6 +139,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
           detail: `the derived child key is held by a record whose ${verdict.mismatch} does not match this request`
         };
       }
+      // No label backfill here, deliberately. A child created by this writer
+      // already carries the labels this seed would stamp — the key is derived
+      // from the seed, so the same key means the same seed. The only records
+      // reached here without them predate the field, and rewriting a live
+      // record to add a display name would spend a store write and race every
+      // concurrent adopter to repair nothing a reader cannot already handle.
       adopted = true;
     } else {
       const ts = nowMs();
@@ -158,6 +164,24 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
         ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
         parentSessionId: identity.sessionId,
+        // Canonical labels, stamped here and only here (FIX-1010). They are
+        // taken from the seed **this call already consumed to derive the child
+        // key**, not from `args.record` below — which is why a caller cannot
+        // forge one. Choosing a label and choosing which child you get are the
+        // same choice, so the stamp can never disagree with the record's
+        // identity; a value supplied alongside the seed could say anything.
+        //
+        // Top-level rather than inside `metadata` so a reader can tell a
+        // server-written field from the caller's bag without trusting the bag
+        // (BP-031 in spirit — the labels decide nothing, but a display field
+        // sourced from caller input still reads as server truth once it is on
+        // the wire). `metadata` keeps carrying `args.record` verbatim, and a
+        // `topic` key in there labels nothing.
+        //
+        // The labels are display-only and carry no authority; `SessionRecord`
+        // in `stores/types.ts` holds that contract.
+        ...label("topic", args.seed.topic),
+        ...label("coordinate", args.seed.key),
         ...(args.record !== undefined ? { metadata: { ...args.record } } : {})
       };
 
@@ -235,6 +259,27 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
   }
 
   return { host, livenessRefusal: { reason: gate.reason, detail: gate.detail } };
+}
+
+/**
+ * One canonical label field, present only when there is something to show.
+ *
+ * **An empty label is not a label.** The alternative is two ways to be
+ * unlabelled — absent and `""` — and every reader would have to know both, when
+ * the wire contract and the docs already define exactly one. A UI given `""`
+ * renders a blank name where absence renders its fallback.
+ *
+ * For `coordinate` this is also a consistency rule rather than a preference:
+ * `deriveChildSessionId` length-frames the seed, so `key: ""` and an absent
+ * `key` produce the **same child**. Stamping one of them an empty coordinate
+ * would let two calls that provably land on the same record disagree about its
+ * label, with the winner decided by whoever created it first.
+ */
+function label(
+  field: "topic" | "coordinate",
+  value: string | undefined
+): { topic?: string } | { coordinate?: string } {
+  return value === undefined || value.length === 0 ? {} : { [field]: value };
 }
 
 /**

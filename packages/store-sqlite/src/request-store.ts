@@ -173,7 +173,25 @@ export function createSQLiteRequestStore(
         parts.push("tenant_id IS ?");
         params.push(options.tenantId ?? null);
       }
-      if (options?.status !== undefined) {
+      // Org filter (FIX-1010): same present-vs-absent NULL-safe semantics as
+      // the tenant clause. `orgId` is optional on the record and written as
+      // `?? null`, so a plain `=` would never match an unbound request.
+      if (options !== undefined && "orgId" in options) {
+        parts.push("org_id IS ?");
+        params.push(options.orgId ?? null);
+      }
+      // Status filter: a single value by equality, an array by set membership
+      // (FIX-1010). An empty array matches nothing, which is what an explicit
+      // empty filter means.
+      if (Array.isArray(options?.status)) {
+        const statuses = options.status;
+        if (statuses.length === 0) {
+          parts.push("1 = 0");
+        } else {
+          parts.push(`status IN (${statuses.map(() => "?").join(", ")})`);
+          params.push(...statuses);
+        }
+      } else if (options?.status !== undefined) {
         parts.push("status = ?");
         params.push(options.status);
       }
@@ -182,9 +200,17 @@ export function createSQLiteRequestStore(
     },
     // `started_at` is not a column — startedAtMs lives in the record blob and
     // equals `created_at` (set together at creation, never mutated). Order by
-    // created_at to honor `orderBy: "startedAtMs"`.
-    resolveOrderBy: (listOptions) =>
-      listOptions?.orderBy === "startedAtMs" ? "created_at DESC" : "updated_at DESC"
+    // created_at to honor `orderBy: "startedAtMs"`, with `id` breaking an
+    // exact same-millisecond tie so a `LIMIT 1` read is stable across repeated
+    // reads rather than arbitrary (FIX-1010).
+    //
+    // `null` emits no ORDER BY at all — see `resolveOrderBy` on the config.
+    resolveOrderBy: (listOptions) => {
+      if (listOptions?.orderBy === "none") return null;
+      return listOptions?.orderBy === "startedAtMs"
+        ? "created_at DESC, id DESC"
+        : "updated_at DESC";
+    }
   });
 
   /** Set membership marks a request with a queued (synchronous) item flush. */

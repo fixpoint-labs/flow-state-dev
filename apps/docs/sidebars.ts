@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
           label: "Server",
           items: [
             "server/setup",
+            "server/background-work",
             "server/authentication",
             "server/mcp",
             "server/chat",

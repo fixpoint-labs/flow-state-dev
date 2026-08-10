@@ -13,6 +13,44 @@
 import type { ExpectedVersion, SetResult } from "@flow-state-dev/engine";
 import type { QueryExecutor, QueryResultRow } from "./types";
 
+/**
+ * A NULL-safe exact-match clause on an optional denormalized column
+ * (`tenant_id`, `org_id`), emitted in the form the planner can serve.
+ *
+ * `x IS NOT DISTINCT FROM $n` says exactly the right thing and is exactly the
+ * wrong thing to give a planner: it is not an index condition on a plain
+ * btree, and Postgres has no statistics for it, so it falls back to a default
+ * selectivity. On a filtered ordered read that misestimate is decisive — the
+ * planner concludes one row matches, prices the sort as free, and picks a
+ * bitmap scan that materializes the whole session's history before sorting it.
+ * The result is a read whose work grows with the history it sits on, which is
+ * the one property these listings must not have.
+ *
+ * The two branches below are **provably the same predicate**, per SQL's own
+ * definition of `IS NOT DISTINCT FROM`: against a non-NULL literal it is plain
+ * equality (NULL is never equal to a non-NULL value, and never
+ * not-distinct-from one either); against NULL it is `IS NULL`. Both forms are
+ * index conditions and both carry real statistics. No caller sees a different
+ * row set — only a different plan.
+ *
+ * Shared here rather than inlined in each store's `toWhere` so the session and
+ * request adapters cannot drift into two readings of one rule.
+ */
+export function nullSafeEqualsClause(
+  column: string,
+  value: string | undefined,
+  nextParam: number
+): { clause: string; params: unknown[]; nextParam: number } {
+  if (value === undefined || value === null) {
+    return { clause: `${column} IS NULL`, params: [], nextParam };
+  }
+  return {
+    clause: `${column} = $${nextParam}`,
+    params: [value],
+    nextParam: nextParam + 1
+  };
+}
+
 export type PgRecordStoreConfig<TRecord, TListOptions> = {
   tableName: string;
   /** Column names to insert (excluding 'id' and 'data') */
@@ -23,10 +61,18 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
   toWhere: (options?: TListOptions, nextParam?: number) => { clause: string; params: unknown[] };
   /**
    * Resolve the ORDER BY clause (column + direction) from list options.
-   * Defaults to `updated_at DESC`. Must return a trusted, non-parameterized
-   * SQL fragment.
+   * Returns `undefined` for the `updated_at DESC` default, or **`null` to emit
+   * no `ORDER BY` at all** (FIX-1010). Must return a trusted,
+   * non-parameterized SQL fragment.
+   *
+   * The unordered mode is a correctness bound, not a nicety: a `LIMIT 1`
+   * existence check over a status set stops at the first matching row only if
+   * nothing sorts first, and the rows such a check selects are exactly the
+   * ones that accumulate (a request whose approval gate expires stays
+   * non-terminal forever). With a trailing sort on an uncovered column that
+   * read grows with the history it sits on.
    */
-  resolveOrderBy?: (options?: TListOptions) => string;
+  resolveOrderBy?: (options?: TListOptions) => string | null | undefined;
   /**
    * Top-level `data` keys that `set` must not write (FIX-1026).
    *
@@ -501,7 +547,12 @@ export function createPgRecordStore<
       if (clause.length > 0) {
         sql += ` WHERE ${clause}`;
       }
-      sql += ` ORDER BY ${resolveOrderBy?.(options) ?? "updated_at DESC"}`;
+      // `null` means "no ORDER BY" (FIX-1010); `undefined` keeps the default.
+      const orderBy =
+        resolveOrderBy === undefined ? "updated_at DESC" : resolveOrderBy(options);
+      if (orderBy !== null) {
+        sql += ` ORDER BY ${orderBy ?? "updated_at DESC"}`;
+      }
 
       const offset = Math.max(0, options?.offset ?? 0);
       const limit = options?.limit;

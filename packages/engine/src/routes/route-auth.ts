@@ -100,6 +100,12 @@ function routeSubject(route: ParsedFlowRoute): RouteSubject {
     case "delete_session":
     case "patch_session_metadata":
     case "list_session_requests":
+    // Session-addressed on the *path's* session id, not `host` (FIX-1010).
+    // This is the classification the parent-to-child read exists to land in:
+    // the framework resolves the addressed record and checks its owner before
+    // the handler runs. Reclassified as `host`, the parent id would never be
+    // loaded as a record and so never ownership- or tenant-checked.
+    case "list_session_workstreams":
     case "get_session_state":
     case "get_resource_content":
     case "get_collection_item_content":

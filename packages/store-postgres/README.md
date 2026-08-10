@@ -137,6 +137,27 @@ The schema uses:
 
 `sessions.parent_session_id` backs the `SessionListOptions.parentage` filter. It is nullable, applied automatically on open as a plain `ADD COLUMN`, and needs no backfill — a row without it counts as a top-level session. A plain btree index on the column serves `{ parentOf }` lookups.
 
+### Indexes for the ordered listings, and how they are built
+
+Two composite indexes serve the ordered reads behind a session's background-job listing. Both are plain btrees; no column and no data migration comes with them.
+
+| Index | Serves |
+| --- | --- |
+| `idx_sessions_parent_created (parent_session_id, created_at, id)` | One parent's children, ordered newest-created first. The single-column parent index serves the equality but not the order, so a page limit would apply after sorting the parent's whole child set. |
+| `idx_requests_session_created (session_id, created_at, id)` | One session's most recent request. The `(session_id, status)` and `(session_id, tenant_id)` composites stop before the ordering column. |
+
+The ordering columns are declared ascending and scanned backwards, which Postgres does for an `ORDER BY` that reverses every key uniformly.
+
+**No third index is needed for the non-terminal existence check.** `idx_requests_session_status` already ships and is exactly that shape's two selective predicates.
+
+**These two are built `CONCURRENTLY`.** They are the only indexes here that can land on an already-populated table. Everything else ships with its `CREATE TABLE`, so on an upgrade its `IF NOT EXISTS` is a no-op. A plain build holds a lock against writes for its whole duration, on exactly the large `requests` and `sessions` histories these reads exist to page through. The concurrent form trades that for two table passes and cannot run inside a transaction, so `initializeSchema` issues them one statement at a time, after the rest of the DDL.
+
+An interrupted concurrent build leaves an *invalid* index that `IF NOT EXISTS` would then skip forever, so the schema step drops an invalid one by that name before rebuilding. On a healthy database that check is a no-op.
+
+### The tenant and org filters
+
+`tenant_id` and `org_id` filter NULL-safely: an absent option key filters nothing, a present key (including an explicit `undefined`) exact-matches, and `undefined` matches only unbound rows.
+
 ### Resource state carries a version, and deletes leave a row behind
 
 `resource_state` gained two columns: `version` (monotonic per key, never reused) and `lifecycle` (`live` or `deleted`). Writes are compare-and-swap: a write states the version it expects, and is refused if the row moved since it was read.
@@ -287,7 +308,7 @@ The registry answers `sharedAcrossProcesses` from **how the store was constructe
 | `{ pool }` | `true` |
 | `{ executor }` | `false` |
 
-An injected executor is documented as PGlite-capable and is process-local, so it is reported as not shared — the same reason that shape disables `LISTEN`. Declaring it shared would enable liveness-dependent behaviour on a registry no other worker can see, which is exactly the wrong answer to have.
+An injected executor is documented as PGlite-capable and is process-local, so it is reported as not shared. That is the same reason that shape disables `LISTEN`.
 
 ## Cross-process live tail
 

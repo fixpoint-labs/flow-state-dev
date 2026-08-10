@@ -310,6 +310,21 @@ Without one they keep working, but they only return rows for the flows that
 have no resolver of their own. A flow that authenticates doesn't get its
 sessions listed to an anonymous caller.
 
+### Addressed routes, and what they scope by
+
+Every read outside those two flow-spanning endpoints names a session or a
+request in the path, and the framework loads that record and checks its owner
+before your handler runs. `GET
+/api/flows/sessions/:sessionId/workstreams` — a conversation's
+[background jobs](./background-work.md) — is one of these. Its answer is
+scoped to the addressed conversation's owner, tenant, org and flow, all read
+from the stored record, so a job attached to a conversation inherits that
+conversation's access rules rather than getting its own.
+
+No endpoint on the flow API enumerates across owners. A caller reaches
+background work through the conversation that started it; there is no mode that
+returns every session on the server.
+
 ### What the resolver sees
 
 On these routes the resolver gets the `Request` (headers, cookies, URL) and no

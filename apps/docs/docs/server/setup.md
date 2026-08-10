@@ -209,6 +209,7 @@ If you want to warm the runtime ahead of the first request (or surface a bad con
 | GET | `/api/flows/sessions` | List sessions |
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
 | GET | `/api/flows/sessions/:sessionId/state` | State snapshot (clientData) |
+| GET | `/api/flows/sessions/:sessionId/workstreams` | [Background jobs](./background-work.md) started by this session |
 | POST | `/api/flows/:kind/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 

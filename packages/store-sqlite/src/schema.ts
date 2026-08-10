@@ -32,6 +32,30 @@ CREATE INDEX IF NOT EXISTS idx_sessions_updated_at  ON sessions(updated_at);
 -- low-selectivity and is deliberately not the justification, so a plain btree
 -- is enough and no composite is warranted yet.
 CREATE INDEX IF NOT EXISTS idx_sessions_parent_session_id ON sessions(parent_session_id);
+-- FIX-1010: the child listing reads one parent's children ordered by
+-- \`created_at DESC, id DESC\` (immutable keys, so a run starting mid-walk
+-- cannot reorder a caller's pages). The single-column parent index above
+-- serves the equality but not the order, so a page limit would apply after
+-- sorting the parent's whole child set. Both ordering columns are ASC here
+-- deliberately: the scan runs backwards, which SQLite does for an ORDER BY
+-- that reverses every key uniformly.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_created
+  ON sessions(parent_session_id, created_at, id);
+-- The same listing for a caller whose tenant or org **is** bound, which the
+-- index above cannot serve: \`parent_session_id\` holds the bare session id, so
+-- two tenants reusing a predictable parent id share that index's whole key
+-- prefix and one tenant's children are walked and discarded ahead of the
+-- other's. Both indexes are kept because they are not substitutes — on
+-- Postgres, where the cost is measurable, the scope index alone regresses the
+-- unbound (single-tenant) read 9x, since \`IS NULL\` is not an equality for
+-- sort-order purposes and the ordering suffix stops being usable.
+--
+-- **Here the structure is mirrored, not verified.** SQLite's plan output
+-- reports which index was selected, never how many rows a scan examined and
+-- discarded, so this adapter cannot observe the cost property the Postgres
+-- axis-4 differential measures. Asserted only as index selection.
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_scope_created
+  ON sessions(parent_session_id, tenant_id, org_id, created_at, id);
 `;
 
 const REQUESTS_TABLE = `
@@ -57,6 +81,15 @@ CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, 
 CREATE INDEX IF NOT EXISTS idx_requests_session_tenant  ON requests(session_id, tenant_id);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
 CREATE INDEX IF NOT EXISTS idx_requests_updated_at      ON requests(updated_at);
+-- FIX-1010: the most-recent-run read orders one session's requests by
+-- \`created_at DESC, id DESC\` and takes one row. \`idx_requests_session_status\`
+-- stops at \`status\` and \`idx_requests_session_tenant\` at \`tenant_id\`, so
+-- neither carries the ordering and the database would sort the session's whole
+-- history before the limit applied. The existence check that runs *before* it
+-- needs no index of its own — \`idx_requests_session_status\` is exactly its two
+-- selective predicates — so this is the only \`requests\` index this read adds.
+CREATE INDEX IF NOT EXISTS idx_requests_session_created
+  ON requests(session_id, created_at, id);
 `;
 
 const USERS_TABLE = `

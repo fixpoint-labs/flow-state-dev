@@ -48,6 +48,42 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * namespacing this field.
    */
   parentSessionId?: string;
+  /**
+   * Human-readable name for the body of work a detached child session was
+   * started for (FIX-1010). Stamped by the detached-start writer
+   * (`context/create-request-host.ts`) from the routing seed the child key was
+   * derived from — **never** from {@link SessionRecord.metadata}, which is the
+   * caller's own free-form bag and can say anything.
+   *
+   * **This field carries no authority, and neither does
+   * {@link SessionRecord.coordinate}.** `evaluateAdoption` together with the
+   * `key-occupied` refusal (`context/detached-child.ts`) is the *sole*
+   * discriminator for "is this session ours" — routing, authorization,
+   * adoption and identity are decided there and nowhere else. Nothing may read
+   * these two fields to make any of those decisions; they exist to put a
+   * readable name on a row in a UI instead of an opaque derived id.
+   *
+   * That restriction is exactly what makes keeping them safe. A *second*
+   * discriminator could disagree with `evaluateAdoption` and hand a session to
+   * the wrong owner; a display-only field has nothing to disagree with. Adding
+   * a read of these fields to any decision path reintroduces that hazard and
+   * is the change this note exists to stop.
+   *
+   * Optional and additive (BP-030). A child written before this field existed
+   * reads back `undefined`, a store that nulls absent keys hands back `null`,
+   * and an adopted legacy child is never backfilled — all three mean
+   * *unlabelled*, which is a row a UI shows without a name, not an error. Guard
+   * with `== null`.
+   */
+  topic?: string;
+  /**
+   * Which worker within the {@link SessionRecord.topic} a detached child is
+   * routed to — the seed's optional further discrimination, absent when the
+   * caller gave none. Same writer, same server-derived source, and the same
+   * no-authority rule: see {@link SessionRecord.topic}, which carries the whole
+   * contract for both fields.
+   */
+  coordinate?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -197,6 +233,18 @@ export type SessionListOptions = {
    */
   tenantId?: string;
   /**
+   * Org filter (FIX-1010). Same present-vs-absent exact-match semantics as
+   * `tenantId`: present (including an explicit `undefined`) exact-matches
+   * NULL-safely, absent applies no filter.
+   *
+   * The column has been written and indexed on all four adapters since org
+   * scope shipped, but nothing could query it until this option existed — so
+   * an enumerator would return rows the runtime treats as a different identity
+   * (`createExecutionContext` throws `OrgBindingMismatchError` on a cross-org
+   * adoption). Additive: every existing caller omits the key and is unchanged.
+   */
+  orgId?: string;
+  /**
    * Parentage filter (FIX-1009). **Omitting this narrows to `"top-level"`** —
    * a caller that asks for nothing gets only the sessions a person started.
    *
@@ -211,6 +259,25 @@ export type SessionListOptions = {
    * Pass `"all"` to opt back into the unrestricted behaviour explicitly.
    */
   parentage?: SessionParentage;
+  /**
+   * Sort key for the returned (and limited) set, descending (FIX-1010).
+   *
+   * - `"updatedAt"` (default) — today's behaviour, byte for byte.
+   * - `"createdAt"` — orders by `(createdAt, id)`, both **immutable**, so a
+   *   record that is written while a caller pages does not move.
+   *
+   * The distinction is a paging correctness bound, not a preference: a session
+   * record's `updatedAt` is rewritten whenever a run starts on it
+   * (`runAction.ts` stamps `latestRequestId` and `updatedAt` together), so
+   * under `updated_at DESC` a row can jump to the front of the order between
+   * two pages — one record crosses the offset boundary and is never returned,
+   * another is returned twice, and the caller cannot detect either. A
+   * tie-breaker cannot repair a sort key that mutates.
+   *
+   * Insertion is still not closed: a record *created* mid-walk lands at the
+   * front and shifts later pages by one. Closing that needs keyset paging.
+   */
+  orderBy?: "updatedAt" | "createdAt";
   limit?: number;
   offset?: number;
 };
@@ -233,18 +300,43 @@ export type RequestListOptions = {
    * (carrying the current request's tenant, possibly `undefined`).
    */
   tenantId?: string;
-  status?: RequestStatus;
+  /**
+   * Org filter (FIX-1010). Same present-vs-absent NULL-safe exact-match
+   * semantics as `tenantId`; see {@link SessionListOptions.orgId} for why the
+   * column needed an option at all.
+   */
+  orgId?: string;
+  /**
+   * Status filter. A single status matches by equality (unchanged); an array
+   * matches **set membership** (FIX-1010), so "is any run of this session
+   * non-terminal" is one read rather than one read per member.
+   *
+   * An empty array matches nothing — it is a filter that excludes everything,
+   * not an absent filter.
+   */
+  status?: RequestStatus | readonly RequestStatus[];
   limit?: number;
   offset?: number;
   /**
    * Sort key for the returned (and limited) set, descending. `"updatedAt"`
-   * (default) preserves prior behavior. `"startedAtMs"` orders by request
-   * start time so a `limit`-windowed read selects the most-recently-started
-   * requests regardless of later out-of-order metadata writes. Adapters that
-   * persist `startedAtMs` only inside the record blob order by the equivalent
-   * `created_at` column (set to `startedAtMs` at creation, never mutated).
+   * (default) preserves prior behavior. `"startedAtMs"` orders by
+   * `(request start time, id)` so a `limit`-windowed read selects the
+   * most-recently-started requests regardless of later out-of-order metadata
+   * writes, and resolves an exact start-time tie deterministically. Adapters
+   * that persist `startedAtMs` only inside the record blob order by the
+   * equivalent `created_at` column (set to `startedAtMs` at creation, never
+   * mutated).
+   *
+   * `"none"` returns the matching set **unordered** (FIX-1010). It is a
+   * correctness bound rather than an optimisation: an existence check
+   * (`limit: 1` over a status set) that sorts is unbounded in the one
+   * dimension it selects on — a session accumulates non-terminal records
+   * whenever an approval gate expires, and those are exactly the rows such a
+   * check selects, so a trailing sort on an uncovered column grows without
+   * bound. Unordered, `limit: 1` stops at the first matching row however many
+   * exist. The returned order is the adapter's own and must not be relied on.
    */
-  orderBy?: "startedAtMs" | "updatedAt";
+  orderBy?: "startedAtMs" | "updatedAt" | "none";
   /**
    * If true, populate `record.items` for each returned record. Default
    * false. Adapters that store items separately (Postgres) avoid an
