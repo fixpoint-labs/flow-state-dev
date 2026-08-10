@@ -394,10 +394,12 @@ Every mutation that changes a field emits a `task-change` component item onto th
                              // blocked | unblocked | review_requested | resumed |
                              // cancelled | label_changed | metadata_changed |
                              // priority_changed | assignee_changed
-  task: { /* the whole Task, after the mutation */ },
+  task: { /* the post-mutation Task, minus server-only fields */ },
   prevStatus: "in_progress", // omitted when the mutation didn't change status
 }
 ```
+
+The `task` snapshot is the post-mutation row minus the fields the substrate keeps server-side. `claimedBy` is one of those, so it is absent from the item even while a task is claimed.
 
 UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from them. You don't wire any of it up: every collection `getOrCreateTaskCollection` hands you emits these items itself.
 
