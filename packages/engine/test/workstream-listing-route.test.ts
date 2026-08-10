@@ -81,12 +81,16 @@ function secureFlow(kind: string) {
 }
 
 function buildRouter(
-  flows: Array<ReturnType<typeof openFlow>> = [openFlow("chat")]
+  flows: Array<ReturnType<typeof openFlow>> = [openFlow("chat")],
+  runtime: { maxWorkstreamListLimit?: number } = {}
 ): { router: Router; stores: StoreRegistry } {
   const registry = createFlowRegistry();
   for (const flow of flows) registry.register(flow);
   const stores = createInMemoryStores();
-  return { router: createFlowApiRouter({ registry, stores }), stores };
+  return {
+    router: createFlowApiRouter({ registry, stores, ...runtime }),
+    stores
+  };
 }
 
 function call(
@@ -1119,6 +1123,45 @@ describe("paging", () => {
     const res = await call(router, ["sessions", "parent", "workstreams"], { query });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toContain(name);
+  });
+
+  it("accepts a limit above the built-in ceiling when the host raises it", async () => {
+    // The list is all-time history, so a deployment running large
+    // orchestrations outgrows any fixed ceiling. Raising it is the operator's
+    // call because the cost is per row and per read.
+    const { router, stores } = buildRouter(undefined, {
+      maxWorkstreamListLimit: 500
+    });
+    await seedChildren(stores, 3);
+
+    const res = await call(router, ["sessions", "parent", "workstreams"], {
+      query: "limit=500"
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("still rejects past the host's own raised ceiling", async () => {
+    // Raised, not removed — an unbounded read of this endpoint is never on.
+    const { router, stores } = buildRouter(undefined, {
+      maxWorkstreamListLimit: 500
+    });
+    await seedChildren(stores, 3);
+
+    const res = await call(router, ["sessions", "parent", "workstreams"], {
+      query: "limit=501"
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("clamps the omitted-limit default to a ceiling lowered below it", async () => {
+    // A host can tighten as well as loosen. Left unclamped the default page
+    // would exceed that host's own stated maximum.
+    const { router, stores } = buildRouter(undefined, {
+      maxWorkstreamListLimit: 10
+    });
+    await seedChildren(stores, 30);
+
+    expect(await workstreams(router, "parent")).toHaveLength(10);
   });
 
   it("accepts the boundary values", async () => {

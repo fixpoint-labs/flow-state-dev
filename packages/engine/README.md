@@ -125,6 +125,8 @@ See the [Error capture docs](https://flow-state.dev/docs/advanced/error-capture)
 
 It also forwards `publicReentrySources` — the sources your own inbound transports stamp that `retry` / `continue` / `resume` may re-enter. See [Inbound transports](https://flow-state.dev/docs/advanced/inbound-transports).
 
+`maxWorkstreamListLimit` sets the largest `limit` the workstream listing route accepts, defaulting to 100. Raise it when conversations run more background work than that: the list is all-time history, so any fixed ceiling eventually hides the oldest finished work. Raise it deliberately — each row resolves its status from the request store and clients re-read this list on every interaction, so a larger ceiling costs more on every turn.
+
 ### DevTool connection (dev-only)
 
 `devtool?: { userId?, bearerToken? }` declares how `fsdev dev` should connect the DevTool UI to this app. `userId` is the session identity DevTool acts as; `bearerToken` is sent as `Authorization: Bearer` on every flow request, so a **bearer-gated flow** (one whose `resolvePrincipal` validates a shared secret) is debuggable through DevTool using its **real** authentication — no bypass.

@@ -85,9 +85,9 @@ export type SessionWorkstreamsOptions = {
    * with everything the conversation has ever started. Anything past this many
    * rows is not reachable from the hook.
    *
-   * The workstream route enforces its own maximum and rejects a larger value,
-   * so an app that needs more rows than the server permits needs that ceiling
-   * raised too.
+   * The server enforces its own maximum and rejects a larger value with a 400.
+   * That maximum defaults to 100, so going above it also means raising
+   * `maxWorkstreamListLimit` on the server.
    */
   limit?: number;
 };

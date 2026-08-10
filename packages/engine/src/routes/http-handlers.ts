@@ -395,7 +395,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleListSessionWorkstreams(request, route, {
           registry: options.registry,
           stores,
-          tenantId
+          tenantId,
+          maxListLimit: runtimeConfig.maxWorkstreamListLimit
         });
       }
 

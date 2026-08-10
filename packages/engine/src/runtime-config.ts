@@ -86,6 +86,19 @@ export interface RuntimeConfig {
    * points. Absent → only the built-in sources are re-enterable.
    */
   publicReentrySources?: readonly string[];
+  /**
+   * Largest `limit` the workstream listing route accepts (FIX-1012). Absent →
+   * {@link DEFAULT_MAX_WORKSTREAM_LIST_LIMIT}.
+   *
+   * The list a client reads is all-time history — finished background work
+   * stays listed — so a deployment running large orchestrations outgrows the
+   * default. Raising it is a deliberate act because the cost is per row and
+   * per read: each row resolves its status from the request store, and clients
+   * re-read this list on every interaction. A bigger ceiling therefore buys
+   * completeness with read amplification on every turn, which is why this is
+   * an operator's decision rather than a caller's.
+   */
+  maxWorkstreamListLimit?: number;
 }
 
 /**
@@ -109,9 +122,17 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     errorCapture: options.errorCapture,
     requestHost: options.requestHost,
     queuedGraceMs: options.queuedGraceMs,
-    publicReentrySources: options.publicReentrySources
+    publicReentrySources: options.publicReentrySources,
+    maxWorkstreamListLimit: options.maxWorkstreamListLimit
   };
 }
+
+/**
+ * Largest `limit` the workstream listing route accepts when the host
+ * configures none (FIX-1012). Bounds read amplification rather than payload
+ * size: each row resolves its status from the request store.
+ */
+export const DEFAULT_MAX_WORKSTREAM_LIST_LIMIT = 100;
 
 /** Stale-request sweeper cadence (ms) when the host configures none. */
 export const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;

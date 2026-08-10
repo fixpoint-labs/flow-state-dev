@@ -191,11 +191,11 @@ Set it with `workstreams: { limit }`:
 ```tsx
 const session = useSession(sessionId, {
   flowKind: "research",
-  workstreams: { limit: 100 }
+  workstreams: { limit: 500 }
 });
 ```
 
-The server enforces its own maximum on this value and rejects anything larger with a 400. That maximum is currently 100, the same as the default here, so this option lets an app ask for *fewer* rows today; asking for more needs the server's ceiling raised as well.
+The server enforces its own maximum and rejects a larger value with a 400. That maximum defaults to 100, so asking for more than that also means raising `maxWorkstreamListLimit` on the server. Both halves are deliberate: this list is re-read on every interaction, so a bigger page costs more on every turn, and the deployment paying that cost is the one that gets to choose it.
 
 Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
 
