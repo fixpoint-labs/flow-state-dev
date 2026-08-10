@@ -4,7 +4,8 @@
 "@flow-state-dev/core": minor
 ---
 
-Detached task-board workers now run outside the request that claimed them.
+Detached task-board workers now run outside the request that claimed them
+(FIX-982).
 
 A worker declared `dispatch: { mode: "detached" }` previously validated as
 detached and then ran inline, so a task's life was still capped at one request
