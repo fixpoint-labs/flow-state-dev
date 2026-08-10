@@ -43,6 +43,18 @@ import {
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
 /**
+ * Rows the mount's in-progress lookup reads.
+ *
+ * Above one so the lookup can report on a request that is no longer the
+ * newest: under `allow` concurrency the session's latest request and the one
+ * that was running when the snapshot was read can be different requests, both
+ * in flight. A session with more than this many requests genuinely running at
+ * once falls back to the same behaviour as before — the older one reads as
+ * finished and earns one spare snapshot read, never a missed one.
+ */
+const IN_PROGRESS_LOOKUP_LIMIT = 10;
+
+/**
  * The background-work read asks for one page, never for the whole history.
  *
  * The axis is re-read on every interaction, so paging to exhaustion would make
@@ -1139,9 +1151,15 @@ export function useSession(
           nextDetail?.latestRequestId !== undefined &&
           streamHandleRef.current === null
         ) {
+          // More than one row because this list answers two questions, and the
+          // second one needs to see past the newest entry: which request to
+          // attach to, and whether the request that was running before the
+          // snapshot is still running. Under `allow` concurrency both can be
+          // in flight at once, and a single-row read returns only the newer —
+          // making the older one's absence prove nothing.
           const requests = await sessionClient.listSessionRequests(sessionId, {
             status: "in_progress",
-            limit: 1
+            limit: IN_PROGRESS_LOOKUP_LIMIT
           });
 
           if (cancelled) return;
@@ -1150,23 +1168,27 @@ export function useSession(
             (r) => r.id === nextDetail.latestRequestId
           );
 
-          // Whether the snapshot might be stale is decided independently of
-          // whether there is a stream to join, because the two questions have
-          // different subjects. The snapshot's staleness is about the request
-          // that was running *before* it was read; an attachable request may
-          // be a different, newer one, and its stream is request-scoped, so it
-          // will never replay the older request's final items. Attaching is
-          // therefore not evidence the catch-up is unnecessary — only
-          // attaching to that same request is.
-          if (
-            latestBeforeSnapshot?.status === "in_progress" &&
-            activeRequest?.id !== latestBeforeSnapshot.id
-          ) {
-            // The request that was running before the snapshot is not the one
-            // we are about to attach to (often there is nothing to attach to
-            // at all). The snapshot we applied may predate its final items, so
-            // without this the session sits incomplete until the consumer
-            // remounts or refreshes by hand. Re-read once to catch up.
+          // Catching up is about ONE request: the one that was running when
+          // the snapshot was read. It is worth doing exactly when that request
+          // has since finished — then the snapshot may predate its final items
+          // and no stream will ever replay them, because a stream is
+          // request-scoped and the one we might attach to is a different,
+          // newer request.
+          //
+          // So the condition is its terminality, read from the list above
+          // rather than inferred from whether anything is attachable. Absence
+          // from an in-progress list that would have contained it is the only
+          // evidence here that it finished; "we are attaching to something
+          // else" is not, because concurrency allows it to still be running.
+          const olderStillRunning = requests.some(
+            (r) => r.id === latestBeforeSnapshot?.id
+          );
+
+          if (latestBeforeSnapshot?.status === "in_progress" && !olderStillRunning) {
+            // It was running before the snapshot and is no longer running, so
+            // it finished inside that window. The snapshot we applied may
+            // predate its final items, and without this the session sits
+            // incomplete until the consumer remounts or refreshes by hand.
             //
             // Ordered before the attach below: `applySnapshot` loads the
             // snapshot over the item store, so running it after a stream had

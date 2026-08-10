@@ -267,6 +267,45 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(2);
   });
 
+  it("does not catch up while the older request is still running", async () => {
+    // Concurrency is `allow`, so request A can still be in flight when newer
+    // request B becomes the session's latest. Catching up here would read a
+    // snapshot that still predates A's final items — a wasted read that also
+    // reports success, since nothing afterwards goes back for them.
+    //
+    // A's absence from the in-progress list is the only evidence it finished.
+    // "We are attaching to something else" is not.
+    sessionClientMock.getSession.mockResolvedValue({
+      id: "job1",
+      flowKind: "demo",
+      userId: "devuser",
+      createdAt: 0,
+      updatedAt: 0,
+      latestRequestId: "req2"
+    });
+
+    sessionClientMock.getSessionState.mockResolvedValue(snapshot([]));
+
+    sessionClientMock.listSessionRequests.mockImplementation(
+      async (_sessionId: string, options?: { status?: string }) =>
+        options?.status === "in_progress"
+          ? // BOTH running: B is the session's latest, A has not finished.
+            [request("in_progress", "req2"), request("in_progress", "req1")]
+          : [request("in_progress", "req1")]
+    );
+
+    const { result } = renderHook(() =>
+      useSession("job1", { flowKind: "demo", autoResume: true })
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // The mount snapshot, and no catch-up on top of it.
+    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(1);
+  });
+
   it("does not re-read the snapshot when the session was already idle at mount", async () => {
     // The common path: nothing was running when the hook mounted, so there is
     // no race to catch up on and the extra read must not happen. Without this
