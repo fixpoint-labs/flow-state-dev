@@ -112,8 +112,12 @@ a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
 `resumeFromReview`, `cancel` — takes an optional trailing `TaskTransitionOptions`
-argument that makes the write advisory. `ifAllowed` skips the write when the state
-machine rejects it or the task is already settled. `claim` takes a
+argument that makes the write advisory. `ifAllowed` skips the write when the task is
+already settled, or when the transition is one the state machine or the calling verb
+refuses. A legal status transition is necessary but not sufficient: a verb that owns
+one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
+and no other. `in_progress → pending` and `awaiting_review → pending` sit in the
+status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
 for, still on that attempt. A guard cannot be raced: the task cannot change between
