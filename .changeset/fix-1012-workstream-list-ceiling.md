@@ -2,7 +2,7 @@
 "@flow-state-dev/engine": patch
 ---
 
-The largest `limit` the workstream listing route accepts is now a server option, `maxWorkstreamListLimit`. It defaults to 100, which is what the route enforced before, so nothing changes for a deployment that does not set it.
+The largest `limit` the workstream listing route accepts is now a server option, `maxWorkstreamListLimit` (FIX-1012). It defaults to 100, which is what the route enforced before, so nothing changes for a deployment that does not set it.
 
 Raise it when conversations run more background work than that. The list a client reads is all-time history — finished work stays listed — so it grows with everything a conversation has ever started, and any fixed ceiling eventually truncates the oldest finished work with no way to reach past it.
 
