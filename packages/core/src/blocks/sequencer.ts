@@ -712,6 +712,40 @@ export function backgroundTaskCtx(ctx: BlockContext): {
 }
 
 /**
+ * Run a step's `onSettled` hook without letting it change the step's outcome.
+ *
+ * The hook runs in a `finally`, and a synchronous throw out of a `finally`
+ * REPLACES whatever the block was completing with — its return value, its
+ * error, or, worst of the three, its `SuspensionError`. Suspension is control
+ * flow rather than failure, and it is the specific exit this hook exists to
+ * catch, so a cleanup bug there would turn a parked request into a crash. The
+ * documented contract is that the hook cannot change the outcome; this is what
+ * makes that true instead of a request the caller has to honour.
+ *
+ * Its own failure is logged rather than swallowed. The hook releases something
+ * — a timer, a lease renewal, a subscription — and a release that fails in
+ * silence is exactly how a mechanism goes on running with nothing left to say
+ * so.
+ */
+function runOnSettled(
+  onSettled: ((ctx: BlockContext, outcome: StepOutcome) => void) | undefined,
+  ctx: BlockContext,
+  outcome: StepOutcome,
+  blockName: string
+): void {
+  if (onSettled === undefined) return;
+  try {
+    onSettled(ctx, outcome);
+  } catch (error) {
+    console.error(
+      `[sequencer] onSettled hook for step "${blockName}" threw on the "${outcome}" path; ` +
+        `the step's own outcome is unchanged:`,
+      error instanceof Error ? (error.stack ?? error.message) : error
+    );
+  }
+}
+
+/**
  * Dispatch a background work task. When the request-scoped pool is present
  * (server runtime), push to it tagged with the sequencer's scopeId. When
  * absent (unit-test contexts), fall back to the per-sequencer work list so
@@ -1135,7 +1169,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               outcome = error instanceof SuspensionError ? "suspended" : "threw";
               throw error;
             } finally {
-              onSettled?.(ctx, outcome);
+              runOnSettled(onSettled, ctx, outcome, block.name);
             }
           }
         },
@@ -1191,7 +1225,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               outcome = error instanceof SuspensionError ? "suspended" : "threw";
               throw error;
             } finally {
-              onSettled?.(ctx, outcome);
+              runOnSettled(onSettled, ctx, outcome, block.name);
             }
           }
         },

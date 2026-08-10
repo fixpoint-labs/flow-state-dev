@@ -348,3 +348,123 @@ describe("an EMPTY step-options bag", () => {
     expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
   });
 });
+
+
+describe("a THROWING onSettled hook cannot change the step's outcome", () => {
+  // The hook runs in a `finally`, and a synchronous throw out of a `finally`
+  // replaces whatever the block was completing with. All three exits are at
+  // risk, and the third is the serious one: suspension is control flow, it is
+  // the exit this hook exists to catch, and a cleanup bug there would turn a
+  // parked request into a crash.
+  //
+  // Every case runs on `.step` AND `.stepIf`. The two dispatch paths carry
+  // their own copy of this `finally`, so a guard added to one and not the other
+  // reads as fixed while half the surface is untouched.
+
+  const boom = () => {
+    throw new Error("cleanup exploded");
+  };
+
+  function silenceErrors() {
+    const seen: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      seen.push(args);
+    };
+    return {
+      seen,
+      restore: () => {
+        console.error = original;
+      },
+    };
+  }
+
+  it(".step — a returned value survives the hook throwing", async () => {
+    const log = silenceErrors();
+    try {
+      const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+        onSettled: boom,
+      });
+      expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+    } finally {
+      log.restore();
+    }
+    expect(log.seen).toHaveLength(1);
+  });
+
+  it(".step — the ORIGINAL error survives, not the hook's", async () => {
+    const log = silenceErrors();
+    try {
+      const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(throws, {
+        onSettled: boom,
+      });
+      await expect(runForTest(seq, null, createMockContext())).rejects.toThrow("boom");
+    } finally {
+      log.restore();
+    }
+    expect(log.seen).toHaveLength(1);
+  });
+
+  it(".step — a SUSPENSION survives, so cleanup cannot crash a parked request", async () => {
+    const log = silenceErrors();
+    try {
+      const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(suspends, {
+        onSettled: boom,
+      });
+      await expect(runForTest(seq, null, createMockContext())).rejects.toBeInstanceOf(
+        SuspensionError
+      );
+    } finally {
+      log.restore();
+    }
+    expect(log.seen).toHaveLength(1);
+  });
+
+  it(".stepIf — same three, on the other dispatch path", async () => {
+    const log = silenceErrors();
+    try {
+      const go = (out: { go: boolean }) => out.go;
+      const returned = sequencer({ name: "a", inputSchema: z.unknown() })
+        .map(() => ({ go: true }))
+        .stepIf(go, reportsAbort, { onSettled: boom });
+      expect(await runForTest(returned, null, createMockContext())).toEqual({
+        aborted: false,
+      });
+
+      const threw = sequencer({ name: "b", inputSchema: z.unknown() })
+        .map(() => ({ go: true }))
+        .stepIf(go, throws, { onSettled: boom });
+      await expect(runForTest(threw, null, createMockContext())).rejects.toThrow("boom");
+
+      const suspended = sequencer({ name: "c", inputSchema: z.unknown() })
+        .map(() => ({ go: true }))
+        .stepIf(go, suspends, { onSettled: boom });
+      await expect(
+        runForTest(suspended, null, createMockContext())
+      ).rejects.toBeInstanceOf(SuspensionError);
+    } finally {
+      log.restore();
+    }
+    expect(log.seen).toHaveLength(3);
+  });
+
+  it("reports the hook's failure rather than swallowing it", async () => {
+    // The hook releases something. A release that fails in silence is how a
+    // mechanism goes on running with nothing left to say so.
+    const log = silenceErrors();
+    try {
+      const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+        onSettled: boom,
+      });
+      await runForTest(seq, null, createMockContext());
+    } finally {
+      log.restore();
+    }
+
+    expect(log.seen).toHaveLength(1);
+    const message = String(log.seen[0][0]);
+    expect(message).toContain("reports-abort");
+    expect(message).toContain("returned");
+    expect(String(log.seen[0][1])).toContain("cleanup exploded");
+  });
+});

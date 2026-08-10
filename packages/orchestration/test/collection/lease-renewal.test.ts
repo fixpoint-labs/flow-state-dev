@@ -25,6 +25,7 @@ import {
   ticketForClaim,
   withLeaseRenewal,
   withLeaseRenewalScope,
+  DEFAULT_MAX_ABANDONMENTS,
   MIN_RENEWAL_DELAY_MS,
   RENEWAL_DIVISOR,
   type RenewalTimer,
@@ -741,5 +742,116 @@ describe("withLeaseRenewalScope — the claim → work hand-off", () => {
         throw new Error("claim failed");
       })
     ).rejects.toThrow("claim failed");
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// The classifier's candidate set — admission vs disposition
+// ---------------------------------------------------------------------------
+
+describe("classifierDispatcher and abandonment-exhausted rows", () => {
+  // The classifier narrows `claim()` to ONE id, which destroys the scan-past
+  // behaviour the substrate relies on to settle exhausted rows in passing. So
+  // this dispatcher has to keep admission and disposition apart itself: the
+  // model chooses only among rows a worker could run, and exhausted rows are
+  // settled directly rather than by spending a model call on them.
+
+  /**
+   * A row whose worker died `times` over, with its lease lapsed again now.
+   *
+   * Only a claim that takes back an ALREADY-lapsed row counts as a recovery, so
+   * the first claim on a fresh `pending` task charges nothing — hence the extra
+   * pass. Asserting the count rather than assuming it keeps these tests honest
+   * if that rule ever moves.
+   */
+  async function abandoned(h: Harness, id: string, times: number): Promise<void> {
+    await h.collection.addTask({ id, goal: id });
+    for (let i = 0; i <= times; i += 1) {
+      await h.collection.claim("w", { leaseDurationMs: 1_000 });
+      h.setNow(h.now() + 5_000);
+    }
+    expect(h.collection.get(id)!.abandonments).toBe(times);
+  }
+
+  it("does not offer an exhausted row to the model", async () => {
+    const h = harness();
+    await abandoned(h, "dead", DEFAULT_MAX_ABANDONMENTS);
+    await h.collection.addTask({ id: "live", goal: "live" });
+
+    const seen: string[][] = [];
+    const dispatcher = classifierDispatcher({
+      classify: async (candidates) => {
+        seen.push(candidates.map((t) => t.id));
+        return candidates[0]?.id ?? null;
+      },
+    });
+
+    const claimed = await dispatcher.claim(h.collection, "w", {} as never);
+
+    // The model was shown only the row it could actually get.
+    expect(seen).toEqual([["live"]]);
+    expect(claimed?.id).toBe("live");
+  });
+
+  it("settles an exhausted row WITHOUT spending a model call", async () => {
+    // The row still has to be settled — claiming is the only thing that does it
+    // — but it is housekeeping, not a choice, so the model is not consulted.
+    const h = harness();
+    await abandoned(h, "dead", DEFAULT_MAX_ABANDONMENTS);
+
+    let classifyCalls = 0;
+    const dispatcher = classifierDispatcher({
+      classify: async () => {
+        classifyCalls += 1;
+        return null;
+      },
+    });
+
+    const claimed = await dispatcher.claim(h.collection, "w", {} as never);
+
+    expect(classifyCalls).toBe(0);
+    expect(claimed).toBeNull();
+    expect(h.collection.get("dead")!.status).toBe("errored");
+  });
+
+  it("drains a board holding nothing but exhausted rows", async () => {
+    // The anti-vacuity guard. Filtering exhausted rows out and stopping there
+    // would leave rows `isClaimable` forever admits — the wake probe would keep
+    // reporting work and this dispatcher would keep returning null, so the
+    // board would never drain. Settling them is what terminates the loop.
+    const h = harness();
+    await abandoned(h, "dead-a", DEFAULT_MAX_ABANDONMENTS);
+    await abandoned(h, "dead-b", DEFAULT_MAX_ABANDONMENTS);
+
+    const dispatcher = classifierDispatcher({ classify: async () => null });
+
+    expect(hasClaimableTask(h.collection)).toBe(true);
+    // One pass per row, each settling one and consulting nobody.
+    await dispatcher.claim(h.collection, "w", {} as never);
+    await dispatcher.claim(h.collection, "w", {} as never);
+
+    expect(hasClaimableTask(h.collection)).toBe(false);
+    expect(h.collection.get("dead-a")!.status).toBe("errored");
+    expect(h.collection.get("dead-b")!.status).toBe("errored");
+  });
+
+  it("still offers a row that has abandonment allowance LEFT", async () => {
+    // Recovery is the feature. Only a row past its allowance is withheld.
+    const h = harness();
+    await abandoned(h, "recoverable", DEFAULT_MAX_ABANDONMENTS - 1);
+
+    const seen: string[][] = [];
+    const dispatcher = classifierDispatcher({
+      classify: async (candidates) => {
+        seen.push(candidates.map((t) => t.id));
+        return candidates[0]?.id ?? null;
+      },
+    });
+
+    const claimed = await dispatcher.claim(h.collection, "w", {} as never);
+
+    expect(seen).toEqual([["recoverable"]]);
+    expect(claimed?.id).toBe("recoverable");
   });
 });

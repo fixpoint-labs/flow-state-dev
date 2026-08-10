@@ -121,9 +121,18 @@ export type StepOptions = {
    * before the write it was protecting. So the useful shape is usually "release
    * only on `"suspended"`, and let the downstream handler release the rest".
    *
-   * Runs in a `finally`, so it cannot change the step's outcome; it is for
-   * releasing what the dispatch was holding, not for recovery. A throw from it
-   * would mask the in-flight error, so throwing here is a caller bug.
+   * Runs in a `finally` and cannot change the step's outcome — a throw from it
+   * is caught, logged and discarded, so a cleanup bug cannot turn a suspension
+   * into a crash. It is for releasing what the dispatch was holding, not for
+   * recovery; throwing here is still a caller bug, it just is not the step's
+   * problem.
+   *
+   * **Must be synchronous.** The return type is `void`, and TypeScript lets an
+   * `async` function satisfy that — so an async hook type-checks, is never
+   * awaited, and its release has not happened when the step settles (a
+   * rejection from one surfaces as an unhandled rejection, not as an error
+   * here). Awaiting it is deliberately not offered: it would move when the step
+   * settles, and *when* is the whole point of this hook.
    *
    * Not called when a `.stepIf()` condition is false — nothing was dispatched.
    */
