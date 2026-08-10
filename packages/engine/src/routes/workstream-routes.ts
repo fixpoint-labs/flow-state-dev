@@ -72,11 +72,25 @@ const LIVE_STATUSES: readonly RequestStatus[] = ["in_progress", "suspended"];
  * (it is still continuable), while the same record with a completed retry
  * beside it loses on recency and the row reads `completed`.
  */
-const LIVE_WHEN_MOST_RECENT: readonly RequestStatus[] = [
+const LIVE_WHEN_MOST_RECENT = [
   "in_progress",
   "suspended",
   "interrupted"
-];
+] as const satisfies readonly RequestStatus[];
+
+/**
+ * Whether a most-recent run counts as still going.
+ *
+ * A type predicate rather than a bare `.includes` because both branches are
+ * load-bearing: the false branch narrows to {@link TerminalRequestStatus},
+ * which is what lets {@link TERMINAL_WIRE_STATUS} be a total map and lets this
+ * set stay the single place the live statuses are written.
+ */
+function isLiveWhenMostRecent(
+  status: RequestStatus
+): status is (typeof LIVE_WHEN_MOST_RECENT)[number] {
+  return (LIVE_WHEN_MOST_RECENT as readonly RequestStatus[]).includes(status);
+}
 
 /**
  * What a row says about the job's runs — **not** about the state of the work
@@ -102,6 +116,40 @@ export type WorkstreamStatus =
   | "failed"
   | "incomplete"
   | "aborted";
+
+/**
+ * What is left of `RequestStatus` once {@link isLiveWhenMostRecent} has had its
+ * say. **Derived, never listed** — writing these four out again would let the
+ * two halves of the classification drift apart silently.
+ */
+type TerminalRequestStatus = Exclude<
+  RequestStatus,
+  (typeof LIVE_WHEN_MOST_RECENT)[number]
+>;
+
+/**
+ * How a finished run reads on the wire.
+ *
+ * Every entry is an identity today, so `status as WorkstreamStatus` would be
+ * shorter and would behave identically — **until it didn't.** A cast assumes
+ * the two unions stay 1:1 and asserts it once, at author time, forever. This
+ * map is total over {@link TerminalRequestStatus}, so a new terminal status
+ * added to `RequestStatus` upstream is a **compile error here** rather than an
+ * unannounced value arriving on a contract clients switch on. That is the only
+ * reason the indirection exists.
+ *
+ * Collapsing entries — merging `aborted` into `failed`, say — would tell a
+ * customer their work broke when they themselves cancelled it.
+ */
+export const TERMINAL_WIRE_STATUS: Record<
+  TerminalRequestStatus,
+  WorkstreamStatus
+> = {
+  completed: "completed",
+  failed: "failed",
+  incomplete: "incomplete",
+  aborted: "aborted"
+};
 
 /** One background job, as this route reports it. */
 export type WorkstreamSummary = {
@@ -219,12 +267,11 @@ async function resolveWorkstreamStatus(
     ...identity
   });
   if (mostRecent === undefined) return undefined;
-  if (LIVE_WHEN_MOST_RECENT.includes(mostRecent.status)) return "active";
+  if (isLiveWhenMostRecent(mostRecent.status)) return "active";
 
-  // Terminal outcomes pass through unchanged. Collapsing them — merging
-  // `aborted` into `failed`, say — would tell a customer their work broke when
-  // they themselves cancelled it.
-  return mostRecent.status as WorkstreamStatus;
+  // Terminal outcomes pass through unchanged, but through a total map rather
+  // than a cast — see {@link TERMINAL_WIRE_STATUS}.
+  return TERMINAL_WIRE_STATUS[mostRecent.status];
 }
 
 /**

@@ -19,6 +19,7 @@ import {
   parseFlowRoute
 } from "../src";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import { TERMINAL_WIRE_STATUS } from "../src/routes/workstream-routes";
 
 type Router = ReturnType<typeof createFlowApiRouter>;
 type WorkstreamRow = {
@@ -638,6 +639,31 @@ describe("status — decision 4a, the terminal reduction", () => {
       // Collapsing this into `failed` would tell a customer their work broke
       // when they themselves cancelled it.
       child_aborted: "aborted"
+    });
+  });
+
+  /**
+   * The table above proves each terminal status reaches the wire correctly
+   * *today*. This pins what has to keep being true: the map's domain is
+   * exactly the terminal statuses.
+   *
+   * The map exists instead of `status as WorkstreamStatus` because a cast
+   * asserts the two unions are 1:1 once, at author time, and then forwards
+   * whatever ships next straight to clients. Adding a terminal member to
+   * `RequestStatus` is now a compile error on this map — verified by adding
+   * one and watching `tsc` reject it — and this assertion is what fails if a
+   * later edit answers that error by widening the wire union reflexively
+   * rather than deciding what the new status should read as.
+   *
+   * Asserted as a whole table rather than per key: a per-key lookup passes
+   * happily while an unreviewed fifth entry sits beside it.
+   */
+  it("maps exactly the four terminal statuses, each to itself", () => {
+    expect(TERMINAL_WIRE_STATUS).toEqual({
+      completed: "completed",
+      failed: "failed",
+      incomplete: "incomplete",
+      aborted: "aborted"
     });
   });
 });
