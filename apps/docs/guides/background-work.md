@@ -48,7 +48,7 @@ Read next: **[Side chains](/docs/advanced/sequencer-side-chains)** for `.workIf(
 
 ## Queue-backed action runs: the same request, somewhere else
 
-Hand `createFlowState` a worker adapter and actions stop running in the process that accepted them.
+Hand `createFlowState` a worker adapter and actions stop running inline. They become queued jobs.
 
 ```ts
 import { createFlowState } from "@flow-state-dev/engine";
@@ -61,7 +61,9 @@ export const flowstate = createFlowState({
 });
 ```
 
-A POST to an action now returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session, different process. A worker that dies mid-action retries the job.
+A POST to an action now returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session. A worker that dies mid-action retries the job.
+
+The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming.
 
 Reach for it when the run is long or heavy enough that you don't want it on the web tier at all, or when you want to scale workers separately.
 
@@ -74,7 +76,7 @@ A workstream is background work that runs in a session of its own, hanging off t
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api" });
+const sessions = createSessionClient();
 
 const workstreams = await sessions.listWorkstreams("sess_abc");
 const first = workstreams[0];
@@ -83,11 +85,13 @@ const runs = first === undefined ? [] : await sessions.listSessionRequests(first
 
 A workstream's `id` is a session id, so every session read works on it, and a workstream that files work of its own has workstreams too.
 
-This is what the task board's detached workers address. A board can declare that a worker's tasks run outside the request that claimed them, and the worker is addressed by the board's `boardId` plus that worker's coordinate, so a later run can still find the block that does the work. Such a board needs a durable collection and an explicit `boardId`, because that id is part of the child session's identity.
+Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two do share is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow. Anything narrower than that has to be handed over when the work starts, or reported back when it finishes.
 
-Starting a workstream happens from inside a running request, through `ctx.requestHost.startDetached`. There is no client call and no HTTP route that starts one, and the shipped router wires no start operation, so on a stock server that call refuses with `no-start-operation` and a conversation's workstream list comes back empty.
+This is where the task board's detached workers are headed. A board can declare that a worker's tasks belong outside the request that claimed them, addressed by the board's `boardId` plus that worker's coordinate so a later run can still find the block that does the work. Such a board needs a durable collection and an explicit `boardId`, because that id is part of the child session's identity. That declaration is groundwork today: a worker declared detached is validated and routed, and then still runs inline, inside the claiming request.
 
-Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, and what `status` does and doesn't tell you, and **[Client overview](/docs/client/overview#background-work)** for reading it from an app.
+Starting a workstream is server-side only, and no stock server wires it yet.
+
+Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and what a stock server does about starting one; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
 
 ## Nearby, and often confused
 
@@ -103,11 +107,3 @@ Whichever path the work takes, the thing you observe is a request. Every run has
 - Read a session's runs with `listSessionRequests`, and a conversation's jobs with `listWorkstreams`. See [Client API](/docs/api/client).
 - Reconnect and resume from a sequence number rather than replaying from zero. See [Connection resilience](/docs/server/connection-resilience).
 - Inspect any of it block by block in the [DevTool](/docs/devtool/overview).
-
-## Related
-
-- [Side chains](/docs/advanced/sequencer-side-chains) — `.work()`, `.workIf()`, `.forEachBackground()`
-- [Background jobs with BullMQ](/guides/background-jobs-bullmq) — queue-backed runs end to end
-- [Background work](/docs/server/background-work) — the workstream HTTP surface
-- [The board lifecycle](/guides/board-lifecycle) — what a task board's durability does and doesn't buy you
-- [Durable execution](/docs/advanced/durable-execution) — what happens to a run that was interrupted

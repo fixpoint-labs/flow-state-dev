@@ -460,6 +460,36 @@ const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id,
 - **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. No automatic migration.
 - **Cross-flow read validation.** The registry prevents incompatible writes; it does not re-parse stored state on every read.
 
+## Workstreams and Scope
+
+A workstream is a **child session**, not a new scope level. The hierarchy stays `request → session → user → org`; a workstream occupies a different `session` cell and inherits the rest of its identity from the request that started it.
+
+`startDetached` derives the child's session id rather than accepting one (`deriveChildSessionId`, `packages/engine/src/context/detached-child.ts`). The key material is the running request's `tenantId`, `userId` and `parentSessionId` plus the caller's routing seed (`topic` + optional `key`), each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary second-task-same-topic path rather than a conflict.
+
+The child inherits `flowKind`, `userId`, `tenantId` and `orgId`, and records `parentSessionId`. `evaluateAdoption` re-checks all five before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
+
+### What each scope resolves to inside a workstream
+
+| Scope | In the child |
+|---|---|
+| `request` | Fresh — the child's own dispatch |
+| `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources |
+| `user` | **The parent's cell.** `userId` is inherited, and `isolateUserState` keys on `${userId}:${flowKind}` with `flowKind` inherited too — so isolated and shared both resolve to the record the parent reads |
+| `org` | The parent's cell, by the same reasoning |
+
+Tenant follows identity: the child's session storage key is `${tenantId}:dsx_...` under `resolveSessionStorageKey`, exactly as for any other session.
+
+### What connects a child to its parent today
+
+Four channels, and none of them is shared session state:
+
+1. **User and org scope** — live and shared, but keyed to the *principal*, not to the parent session. Two unrelated conversations belonging to the same user read the same cell.
+2. **`input` at spawn** — a one-shot payload handed to the dispatched request, frozen at dispatch.
+3. **`record` on `StartDetachedInput`** — caller bookkeeping persisted on the child session record. Metadata rather than state, and also frozen.
+4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at spawn and closed over. Deliberately not a cross-session browser: one coordinate, one row.
+
+**There is no live read or write of the parent session's state from inside a child.** The request host is closed at four verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row. So the "own state" half of a workstream works today; the "connected to its parent" half is served only by something too wide (user scope) or something too narrow (a single task row). Closing that gap without adding a fifth scope is an open design question, not a decided contract.
+
 ## Streaming Integration
 
 State and resource mutations emit streaming events:
