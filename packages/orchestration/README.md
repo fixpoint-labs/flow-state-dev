@@ -77,6 +77,15 @@ is the common case), or resource-collection (outlives the request: a user's queu
 org work pool — declare one with `defineTaskCollection`). Every mutation that
 changes a field emits a `task-change` component item.
 
+**Server-only task fields.** A `task-change` item carries the whole post-mutation
+row, and that stream is client-visible. A few fields on `Task` are substrate
+bookkeeping that must not reach a browser — `claimedBy`, the execution coordinate a
+claim records — so the factory omits them from the emitted payload via
+`toEmittedTask`, which honours the exported `SERVER_ONLY_TASK_FIELDS` set. If you
+wire a backing's `onChange` to a client transport yourself, apply `toEmittedTask` to
+`event.task` before you publish it — a field that is server-only on one boundary is
+server-only on every one.
+
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
 `ResourceRef.updateState`, which chains writes per key within one execution context
@@ -103,8 +112,12 @@ a task until it resolves again.
 
 Every lifecycle transition — `complete`, `fail`, `block`, `unblock`, `awaitReview`,
 `resumeFromReview`, `cancel` — takes an optional trailing `TaskTransitionOptions`
-argument that makes the write advisory. `ifAllowed` skips the write when the state
-machine rejects it or the task is already settled. `claim` takes a
+argument that makes the write advisory. `ifAllowed` skips the write when the task is
+already settled, or when the transition is one the state machine or the calling verb
+refuses. A legal status transition is necessary but not sufficient: a verb that owns
+one edge runs only from that edge's source status. `unblock` runs on a `blocked` task
+and no other. `in_progress → pending` and `awaiting_review → pending` sit in the
+status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
 for, still on that attempt. A guard cannot be raced: the task cannot change between

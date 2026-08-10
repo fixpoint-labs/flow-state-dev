@@ -20,7 +20,8 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import type { TaskCollectionRef } from "./types";
-import type { TaskChangeEvent } from "./change-event";
+import type { TaskClaimIdentity } from "../schema/task";
+import { toEmittedTask, type TaskChangeEvent } from "./change-event";
 import { createSequencerBackedTaskCollection } from "./sequencer-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
 import type { TaskCapOptions } from "./task-caps";
@@ -147,6 +148,12 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     return r?.getItems?.() ?? [];
   };
 
+  // Where a claim on this board runs (FIX-1005). Read once at construction
+  // from the public `BlockContext` handles — a narrowed value, so the write
+  // path never holds a context. Optional-chained because mock contexts in
+  // tests wire neither handle; the field then stays absent.
+  const claimIdentity = readClaimIdentity(options.ctx);
+
   const onChange = (event: TaskChangeEvent): void => {
     options.ctx.emit.component(
       TASK_CHANGE_COMPONENT_TYPE,
@@ -154,7 +161,9 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
         collectionId: event.collectionId,
         taskId: event.taskId,
         kind: event.kind,
-        task: event.task,
+        // Server-only fields are omitted here and ONLY here — this is the one
+        // boundary that spreads the whole row to a client (FIX-1005).
+        task: toEmittedTask(event.task),
         ...(event.prevStatus !== undefined ? { prevStatus: event.prevStatus } : {}),
       },
       {
@@ -174,6 +183,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       onChange,
       getItems,
       now: options.now,
+      claimIdentity,
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
       maxTotalRetries: options.maxTotalRetries,
@@ -190,6 +200,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
       onChange,
       getItems,
       now: options.now,
+      claimIdentity,
       maxTotalTasks: options.maxTotalTasks,
       maxEnqueuedTasks: options.maxEnqueuedTasks,
       maxTotalRetries: options.maxTotalRetries,
@@ -202,8 +213,33 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     onChange,
     getItems,
     now: options.now,
+    claimIdentity,
     immutableAssignee: options.immutableAssignee,
   });
+}
+
+/**
+ * Read the execution coordinate a claim on this board should record
+ * (FIX-1005) — `{ sessionId, requestId, tenantId? }`.
+ *
+ * Sourced from `ctx.request` / `ctx.session`, which are plain public
+ * `BlockContext` members carrying a `ScopeIdentity`. Nothing here reaches the
+ * store registry or a request-host seam.
+ *
+ * Returns `undefined` when either handle is missing — a mock context in a unit
+ * test. Absent is a supported state that means "no coordinate" (BP-030), so a
+ * partial identity is never synthesized from one half.
+ */
+function readClaimIdentity(ctx: BlockContext): TaskClaimIdentity | undefined {
+  const requestId = ctx.request?.identity?.id;
+  const sessionId = ctx.session?.identity?.id;
+  if (requestId === undefined || sessionId === undefined) return undefined;
+  const tenantId = ctx.request.identity.tenantId;
+  return {
+    sessionId,
+    requestId,
+    ...(tenantId !== undefined ? { tenantId } : {}),
+  };
 }
 
 /**

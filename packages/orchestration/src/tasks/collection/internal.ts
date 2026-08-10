@@ -9,10 +9,14 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
 import { generateId } from "../generate-id";
 import { initialWriteProvenance } from "../write-provenance";
-import type { Task, TaskStatus } from "../schema/task";
+import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
-import { isTerminalStatus, isTransitionAllowed } from "../schema/task-status";
+import {
+  IllegalTaskTransitionError,
+  isTerminalStatus,
+  isTransitionAllowed,
+} from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import type {
   ClaimOptions,
@@ -370,23 +374,63 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  *
  * @param collectionId The board this write is happening on — compared against
  *   the ticket's, because two boards may both hold a task id.
+ * @param requireFrom The one status this verb may run from, when the verb owns a
+ *   single edge rather than every legal path to its target. `unblock` is the
+ *   only such verb: `blocked → pending`. The status table cannot express this —
+ *   it maps status to status, not verb to edge, and `in_progress → pending` and
+ *   `awaiting_review → pending` are legal for `reclaim` and `resumeFromReview`.
+ *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
   task: Task,
   targetStatus: TaskStatus,
   options: TaskTransitionOptions | undefined,
-  collectionId: string
+  collectionId: string,
+  requireFrom?: TaskStatus
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
+  if (
+    options.ifAllowed === true &&
+    requireFrom !== undefined &&
+    task.status !== requireFrom
+  ) {
+    return "disallowed";
+  }
   if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   return undefined;
+}
+
+/**
+ * Refuse a verb that owns ONE edge when the task is not sitting on that edge's
+ * source status.
+ *
+ * The non-advisory half of `requireFrom` — see {@link transitionDeclineReason}
+ * for why the status table cannot carry this. Throws the same error type as
+ * {@link assertTransitionAllowed}, because to a caller this *is* an illegal
+ * transition: `unblock` on an `in_progress` task is not a legal write that
+ * happens to skip a field, it is a `reclaim` spelled wrong.
+ *
+ * Runs after the decline check, so an advisory write still reports
+ * `disallowed` instead of throwing.
+ *
+ * @throws {IllegalTaskTransitionError} when `task.status !== requireFrom`.
+ */
+export function assertTransitionFrom(
+  task: Task,
+  requireFrom: TaskStatus | undefined,
+  targetStatus: TaskStatus,
+  taskId: string
+): void {
+  if (requireFrom !== undefined && task.status !== requireFrom) {
+    throw new IllegalTaskTransitionError({ taskId, from: task.status, to: targetStatus });
+  }
 }
 
 /**
@@ -444,17 +488,44 @@ export function defaultOrder(a: Task, b: Task): number {
 export const DEFAULT_LEASE_DURATION_MS = 30_000;
 
 /**
- * Apply a `claim` to a task — flip status, stamp lease, increment attempts.
+ * Apply a `claim` to a task — flip status, stamp lease, increment attempts,
+ * and record where this attempt is running (FIX-1005).
  *
  * Note: `task.assignee` is the worker-registry key (set at task creation by
  * the user), not the runtime worker identity. `claim`'s `workerId` is for
  * trace attribution; the lease itself is `leaseUntil`. So we don't touch
  * `task.assignee` here.
+ *
+ * `claimedBy` takes a **narrowed** identity rather than a `BlockContext` on
+ * purpose: the write path has no business holding a context, and a plain value
+ * is what makes the field testable without one.
+ *
+ * It is written **unconditionally** — set when the caller has an identity,
+ * cleared when it does not. A conditional spread would be wrong here even
+ * though it reads as the careful option: `claimedBy` is written onto a spread
+ * of the *incoming* task, so adding nothing leaves the previous attempt's
+ * coordinate in place, now paired with a fresh attempt and a fresh lease. That
+ * is worse than absent, because absent is a state readers are told to expect
+ * and handle (BP-030) while a stale coordinate reads as current. Clearing with
+ * `undefined` is the same shape the claim-clear sites use.
+ *
+ * `startedAt` is the deliberate contrast a few lines down: it *does* inherit,
+ * because it answers "when did work on this task first begin", which a
+ * re-claim does not change.
+ *
+ * `incarnationId` (FIX-989) inherits too, and for the same kind of reason —
+ * do not "fix" it to match this field. The two are scoped differently:
+ * `claimedBy` belongs to one *attempt*, so every claim must re-establish or
+ * clear it, while `incarnationId` identifies the *row* for its whole life and
+ * is minted once at creation. A field that is supposed to outlive the write
+ * carrying it forward is correct; a per-attempt field doing so is the bug
+ * above.
  */
 export function applyClaimToTask<TInput, TOutput>(
   task: Task<TInput, TOutput>,
   now: number,
-  leaseDurationMs: number
+  leaseDurationMs: number,
+  claimedBy?: TaskClaimIdentity
 ): Task<TInput, TOutput> {
   return {
     ...task,
@@ -462,6 +533,7 @@ export function applyClaimToTask<TInput, TOutput>(
     attempts: task.attempts + 1,
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
+    claimedBy,
     updatedAt: now,
   };
 }

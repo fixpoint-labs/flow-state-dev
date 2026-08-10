@@ -77,6 +77,39 @@ export const taskSchema = z.object({
   priority: z.number().optional(),
   leaseUntil: z.number().optional(),
 
+  /**
+   * Where the current attempt is running — the execution coordinate the
+   * substrate stamps inside the claim write (FIX-1005). A fact ("attempt N ran
+   * here"), never policy ("work should run here"). Written only by
+   * `applyClaimToTask` and cleared wherever the claim ends; absent from
+   * `TaskInit`, so no caller and no model ever writes it.
+   *
+   * Distinct from **both** of the other "who has this" fields, which is the
+   * thing to keep straight when reading a claim:
+   * - `assignee` is the user-set worker-registry routing key, which `reclaim`
+   *   preserves on purpose. It says where work *should* run.
+   * - `claim(workerId)`'s argument is trace attribution — a label. It is not
+   *   stored here. `claimedBy` is the execution coordinate, so the name says
+   *   *by whom* while the value says *where*.
+   *
+   * **Server-only, never sent to a client.** See `SERVER_ONLY_TASK_FIELDS` in
+   * `collection/change-event.ts`, canonical for the redaction and its shape.
+   *
+   * **Absent on any task persisted before FIX-1005**, on any task never
+   * claimed, and on any row an older writer normalized. Read it through one
+   * `== null` guard (BP-030); the next claim re-stamps it.
+   */
+  claimedBy: z
+    .object({
+      /** Session the claiming execution ran under (`ctx.session.identity.id`). */
+      sessionId: z.string(),
+      /** Request that performed the claim (`ctx.request.identity.id`). */
+      requestId: z.string(),
+      /** Tenant the claim ran under, when the deployment is multi-tenant. */
+      tenantId: z.string().optional(),
+    })
+    .optional(),
+
   input: z.unknown().optional(),
   output: z.unknown().optional(),
   error: z.string().optional(),
@@ -182,6 +215,17 @@ export type Task<TInput = unknown, TOutput = unknown> = Omit<
   input?: TInput;
   output?: TOutput;
 };
+
+/**
+ * The execution coordinate stamped into a claim write (FIX-1005) — see
+ * {@link taskSchema}'s `claimedBy`.
+ *
+ * Named so the backings can accept it as a narrowed option rather than taking
+ * a whole `BlockContext` into the write path.
+ */
+export type TaskClaimIdentity = NonNullable<
+  z.infer<typeof taskSchema>["claimedBy"]
+>;
 
 /** One entry in {@link taskSchema}'s `writeLog` — a caller's write id and the revision it committed at. */
 export type TaskWriteReceipt = NonNullable<

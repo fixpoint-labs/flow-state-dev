@@ -176,7 +176,17 @@ await tasks.complete(task.id, output, {
 });
 ```
 
-`ifAllowed` asks whether the transition is legal, and declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded.
+`ifAllowed` asks whether the task can take this write right now. It declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded, and when the state machine has no transition from the task's current status to the one the call targets.
+
+A legal status transition is necessary but not sufficient. A verb that owns a single edge runs only from that edge's source status, so a call can be refused where the [status diagram](#the-status-state-machine) shows a line. The paths back to `pending` each have their own verb:
+
+| Returning a task to `pending` from | Call |
+|------------------------------------|------|
+| `blocked` | `unblock(id)` |
+| `awaiting_review` | `resumeFromReview(id, feedback?)` |
+| `in_progress`, once its lease has expired | `reclaim()` |
+
+`unblock` runs on a blocked task and refuses every other status, raising the same `IllegalTaskTransitionError` an illegal transition raises, or declining with reason `disallowed` when you passed `ifAllowed`. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `resumeFromReview`, which clears its lease on the way.
 
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `awaiting_review`). Two refusals come out of it, and they mean different things:
 
@@ -380,10 +390,12 @@ Every mutation that changes a field emits a `task-change` component item onto th
                              // blocked | unblocked | review_requested | resumed |
                              // cancelled | label_changed | metadata_changed |
                              // priority_changed | assignee_changed
-  task: { /* the whole Task, after the mutation */ },
+  task: { /* the post-mutation Task, minus server-only fields */ },
   prevStatus: "in_progress", // omitted when the mutation didn't change status
 }
 ```
+
+The `task` snapshot is the post-mutation row minus the fields the substrate keeps server-side. `claimedBy` is one of those, so it is absent from the item even while a task is claimed.
 
 UIs stay in sync off that stream rather than by polling. The `<TaskPlan />` component and the DevTool subscribe to `task-change` items, filter by `collectionId`, and rebuild the board's state from them. You don't wire any of it up: every collection `getOrCreateTaskCollection` hands you emits these items itself.
 

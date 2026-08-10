@@ -86,7 +86,7 @@ import type { JsonObject } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import { updateStateWith } from "@flow-state-dev/core/helpers";
-import type { Task, TaskStatus } from "../schema/task";
+import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
 import type {
@@ -106,6 +106,7 @@ import {
   grantRetry,
   listTasks,
   routeFailure,
+  assertTransitionFrom,
   transitionDeclineReason,
 } from "./internal";
 import { stampWrite } from "../write-provenance";
@@ -167,6 +168,12 @@ export interface ResourceBackedOptions {
   getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
+  /**
+   * Execution coordinate stamped onto `task.claimedBy` at claim time
+   * (FIX-1005). The factory reads it off the `BlockContext` it already
+   * receives; omit it and claims record no coordinate.
+   */
+  claimIdentity?: TaskClaimIdentity;
   /**
    * Refuse every `setAssignee` on this collection (FIX-982).
    *
@@ -398,7 +405,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     targetStatus: TaskStatus,
     kind: TaskChangeKind,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions
+    guards?: TaskTransitionOptions,
+    requireFrom?: TaskStatus
   ): Promise<TaskWriteOutcome> {
     const ref = mirror.get(id);
     if (ref === undefined) {
@@ -414,11 +422,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           task as Task,
           targetStatus,
           guards,
-          options.collectionId
+          options.collectionId,
+          requireFrom
         );
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
         }
+        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         // Stamped here, inside the serialized write, off the `task` this
         // invocation read. Since FIX-992 this updater is re-run against
@@ -563,7 +573,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           // Re-check eligibility on the freshest state — another worker
           // may have claimed this task in the time between scan and CAS.
           if (!eligibility(task as Task)) return { state: current, result: undefined };
-          const next = stampWrite(task, applyClaimToTask(task, now(), leaseDurationMs));
+          // Both stamps, composed: the claim records where it runs
+          // (FIX-1005) and the write records its provenance (FIX-989).
+          const next = stampWrite(
+            task,
+            applyClaimToTask(task, now(), leaseDurationMs, options.claimIdentity)
+          );
           return {
             state: next as unknown as JsonObject,
             result: { task: next, prevStatus: task.status },
@@ -588,6 +603,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           output,
           completedAt: now(),
           leaseUntil: undefined,
+          claimedBy: undefined,
           error: undefined,
         }),
         options
@@ -627,6 +643,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
               return {
                 feedback: error,
                 leaseUntil: undefined,
+                claimedBy: undefined,
                 error: undefined,
                 ...(counts ? { retryLedger: grantRetry(task as Task) } : {}),
               };
@@ -643,6 +660,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           error,
           completedAt: now(),
           leaseUntil: undefined,
+          claimedBy: undefined,
         }),
         options
       );
@@ -664,7 +682,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "pending",
         "unblocked",
         () => ({ error: undefined }),
-        options
+        options,
+        // `blocked` is the ONLY status this may run from. The other two paths
+        // to `pending` have their own verbs (`reclaim`, `resumeFromReview`),
+        // and those clear the lease and the claim coordinate; this one has
+        // nothing to clear because `blocked` is reachable only from `pending`.
+        "blocked"
       );
     },
 
@@ -683,7 +706,11 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         id,
         "pending",
         "resumed",
-        () => ({ feedback: feedback ?? undefined, leaseUntil: undefined }),
+        () => ({
+          feedback: feedback ?? undefined,
+          leaseUntil: undefined,
+          claimedBy: undefined,
+        }),
         options
       );
     },
@@ -698,8 +725,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         "cancelled",
         () =>
           reason !== undefined
-            ? { error: reason, completedAt: now(), leaseUntil: undefined }
-            : { completedAt: now(), leaseUntil: undefined },
+            ? {
+                error: reason,
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              }
+            : {
+                completedAt: now(),
+                leaseUntil: undefined,
+                claimedBy: undefined,
+              },
         // `ifAllowed` is forced AFTER the spread, not merged into it (FIX-981):
         // a caller's ticket must reach the guard, but "advisory by
         // construction" is this method's contract and a caller cannot switch it
@@ -739,6 +775,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             ...t,
             status: "pending",
             leaseUntil: undefined,
+            claimedBy: undefined,
             updatedAt: at,
           });
           return { state: reset as unknown as JsonObject, result: reset };
