@@ -15,6 +15,7 @@ import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "
 import {
   declareWorkstreamBindings,
   mergeWorkstreamBindings,
+  workstreamBindingKey,
   type WorkstreamBindings,
 } from "../types/workstream";
 import type {
@@ -448,6 +449,64 @@ function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
 }
 
 /**
+ * Assert that every detached board reachable from this flow's declared blocks
+ * resolves to a binding on the flow (FIX-982).
+ *
+ * `collectWorkstreamBindings` reads the union off each root and trusts that
+ * composition carried it there. This walks the tree and checks that trust. The
+ * two disagree exactly when some composition step dropped a child's bindings on
+ * the way up — the failure this rail has had over and over — and the difference
+ * between catching it here and not catching it is the difference between a flow
+ * that refuses to define and a detached task that is admitted, claimed,
+ * dispatched, and then never runs.
+ *
+ * It is checkable at all only because `BlockDefinition.childBlocks` now retains
+ * the sequencer's children. A board's drain IS a sequencer, so while that edge
+ * was closure-captured a traversal could not reach a single real board.
+ *
+ * Identity, not key equality, is the test: `mergeWorkstreamBindings` dedupes on
+ * the binding object, so a coordinate present under a *different* object is a
+ * different declaration that happens to collide, not the same one arriving twice.
+ */
+function assertWorkstreamBindingsReachable(
+  kind: string,
+  roots: readonly BlockDefinition[],
+  collected: WorkstreamBindings | undefined
+): void {
+  const seen = new Set<BlockDefinition>();
+  const queue: BlockDefinition[] = [...roots];
+
+  while (queue.length > 0) {
+    const block = queue.pop()!;
+    // Blocks are shared freely (one handler reused across actions) and a
+    // router route may point back up the tree, so both revisits and cycles are
+    // ordinary rather than exceptional.
+    if (seen.has(block)) continue;
+    seen.add(block);
+
+    for (const binding of block.workstreamBindings?.values() ?? []) {
+      const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
+      if (collected?.get(key) === binding) continue;
+      throw new Error(
+        `[workstream] flow "${kind}" reaches block "${block.name}", which declares detached ` +
+          `worker "${binding.worker.name}" at board "${binding.boardId}" coordinate ` +
+          `"${binding.coordinateKey}" — but that binding never reached the flow. A detached wake ` +
+          `carrying that coordinate would have no block to run. This is a propagation bug in the ` +
+          `composition path between that block and its action root, not something the flow author ` +
+          `declared wrongly: some step rebuilt a block without carrying its children over.`
+      );
+    }
+
+    for (const child of block.childBlocks ?? []) queue.push(child);
+    // Rescue handlers installed via `config.rescue` are already folded into
+    // `childBlocks` by `buildBlock`. Generator `config.tools` is deliberately
+    // NOT walked: a generator is a leaf that does not bubble its tools' rails at
+    // all, so walking that edge would report a different, pre-existing gap
+    // rather than the propagation failure this assertion is for.
+  }
+}
+
+/**
  * Effective storage tuple for a resource installed in a given flow.
  *
  * - `scope` and `ref` come from the resource definition.
@@ -785,6 +844,9 @@ function createFlowInstance(
     validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
   }
 
+  const workstreamBindings = collectWorkstreamBindings(declaredBlocks);
+  assertWorkstreamBindingsReachable(kind, declaredBlocks, workstreamBindings);
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -792,7 +854,7 @@ function createFlowInstance(
     requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
     actions,
-    workstreamBindings: collectWorkstreamBindings(declaredBlocks),
+    workstreamBindings,
     session,
     request: requestMerged,
     user,
@@ -844,6 +906,10 @@ export function defineFlow<
     kind: normalizedDefinition.kind,
     requireUser: baseInstance.requireUser,
     requiresOrg: baseInstance.requiresOrg,
+    // Mirrored for the same reason `requiresOrg` is: this blueprint is read
+    // directly, and a missing field reads as an absent feature rather than as an
+    // unmirrored one.
+    workstreamBindings: baseInstance.workstreamBindings,
     authentication: baseInstance.authentication,
     actions: baseInstance.actions as TActions,
     session: baseInstance.session as TSession,

@@ -157,12 +157,22 @@ reason:
 may host several task boards, each with several detached workers. The map that
 holds them is `flow.workstreamBindings`, keyed by `(boardId, coordinateKey)`.
 
-It is produced **by construction, not by declaration**. Bindings ride the same
-rail resource declarations already use: a board stamps its bindings on its drain
-sequencer, each enclosing sequencer and router merges its children's up as the
-tree is composed, and `defineFlow` reads the accumulated union off each action
-root. There is no tree walk and no author-facing surface — an app declares a
-board, and the registry follows.
+It is produced **by construction, not by declaration**. A board stamps its
+bindings on its drain sequencer; every block retains the blocks it composes
+(`BlockDefinition.childBlocks`), and derives its own binding set from its stamp
+plus its children's. Each child already carries the union of its subtree, so one
+merge per block carries the whole tree up to the action root, where `defineFlow`
+reads it off. There is no author-facing surface — an app declares a board, and
+the registry follows.
+
+`defineFlow` then walks that same retained graph and **refuses a flow that can
+reach a board it cannot route to**, naming the board, coordinate and worker. The
+walk exists because the two halves can disagree only one way: some composition
+step dropped a child on the way up. Without it that failure is invisible until a
+detached task has been admitted, claimed, dispatched, and then never runs. The
+walk is possible at all only because children are retained — a sequencer step is
+a closure, so before retention the sequencer edge was opaque, and a board's drain
+*is* a sequencer.
 
 Two properties are load-bearing:
 

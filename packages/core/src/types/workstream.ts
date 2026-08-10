@@ -161,7 +161,12 @@ export function mergeWorkstreamBindings(
  * `mergeWorkstreamBindings` runs, a shared worker no longer implies a shared
  * declaration, and object identity is the only test that separates them.
  */
-export function declareWorkstreamBindings<TBlock extends { workstreamBindings?: WorkstreamBindings }>(
+export function declareWorkstreamBindings<
+  TBlock extends {
+    workstreamBindings?: WorkstreamBindings;
+    ownWorkstreamBindings?: WorkstreamBindings;
+  }
+>(
   block: TBlock,
   bindings: readonly WorkstreamBinding[]
 ): TBlock {
@@ -181,6 +186,12 @@ export function declareWorkstreamBindings<TBlock extends { workstreamBindings?: 
     map.set(key, binding);
   }
 
+  // Recorded on BOTH rails. `workstreamBindings` is what every consumer reads;
+  // `ownWorkstreamBindings` is what a rebuild carries over, and a stamp is by
+  // definition the block's own contribution rather than a child's. Without the
+  // second assignment a stamp would survive only until the next `.tap()` or
+  // `.rescue()`, which re-derive the bubble-up set from the retained children.
   block.workstreamBindings = mergeWorkstreamBindings(block.workstreamBindings, map);
+  block.ownWorkstreamBindings = mergeWorkstreamBindings(block.ownWorkstreamBindings, map);
   return block;
 }

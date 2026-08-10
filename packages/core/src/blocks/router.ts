@@ -10,7 +10,6 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
-import { mergeWorkstreamBindings, type WorkstreamBindings } from "../types/workstream";
 import type {
   InferCapabilities,
   InferCapabilityOwnState,
@@ -226,14 +225,6 @@ export function router<
   const routesRequireOrg = config.routes !== undefined
     && config.routes.some((route) => route.requiresOrg);
 
-  // Bubble detached worker bindings up from route blocks the same way (FIX-982).
-  // A board reached only down one arm of a router is still a board the flow must
-  // be able to route to after a restart.
-  let routeWorkstreamBindings: WorkstreamBindings | undefined;
-  for (const route of config.routes ?? []) {
-    routeWorkstreamBindings = mergeWorkstreamBindings(routeWorkstreamBindings, route.workstreamBindings);
-  }
-
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: { ...config, stateSchema: effectiveStateSchema } as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
@@ -241,7 +232,11 @@ export function router<
     ownDeclaredResources,
     resolvedCapabilities,
     requiresOrg: routesRequireOrg,
-    workstreamBindings: routeWorkstreamBindings,
+    // The routes ARE the router's children, so detached worker bindings bubble
+    // up from them without a rail of their own (FIX-982). A board reached only
+    // down one arm is still a board the flow must be able to route to after a
+    // restart.
+    childBlocks: config.routes ?? [],
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>

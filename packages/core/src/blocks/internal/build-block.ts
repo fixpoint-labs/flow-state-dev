@@ -107,9 +107,25 @@ export type BuildBlockOptions<
    */
   requiresOrg?: boolean;
   /**
-   * Pre-computed detached worker bindings derived from child blocks (FIX-982).
-   * Sequencer builders pass their accumulator; leaves omit it. A board stamps
-   * its own onto the built drain afterwards via `declareWorkstreamBindings`.
+   * Every block this block statically composes — a sequencer's step children
+   * and chain-level rescue handlers, a router's routes, the block `asTool`
+   * wraps. Rescue handlers installed via `config.rescue` are folded in here
+   * automatically and must NOT be passed again.
+   *
+   * Retained on the definition so the graph is walkable at flow-definition
+   * time, and used here as the single source the `workstreamBindings` rail is
+   * derived from.
+   */
+  childBlocks?: readonly BlockDefinition<any, any>[];
+  /**
+   * This block's OWN detached worker bindings (FIX-982) — what it contributes
+   * before any child's. Leaves and freshly-built composites omit it; a board
+   * stamps its own onto the built drain afterwards via
+   * `declareWorkstreamBindings`, and every rebuild path forwards
+   * `definition.ownWorkstreamBindings` so the stamp survives.
+   *
+   * The bubble-up set on the definition is derived from this plus
+   * `childBlocks` — callers never pre-merge it.
    */
   workstreamBindings?: WorkstreamBindings;
   /**
@@ -187,6 +203,29 @@ export function buildBlock<
   // aggregate as `options.requiresOrg`).
   const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
 
+  // Every block this one statically composes. Rescue handlers are children like
+  // any other — a board reachable only on the failure path is still a board the
+  // flow has to route to — and they are folded in HERE, from the currently
+  // installed `config.rescue`, rather than by the caller. That is what makes
+  // `.rescue([a]).rescue([b])` correct: the rebuild hands over the same
+  // non-rescue children and the new config, and `a` simply is not among the
+  // handlers any more, so nothing has to remember to remove it.
+  const childBlocks: readonly BlockDefinition<any, any>[] = [
+    ...(options.childBlocks ?? []),
+    ...(config.rescue ?? []).map((handler) => handler.block)
+  ];
+
+  // The one place the bindings rail is computed. Callers hand over children and
+  // their own stamp; the union is derived, never threaded. Each child already
+  // carries the union of its own subtree, so a single pass here reaches the
+  // whole tree — and a composition site that forgets to pass a child drops it
+  // from every rail at once, which `defineFlow`'s reachability assertion then
+  // refuses at definition time rather than at a detached wake weeks later.
+  let workstreamBindings = options.workstreamBindings;
+  for (const child of childBlocks) {
+    workstreamBindings = mergeWorkstreamBindings(workstreamBindings, child.workstreamBindings);
+  }
+
   const definition: BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
@@ -198,7 +237,9 @@ export function buildBlock<
     declaredResources: options.declaredResources,
     ownDeclaredResources: options.ownDeclaredResources,
     requiresOrg,
-    workstreamBindings: options.workstreamBindings,
+    childBlocks,
+    workstreamBindings,
+    ownWorkstreamBindings: options.workstreamBindings,
     _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
@@ -347,14 +388,16 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
-        // Detached worker bindings ride every rebuild `declaredResources` does
-        // (FIX-982). Read off `definition`, never `options`: a task board stamps
-        // its bindings onto the finished block via `declareWorkstreamBindings`,
-        // so the construction-time `options` value predates the stamp and
-        // rebuilding from it hands back a block that has silently forgotten the
-        // board it contains. Nothing throws — the symptom is a detached task
-        // that is admitted, claimed, dispatched and then never runs.
-        workstreamBindings: definition.workstreamBindings,
+        // Structure and own-stamp ride every rebuild; the bindings rail itself
+        // is re-derived from them (FIX-982). The stamp is read off `definition`,
+        // never `options`: a task board stamps its bindings onto the finished
+        // block via `declareWorkstreamBindings`, so the construction-time
+        // `options` value predates the stamp and rebuilding from it hands back a
+        // block that has silently forgotten the board it contains. Nothing
+        // throws — the symptom is a detached task that is admitted, claimed,
+        // dispatched and then never runs.
+        childBlocks: options.childBlocks,
+        workstreamBindings: definition.ownWorkstreamBindings,
         // `connectInput` preserves `TOutputSchema`, so any installed
         // `mapModelOutput` mapper is still valid against the rebuilt block's
         // output. Forward it through.
@@ -372,7 +415,8 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
-        workstreamBindings: definition.workstreamBindings,
+        childBlocks: options.childBlocks,
+        workstreamBindings: definition.ownWorkstreamBindings,
         modelOutputMapper: mapper,
       });
     },
@@ -382,22 +426,20 @@ export function buildBlock<
       // time, mirroring the sequencer's chain-level `.rescue()`.
       let mergedResources = options.declaredResources;
       let mergedRequiresOrg = requiresOrg;
-      // Bindings merge rather than pass through: a rescue handler may itself
-      // contain a board, and a coordinate reachable only on the failure path is
-      // still one the flow must resolve after a restart. Seeded from
-      // `definition` (post-stamp), unlike `mergedResources` above — see the note
-      // in `connectInput`.
-      let mergedWorkstreamBindings = definition.workstreamBindings;
       for (const handler of handlers) {
         mergedResources = mergeDeclaredResources(mergedResources, handler.block.declaredResources);
-        mergedWorkstreamBindings = mergeWorkstreamBindings(
-          mergedWorkstreamBindings,
-          handler.block.workstreamBindings
-        );
         if (handler.block.requiresOrg === true) {
           mergedRequiresOrg = true;
         }
       }
+      // Bindings are deliberately absent from that loop. `handlers` REPLACES the
+      // installed set, so the rail cannot be accumulated here: seeding from the
+      // post-fold `definition.workstreamBindings` kept a replaced handler's
+      // boards, and `.rescue([a]).rescue([b])` then advertised a worker nothing
+      // could reach — or threw a duplicate-coordinate error between `a` and `b`
+      // when both bound the same coordinate. Passing the own stamp and the new
+      // handlers lets `buildBlock` re-derive the union from what is actually
+      // installed, so `a` drops out because it is no longer a child.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind,
         config: { ...runtimeConfig, rescue: handlers },
@@ -406,7 +448,8 @@ export function buildBlock<
         ownDeclaredResources: options.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: mergedRequiresOrg,
-        workstreamBindings: mergedWorkstreamBindings,
+        childBlocks: options.childBlocks,
+        workstreamBindings: definition.ownWorkstreamBindings,
         modelOutputMapper: options.modelOutputMapper,
       });
     },
@@ -466,9 +509,11 @@ export function buildBlock<
         outputSchema: runtimeConfig.outputSchema,
       };
 
-      // declaredResources / resolvedCapabilities / workstreamBindings are
-      // forwarded so the inner block's declarations still bubble up to the flow
-      // when the wrapper is the surface added to a sequencer chain.
+      // declaredResources / resolvedCapabilities are forwarded so the inner
+      // block's declarations still bubble up to the flow when the wrapper is the
+      // surface added to a sequencer chain. The wrapper genuinely composes the
+      // inner block — it runs it — so the inner block is its child, and the
+      // bindings rail derives from that rather than being copied across.
       return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
         kind: "handler",
         config: wrappedConfig,
@@ -477,7 +522,7 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
-        workstreamBindings: definition.workstreamBindings,
+        childBlocks: [definition],
       });
     },
     connectOutput<TTo>(
@@ -507,7 +552,8 @@ export function buildBlock<
         ownDeclaredResources: definition.ownDeclaredResources,
         resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
-        workstreamBindings: definition.workstreamBindings,
+        childBlocks: options.childBlocks,
+        workstreamBindings: definition.ownWorkstreamBindings,
       });
     }
   };

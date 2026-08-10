@@ -933,17 +933,52 @@ export interface BlockDefinition<
    */
   requiresOrg: boolean;
   /**
+   * Every block this block statically composes: a sequencer's step/tap/branch
+   * children and its chain-level rescue handlers, a router's routes, a rescue
+   * handler installed on any block.
+   *
+   * Exists so the block graph is **walkable at definition time**. A
+   * `SequencerOperation` is `{name, run}` — the child it dispatches is captured
+   * inside a closure and retained nowhere else — so before this field the
+   * sequencer edge was opaque and a traversal from an action root could not see
+   * past the first `.step()`. Since a task board's drain *is* a sequencer, that
+   * made "every reachable detached board resolves to a binding" not merely
+   * unchecked but uncomputable. `defineFlow` walks this to assert it.
+   *
+   * Retained for structure only — nothing executes through it. Dispatch still
+   * runs the operation closures.
+   */
+  childBlocks?: readonly BlockDefinition<any, any>[];
+  /**
    * Detached worker bindings this block and its descendants declare (FIX-982).
    *
-   * Bubbles exactly as {@link declaredResources} does — a task board stamps its
-   * bindings on the drain sequencer, enclosing sequencers merge their children's
-   * up, and `defineFlow` reads the union off each action root into
-   * `flow.workstreamBindings`. `undefined` on every block that declares no
-   * detached work, which is every block that ships today.
+   * Derived, never threaded: `buildBlock` computes it as this block's OWN
+   * bindings ({@link ownWorkstreamBindings}) merged with every child's already-
+   * merged set ({@link childBlocks}, which includes rescue handlers). Because a
+   * child's set is itself the union of its subtree, one merge at build time
+   * carries the whole tree, and `defineFlow` reads the union off each action
+   * root into `flow.workstreamBindings`.
    *
-   * Not an app-author surface: nothing is declared to get one.
+   * `undefined` on every block that declares no detached work, which is every
+   * block that ships today. Not an app-author surface: nothing is declared to
+   * get one.
    */
   workstreamBindings?: WorkstreamBindings;
+  /**
+   * The detached worker bindings this block itself carries, excluding every
+   * binding that arrives by way of a child (FIX-982). Where
+   * {@link workstreamBindings} is the bubble-up, this is the strict subset the
+   * block contributes on its own — the same split {@link ownDeclaredResources}
+   * draws, and for the same reason: a rebuild has to be able to tell what to
+   * carry over from what to recompute.
+   *
+   * Written only by `declareWorkstreamBindings`, which a task board calls on the
+   * drain sequencer it just built. Rebuild paths (`connectInput`, `.rescue`,
+   * `asTool`, a sequencer chaining another step) forward THIS and re-derive the
+   * rest, so replacing a block's rescue handlers forgets the old handlers'
+   * boards instead of advertising workers nothing can reach.
+   */
+  ownWorkstreamBindings?: WorkstreamBindings;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(
