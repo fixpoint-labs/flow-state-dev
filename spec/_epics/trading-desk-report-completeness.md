@@ -20,24 +20,31 @@ that, several figures the report *does* show are blunter than they look, and a f
 computed from data that was never there.
 
 When this epic lands, a reader can answer one question from the report alone: **does this
-faithfully represent the analysis that ran?** No new provider and no new data lane — that
-fence is absolute (§2 theme 5). Every previous trading-desk epic added a capability; this one
-almost entirely finishes the report we already build.
+faithfully represent the analysis that ran?**
 
-**Almost, not entirely — and the objective has to say so.** Ten of the twelve issues add
-nothing; they make an existing figure honest. Two do add analysis, and both are named here
-rather than left in an issue, because *"this epic adds no capability"* is the sentence the
-objective gate signs off:
+**The epic does two things, and the objective owns both.** Ten of the twelve issues add
+nothing new — they make an existing figure honest. The other two deepen an analysis:
 
-- **FIX-826** adds trend characterization (strength, persistence, inflection). Already flagged
-  below as the weakest issue in the set.
-- **FIX-1066** is the one the original framing hid. Taking the lens pack from four to six
-  activates two generator-backed lenses that `agents/lenses/lenses.ts` currently defers to
-  FIX-705 — so it adds two real analyses and roughly half again as much phase-2b model spend
-  on the `full` preset. That is a capability add and a recurring cost, not a rendering change.
+- **FIX-826** adds trend characterization: strength, persistence, inflection. The desk cannot
+  produce that read today.
+- **FIX-1066** takes the lens pack from four to six, activating two generator-backed lenses
+  that `agents/lenses/lenses.ts` currently defers to FIX-705. Two real analyses, and roughly
+  half again as much phase-2b model spend on the `full` preset — a recurring per-run bill, not
+  a one-time cost.
 
-Neither is disqualifying, and neither is being smuggled. But the gate is signing off a set
-that adds two analyses, not zero.
+**Decided at the objective gate — both stay, at full scope (product owner).** FIX-826 keeps
+strength, persistence and inflection; it is *not* narrowed to a disclaimer on the existing
+moving-average labels. FIX-1066 keeps the 4→6 expansion. And **per-run model cost is ruled out
+as a scope constraint at current run volume**: no issue in this set is to be trimmed,
+deferred, or redesigned to save model spend, and no child issue should re-litigate it.
+
+**The fence that still binds: no new data lane.** No issue here adds a provider, a paid
+entitlement, or a new data tool (§2 theme 5). Broadening the objective covers generator-backed
+analysis and model cost. It does not open the data lane by a millimetre.
+
+**And the honesty guarantee is forward-looking.** It applies to runs made after the fix.
+Reports already persisted are *marked*, not migrated — a limitation of what those records
+carry, not a convenience; §2 theme 1 has the reason and the mechanism.
 
 **Holistic necessity.** Twelve issues, and the honest check is whether the set overbuilds. It
 splits three ways and the three groups earn their place differently.
@@ -59,12 +66,14 @@ with the entire equity value silently dropped. Every EV multiple then reads as r
 cheap on data nobody has. It is the one outright real-money hazard in the set, and the rest
 of C is downstream of it being fixed.
 
-**The weakest issue is FIX-826** (trend depth). The desk labels its moving-average stack but
-cannot characterize strength, persistence, or inflection. That is a real gap — but it is one
-of only two issues here that add analytical *capability* (FIX-1066 is the other), where the
-remaining ten make an existing figure honest. **Kept, scoped to the honesty framing**:
-characterize the trend, or say plainly that the desk can't. If it grows a new indicator suite
-during implementation, that is the signal it belonged in a later epic.
+**FIX-826 was the set's weakest issue on paper, and the owner decided it stays whole.** The
+desk labels its moving-average stack but cannot characterize strength, persistence, or
+inflection. Review proposed narrowing it to a disclaimer on the existing labels — put to the
+product owner at the objective gate and **declined**: FIX-826 builds the characterization. The
+honesty rule still binds its *output* (a trend read that cannot characterize strength must not
+imply that it can, §2 theme 2), but it is no longer an alternative to doing the work. The
+remaining guardrail is scope, not ambition: a new indicator *suite* beyond strength,
+persistence and inflection is the signal that the extra belonged in a later epic.
 
 **Not doing.** Five fences, each a real boundary rather than a gap in this epic: **provider
 acquisition and paywalled data lanes** (Reddit has no live provider; options chain and futures
@@ -121,13 +130,33 @@ decision snapshot already carry the zero-filled shape. Dual-read them: an old re
 must not be re-interpreted as a *new* honest zero, and a new record's `null` must not crash a
 legacy read path.
 
-**One owner, one boundary — not twelve consumers each writing `if (x === 0)`.** "Whichever
-issue lands the schema change" was too vague to coordinate against: the payloads have many
-readers, and a per-consumer coercion is how the zero-fill quietly survives in the one path
-nobody updated. FIX-1063 owns the legacy coercion and it lands at the **ingest boundaries**
-(fixture load and valuation-spine ingest), so every downstream issue may assume it is reading
-normalized, honestly-null inputs. An issue in group A or C that finds itself writing its own
+**One owner, a named set of boundaries — not twelve consumers each writing `if (x === 0)`.**
+"Whichever issue lands the schema change" was too vague to coordinate against: the payloads
+have many readers, and a per-consumer coercion is how the zero-fill quietly survives in the
+one path nobody updated. FIX-1063 owns the legacy coercion and it lands at the two **ingest
+boundaries** (fixture load and valuation-spine ingest) plus the **persisted-resource
+boundary** below, so every downstream issue may assume it is reading normalized,
+honestly-null inputs. An issue in group A or C that finds itself writing its own
 legacy-zero check has hit a gap in FIX-1063, not a task of its own — comment up.
+
+**Three read boundaries, not two — the third is the already-persisted report.** Reopening or
+exporting an existing session crosses neither ingest boundary:
+`components/summary/report-summary.tsx` hydrates the stored valuation spine directly, and
+`flows/analysis/orchestration/run-artifacts-action.ts` returns that same stored spine plus the
+generated memo strings. Both baked the zeros in at write time, so normalizing raw inputs
+cannot reach them. **FIX-1063 owns this boundary too.**
+
+**At that boundary a legacy record is marked, not repaired — decided, and the call was
+forced.** An old record carries no version and no per-field provenance, so nothing in it
+separates a missing zero from a genuinely measured zero. A migration would have to *guess*
+which zeros were real, which is the same dishonesty one layer down. So:
+
+- **A pre-fix record surfaces to the reader as generated before the data-honesty fix**, so a
+  stale `$0` is never presented as a current measurement.
+- **New records are stamped with a version/provenance marker, and that half is not
+  deferrable** — without the stamp, the marking has nothing to key on.
+- **The guarantee is therefore forward-looking.** No issue in this set may promise more than
+  that, in a renderer, a memo, or a spec.
 
 **Reuse the two sentinels that exist; do not invent a third.** The UI already renders missing
 values as `—` (`portfolio-format.ts`, `mandate-helpers.ts`) and the prompt formatters already
@@ -156,8 +185,9 @@ This binds FIX-1064 (label the proxies rather than silently improving them), FIX
 reward-to-risk figure — see the open question in §5), FIX-1066 (a convergence read must say
 how many lenses actually returned a verdict and which flagged a data gap — before the pack
 grows it is four of six, and after it grows a lens that ran on thin data still must not count
-as full-pack conviction), and FIX-826 (a trend read that cannot characterize strength must not
-imply that it can).
+as full-pack conviction), and FIX-826 (it builds the characterization, so this rule binds the
+*run* rather than the scope: a name without the bars to measure strength or persistence says
+so instead of implying a read it does not have).
 
 ### 3. Renderer ownership — who owns which file
 
@@ -201,23 +231,46 @@ the first class and misses the second.
 
 ### 4. Load-bearing sequencing — and only this
 
-Everything not listed here runs in parallel. Two orderings are real:
+Everything not listed here runs in parallel. Four orderings are real:
 
 - **FIX-1063 before FIX-1064.** FIX-1063 changes the nullability of the exact fields
   FIX-1064's valuation math consumes. Building the multiples work first means building it
   twice.
+- **FIX-1063 before FIX-826.** The same reason one lane over, and this document missed it
+  while Linear already carried the relation. FIX-826 extends the very indicator contract
+  FIX-1063 moves from numeric-and-`"flat"` to nullable-and-no-trend on insufficient history.
+  Strength, persistence and inflection built against the old contract either preserve the
+  fabricated zeros or get rebuilt after FIX-1063 lands.
 - **FIX-780 before FIX-1061.** The new trader/risk memo renderer must not hard-code
   stop/target labels that FIX-780 is in the middle of changing.
+- **FIX-1064 before FIX-1066** — the one ordering that also changes what FIX-1066 contains.
+  `lenses.ts` defers mechanical-deep-value and GARP because the lens surface lacks EV
+  multiples, earnings yield, ROIC and PEG, and it still does: the lens bundle carries
+  `valuationSpine`, and `formatValuationSpine` emits expected return, fair value, DCF,
+  triangulation and setup score — none of those four. `computeValuation` already derives all
+  four from data the desk has, and `formatValuation` already shows them to the *analysts*, so
+  putting them on the lens surface is a formatting change inside this epic's fence, not a new
+  data lane. **FIX-1066 owns that surfacing and may not activate the two lenses without it**
+  — otherwise the epic pays for two generator passes that flag a data gap and degrade into a
+  second quality-value read, which is exactly what `lenses.ts` deferred them to avoid.
+  FIX-1064 lands first so what the new lenses read is a labeled proxy rather than a blunt
+  number presented as a measurement (§2 theme 2).
 
-Both are already wired as Linear blocking relations. A third is weaker but worth stating:
-**FIX-1065 should be specced before anything else in C is built against the reward-to-risk
-figure** — it may remove or reframe a value two deterministic gates currently consume (§5).
+The first three are wired as Linear blocking relations; the fourth was added when this fold
+landed. A fifth is weaker but worth stating: **FIX-1065 should be specced before anything else
+in C is built against the reward-to-risk figure** — it may remove or reframe a value two
+deterministic gates currently consume (§5).
 
 ### 5. No new data lane
 
-This epic finishes the report on the data the desk already has. No issue here adds a
-provider, a paid entitlement, or a new data tool. An issue that concludes it needs one has
-hit the "Not doing" fence in §1 — comment up on the epic PR; do not quietly widen the lane.
+This epic works on the data the desk already has. No issue here adds a provider, a paid
+entitlement, or a new data tool. An issue that concludes it needs one has hit the "Not doing"
+fence in §1 — comment up on the epic PR; do not quietly widen the lane.
+
+**Broadening the objective did not soften this fence.** §1 now owns two analysis adds and
+their model cost; that is about *analysis*, not about data. Reformatting a metric the desk
+already derives onto a surface that lacked it — FIX-1066's EV-multiple / earnings-yield / ROIC
+/ PEG surfacing, for instance (§2 theme 4) — is inside the fence. Fetching one is not.
 
 ## 3. Shape of the whole
 
@@ -254,12 +307,18 @@ to compute it — reads `—` rather than `0` or `$0`, and a fundamentals miss c
 a name look cheap by dropping its equity value out of enterprise value. A name with three
 months of bars no longer asserts a flat trend it never measured. The lens convergence read
 names how many lenses actually returned a verdict and which of them flagged a data gap. The
-trend read either characterizes strength and persistence or says the desk cannot.
+trend read characterizes strength, persistence and inflection — and on a name without the
+history to measure them, says so.
+
+**A report generated before this epic landed says so.** It is marked as pre-fix rather than
+silently re-presenting its old zeros as current measurements, because nothing in an old record
+distinguishes a missing zero from a measured one (§2 theme 1). The guarantee is
+forward-looking, and the end state shows that on its face.
 
 **Ten of those twelve sentences describe a value the desk already computes, shown honestly.**
-Two do not: the sixth lens pack is two analyses that do not run today, and trend
-characterization is a read the desk cannot currently produce. Both are called out in §1 —
-this section is the picture of the end state, and the picture includes them.
+Two do not: the fifth and sixth lenses are analyses that do not run today, and trend
+characterization is a read the desk cannot currently produce. Both are owned by the objective
+in §1 — this section is the picture of the end state, and the picture includes them.
 
 ## 4. Running index
 
@@ -275,31 +334,30 @@ this section is the picture of the end state, and the picture includes them.
 | [FIX-780](https://linear.app/fixpoint-labs/issue/FIX-780) | Flat-stance runs stop overloading stop/target with a range | spec | — | — | Todo |
 | [FIX-779](https://linear.app/fixpoint-labs/issue/FIX-779) | Entity-identity validation on discovery snippets | **bug** | — | — | Todo |
 | **C — analytical depth & data honesty** | | | | | |
-| [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads *and* short-history live math null instead of zero-fill; owns the BP-030 dual-read at the ingest boundaries *(sequence first, §2 theme 1)* | **bug** ⚠ | — | — | Backlog |
-| [FIX-1064](https://linear.app/fixpoint-labs/issue/FIX-1064) | Valuation multiples labeled or sharpened, not silently blunt | spec | — | — | Backlog |
-| [FIX-1066](https://linear.app/fixpoint-labs/issue/FIX-1066) | Lens pack to 6 *(activates the two lenses `lenses.ts` defers to FIX-705 — a capability add, §1)*; convergence accounts for per-lens data gaps | spec | — | — | Backlog |
+| [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads *and* short-history live math null instead of zero-fill; owns the BP-030 dual-read at all three boundaries — fixture load, spine ingest, and the persisted report — plus the version stamp new records carry *(sequence first, §2 theme 1)* | spec ⚠ | — | — | Backlog |
+| [FIX-1064](https://linear.app/fixpoint-labs/issue/FIX-1064) | Valuation multiples labeled or sharpened, not silently blunt *(after FIX-1063)* | spec | — | — | Backlog |
+| [FIX-1066](https://linear.app/fixpoint-labs/issue/FIX-1066) | Lens pack to 6 *(activates the two lenses `lenses.ts` defers to FIX-705 — an analysis add the objective owns, §1)*; owns putting EV multiples / earnings yield / ROIC / PEG on the lens surface, so **after FIX-1064** (§2 theme 4); convergence accounts for per-lens data gaps | spec | — | — | Backlog |
 | [FIX-1065](https://linear.app/fixpoint-labs/issue/FIX-1065) | The reward-to-risk figure stops resting on invented inputs | spec | — | — | Backlog |
-| [FIX-826](https://linear.app/fixpoint-labs/issue/FIX-826) | Trend strength / persistence / inflection, or an honest "can't" | spec | — | — | Backlog |
+| [FIX-826](https://linear.app/fixpoint-labs/issue/FIX-826) | Trend strength / persistence / inflection — built, not disclaimed (§1); a run without the history to measure it says so *(after FIX-1063)* | spec | — | — | Backlog |
 
 *A `bug` row carries no spec PR by design — it routes straight to implementation
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
 An empty Spec PR cell on a bug row is correct, not a gap.*
 
-**⚠ FIX-1063's route is flagged for the worker to re-check before it builds.** It is labeled
-`Bug`, which routes it direct with no spec gate — but the fix widens a tool output *schema*
-that other code depends on and needs a BP-030 dual-read of persisted records (§2 theme 1).
-That is escape hatch 3 in "Which issues get a spec": *the "fix" changes a contract other code
-depends on → promote it.* The routing call is the worker's, not this document's; it is named
-here so it is not missed. Nothing else in the set carries this flag.
+**⚠ FIX-1063's route, corrected against Linear.** Earlier drafts of this table said the issue
+is labeled `Bug` and flagged the routing for the worker to re-check before building. It
+carries **no category label at all** (`examples` is not one), so the route derives to **spec**
+by the fail-closed rule — *"when the category can't be read, the route defaults to spec"*
+([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec").
+The worry the flag existed to raise is therefore already answered: the issue that widens a
+tool output schema, owns the BP-030 dual-read at three boundaries and stamps new records does
+**not** reach code without a spec gate. Both round-one reviewers argued for promoting it;
+there is nothing to promote.
 
-**Review strengthened the case, and it is recorded rather than acted on.** Both reviewers
-independently read this as a promote, and theme 1 has since widened the issue's scope twice —
-it now also owns the short-history live math path and the single dual-read boundary every
-other issue depends on. That is more contract, not less. The route is still derived from the
-Linear category label on every refresh and the promotion is still the worker's call
-([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec"),
-so this document does not relabel the issue; it records that two reviewers and the epic all
-point the same way.
+**The ⚠ stays for one reason.** The route is re-derived from the Linear category label on
+every refresh, so a label added later re-routes the issue — and if `Bug` is ever applied, this
+is the row where escape hatch 3 (*the "fix" changes a contract other code depends on →
+promote it*) has to be the worker's call. Nothing else in the set carries this flag.
 
 ## 5. Open cross-cutting questions
 
@@ -373,6 +431,22 @@ point the same way.
   into a memo-rendering issue would bury a cross-pane behavior change inside a renderer PR.
   Recorded here so a third reviewer doesn't reopen it. The epic is twelve issues.
 
+- **~~Do the epic's two capability adds belong in it?~~** *Resolved by the product owner at
+  the objective gate: yes — both stay at full scope, and the objective broadened to own them.*
+  FIX-826 keeps strength/persistence/inflection and is not narrowed to a disclaimer; FIX-1066
+  keeps the 4→6 lens expansion. **Per-run model cost is ruled out as a scope constraint at
+  current run volume** — settled, and not a child issue's to reopen. The no-new-data-lane
+  fence (§2 theme 5) is unaffected and stands: the broadening covers generator-backed analysis
+  and model spend, nothing else. §1 carries the decision.
+
+- **~~Does the nullability guarantee cover already-persisted reports?~~** *Resolved: no — the
+  guarantee is forward-looking. Legacy reports are marked, not migrated.* The call was forced
+  rather than chosen: an old record carries no version and no per-field provenance, so nothing
+  in it separates a missing zero from a measured one and a recompute would be guessing which
+  zeros were real. Marking is the only honest option. FIX-1063 gains the third read boundary,
+  the pre-fix marker, and the version stamp new records carry (the stamp is not deferrable —
+  the marker has nothing to key on without it). §2 theme 1 carries the mechanism.
+
 ---
 
 ## Epic evolution
@@ -400,3 +474,16 @@ point the same way.
   reward-to-risk recommendation flipped to demote-and-fail-closed: the gates are downward-only
   in effect but decide whether to fire on the invented number, so an optimistic estimate
   switches the protections off rather than merely wearing a wrong label.
+- **After epic review (round 2) + the owner's answers** — the two questions this epic asked
+  came back answered and are recorded in §5 as settled. §1 stops hedging: the epic does two
+  things (finish the report we compute, deepen two analyses), both capability adds stay at
+  full scope, and per-run model cost is out as a scope constraint. Theme 1 gains a **third**
+  read boundary — the persisted report (`report-summary.tsx`'s stored-spine hydration and
+  `run-artifacts-action.ts`'s artifact return), where a pre-fix record is *marked* rather than
+  migrated and new records carry a version stamp. Theme 4 goes from two orderings to four:
+  **FIX-1063 → FIX-826** (already a Linear relation this doc had missed) and **FIX-1064 →
+  FIX-1066**, the latter because the lens bundle still lacks the EV multiples, earnings yield,
+  ROIC and PEG that `lenses.ts` deferred the two lenses for — `computeValuation` derives them
+  and `formatValuation` shows them to analysts, but `formatValuationSpine` does not, so
+  FIX-1066 owns that surfacing. And §4's route for FIX-1063 was **wrong**: the issue carries
+  no category label, so it derives to `spec`, not `bug`.
