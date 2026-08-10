@@ -431,13 +431,17 @@ way to see. A block that can decide for itself should just read `ctx.signal`.
 ### Releasing what a step was holding
 
 The same bag takes `onSettled`, called once when the step's dispatch leaves by every
-path — returned, threw, or **suspended**:
+path — and told which one: `"returned"`, `"threw"` or `"suspended"`.
 
 ```ts
 sequencer({ name: "work" })
   .tap(startSomethingCancellable)
-  .step(worker, { onSettled: () => stopSomethingCancellable() })
-  .tap(recordResult);
+  .step(worker, {
+    onSettled: (_ctx, outcome) => {
+      if (outcome === "suspended") stopSomethingCancellable();
+    },
+  })
+  .tap(recordResult); // stops it itself, once the result is written
 ```
 
 Suspension is why it exists. `.rescue()` is deliberately never run for a
@@ -445,6 +449,11 @@ Suspension is why it exists. `.rescue()` is deliberately never run for a
 request does not abort its signal either, so a step that parks on `ctx.suspend()`
 reaches no handler you can compose. Whatever the leading `.tap` started then
 outlives the request, silently.
+
+Read the outcome before you release. The hook fires before `recordResult` above,
+so releasing on `"returned"` would stop the thing while the step that still needs
+it is running. Release on `"suspended"` — the exit with nothing downstream — and
+let the downstream handler release the other two when it is finished.
 
 It runs in a `finally` and cannot change the step's outcome, and it is skipped when
 a `stepIf` condition means nothing was dispatched. For recovery, use `.rescue()`.

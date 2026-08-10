@@ -384,3 +384,239 @@ describe("losing the claim stops a COMPOSITE worker, not just its outermost step
     expect((result.output as { ended: string }).ended).toBe("aborted");
   }, 20_000);
 });
+
+
+/**
+ * A background task's context, faithful in the one respect these tests turn on:
+ * `.work()` / `.workIf()` / `.forEachBackground()` all resolve their child
+ * scope through an EXPLICIT `signalOverride` — the request's background signal
+ * — rather than through the parent context's own signal.
+ *
+ * That signal is deliberately decoupled from transport teardown (FIX-663), so
+ * it does not fire when a client disconnects. It is therefore the only thing
+ * standing between a displaced worker's background tasks and running to
+ * completion: if the lease-loss signal is *replaced* by the override instead of
+ * composed with it, nothing aborts them.
+ */
+function withBackgroundSignal(ctx: BlockContext, bg: AbortSignal): BlockContext {
+  return {
+    ...ctx,
+    _requestBackgroundSignal: bg,
+    // With no request-scoped work pool, the sequencer awaits its own background
+    // tasks and reports progress through `emit.status`. Nothing here asserts on
+    // items, so a no-op emitter is enough to let that path run.
+    emit: new Proxy({}, { get: () => () => undefined }),
+  } as unknown as BlockContext;
+}
+
+interface Probe {
+  ended: string;
+}
+
+/**
+ * A background block that records how it ended. The result is read off a
+ * closed-over marker rather than the sequencer's work slot, because what is
+ * under test is the signal the task RAN under, not how its value is collected.
+ */
+function backgroundProbe(name: string, probe: Probe) {
+  return handler({
+    name,
+    inputSchema: z.any(),
+    outputSchema: z.object({ ended: z.string() }),
+    execute: async (_input: unknown, ctx: BlockContext) => {
+      const ended = await new Promise<string>((resolve) => {
+        if (ctx.signal?.aborted === true) return resolve("already");
+        ctx.signal?.addEventListener("abort", () => resolve("aborted"), {
+          once: true,
+        });
+        setTimeout(() => resolve("timeout"), 2_000);
+      });
+      probe.ended = ended;
+      return { ended };
+    },
+  });
+}
+
+describe("losing the claim stops BACKGROUND work too, not just nested steps", () => {
+  // A worker that has lost its claim can record nothing — the substrate's write
+  // fence refuses every ticket-fenced write it makes. Its background tasks are
+  // therefore pure cost: generators still calling models, side effects still
+  // firing, for output that will be thrown away. The nested-step case above was
+  // closed by re-binding the execution scope; these three forms were not,
+  // because each supplies an explicit `signalOverride` and the re-bind deferred
+  // to it instead of composing with it.
+  //
+  // One test per form on purpose. That is exactly the shape of the miss — a
+  // single representative case would have passed while the other two stayed
+  // broken.
+
+  async function runBackgroundWorker(compositeWorker: unknown, probe: Probe) {
+    const c = buildCollection();
+    await c.addTask({ id: "t", goal: "expensive work" });
+
+    // Neither of these ever fires on its own, so the lease-loss signal is the
+    // only thing that can end the probe.
+    const request = new AbortController();
+    const background = new AbortController();
+
+    // Settle the row out from under the worker while it runs. The next renewal
+    // tick is refused, and that refusal aborts the lease-loss signal.
+    setTimeout(() => void c.fail("t", "settled by someone else"), 50);
+
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection: c,
+        dispatcher: shortLeaseDispatcher,
+        workers: compositeWorker as never,
+      }),
+      undefined,
+      withBackgroundSignal(
+        installExecutionScope({
+          signal: request.signal,
+          request: { identity: { id: "test-request" } },
+        } as unknown as BlockContext),
+        background.signal
+      )
+    );
+
+    expect(result.error).toBeUndefined();
+    return probe;
+  }
+
+  it("aborts a .work() task when the claim is lost", async () => {
+    const probe: Probe = { ended: "never-ran" };
+    const worker = sequencer({ name: "work-worker", inputSchema: z.any() })
+      .work(backgroundProbe("bg-work", probe))
+      .map(() => ({ done: true }));
+
+    expect((await runBackgroundWorker(worker, probe)).ended).toBe("aborted");
+  }, 20_000);
+
+  it("aborts a .workIf() task when the claim is lost", async () => {
+    const probe: Probe = { ended: "never-ran" };
+    const worker = sequencer({ name: "workif-worker", inputSchema: z.any() })
+      .workIf(() => true, backgroundProbe("bg-workif", probe))
+      .map(() => ({ done: true }));
+
+    expect((await runBackgroundWorker(worker, probe)).ended).toBe("aborted");
+  }, 20_000);
+
+  it("aborts a .forEachBackground() task when the claim is lost", async () => {
+    const probe: Probe = { ended: "never-ran" };
+    const worker = sequencer({ name: "feb-worker", inputSchema: z.any() })
+      .map(() => [1])
+      .forEachBackground(backgroundProbe("bg-feb", probe))
+      .map(() => ({ done: true }));
+
+    expect((await runBackgroundWorker(worker, probe)).ended).toBe("aborted");
+  }, 20_000);
+});
+
+
+describe("renewal covers the result write, not just the worker", () => {
+  // `complete()` and `fail()` are fenced on the worker's claim ticket, and the
+  // fence refuses a write on a row whose lease has already lapsed. So the
+  // moment renewal stops is the moment the worker's result becomes refusable.
+  // Stopping when the worker returns leaves the settlement itself unprotected:
+  // a lease that expires during one store round trip turns a HEALTHY worker's
+  // finished work into a lost claim, the task is recovered, and every side
+  // effect it already committed runs again. That is the duplicate work the
+  // lease exists to prevent, produced by the lease.
+  //
+  // The assertion is the boundary itself — was renewal still asserting
+  // liveness at the instant the fenced write began — rather than a race that
+  // would only fail some of the time.
+
+  /** Wraps a collection so each settlement records whether renewal was live. */
+  function watchSettlements(inner: TaskCollectionRef, seen: string[]) {
+    let live = false;
+    const wrapped = {
+      ...inner,
+      renewLease: async (...args: Parameters<TaskCollectionRef["renewLease"]>) => {
+        live = true;
+        return inner.renewLease(...args);
+      },
+      complete: async (...args: Parameters<TaskCollectionRef["complete"]>) => {
+        seen.push(`complete:${live ? "renewing" : "stopped"}`);
+        return inner.complete(...args);
+      },
+      fail: async (...args: Parameters<TaskCollectionRef["fail"]>) => {
+        seen.push(`fail:${live ? "renewing" : "stopped"}`);
+        return inner.fail(...args);
+      },
+    } as unknown as TaskCollectionRef;
+    return {
+      collection: wrapped,
+      /** Renewal is "live" once it has written at least once and not stopped. */
+      markStopped: () => {
+        live = false;
+      },
+    };
+  }
+
+  it("is still renewing when complete() is called", async () => {
+    const inner = buildCollection();
+    await inner.addTask({ id: "t", goal: "work" });
+    const seen: string[] = [];
+    const { collection, markStopped } = watchSettlements(inner, seen);
+
+    // Slow enough that at least one renewal tick lands before the worker
+    // returns, so "renewing" is a fact this run established rather than an
+    // assumption about the driver's internals.
+    const slowWorker = handler({
+      name: "slow-worker",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async () => {
+        await new Promise((r) => setTimeout(r, 500));
+        return { ok: true };
+      },
+    });
+
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection,
+        dispatcher: shortLeaseDispatcher,
+        workers: slowWorker as never,
+      }),
+      undefined,
+      { signal: undefined } as unknown as BlockContext
+    );
+    markStopped();
+
+    expect(result.error).toBeUndefined();
+    expect(seen).toEqual(["complete:renewing"]);
+    expect(inner.get("t")!.status).toBe("completed");
+  }, 20_000);
+
+  it("is still renewing when fail() is called", async () => {
+    const inner = buildCollection();
+    await inner.addTask({ id: "t", goal: "work" });
+    const seen: string[] = [];
+    const { collection } = watchSettlements(inner, seen);
+
+    const slowThrower = handler({
+      name: "slow-thrower",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => {
+        await new Promise((r) => setTimeout(r, 500));
+        throw new Error("boom");
+      },
+    });
+
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection,
+        dispatcher: shortLeaseDispatcher,
+        workers: slowThrower as never,
+      }),
+      undefined,
+      { signal: undefined } as unknown as BlockContext
+    );
+
+    expect(result.error).toBe("boom");
+    expect(seen).toEqual(["fail:renewing"]);
+    expect(inner.get("t")!.status).toBe("errored");
+  }, 20_000);
+});

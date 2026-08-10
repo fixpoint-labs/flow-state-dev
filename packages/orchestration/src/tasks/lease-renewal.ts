@@ -10,8 +10,16 @@
  * board's worker body, the shared `dispatchAndExecute` helper, and the
  * `routedSpecialists` pattern. Three hand-written drivers would each carry a
  * cadence, a single-flight guard and a decline-to-abort rule, and they would
- * drift. Every rule lives in {@link startLeaseRenewal}; {@link withLeaseRenewal}
- * is a `try`/`finally` over it for the one seam whose work is a single call.
+ * drift. Every rule lives in {@link startLeaseRenewal}.
+ *
+ * **The span is claim → the write that records the result**, not claim → the
+ * worker returning. Those look interchangeable and are not: `complete()` and
+ * `fail()` are fenced on the claim, and the fence refuses a write on a lapsed
+ * lease, so a driver stopped at the worker's return leaves the settlement
+ * itself unprotected — and a healthy worker whose result is refused has its
+ * task recovered and its side effects repeated. {@link withLeaseRenewalScope}
+ * is the seam for a worker composed as several steps; each seam's recorder
+ * stops the driver after its own write.
  *
  * **What renewal does not do.** It does not make the lease correct — the
  * substrate's write fence does that, by refusing any ticket-fenced write on a
@@ -261,11 +269,16 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
 /**
  * Run `run` while renewing the claim's lease, stopping on every path out.
  *
- * The convenience form of {@link startLeaseRenewal}, for a seam that owns its
- * worker's dispatch as a single call. A seam whose work is a *composed step* —
- * the task board's, and `routedSpecialists`' — cannot express itself as one
- * callback and drives the same driver directly; every rule is in the driver, so
- * the two shapes cannot behave differently.
+ * The convenience form of {@link startLeaseRenewal}, for a caller driving
+ * `claim` by hand whose whole use of the claim fits in one callback.
+ *
+ * **Do not settle the task outside `run`.** Renewal stops the moment `run`
+ * returns, so a `complete()` or `fail()` issued after it is a ticket-fenced
+ * write on a lease nobody is holding open — one slow store round trip and the
+ * fence refuses a healthy worker's result, the task is recovered, and its side
+ * effects run twice. Either settle inside `run`, or use
+ * {@link startLeaseRenewal} directly and `stop()` in a `finally` that closes
+ * after the settlement, which is what every first-party seam does.
  *
  * `run` receives the lease-loss signal. Compose it with the request's rather
  * than substituting it, so a cancelled request still stops the work.
@@ -366,4 +379,50 @@ export function stampLeaseRenewal(driver: LeaseRenewalDriver): void {
  */
 export function currentLeaseRenewal(): LeaseRenewalDriver | undefined {
   return renewalScope.getStore()?.driver;
+}
+
+/**
+ * Run the block body that claims a task inside a fresh renewal scope, and stop
+ * whatever driver that body stamped if the body does not finish.
+ *
+ * **Call it before the first `await` in the claiming block** — it opens the
+ * scope, so it inherits {@link openLeaseRenewalScope}'s rule unchanged. In
+ * practice that means `execute: async (input, ctx) => withLeaseRenewalScope(…)`,
+ * where the wrapper call *is* the first statement.
+ *
+ * **Why the guarantee has to live here rather than in the caller's ordering.**
+ * Every way of *leaving the work* is already covered: the step that dispatches
+ * the worker carries `onSettled`, which runs whether the worker returned, threw
+ * or suspended, and a cancelled request stops the driver through the ambient
+ * signal. What none of those cover is the hand-off — the window between the
+ * claim committing and that step being reached. The claiming block still has to
+ * write its state and emit its status, and if either fails the work step never
+ * runs, so no recorder and no `onSettled` ever fires. A failed request does not
+ * abort its own signal either. The timer would go on renewing a row nobody is
+ * working for as long as the host lives, and because the lease is exactly the
+ * signal `claim()` reads to decide a row is abandoned, no other worker could
+ * ever recover it. That is the deadlock this whole mechanism exists to remove,
+ * rebuilt out of a failed state write.
+ *
+ * The two seams that claim and work in *different* steps — the task board's
+ * worker body and `routedSpecialists` — each hand-rolled that hand-off, and
+ * only one of them happened to put the driver start last where nothing could
+ * fail after it. Ordering is not a property a reader can check or a test can
+ * pin, so it is not the thing to rely on: the `catch` here makes where the
+ * driver starts irrelevant, which is what makes both seams correct for the same
+ * stated reason rather than by accident.
+ *
+ * Stopping is deliberately *all* it does. It does not settle the task or
+ * release the claim — the row's lease simply lapses and the substrate hands it
+ * to the next worker, which is the ordinary recovery path rather than a special
+ * one.
+ */
+export async function withLeaseRenewalScope<T>(setup: () => Promise<T>): Promise<T> {
+  openLeaseRenewalScope();
+  try {
+    return await setup();
+  } catch (err) {
+    currentLeaseRenewal()?.stop();
+    throw err;
+  }
 }

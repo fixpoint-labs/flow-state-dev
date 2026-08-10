@@ -21,6 +21,7 @@ import { resolveActiveStatusMessage } from "./internal/resolve-active-status-mes
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
+import type { StepOutcome } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
 import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
@@ -1115,6 +1116,10 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const extraSignal = resolveAbortSignal?.(ctx);
             // `finally`, so it also runs on the one exit no composed handler
             // sees: a `SuspensionError`, which bypasses `.rescue()` by design.
+            // The outcome is reported because those exits are not
+            // interchangeable to a caller releasing a resource — see
+            // `StepOptions.onSettled`.
+            let outcome: StepOutcome = "returned";
             try {
               const result = await runChild(
                 ctx,
@@ -1126,8 +1131,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               );
               recordSequentialChild(runtime, path);
               return result;
+            } catch (error) {
+              outcome = error instanceof SuspensionError ? "suspended" : "threw";
+              throw error;
             } finally {
-              onSettled?.(ctx);
+              onSettled?.(ctx, outcome);
             }
           }
         },
@@ -1167,6 +1175,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
             // Below the condition gate on purpose: a step that was never
             // dispatched has nothing to settle (see `StepOptions.onSettled`).
+            let outcome: StepOutcome = "returned";
             try {
               const result = await runChild(
                 ctx,
@@ -1178,8 +1187,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               );
               recordSequentialChild(runtime, path);
               return result;
+            } catch (error) {
+              outcome = error instanceof SuspensionError ? "suspended" : "threw";
+              throw error;
             } finally {
-              onSettled?.(ctx);
+              onSettled?.(ctx, outcome);
             }
           }
         },

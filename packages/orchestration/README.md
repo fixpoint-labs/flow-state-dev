@@ -176,12 +176,27 @@ renewal in flight at a time, and stop when the signal you hand them aborts.
 Both also give you a second signal that fires the moment the claim is lost.
 
 A worker composed as several steps reaches its driver through
-`currentLeaseRenewal()`. Publishing it is two calls, and the order matters:
-`openLeaseRenewalScope()` **before the first `await`** in the block that claims
-the task, then `stampLeaseRenewal(driver)` once the driver exists. The scope
-rides `AsyncLocalStorage`, which only propagates to later steps when it is
-entered before the claiming block awaits anything; stamping with no scope open
-throws rather than publishing to nobody.
+`currentLeaseRenewal()`. Wrap the block that claims the task in
+`withLeaseRenewalScope(async () => { … })` — **as its first statement, before
+any `await`** — and call `stampLeaseRenewal(driver)` inside it once the driver
+exists. The scope rides `AsyncLocalStorage`, which only propagates to later
+steps when it is entered before the claiming block awaits anything; stamping
+with no scope open throws rather than publishing to nobody.
+(`openLeaseRenewalScope()` is the same thing without the guarantee below, if you
+want to manage the failure path yourself.)
+
+The wrapper stops the driver if that block throws after the claim commits. That
+window has no other cover: the step that runs the work never starts, so no
+recorder and no `onSettled` fires, and a failed request does not abort its own
+signal — the lease would be renewed for a task nobody is working until the host
+died, and a live lease is exactly what stops `claim()` recovering it.
+
+**Stop the driver after your fenced write, not before it.** `complete()` and
+`fail()` are fenced on the claim, and the fence refuses a write on a lapsed
+lease, so stopping first can get a healthy worker's finished result refused and
+its work redone. A renewal in flight across the settlement is harmless: it
+writes only `leaseUntil`, and on a settled row it is declined and the driver
+stops itself.
 
 `isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
 a custom `TaskCollectionRef` can read it rather than restating it. It answers

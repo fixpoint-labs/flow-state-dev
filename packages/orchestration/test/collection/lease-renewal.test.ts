@@ -19,9 +19,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   classifierDispatcher,
   createSequencerBackedTaskCollection,
+  currentLeaseRenewal,
+  stampLeaseRenewal,
   startLeaseRenewal,
   ticketForClaim,
   withLeaseRenewal,
+  withLeaseRenewalScope,
   MIN_RENEWAL_DELAY_MS,
   RENEWAL_DIVISOR,
   type RenewalTimer,
@@ -607,5 +610,136 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
     });
 
     expect(seen).toBeInstanceOf(AbortSignal);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The hand-off — the window between claiming and working
+// ---------------------------------------------------------------------------
+
+describe("withLeaseRenewalScope — the claim → work hand-off", () => {
+  // Every way of leaving the WORK is already covered: the dispatch step's
+  // `onSettled` runs whether the worker returned, threw or suspended, and a
+  // cancelled request stops the driver through the ambient signal. What none of
+  // them cover is the window before that step is ever reached. A block that
+  // claims a task still has to write its state and emit its status afterwards,
+  // and if either fails the work step never runs — so no recorder fires, no
+  // `onSettled` fires, and a failed request does not abort its own signal.
+  // Nothing would stop the timer, and because a live lease is exactly what
+  // tells `claim()` a row is NOT abandoned, no other worker could recover the
+  // task for as long as the host lived.
+
+  it("stops a driver the setup stamped before it threw", async () => {
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const timer = fakeTimer();
+
+    await expect(
+      withLeaseRenewalScope(async () => {
+        stampLeaseRenewal(
+          startLeaseRenewal({
+            collection: h.collection,
+            ticket: ticketForClaim("tasks", task),
+            claimedTask: task,
+            now: h.now,
+            timer: timer.timer,
+          })
+        );
+        // Stands in for the state write and the status emission that every
+        // claiming block still performs after the claim commits.
+        throw new Error("state write failed");
+      })
+    ).rejects.toThrow("state write failed");
+
+    expect(timer.pending()).toBe(0);
+  });
+
+  it("leaves the lease untouched after that failure, so the row can lapse", async () => {
+    // The point of stopping is that the row goes quiet. A driver that survived
+    // would keep pushing `leaseUntil` forward and the task would never look
+    // abandoned to the next worker.
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const timer = fakeTimer();
+    const leaseAtClaim = h.collection.get("t")!.leaseUntil;
+
+    await expect(
+      withLeaseRenewalScope(async () => {
+        stampLeaseRenewal(
+          startLeaseRenewal({
+            collection: h.collection,
+            ticket: ticketForClaim("tasks", task),
+            claimedTask: task,
+            now: h.now,
+            timer: timer.timer,
+          })
+        );
+        throw new Error("setup failed");
+      })
+    ).rejects.toThrow("setup failed");
+
+    // Even if a tick were somehow still queued, it writes nothing.
+    h.setNow(h.now() + 10_000);
+    await timer.fireNext();
+
+    expect(h.collection.get("t")!.leaseUntil).toBe(leaseAtClaim);
+  });
+
+  it("leaves the driver RUNNING when the setup succeeds", async () => {
+    // The control. Stopping on the way out of a *successful* setup would kill
+    // renewal for the work that is about to start — the opposite bug.
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const timer = fakeTimer();
+
+    await withLeaseRenewalScope(async () => {
+      stampLeaseRenewal(
+        startLeaseRenewal({
+          collection: h.collection,
+          ticket: ticketForClaim("tasks", task),
+          claimedTask: task,
+          now: h.now,
+          timer: timer.timer,
+        })
+      );
+    });
+
+    expect(timer.pending()).toBe(1);
+    h.setNow(h.now() + 10_000);
+    await timer.fireNext();
+    expect(h.collection.get("t")!.leaseUntil).toBe(11_000 + 30_000);
+  });
+
+  it("publishes the same scope `currentLeaseRenewal` reads", async () => {
+    // It replaces `openLeaseRenewalScope` at the call sites, so the driver has
+    // to stay reachable by the readers that stop it and run work under it.
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const timer = fakeTimer();
+    let reachable: boolean | undefined;
+
+    await withLeaseRenewalScope(async () => {
+      const driver = startLeaseRenewal({
+        collection: h.collection,
+        ticket: ticketForClaim("tasks", task),
+        claimedTask: task,
+        now: h.now,
+        timer: timer.timer,
+      });
+      stampLeaseRenewal(driver);
+      reachable = currentLeaseRenewal() === driver;
+    });
+
+    expect(reachable).toBe(true);
+  });
+
+  it("survives a setup that fails BEFORE it stamps anything", async () => {
+    // The claim itself can fail. There is no driver to stop, and the guard must
+    // not turn that into a second error on top of the real one.
+    await expect(
+      withLeaseRenewalScope(async () => {
+        throw new Error("claim failed");
+      })
+    ).rejects.toThrow("claim failed");
   });
 });

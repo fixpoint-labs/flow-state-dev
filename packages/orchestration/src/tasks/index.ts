@@ -163,6 +163,7 @@ export {
   startLeaseRenewal,
   withLeaseRenewal,
   openLeaseRenewalScope,
+  withLeaseRenewalScope,
   stampLeaseRenewal,
   currentLeaseRenewal,
   RENEWAL_DIVISOR,

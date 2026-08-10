@@ -9,7 +9,7 @@ import type {
 import type { UsesEntry } from "../capability/types";
 import type { StepOptions } from "./internal/arg-shapes";
 
-export type { StepOptions } from "./internal/arg-shapes";
+export type { StepOptions, StepOutcome } from "./internal/arg-shapes";
 
 /**
  * Shorthand for a `BlockContext` whose `sequencer.state` slot is typed from

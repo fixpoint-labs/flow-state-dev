@@ -64,6 +64,9 @@ govern a task awaiting review, so it stays yours for as long as the review takes
 - `.step(block, { abortSignal })` runs one step under an additional signal,
   composed with the request's rather than replacing it.
 - `.step(block, { onSettled })` runs a callback when the step's dispatch ends by
-  any path — returned, threw, or suspended. `.rescue()` deliberately never fires
-  for a suspension, so this is the only seam that sees one; use it to release
-  what a preceding step started.
+  any path, and tells it which one — `"returned"`, `"threw"` or `"suspended"`.
+  `.rescue()` deliberately never fires for a suspension, so this is the only
+  seam that sees one; use it to release what a preceding step started. Check the
+  outcome before releasing: the hook runs before the steps that follow, so on
+  the other two exits there is usually a recorder downstream that still needs
+  whatever you are about to let go of.

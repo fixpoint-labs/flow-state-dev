@@ -224,6 +224,53 @@ describe(".step(block, { onSettled })", () => {
     expect(calls).toBe(0);
   });
 
+  it("reports WHICH exit it is reporting", async () => {
+    // The three exits are not interchangeable to a caller releasing a resource.
+    // `returned` and `threw` both hand off to a downstream step that still has
+    // work to do — a recorder, a `.rescue()` handler — and this hook fires
+    // before that step runs. Only `suspended` has nothing downstream at all.
+    // A caller that cannot tell them apart must either release too early on two
+    // paths or leak on the third.
+    const outcomes: string[] = [];
+    const hook = { onSettled: (_ctx: unknown, outcome: string) => outcomes.push(outcome) };
+
+    await runForTest(
+      sequencer({ name: "a", inputSchema: z.unknown() }).step(reportsAbort, hook as never),
+      null,
+      createMockContext()
+    );
+    await expect(
+      runForTest(
+        sequencer({ name: "b", inputSchema: z.unknown() }).step(throws, hook as never),
+        null,
+        createMockContext()
+      )
+    ).rejects.toThrow("boom");
+    await expect(
+      runForTest(
+        sequencer({ name: "c", inputSchema: z.unknown() }).step(suspends, hook as never),
+        null,
+        createMockContext()
+      )
+    ).rejects.toBeInstanceOf(SuspensionError);
+
+    expect(outcomes).toEqual(["returned", "threw", "suspended"]);
+  });
+
+  it("reports the outcome on .stepIf too", async () => {
+    const outcomes: string[] = [];
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: true }))
+      .stepIf((out: { go: boolean }) => out.go, suspends, {
+        onSettled: (_ctx, outcome) => outcomes.push(outcome),
+      });
+
+    await expect(runForTest(seq, null, createMockContext())).rejects.toBeInstanceOf(
+      SuspensionError
+    );
+    expect(outcomes).toEqual(["suspended"]);
+  });
+
   it("is recognised as an options bag on its own, without abortSignal", async () => {
     // The two members are independent; discriminating on only one would make
     // an `onSettled`-only bag get read as a block or a connector.
@@ -236,5 +283,68 @@ describe(".step(block, { onSettled })", () => {
 
     expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
     expect(calls).toBe(1);
+  });
+});
+
+describe("an EMPTY step-options bag", () => {
+  // Both members are optional, so `.step(block, {})` type-checks — and it is
+  // what conditional assembly produces on the branch where neither option
+  // applies. Read as anything but options it promotes the block to a connector
+  // and hands `{}` to the child slot, which dies on `block.config` while the
+  // sequencer is still being composed. So a call the types accept takes down
+  // the pattern that contains it, at import time, before anything runs.
+
+  it("runs .step(block, {}) exactly as .step(block)", async () => {
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {});
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+  });
+
+  it("runs .stepIf(cond, block, {}) exactly as .stepIf(cond, block)", async () => {
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: true }))
+      .stepIf((out: { go: boolean }) => out.go, reportsAbort, {});
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
+  });
+
+  it("still resolves the connector in .step(connector, block, {})", async () => {
+    // The empty bag is peeled off the trailing slot, so the two arguments in
+    // front of it keep the meaning they always had.
+    const seen: unknown[] = [];
+    const echo = handler({
+      name: "echo",
+      inputSchema: z.unknown(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (input) => {
+        seen.push(input);
+        return { ok: true };
+      },
+    });
+
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ n: 7 }))
+      .step((out: { n: number }) => out.n, echo, {});
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ ok: true });
+    expect(seen).toEqual([7]);
+  });
+
+  it("handles a bag assembled conditionally down to nothing", async () => {
+    // The way this reaches real code: the caller spreads in whichever options
+    // apply, and on some paths none of them do.
+    const resolver: (() => AbortSignal | undefined) | undefined = undefined;
+    const hook: (() => void) | undefined = undefined;
+    const options = {
+      ...(resolver !== undefined ? { abortSignal: resolver } : {}),
+      ...(hook !== undefined ? { onSettled: hook } : {}),
+    };
+
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(
+      reportsAbort,
+      options
+    );
+
+    expect(await runForTest(seq, null, createMockContext())).toEqual({ aborted: false });
   });
 });

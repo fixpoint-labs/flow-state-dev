@@ -103,15 +103,23 @@ export type StepOptions = {
   abortSignal?: (ctx: BlockContext) => AbortSignal | undefined;
   /**
    * Called once when this step's dispatch leaves, **by every path** — it
-   * returned, it threw, or it suspended.
+   * returned, it threw, or it suspended — and told which of the three it was.
    *
-   * The last of those is the one that needs a seam at all. `.rescue()` is
-   * deliberately not run for a `SuspensionError` (suspension is control flow,
-   * not a failure), and a suspended request does not abort its signal either,
-   * so a step that parks on `ctx.suspend()` passes through no handler a caller
-   * can compose. Anything a preceding step started and this step's completion
-   * was supposed to stop — a timer, a lease renewal, a subscription — outlives
-   * the request without this.
+   * Suspension is the one that needs a seam at all. `.rescue()` is deliberately
+   * not run for a `SuspensionError` (suspension is control flow, not a
+   * failure), and a suspended request does not abort its signal either, so a
+   * step that parks on `ctx.suspend()` passes through no handler a caller can
+   * compose. Anything a preceding step started and this step's completion was
+   * supposed to stop — a timer, a lease renewal, a subscription — outlives the
+   * request without this.
+   *
+   * **Why the outcome is part of the contract.** A caller that releases on
+   * every exit alike releases too early on the two exits that are *not*
+   * suspension: `"returned"` and `"threw"` both hand off to a downstream step
+   * (a recorder, a `.rescue()` handler) that still has work to do, and this
+   * hook fires before that step runs. A lease renewal stopped here has stopped
+   * before the write it was protecting. So the useful shape is usually "release
+   * only on `"suspended"`, and let the downstream handler release the rest".
    *
    * Runs in a `finally`, so it cannot change the step's outcome; it is for
    * releasing what the dispatch was holding, not for recovery. A throw from it
@@ -119,8 +127,18 @@ export type StepOptions = {
    *
    * Not called when a `.stepIf()` condition is false — nothing was dispatched.
    */
-  onSettled?: (ctx: BlockContext) => void;
+  onSettled?: (ctx: BlockContext, outcome: StepOutcome) => void;
 };
+
+/**
+ * How a step's dispatch left (FIX-1005).
+ *
+ * `"suspended"` is separated from `"threw"` even though both arrive as a throw,
+ * because they are opposite situations for a caller holding a resource: a
+ * suspension has no downstream handler at all, and a genuine failure has one
+ * (`.rescue()`) that is about to run.
+ */
+export type StepOutcome = "returned" | "threw" | "suspended";
 
 /**
  * True when `value` is a `.step()` options bag rather than a block, a
@@ -131,12 +149,26 @@ export type StepOptions = {
  * so this shape cannot silently re-route an existing `step(connector, block)`
  * or `step(factory, config)` call. The inline-config arm is resolved before
  * this is ever consulted, so a block config can never reach it.
+ *
+ * An **empty** object counts, and has to. Every `StepOptions` member is
+ * optional, so `.step(block, {})` is a well-typed call, and it is the shape
+ * that falls out of assembling the bag conditionally
+ * (`{ ...(sig ? { abortSignal: sig } : {}) }`). Reading it as anything else
+ * promotes the block to a connector and hands `{}` to the child slot, which
+ * dies at composition time on `block.config` — a valid call crashing the
+ * sequencer that contains it. `isConcurrencyOptions` already treats a trailing
+ * `{}` as options for the same reason. There is no ambiguity to trade away:
+ * an empty object is not a block (excluded above), not a connector (not a
+ * function), and not an inline config (no `outputSchema`, no `execute`).
  */
 function isStepOptions(value: unknown): value is StepOptions {
   if (typeof value !== "object" || value === null) return false;
   if (isBlockDefinition(value)) return false;
   const bag = value as { abortSignal?: unknown; onSettled?: unknown };
-  return typeof bag.abortSignal === "function" || typeof bag.onSettled === "function";
+  if (typeof bag.abortSignal === "function" || typeof bag.onSettled === "function") {
+    return true;
+  }
+  return Object.keys(value).length === 0;
 }
 
 /** The resolved shape for a background method (`work`, `workIf`). */

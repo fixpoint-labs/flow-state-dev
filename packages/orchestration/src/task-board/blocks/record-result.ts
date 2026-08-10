@@ -47,14 +47,27 @@ import { taskBoardWorkerBodyStateSchema } from "../schemas";
  * AsyncLocalStorage seam rather than a closure is what makes that per-iteration
  * correct under concurrent fan-out.
  *
+ * **Called AFTER the settlement, never before.** `complete()` and `fail()` are
+ * fenced on this worker's ticket, and the fence refuses a write on a row whose
+ * lease has lapsed. Stopping first therefore opens a window — the width of one
+ * store round trip — in which a perfectly healthy worker's result is rejected
+ * as a lost claim, the task is recovered, and every side effect it already
+ * committed is repeated. That is precisely the duplicate work the lease exists
+ * to prevent, produced by the lease. The reverse hazard does not exist: a
+ * renewal in flight across the settlement writes only `leaseUntil`, and against
+ * a row that has just been settled the fence declines it and the driver stops
+ * itself.
+ *
  * Deliberately not the *only* thing that stops a driver. It also stops when the
  * request's own signal aborts, and — the case neither recorder can see — when
- * the worker step's dispatch settles, via the `onSettled` option the board
- * composes it with. A worker that calls `ctx.suspend()` exits through NEITHER
- * recorder (`SuspensionError` bypasses `.rescue()` by design) and does not
- * abort its signal either, so that third stop is what keeps a parked worker
- * from renewing an `in_progress` row forever. The unref'd timer only keeps the
- * runtime from being held open; it does not stop the renewals.
+ * the worker step's dispatch reports that it SUSPENDED, via the `onSettled`
+ * option the board composes it with. A worker that calls `ctx.suspend()` exits
+ * through NEITHER recorder (`SuspensionError` bypasses `.rescue()` by design)
+ * and does not abort its signal either, so that third stop is what keeps a
+ * parked worker from renewing an `in_progress` row forever. That hook fires on
+ * the returned and threw paths too, which is exactly why it must not stop on
+ * them: it runs before the recorder that owns the write. The unref'd timer only
+ * keeps the runtime from being held open; it does not stop the renewals.
  */
 function stopLeaseRenewal(): void {
   currentLeaseRenewal()?.stop();
@@ -80,17 +93,24 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
     inputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (output: unknown, ctx) => {
-      // The work is done, so stop asserting the worker is still alive — before
-      // the settlement rather than after it, so a renewal cannot be in flight
-      // against a row this call is about to move.
-      stopLeaseRenewal();
       const claim = ctx.sequencer!.state.currentClaim;
-      if (claim === undefined) return;
-      await (await collectionFactory(ctx)).complete(claim.taskId, output, {
-        ifAllowed: true,
-        claim,
-      });
-      await ctx.sequencer!.patchState({ currentClaim: undefined });
+      if (claim === undefined) {
+        // Nothing fenced to protect, so there is nothing left to keep the
+        // lease alive for.
+        stopLeaseRenewal();
+        return;
+      }
+      try {
+        await (await collectionFactory(ctx)).complete(claim.taskId, output, {
+          ifAllowed: true,
+          claim,
+        });
+        await ctx.sequencer!.patchState({ currentClaim: undefined });
+      } finally {
+        // Only now: the ticket-fenced write has settled, so the claim has
+        // nothing left to assert. See `stopLeaseRenewal`.
+        stopLeaseRenewal();
+      }
     },
   });
 }
@@ -128,15 +148,19 @@ export function createRecordError(options: RecordErrorOptions) {
     outputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (error: unknown, ctx) => {
-      stopLeaseRenewal();
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
-      if (claim !== undefined) {
-        await (await collectionFactory(ctx)).fail(claim.taskId, message, {
-          ifAllowed: true,
-          claim,
-        });
-        await ctx.sequencer!.patchState({ currentClaim: undefined });
+      try {
+        if (claim !== undefined) {
+          await (await collectionFactory(ctx)).fail(claim.taskId, message, {
+            ifAllowed: true,
+            claim,
+          });
+          await ctx.sequencer!.patchState({ currentClaim: undefined });
+        }
+      } finally {
+        // After the fenced write, for the same reason the success path does.
+        stopLeaseRenewal();
       }
       if (onError === "fail") {
         throw error instanceof Error ? error : new Error(message);

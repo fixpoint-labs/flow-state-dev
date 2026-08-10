@@ -28,7 +28,7 @@ import { handler } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { ticketForClaim } from "../claim-ticket";
-import { withLeaseRenewal } from "../lease-renewal";
+import { startLeaseRenewal } from "../lease-renewal";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import type { TaskDispatcher } from "../dispatchers/types";
@@ -157,11 +157,20 @@ function packWorkerInput(
  * mid-run would abort its outermost step and its generators would keep making
  * model calls underneath.
  *
- * Re-binding the closure to default the override to this signal closes it at
- * one level, which is all it takes: the child scope's own `ctx.signal` becomes
- * the composed one, and the engine propagates from there (an explicit override
- * from a nested `.work()` or `.step(…, { abortSignal })` still wins, so this
- * widens nothing).
+ * Re-binding the closure to compose this signal into every child scope closes
+ * it at one level, which is all it takes: the child scope's own `ctx.signal`
+ * becomes the composed one, and the engine propagates from there.
+ *
+ * **An explicit override is composed with, never deferred to.** The background
+ * forms — `.work()`, `.workIf()`, `.forEachBackground()` — each pass the
+ * request's background signal as an explicit `signalOverride`, and that signal
+ * is deliberately decoupled from transport teardown (FIX-663) so background
+ * work outlives a disconnected client. Taking the override *instead of* this
+ * one would hand that decoupling to lease loss as well, which is a different
+ * question with the opposite answer: a worker whose claim was displaced cannot
+ * record anything it produces, so its background tasks are paying for output
+ * the fence will refuse. Composing keeps both promises — the task still
+ * survives transport teardown, and it still stops when the claim is gone.
  *
  * A unit-test context installs no scope at all, and there the spread already is
  * the whole story — nested steps run on the context they were handed.
@@ -173,7 +182,14 @@ function workerCtx(ctx: BlockContext, signal: AbortSignal): BlockContext {
     ...ctx,
     signal,
     _withExecutionScope: (parent, execute, signalOverride) =>
-      withScope.call(ctx, parent, execute, signalOverride ?? signal),
+      withScope.call(
+        ctx,
+        parent,
+        execute,
+        signalOverride === undefined
+          ? signal
+          : AbortSignal.any([signalOverride, signal])
+      ),
   };
 }
 
@@ -213,31 +229,40 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
       // cycle's attempt number.
       const claim = ticketForClaim(options.collection.collectionId, claimed);
 
+      // Renewal spans the worker's execution **and the write that records its
+      // result** (FIX-1005). Stopping when the run returns would be a boundary
+      // error in the expensive direction: `complete()` and `fail()` are fenced
+      // on this ticket, so a lease that lapses between the last renewal and the
+      // write makes the substrate refuse a *healthy* worker's result. The task
+      // is then handed to someone else and every side effect this worker
+      // already committed happens again — which is the duplicate work the lease
+      // exists to prevent, caused by the mechanism meant to prevent it.
+      //
+      // A renewal in flight across the settlement is harmless in the other
+      // direction: it writes only `leaseUntil`, and once the row is settled the
+      // fence declines it and the driver stops itself.
+      const renewal = startLeaseRenewal({
+        collection: options.collection,
+        ticket: claim,
+        claimedTask: claimed,
+        signal: ctx.signal,
+      });
       try {
         // BP-011 deviation (FIX-503): the worker is selected dynamically from
         // `task.assignee`, so it can't be wired into a static sibling-step
         // sequencer composition. `asRuntime(worker).run` is the sanctioned
         // substrate cast for first-party dispatch.
         //
-        // Renewal spans exactly the worker's execution (FIX-1005): it starts
-        // where the ticket is minted and stops when the run returns, on both
-        // the success and the throw path. This is the one seam whose work is a
-        // single call, so it takes the helper's callback form.
-        const output = (await withLeaseRenewal({
-          collection: options.collection,
-          ticket: claim,
-          claimedTask: claimed,
-          signal: ctx.signal,
-          run: async (leaseLost) => {
-            // Composed, never substituted — the worker must still stop when
-            // the request is cancelled, not only when the claim is lost.
-            const signal =
-              ctx.signal === undefined
-                ? leaseLost
-                : AbortSignal.any([ctx.signal, leaseLost]);
-            return asRuntime(worker).run(workerInput, workerCtx(ctx, signal));
-          },
-        })) as TOut;
+        // Composed, never substituted — the worker must still stop when the
+        // request is cancelled, not only when the claim is lost.
+        const signal =
+          ctx.signal === undefined
+            ? renewal.signal
+            : AbortSignal.any([ctx.signal, renewal.signal]);
+        const output = (await asRuntime(worker).run(
+          workerInput,
+          workerCtx(ctx, signal)
+        )) as TOut;
         // Advisory write-back (FIX-951): the task may have been settled or
         // handed to another worker while this one ran.
         await options.collection.complete(claimed.id, output, {
@@ -253,6 +278,8 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
         });
         if (onError === "fail") throw err;
         return { claimed: true, taskId: claimed.id, error: message };
+      } finally {
+        renewal.stop();
       }
     },
   });

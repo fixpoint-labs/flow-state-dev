@@ -80,10 +80,10 @@ import {
   isDefinedTaskCollection,
   onTaskChangeFor,
   currentLeaseRenewal,
-  openLeaseRenewalScope,
   resolveTaskCapDefaults,
   stampLeaseRenewal,
   startLeaseRenewal,
+  withLeaseRenewalScope,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -797,61 +797,64 @@ export function taskBoard<
     // CAS path before this body runs.
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
-    .tap(async (task: Task, ctx) => {
+    .tap(async (task: Task, ctx) =>
       // FIRST STATEMENT, before any await (FIX-1005). This publishes the slot
       // the driver below is installed into; past the first `await` it would
       // land on a continuation scope that dies with this tap, and every reader
       // — the step's `abortSignal`, both recorders, `onSettled` — would see
-      // `undefined`. See `openLeaseRenewalScope`.
-      openLeaseRenewalScope();
-      // The ONE mint site for this board's claim tickets (FIX-981). `task` is
-      // what `claim()` returned, so `attempts` is already incremented and this
-      // is this worker's attempt, not the pre-claim one.
-      //
-      // The board id comes from the RESOLVED ref, never from this closure's
-      // `collectionId`. They are not always the same string: a board handed a
-      // caller-supplied `(ctx) => TaskCollectionRef` factory reports
-      // `"factory-supplied"` here while the ref carries its own id, and the
-      // guard compares against the ref's. Minting from the wrong one refuses
-      // every write-back the board makes, so the board never drains.
-      const boardCollection = await collectionFactory(ctx);
-      const ticket = ticketForClaim(boardCollection.collectionId, task);
-      // Stamped onto the body state so both recorders can scope their
-      // write-back to the claim that produced it (FIX-951, retargeted by
-      // FIX-981): a displaced attempt declines, and so does a write aimed at
-      // any task other than this one.
-      await ctx.sequencer!.patchState({ currentClaim: ticket });
-      // FIX-658: mark this worker-body scope so every item the worker emits
-      // (messages, tool calls, sources, reasoning) is stamped with the task
-      // id at emit time. This makes per-task attribution correct under
-      // concurrent fan-out — a sibling worker's items no longer fall inside
-      // this task's render window — and across sequential `loopBack` turns,
-      // where the execution path repeats but each turn is a fresh scope.
-      ctx._markTaskScope?.(task.id);
-      // FIX-610: also stamp the claim onto the per-worker AsyncLocalStorage
-      // seam, so any cacheable tool the worker invokes attributes cache writes
-      // to this task (later hits get `sourceTask`) — and, since FIX-981, so any
-      // task tool the worker calls presents this ticket without the model ever
-      // seeing it.
-      stampCurrentClaim(ticket);
-      // FIX-1005: start renewing this claim's lease, and stamp the driver onto
-      // the same per-worker seam. Renewal is what makes a lapsed lease mean
-      // "no live worker holds this" rather than "the worker is taking a while",
-      // which is what lets `claim` recover an abandoned row at all.
-      //
-      // It rides the seam rather than the body state because an AbortController
-      // is not persistable state, and rather than a closure because
-      // `workerBody` is built once and shared by every worker on the board — a
-      // closure cell here would be one cell for `concurrency` workers.
-      stampLeaseRenewal(
-        startLeaseRenewal({
-          collection: boardCollection,
-          ticket,
-          claimedTask: task,
-          signal: ctx.signal,
-        })
-      );
-    })
+      // `undefined`. It also stops that driver if the setup below throws after
+      // the claim is committed, which is the one exit no recorder and no
+      // `onSettled` can see. See `withLeaseRenewalScope`.
+      withLeaseRenewalScope(async () => {
+        // The ONE mint site for this board's claim tickets (FIX-981). `task` is
+        // what `claim()` returned, so `attempts` is already incremented and this
+        // is this worker's attempt, not the pre-claim one.
+        //
+        // The board id comes from the RESOLVED ref, never from this closure's
+        // `collectionId`. They are not always the same string: a board handed a
+        // caller-supplied `(ctx) => TaskCollectionRef` factory reports
+        // `"factory-supplied"` here while the ref carries its own id, and the
+        // guard compares against the ref's. Minting from the wrong one refuses
+        // every write-back the board makes, so the board never drains.
+        const boardCollection = await collectionFactory(ctx);
+        const ticket = ticketForClaim(boardCollection.collectionId, task);
+        // Stamped onto the body state so both recorders can scope their
+        // write-back to the claim that produced it (FIX-951, retargeted by
+        // FIX-981): a displaced attempt declines, and so does a write aimed at
+        // any task other than this one.
+        await ctx.sequencer!.patchState({ currentClaim: ticket });
+        // FIX-658: mark this worker-body scope so every item the worker emits
+        // (messages, tool calls, sources, reasoning) is stamped with the task
+        // id at emit time. This makes per-task attribution correct under
+        // concurrent fan-out — a sibling worker's items no longer fall inside
+        // this task's render window — and across sequential `loopBack` turns,
+        // where the execution path repeats but each turn is a fresh scope.
+        ctx._markTaskScope?.(task.id);
+        // FIX-610: also stamp the claim onto the per-worker AsyncLocalStorage
+        // seam, so any cacheable tool the worker invokes attributes cache writes
+        // to this task (later hits get `sourceTask`) — and, since FIX-981, so any
+        // task tool the worker calls presents this ticket without the model ever
+        // seeing it.
+        stampCurrentClaim(ticket);
+        // FIX-1005: start renewing this claim's lease, and stamp the driver onto
+        // the same per-worker seam. Renewal is what makes a lapsed lease mean
+        // "no live worker holds this" rather than "the worker is taking a while",
+        // which is what lets `claim` recover an abandoned row at all.
+        //
+        // It rides the seam rather than the body state because an AbortController
+        // is not persistable state, and rather than a closure because
+        // `workerBody` is built once and shared by every worker on the board — a
+        // closure cell here would be one cell for `concurrency` workers.
+        stampLeaseRenewal(
+          startLeaseRenewal({
+            collection: boardCollection,
+            ticket,
+            claimedTask: task,
+            signal: ctx.signal,
+          })
+        );
+      })
+    )
     // The worker runs under the driver's lease-loss signal, composed with the
     // request's by the step dispatch (FIX-1005). Losing the claim stops the
     // worker paying for work it can no longer record; it is not what makes the
@@ -867,6 +870,13 @@ export function taskBoard<
       // recover it. That is the exact deadlock this issue exists to remove,
       // rebuilt out of a park.
       //
+      // ONLY on that exit. This hook fires on the returned and threw paths as
+      // well, and on both of those a recorder further down still owes the
+      // substrate a ticket-fenced write. Stopping here would stop renewal
+      // *before* that write, so a healthy worker's result could be refused on
+      // a lapsed lease and its work redone — see `stopLeaseRenewal` in
+      // `blocks/record-result.ts`.
+      //
       // Stopping is the honest answer rather than parking the renewal: the
       // lease means "a live worker is on this row right now", and a suspended
       // worker is not one. The row lapses, another worker recovers it, and the
@@ -875,7 +885,9 @@ export function taskBoard<
       // stated cost. A board that wants a long human pause without that should
       // park the TASK (`awaitReview`), which the lease deliberately does not
       // govern.
-      onSettled: () => currentLeaseRenewal()?.stop(),
+      onSettled: (_ctx, outcome) => {
+        if (outcome === "suspended") currentLeaseRenewal()?.stop();
+      },
     })
     .tap(recordSuccess)
     .rescue([{ block: recordError }]);

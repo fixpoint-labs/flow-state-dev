@@ -232,7 +232,8 @@ export type {
   RouterConfig,
   SequencerConfig,
   SequencerDefinition,
-  StepOptions
+  StepOptions,
+  StepOutcome
 } from "./blocks";
 export type {
   CostEstimate,
