@@ -141,6 +141,17 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
       // request no longer holds, then release the claim so `recordSuccess`
       // settles nothing. Order matters only in that both follow a successful
       // dispatch — see the file header on why the clear is last.
+      //
+      // KNOWN GAP (FIX-1070): acceptance is not a start. With an external
+      // dispatcher it means enqueued, and under flow-level `queue` concurrency
+      // it means deferred behind a key — so between here and the child's start
+      // gate nobody holds the lease. If that delay exceeds the lease TTL another
+      // drain reclaims the row, and this child then fails its gate as stale.
+      // Bounded and safe per occurrence (the gate is what rejects it), but under
+      // sustained backlog it can starve. The parent cannot simply keep renewing:
+      // its request returns immediately, so the driver would leak. Closing it
+      // means modelling "claimed but not yet started", which is the lease's
+      // shape to change, not the spawn's.
       currentLeaseRenewal()?.stop();
       await ctx.sequencer!.patchState({ currentClaim: undefined });
 

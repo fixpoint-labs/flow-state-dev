@@ -224,6 +224,10 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     );
   });
 
+  it("rejects negative zero, which serializes to 0", () => {
+    expect(() => assertJsonSafe({ delta: -0 }, { label })).toThrow(/\.delta is -0/);
+  });
+
   it("accepts the same object appearing twice on separate branches", () => {
     // Not a cycle — it round-trips as two copies. Tracking every object seen
     // rather than the current path would reject this legitimate shape.

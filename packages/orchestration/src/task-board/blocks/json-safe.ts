@@ -87,6 +87,15 @@ export function assertJsonSafe(
             `serializes to null.`
         );
       }
+      // `-0` serializes to `0`, and the difference is observable on the other
+      // side with `Object.is`. Marginal, but it is the same silent-change class
+      // as the rest, and a gate that admits one exception invites the next.
+      if (Object.is(node, -0)) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)} is -0, which serializes to 0. ` +
+            `Use 0 if the sign does not matter.`
+        );
+      }
       return;
     }
 
