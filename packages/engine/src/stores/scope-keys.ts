@@ -112,7 +112,32 @@ export function tenantMatches(
   recordTenantId: string | undefined,
   requestTenantId: string | undefined
 ): boolean {
-  return (recordTenantId ?? undefined) === (requestTenantId ?? undefined);
+  return scopeValueMatches(recordTenantId, requestTenantId);
+}
+
+/**
+ * The NULL-safe equality **every** scope-identity comparison uses: a record
+ * that encodes "unbound" as `null` and one that omits the key are the same
+ * record, and both match a filter of `undefined`.
+ *
+ * The parameters admit `null` deliberately, even though `SessionRecord.orgId`
+ * and `tenantId` are declared `string | undefined`. Persisted records reach
+ * these predicates carrying either shape — a JSON round-trip through the
+ * filesystem store, or any custom store that nulls absent keys (BP-030) — so
+ * the coalescing is load-bearing, not defensive noise. A signature that hid
+ * the `null` would invite a later reader to delete the `??` as dead code.
+ *
+ * This exists because the SQL adapters already compare NULL-safely — `IS ?` on
+ * SQLite, `IS NULL` / `IS NOT DISTINCT FROM` on Postgres — and a strict `===`
+ * here made the same call return different rows depending on which store was
+ * configured. NULL-safety is one rule, so it lives in one function rather than
+ * being restated at each comparison site.
+ */
+function scopeValueMatches(
+  recordValue: string | null | undefined,
+  filterValue: string | null | undefined
+): boolean {
+  return (recordValue ?? undefined) === (filterValue ?? undefined);
 }
 
 /**
@@ -131,7 +156,7 @@ export function matchesTenantFilter(
   recordTenantId: string | undefined
 ): boolean {
   if (options === undefined || !("tenantId" in options)) return true;
-  return recordTenantId === options.tenantId;
+  return scopeValueMatches(recordTenantId, options.tenantId);
 }
 
 /**
@@ -151,7 +176,7 @@ export function matchesOrgFilter(
   recordOrgId: string | undefined
 ): boolean {
   if (options === undefined || !("orgId" in options)) return true;
-  return recordOrgId === options.orgId;
+  return scopeValueMatches(recordOrgId, options.orgId);
 }
 
 /**

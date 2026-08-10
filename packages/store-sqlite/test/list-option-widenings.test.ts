@@ -109,6 +109,49 @@ describe("SQLite list-option widenings", () => {
     expect((await s.request.list({})).length).toBe(2);
   });
 
+  /**
+   * The in-process mirror of this matrix asserts that a record encoding
+   * "unbound" as `null` is the same record as one omitting the key. This is
+   * that case on SQLite — the adapter that was already right, kept honest so
+   * the two cannot drift apart again.
+   *
+   * Org and tenant share one case here, unlike the in-process suite where they
+   * are separate predicates: on this adapter both are the same `IS ?`
+   * emission, so splitting them would assert the same mechanism twice.
+   */
+  it("treats a null-encoded org or tenant binding as unbound", async () => {
+    const s = fresh();
+    await s.session.set(
+      "nulled",
+      session("nulled", {
+        parentSessionId: "p",
+        ...({ orgId: null, tenantId: null } as Partial<SessionRecord>)
+      }),
+      "any"
+    );
+    await s.request.set(
+      "r_nulled",
+      request("r_nulled", {
+        ...({ orgId: null, tenantId: null } as Partial<RequestRecord>)
+      }),
+      "any"
+    );
+
+    const parentage = { parentOf: "p" } as const;
+    expect(
+      (await s.session.list({ orgId: undefined, parentage })).map((r) => r.id)
+    ).toEqual(["nulled"]);
+    expect(
+      (await s.session.list({ tenantId: undefined, parentage })).map((r) => r.id)
+    ).toEqual(["nulled"]);
+    expect((await s.request.list({ orgId: undefined })).map((r) => r.id)).toEqual([
+      "r_nulled"
+    ]);
+    expect((await s.request.list({ tenantId: undefined })).map((r) => r.id)).toEqual([
+      "r_nulled"
+    ]);
+  });
+
   it("a status array matches set membership; a single status still matches by equality", async () => {
     const s = fresh();
     for (const status of ["in_progress", "suspended", "completed", "failed"] as const) {

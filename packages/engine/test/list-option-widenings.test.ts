@@ -114,6 +114,80 @@ describe.each(adapters)("list-option widenings — $name adapter", ({ create }) 
     ).toEqual(["unbound"]);
   });
 
+  /**
+   * The legacy / round-tripped shape (BP-030): a record that encodes "no
+   * organization" as `null` is the same record as one that omits the key, and
+   * owes the same answer to an `orgId: undefined` filter.
+   *
+   * This is an **adapter-divergence** guard, not a style preference. The SQL
+   * adapters have always compared NULL-safely — `org_id IS ?` on SQLite,
+   * `IS NULL` on Postgres — so a strict `===` in the in-process predicate made
+   * the same call return different rows depending on which store was
+   * configured: SQLite and Postgres returned the nulled record, memory and
+   * filesystem silently dropped it. Asserted on both list-option types
+   * because the two stores reach the rule through separate call sites.
+   */
+  it("treats a null-encoded org binding as unbound, as the SQL adapters do", async () => {
+    const { session: sessions, request: requests } = await create();
+    await sessions.set(
+      "nulled",
+      session("nulled", {
+        parentSessionId: "p",
+        // Cast because the record type declares `string | undefined`; the
+        // point of the case is the shape a persisted record can actually
+        // carry, which the type does not admit.
+        ...({ orgId: null } as Partial<SessionRecord>)
+      }),
+      "any"
+    );
+    await requests.set(
+      "r_nulled",
+      request("r_nulled", { ...({ orgId: null } as Partial<RequestRecord>) }),
+      "any"
+    );
+
+    expect(
+      (
+        await sessions.list({ orgId: undefined, parentage: { parentOf: "p" } })
+      ).map((r) => r.id)
+    ).toEqual(["nulled"]);
+    expect((await requests.list({ orgId: undefined })).map((r) => r.id)).toEqual([
+      "r_nulled"
+    ]);
+  });
+
+  /**
+   * The same rule on the tenant filter, which carried the identical defect.
+   * Kept as its own case rather than folded into the org one: they are
+   * separate predicates, and a shared assertion would hide which of them
+   * regressed.
+   */
+  it("treats a null-encoded tenant binding as unbound", async () => {
+    const { session: sessions, request: requests } = await create();
+    await sessions.set(
+      "nulled",
+      session("nulled", {
+        parentSessionId: "p",
+        ...({ tenantId: null } as Partial<SessionRecord>)
+      }),
+      "any"
+    );
+    await requests.set(
+      "r_nulled",
+      request("r_nulled", { ...({ tenantId: null } as Partial<RequestRecord>) }),
+      "any"
+    );
+
+    expect(
+      (
+        await sessions.list({ tenantId: undefined, parentage: { parentOf: "p" } })
+      ).map((r) => r.id)
+    ).toEqual(["nulled"]);
+    expect((await requests.list({ tenantId: undefined })).map((r) => r.id)).toEqual([
+      "r_nulled"
+    ]);
+  });
+
   it("request orgId filters exactly, with the same present-vs-absent rule", async () => {
     const { request: store } = await create();
     await store.set("r_acme", request("r_acme", { orgId: "acme" }), "any");

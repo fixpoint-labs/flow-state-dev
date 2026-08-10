@@ -114,6 +114,49 @@ describe("Postgres list-option widenings", () => {
   });
 
   /**
+   * The in-process mirror of this matrix asserts that a record encoding
+   * "unbound" as `null` is the same record as one omitting the key. This is
+   * that case on Postgres — the adapter that was already right, kept honest so
+   * the two cannot drift apart again.
+   *
+   * Org and tenant share one case here, unlike the in-process suite where they
+   * are separate predicates: on this adapter both go through
+   * `nullSafeEqualsClause`, so splitting them would assert one mechanism twice.
+   */
+  it("treats a null-encoded org or tenant binding as unbound", async () => {
+    const s = await freshStores();
+    await s.session.set(
+      "nulled",
+      session("nulled", {
+        parentSessionId: "p",
+        ...({ orgId: null, tenantId: null } as Partial<SessionRecord>)
+      }),
+      "any"
+    );
+    await s.request.set(
+      "r_nulled",
+      request("r_nulled", {
+        ...({ orgId: null, tenantId: null } as Partial<RequestRecord>)
+      }),
+      "any"
+    );
+
+    const parentage = { parentOf: "p" } as const;
+    expect(
+      (await s.session.list({ orgId: undefined, parentage })).map((r) => r.id)
+    ).toEqual(["nulled"]);
+    expect(
+      (await s.session.list({ tenantId: undefined, parentage })).map((r) => r.id)
+    ).toEqual(["nulled"]);
+    expect((await s.request.list({ orgId: undefined })).map((r) => r.id)).toEqual([
+      "r_nulled"
+    ]);
+    expect((await s.request.list({ tenantId: undefined })).map((r) => r.id)).toEqual([
+      "r_nulled"
+    ]);
+  });
+
+  /**
    * The rewritten tenant clause is a *plan* change, not a predicate change.
    * These are the rows that would move if the two forms ever diverged.
    */
