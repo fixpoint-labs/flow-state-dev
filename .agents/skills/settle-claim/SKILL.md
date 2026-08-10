@@ -37,6 +37,12 @@ answered in the thread, not experimented on. If you're invoked directly and the 
 of you has only been asserted once, say so and check whether reading the code (Step 2) settles
 it before building anything.
 
+**The other loop: a *new* defect every round, in the same mechanism.** Rounds that each find a
+different fault in the last round's fix — not one claim re-argued, a fresh one each pass — are
+the same signal wearing different clothes: what is unsettled is the mechanism, not any single
+assertion about it. Prose has failed there too, and it will keep failing. Stop revising and run
+it.
+
 ## The one rule that matters
 
 **You are answering an empirical question, not winning an argument.** The failure mode that

@@ -801,14 +801,20 @@ flowchart LR
 
 **The trigger is a *loop*, not an assertion.** Reviewers assert things constantly and most
 assertions are handled fine by the three dispositions — a POC is not the answer to someone
-being confidently wrong once. What a POC is for is the pattern where the *same* claim keeps
-getting re-argued, each pass reversing the last. So the necessary condition is:
+being confidently wrong once. What a POC is for is a review that has stopped converging —
+either the *same* claim re-argued each pass reversing the last, or each round faulting the
+last round's fix instead of re-arguing anything. So the necessary condition is:
 
 0. **The claim has been asserted and counter-asserted at least twice** — it came back after
    being answered, or the spec has already flipped on it, or two rounds each reached a
    different conclusion about it. **One confident assertion is not a loop**; triage it
    normally (fold it, note it, or drop it with a pointer) and only reach for a settlement if
    it returns.
+
+   **A loop also counts when each round finds a *new* defect in the same mechanism** — every
+   pass faulting the last pass's fix rather than re-arguing one claim. That satisfies this
+   condition on its own: a mechanism that takes a fresh correction every round is one prose
+   can't settle, and the next round of prose won't either. Stop revising and run it.
 
 Then all three of these have to hold as well:
 
