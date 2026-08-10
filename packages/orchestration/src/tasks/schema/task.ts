@@ -79,13 +79,10 @@ export const taskSchema = z.object({
 
   /**
    * Where the current attempt is running — the execution coordinate the
-   * substrate stamps inside the claim write (FIX-1005).
-   *
-   * A **fact** ("attempt N ran here"), never *policy* ("work should run
-   * here"). Written only by `applyClaimToTask`, cleared wherever the claim
-   * ends — the same set of sites that clear `leaseUntil`. No caller and no
-   * model ever writes it: it is absent from `TaskInit`, and every
-   * worker-callable write verb is typed to other fields.
+   * substrate stamps inside the claim write (FIX-1005). A fact ("attempt N ran
+   * here"), never policy ("work should run here"). Written only by
+   * `applyClaimToTask` and cleared wherever the claim ends; absent from
+   * `TaskInit`, so no caller and no model ever writes it.
    *
    * Distinct from **both** of the other "who has this" fields, which is the
    * thing to keep straight when reading a claim:
@@ -95,18 +92,12 @@ export const taskSchema = z.object({
    *   stored here. `claimedBy` is the execution coordinate, so the name says
    *   *by whom* while the value says *where*.
    *
-   * **Server-only. Never sent to a client**, because schema membership is
-   * itself a publication — see `SERVER_ONLY_TASK_FIELDS` in
-   * `collection/change-event.ts`, which is canonical for why the redaction is
-   * an omission list and must stay one.
+   * **Server-only, never sent to a client.** See `SERVER_ONLY_TASK_FIELDS` in
+   * `collection/change-event.ts`, canonical for the redaction and its shape.
    *
    * **Absent on any task persisted before FIX-1005**, on any task never
-   * claimed, and on any row an older writer normalized (a Zod object drops a
-   * key it does not know, so a mixed-version deploy can strip it). Read it
-   * through one `== null` guard (BP-030): absent means "no coordinate", and
-   * nothing infers anything from it — no backfill, no fallback. The next claim
-   * re-stamps it.
-   *
+   * claimed, and on any row an older writer normalized. Read it through one
+   * `== null` guard (BP-030); the next claim re-stamps it.
    */
   claimedBy: z
     .object({
