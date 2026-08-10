@@ -86,6 +86,19 @@ export interface RuntimeConfig {
    * points. Absent → only the built-in sources are re-enterable.
    */
   publicReentrySources?: readonly string[];
+  /**
+   * Largest `limit` the workstream listing route accepts (FIX-1012). Absent →
+   * {@link DEFAULT_MAX_WORKSTREAM_LIST_LIMIT}.
+   *
+   * The list a client reads is all-time history — finished background work
+   * stays listed — so a deployment running large orchestrations outgrows the
+   * default. Raising it is a deliberate act because the cost is per row and
+   * per read: each row resolves its status from the request store, and clients
+   * re-read this list on every interaction. A bigger ceiling therefore buys
+   * completeness with read amplification on every turn, which is why this is
+   * an operator's decision rather than a caller's.
+   */
+  maxWorkstreamListLimit?: number;
 }
 
 /**
@@ -95,6 +108,9 @@ export interface RuntimeConfig {
  * logic has one home.
  */
 export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
+  // Both boundary points funnel through here, so a host that never builds a
+  // router is validated too.
+  assertMaxWorkstreamListLimit(options.maxWorkstreamListLimit);
   return {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
@@ -109,8 +125,40 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
     errorCapture: options.errorCapture,
     requestHost: options.requestHost,
     queuedGraceMs: options.queuedGraceMs,
-    publicReentrySources: options.publicReentrySources
+    publicReentrySources: options.publicReentrySources,
+    maxWorkstreamListLimit: options.maxWorkstreamListLimit
   };
+}
+
+/**
+ * Largest `limit` the workstream listing route accepts when the host
+ * configures none (FIX-1012). Bounds read amplification rather than payload
+ * size: each row resolves its status from the request store.
+ */
+export const DEFAULT_MAX_WORKSTREAM_LIST_LIMIT = 100;
+
+/**
+ * Validate a host's `maxWorkstreamListLimit` at construction, throwing on a
+ * value that cannot bound anything.
+ *
+ * Loud rather than silently ignored: this number is a safety cap, and every
+ * bad value fails in a direction that looks like it worked. `Infinity` and
+ * `NaN` make the upper-bound comparison vacuous, so the route would accept an
+ * arbitrarily large page and the amplification the cap exists to bound goes
+ * unbounded. Zero or a negative would be handed to the store as a page size.
+ * `NaN` in particular is what `Number(process.env.X)` produces from a typo,
+ * which is exactly how this option will usually be set.
+ */
+export function assertMaxWorkstreamListLimit(limit: number | undefined): void {
+  if (limit === undefined) return;
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new Error(
+      `maxWorkstreamListLimit must be a positive safe integer, received ${String(limit)}. ` +
+        "It caps how many workstream rows one read may return, and a value that " +
+        "cannot be compared against (Infinity, NaN) or cannot be a page size " +
+        "(zero, negative) would leave the read unbounded rather than capped."
+    );
+  }
 }
 
 /** Stale-request sweeper cadence (ms) when the host configures none. */

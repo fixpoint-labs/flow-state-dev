@@ -201,6 +201,17 @@ export interface CreateFlowStateOptions<
   publicReentrySources?: readonly string[];
 
   /**
+   * Largest `limit` the workstream listing route accepts. Default 100.
+   *
+   * Raise it for deployments whose conversations run more background work
+   * than that: the list a client reads is all-time history, so any fixed
+   * ceiling eventually hides the oldest finished work. Raise it deliberately —
+   * each row resolves its status from the request store and clients re-read
+   * the list on every interaction, so a larger ceiling costs more per turn.
+   */
+  maxWorkstreamListLimit?: number;
+
+  /**
    * Enable durable execution. When `true`, `createFlowState` builds the
    * default `createCheckpointDurabilityProvider` from its own resolved stores
    * and installs it on the runtime, so actions marked `durable: true` get

@@ -21,17 +21,23 @@ import type { FlowRegistry } from "../registry/flow-registry";
 import type { RequestStore, SessionRecord, StoreRegistry } from "../stores/types";
 import { toBareSessionId } from "../stores/scope-keys";
 import { jsonResponse, loadTenantSession } from "./route-utils";
+import { DEFAULT_MAX_WORKSTREAM_LIST_LIMIT } from "../runtime-config";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
 /** Rows returned when the caller passes no `limit`. */
 const WORKSTREAM_LIST_DEFAULT_LIMIT = 25;
 /**
- * Largest `limit` this route accepts. Lower than the collection-state
- * listing's 200 because the cost per row is different: each row resolves its
- * status from the request store, so the cap bounds read amplification rather
- * than only payload size.
+ * Largest `limit` this route accepts when the host configures none. Lower than
+ * the collection-state listing's 200 because the cost per row is different:
+ * each row resolves its status from the request store, so the cap bounds read
+ * amplification rather than only payload size.
+ *
+ * A deployment running large orchestrations raises it with
+ * `maxWorkstreamListLimit` — the list is all-time history, so it outgrows any
+ * fixed number, and the right ceiling depends on what that deployment is
+ * willing to spend per read.
  */
-const WORKSTREAM_LIST_MAX_LIMIT = 100;
+const WORKSTREAM_LIST_MAX_LIMIT = DEFAULT_MAX_WORKSTREAM_LIST_LIMIT;
 /**
  * Largest `offset` this route accepts. A database walks and discards every row
  * up to the offset, and those rows are inside the caller's own owner and
@@ -175,6 +181,11 @@ type WorkstreamRouteContext = {
   stores: StoreRegistry;
   /** Tenant id from the request header (FIX-682). */
   tenantId?: string;
+  /**
+   * Largest `limit` this listing accepts (FIX-1012). Absent →
+   * {@link WORKSTREAM_LIST_MAX_LIMIT}.
+   */
+  maxListLimit?: number;
 };
 
 /**
@@ -344,12 +355,18 @@ export async function handleListSessionWorkstreams(
   }
 
   const url = new URL(request.url);
+  const maxLimit = ctx.maxListLimit ?? WORKSTREAM_LIST_MAX_LIMIT;
   const limit = boundedParam(
     url.searchParams.get("limit"),
     "limit",
     1,
-    WORKSTREAM_LIST_MAX_LIMIT,
-    WORKSTREAM_LIST_DEFAULT_LIMIT
+    maxLimit,
+    // Raising the ceiling does not move the default: that would change the
+    // page size under every unparameterized caller on the deployment, and a
+    // client that wants more now asks for it. The clamp is for the opposite
+    // case — a host that lowers the ceiling below the default, where an
+    // unclamped default would exceed its own maximum.
+    Math.min(WORKSTREAM_LIST_DEFAULT_LIMIT, maxLimit)
   );
   if (typeof limit !== "number") return jsonResponse(400, limit);
   const offset = boundedParam(

@@ -345,6 +345,7 @@ class InternalFlowState<TSettings extends object>
       errorCapture: this.#options.errorCapture,
       queuedGraceMs,
       publicReentrySources: this.#options.publicReentrySources,
+      maxWorkstreamListLimit: this.#options.maxWorkstreamListLimit,
       requestHost: {
         staleThresholdMs,
         ...(this.#routerRequested ? { staleSweepIntervalMs } : {})

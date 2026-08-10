@@ -70,6 +70,10 @@ session.isLoading;       // boolean
 session.isStreaming;     // boolean
 session.error;           // Error | null
 
+// Background work running under this session (one entry per body of work):
+session.workstreams;      // readonly WorkstreamSummary[]
+session.workstreamsStale; // boolean — the last re-read failed; rows are kept
+
 // Identity-based filtering:
 session.getItemsByAgent("researcher");      // items stamped with agentName
 session.getItemsByVisibility({ history: false }); // items by visibility
@@ -87,6 +91,8 @@ await session.resumeSuspension({     // approve/reject a suspension, stream the 
 });
 session.refresh();
 ```
+
+`workstreams` lists the background work running under this session, separate from `items` — nothing it produces is folded into the conversation. The list is current as of the reader's last interaction: it is re-read on mount, at the start of each action, and on `refresh()`, and nothing updates it while they wait. A row's `status` is absent until its work has run something; `"active"` means only *not finished*, and reports the last recorded state rather than checking a worker is alive. `refresh()` covers this list along with the rest of the view.
 
 `resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream.
 
