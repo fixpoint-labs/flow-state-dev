@@ -309,19 +309,22 @@ if (task === null) return;
 
 const claim = ticketForClaim(tasks.collectionId, task);
 
-const summary = await withLeaseRenewal({
+await withLeaseRenewal({
   collection: tasks,
   ticket: claim,
   claimedTask: task, // the task exactly as claim() returned it
   signal: ctx.signal,
   async run(leaseLost) {
     // leaseLost aborts if another worker takes the task back.
-    return await summarize(task.goal, { signal: leaseLost });
+    const summary = await summarize(task.goal, { signal: leaseLost });
+    await tasks.complete(task.id, summary, { ifAllowed: true, claim });
   },
 });
-
-await tasks.complete(task.id, summary, { ifAllowed: true, claim });
 ```
+
+Settle the task inside `run`. Renewal has to outlive the write it protects: `complete()` and `fail()` are fenced on the claim ticket, and the fence refuses a ticketed write once the lease has run out. The span to cover is claim through settlement, not claim through the work returning. `withLeaseRenewal` stops renewing as soon as `run` returns, so a settling write issued after it is one slow store round trip from being refused, and a refused result puts the task back in the queue for another worker to run from the top.
+
+Work that doesn't fit in one callback uses `startLeaseRenewal` instead, with `stop()` in a `finally` that closes after the settling write.
 
 ### When a job keeps being abandoned
 
