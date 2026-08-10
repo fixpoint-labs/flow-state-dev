@@ -115,11 +115,15 @@ there, fetch a single page large enough to hold the whole set.
 
 ## What this endpoint won't do
 
-**It won't show a conversation's jobs to anyone but its owner.** The
-conversation in the path is loaded and checked before the handler runs, so the
-same rules that govern reading the conversation govern reading its jobs. A
-conversation in another tenant answers `404`. One belonging to another user
-answers `403`. One with no jobs answers `200` with an empty list.
+**It won't apply access rules of its own.** The same rules that govern reading
+the conversation named in the path govern reading its jobs. That is how every
+session-addressed route works: session detail, state, resource content, the
+debug endpoints. A conversation in another tenant answers `404`. One with no
+jobs answers `200` with an empty list. Whether one belonging to another user
+answers `403` depends on your `resolvePrincipal`. With none configured the
+management endpoints stay open, so a caller holding a conversation id can read
+that conversation's jobs. See [Without a
+resolver](./authentication.md#without-a-resolver).
 
 **It won't list background work across conversations.** There is no
 "everything I have running" endpoint. You reach jobs through the conversation
