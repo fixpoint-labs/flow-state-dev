@@ -186,16 +186,16 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 Carries the most recent entries, newest first — 100 by default. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than the limit keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 
-Raise it with `workstreams: { limit }`:
+Set it with `workstreams: { limit }`:
 
 ```tsx
 const session = useSession(sessionId, {
   flowKind: "research",
-  workstreams: { limit: 500 }
+  workstreams: { limit: 100 }
 });
 ```
 
-The server enforces its own maximum on this value and rejects anything larger, so an app that needs more rows than the server permits needs that ceiling raised too.
+The server enforces its own maximum on this value and rejects anything larger with a 400. That maximum is currently 100, the same as the default here, so this option lets an app ask for *fewer* rows today; asking for more needs the server's ceiling raised as well.
 
 Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
 
