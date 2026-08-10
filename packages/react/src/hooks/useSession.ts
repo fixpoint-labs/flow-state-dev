@@ -450,18 +450,29 @@ export function useSession(
     [baseUrl]
   );
 
-  /** Fetch the single most recent request for this session. */
-  const refreshLatestRequest = useCallback(async () => {
+  /**
+   * Fetch the single most recent request for this session.
+   *
+   * Returns the record it read (or `null`) as well as storing it, so a caller
+   * that needs the value it just fetched does not have to wait a render for
+   * the state to settle. The mount effect uses this to tell "the latest
+   * request was still running when we read the snapshot" from "the session was
+   * already idle" — see the catch-up read below.
+   */
+  const refreshLatestRequest = useCallback(async (): Promise<SessionRequestSummary | null> => {
     if (sessionId === undefined) {
       setLatestRequest(null);
-      return;
+      return null;
     }
     try {
       const list = await sessionClient.listSessionRequests(sessionId, { limit: 1 });
-      setLatestRequest(list[0] ?? null);
+      const latest = list[0] ?? null;
+      setLatestRequest(latest);
+      return latest;
     } catch {
       // Best effort — a missing latest request shouldn't surface as a
       // session-level error. Consumers see the previous value.
+      return null;
     }
   }, [sessionId, sessionClient]);
 
@@ -921,7 +932,7 @@ export function useSession(
 
     void (async () => {
       try {
-        const [nextDetail, nextSnapshot] = await Promise.all([
+        const [nextDetail, nextSnapshot, latestAtLoad] = await Promise.all([
           sessionClient.getSession(sessionId),
           fetchSessionSnapshot(),
           refreshLatestRequest()
@@ -956,6 +967,20 @@ export function useSession(
 
           if (activeRequest !== undefined) {
             attachToStream(activeRequest.id);
+          } else if (latestAtLoad?.status === "in_progress") {
+            // The latest request was still running when we read the snapshot,
+            // and it is no longer in the in-progress list: it finished inside
+            // the window between those two reads. No stream is attachable and
+            // the snapshot we applied predates the request's final items, so
+            // without this the session sits incomplete until the consumer
+            // remounts or refreshes by hand. Re-read once to catch up.
+            const catchUpSnapshot = await fetchSessionSnapshot();
+
+            if (cancelled) return;
+
+            if (catchUpSnapshot !== null) {
+              applySnapshot(catchUpSnapshot);
+            }
           }
         }
       } catch (cause) {
