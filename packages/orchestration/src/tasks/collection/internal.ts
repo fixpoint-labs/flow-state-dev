@@ -60,6 +60,15 @@ export function createTaskHandleWrapper<TInput, TOutput>(
  * stamped at the same site for the same reason: one place, covering all four
  * add paths, so a recreated row can never end up sharing an incarnation with
  * the row it replaced.
+ *
+ * Minted with `crypto.randomUUID()`, not `generateId` — the nonce is persisted
+ * and compared across processes (a resource-backed board on SQLite/Postgres is
+ * explicitly multi-process), and `generateId`'s own header says nothing about
+ * it compares across machines: its counter is per-process and its random tail
+ * is only 24 bits, so two processes can mint the same value. `generateId` stays
+ * for task ids themselves — that scheme is pre-existing and changing it would
+ * alter an already-persisted id format — but the nonce is new in this PR and
+ * has no such compatibility concern.
  */
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
@@ -67,7 +76,7 @@ export function buildInitialTask<TInput, TOutput>(
 ): Task<TInput, TOutput> {
   return {
     ...initialWriteProvenance(),
-    incarnationId: generateId("inc"),
+    incarnationId: crypto.randomUUID(),
     id: init.id ?? generateTaskId(),
     goal: init.goal,
     title: init.title,

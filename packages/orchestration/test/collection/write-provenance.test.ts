@@ -236,6 +236,37 @@ describe("didWriteLand — the three answers", () => {
     expect(didWriteLand(task, token("mine", 4, undefined))).toBeUndefined();
   });
 
+  it("withholds, never a confident false, when NEITHER side carries a nonce", () => {
+    // The ABA gap a plain inequality leaves open: `undefined !== undefined`
+    // is `false`, so a plain-inequality arm lets a both-absent pair fall
+    // through to the revision arms below. A task that predates this field has
+    // no nonce; `stampWrite` never backfills `incarnationId` on an existing
+    // row (only `buildInitialTask` mints one), so a legacy task correlated by
+    // a token that read it before the write is both-absent by construction.
+    // During a rolling deploy, older code can delete and recreate that same
+    // id without minting a nonce either — a legacy token against a legacy
+    // replacement row that happens to land back at the token's baseline
+    // revision must still withhold, not report a confident "did not land"
+    // for a write that in fact committed on the row that no longer exists.
+    //
+    // Built by hand rather than through the `token(...)` helper above: that
+    // helper's third parameter defaults to `"inc-default"`, and a JS default
+    // parameter substitutes on an explicit `undefined` argument too — so
+    // `token("mine", 4, undefined)` can never actually produce an absent
+    // nonce. (That default also quietly undermines the "token does not"
+    // half of the mismatched-presence pair above: it happens to still pass,
+    // but only because `"inc-default"` differs from `"inc-a"`, not because it
+    // exercises an absent token nonce. Out of scope to change here.)
+    const task = record({
+      incarnationId: undefined,
+      revision: 4,
+      writeLog: [],
+      writeLogTruncated: false,
+    });
+    const bothAbsent: TaskWriteToken = { id: "mine", sinceRevision: 4, incarnationId: undefined };
+    expect(didWriteLand(task, bothAbsent)).toBeUndefined();
+  });
+
   it("the incarnation check runs before membership can be skipped by hoisting it above arm 1", () => {
     // Pins the documented ordering (arm 2 after membership, before every
     // revision-reasoning arm) from the other side: a receipt physically

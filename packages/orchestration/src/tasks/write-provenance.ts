@@ -201,20 +201,29 @@ export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
  * *current* row's log proves that row committed this exact write, whatever the
  * token's stale `incarnationId` says.
  *
- * The check is a plain inequality, `token.incarnationId !== task.incarnationId`,
- * deliberately not "skip when the token's side is empty" the way this arm used
- * to read `createdAt`. `createdAt` could skip safely because it is a required
+ * The check withholds whenever either side lacks a nonce, and only compares
+ * for inequality once both are present — deliberately not the plain
+ * `token.incarnationId !== task.incarnationId` this arm used to read for
+ * `createdAt`. `createdAt` could compare directly because it is a required
  * field on `Task` — the token's copy of it was `undefined` only when the task
  * itself was `undefined` at mint time, a case the baseline guard below already
  * catches on its own. `incarnationId` has no such guarantee: a task can be
  * `undefined` on either side independently (not there yet at mint time, or
- * there but predating this field), and those are different facts a skip would
- * conflate. A plain inequality treats "one side has a nonce and the other
- * doesn't" as its own mismatch and withholds — never a confident `false` — which
- * also closes a token assembled by hand rather than minted by
+ * there but predating this field) — and a plain inequality on `undefined`
+ * values is `false` when *both* sides are absent, which would let a
+ * both-legacy pair (a task that predates this field, correlated by a token
+ * that read it before the write) fall straight through to the revision arms.
+ * That reopens the exact ABA gap this field exists to close: a legacy task
+ * deleted and recreated under the same id resets `revision` without minting a
+ * nonce on the replacement unless the replacement went through
+ * `buildInitialTask`, and during a rolling deploy the old code that deletes
+ * and recreates it may not. Requiring presence on both sides before comparing
+ * treats "one side has a nonce and the other doesn't" — and "neither does" —
+ * as its own mismatch and withholds — never a confident `false` — which also
+ * closes a token assembled by hand rather than minted by
  * {@link beginTaskWrite}: leaving `incarnationId` off (or `undefined`) no
- * longer buys a free pass through this arm the way an omitted `createdAt` once
- * did.
+ * longer buys a free pass through this arm the way an omitted `createdAt`
+ * once did.
  *
  * ## Sound, deliberately not complete
  *
@@ -246,9 +255,14 @@ export function didWriteLand(
   // 2. Incarnation — is this even the task the token was minted for? A
   //    recycled id (delete/recreate, or capacity eviction) resets `revision`,
   //    so every arm below reasons about a basis that never applied to this
-  //    row. A plain inequality, not "skipped when the token carries no
-  //    nonce" — see the doc comment above for why that would be unsound here
-  //    (unlike the `createdAt` arm this replaced).
+  //    row. Withhold whenever EITHER side lacks a nonce — including when
+  //    BOTH do — and only compare for inequality once both are present; see
+  //    the doc comment above for why a plain inequality (unsound here, unlike
+  //    the `createdAt` arm this replaced) would let a both-absent legacy pair
+  //    fall through to the revision arms and reopen the ABA gap.
+  if (token.incarnationId === undefined || task.incarnationId === undefined) {
+    return undefined;
+  }
   if (token.incarnationId !== task.incarnationId) return undefined;
 
   // 3. Nothing to reason from: no record on the task, or no baseline on the token.

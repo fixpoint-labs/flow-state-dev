@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/orchestration": minor
+"@flow-state-dev/orchestration": patch
 ---
 
 A task write now records what it did, so a caller can tell a committed write from one that never landed (FIX-989).
