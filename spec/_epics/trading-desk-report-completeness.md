@@ -217,9 +217,10 @@ than negotiated in three specs:
 | **FIX-1062** | the cross-pane navigation contract: the header button in `components/theses/**`, `mobileTab` in `app/page.tsx`, and the scroll target in `components/transcript/**` |
 | **FIX-783** | the PM prompt + writer under `flows/analysis/agents/portfolio-manager/` |
 
-**The code says these do not collide, and the epic's framing overstated the risk.**
-`aggregate.ts` lives *inside* `components/summary/` and is imported only by
-`components/summary/*` — it is not a shared surface between A's two halves. The Theses pane
+**The code says group A's four do not collide with each other, and the epic's framing
+overstated that risk** (the collision that is real comes from *outside* group A — FIX-1063,
+two paragraphs down). `aggregate.ts` lives *inside* `components/summary/` and is imported only
+by `components/summary/*` — it is not a shared surface between A's two halves. The Theses pane
 reads `ClientDataOf<typeof memosCollection>` straight off the resource, so it needs nothing
 from the aggregate. Treat that as the boundary and it holds without coordination.
 
