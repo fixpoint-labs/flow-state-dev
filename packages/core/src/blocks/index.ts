@@ -33,6 +33,8 @@ export type {
   ParallelStep,
   ParallelStepOutput,
   SequencerConfig,
-  SequencerDefinition
+  SequencerDefinition,
+  StepOptions,
+  StepOutcome
 } from "./sequencer-methods";
 export type { RouterConfig } from "./router";

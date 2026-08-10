@@ -21,6 +21,7 @@ import { resolveActiveStatusMessage } from "./internal/resolve-active-status-mes
 import { findBlockTraceIdByInstance } from "./internal/find-block-trace";
 import type { ReplayLog } from "./internal/replay-log";
 import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
+import type { StepOutcome } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
 import { mergeWorkstreamBindings, type WorkstreamBindings } from "../types/workstream";
@@ -414,7 +415,12 @@ export async function executeBlock(
   input: unknown,
   ctx: BlockContext,
   path: string,
-  options?: { phase?: "main" | "work"; signalOverride?: AbortSignal }
+  options?: {
+    phase?: "main" | "work";
+    signalOverride?: AbortSignal;
+    /** The background signal this child's SUBTREE dispatches read (FIX-1005). */
+    backgroundSignalOverride?: AbortSignal;
+  }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const requestId = ctx.request.identity.id;
@@ -445,6 +451,8 @@ export async function executeBlock(
   if (replayLog !== undefined) {
     const cached = replayLog.getCompletedOutput(`${requestId}:${path}`);
     if (cached !== undefined && cached.kind === "inline") {
+      // Keep this condition and `childWillReplay` in agreement — the dispatch
+      // sites ask that predicate whether this child is about to be injected.
       // `buildReplayLog` materialises recorded outputs to `inline`, so the
       // value is read directly with no live item lookup.
       //
@@ -635,7 +643,8 @@ export async function executeBlock(
     run,
     // FIX-663: thread the background signal override (set at `.work()`
     // dispatch) into the child scope so the entire descendant tree sees it.
-    options?.signalOverride
+    options?.signalOverride,
+    options?.backgroundSignalOverride
   );
 }
 
@@ -700,6 +709,37 @@ function createRuntimeState(): SequencerRuntimeState {
  * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
  * threaded into `executeBlock` so descendant scopes inherit the same signal.
  */
+/**
+ * The background signal a subtree's `.work()` dispatches should read, once
+ * `extra` has been composed into it (FIX-1005).
+ *
+ * `.work()` / `.workIf()` / `.forEachBackground()` deliberately do NOT run
+ * under `ctx.signal` — they substitute the request's background signal so a
+ * task tree survives transport teardown (FIX-663). That substitution is right
+ * about the transport signal and wrong about everything else composed on top:
+ * a caller that added a signal to this subtree via `.step(block, { abortSignal })`
+ * has that signal silently dropped the moment the subtree dispatches background
+ * work, which is precisely where the un-cancelled work goes on costing money.
+ *
+ * Composing rather than substituting keeps both promises: the task still
+ * outlives a disconnected client, and it still stops when the caller's signal
+ * fires.
+ *
+ * Returns `undefined` when the request installed no background signal (unit
+ * contexts). That case must stay untouched — there, `backgroundTaskCtx` runs
+ * the task on `ctx.signal`, which already carries `extra`, and installing one
+ * here would substitute `extra` for the request signal instead of adding to it.
+ */
+export function composeBackgroundSignal(
+  ctx: BlockContext,
+  extra: AbortSignal
+): AbortSignal | undefined {
+  const background = (ctx as { _requestBackgroundSignal?: AbortSignal })
+    ._requestBackgroundSignal;
+  if (background === undefined) return undefined;
+  return AbortSignal.any([background, extra]);
+}
+
 export function backgroundTaskCtx(ctx: BlockContext): {
   taskCtx: BlockContext;
   signalOverride: AbortSignal | undefined;
@@ -709,6 +749,63 @@ export function backgroundTaskCtx(ctx: BlockContext): {
     return { taskCtx: ctx, signalOverride: undefined };
   }
   return { taskCtx: { ...ctx, signal: bgSignal }, signalOverride: bgSignal };
+}
+
+/**
+ * True when the child at `path` will be INJECTED from the resume replay log
+ * rather than executed (FIX-811).
+ *
+ * A pure query over the same log and the same key `executeBlock`'s
+ * short-circuit uses — deliberately a shared predicate rather than a flag the
+ * short-circuit sets, because sibling dispatches run concurrently and a
+ * context-level marker could not say which of them it belonged to.
+ *
+ * The dispatch sites need it because a replayed child is not a dispatch: its
+ * body never runs, it emits nothing, and it mutates nothing. Anything a caller
+ * hangs off the *act* of dispatching — `StepOptions.onSettled` — must not fire
+ * for it, exactly as it does not fire for a `.stepIf()` whose condition was
+ * false. Both are "nothing was dispatched"; a resume would otherwise re-run
+ * every completed step's cleanup on every re-entry.
+ */
+export function childWillReplay(ctx: BlockContext, path: string): boolean {
+  const replayLog = (ctx as { _replayLog?: ReplayLog })._replayLog;
+  if (replayLog === undefined) return false;
+  const cached = replayLog.getCompletedOutput(`${ctx.request.identity.id}:${path}`);
+  return cached !== undefined && cached.kind === "inline";
+}
+
+/**
+ * Run a step's `onSettled` hook without letting it change the step's outcome.
+ *
+ * The hook runs in a `finally`, and a synchronous throw out of a `finally`
+ * REPLACES whatever the block was completing with — its return value, its
+ * error, or, worst of the three, its `SuspensionError`. Suspension is control
+ * flow rather than failure, and it is the specific exit this hook exists to
+ * catch, so a cleanup bug there would turn a parked request into a crash. The
+ * documented contract is that the hook cannot change the outcome; this is what
+ * makes that true instead of a request the caller has to honour.
+ *
+ * Its own failure is logged rather than swallowed. The hook releases something
+ * — a timer, a lease renewal, a subscription — and a release that fails in
+ * silence is exactly how a mechanism goes on running with nothing left to say
+ * so.
+ */
+function runOnSettled(
+  onSettled: ((ctx: BlockContext, outcome: StepOutcome) => void) | undefined,
+  ctx: BlockContext,
+  outcome: StepOutcome,
+  blockName: string
+): void {
+  if (onSettled === undefined) return;
+  try {
+    onSettled(ctx, outcome);
+  } catch (error) {
+    console.error(
+      `[sequencer] onSettled hook for step "${blockName}" threw on the "${outcome}" path; ` +
+        `the step's own outcome is unchanged:`,
+      error instanceof Error ? (error.stack ?? error.message) : error
+    );
+  }
 }
 
 /**
@@ -1122,12 +1219,16 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   const definition = Object.assign(baseBlock, {
     step<TStepIn, TNext>(
       arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
-      arg2?: BlockDefinition<any, any> | Record<string, unknown>
+      arg2?: BlockDefinition<any, any> | Record<string, unknown>,
+      arg3?: Record<string, unknown>
     ): SequencerDefinition<TInput, TNext, TStateSchema> {
-      // Shapes: step(block) | step(connector, block) | step(factory, inlineConfig).
-      const shape = resolveCallShape([arg1, arg2], "child");
+      // Shapes: step(block) | step(connector, block) | step(factory, inlineConfig),
+      // each optionally followed by a `StepOptions` bag (FIX-1005).
+      const shape = resolveCallShape([arg1, arg2, arg3], "child");
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const resolveAbortSignal = shape.stepOptions?.abortSignal;
+      const onSettled = shape.stepOptions?.onSettled;
       const capturedInput = inferFirstBlockInput(block);
 
       return extend<TNext>(
@@ -1135,9 +1236,44 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: block.name,
           run: async (value, ctx, runtime, stepIndex) => {
             const path = childBlockPath(ctx, runtime, "step", stepIndex);
-            const result = await runChild(ctx, { block, connector }, path, value, sequentialInputHint(ctx, runtime));
-            recordSequentialChild(runtime, path);
-            return result;
+            // A replayed child is injected, not dispatched, so it has no
+            // settle to report — see `childWillReplay`.
+            const replayed = childWillReplay(ctx, path);
+            // `finally`, so it also runs on the one exit no composed handler
+            // sees: a `SuspensionError`, which bypasses `.rescue()` by design.
+            // The outcome is reported because those exits are not
+            // interchangeable to a caller releasing a resource — see
+            // `StepOptions.onSettled`.
+            let outcome: StepOutcome = "returned";
+            try {
+              // Resolved INSIDE the guard, per dispatch. The signal is a runtime
+              // fact (which claim this iteration holds), so a step composed once
+              // and run many times gets its own each turn — and a resolver that
+              // throws is a failed dispatch like any other. Resolving above the
+              // `try` would skip `onSettled` entirely on that path, leaking
+              // whatever a preceding setup step established, against a contract
+              // that promises every exit.
+              //
+              // Skipped on replay for the same reason the hook is: there is no
+              // dispatch to run under. The resolver reads live runtime state,
+              // and on a resume that state belongs to the original run.
+              const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
+              const result = await runChild(
+                ctx,
+                { block, connector },
+                path,
+                value,
+                sequentialInputHint(ctx, runtime),
+                extraSignal
+              );
+              recordSequentialChild(runtime, path);
+              return result;
+            } catch (error) {
+              outcome = error instanceof SuspensionError ? "suspended" : "threw";
+              throw error;
+            } finally {
+              if (!replayed) runOnSettled(onSettled, ctx, outcome, block.name);
+            }
           }
         },
         block.config.outputSchema,
@@ -1151,14 +1287,18 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     stepIf<TStepIn, TNext>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
-      arg3?: BlockDefinition<any, any> | Record<string, unknown>
+      arg3?: BlockDefinition<any, any> | Record<string, unknown>,
+      arg4?: Record<string, unknown>
     ): SequencerDefinition<TInput, TOutput | TNext, TStateSchema> {
       // Shapes: stepIf(cond, block) | stepIf(cond, connector, block) |
-      // stepIf(cond, factory, inlineConfig). The condition is stripped before
+      // stepIf(cond, factory, inlineConfig), each optionally followed by a
+      // `StepOptions` bag (FIX-1005). The condition is stripped before
       // resolving and re-applied as a runtime gate below.
-      const shape = resolveCallShape([arg2, arg3], "child");
+      const shape = resolveCallShape([arg2, arg3, arg4], "child");
       const block = shape.block ?? buildInlineBlock(shape.factory!, shape.inlineConfig!, lastOutputSchema);
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
+      const resolveAbortSignal = shape.stepOptions?.abortSignal;
+      const onSettled = shape.stepOptions?.onSettled;
 
       return extend<TOutput | TNext>(
         {
@@ -1171,9 +1311,31 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             }
 
             const path = childBlockPath(ctx, runtime, "stepIf", stepIndex);
-            const result = await runChild(ctx, { block, connector }, path, value, sequentialInputHint(ctx, runtime));
-            recordSequentialChild(runtime, path);
-            return result;
+            // Below the condition gate on purpose: a step that was never
+            // dispatched has nothing to settle (see `StepOptions.onSettled`).
+            // A replayed child is the same situation one layer over.
+            const replayed = childWillReplay(ctx, path);
+            let outcome: StepOutcome = "returned";
+            try {
+              // Inside the guard, and gated on replay, for the reasons `.step`
+              // above spells out. This dispatch path carries its own copy.
+              const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
+              const result = await runChild(
+                ctx,
+                { block, connector },
+                path,
+                value,
+                sequentialInputHint(ctx, runtime),
+                extraSignal
+              );
+              recordSequentialChild(runtime, path);
+              return result;
+            } catch (error) {
+              outcome = error instanceof SuspensionError ? "suspended" : "threw";
+              throw error;
+            } finally {
+              if (!replayed) runOnSettled(onSettled, ctx, outcome, block.name);
+            }
           }
         },
         block.config.outputSchema,

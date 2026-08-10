@@ -65,6 +65,54 @@ pipeline.step(handler, {
 });
 ```
 
+**Per-step abort signal.** A trailing `{ abortSignal }` runs the step under an
+additional signal, resolved from the running context on each dispatch:
+
+```ts
+pipeline.step(worker, { abortSignal: (ctx) => leaseFor(ctx)?.signal });
+```
+
+The signal is **composed** with the request's, never substituted for it, so the
+step aborts when either fires and cannot be made to outlive a cancelled request.
+The composed signal reaches the whole descendant tree, so a model call several
+blocks down aborts with it. Returning `undefined` is a no-op.
+
+The sequencer owns this because the sequencer is what dispatches the step: a
+statically composed child cannot be handed a signal that only exists at runtime,
+and no other seam carries one (`.work()` takes none either). `stepIf` accepts the
+same bag.
+
+**Per-step settle hook.** The same bag takes `{ onSettled }`, called once when
+the step's dispatch leaves by **every** path, and told which one it was —
+`"returned"`, `"threw"` or `"suspended"`:
+
+```ts
+pipeline.step(worker, {
+  onSettled: (ctx, outcome) => {
+    if (outcome === "suspended") releaseWhateverTheTapStarted(ctx);
+  },
+});
+```
+
+Suspension is the path that needs the hook at all. `.rescue()` is deliberately
+never run for a `SuspensionError` (suspension is control flow, not a failure),
+and a suspended request does not abort its signal either — so a step that parks
+on `ctx.suspend()` passes through no handler you can compose. Anything a
+preceding step started and this step's completion was supposed to stop outlives
+the request without this.
+
+The outcome matters because the three exits are not interchangeable. This hook
+fires *before* the steps that follow, so on `"returned"` and `"threw"` there is
+usually still a downstream handler — a recorder, a `.rescue()` — that has work
+to do with whatever you are about to release. Releasing on every exit alike
+releases too early on those two. The usual shape is the one above: release on
+`"suspended"`, and let the downstream handler release the rest once it is done.
+
+It runs in a `finally`, so it cannot change the step's outcome, and it is not
+called when nothing was dispatched — a `stepIf` condition that skipped the
+step, or a child injected from the resume replay log rather than executed. Use it to release what the
+dispatch was holding, not for recovery — that is `.rescue()`'s job.
+
 ### `stepIf(condition, block)` — Conditional Step
 
 Execute only when condition returns true. Output type is union of current and step output.

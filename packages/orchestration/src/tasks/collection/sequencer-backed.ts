@@ -24,15 +24,20 @@ import type {
   TaskWriteOutcome,
 } from "./types";
 import {
+  applyAbandonmentSettlement,
   applyClaimToTask,
   applyTransition,
+  assertValidLeaseDeadline,
+  assertValidLeaseDuration,
   buildInitialTask,
+  claimDisposition,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
-  defaultEligibility,
+  DEFAULT_MAX_ABANDONMENTS,
   defaultOrder,
   denyRetry,
   grantRetry,
+  isClaimable,
   listTasks,
   retryBudgetExhaustedError,
   routeFailure,
@@ -220,7 +225,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   async function transitionTo(
     id: string,
     targetStatus: TaskStatus,
-    kind: TaskChangeKind,
+    kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
     requireFrom?: TaskStatus
@@ -228,10 +233,16 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
 
-  /** What a derived transition decided to write, computed inside the CAS. */
+  /**
+   * What a derived transition decided to write, computed inside the CAS.
+   *
+   * `kind: null` performs the transition without publishing a `task-change`
+   * item — see the resource backing's `transitionRef` for the one caller
+   * (`renewLease`) and why a renewal is not a lifecycle change.
+   */
   interface DerivedTransition {
     targetStatus: TaskStatus;
-    kind: TaskChangeKind;
+    kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
     /** The one source status this verb may run from — see `assertTransitionFrom`. */
     requireFrom?: TaskStatus;
@@ -263,7 +274,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       | { kind: "declined"; verdict: TaskWriteOutcome }
       | {
           kind: "recorded";
-          changeKind: TaskChangeKind;
+          changeKind: TaskChangeKind | null;
           task: Task<TInput, TOutput>;
           prevStatus: TaskStatus;
         };
@@ -290,6 +301,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           targetStatus,
           guards,
           collectionId,
+          now(),
           requireFrom
         );
         if (reason !== undefined) {
@@ -320,7 +332,9 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
     if (outcome === undefined) return { outcome: "unchanged" };
     if (outcome.kind === "declined") return outcome.verdict;
-    emit(outcome.changeKind, outcome.task, outcome.prevStatus);
+    if (outcome.changeKind !== null) {
+      emit(outcome.changeKind, outcome.task, outcome.prevStatus);
+    }
     return { outcome: "recorded" };
   }
 
@@ -385,6 +399,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // The one clock this collection stamps and judges leases against
+    // (FIX-1005). Everything comparing against `leaseUntil` reads it, so the
+    // claim write and the readers cannot end up on two timelines.
+    now,
     // This backing enforces, so the resolved budget IS the limit in force.
     maxTotalRetries: maxTotalRetries ?? null,
 
@@ -436,36 +454,105 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async claim(_workerId, claimOptions) {
-      const captured = await withOutcome(casWrite, (tasks) => {
-        const lookup = (id: string): Task | undefined =>
-          (ownTask(tasks, id) as unknown as Task | undefined);
-        const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
-        const order = claimOptions?.order ?? defaultOrder;
+      const leaseDurationMs = claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
+      assertValidLeaseDuration(leaseDurationMs);
 
-        const candidates = Object.values(tasks).filter(eligibility).slice().sort(order);
-        const pick = candidates[0];
-        if (pick === undefined) return { state: undefined, result: undefined };
+      /** What one attempt wrote — returned, never captured outward, so a CAS
+       *  replay reports only the invocation that committed. */
+      type ClaimPass = {
+        claimed?: { task: Task<TInput, TOutput>; prevStatus: TaskStatus };
+        settled: { task: Task<TInput, TOutput>; prevStatus: TaskStatus }[];
+      };
 
-        // Both stamps, composed: the claim records where it runs (FIX-1005)
-        // and the write records its provenance (FIX-989).
-        const next = stampWrite(
-          pick,
-          applyClaimToTask(
-            pick,
-            now(),
-            claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS,
-            options.claimIdentity
-          )
-        );
-        return {
-          state: { ...tasks, [next.id]: next },
-          result: { task: next, prevStatus: pick.status },
-        };
-      });
+      const captured = await withOutcome(
+        casWrite,
+        (tasks): { state: TasksMap<TInput, TOutput> | undefined; result: ClaimPass } => {
+          const lookup = (id: string): Task | undefined =>
+            ownTask(tasks, id) as unknown as Task | undefined;
+          // A caller's `eligibility` NARROWS the substrate's candidate set; it
+          // does not replace it (FIX-1005) — see the resource backing's `claim`
+          // for why replacement made recovery opt-out-by-accident.
+          const narrow = claimOptions?.eligibility;
+          const at = now();
+          const admits = (task: Task): boolean =>
+            isClaimable(task, lookup, at) && (narrow === undefined || narrow(task));
+          const order = claimOptions?.order ?? defaultOrder;
+
+          const candidates = Object.values(tasks)
+            .filter((task) => admits(task as Task))
+            .slice()
+            .sort(order);
+
+          const next: Record<string, Task<TInput, TOutput>> = { ...tasks };
+          const pass: ClaimPass = { settled: [] };
+
+          // Admission said the claim path should look at these rows;
+          // disposition decides what happens to each. Scanning past a
+          // settlement rather than returning `null` keeps one exhausted row at
+          // the head of the queue from hiding the work behind it — the whole
+          // map is already inside this one write, so it costs nothing here.
+          for (const candidate of candidates) {
+            if (
+              claimDisposition(candidate as Task, at, DEFAULT_MAX_ABANDONMENTS) === "claim"
+            ) {
+              // Three stamps, composed: the claim records where it runs
+              // (FIX-1005), the lease is stamped, and the write records its
+              // provenance (FIX-989).
+              const claimed = stampWrite(
+                candidate,
+                applyClaimToTask(candidate, at, leaseDurationMs, options.claimIdentity)
+              );
+              next[claimed.id] = claimed;
+              pass.claimed = { task: claimed, prevStatus: candidate.status };
+              break;
+            }
+            // The abandonment settlement is a committed write too, so it
+            // advances the record the same way (FIX-989).
+            const settled = stampWrite(
+              candidate,
+              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS)
+            );
+            next[settled.id] = settled;
+            pass.settled.push({ task: settled, prevStatus: candidate.status });
+          }
+
+          if (pass.claimed === undefined && pass.settled.length === 0) {
+            return { state: undefined, result: pass };
+          }
+          return { state: next, result: pass };
+        }
+      );
 
       if (captured === undefined) return null;
-      emit("claimed", captured.task, captured.prevStatus);
-      return captured.task;
+      // A settlement is a successful mutation and owes its `task-change`, or a
+      // streamed UI keeps showing `in_progress` on a row storage terminalized.
+      for (const settled of captured.settled) {
+        emit("errored", settled.task, settled.prevStatus);
+      }
+      if (captured.claimed === undefined) return null;
+      emit("claimed", captured.claimed.task, captured.claimed.prevStatus);
+      return captured.claimed.task;
+    },
+
+    async renewLease(id, leaseUntil, renewOptions) {
+      assertValidLeaseDeadline(leaseUntil);
+      if (renewOptions.claim === undefined) {
+        throw new Error(
+          `[tasks] renewLease requires the claim ticket the lease belongs to. ` +
+            `Renewal is the holder asserting it is still alive, so an unfenced ` +
+            `renewal would let anything keep anyone's lease open.`
+        );
+      }
+      // Same-status, so this rides the ordinary transition path and picks up
+      // all four decline arms — the lease fence among them. See the resource
+      // backing's `renewLease` for why `updatedAt` moving is the right answer.
+      return transitionTo(
+        id,
+        "in_progress",
+        null,
+        () => ({ leaseUntil }),
+        { ...renewOptions, ifAllowed: true }
+      );
     },
 
     async complete(id, output, options) {

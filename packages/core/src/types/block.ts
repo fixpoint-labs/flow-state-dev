@@ -540,11 +540,21 @@ export interface BlockContext<
    * `_requestBackgroundSignal` here at `.work()` dispatch so background
    * task trees see the background signal instead of the request signal.
    * When omitted, the child inherits the current parent ctx's `signal`.
+   *
+   * `backgroundSignalOverride` (FIX-1005) does the same for the signal a
+   * subtree's BACKGROUND dispatches read. It needs its own channel rather than
+   * being derived from `signalOverride`, because the two carry deliberately
+   * different things: `signalOverride` includes the transport signal, and
+   * background work exists precisely to outlive that. It also cannot be passed
+   * by spreading `_requestBackgroundSignal` onto a copy of the context — this
+   * function is a closure bound to the context it was built for, so it reads
+   * that context's field and never the copy's.
    */
   _withExecutionScope?<TValue>(
     parent: ExecutionParent,
     execute: (ctx: BlockContext) => Promise<TValue>,
-    signalOverride?: AbortSignal
+    signalOverride?: AbortSignal,
+    backgroundSignalOverride?: AbortSignal
   ): Promise<TValue>;
 
   /**

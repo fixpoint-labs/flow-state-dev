@@ -35,8 +35,51 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { TaskCollectionRef } from "../../tasks";
+import { type TaskCollectionRef } from "../../tasks";
+import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
+
+/**
+ * Stop renewing this worker's lease (FIX-1005).
+ *
+ * Called from both recorders because they are the board's two exits — the
+ * success tap and the `.rescue()` handler — and the driver must stop on every
+ * path out, not just the happy one. Reading the driver off the per-worker
+ * AsyncLocalStorage seam rather than a closure is what makes that per-iteration
+ * correct under concurrent fan-out.
+ *
+ * **Called AFTER the settlement, never before.** `complete()` and `fail()` are
+ * fenced on this worker's ticket, and the fence refuses a write on a row whose
+ * lease has lapsed. Stopping first therefore opens a window — the width of one
+ * store round trip — in which a perfectly healthy worker's result is rejected
+ * as a lost claim, the task is recovered, and every side effect it already
+ * committed is repeated. That is precisely the duplicate work the lease exists
+ * to prevent, produced by the lease. The reverse hazard does not exist: a
+ * renewal in flight across the settlement writes only `leaseUntil`, and against
+ * a row that has just been settled the fence declines it and the driver stops
+ * itself.
+ *
+ * **The rule is "once no further fenced write can follow", not "on the way
+ * out".** Those coincide for this handler's success path and for `recordError`,
+ * which nothing follows — but not for `recordSuccess` when its own `complete()`
+ * throws, because the body's `.rescue()` then runs `recordError` and that
+ * `fail()` is fenced on the same claim. So `recordSuccess` stops renewal only
+ * once its write has settled, and leaves the driver running when it throws.
+ *
+ * Deliberately not the *only* thing that stops a driver. It also stops when the
+ * request's own signal aborts, and — the case neither recorder can see — when
+ * the worker step's dispatch reports that it SUSPENDED, via the `onSettled`
+ * option the board composes it with. A worker that calls `ctx.suspend()` exits
+ * through NEITHER recorder (`SuspensionError` bypasses `.rescue()` by design)
+ * and does not abort its signal either, so that third stop is what keeps a
+ * parked worker from renewing an `in_progress` row forever. That hook fires on
+ * the returned and threw paths too, which is exactly why it must not stop on
+ * them: it runs before the recorder that owns the write. The unref'd timer only
+ * keeps the runtime from being held open; it does not stop the renewals.
+ */
+function stopLeaseRenewal(): void {
+  currentLeaseRenewal()?.stop();
+}
 
 export interface RecordSuccessOptions {
   name: string;
@@ -59,11 +102,28 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (output: unknown, ctx) => {
       const claim = ctx.sequencer!.state.currentClaim;
-      if (claim === undefined) return;
+      if (claim === undefined) {
+        // Nothing fenced to protect, so there is nothing left to keep the
+        // lease alive for.
+        stopLeaseRenewal();
+        return;
+      }
       await (await collectionFactory(ctx)).complete(claim.taskId, output, {
         ifAllowed: true,
         claim,
       });
+      // Only now, and deliberately NOT in a `finally`. The write has settled —
+      // recorded or declined — so this claim has nothing left to assert.
+      //
+      // A `finally` would stop renewal on the one path where it must not: if
+      // `complete()` THREW, this block did not settle the task, and the worker
+      // body's `.rescue()` is about to run `recordError`, whose `fail()` is
+      // fenced on this same claim. Stopping here would hand that recovery write
+      // a lapsed lease, so it would be declined `lost-claim`, and work that
+      // actually finished would be recovered and repeated. The rule is not
+      // "stop on the way out", it is "stop once no further fenced write can
+      // follow" — and after a throw, one can.
+      stopLeaseRenewal();
       await ctx.sequencer!.patchState({ currentClaim: undefined });
     },
   });
@@ -104,12 +164,17 @@ export function createRecordError(options: RecordErrorOptions) {
     execute: async (error: unknown, ctx) => {
       const claim = ctx.sequencer!.state.currentClaim;
       const message = error instanceof Error ? error.message : String(error);
-      if (claim !== undefined) {
-        await (await collectionFactory(ctx)).fail(claim.taskId, message, {
-          ifAllowed: true,
-          claim,
-        });
-        await ctx.sequencer!.patchState({ currentClaim: undefined });
+      try {
+        if (claim !== undefined) {
+          await (await collectionFactory(ctx)).fail(claim.taskId, message, {
+            ifAllowed: true,
+            claim,
+          });
+          await ctx.sequencer!.patchState({ currentClaim: undefined });
+        }
+      } finally {
+        // After the fenced write, for the same reason the success path does.
+        stopLeaseRenewal();
       }
       if (onError === "fail") {
         throw error instanceof Error ? error : new Error(message);

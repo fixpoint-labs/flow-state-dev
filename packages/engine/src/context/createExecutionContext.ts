@@ -3075,7 +3075,7 @@ export async function createExecutionContext<
           result: { status: "completed", output }
         });
       },
-      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal) => {
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, backgroundSignalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -3229,7 +3229,24 @@ export async function createExecutionContext<
         // FIX-663: re-attach the background signal on every scope so nested
         // `.work()` dispatches can read it (the dispatch site reads
         // `ctx._requestBackgroundSignal`, not `ctx.signal`).
-        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+        //
+        // Inherited from the PARENT CONTEXT, falling back to the request's
+        // (FIX-1005). Reading the closure-captured `options.backgroundSignal`
+        // unconditionally is the same defect the `childSignal` line above calls
+        // out and fixes for `ctx.signal`: it makes the value un-overridable
+        // below the root, because every scope resets it to the request's.
+        //
+        // That matters now that a caller can add a signal to a whole subtree
+        // via `.step(block, { abortSignal })`. The dispatch composes that
+        // signal into the background signal for the subtree, and background
+        // work is exactly where an un-cancelled subtree keeps costing money —
+        // a displaced worker's `.work()` generators go on calling models for
+        // output the substrate will refuse. Without this line reading the
+        // parent, that composition survives one scope and is then discarded.
+        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
+          backgroundSignalOverride ??
+          (context as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal ??
+          options.backgroundSignal;
         // FIX-406 6H: propagate the request's tracing level so sequencers in
         // any nested scope gate observability snapshots consistently.
         (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;

@@ -34,7 +34,7 @@ A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease
 ```
 pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ errored
-         │                ├─→ pending           (reclaim, after a stale lease)
+         │                ├─→ pending           (claim, after a lease runs out)
          │                ├─→ cancelled
          │                └─→ awaiting_review ─┬─→ completed
          │                                     ├─→ errored
@@ -120,7 +120,8 @@ and no other. `in_progress → pending` and `awaiting_review → pending` sit in
 status table too, but they belong to `reclaim()` and `resumeFromReview`. `claim` takes a
 `TaskClaimTicket` (mint one with `ticketForClaim(collectionId, claimedTask)`) and
 skips the write unless the task in front of it is the one that ticket was issued
-for, still on that attempt. A guard cannot be raced: the task cannot change between
+for, still on that attempt, holding a lease that has not run out. A guard cannot be
+raced: the task cannot change between
 the check and the write. A declined write is skipped and never throws; the call
 reports it on the returned `TaskWriteOutcome`. Omit the argument and the methods
 throw on an illegal transition.
@@ -171,12 +172,80 @@ await collection.addTask({ id: "research", goal: "research the topic" });
 await collection.addTask({ goal: "draft the post", deps: ["research"] });
 ```
 
+### Leases and recovery
+
+A claim carries a lease: how long the claimant may be gone before the task is
+handed to somebody else. A worker the substrate drives pushes that deadline out
+while it runs (`renewLease`), so a lease that runs out means no worker is
+renewing it, and the next `claim` on any host takes it back as a fresh attempt.
+Nothing to schedule.
+
+`ClaimOptions.leaseDurationMs` is the knob, defaulting to two minutes. Shorter
+means a stranded job comes back sooner and a merely-slow worker is likelier to
+lose its task; longer means the opposite. Values under a second, over about 74
+days, or non-finite throw rather than being rounded into range.
+
+Recovery is bounded at three re-dispatches, after which the task settles
+`errored`. Three is fixed, and exported as `DEFAULT_MAX_ABANDONMENTS`. That
+allowance is separate from `maxAttempts`.
+
+**A task you claim by hand gets no renewal.** You hold it, so you call
+`renewLease(id, deadline, { claim })` yourself, or size the lease to cover the
+work. Two helpers do it for you: `withLeaseRenewal` wraps work that is a single
+call, and `startLeaseRenewal` returns a `{ signal, stop }` driver for work that
+spans several steps. Both renew in the background while the work runs, keep one
+renewal in flight at a time, and stop when the signal you hand them aborts.
+Both also give you a second signal that aborts when a renewal comes back
+declined. `withLeaseRenewal` composes it with the signal you passed and hands
+`run` the result; `startLeaseRenewal` exposes it bare as `driver.signal`, so
+compose that one yourself. Loss is detected at a renewal rather than the instant
+it happens, and one goes out every third of the lease, so the signal can lag a
+lost claim by about 40 seconds on the two-minute default. It is there to stop you
+paying for work you can no longer record; the fence on the settling write is what
+keeps the result correct.
+
+Settle the task inside `withLeaseRenewal`'s `run`: it stops renewing the moment
+`run` returns, so a `complete()` or `fail()` issued after it is a fenced write
+on a lease nobody is keeping alive.
+
+A worker composed as several steps reaches its driver through
+`currentLeaseRenewal()`. Wrap the block that claims the task in
+`withLeaseRenewalScope(async () => { … })` — **as its first statement, before
+any `await`** — and call `stampLeaseRenewal(driver)` inside it once the driver
+exists. The scope rides `AsyncLocalStorage`, which only propagates to later
+steps when it is entered before the claiming block awaits anything; stamping
+with no scope open throws rather than publishing to nobody.
+(`openLeaseRenewalScope()` is the same thing without the guarantee below, if you
+want to manage the failure path yourself.)
+
+The wrapper stops the driver if that block throws after the claim commits. That
+window has no other cover: the step that runs the work never starts, so no
+recorder and no `onSettled` fires, and a failed request does not abort its own
+signal — the lease would be renewed for a task nobody is working until the host
+died, and a live lease is exactly what stops `claim()` recovering it.
+
+**Stop the driver after your fenced write, not before it.** `complete()` and
+`fail()` are fenced on the claim, and the fence refuses a write on a lapsed
+lease, so stopping first can get a healthy worker's finished result refused and
+its work redone. A renewal in flight across the settlement is harmless: it
+writes only `leaseUntil`, and on a settled row it is declined and the driver
+stops itself.
+
+`isClaimable(task, lookup, now)` is the substrate's admission rule, exported so
+a custom `TaskCollectionRef` can read it rather than restating it. It answers
+admission only — whether an admitted row is handed out or settled because its
+allowance is spent is `claimDisposition(task, now, max)`, exported alongside it.
+Anything that reports *which* task runs next needs both; anything asking only
+*whether* there is work to do needs the first. Compare leases against
+`collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
+
 ### Dispatchers
 
 `fifoDispatcher`, `topologicalDispatcher` (the default), `priorityDispatcher`,
 `classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. None of
-them claims a task whose `deps` aren't all `completed` — that eligibility rule lives
-on `collection.claim` — so they differ only in ordering. `fifoDispatcher` and
+them claims a task whose `deps` aren't all `completed`. That eligibility rule lives
+on `collection.claim`, and a dispatcher's own `eligibility` narrows it, so they
+differ only in ordering. `fifoDispatcher` and
 `topologicalDispatcher` are ordered identically; `priorityDispatcher` takes the
 highest `priority` first, ties on `createdAt`.
 

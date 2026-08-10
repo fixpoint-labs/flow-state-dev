@@ -79,6 +79,23 @@ export { createSequencerBackedTaskCollection } from "./collection/sequencer-back
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";
 export type { ResourceBackedOptions } from "./collection/resource-backed";
+// Claimability and the lease (FIX-1005). `isClaimable` is THE admission
+// predicate — the claim path, the board's wake probe and the ready-task
+// preview all read this one function, and a caller implementing
+// `TaskCollectionRef` itself should read it too rather than write a fourth
+// copy. The constants are exported so a caller can size a lease against the
+// bounds the substrate enforces.
+export {
+  isClaimable,
+  claimDisposition,
+  isReady,
+  leaseLapsed,
+  readAbandonments,
+  DEFAULT_LEASE_DURATION_MS,
+  MIN_LEASE_DURATION_MS,
+  MAX_LEASE_DURATION_MS,
+  DEFAULT_MAX_ABANDONMENTS,
+} from "./collection/internal";
 // Collection caps — the two creation bounds (FIX-931) and the cumulative retry
 // budget (FIX-948).
 export {
@@ -151,6 +168,25 @@ export {
   type DispatchAndExecuteOptions,
   type DispatchAndExecuteResult,
 } from "./helpers/dispatch-and-execute";
+
+// Lease renewal (FIX-1005) — the worker half of durable-job recovery. Exported
+// so a caller driving `claim` itself renews the lease it holds; a claimed row
+// nobody renews is one the next drain takes back.
+//
+// The DRIVER only. The per-worker `AsyncLocalStorage` seam
+// (`openLeaseRenewalScope` / `withLeaseRenewalScope` / `stampLeaseRenewal` /
+// `currentLeaseRenewal`) is exported from the package's MAIN entry instead:
+// it needs `node:async_hooks`, and this subpath is published browser-safe
+// (`docs/architecture/items.md`). See `test/tasks-subpath-browser-safe.spec.ts`.
+export {
+  startLeaseRenewal,
+  withLeaseRenewal,
+  RENEWAL_DIVISOR,
+  MIN_RENEWAL_DELAY_MS,
+  type LeaseRenewalDriver,
+  type LeaseRenewalOptions,
+  type RenewalTimer,
+} from "./lease-renewal";
 
 // Flow policy — observation ledger + per-task selection policies that
 // shape `TaskWorkerInput.priorWork` for Task Board worker dispatches.

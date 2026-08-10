@@ -406,6 +406,60 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **`BlockValue<T>`** — `block_output.output` is a discriminated union with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.stepAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
+### Running a step under an extra abort signal
+
+`.step(block, { abortSignal })` and `.stepIf(cond, block, { abortSignal })` run one
+step under an additional abort signal, resolved per dispatch from the running
+context:
+
+```ts
+sequencer({ name: "work" })
+  .tap(startSomethingCancellable)
+  .step(worker, { abortSignal: (ctx) => currentCancellation(ctx)?.signal })
+  .tap(recordResult);
+```
+
+The signal is **composed with the request's, never substituted for it**, so a step
+cannot be made to outlive a cancelled request. Return `undefined` and the step runs
+exactly as it would without the option. The whole descendant tree sees the composed
+signal, so a model call several blocks down aborts with it.
+
+Reach for it when the thing that should stop the step is known only at runtime — a
+lease the step's claim depends on, an external cancellation the block itself has no
+way to see. A block that can decide for itself should just read `ctx.signal`.
+
+### Releasing what a step was holding
+
+The same bag takes `onSettled`, called once when the step's dispatch leaves by every
+path — and told which one: `"returned"`, `"threw"` or `"suspended"`.
+
+```ts
+sequencer({ name: "work" })
+  .tap(startSomethingCancellable)
+  .step(worker, {
+    onSettled: (_ctx, outcome) => {
+      if (outcome === "suspended") stopSomethingCancellable();
+    },
+  })
+  .tap(recordResult); // stops it itself, once the result is written
+```
+
+Suspension is why it exists. `.rescue()` is deliberately never run for a
+`SuspensionError` — suspension is control flow, not a failure — and a suspended
+request does not abort its signal either, so a step that parks on `ctx.suspend()`
+reaches no handler you can compose. Whatever the leading `.tap` started then
+outlives the request, silently.
+
+Read the outcome before you release. The hook fires before `recordResult` above,
+so releasing on `"returned"` would stop the thing while the step that still needs
+it is running. Release on `"suspended"` — the exit with nothing downstream — and
+let the downstream handler release the other two when it is finished.
+
+It runs in a `finally` and cannot change the step's outcome, and it is skipped
+whenever nothing was dispatched — a `stepIf` condition that skipped the step, or
+a step replayed from a durable resume rather than executed (so cleanup does not
+re-run on every re-entry). For recovery, use `.rescue()`.
+
 ### Helpers (`@flow-state-dev/core/helpers`)
 
 State-shape primitives shared across the framework. All three operate on the same JSON-serializable state trees, so they live together as the single canonical home — no per-package copies.

@@ -96,14 +96,19 @@ import type {
   TaskWriteOutcome,
 } from "./types";
 import {
+  applyAbandonmentSettlement,
   applyClaimToTask,
   applyTransition,
+  assertValidLeaseDeadline,
+  assertValidLeaseDuration,
   buildInitialTask,
+  claimDisposition,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
-  defaultEligibility,
+  DEFAULT_MAX_ABANDONMENTS,
   defaultOrder,
   grantRetry,
+  isClaimable,
   listTasks,
   routeFailure,
   assertTransitionFrom,
@@ -399,11 +404,19 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
    * write via `WriteDeclined` — see that type for why returning
    * `current` would not be silent here — and the catch turns it into the
    * `declined` verdict.
+   *
+   * `kind: null` performs the transition without publishing a `task-change`
+   * item. Exactly one caller passes it — `renewLease` (FIX-1005) — and the
+   * reason is that a renewal is **not a lifecycle change**: nothing about the
+   * task moved, and announcing one every cadence tick per running job would
+   * both spam every subscribed client with a re-claim that did not happen and
+   * wake every idle worker on the board into a full collection scan. The
+   * store's own `resource_change` still fires, unchanged.
    */
   async function transitionRef(
     id: string,
     targetStatus: TaskStatus,
-    kind: TaskChangeKind,
+    kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
     guards?: TaskTransitionOptions,
     requireFrom?: TaskStatus
@@ -423,6 +436,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           targetStatus,
           guards,
           options.collectionId,
+          now(),
           requireFrom
         );
         if (reason !== undefined) {
@@ -456,7 +470,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     // The outcome describes the invocation that committed, so a replay that
     // took a different branch cannot report an earlier attempt's write.
     if (committed === undefined) return { outcome: "unchanged" };
-    emit(kind, committed.task, committed.prevStatus);
+    if (kind !== null) emit(kind, committed.task, committed.prevStatus);
     return { outcome: "recorded" };
   }
 
@@ -518,6 +532,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
 
   const ref: TaskCollectionRef<TInput, TOutput> = {
     collectionId: options.collectionId,
+    // The one clock this collection stamps and judges leases against
+    // (FIX-1005). Everything comparing against `leaseUntil` reads it, so the
+    // claim write and the readers cannot end up on two timelines.
+    now,
     // This backing COUNTS retries but never enforces a budget (FIX-948): the
     // check has to be atomic against the whole ledger and the resource layer has
     // no CAS across instances. `null` says "no limit is in force", which is the
@@ -558,40 +576,117 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         const r = mirror.get(id);
         return r === undefined ? undefined : (readTaskState(r) as Task);
       };
-      const eligibility = claimOptions?.eligibility ?? defaultEligibility(lookup);
+      // A caller's `eligibility` NARROWS the substrate's candidate set; it does
+      // not replace it (FIX-1005). Before this it replaced the default outright,
+      // which made recovery unreachable for any dispatcher asserting
+      // `status === "pending"` — including the recipe the docs recommended.
+      // Widening the built-in predicate could not reach a caller's, so without
+      // this composition the substrate's newest invariant would be the one most
+      // easily opted out of by accident.
+      const narrow = claimOptions?.eligibility;
+      const admits = (task: Task, at: number): boolean =>
+        isClaimable(task, lookup, at) && (narrow === undefined || narrow(task));
       const order = claimOptions?.order ?? defaultOrder;
-      const candidates = listAll().filter(eligibility).slice().sort(order);
 
       const leaseDurationMs = claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
+      assertValidLeaseDuration(leaseDurationMs);
+
+      const candidates = listAll()
+        .filter((task) => admits(task as Task, now()))
+        .slice()
+        .sort(order);
+
+      /** What one candidate's write did — returned, never captured outward. */
+      type ClaimWrite = {
+        kind: "claimed" | "errored";
+        task: Task<TInput, TOutput>;
+        prevStatus: TaskStatus;
+      };
 
       for (const candidate of candidates) {
         const candidateRef = mirror.get(candidate.id);
         if (candidateRef === undefined) continue;
 
-        const claimed = await updateStateWith(candidateRef, (current) => {
-          const task = current as unknown as Task<TInput, TOutput>;
-          // Re-check eligibility on the freshest state — another worker
-          // may have claimed this task in the time between scan and CAS.
-          if (!eligibility(task as Task)) return { state: current, result: undefined };
-          // Both stamps, composed: the claim records where it runs
-          // (FIX-1005) and the write records its provenance (FIX-989).
-          const next = stampWrite(
-            task,
-            applyClaimToTask(task, now(), leaseDurationMs, options.claimIdentity)
-          );
-          return {
-            state: next as unknown as JsonObject,
-            result: { task: next, prevStatus: task.status },
-          };
-        });
+        const written = await updateStateWith<JsonObject, ClaimWrite | undefined>(
+          candidateRef,
+          (current) => {
+            const task = current as unknown as Task<TInput, TOutput>;
+            const at = now();
+            // Re-check admission on the freshest state — another worker
+            // may have claimed this task in the time between scan and CAS.
+            if (!admits(task as Task, at)) return { state: current, result: undefined };
+            // ADMISSION decided that the claim path should look at this row;
+            // DISPOSITION decides what happens to it, here, against committed
+            // state. Keeping them apart is what lets the predicate admit a row
+            // this branch is about to settle.
+            if (claimDisposition(task as Task, at, DEFAULT_MAX_ABANDONMENTS) === "claim") {
+              // Three stamps, composed: the claim records where it runs
+              // (FIX-1005), the lease is stamped, and the write records its
+              // provenance (FIX-989).
+              const next = stampWrite(
+                task,
+                applyClaimToTask(task, at, leaseDurationMs, options.claimIdentity)
+              );
+              return {
+                state: next as unknown as JsonObject,
+                result: { kind: "claimed" as const, task: next, prevStatus: task.status },
+              };
+            }
+            // The abandonment settlement is a committed write too, so it
+            // advances the record the same way (FIX-989).
+            const settled = stampWrite(
+              task,
+              applyAbandonmentSettlement(task, at, DEFAULT_MAX_ABANDONMENTS)
+            );
+            return {
+              state: settled as unknown as JsonObject,
+              result: { kind: "errored" as const, task: settled, prevStatus: task.status },
+            };
+          }
+        );
 
-        if (claimed !== undefined) {
-          emit("claimed", claimed.task, claimed.prevStatus);
-          return claimed.task;
-        }
+        if (written === undefined) continue;
+        // Emitted only after the write commits, so a CAS that lost announces
+        // nothing. A settlement is a successful mutation like any other and
+        // owes its `task-change` — without it a streamed UI keeps showing
+        // `in_progress` on a row storage has terminalized.
+        emit(written.kind, written.task, written.prevStatus);
+        // Settling is not claiming: keep scanning so one exhausted row at the
+        // head of the queue does not hide the work behind it.
+        if (written.kind === "errored") continue;
+        return written.task;
       }
 
       return null;
+    },
+
+    async renewLease(id, leaseUntil, renewOptions) {
+      assertValidLeaseDeadline(leaseUntil);
+      if (renewOptions.claim === undefined) {
+        throw new Error(
+          `[tasks] renewLease requires the claim ticket the lease belongs to. ` +
+            `Renewal is the holder asserting it is still alive, so an unfenced ` +
+            `renewal would let anything keep anyone's lease open.`
+        );
+      }
+      // `in_progress → in_progress` is same-status and therefore legal, so this
+      // rides the ordinary transition path and picks up all four decline arms
+      // — including the lease fence, which is the one that motivated the verb:
+      // a renewal that COMMITS after the lease it held is refused rather than
+      // installing a deadline on a row nobody holds.
+      //
+      // ONE field. `updatedAt` moves because every write through
+      // `applyTransition` moves it, and that is the right answer here rather
+      // than an exception: the claim commits `leaseUntil` and `updatedAt` from
+      // one clock, so keeping them in step is what preserves
+      // `leaseUntil - updatedAt === the committed span` across a renewal.
+      return transitionRef(
+        id,
+        "in_progress",
+        null,
+        () => ({ leaseUntil }),
+        { ...renewOptions, ifAllowed: true }
+      );
     },
 
     async complete(id, output, options) {

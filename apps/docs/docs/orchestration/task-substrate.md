@@ -37,7 +37,8 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `maxAttempts` | `number?` | Optional retry budget. Governs soft vs hard fail. |
 | `assignee` | `string?` | Worker key a board uses to route the task. |
 | `priority` | `number?` | Higher wins under the priority dispatcher. Unset reads as 0. |
-| `leaseUntil` | `number?` | Timestamp after which a stale claim can be reclaimed. |
+| `leaseUntil` | `number?` | When the current claim expires. The worker holding the task pushes this out while it works. |
+| `abandonments` | `number?` | How many times this task was handed back out after its worker stopped renewing the lease. |
 | `labels` | `string[]?` | Free-form tags, filterable via `hasLabel` / `hasAllLabels`. |
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
 | `createdAt` / `updatedAt` | `number` | Epoch ms. |
@@ -104,11 +105,11 @@ A `TaskCollection` stores tasks and exposes a mutation API. Every mutation is co
 The mutation surface:
 
 - **Create** — `addTask`, `addTasks`.
-- **Lifecycle** — `claim`, `complete`, `fail`, `block` / `unblock`, `awaitReview` / `resumeFromReview`, `cancel`, `reclaim` (reset stale leases back to `pending`).
+- **Lifecycle** — `claim`, `renewLease`, `complete`, `fail`, `block` / `unblock`, `awaitReview` / `resumeFromReview`, `cancel`, `reclaim` (reset stale leases back to `pending`).
 - **Mutate** — `setAssignee`, `setPriority`, `addLabel` / `removeLabel`, `patchMetadata`.
 - **Query** — `get`, `list`, `count`. These are synchronous reads of the latest committed view.
 
-Nothing calls `reclaim` for you. If you want expired leases returned to `pending`, call it yourself from a block that runs alongside the work.
+A task board handles expired leases for you — see [the lease](#the-lease). `reclaim` is there for the case where you want to reset leases yourself, on your own schedule.
 
 Every mutation method except `claim` and `reclaim` resolves to a verdict describing what the write did — see [what a write reports](#what-a-write-reports).
 
@@ -191,13 +192,19 @@ A legal status transition is necessary but not sufficient. A verb that owns a si
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `awaiting_review`). Two refusals come out of it, and they mean different things:
 
 - The ticket names a different task, a different board, or an id that has since been reused for a new task: `not-my-task`. Nothing about the target's state can make that write legal.
-- The ticket names the right task but a claim that has moved on — reclaimed, re-queued, parked: `lost-claim`. Another worker holds it now.
+- The ticket names the right task but a claim that has moved on, or an `in_progress` task whose lease has run out: `lost-claim`. Somebody else holds it now, or is entitled to.
 
 Pass the ticket rather than the attempt number on its own. Attempt numbers collide constantly across a board (two freshly claimed tasks both sit on attempt 1), so a check against the number alone is satisfied by whichever task the call happened to name.
 
-The task cannot change between the check and the write. Only these refusals go quiet. A missing task, a store failure, or any other error throws. Omit the options and the methods throw on an illegal transition.
+The task cannot change between the check and the write. Only these refusals go quiet. A missing task, a store failure, or any other error throws.
 
 A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
+
+While a task is `in_progress`, your writes are good for as long as you hold the lease. Present a ticket after the deadline has passed and the write is declined `lost-claim`, the same as any other lost claim, because by then the task is the queue's to hand out again. That is the reason to size a lease to the job it covers.
+
+The lease answers one question: is a live worker on this right now? A task in `awaiting_review` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `resumeFromReview` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
+
+With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing, because it runs the terminal check whether you pass options or not.
 
 
 ### What a write reports
@@ -222,7 +229,7 @@ type TaskWriteOutcome =
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
-- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it.
+- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it, or its lease ran out while it was still `in_progress`.
 
 When more than one condition applies, `reason` reports the first that holds in that order: `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
@@ -249,6 +256,16 @@ if (outcome.outcome === "declined") {
 A missing task throws on every one of these methods; those four reasons are the whole set of refusals.
 
 If you hand `taskBoard` a `TaskCollectionRef` of your own, callers see whatever your methods return. One whose methods resolve to nothing gives no verdict, and the framework won't invent one.
+
+A `TaskCollectionRef` of your own has to do three things:
+
+1. Implement `renewLease`, fenced by the same claim ticket your other writes take.
+2. Make your own `claim()` consider tasks whose lease has run out, take them over as a new attempt, and settle one whose abandonment allowance is spent instead of running it again.
+3. Refuse any ticketed write whose lease has already run out, or a worker that lost its task can still write to it.
+
+A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule.
+
+Your ref also exposes `now()`, the clock it stamps and judges leases against. `() => Date.now()` is the right answer unless you have a reason for another. Compare leases against `collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
 
 ### Telling whether your write landed
 
@@ -327,11 +344,73 @@ The sequencer backing expects the sequencer's state schema to hold a `Record<str
 
 `getOrCreateTaskCollection` is `async` whichever backing you pick, so always `await` it. The reads on the ref it returns (`get`, `list`, `count`) are synchronous in all three cases.
 
+### The lease
+
+Every claim carries a lease: how long the worker may be gone before its work is handed to somebody else. A worker the substrate drives pushes that deadline out while it runs, so a lease that expires means no worker is renewing it. The next claim on any host takes it back and runs it as a fresh attempt. Nothing to schedule, nothing to call.
+
+Set it per claim, with `ClaimOptions.leaseDurationMs`. It defaults to two minutes.
+
+```ts
+// Two minutes, the default.
+const task = await tasks.claim("worker-1");
+
+// A dead job comes back in five seconds, at the cost of taking work
+// from a worker that has merely stalled that long.
+const urgent = await tasks.claim("worker-1", { leaseDurationMs: 5_000 });
+```
+
+The lease is the knob for how long a stranded job stays stranded, and picking it is a trade. Shorter means faster recovery and a higher chance of taking work off a worker that was only slow. Longer means a genuinely dead job waits. Sizing it to cover the whole job is a legitimate answer: nobody takes the task back until then.
+
+- A lease under a second, over about 74 days, or not a finite number throws rather than being rounded into range.
+- Recovery takes about one lease plus one idle-wake period, roughly 125 seconds by default, and scales with `idlePollMs`. An expiring lease writes nothing, so there is no event to wake a sleeping worker on. A spare worker re-checks on its own timeout instead, `idlePollMs × 100`, which is 5 seconds out of the box.
+
+**A task you claim by hand gets no renewal.** You hold it, so you renew it, with `renewLease(id, deadline, { claim })`. Pass the ticket you minted from the claim; the write is refused if the task is no longer yours. If you would rather not renew, size the lease to cover the work.
+
+Two helpers do the renewing for you. `withLeaseRenewal` wraps work that is a single call. `startLeaseRenewal` returns a `{ signal, stop }` driver for work that spans several steps, and you call `stop()` yourself on every path out. Both renew in the background while the work runs and keep one renewal in flight at a time.
+
+Two signals are in play and they answer different questions. The `signal` you pass in, normally `ctx.signal`, says when to stop *renewing*: a cancelled request is no longer a live worker, so the driver stops pushing the deadline out. The other says when to stop *working*, and it aborts when a renewal attempt comes back declined. `withLeaseRenewal` composes the two and hands `run` the result, so pass what you are given straight to the work.
+
+Loss is detected at a renewal, not the instant it happens. One goes out every third of the lease, so a task cancelled, settled, or reclaimed just after a successful renewal leaves the signal clear until the next attempt: about 40 seconds on the two-minute default. The signal is there to stop you paying for work you can no longer record. Correctness comes from the fence on the settling write, so make the work idempotent or cheap to repeat.
+
+```ts
+import { ticketForClaim, withLeaseRenewal } from "@flow-state-dev/orchestration";
+
+const task = await tasks.claim("worker-1");
+if (task === null) return;
+
+const claim = ticketForClaim(tasks.collectionId, task);
+
+await withLeaseRenewal({
+  collection: tasks,
+  ticket: claim,
+  claimedTask: task, // the task exactly as claim() returned it
+  signal: ctx.signal,
+  async run(signal) {
+    // Aborts on either: the request was cancelled, or the claim was
+    // taken back.
+    const summary = await summarize(task.goal, { signal });
+    await tasks.complete(task.id, summary, { ifAllowed: true, claim });
+  },
+});
+```
+
+Settle the task inside `run`. Renewal has to outlive the write it protects: `complete()` and `fail()` are fenced on the claim ticket, and the fence refuses a ticketed write once the lease has run out. The span to cover is claim through settlement, not claim through the work returning. `withLeaseRenewal` stops renewing as soon as `run` returns, so a settling write issued after it is one slow store round trip from being refused, and a refused result puts the task back in the queue for another worker to run from the top.
+
+Work that doesn't fit in one callback uses `startLeaseRenewal` instead, with `stop()` in a `finally` that closes after the settling write. The driver composes nothing for you: `driver.signal` is lease loss on its own, so run the work under it and `ctx.signal` together, with `AbortSignal.any` and a guard for a `ctx.signal` that is undefined. A step dispatched with `.step(block, { abortSignal })` gets that composition for free.
+
+### When a job keeps being abandoned
+
+Recovery is bounded. A task whose lease keeps lapsing is re-dispatched three times and then settled `errored` rather than handed out forever. Three is fixed; no option raises it. It is exported as `DEFAULT_MAX_ABANDONMENTS` if you want to read it.
+
+That allowance is its own, separate from `maxAttempts`. A task with `maxAttempts: 3` that lost two workers still has all three of its failure retries.
+
 ### What a durable board guarantees about ownership
 
 A `resource`-backed board is the one two things can reach at the same time, so it is the one where "who owns this task" needs an answer. Three facts describe it.
 
-**One holder at a time.** Two executions racing to claim the same task: one gets the task, the other gets `null`. The loser is not an error and does not retry into a second claim; it simply has nothing to run and moves on. This is not exactly-once dispatch. `reclaim` exists to return an abandoned task to `pending` so somebody else can pick it up, and a task that runs twice because its first worker died is the intended behaviour, not a failure of the claim.
+**One holder at a time.** Two executions racing to claim the same task: one gets the task, the other gets `null`. The loser is not an error and does not retry into a second claim; it simply has nothing to run and moves on.
+
+This is not exactly-once dispatch. A lease that runs out sends the task back to the queue, whether its worker crashed or only stalled, so the work can run twice. Only one attempt can *record* a result: a ticketed write from a worker that no longer holds the task is refused. Side effects the losing worker already caused stand. If running the work twice is expensive, make it idempotent.
 
 **A ticket, not a promise.** A worker's write is checked against the ticket it presents, not against who it says it is. Present no ticket and no ownership check runs — which is what a coordinator wants when it settles, cancels, or parks a task on its own board, having never claimed anything. The check is opt-in at the call, and the substrate has no notion of "coordinator" to test against.
 
@@ -341,29 +420,29 @@ A `resource`-backed board is the one two things can reach at the same time, so i
 
 A dispatcher decides which ready task gets claimed next. Five ship with the package. Each one scans for a candidate and then commits the claim under a conditional write that re-checks eligibility, so under contention one worker gets the task and the others move on to the next eligible one. They differ only in which tasks they consider eligible and in what order they try them.
 
-A custom `eligibility` predicate **replaces** the default (pending, with dependencies satisfied) rather than narrowing it, and it is the predicate the commit re-checks. Narrowing to a task id alone drops the readiness test, and both racers then pass the re-check on a task one of them has already claimed:
+A custom `eligibility` predicate **narrows** the substrate's candidates. Claimability is the substrate's to decide: dependencies satisfied, and either never started or abandoned by a worker that stopped renewing. Your predicate selects among the tasks that already pass it.
 
 ```ts
-// Both workers get this task.
+// Pick one task by id. Readiness is the substrate's call, and the
+// commit re-checks it, so two racers cannot both win this task.
 collection.claim(workerId, { eligibility: (t) => t.id === picked });
-
-// One worker gets it.
-collection.claim(workerId, {
-  eligibility: (t) => t.id === picked && t.status === "pending",
-});
 ```
+
+**Do not assert `status` in an eligibility predicate.** Other filters say which work this drain is for, and abandoned tasks matching them are still recovered. Asserting `status === "pending"` switches recovery off for that dispatcher.
+
+An abandoned task your predicate filters out is not taken back by *this* dispatcher, so if no drain on the board matches a task, nothing recovers it.
 
 | Dispatcher | Picks | Eligibility |
 |------------|-------|-------------|
-| `fifoDispatcher` | Earliest `createdAt` eligible task | Pending, all `deps` completed. |
-| `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Pending, all `deps` completed. |
-| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Pending, all `deps` completed. Unset priority reads as 0. |
-| `classifierDispatcher({ classify })` | The id your `classify` callback returns, or nothing when it returns `null` | Pending, all `deps` completed, then narrowed to the id you chose. |
-| `eventDispatcher({ topicFor, topic })` | First matching task in `createdAt` order | Pending, all `deps` completed, `topicFor(task) === topic`. |
+| `fifoDispatcher` | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `topologicalDispatcher` (default) | Earliest `createdAt` eligible task | Claimable (pending or abandoned), all `deps` completed. |
+| `priorityDispatcher` | Highest `priority`, ties break on `createdAt` | Claimable (pending or abandoned), all `deps` completed. Unset priority reads as 0. |
+| `classifierDispatcher({ classify })` | The id your `classify` callback returns, or nothing when it returns `null` | Claimable (pending or abandoned), all `deps` completed, then narrowed to the id you chose. |
+| `eventDispatcher({ topicFor, topic })` | First matching task in `createdAt` order | Claimable (pending or abandoned), all `deps` completed, `topicFor(task) === topic`. |
 
 `fifoDispatcher` and `topologicalDispatcher` behave identically; neither one will claim a task with unmet `deps`. The two names exist so a flat fan-out with no deps can say what it means.
 
-The classifier and event dispatchers are factories because they take config. The classifier sees only the ready set (pending, deps satisfied), calls your callback to choose one id, then narrows the claim to that id, so if a parallel worker already took it, the compare-and-set still arbitrates:
+The classifier and event dispatchers are factories because they take config. The classifier sees only the claimable set, calls your callback to choose one id, then narrows the claim to that id, so if a parallel worker already took it, the compare-and-set still arbitrates:
 
 ```ts
 import { classifierDispatcher } from "@flow-state-dev/orchestration";

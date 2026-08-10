@@ -31,6 +31,13 @@ import { createFakeSequencerState } from "../helpers";
 
 type OnIdle = "wait" | "complete" | "complete-or-blocked";
 
+/**
+ * The frozen clock every collection in this file is built on. The wake probe
+ * reads it back off the collection (FIX-1005), which is what keeps `working`
+ * reading as "a worker holds this" rather than as an expired lease.
+ */
+const BOARD_NOW = 1000;
+
 /** A collection in one of the board states the classifier discriminates. */
 async function collectionInState(
   state: "empty" | "claimable" | "working" | "parked" | "dep-blocked" | "settled"
@@ -41,7 +48,7 @@ async function collectionInState(
   const collection = createSequencerBackedTaskCollection({
     collectionId: "tasks",
     sequencer,
-    now: () => 1000,
+    now: () => BOARD_NOW,
   });
 
   switch (state) {

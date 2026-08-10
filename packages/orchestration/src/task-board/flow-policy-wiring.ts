@@ -326,3 +326,4 @@ export function stampCurrentClaim(ticket: TaskClaimTicket): void {
 export function currentWorkerClaim(): TaskClaimTicket | undefined {
   return workerClaimStore.getStore();
 }
+

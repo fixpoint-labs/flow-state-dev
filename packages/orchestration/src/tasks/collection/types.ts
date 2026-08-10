@@ -71,7 +71,11 @@ export type TaskWriteDeclineReason =
  *
  * Three variants, and all three are load-bearing:
  *
- * - `recorded` — a task field changed and a `task-change` item was emitted.
+ * - `recorded` — a task field changed. Every verb that moves a task through its
+ *   lifecycle also emits a `task-change` item; `renewLease` is the one
+ *   exception and emits none, because a renewal is not a lifecycle change — the
+ *   task did not move, the holder only said "still here". Do not wait on a
+ *   `task-change` to observe a renewal; read `leaseUntil`.
  * - `unchanged` — the desired state already held, so nothing was written and no
  *   `task-change` item was emitted. This is a **task-level** outcome: on the
  *   resource backing the underlying `updateState` still runs, so a
@@ -101,9 +105,29 @@ export type TaskWriteOutcome =
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
   /**
-   * Per-task predicate. The substrate iterates `pending` candidates in
-   * `order`, then CAS-claims the first that passes `eligibility`. Default:
-   * accepts every pending task whose `deps` are all `completed`.
+   * Per-task predicate that **narrows** the substrate's candidates. It does not
+   * replace them: the substrate admits a task first, then CAS-claims the first
+   * admitted task that also passes this. Default: no narrowing.
+   *
+   * **The candidate set is no longer `pending` only (FIX-1005).** It is every
+   * task the substrate considers claimable, which since lease-based recovery
+   * includes an `in_progress` row whose lease has run out — a task whose worker
+   * died. So the predicate sees both, and the obvious-looking assertion is the
+   * one thing not to write here:
+   *
+   * ```ts
+   * // WRONG since FIX-1005 — silently opts out of abandoned-job recovery.
+   * eligibility: (t) => t.status === "pending" && t.assignee === "researcher"
+   *
+   * // Right: narrow on what you care about, and leave claimability alone.
+   * eligibility: (t) => t.assignee === "researcher"
+   * ```
+   *
+   * A status assertion compiles, reads correctly, and quietly makes stranded
+   * jobs unrecoverable for that dispatcher, because the row it must match is
+   * `in_progress`. Claimability is the substrate's call — `isClaimable` — and
+   * composing rather than replacing is what stops the newest invariant being
+   * the one most easily switched off by accident.
    */
   eligibility?: (task: Task) => boolean;
   /**
@@ -111,8 +135,21 @@ export interface ClaimOptions {
    */
   order?: (a: Task, b: Task) => number;
   /**
-   * Lease duration in ms applied to the claimed task's `leaseUntil`. When
-   * unset the substrate picks a sensible default per backing.
+   * How long the claimant may be gone before its work is handed to someone
+   * else. Stamped onto the claimed task's `leaseUntil`; defaults to two
+   * minutes.
+   *
+   * **This is the recovery-latency knob** (FIX-1005). A worker the substrate
+   * drives renews this while it works, so a lease that lapses means no live
+   * worker is holding the row and the next claim takes it back. Pass less and
+   * a dead job comes back sooner, at the cost of taking work from a worker
+   * that merely stalled; size it to the whole job and nobody takes it back
+   * until then. A row you claim by hand gets no renewal — you hold it, so you
+   * renew it.
+   *
+   * Validated rather than normalized: a value below one second, above ~74
+   * days, or non-finite **throws**, because each would turn the renewal
+   * cadence derived from it into a write storm or an overflowed timer.
    */
   leaseDurationMs?: number;
 }
@@ -281,6 +318,28 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   collectionId: string;
 
   /**
+   * The clock this collection stamps and judges leases against (FIX-1005).
+   *
+   * **Exposed because a lease is a comparison, and a comparison needs one
+   * clock.** `leaseUntil` is written by the claim write against this clock, so
+   * anything asking "has this lease run out" — the board's wake probe, the
+   * ready-task preview, a dispatcher's candidate scan, the renewal driver
+   * deciding when to write next — has to ask the same one. Reading
+   * `Date.now()` instead works right up until a collection is built on an
+   * injected clock, at which point the two sides silently answer different
+   * questions: a live task can read as abandoned and an abandoned one as live.
+   *
+   * That divergence is invisible in production, where every clock is the wall
+   * clock. It is *only* visible under an injected clock — which is what tests
+   * use. So the failure mode is a lease test that passes without exercising a
+   * coherent timeline at all, which is the last test you want to be wrong.
+   *
+   * Implementing this interface yourself? `now: () => Date.now()` is the right
+   * answer unless you have a reason for another.
+   */
+  readonly now: () => number;
+
+  /**
    * The cumulative retry budget this ref actually enforces (FIX-948), or `null`
    * when none is in force.
    *
@@ -377,11 +436,74 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    */
   cancel(id: string, reason?: string, options?: TaskTransitionOptions): Promise<TaskWriteOutcome>;
   /**
+   * Push this task's lease out to `leaseUntil` — the worker saying "still
+   * here" about a row it already proved it owns (FIX-1005).
+   *
+   * This is what makes an expired lease mean something. Nothing used to renew
+   * a lease, so an expired one was the *normal* condition of a perfectly
+   * healthy worker and could not be acted on. Once the holder keeps it alive,
+   * silence means the holder is gone, and `claim` can simply hand the row out
+   * again.
+   *
+   * Writes exactly **one** field. Not `attempts`, not `status`, and nothing a
+   * consumer reads as progress. It publishes no `task-change` item, because a
+   * renewal is not a lifecycle change — the task did not move.
+   *
+   * `options.claim` is **required**: renewal is an ownership assertion, so an
+   * unfenced one would let anything keep anyone's lease open. The write runs
+   * the same guards every other worker-callable write runs, so it declines
+   * `terminal` on a cancelled task, `not-my-task` on a recreated row, and
+   * `lost-claim` when the caller no longer holds it — **including the case
+   * that motivated the verb: a renewal that commits *after* the lease it was
+   * extending.** Without that arm a late renewal would install a fresh
+   * deadline on a row somebody else now holds.
+   *
+   * Throws — never declines — on a non-finite `leaseUntil` or a missing
+   * ticket. Both are programming errors rather than lost races, matching this
+   * repo's posture for a numeric argument outside its domain.
+   *
+   * **If you implement this interface yourself, the obligation is three-sided
+   * and the last two are easy to miss.** You implement this write; your own
+   * `claim()` must consider expired rows, fence the takeover on the attempt,
+   * and settle a row whose abandonment allowance is spent instead of running
+   * it; and every ticket-fenced write you accept must refuse a claimant whose
+   * lease has already lapsed. A ref that implements only this verb compiles,
+   * renews correctly, and silently never recovers anything.
+   */
+  renewLease(
+    id: string,
+    leaseUntil: number,
+    options: TaskTransitionOptions & { claim: TaskClaimTicket }
+  ): Promise<TaskWriteOutcome>;
+  /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
    * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
    * — the same kind used by `resumeFromReview` since the lifecycle UI
    * cares only that the task is back to pending.
+   *
+   * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
+   * `claim`, so nothing has to call this for you; the verb is unchanged and
+   * stays available for a caller that wants to reset leases by hand.
+   *
+   * **It is the UNBOUNDED way back to `pending`, and deliberately so.** The
+   * automatic recovery `claim` performs is bounded — `DEFAULT_MAX_ABANDONMENTS`
+   * re-dispatches, after which the row settles `errored` rather than being
+   * handed out again. This verb does not count against that budget, so a
+   * caller that keeps calling it on a row whose worker keeps dying will keep
+   * re-dispatching it past the bound, and the failure will present as a spent
+   * `maxAttempts` instead of an abandonment cap.
+   *
+   * That is the same stance `unblock` and `resumeFromReview` already take, and
+   * for the same reason: a bound exists to make a judgment nobody is present to
+   * make, and a caller invoking this verb by hand *is* present. Counting it
+   * would settle a task an operator explicitly asked to requeue.
+   *
+   * So the promise is precise: recovery **the substrate performs on its own**
+   * is bounded. A sweeper built on this verb opts out of that bound — which was
+   * the only way to recover anything before FIX-1005, and is now a manual
+   * override rather than the mechanism. If bounded recovery is what you want,
+   * delete the sweeper and let `claim` do it.
    */
   reclaim(now?: number): Promise<number>;
 

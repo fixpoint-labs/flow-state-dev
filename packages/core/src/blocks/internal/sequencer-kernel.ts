@@ -28,6 +28,7 @@ import type { BlockValueInternal } from "../../items/types";
 import type { SequencerRuntimeState } from "../sequencer-methods";
 import {
   backgroundTaskCtx,
+  composeBackgroundSignal,
   dispatchWorkTask,
   executeBlock,
   refDescriptorForPath,
@@ -56,17 +57,67 @@ export type RunChildResult = {
  * (falling back to `inline` in unit-test contexts with no trace emitter).
  *
  * Does not touch `runtime` bookkeeping — see the file header.
+ *
+ * `extraSignal` (FIX-1005) runs the child — and its whole descendant tree —
+ * under an **additional** abort signal, composed with the request's rather
+ * than replacing it. Three assignments are needed and none is sufficient
+ * alone:
+ *
+ * - the spread gives the child's own `ctx.signal` the composed signal (the
+ *   only path that exists in a unit-test context);
+ * - `signalOverride` carries it into the server-installed execution scope so
+ *   every descendant's `ctx.signal` sees it too;
+ * - `_requestBackgroundSignal` carries it into the subtree's BACKGROUND
+ *   dispatches, which read that field instead of `ctx.signal` and would
+ *   otherwise drop the extra signal entirely (see
+ *   {@link composeBackgroundSignal}).
+ *
+ * The third is the one that is easy to miss, and it is where the un-cancelled
+ * work is most expensive: `.work()` generators keep calling models long after
+ * the foreground steps have stopped.
  */
 export async function runChild(
   ctx: BlockContext,
   shape: ChildDispatch,
   path: string,
   input: unknown,
-  inputHint: BlockValueInternal<unknown>
+  inputHint: BlockValueInternal<unknown>,
+  extraSignal?: AbortSignal
 ): Promise<RunChildResult> {
-  const childInput = shape.connector ? await shape.connector(input, ctx) : input;
-  stashInputHint(ctx, inputHint);
-  const value = await executeBlock(shape.block, childInput, ctx, path);
+  if (extraSignal === undefined) {
+    const childInput = shape.connector ? await shape.connector(input, ctx) : input;
+    stashInputHint(ctx, inputHint);
+    const value = await executeBlock(shape.block, childInput, ctx, path);
+    return { value, descriptor: refDescriptorForPath(ctx, path) };
+  }
+  const composed =
+    ctx.signal === undefined ? extraSignal : AbortSignal.any([ctx.signal, extraSignal]);
+  const background = composeBackgroundSignal(ctx, extraSignal);
+  // Set on the copy for the unit-test path (no execution scope: the child runs
+  // on this very object), AND threaded as an override for the server path,
+  // where `_withExecutionScope` is a closure bound to the original context and
+  // cannot see a field written on a copy.
+  const childCtx = { ...ctx, signal: composed } as BlockContext;
+  if (background !== undefined) {
+    (childCtx as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
+      background;
+  }
+  // The connector runs under the composed context too. It is part of the step's
+  // dispatch — the documented promise is that the step runs under either signal,
+  // and a connector is not exempt from it. An async connector handed the
+  // original context would keep running after the extra signal fired, or block
+  // forever on a signal that was already aborted before the step began.
+  //
+  // The hint is stashed on `childCtx` rather than on `ctx` because that is the
+  // context `executeBlock` reads and clears it from; stashing on the original
+  // and copying it forward would leave a consumed hint behind for a later
+  // sibling to pick up.
+  const childInput = shape.connector ? await shape.connector(input, childCtx) : input;
+  stashInputHint(childCtx, inputHint);
+  const value = await executeBlock(shape.block, childInput, childCtx, path, {
+    signalOverride: composed,
+    ...(background !== undefined ? { backgroundSignalOverride: background } : {}),
+  });
   return { value, descriptor: refDescriptorForPath(ctx, path) };
 }
 

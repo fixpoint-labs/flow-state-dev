@@ -72,6 +72,38 @@ export const taskSchema = z.object({
     })
     .optional(),
 
+  /**
+   * How many times this task's work was abandoned — claimed by a worker that
+   * then stopped renewing its lease — and handed back out (FIX-1005).
+   *
+   * **Its own budget, deliberately separate from `maxAttempts`.** Recovery
+   * runs through `claim`, which advances `attempts`, so without this counter a
+   * crashed machine would spend the retries a caller configured for real
+   * failures: with `maxAttempts: 3` two crashes would exhaust the whole
+   * failure budget without a single failure, and a task with no `maxAttempts`
+   * — the default — would get zero recoveries. `shouldRetryOnFail` therefore
+   * reads `attempts - abandonments < maxAttempts`, discounting them.
+   *
+   * Incremented in the same atomic write that recovers a lapsed row, and read
+   * in that same write to decide whether to recover it at all or settle it
+   * `errored`.
+   *
+   * **Top level, never inside `metadata` (BP-031).** `patchMetadata` merges
+   * arbitrary caller keys with a plain spread and is exposed to a model
+   * through `updateTask`, so a counter living there could be reset (unbounded
+   * recovery) or inflated (a live task terminalized early) from
+   * caller-controllable input — and this counter drives a terminal settlement.
+   * The typed write surface reaches no top-level field, so this placement
+   * needs no per-seam guard.
+   *
+   * **Absent reads as zero** (BP-030) — a task persisted before FIX-1005, one
+   * that has never been abandoned, or one whose counter an older writer
+   * normalized away. That direction is deliberate: a stripped counter costs
+   * *recovery bounding*, which is in policy, while the opposite reading would
+   * withhold recovery, which is the bug this exists to fix.
+   */
+  abandonments: z.number().int().nonnegative().optional(),
+
   assignee: z.string().optional(),
   deps: z.array(z.string()).optional(),
   priority: z.number().optional(),
