@@ -139,6 +139,27 @@ export const taskSchema = z.object({
    * substrate wrote. Absent means legacy or a non-provenance ref.
    */
   writeLogTruncated: z.boolean().optional(),
+  /**
+   * A per-incarnation identity nonce, minted once when the task is created and
+   * never touched again (FIX-989 follow-up).
+   *
+   * `createdAt` cannot serve as incarnation identity: it is a millisecond
+   * clock, and a delete-then-recreate under the same id lands in the same
+   * millisecond often enough (measured 198/200) that two different rows share
+   * it. `incarnationId` is minted fresh by `generateId`, so a recreated row
+   * gets a new one every time, clock collisions or not.
+   *
+   * Declared here rather than added by the backings for the identical reason
+   * `revision` is: a durable task is validated by `taskEnvelopeSchema` on its
+   * way to the store, and a Zod object schema strips keys it does not
+   * declare.
+   *
+   * **Absent on any task persisted before this shipped**, and on any task
+   * written by a hand-written `TaskCollectionRef` that maintains no
+   * provenance. Read it only through `didWriteLand`'s incarnation arm, which
+   * withholds rather than guessing when either side lacks it (BP-030).
+   */
+  incarnationId: z.string().optional(),
 
   createdAt: z.number(),
   updatedAt: z.number(),

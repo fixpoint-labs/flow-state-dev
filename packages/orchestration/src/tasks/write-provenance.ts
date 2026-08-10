@@ -22,7 +22,7 @@
  *
  * ## The record
  *
- * Three optional fields on the task, all written **inside** the same atomic
+ * Four optional fields on the task, all written **inside** the same atomic
  * write that changed it, so provenance is exactly as durable as the task and
  * needs no second storage to stay consistent with:
  *
@@ -30,9 +30,15 @@
  * - `writeLog` — a bounded, newest-last log of receipts, appended only when a
  *   caller handed in a token.
  * - `writeLogTruncated` — whether the log has ever dropped a receipt.
+ * - `incarnationId` — a per-incarnation identity nonce, stamped once at
+ *   creation and never touched again.
  *
  * The third exists because the read has to tell *eviction* from *absence*, and
- * a bounded log makes those look identical. See {@link didWriteLand}.
+ * a bounded log makes those look identical. The fourth exists because
+ * `revision` resets to 1 on a delete-then-recreate under the same id, and a
+ * millisecond-clock alternative (`createdAt`) collides on that path often
+ * enough to reopen the gap it was meant to close (measured 198/200 pairs). See
+ * {@link didWriteLand}.
  *
  * ## What it does not cover
  *
@@ -84,15 +90,36 @@ export interface TaskWriteToken {
    */
   readonly sinceRevision: number | undefined;
   /**
-   * `task.createdAt` as observed before the write, or `undefined` for a task
-   * that was not there at mint time — task identity across delete/recreate.
+   * `task.incarnationId` as observed before the write, or `undefined` for a
+   * task that was not there at mint time, or one that carries no nonce
+   * (persisted before this shipped, or written by a ref that maintains no
+   * provenance) — task identity across delete/recreate.
+   *
    * A task removed (explicit `delete()`, or capacity eviction on the
    * resource-backed collection) and recreated under the same id resets
    * `revision`, so a stale token could otherwise satisfy the coverage arms
    * against a row it never wrote to (the ABA case; `ticketNamesTask` in
-   * `claim-ticket.ts` guards the identical case on the claim side).
+   * `claim-ticket.ts` guards the identical case on the claim side, keyed on
+   * `createdAt` there rather than a nonce — a pre-existing weakness of its
+   * own, out of scope here).
+   *
+   * A millisecond clock (`createdAt`) was tried here first and rejected: a
+   * delete-then-recreate under the same id lands in the same millisecond
+   * often enough (measured 198/200 pairs) that two different rows share it,
+   * which reopens exactly the gap this field exists to close. `incarnationId`
+   * is a fresh id minted per row, not a timestamp, so it does not collide on
+   * a fast clock. It remains `number | undefined`-shaped in spirit — required
+   * key, optional value — because a legitimate mint against no task, or
+   * against a task that predates this field, has no nonce to record; forcing
+   * the value non-optional would mean fabricating one, which would make every
+   * correlated write against an already-live legacy task compare a synthetic
+   * value against `undefined` forever and read as a permanent incarnation
+   * mismatch, never firming up into a real answer. See `didWriteLand`'s
+   * incarnation arm for how a mismatched *presence* (one side has a nonce,
+   * the other does not) is handled: it withholds rather than skipping the
+   * check the way a merely-absent value used to.
    */
-  readonly createdAt: number | undefined;
+  readonly incarnationId: string | undefined;
 }
 
 /**
@@ -121,7 +148,11 @@ export interface TaskWriteToken {
  * than forcing a null check at every call site.
  */
 export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
-  return { id: generateId("tw"), sinceRevision: task?.revision, createdAt: task?.createdAt };
+  return {
+    id: generateId("tw"),
+    sinceRevision: task?.revision,
+    incarnationId: task?.incarnationId,
+  };
 }
 
 /**
@@ -168,7 +199,22 @@ export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
  * `ticketNamesTask` in `claim-ticket.ts` guards the identical case on the claim
  * side). It cannot run ahead of membership: a receipt actually present in the
  * *current* row's log proves that row committed this exact write, whatever the
- * token's stale `createdAt` says.
+ * token's stale `incarnationId` says.
+ *
+ * The check is a plain inequality, `token.incarnationId !== task.incarnationId`,
+ * deliberately not "skip when the token's side is empty" the way this arm used
+ * to read `createdAt`. `createdAt` could skip safely because it is a required
+ * field on `Task` — the token's copy of it was `undefined` only when the task
+ * itself was `undefined` at mint time, a case the baseline guard below already
+ * catches on its own. `incarnationId` has no such guarantee: a task can be
+ * `undefined` on either side independently (not there yet at mint time, or
+ * there but predating this field), and those are different facts a skip would
+ * conflate. A plain inequality treats "one side has a nonce and the other
+ * doesn't" as its own mismatch and withholds — never a confident `false` — which
+ * also closes a token assembled by hand rather than minted by
+ * {@link beginTaskWrite}: leaving `incarnationId` off (or `undefined`) no
+ * longer buys a free pass through this arm the way an omitted `createdAt` once
+ * did.
  *
  * ## Sound, deliberately not complete
  *
@@ -200,9 +246,10 @@ export function didWriteLand(
   // 2. Incarnation — is this even the task the token was minted for? A
   //    recycled id (delete/recreate, or capacity eviction) resets `revision`,
   //    so every arm below reasons about a basis that never applied to this
-  //    row. Skipped when the token carries no `createdAt` (task was undefined
-  //    at mint time), which already means arm 3 answers cannot-tell too.
-  if (token.createdAt !== undefined && token.createdAt !== task.createdAt) return undefined;
+  //    row. A plain inequality, not "skipped when the token carries no
+  //    nonce" — see the doc comment above for why that would be unsound here
+  //    (unlike the `createdAt` arm this replaced).
+  if (token.incarnationId !== task.incarnationId) return undefined;
 
   // 3. Nothing to reason from: no record on the task, or no baseline on the token.
   const { revision } = task;
@@ -214,6 +261,13 @@ export function didWriteLand(
   // a stale snapshot (the documented mixed-writer precondition: a hand-written
   // ref sharing the storage). Both coverage proofs below assume a monotonic
   // revision, so on a record that broke that assumption they prove nothing.
+  //
+  // This is genuinely a mixed-writer-only arm now that arm 2 sits ahead of it:
+  // a same-id delete/recreate mints a fresh `incarnationId` on the replacement
+  // (`buildInitialTask`), so arm 2 catches that case and this one never sees
+  // it — unless the recreate happened through a path that predates or bypasses
+  // incarnation stamping (a hand-written ref, which is the same mixed-writer
+  // precondition this comment already names, not a new one).
   if (revision < baseline) return undefined;
 
   // 4. Nothing committed at all since the baseline.

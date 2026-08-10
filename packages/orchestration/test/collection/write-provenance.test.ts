@@ -68,20 +68,22 @@ describe("didWriteLand — the three answers", () => {
       attempts: 1,
       createdAt: 0,
       updatedAt: 0,
+      incarnationId: "inc-default",
       ...provenance,
     } as Task;
   }
 
-  // `createdAt` defaults to 0 to match `record`'s default, so every existing
-  // call below is implicitly minted against the same incarnation it reads.
+  // `incarnationId` defaults to "inc-default" to match `record`'s default, so
+  // every existing call below is implicitly minted against the same
+  // incarnation it reads.
   const token = (
     id: string,
     sinceRevision: number | undefined,
-    createdAt: number | undefined = 0
+    incarnationId: string | undefined = "inc-default"
   ): TaskWriteToken => ({
     id,
     sinceRevision,
-    createdAt,
+    incarnationId,
   });
 
   it("answers landed when the receipt is in the log", () => {
@@ -191,16 +193,64 @@ describe("didWriteLand — the three answers", () => {
     // same id restarts at revision 1, so a stale token whose baseline happens
     // to match the replacement's revision would otherwise satisfy "nothing
     // committed since the baseline" (the arm right below this one) for a write
-    // that landed on the row that no longer exists. `createdAt` is identity
-    // here, not freshness — same guard `ticketNamesTask` in `claim-ticket.ts`
-    // applies on the claim side.
+    // that landed on the row that no longer exists. `incarnationId` is
+    // identity here, not freshness — `createdAt` was tried for this and
+    // rejected (see the module doc comment): a same-millisecond recreate
+    // shares it too often to guard anything.
     const task = record({
-      createdAt: 2_000,
+      incarnationId: "inc-replacement",
       revision: 1,
       writeLog: [],
       writeLogTruncated: false,
     });
-    expect(didWriteLand(task, token("mine", 1, 1_000))).toBeUndefined();
+    expect(didWriteLand(task, token("mine", 1, "inc-original"))).toBeUndefined();
+  });
+
+  it("withholds, never a confident false, when the token carries a nonce and the task does not", () => {
+    // A task written before this field existed, or by a hand-written ref that
+    // maintains no provenance, has no `incarnationId` to compare against — but
+    // the token does (it was minted from a task that had one). Per BP-030, an
+    // absent field is "cannot tell", not "no match" collapsed into `false`;
+    // the safe direction is to withhold, matching the reverse case below.
+    const task = record({
+      incarnationId: undefined,
+      revision: 4,
+      writeLog: [],
+      writeLogTruncated: false,
+    });
+    expect(didWriteLand(task, token("mine", 4, "inc-a"))).toBeUndefined();
+  });
+
+  it("withholds, never a confident false, when the task carries a nonce and the token does not", () => {
+    // The reverse: the token was minted before this field existed (or against
+    // a legacy task that had none), and the task now carries one — e.g. a
+    // legacy row that was deleted and recreated by the current, nonce-minting
+    // code. Presence itself is the mismatch here; there is no reading under
+    // which proceeding to the revision arms is safe.
+    const task = record({
+      incarnationId: "inc-a",
+      revision: 4,
+      writeLog: [],
+      writeLogTruncated: false,
+    });
+    expect(didWriteLand(task, token("mine", 4, undefined))).toBeUndefined();
+  });
+
+  it("the incarnation check runs before membership can be skipped by hoisting it above arm 1", () => {
+    // Pins the documented ordering (arm 2 after membership, before every
+    // revision-reasoning arm) from the other side: a receipt physically
+    // present in the log, on a task recreated under a different incarnation
+    // than the token's, must still answer `true` — membership proves the row
+    // committed this exact write regardless of what the token's stale
+    // `incarnationId` says. A mutant that moved the incarnation check ahead of
+    // membership would answer `undefined` here instead.
+    const task = record({
+      incarnationId: "inc-replacement",
+      revision: 5,
+      writeLog: [{ id: "mine", revision: 5 }],
+      writeLogTruncated: false,
+    });
+    expect(didWriteLand(task, token("mine", 4, "inc-original"))).toBe(true);
   });
 
   it("answers cannot-tell when the record's revision went backwards", () => {
@@ -447,6 +497,25 @@ describe.each(backings)("%s — what the stamp records", (_name, makeBacking) =>
     });
   });
 
+  it("mints a distinct incarnation nonce on every add path", async () => {
+    // `buildInitialTask` is the one site both add paths on both backings run
+    // through (FIX-989 follow-up). A shared or absent nonce here is the exact
+    // shape of bug this test exists to catch before it ever reaches the ABA
+    // guard.
+    const { collection } = await makeBacking();
+    await collection.addTask({ id: "solo", goal: "t" });
+    await collection.addTasks([
+      { id: "batch-1", goal: "t" },
+      { id: "batch-2", goal: "t" },
+    ]);
+
+    const ids = ["solo", "batch-1", "batch-2"].map(
+      (id) => collection.get(id)!.incarnationId
+    );
+    for (const id of ids) expect(id).toEqual(expect.any(String));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("bumps the revision on every committed write, whichever method made it", async () => {
     // Tenet 5's enumeration, as a test: a method that writes without bumping is
     // not just missing its own answer, it makes a LATER eviction judgment
@@ -614,10 +683,14 @@ describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
     // as `beginTaskWrite`'s own usage example does.
     const write = beginTaskWrite(first.get("t"));
     expect(write.sinceRevision).toBe(1);
-    expect(write.createdAt).toBe(1_000);
+    expect(write.incarnationId).toEqual(expect.any(String));
 
     // The row is removed and a replacement is created under the same id —
-    // standing in for either removal path per the file header above.
+    // standing in for either removal path per the file header above. Distinct
+    // injected clocks here (1_000 vs 2_000) only keep the fixture readable;
+    // the guard does not depend on the clock moving — see the real-clock test
+    // below, which is the one that actually exercises the millisecond
+    // collision `createdAt` used to be vulnerable to.
     await resources.delete("t");
     const second = await createResourceBackedTaskCollection({
       collectionId: "tasks",
@@ -633,9 +706,54 @@ describe("resource-backed — the ABA case (FIX-989 follow-up)", () => {
     // the intended reason and not because the fixture drifted.
     const recreated = second.get("t")!;
     expect(recreated.revision).toBe(write.sinceRevision);
-    expect(recreated.createdAt).not.toBe(write.createdAt);
+    expect(recreated.incarnationId).not.toBe(write.incarnationId);
 
     expect(didWriteLand(recreated, write)).toBeUndefined();
+  });
+
+  it("withholds on the real clock: add, delete, and recreate under the same id, repeatedly", async () => {
+    // The acceptance criterion (FIX-989 follow-up). Everything above this test
+    // uses injected clocks to stay deterministic; this one uses the real
+    // `Date.now()` because the defect it guards against IS a clock property —
+    // a delete-then-recreate under the same id lands in the same millisecond
+    // often enough (measured 198/200 pairs) that `createdAt` alone cannot
+    // distinguish the two incarnations. Run enough times to be meaningful.
+    const RUNS = 50;
+    let withheld = 0;
+    let confidentFalse = 0;
+    let other: unknown[] = [];
+
+    for (let i = 0; i < RUNS; i += 1) {
+      const resources = createFakeResourceCollection();
+      const first = await createResourceBackedTaskCollection({
+        collectionId: "tasks",
+        collection: resources,
+      });
+      await first.addTask({ id: "t", goal: "t" });
+
+      const write = beginTaskWrite(first.get("t"));
+
+      await resources.delete("t");
+      const second = await createResourceBackedTaskCollection({
+        collectionId: "tasks",
+        collection: resources,
+      });
+      await second.addTask({ id: "t", goal: "t" });
+
+      const verdict = didWriteLand(second.get("t"), write);
+      if (verdict === undefined) withheld += 1;
+      else if (verdict === false) confidentFalse += 1;
+      else other.push(verdict);
+    }
+
+    // Every run must withhold. A single `false` here is the original bug: a
+    // write that in fact landed (on the row `delete()` just removed) reported
+    // as definitely not landed.
+    expect({ withheld, confidentFalse, other }).toEqual({
+      withheld: RUNS,
+      confidentFalse: 0,
+      other: [],
+    });
   });
 });
 
@@ -731,12 +849,14 @@ describe("a lost CAS round stamps once, off the state that committed", () => {
 // ---------------------------------------------------------------------------
 
 describe("the persisted shape carries provenance", () => {
-  it("round-trips all three fields through the durable task envelope", () => {
+  it("round-trips all four fields through the durable task envelope", () => {
     // The single most likely way to ship this broken: a durable task is
     // validated by `taskEnvelopeSchema` on its way to the store, Zod object
     // schemas strip keys they do not declare, and the two in-memory backings
     // run no schema at all — so undeclared fields would look perfect in every
     // other test in this file and vanish on the one backing that persists.
+    // `incarnationId` is exactly this bug's shape once already this same PR —
+    // the reason it is asserted here rather than trusted by inspection.
     const envelope = taskEnvelopeSchema(z.object({ topic: z.string() }));
     const parsed = envelope.parse({
       id: "t",
@@ -749,11 +869,13 @@ describe("the persisted shape carries provenance", () => {
       revision: 7,
       writeLog: [{ id: "w", revision: 7 }],
       writeLogTruncated: true,
+      incarnationId: "inc-7",
     }) as Task;
 
     expect(parsed.revision).toBe(7);
     expect(parsed.writeLog).toEqual([{ id: "w", revision: 7 }]);
     expect(parsed.writeLogTruncated).toBe(true);
+    expect(parsed.incarnationId).toBe("inc-7");
   });
 
   it("accepts a legacy task that carries none of them", () => {
@@ -768,5 +890,6 @@ describe("the persisted shape carries provenance", () => {
     }) as Task;
     expect(parsed.revision).toBeUndefined();
     expect(parsed.writeLogTruncated).toBeUndefined();
+    expect(parsed.incarnationId).toBeUndefined();
   });
 });

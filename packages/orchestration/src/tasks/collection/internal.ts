@@ -50,8 +50,16 @@ export function createTaskHandleWrapper<TInput, TOutput>(
  * Build a fresh task from a `TaskInit`, stamping defaults and timestamps.
  *
  * The convergence point for a task's *initial* write provenance (FIX-989):
- * every add path on both backings builds its task here, so revision 1 and the
- * truncation marker are set once rather than at four call sites.
+ * every add path on both backings builds its task here, so revision 1, the
+ * truncation marker, and the incarnation nonce are set once rather than at
+ * four call sites.
+ *
+ * `incarnationId` is minted here rather than folded into
+ * `initialWriteProvenance()` because it answers a different question — task
+ * *identity* across delete/recreate, not write bookkeeping — but it is
+ * stamped at the same site for the same reason: one place, covering all four
+ * add paths, so a recreated row can never end up sharing an incarnation with
+ * the row it replaced.
  */
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
@@ -59,6 +67,7 @@ export function buildInitialTask<TInput, TOutput>(
 ): Task<TInput, TOutput> {
   return {
     ...initialWriteProvenance(),
+    incarnationId: generateId("inc"),
     id: init.id ?? generateTaskId(),
     goal: init.goal,
     title: init.title,

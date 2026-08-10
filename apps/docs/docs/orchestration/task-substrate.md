@@ -272,7 +272,7 @@ try {
 }
 ```
 
-`beginTaskWrite` hands back a token: a fresh id, plus the task's revision as you observed it. Pass the token on the write's options. The receipt is stored on the task itself, so it survives a later worker claiming the task.
+`beginTaskWrite` hands back a token: a fresh id, the task's revision as you observed it, and an identity nonce naming the task's current incarnation. Pass the token on the write's options. The receipt is stored on the task itself, so it survives a later worker claiming the task.
 
 Mint the token **before** the write. A token minted afterwards can't answer.
 
@@ -280,7 +280,7 @@ Mint the token **before** the write. A token minted afterwards can't answer.
 - `false` — your write changed nothing. Either it never landed, or the task already held the state you asked for.
 - `undefined` — cannot tell.
 
-Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance, or your receipt has aged out. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one.
+Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance, your receipt has aged out, or the token names a different incarnation of the task — deleted and recreated under the same id between the mint and the read, whether by an explicit delete or by capacity eviction on a resource-backed collection. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one.
 
 A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above, and the two are worth reading together.
 

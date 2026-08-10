@@ -244,11 +244,15 @@ describe("durable task board: telling a committed write from one that never land
     expect(didWriteLand(b, minted.b)).toBe(false);
   });
 
-  it("carries all three provenance fields through the store, not just in memory", async () => {
+  it("carries all four provenance fields through the store, not just in memory", async () => {
     // The strip guard, on the real persist path. `taskEnvelopeSchema` runs over
     // every durable write and Zod drops undeclared keys, so this is the
     // assertion that a field declared in the wrong place cannot pass.
+    // `incarnationId` is exactly this bug's shape once already this same PR.
     const { stores, sessionId } = await seedBoard(["a"]);
+
+    const seededIncarnation = (await durableTask(stores, sessionId, "a"))?.incarnationId;
+    expect(seededIncarnation).toEqual(expect.any(String));
 
     const written = await run(stores, sessionId, "writer", async (tasks) => {
       const mine = await tasks.claim("worker-1");
@@ -269,17 +273,19 @@ describe("durable task board: telling a committed write from one that never land
     expect(row?.revision).toBe(3);
     expect(row?.writeLog).toEqual([{ id: token.id, revision: 3 }]);
     expect(row?.writeLogTruncated).toBe(false);
+    // Stamped once at creation and never touched by any later write.
+    expect(row?.incarnationId).toBe(seededIncarnation);
   });
 
   it("answers cannot-tell for a durable task written before provenance existed", async () => {
-    // A row already in the store with none of the three fields — the legacy
+    // A row already in the store with none of the four fields — the legacy
     // shape (BP-030). It must read as "cannot tell", never as "your write did
     // not land", which is the answer that would make a recorder swallow a real
     // post-commit failure.
     const { stores, sessionId } = await seedBoard(["a"]);
     const seeded = (await durableTask(stores, sessionId, "a"))!;
 
-    const PROVENANCE = ["revision", "writeLog", "writeLogTruncated"];
+    const PROVENANCE = ["revision", "writeLog", "writeLogTruncated", "incarnationId"];
     const legacy = Object.fromEntries(
       Object.entries(seeded).filter(([key]) => !PROVENANCE.includes(key))
     ) as JsonObject;
