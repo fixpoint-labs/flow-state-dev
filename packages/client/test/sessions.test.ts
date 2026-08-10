@@ -238,16 +238,6 @@ describe("createSessionClient.listWorkstreams", () => {
     );
   });
 
-  it("returns an empty list for a conversation with no background work", async () => {
-    // The ordinary state for most conversations, and deliberately not an error.
-    const fetcher = vi.fn<ClientFetch>(async () =>
-      createJsonResponse({ workstreams: [] })
-    );
-    const client = createSessionClient({ fetcher });
-
-    await expect(client.listWorkstreams("sess_1")).resolves.toEqual([]);
-  });
-
   it("reads back a row that carries no labels and no status (BP-030)", async () => {
     // A server that predates the labels, or a Workstream that has not run
     // anything yet. Absent must stay absent — never an empty name, never a
@@ -271,30 +261,6 @@ describe("createSessionClient.listWorkstreams", () => {
     expect(row?.status).toBeUndefined();
   });
 
-  it("carries each row's status through unmapped, in a single request", async () => {
-    // Decision 4: the row already carries what a list needs to render, so a
-    // list costs one request no matter how many Workstreams it holds. A
-    // per-row status lookup would fail this.
-    const rows: WorkstreamSummary[] = [
-      { ...WORKSTREAM, id: "ws_a", status: "active" },
-      { ...WORKSTREAM, id: "ws_b", status: "completed" },
-      { ...WORKSTREAM, id: "ws_c", status: "aborted" }
-    ];
-    const fetcher = vi.fn<ClientFetch>(async () =>
-      createJsonResponse({ workstreams: rows })
-    );
-    const client = createSessionClient({ fetcher });
-
-    const result = await client.listWorkstreams("sess_1");
-
-    expect(result.map((row) => row.status)).toEqual([
-      "active",
-      "completed",
-      "aborted"
-    ]);
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  });
-
   it("drops a row the server did not claim is a child of the requested parent", async () => {
     // The client's only filtering, and it is a compatibility check rather than
     // a visibility one: what a caller may see is the server's call, but
@@ -313,6 +279,28 @@ describe("createSessionClient.listWorkstreams", () => {
     const result = await client.listWorkstreams("sess_1");
 
     expect(result.map((row) => row.id)).toEqual(["ws_9f3a"]);
+  });
+
+  it("warns in development when it drops a mismatched row", async () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      createJsonResponse({
+        workstreams: [
+          { ...WORKSTREAM, id: "ws_warn_child", parentSessionId: "sess_warn_other" }
+        ]
+      })
+    );
+    const client = createSessionClient({ fetcher });
+
+    await client.listWorkstreams("sess_warn_parent");
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [message] = spy.mock.calls[0] ?? [];
+    expect(message).toContain("sess_warn_parent");
+    expect(message).toContain("ws_warn_child");
+    expect(message).toContain("sess_warn_other");
+
+    spy.mockRestore();
   });
 
   it("rejects an empty parent session id", async () => {

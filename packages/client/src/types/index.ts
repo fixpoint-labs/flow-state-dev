@@ -152,24 +152,11 @@ export type SessionDetail = SessionSummary & {
 };
 
 /**
- * How a Workstream's runs ended, or that they have not ended.
+ * How a Workstream's runs ended, or that they have not ended. `"active"`
+ * asserts only *not finished* — never gloss it as "running" or "live".
  *
- * Five values, and `"active"` is opaque **by contract**: it asserts only *not
- * finished*, covering queued, running, and paused waiting for a person alike.
- * Never gloss it as "running", "live" or "healthy" — this is the last state
- * the server durably recorded, not a health check, so a crashed worker's row
- * keeps reading `"active"` until reclamation corrects it.
- *
- * Deliberately **not** `RequestStatus`. That union carries run states
- * (`"in_progress"`, `"suspended"`, `"interrupted"`) which collapse into
- * `"active"` and can never appear here; typing the field as `RequestStatus`
- * would permit values the wire forbids and hand consumers an exhaustive
- * switch over branches that cannot fire.
- *
- * A finer breakdown of `"active"` (running / queued / waiting on a person)
- * arrives later as a **separate optional field beside `status`**, never as new
- * members here — adding members would break every exhaustive switch built
- * against this union and silently redefine `"active"`.
+ * See `docs/architecture/server-and-client.md` § Background work (Workstreams)
+ * for the full semantics, including why this is not `RequestStatus`.
  */
 export type WorkstreamStatus =
   | "active"
@@ -197,22 +184,11 @@ export type WorkstreamSummary = {
   parentSessionId: string;
   createdAt: number;
   updatedAt: number;
-  /**
-   * What body of work this is for, and which worker within it. Both are
-   * display-only labels stamped when the work is started — they route,
-   * authorize and identify nothing. Absent on a Workstream started before the
-   * labels existed, and on any child session that is not background work;
-   * guard with `== null` and render an unnamed job rather than an error
-   * (BP-030).
-   */
+  /** Display-only label for what body of work this is; guard with `== null` (BP-030). */
   topic?: string;
+  /** Display-only label for which worker within the work; same absence rule as `topic`. */
   coordinate?: string;
-  /**
-   * Absent when the Workstream has not run anything yet. Absence is not a
-   * status: `"active"` would claim work is under way before it started, and a
-   * terminal value would claim it finished. Render no state rather than a
-   * placeholder.
-   */
+  /** Absent when nothing has run yet — not a status to render a placeholder for. */
   status?: WorkstreamStatus;
 };
 

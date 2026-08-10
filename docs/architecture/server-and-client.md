@@ -214,7 +214,11 @@ coordinate?, status? }` — a named field set, not a `SessionSummary`.
   and is **absent** when the Workstream has not run anything yet. `"active"`
   means *not finished* and nothing more: it does not separate running from
   queued from paused waiting for a person, and it is the last state the server
-  recorded rather than a liveness check. A finer breakdown arrives later as a
+  recorded rather than a liveness check. It is its own `WorkstreamStatus`
+  union rather than `RequestStatus` — that union's run states
+  (`"in_progress"`, `"suspended"`, `"interrupted"`) collapse into `"active"`
+  and can never appear here, so reusing it would hand consumers an exhaustive
+  switch over branches that cannot fire. A finer breakdown arrives later as a
   separate optional field, never as new members of this union.
 - **`topic` / `coordinate`** are display-only labels. They route, authorize and
   identify nothing, and are absent on any session that is not background work.

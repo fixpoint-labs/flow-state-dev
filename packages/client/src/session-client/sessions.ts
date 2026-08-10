@@ -237,14 +237,17 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       })
     });
 
-    // The only filtering this client does, and it is a compatibility check
-    // rather than a visibility one. Deciding *what a caller may see* is
-    // authorization and stays the server's; declining to relabel as this
-    // conversation's background work a row the server never claimed was its
-    // child is the client refusing to invent a meaning.
-    return payload.workstreams.filter(
-      (workstream) => workstream.parentSessionId === parentId
-    );
+    // The client is about to relabel these rows as this conversation's
+    // background work, and it will not relabel a row the server did not claim.
+    return payload.workstreams.filter((workstream) => {
+      if (workstream.parentSessionId === parentId) return true;
+      warnParentMismatchOnce(
+        `${parentId}:${workstream.id}`,
+        `listWorkstreams("${parentId}") dropped row "${workstream.id}" whose ` +
+          `parentSessionId is "${workstream.parentSessionId}", not the requested parent.`
+      );
+      return false;
+    });
   };
 
   const getSessionState = async (
@@ -445,6 +448,29 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
       fetchCollectionItemContent: debugFetchCollectionItemContent
     }
   };
+}
+
+// `@flow-state-dev/core`'s `warnOnceDev` is the codebase's existing pattern
+// for a dev-only, once-per-key diagnostic, but `client` keeps `core`
+// type-only (it ships to the browser and carries no @types/node — see
+// scripts/validate-package-boundaries.mjs), so it cannot be imported as a
+// value here. This mirrors its shape locally, reading `process.env` off
+// `globalThis` the same way `resolveFetch` reads `fetch` (../internal/http.ts)
+// rather than assuming Node's ambient `process` global.
+const warnedParentMismatches = new Set<string>();
+
+function isProductionEnv(): boolean {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env;
+  return env?.NODE_ENV === "production";
+}
+
+function warnParentMismatchOnce(key: string, message: string): void {
+  if (isProductionEnv()) return;
+  if (warnedParentMismatches.has(key)) return;
+  warnedParentMismatches.add(key);
+  // eslint-disable-next-line no-console
+  console.warn(`[flow-state-dev] ${message}`);
 }
 
 function requireId(value: string, name: string): string {
