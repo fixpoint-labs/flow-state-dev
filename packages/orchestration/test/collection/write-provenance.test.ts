@@ -38,6 +38,7 @@ import {
   type TaskWriteToken,
 } from "../../src/tasks";
 import { taskEnvelopeSchema } from "../../src/tasks/collection/define-task-collection";
+import { stampWrite } from "../../src/tasks/write-provenance";
 import {
   createCapturedChanges,
   createFakeResourceCollection,
@@ -927,5 +928,57 @@ describe("the persisted shape carries provenance", () => {
     expect(parsed.revision).toBeUndefined();
     expect(parsed.writeLogTruncated).toBeUndefined();
     expect(parsed.incarnationId).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: an unknown truncation marker must never become a confident one
+// ---------------------------------------------------------------------------
+
+describe("stampWrite never manufactures a confident marker from an unknown one", () => {
+  // The mixed-writer precondition (module doc comment): a `writeLog` entry
+  // exists, but nobody has ever recorded whether an EARLIER receipt was
+  // dropped — `writeLogTruncated` is absent, which means "cannot tell", not
+  // "never truncated". A record like this reaches the substrate only through a
+  // hand-written ref or an out-of-band edit; built directly here rather than
+  // through the collection, because `buildInitialTask` always stamps `false`
+  // from birth and cannot produce this state.
+  const prev: Task = {
+    id: "t",
+    goal: "t",
+    status: "in_progress",
+    attempts: 1,
+    incarnationId: "inc-1",
+    revision: 9,
+    writeLog: [{ id: "old", revision: 6 }],
+    writeLogTruncated: undefined,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+
+  it("carries the unknown through the uncorrelated branch (no token)", () => {
+    const next = stampWrite(prev, { ...prev, status: "pending" });
+    expect(next.writeLogTruncated).toBeUndefined();
+  });
+
+  it("carries the unknown through the correlated branch, when this append does not evict", () => {
+    const write: TaskWriteToken = { id: "opener", sinceRevision: 9, incarnationId: "inc-1" };
+    // One receipt appended to a one-entry log is nowhere near the cap — this
+    // write itself dropped nothing, so it has no basis of its own for `true`.
+    const next = stampWrite(prev, { ...prev, status: "pending" }, write);
+    expect(next.writeLogTruncated).toBeUndefined();
+  });
+
+  it("leaves didWriteLand withholding, never a confident false, against the result", () => {
+    const write: TaskWriteToken = { id: "opener", sinceRevision: 9, incarnationId: "inc-1" };
+    const next = stampWrite(prev, { ...prev, status: "pending" }, write);
+
+    // A later, unrelated caller's token: its receipt is not in the log, the
+    // retained receipt (revision 6) is older than its baseline (5) so the
+    // retained-receipt proof cannot fire either, and the revision has moved
+    // past the baseline — the never-dropped marker is the only thing left
+    // that could answer, and it does not know.
+    const later: TaskWriteToken = { id: "unrelated", sinceRevision: 5, incarnationId: "inc-1" };
+    expect(didWriteLand(next, later)).toBeUndefined();
   });
 });

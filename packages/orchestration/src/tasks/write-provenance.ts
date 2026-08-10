@@ -361,7 +361,9 @@ export function stampWrite<TInput, TOutput>(
       // the log, and reading it from the committed basis is what keeps the
       // marker's monotonicity true across a replay.
       ...(prev.writeLog === undefined ? {} : { writeLog: prev.writeLog }),
-      writeLogTruncated: prev.writeLogTruncated === true,
+      // Carried from `prev` unchanged: this branch does not touch the log, so
+      // the marker's truth (including "unknown") cannot change here either.
+      writeLogTruncated: prev.writeLogTruncated,
     };
   }
 
@@ -377,7 +379,10 @@ export function stampWrite<TInput, TOutput>(
     // Oldest-first, which is the property both of `didWriteLand`'s coverage
     // proofs rest on.
     writeLog: dropped > 0 ? appended.slice(dropped) : appended,
-    // Monotonic: once true it never goes back to false.
-    writeLogTruncated: prev.writeLogTruncated === true || dropped > 0,
+    // Monotonic and unknown-preserving: `true` only when THIS append actually
+    // dropped a receipt; otherwise carry `prev` forward unchanged (`true`
+    // stays `true`, `undefined` stays `undefined` — never manufactured into a
+    // confident `false`).
+    writeLogTruncated: dropped > 0 ? true : prev.writeLogTruncated,
   };
 }
