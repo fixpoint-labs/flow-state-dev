@@ -180,6 +180,29 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 `ReadonlyArray<ResourceChangeNotice>` of mid-stream resource_change notices in arrival order. Each notice carries `{ resourcePath, changeType, seq }`. Surfaced independently of the items filter, so subscribers can react to in-flight resource mutations without setting `includeTransient: true` on `useSession`. Reset on session change.
 
+### `SessionView.workstreams`
+
+`ReadonlyArray<WorkstreamSummary>` of the background work running under this session — one entry per body of work, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`. Empty for a session that never started any. Separate from `items`: background work is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
+
+Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
+
+`status` is absent until the work has run something. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.
+
+`SessionView.workstreamsStale` is `true` when the most recent re-read failed. The rows already read are kept, so this distinguishes "this is current" from "this is the last list we could fetch". Cleared by the next successful read.
+
+To open one, read it as the session it is. The row carries no `flowKind`, so pass the flow your worker runs — or take it from the work's own request records via `listSessionRequests(row.id)`:
+
+```tsx
+function BackgroundJobDetail({ jobId }: { jobId: string }) {
+  // `autoResume` is required here: without it this loads one snapshot and
+  // never fills in as the job keeps working.
+  const job = useSession(jobId, { flowKind: "worker", autoResume: true });
+  return <ItemsRenderer items={job.items} />;
+}
+```
+
+Steps appear as they complete. There is no in-flight text from background work.
+
 ### `useResourceManifest(session)`
 
 Fetches the static manifest of public resources for the session's flow. Cached module-level by `flowKind` so all components share one fetch.

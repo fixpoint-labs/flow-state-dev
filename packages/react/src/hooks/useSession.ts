@@ -15,7 +15,8 @@ import {
   type RequestStreamHandle,
   type SessionDetail,
   type SessionRequestSummary,
-  type SessionStateSnapshotResponse
+  type SessionStateSnapshotResponse,
+  type WorkstreamSummary
 } from "@flow-state-dev/client";
 import type {
   ContentAudioDeltaEvent,
@@ -145,6 +146,32 @@ export type SessionView = {
    * the caller's `useSession` call.
    */
   readonly resourceChanges: ReadonlyArray<ResourceChangeNotice>;
+  /**
+   * Background work running under this session — one entry per body of work,
+   * not per attempt, and finished work stays listed. Empty for a session that
+   * never launched any.
+   *
+   * Separate from `items` on purpose: background work is not part of the
+   * conversation, and nothing here is folded into the transcript. An app that
+   * wants "here's what came back" to appear in the chat writes that itself.
+   *
+   * Current as of the last thing the user did — reading this does not start
+   * anything that keeps it up to date on its own. It is re-read on mount, at
+   * the start of every action, and whenever the app calls `refresh()`.
+   *
+   * A row's `status` is absent until its work has run anything, and `"active"`
+   * means only *not finished* — never render it as "running", "working" or
+   * "thinking", and never treat it as proof a worker is alive.
+   */
+  readonly workstreams: ReadonlyArray<WorkstreamSummary>;
+  /**
+   * True when the most recent attempt to re-read `workstreams` failed. The
+   * rows already read are kept rather than cleared, so this is the difference
+   * between "this is the current list" and "this is the last list we could
+   * get" — without it a job that has since failed renders as still running.
+   * Cleared by the next successful read.
+   */
+  readonly workstreamsStale: boolean;
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
   getOwnedItems: (ownedBy: string) => OutputItem[];
   /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
@@ -328,6 +355,21 @@ export function useSession(
   // `published`) without forcing the consumer to set `includeTransient: true`.
   const [resourceChanges, setResourceChanges] = useState<ResourceChangeNotice[]>([]);
   const resourceChangeSeqRef = useRef(0);
+  // Background work running under this session. Read from the server, never
+  // derived from the conversation's own items — a Workstream is a separate
+  // session, not a message.
+  const [workstreams, setWorkstreams] = useState<WorkstreamSummary[]>([]);
+  const [workstreamsStale, setWorkstreamsStale] = useState(false);
+  // Two guards, and they answer different questions. The generation asks
+  // "is this response still about the thing we are reading?" and advances
+  // whenever the read identity changes (session id, or the client itself,
+  // which is rebuilt when `baseUrl` changes). The sequence asks "of two
+  // responses that are both still relevant, which is newer?" — needed
+  // because the mount read, an action-start read and a manual `refresh()`
+  // all share one identity and can be in flight together.
+  const workstreamGenerationRef = useRef(0);
+  const workstreamSequenceRef = useRef(0);
+  const workstreamAppliedSequenceRef = useRef(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -473,6 +515,46 @@ export function useSession(
       // Best effort — a missing latest request shouldn't surface as a
       // session-level error. Consumers see the previous value.
       return null;
+    }
+  }, [sessionId, sessionClient]);
+
+  /**
+   * Re-read this session's background work.
+   *
+   * One read per call — there is no digest and no coalescing, because the
+   * panel is current as of the caller's last interaction and nothing else
+   * triggers this. A failed read keeps the rows already on screen and raises
+   * `workstreamsStale`; it never clears the list, because showing nothing
+   * would claim the work went away.
+   */
+  const refreshWorkstreams = useCallback(async () => {
+    if (sessionId === undefined) {
+      setWorkstreams([]);
+      setWorkstreamsStale(false);
+      return;
+    }
+
+    const generation = workstreamGenerationRef.current;
+    const sequence = ++workstreamSequenceRef.current;
+
+    try {
+      const rows = await sessionClient.listWorkstreams(sessionId);
+
+      // Superseded: we are now reading a different session, or the same
+      // session from a different backend.
+      if (generation !== workstreamGenerationRef.current) return;
+      // A newer read of this same session already landed. Applying this one
+      // would regress the list — including turning a finished row back into
+      // an unfinished one.
+      if (sequence <= workstreamAppliedSequenceRef.current) return;
+
+      workstreamAppliedSequenceRef.current = sequence;
+      setWorkstreams(rows);
+      setWorkstreamsStale(false);
+    } catch {
+      if (generation !== workstreamGenerationRef.current) return;
+      // Keep the last known rows, but stop presenting them as current.
+      setWorkstreamsStale(true);
     }
   }, [sessionId, sessionClient]);
 
@@ -909,6 +991,24 @@ export function useSession(
     ]
   );
 
+  // Retire every workstream read in flight and clear the axis whenever what
+  // we are reading — or where we are reading it from — changes. Declared
+  // before the load effect below so the generation has already advanced by
+  // the time the new identity's first read is issued.
+  useEffect(() => {
+    workstreamGenerationRef.current += 1;
+    workstreamAppliedSequenceRef.current = 0;
+    setWorkstreams([]);
+    setWorkstreamsStale(false);
+  }, [sessionId, sessionClient]);
+
+  // The mount read. This is the only read that is not tied to a user
+  // interaction: it covers arriving at a conversation that already has
+  // background work running.
+  useEffect(() => {
+    void refreshWorkstreams();
+  }, [refreshWorkstreams]);
+
   useEffect(() => {
     if (sessionId === undefined) {
       resourceChangedDuringStreamRef.current = false;
@@ -932,10 +1032,28 @@ export function useSession(
 
     void (async () => {
       try {
-        const [nextDetail, nextSnapshot, latestAtLoad] = await Promise.all([
+        // The catch-up below has to know the latest request was still running
+        // BEFORE the snapshot was read, and a status read that RACES the
+        // snapshot cannot establish that: the server may serve the snapshot
+        // while the request is still running and serve the status after it
+        // completed, leaving the status terminal while the snapshot is
+        // already stale — so the catch-up would be skipped in exactly the
+        // case it exists for. Reading the status first makes a terminal
+        // status proof that the snapshot taken after it is current.
+        // Sequential on the autoResume path only; every other consumer keeps
+        // the single parallel round trip.
+        const latestBeforeSnapshot = autoResume ? await refreshLatestRequest() : null;
+
+        if (cancelled) {
+          return;
+        }
+
+        const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
           fetchSessionSnapshot(),
-          refreshLatestRequest()
+          autoResume
+            ? Promise.resolve(latestBeforeSnapshot)
+            : refreshLatestRequest()
         ]);
 
         if (cancelled) {
@@ -967,11 +1085,11 @@ export function useSession(
 
           if (activeRequest !== undefined) {
             attachToStream(activeRequest.id);
-          } else if (latestAtLoad?.status === "in_progress") {
-            // The latest request was still running when we read the snapshot,
-            // and it is no longer in the in-progress list: it finished inside
-            // the window between those two reads. No stream is attachable and
-            // the snapshot we applied predates the request's final items, so
+          } else if (latestBeforeSnapshot?.status === "in_progress") {
+            // The latest request was still running before we read the
+            // snapshot, and it is no longer in the in-progress list: it
+            // finished inside that window. No stream is attachable and the
+            // snapshot we applied may predate the request's final items, so
             // without this the session sits incomplete until the consumer
             // remounts or refreshes by hand. Re-read once to catch up.
             const catchUpSnapshot = await fetchSessionSnapshot();
@@ -981,6 +1099,17 @@ export function useSession(
             if (catchUpSnapshot !== null) {
               applySnapshot(catchUpSnapshot);
             }
+
+            // The summary has to agree with the items we just caught up on.
+            // `latestRequest` still holds the in-progress record read before
+            // the snapshot, and nothing else will correct it: no stream
+            // attached, so no terminal status event ever arrives. Leaving it
+            // would show completed work beside a summary that reads in-flight
+            // — the same inconsistency this branch exists to remove, one
+            // field over.
+            await refreshLatestRequest();
+
+            if (cancelled) return;
           }
         }
       } catch (cause) {
@@ -1133,6 +1262,13 @@ export function useSession(
         throw new Error("useSession.sendAction requires a sessionId");
       }
 
+      // Discovery, at the start of the interaction (not at its resolution).
+      // This is what makes the panel current as of the moment the user acted,
+      // and it is deliberately not gated on already knowing about a
+      // Workstream — gating it that way is how a just-launched job would
+      // never be discovered at all.
+      void refreshWorkstreams();
+
       // Auto-dismiss a stuck prior request before kicking off a new one.
       // The synthetic abort item from `dismissRequest` keeps the prior
       // attempt visible in the items log instead of silently dropping it.
@@ -1250,6 +1386,7 @@ export function useSession(
       itemConfig.enabled,
       attachToStream,
       refreshSnapshot,
+      refreshWorkstreams,
       dismissRequest,
       orgId
     ]
@@ -1307,11 +1444,21 @@ export function useSession(
   }, [client, flushContentDeltas, injectSyntheticAbortItem]);
 
   const refresh = useCallback(async () => {
-    await refreshSnapshot();
-  }, [refreshSnapshot]);
+    // Refreshes the whole view, background work included. Under the
+    // interaction-only design this is also the app's way to bring a
+    // just-launched job onto the screen without sending another action.
+    await Promise.all([refreshSnapshot(), refreshWorkstreams()]);
+  }, [refreshSnapshot, refreshWorkstreams]);
 
   const resumeLatestRequest = useCallback(async () => {
     if (sessionId === undefined) return;
+
+    // Discovery. This path calls the recovery client directly and bypasses
+    // both `sendAction` and `performInlineReentry`, so it needs its own read:
+    // retrying a failed parent after a child finished would otherwise leave
+    // the panel stale.
+    void refreshWorkstreams();
+
     const target = latestRequest;
     if (target === null) return;
     if (target.status !== "interrupted" && target.status !== "failed") {
@@ -1343,7 +1490,14 @@ export function useSession(
       setError(normalized);
       throw normalized;
     }
-  }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
+  }, [
+    sessionId,
+    latestRequest,
+    recoveryClient,
+    attachToStream,
+    refreshLatestRequest,
+    refreshWorkstreams
+  ]);
 
   // Shared by resumeSuspension (FIX-811) and continueRequest (FIX-865): both
   // re-enter an existing request's own id via a single inline-streaming POST,
@@ -1353,6 +1507,11 @@ export function useSession(
   // reconnect via GET instead of re-posting.
   const performInlineReentry = useCallback(
     async (requestId: string, post: () => Promise<Response>): Promise<void> => {
+      // Discovery — the shared path behind `resumeSuspension` and
+      // `continueRequest`. A parent that launches background work after a
+      // human approval gate comes through here, not through `sendAction`.
+      void refreshWorkstreams();
+
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
         streamHandleRef.current = null;
@@ -1393,7 +1552,13 @@ export function useSession(
         throw normalized;
       }
     },
-    [itemConfig.enabled, attachToStream, refreshSnapshot, refreshLatestRequest]
+    [
+      itemConfig.enabled,
+      attachToStream,
+      refreshSnapshot,
+      refreshLatestRequest,
+      refreshWorkstreams
+    ]
   );
 
   const resumeSuspension = useCallback(
@@ -1458,6 +1623,8 @@ export function useSession(
     latestRequest,
     items,
     resourceChanges,
+    workstreams,
+    workstreamsStale,
     getOwnedItems,
     getItemsByAgent,
     getItemsByVisibility,

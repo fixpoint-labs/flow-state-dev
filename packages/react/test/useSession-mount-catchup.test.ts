@@ -141,6 +141,89 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(2);
   });
 
+  it("leaves the request summary agreeing with the items it caught up on", async () => {
+    // Nothing else can correct `latestRequest` on this path: no stream is
+    // attached, so no terminal status event ever arrives. Without an explicit
+    // re-read the hook shows completed items beside a summary still reading
+    // in-flight.
+    let statusReads = 0;
+    sessionClientMock.listSessionRequests.mockImplementation(
+      async (_sessionId: string, options?: { status?: string }) => {
+        if (options?.status === "in_progress") return [];
+        statusReads += 1;
+        // First read (before the snapshot) sees it running; by the time the
+        // catch-up re-reads, the request has finished.
+        return [request(statusReads === 1 ? "in_progress" : "completed")];
+      }
+    );
+    sessionClientMock.getSessionState
+      .mockResolvedValueOnce(snapshot([]))
+      .mockResolvedValueOnce(snapshot([message("m_final", "the last step")]));
+
+    const { result } = renderHook(() =>
+      useSession("job1", { flowKind: "demo", autoResume: true })
+    );
+
+    await waitFor(() => {
+      expect(result.current.items.map((item) => item.id)).toContain("m_final");
+    });
+
+    await waitFor(() => {
+      expect(result.current.latestRequest?.status).toBe("completed");
+    });
+  });
+
+  it("reads the latest-request status BEFORE the snapshot, so a terminal status proves the snapshot is current", async () => {
+    // The condition that drives the catch-up is "was the request running
+    // before the snapshot was read". If the two reads race, a server that
+    // serves the snapshot while the request is still running and the status
+    // after it completed leaves the status terminal and the snapshot stale —
+    // and the catch-up is skipped in exactly the case it exists for. That
+    // interleaving cannot be built out of mock return values (the two reads
+    // are independent), so the property under test is the ORDER itself.
+    const order: string[] = [];
+    let releaseStatus: (rows: unknown[]) => void = () => {};
+    const statusRead = new Promise<unknown[]>((resolve) => {
+      releaseStatus = resolve;
+    });
+
+    sessionClientMock.listSessionRequests.mockImplementation(
+      async (_sessionId: string, options?: { status?: string }) => {
+        if (options?.status === "in_progress") {
+          order.push("in-progress-lookup");
+          return [];
+        }
+        order.push("status-read:start");
+        const rows = await statusRead;
+        order.push("status-read:end");
+        return rows;
+      }
+    );
+    sessionClientMock.getSessionState.mockImplementation(async () => {
+      order.push("snapshot");
+      return snapshot([message("m_done", "finished")]);
+    });
+
+    renderHook(() => useSession("job1", { flowKind: "demo", autoResume: true }));
+
+    await waitFor(() => {
+      expect(order).toContain("status-read:start");
+    });
+
+    // The snapshot must not have been requested yet: it is ordered behind the
+    // status read, which is what makes a terminal status meaningful.
+    expect(order).not.toContain("snapshot");
+
+    releaseStatus([request("completed")]);
+
+    await waitFor(() => {
+      expect(order).toContain("snapshot");
+    });
+    expect(order.indexOf("status-read:end")).toBeLessThan(
+      order.indexOf("snapshot")
+    );
+  });
+
   it("does not re-read the snapshot when the session was already idle at mount", async () => {
     // The common path: nothing was running when the hook mounted, so there is
     // no race to catch up on and the extra read must not happen. Without this

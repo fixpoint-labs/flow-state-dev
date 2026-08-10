@@ -281,12 +281,46 @@ const { sessions, activeSessionId, createSession, selectSession } = useFlow();
 **`useSession`** — Primary hook for session data and actions:
 
 ```tsx
-const { detail, items, isStreaming, isFinishing, sendAction, refresh } = useSession(sessionId);
+const {
+  detail, items, isStreaming, isFinishing, sendAction, refresh,
+  workstreams, workstreamsStale
+} = useSession(sessionId);
 
 await sendAction("chat", { message: "Hello!" });
 // isFinishing: true when main chain is done but background .work() tasks are still running.
 // Use (isStreaming && !isFinishing) to block UI only during main chain execution.
 ```
+
+**Background work (`workstreams`)** — a second axis beside `items`, carrying the
+Workstreams running under this session as `WorkstreamSummary` rows from
+`client`. This layer re-exports the client's row type and names no field shapes
+of its own; nothing is merged into `items`, and no transport shape is decided
+here.
+
+The axis is **interaction-scoped, not live**. It is read on mount, at the
+**start** of every work-starting call on the returned view (`sendAction`,
+`resumeLatestRequest`, `resumeSuspension`, `continueRequest`), and by `refresh`
+— which now covers this axis as well as the snapshot. There is deliberately no
+polling and no stream-driven refresh: the launching turn's stream is
+request-scoped and closes when the turn ends, while the work outlives it, and
+there is no session-level channel to fall back on (`/users/:userId/stream`
+returns 501). The read is therefore anchored to a local fact — this hook
+dispatched the interaction — so no board option, dropped connection or
+`items: false` can remove it. The cost is one Workstream read per turn,
+independent of task-board activity.
+
+Reads are guarded twice, because the two hazards are different. A **generation**
+advances whenever the read identity changes — the session id or the session
+client, which is rebuilt when `baseUrl` changes — and retires responses from a
+superseded identity. A per-read **sequence** orders reads *within* one identity,
+since the mount read, an action-start read and a manual `refresh()` share a
+generation and can be in flight together; an older response is discarded rather
+than allowed to overwrite newer rows or regress a terminal row to `active`.
+
+A failed re-read keeps the last known rows and raises `workstreamsStale`,
+cleared by the next success. Row status is rendered as received: this package
+does not enumerate `WorkstreamStatus`, so an unrecognised value displays without
+a change here.
 
 **`useClientData`** — Scope-grouped client data subscriptions:
 
