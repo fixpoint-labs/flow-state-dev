@@ -330,6 +330,36 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     );
   });
 
+  it("asks for the caller's limit, because the default is too small for a large orchestration", async () => {
+    // The list is all-time history, not just what is running, so a long-lived
+    // conversation outgrows any fixed number. An app that knows it runs more
+    // background work than the default has to be able to say so.
+    await mountSession({ workstreams: { limit: 500 } });
+
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
+      "sess1",
+      expect.objectContaining({ limit: 500 })
+    );
+  });
+
+  it("does not re-read on every render when the limit is passed as an inline object", async () => {
+    const { rerender } = renderHook(() =>
+      // A fresh object identity every render — the ordinary way an app writes
+      // this. Keying the read on the object rather than the number inside it
+      // turns each render into another read.
+      useSession("sess1", { flowKind: "demo", workstreams: { limit: 250 } })
+    );
+
+    await waitFor(() => {
+      expect(sessionClientMock.listWorkstreams).toHaveBeenCalled();
+    });
+
+    rerender();
+    rerender();
+
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
+  });
+
   it("a read that fails after a newer one succeeded does not mark fresh rows stale", async () => {
     let rejectFirst: (cause: Error) => void = () => {};
     const firstRead = new Promise<unknown[]>((_resolve, reject) => {

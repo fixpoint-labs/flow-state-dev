@@ -184,7 +184,18 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 `ReadonlyArray<WorkstreamSummary>` of the background work running under this session — one entry per body of work, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`. Empty for a session that never started any. Separate from `items`: background work is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
-Carries the 100 most recent entries, newest first. A conversation that starts more background work than that keeps showing the newest — what falls off the end is the oldest finished work, and there is no pagination control to reach past it.
+Carries the most recent entries, newest first — 100 by default. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than the limit keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
+
+Raise it with `workstreams: { limit }`:
+
+```tsx
+const session = useSession(sessionId, {
+  flowKind: "research",
+  workstreams: { limit: 500 }
+});
+```
+
+The server enforces its own maximum on this value and rejects anything larger, so an app that needs more rows than the server permits needs that ceiling raised too.
 
 Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
 

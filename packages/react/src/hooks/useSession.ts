@@ -43,7 +43,7 @@ import {
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
 /**
- * How many background-work rows one read asks for.
+ * Rows one background-work read asks for when the caller names no preference.
  *
  * Stated here rather than inherited from the server's default, so the number
  * the docs quote is the number the hook actually gets and cannot drift if that
@@ -56,12 +56,12 @@ const DEFAULT_STATE_PAGE_LIMIT = 100;
  * what a longer history loses off the end is the oldest finished work, never
  * work that just started.
  *
- * Must stay within the workstream route's accepted `limit` — the route rejects
- * anything above its own maximum, and `react` cannot import that constant from
- * `engine` across the package boundary. Lowering the cap there means lowering
- * this.
+ * An app that runs more background work than this raises it via
+ * `workstreams: { limit }`. The ceiling is the workstream route's own maximum:
+ * it rejects anything higher, and `react` cannot import that constant from
+ * `engine` across the package boundary.
  */
-const WORKSTREAM_PAGE_SIZE = 100;
+const DEFAULT_WORKSTREAM_PAGE_SIZE = 100;
 
 /**
  * Items subscription configuration for useSession.
@@ -72,6 +72,25 @@ export type SessionItemsOptions =
       includeTransient?: boolean;
       itemTypes?: string[];
     };
+
+/**
+ * Background-work list configuration for useSession.
+ */
+export type SessionWorkstreamsOptions = {
+  /**
+   * Rows each read asks for, newest first. Defaults to 100.
+   *
+   * Raise it when a conversation runs more background work than that — the
+   * list is all-time history, not just what is currently running, so it grows
+   * with everything the conversation has ever started. Anything past this many
+   * rows is not reachable from the hook.
+   *
+   * The workstream route enforces its own maximum and rejects a larger value,
+   * so an app that needs more rows than the server permits needs that ceiling
+   * raised too.
+   */
+  limit?: number;
+};
 
 /**
  * Options for useSession.
@@ -88,6 +107,7 @@ export type UseSessionHookOptions = {
   orgId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
+  workstreams?: SessionWorkstreamsOptions;
   /**
    * When true, on mount the hook checks if the session has an in-progress
    * request and re-attaches to its stream using cursor-based continuation.
@@ -180,9 +200,11 @@ export type SessionView = {
    * anything that keeps it up to date on its own. It is re-read on mount, at
    * the start of every action, and whenever the app calls `refresh()`.
    *
-   * The 100 most recent entries, newest first. A conversation that starts more
-   * background work than that keeps showing the newest; the oldest finished
-   * work falls off the end, and there is no pagination control to reach it.
+   * The most recent entries, newest first — 100 by default, raised with
+   * `workstreams: { limit }`. This is all-time history rather than only what
+   * is running now, so it grows with everything the conversation has ever
+   * started; past the limit the oldest finished work falls off the end and is
+   * not reachable from here.
    *
    * A row's `status` is absent until its work has run anything, and `"active"`
    * means only *not finished* — never render it as "running", "working" or
@@ -367,6 +389,13 @@ export function useSession(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable primitives, not object ref
     [itemsEnabled, itemsIncludeTransient, itemsTypesKey]
   );
+
+  // Read off as a primitive rather than memoizing the options object: callers
+  // pass `workstreams` as an inline literal, so a new object identity every
+  // render would re-create `refreshWorkstreams` and re-fire the mount read on
+  // every render.
+  const workstreamLimit =
+    options?.workstreams?.limit ?? DEFAULT_WORKSTREAM_PAGE_SIZE;
 
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
@@ -564,7 +593,7 @@ export function useSession(
 
     try {
       const rows = await sessionClient.listWorkstreams(sessionId, {
-        limit: WORKSTREAM_PAGE_SIZE
+        limit: workstreamLimit
       });
 
       // Superseded: we are now reading a different session, or the same
@@ -591,7 +620,7 @@ export function useSession(
       // Keep the last known rows, but stop presenting them as current.
       setWorkstreamsStale(true);
     }
-  }, [sessionId, sessionClient]);
+  }, [sessionId, sessionClient, workstreamLimit]);
 
   const flushContentDeltas = useCallback(() => {
     flushHandleRef.current = null;
