@@ -45,8 +45,9 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `revision` | `number?` | Counter advanced by every write that changed the task. |
 | `writeLog` | `{ id: string; revision: number }[]?` | Bounded, newest-last log of write receipts. Read through `didWriteLand`, not directly. |
 | `writeLogTruncated` | `boolean?` | Whether the log has ever dropped a receipt. |
+| `incarnationId` | `string?` | Identifies this task apart from an earlier one that used the same id. |
 
-The last three are write provenance. They exist so a caller can find out whether its own write committed, and they are maintained by the collection rather than by you. See [telling whether your write landed](#telling-whether-your-write-landed).
+The last four are write provenance. They exist so a caller can find out whether its own write committed, and they are maintained by the collection rather than by you. See [telling whether your write landed](#telling-whether-your-write-landed).
 
 `input` and `output` validate as `unknown` on the schema. The runtime type `Task<TInput, TOutput>` narrows them at your call site, so a board over a typed collection surfaces real payload types at the worker boundary.
 
