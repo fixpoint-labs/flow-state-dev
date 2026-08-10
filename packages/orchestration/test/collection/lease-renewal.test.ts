@@ -1017,3 +1017,91 @@ describe("a slow renewal does not push the retry past the deadline", () => {
     expect(clock.ticks[2].firesAt).toBe(4_000);
   });
 });
+
+
+describe("a custom collection's clock is called as a method", () => {
+  // `now` is a REQUIRED member of `TaskCollectionRef` as of FIX-1005, so every
+  // external implementer is writing it fresh against the migration note. Method
+  // shorthand is at least as natural a spelling as an arrow property:
+  //
+  //   now() { return this.clock.now(); }
+  //
+  // Extracting it as a bare function drops the receiver, so that spelling
+  // throws on the driver's first clock read — before renewal is established,
+  // with the task already claimed, so it cannot be dispatched again until the
+  // lease expires. The people most likely to hit it are the ones following the
+  // documentation.
+  //
+  // This test uses the shorthand deliberately. An arrow-property clock passes
+  // either way and would leave the defect exactly as exposed.
+
+  /** A ref whose `now` is a method that needs `this`. */
+  function refWithMethodClock(inner: TaskCollectionRef): TaskCollectionRef {
+    return {
+      ...inner,
+      clock: { value: 5_000 },
+      now() {
+        return (this as unknown as { clock: { value: number } }).clock.value;
+      },
+    } as unknown as TaskCollectionRef;
+  }
+
+  it("startLeaseRenewal does not drop the receiver", async () => {
+    const h = harness();
+    await h.collection.addTask({ id: "t", goal: "t" });
+    const task = (await h.collection.claim("w", { leaseDurationMs: 30_000 }))!;
+    const timer = fakeTimer();
+
+    const driver = startLeaseRenewal({
+      collection: refWithMethodClock(h.collection),
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      timer: timer.timer,
+    });
+
+    // Reaching here at all is the assertion: an unbound `now` throws on the
+    // driver's first read, which happens before this returns.
+    expect(driver.signal).toBeInstanceOf(AbortSignal);
+    driver.stop();
+  });
+
+  it("and neither does a renewal write once ticking", async () => {
+    // The second read is inside `renew()`, on the timer path.
+    const h = harness();
+    await h.collection.addTask({ id: "t", goal: "t" });
+    const task = (await h.collection.claim("w", { leaseDurationMs: 30_000 }))!;
+    const timer = fakeTimer();
+
+    startLeaseRenewal({
+      collection: refWithMethodClock(h.collection),
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      timer: timer.timer,
+    });
+
+    await expect(timer.fireNext()).resolves.not.toThrow();
+  });
+
+  it("an explicit `now` override still wins", async () => {
+    // The override is a plain function by contract, so it must not be affected
+    // by the binding fix.
+    const h = harness();
+    await h.collection.addTask({ id: "t", goal: "t" });
+    const task = (await h.collection.claim("w", { leaseDurationMs: 30_000 }))!;
+    const timer = fakeTimer();
+    let overrideCalls = 0;
+
+    startLeaseRenewal({
+      collection: refWithMethodClock(h.collection),
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      now: () => {
+        overrideCalls += 1;
+        return h.now();
+      },
+      timer: timer.timer,
+    });
+
+    expect(overrideCalls).toBeGreaterThan(0);
+  });
+});

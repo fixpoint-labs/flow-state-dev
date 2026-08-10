@@ -174,7 +174,15 @@ export interface LeaseRenewalDriver {
  */
 export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDriver {
   const { collection, ticket, claimedTask } = options;
-  const now = options.now ?? collection.now;
+  // Called THROUGH the collection, never extracted. `now` is a required member
+  // of `TaskCollectionRef`, so every custom ref implements it fresh — and
+  // `now() { return this.clock.now(); }` is at least as natural a spelling as
+  // an arrow property. Pulling the method off the object drops its receiver, so
+  // that spelling would throw on this driver's first clock read: before renewal
+  // is established, with the task already claimed, leaving a row nobody can
+  // dispatch again until its lease expires. An explicit `options.now` is a
+  // plain function by contract and is used as given.
+  const now = options.now ?? (() => collection.now());
   const timer = options.timer ?? defaultTimer;
 
   const lost = new AbortController();
