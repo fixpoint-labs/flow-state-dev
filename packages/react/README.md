@@ -184,6 +184,8 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 `ReadonlyArray<WorkstreamSummary>` of the background work running under this session — one entry per body of work, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`. Empty for a session that never started any. Separate from `items`: background work is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
+Carries the 100 most recent entries, newest first. A conversation that starts more background work than that keeps showing the newest — what falls off the end is the oldest finished work, and there is no pagination control to reach past it.
+
 Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
 
 `status` is absent until the work has run something. `"active"` means only *not finished*: it does not separate working from queued from waiting on a person, and it reports the last state recorded rather than checking a worker is alive — so work whose worker stopped unexpectedly reads as unfinished until the system picks it back up. Treat unrecognised values as displayable; the set grows.

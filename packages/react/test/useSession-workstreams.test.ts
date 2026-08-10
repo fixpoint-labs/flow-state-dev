@@ -131,7 +131,10 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     });
 
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith("sess1");
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
+      "sess1",
+      expect.anything()
+    );
     expect(result.current.workstreams).toEqual([]);
     expect(result.current.workstreamsStale).toBe(false);
     // The second path (BP-035): the conversation is untouched by this feature.
@@ -313,6 +316,18 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     expect(result.current.workstreamsStale).toBe(false);
     expect(result.current.workstreams[0]?.status).toBe("completed");
+  });
+
+  it("asks for a bounded page rather than inheriting whatever the server defaults to", async () => {
+    await mountSession();
+
+    // The number the docs quote has to be the number the hook asks for. Left
+    // unspecified, the page size is whatever the server's default happens to
+    // be, so the documented bound could drift without anything here failing.
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
+      "sess1",
+      expect.objectContaining({ limit: 100 })
+    );
   });
 
   it("a read that fails after a newer one succeeded does not mark fresh rows stale", async () => {

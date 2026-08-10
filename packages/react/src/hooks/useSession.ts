@@ -43,6 +43,27 @@ import {
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
 /**
+ * How many background-work rows one read asks for.
+ *
+ * Stated here rather than inherited from the server's default, so the number
+ * the docs quote is the number the hook actually gets and cannot drift if that
+ * default changes. This is a cap, not a fetch size — a session with three
+ * workstreams still returns three rows.
+ *
+ * The axis is deliberately one page: it is re-read on every interaction, and
+ * paging to exhaustion would make an ordinary turn cost a number of requests
+ * that grows with the conversation's history. Rows come back newest-first, so
+ * what a longer history loses off the end is the oldest finished work, never
+ * work that just started.
+ *
+ * Must stay within the workstream route's accepted `limit` — the route rejects
+ * anything above its own maximum, and `react` cannot import that constant from
+ * `engine` across the package boundary. Lowering the cap there means lowering
+ * this.
+ */
+const WORKSTREAM_PAGE_SIZE = 100;
+
+/**
  * Items subscription configuration for useSession.
  */
 export type SessionItemsOptions =
@@ -158,6 +179,10 @@ export type SessionView = {
    * Current as of the last thing the user did — reading this does not start
    * anything that keeps it up to date on its own. It is re-read on mount, at
    * the start of every action, and whenever the app calls `refresh()`.
+   *
+   * The 100 most recent entries, newest first. A conversation that starts more
+   * background work than that keeps showing the newest; the oldest finished
+   * work falls off the end, and there is no pagination control to reach it.
    *
    * A row's `status` is absent until its work has run anything, and `"active"`
    * means only *not finished* — never render it as "running", "working" or
@@ -538,7 +563,9 @@ export function useSession(
     const sequence = ++workstreamSequenceRef.current;
 
     try {
-      const rows = await sessionClient.listWorkstreams(sessionId);
+      const rows = await sessionClient.listWorkstreams(sessionId, {
+        limit: WORKSTREAM_PAGE_SIZE
+      });
 
       // Superseded: we are now reading a different session, or the same
       // session from a different backend.
