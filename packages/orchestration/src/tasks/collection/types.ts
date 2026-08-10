@@ -10,14 +10,19 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TaskClaimTicket } from "../claim-ticket";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
+import type { TaskWriteToken } from "../write-provenance";
 
 /**
- * Why a write was refused (FIX-976; `not-my-task` added by FIX-981). Resolved
- * in a **fixed precedence order** — `terminal` → `not-my-task` → `disallowed` →
+ * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
+ * `immutable-assignee` by FIX-982). Resolved in a **fixed precedence order** —
+ * `immutable-assignee` → `terminal` → `not-my-task` → `disallowed` →
  * `lost-claim` — so a decline where two conditions hold always reports the same
  * one, and two callers cannot render two different messages for the same
  * refusal.
  *
+ * - `immutable-assignee` — the board runs detached work, where a task's
+ *   assignee is fixed at admission. Reassignment is refused whatever the task's
+ *   status is.
  * - `terminal` — the task had already reached `completed` / `errored` /
  *   `cancelled`. The majority of the exposure, but not all of it.
  * - `not-my-task` — the presented `claim` names a different board, a different
@@ -40,8 +45,16 @@ import type { TaskInit, TaskFilter } from "../schema/task-init";
  * arm would report `disallowed` on one interleaving and `not-my-task` on
  * another for the same cross-task write: accidental protection, not a
  * guarantee, and a reason no caller can act on.
+ *
+ * **Why `immutable-assignee` sits above `terminal`.** It reads no mutable task
+ * state at all — the board either runs detached work or it does not — so it is
+ * safe at any position by the argument above. It goes first because it is the
+ * only arm true of *every* status: reporting `terminal` for a finished task on a
+ * detached board would imply a pending one could be reassigned, which is exactly
+ * the wrong thing to tell a caller that is about to retry.
  */
 export type TaskWriteDeclineReason =
+  | "immutable-assignee"
   | "terminal"
   | "not-my-task"
   | "disallowed"
@@ -183,6 +196,32 @@ export interface TaskTransitionOptions {
    * for a coordinator writing to a board it never claimed from.
    */
   claim?: TaskClaimTicket;
+  /**
+   * Record this write on the task, so the caller can find out afterwards
+   * whether it committed — **even if this call throws** (FIX-989).
+   *
+   * Mint one with `beginTaskWrite(tasks.get(id))` *before* the write and read
+   * the answer with `didWriteLand(tasks.get(id), write)` after. The returned
+   * {@link TaskWriteOutcome} already says what a call that *returned* did; this
+   * covers the path it cannot reach, where the durable write commits and the
+   * change announcement then rejects.
+   *
+   * Three answers come back, and the third is the point: landed, did not land,
+   * or **cannot tell**. See `didWriteLand` for the rule and for what a `false`
+   * precisely means.
+   *
+   * Correlation is available on the seven methods that take this options
+   * object. `addTask`, `addTasks`, `claim`, `reclaim` and the five field
+   * mutators still bump the task's `revision` but mint no receipt, so a caller
+   * of those cannot correlate its own write. Widening means adding an options
+   * argument to nine more methods on an already-large interface; it waits for a
+   * consumer that needs it.
+   *
+   * A `TaskCollectionRef` written by hand maintains no provenance, and needs no
+   * migration to stay correct: absence of a record reads as "cannot tell", not
+   * as "your write did not land".
+   */
+  write?: TaskWriteToken;
 }
 
 /**
@@ -450,18 +489,28 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // the whole patch surface rather than two conventions on five methods sharing
   // one helper.
   //
-  // Exactly ONE of them refuses anything: `setAssignee` declines on a terminal
-  // task, because reassigning work that will never run again is a write no
-  // caller can act on. The other four deliberately keep writing to terminal
-  // tasks — labelling, re-prioritizing, or annotating a finished task is a real
-  // and used thing (a post-drain failure audit, a cascade's `skipped` marker) —
-  // so they can only ever answer `recorded` or `unchanged`.
+  // Exactly ONE of them refuses anything: `setAssignee`, which declines on a
+  // terminal task and — on a board that runs detached work — on every task.
+  // The other four deliberately keep writing to terminal tasks — labelling,
+  // re-prioritizing, or annotating a finished task is a real and used thing (a
+  // post-drain failure audit, a cascade's `skipped` marker) — so they can only
+  // ever answer `recorded` or `unchanged`.
   /**
    * Set the task's assignee.
    *
    * **Declines on a terminal task** (`completed` / `errored` / `cancelled`) —
-   * the one refusal on this surface. Returns `unchanged` when the assignee
-   * already matches, `recorded` when it is written.
+   * reassigning work that will never run again is a write no caller can act on.
+   * Returns `unchanged` when the assignee already matches, `recorded` when it is
+   * written.
+   *
+   * **Declines every reassignment on a board that runs detached work**
+   * (`immutable-assignee`, FIX-982). The assignee is what a detached task's
+   * routing coordinate is derived from, and the child session that coordinate
+   * addresses is keyed the moment the work is dispatched. Changing it afterwards
+   * does not redirect anything: the work already in flight keeps running under
+   * the old coordinate, and the new one addresses a session nothing will ever
+   * wake. The failure is invisible from the caller's side — the write succeeds,
+   * the task simply never runs — so the write is refused instead.
    */
   setAssignee(id: string, assignee: string): Promise<TaskWriteOutcome>;
   setPriority(id: string, priority: number): Promise<TaskWriteOutcome>;

@@ -72,10 +72,13 @@ import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/cor
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
+  BlockDefinition,
   MaybePromise,
   StateRef,
 } from "@flow-state-dev/core/types";
+import { declareWorkstreamBindings } from "@flow-state-dev/core/types";
 import {
+  freezeLedgerAssignee,
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
   onTaskChangeFor,
@@ -135,6 +138,7 @@ import {
   type TaskWorkerSlot,
   type TaskWorkerSlotRegistry,
 } from "./detached";
+import { coordinateKey } from "./coordinate";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -226,6 +230,8 @@ export type {
   TaskWorkerSlot,
   TaskWorkerSlotRegistry,
 } from "./detached";
+export { coordinateKey, coordinateLabel, workstreamRoutingSeed } from "./coordinate";
+export type { WorkerCoordinate } from "./coordinate";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -1017,6 +1023,48 @@ export function taskBoard<
     .tap(teardownFlowState)
     .rescue([{ block: teardownFlowState }]);
 
+  // FIX-982 P2 — stamp this board's detached bindings onto the drain so they
+  // bubble to the flow. From here they ride the same rail resource declarations
+  // do: enclosing sequencers merge them as steps are added, and `defineFlow`
+  // reads the union off each action root. Nothing is authored to make that
+  // happen, and nothing downstream has to re-walk the block tree to find a
+  // board.
+  //
+  // The `boardId !== undefined` narrowing is a type-level formality, not a
+  // second guard: `assertDetachedBoardSupported` above already refused a
+  // detached board without one, because the value lands in a persisted routing
+  // key. A board with no detached workers stamps nothing.
+  if (boardId !== undefined) {
+    declareWorkstreamBindings(
+      drain,
+      resolvedWorkers.detached.map((slot) => ({
+        boardId,
+        coordinateKey: coordinateKey(slot.coordinate),
+        worker: slot.worker as unknown as BlockDefinition<never, never>,
+      }))
+    );
+  }
+
+  // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
+  // because it is what the routing coordinate derives from. Recorded on the
+  // LEDGER declaration rather than on the refs built from it: two boards may
+  // bind the same durable collection and only one need declare detached
+  // workers, yet they share rows, so a reassignment through either board's ref
+  // moves a coordinate the detached board routes by. Reading it back at
+  // resolution time (`resolveResourceTaskCollection`) also makes construction
+  // order irrelevant — the sibling board is as likely to be declared first.
+  //
+  // Deliberately the LAST thing this function does. The mark is one-way and
+  // outlives a failed construction, so it must not run until everything that
+  // can throw has not: `assertDetachedBoardSupported` refuses a durable
+  // detached board that omits a `boardId` or whose worker declares
+  // `sessionStateSchema`, and a caller that catches either — a config fallback,
+  // a hot reload, a test — would otherwise be left with a declaration that
+  // declines valid `setAssignee` calls for a board that was never created.
+  if (resolvedWorkers.detached.length > 0 && isDefinedTaskCollection(collectionConfig)) {
+    freezeLedgerAssignee(collectionConfig);
+  }
+
   // Capability, collectionId, and (for durable boards) the drain's resource
   // `uses` all come from `resolveCollectionBinding` — one place that maps the
   // once-chosen backing onto every downstream wiring, so no call site restates
@@ -1165,6 +1213,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         boardName,
         resourceKey,
         collectionId,
+        ledger: definedCollection,
       });
     return {
       collectionFactory,
@@ -1176,6 +1225,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
         collectionId,
         resourceKey,
         resourceCapability,
+        ledger: definedCollection,
       }),
       drainUses: [resourceCapability],
     };

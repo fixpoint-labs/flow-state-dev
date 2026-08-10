@@ -41,6 +41,7 @@ import {
   createFakeResourceCollection,
   createFakeSequencerState,
 } from "../helpers";
+import { applyClaimToTask } from "../../src/tasks/collection/internal";
 
 const IDENTITY: TaskClaimIdentity = {
   sessionId: "sess_42",
@@ -301,6 +302,89 @@ describe.each(backings)("claimedBy — %s", (_name, makeBacking) => {
       reason: "disallowed",
     });
     expect(collection.get(task.id)?.status).toBe("in_progress");
+  });
+});
+
+/**
+ * A claim must never INHERIT the previous attempt's coordinate.
+ *
+ * The write builds on a spread of the incoming task, so "only set the field
+ * when we have one" silently keeps whatever was already there — paired with a
+ * fresh attempt and a fresh lease, which is a row that points at the previous
+ * execution while claiming to be a new one. Absent is a documented state
+ * readers handle (BP-030); stale-but-present is not, and reads as current.
+ *
+ * Asserted against `applyClaimToTask` directly because both backings route
+ * their claim write through it, and because the guarantee being checked is
+ * that function's own documented one.
+ */
+describe("claimedBy — a claim never inherits the previous coordinate", () => {
+  const STALE: TaskClaimIdentity = { sessionId: "sess_OLD", requestId: "req_OLD" };
+
+  /** A row that already carries a coordinate from an earlier attempt. */
+  function rowCarryingStaleCoordinate(): Task {
+    return {
+      id: "t1",
+      goal: "do a thing",
+      status: "pending",
+      attempts: 1,
+      claimedBy: STALE,
+      createdAt: 1,
+      updatedAt: 2,
+    } as unknown as Task;
+  }
+
+  it("clears the coordinate when the claim has no identity to record", () => {
+    const claimed = applyClaimToTask(rowCarryingStaleCoordinate(), 5_000, 30_000);
+
+    expect(claimed.claimedBy).toBeUndefined();
+    // The rest of the claim still happened — this is not a refusal.
+    expect(claimed.status).toBe("in_progress");
+    expect(claimed.attempts).toBe(2);
+    expect(claimed.leaseUntil).toBe(35_000);
+  });
+
+  it("overwrites the coordinate when the claim has one", () => {
+    const claimed = applyClaimToTask(
+      rowCarryingStaleCoordinate(),
+      5_000,
+      30_000,
+      IDENTITY
+    );
+
+    expect(claimed.claimedBy).toEqual(IDENTITY);
+  });
+
+  it("still inherits startedAt, which a re-claim is not supposed to reset", () => {
+    // The contrast that shows the rule is "clear what the new attempt owns",
+    // not "clear everything the spread carried".
+    const claimed = applyClaimToTask(
+      { ...rowCarryingStaleCoordinate(), startedAt: 42 } as Task,
+      5_000,
+      30_000,
+      IDENTITY
+    );
+
+    expect(claimed.startedAt).toBe(42);
+  });
+
+  it("clears it on the real claim path, through a backing with no identity", () => {
+    // End-to-end rather than on the helper: a seeded row is the shape a
+    // legacy record or a custom `eligibility` can actually present.
+    const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
+      tasks: { t1: rowCarryingStaleCoordinate() },
+    });
+    const collection = createSequencerBackedTaskCollection({
+      collectionId: "tasks",
+      sequencer,
+      now: () => 5_000,
+      // No `claimIdentity` — the backing has nothing to record.
+    });
+
+    return collection.claim("worker-1").then((claimed) => {
+      expect(claimed?.status).toBe("in_progress");
+      expect(claimed?.claimedBy).toBeUndefined();
+    });
   });
 });
 

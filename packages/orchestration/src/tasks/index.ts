@@ -17,6 +17,7 @@ export {
   type Task,
   type TaskClaimIdentity,
   type TaskStatus,
+  type TaskWriteReceipt,
 } from "./schema/task";
 export {
   taskStatusSchema,
@@ -40,6 +41,16 @@ export {
   ticketForClaim,
   type TaskClaimTicket,
 } from "./claim-ticket";
+
+// Durable write provenance (FIX-989) — how a caller finds out whether its own
+// write committed, after a call that threw. `stampWrite` is the backings' own
+// convergence point and stays package-internal: provenance is maintained by the
+// write, never by a caller.
+export {
+  beginTaskWrite,
+  didWriteLand,
+  type TaskWriteToken,
+} from "./write-provenance";
 
 // Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
 export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
@@ -112,6 +123,8 @@ export {
 export {
   defineTaskCollection,
   isDefinedTaskCollection,
+  freezeLedgerAssignee,
+  hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
   type DefineTaskCollectionOptions,
 } from "./collection/define-task-collection";

@@ -24,6 +24,7 @@ import { isInlineConfig, resolveCallShape } from "./internal/arg-shapes";
 import type { StepOutcome } from "./internal/arg-shapes";
 import { runBackground, runChild } from "./internal/sequencer-kernel";
 import type { DeclaredResources } from "../types/block";
+import { mergeWorkstreamBindings, type WorkstreamBindings } from "../types/workstream";
 import { getEmitterItemCount, isBlockDefinition, matchesRescueHandler, toError, withTimeout } from "./internal/utils";
 import {
   blockPathBranch,
@@ -1104,7 +1105,12 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
   // Surfaced as `BlockDefinition.ownDeclaredResources` for the block-dispatch
   // prefetch hook (FIX-688), which must load this block's own declarations
   // without re-loading descendants'.
-  ownDeclaredResources?: DeclaredResources
+  ownDeclaredResources?: DeclaredResources,
+  // Detached worker bindings accumulated from child blocks (FIX-982). Rides the
+  // same rail as `accumulatedResources`: children merge up as steps are added,
+  // so by definition time the action root carries the union and `defineFlow`
+  // reads it off without walking the tree.
+  accumulatedWorkstreamBindings?: WorkstreamBindings
 ): SequencerDefinition<TInput, TOutput, TStateSchema> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -1136,6 +1142,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     ownDeclaredResources,
     resolvedCapabilities: capabilityRefs,
     requiresOrg: accumulatedRequiresOrg,
+    workstreamBindings: accumulatedWorkstreamBindings,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -1165,14 +1172,37 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     return merged;
   };
 
+  /**
+   * Merge child blocks' detached worker bindings into the sequencer's
+   * accumulator (FIX-982). Called at every site `mergeFrom` is, on the same
+   * blocks — a board nested anywhere in the tree must reach the action root, and
+   * a step whose bindings are dropped becomes a coordinate nothing can resolve
+   * after a restart.
+   */
+  const mergeWorkstreamBindingsFrom = (
+    ...blocks: Array<BlockDefinition<any, any> | undefined>
+  ): WorkstreamBindings | undefined => {
+    // Read off `baseBlock` rather than the `accumulatedWorkstreamBindings`
+    // parameter, so a stamp applied AFTER construction survives chaining. A
+    // board stamps its own bindings on the finished drain; reading the closure
+    // value would rebuild from the pre-stamp state, and `board.drain.tap(x)`
+    // would silently hand back a sequencer with the board's own bindings gone.
+    let merged = baseBlock.workstreamBindings;
+    for (const block of blocks) {
+      merged = mergeWorkstreamBindings(merged, block?.workstreamBindings);
+    }
+    return merged;
+  };
+
   const extend = <TNext>(
     operation: SequencerOperation,
     newOutputSchema?: ZodTypeAny,
     newInputSchema?: ZodTypeAny,
     newResources?: DeclaredResources,
-    newRequiresOrg?: boolean
+    newRequiresOrg?: boolean,
+    newWorkstreamBindings?: WorkstreamBindings
   ): SequencerDefinition<TInput, TNext, TStateSchema> =>
-    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources);
+    createSequencer<TInput, TNext, TStateSchema>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg, ownDeclaredResources, newWorkstreamBindings ?? baseBlock.workstreamBindings);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -1248,7 +1278,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         block.config.outputSchema,
         capturedInput,
         mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
       );
     },
 
@@ -1309,7 +1340,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         block.config.outputSchema,
         undefined,
         mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
       );
     },
 
@@ -1403,7 +1435,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         compositeSchema,
         undefined,
         mergeFrom(...stepBlocks),
-        mergeRequiresOrgFrom(...stepBlocks)
+        mergeRequiresOrgFrom(...stepBlocks),
+        mergeWorkstreamBindingsFrom(...stepBlocks)
       );
     },
 
@@ -1485,7 +1518,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         arraySchema,
         undefined,
         mergeFrom(elementBlock),
-        mergeRequiresOrgFrom(elementBlock)
+        mergeRequiresOrgFrom(elementBlock),
+        mergeWorkstreamBindingsFrom(elementBlock)
       );
     },
 
@@ -1591,7 +1625,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         lastOutputSchema,
         undefined,
         mergeFrom(elementBlock),
-        mergeRequiresOrgFrom(elementBlock)
+        mergeRequiresOrgFrom(elementBlock),
+        mergeWorkstreamBindingsFrom(elementBlock)
       );
     },
 
@@ -1641,7 +1676,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         block.config.outputSchema,
         undefined,
         mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
       );
     },
 
@@ -1687,7 +1723,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         block.config.outputSchema,
         undefined,
         mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
       );
     },
 
@@ -1754,7 +1791,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         lastOutputSchema,
         undefined,
         mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
       );
     },
 
@@ -1793,7 +1831,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         lastOutputSchema,
         undefined,
         mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
       );
     },
 
@@ -1880,7 +1919,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           lastOutputSchema,
           undefined,
           mergeFrom(block),
-        mergeRequiresOrgFrom(block)
+        mergeRequiresOrgFrom(block),
+        mergeWorkstreamBindingsFrom(block)
         );
       }
 
@@ -1917,7 +1957,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         lastOutputSchema,
         undefined,
         mergeFrom(tapBlock),
-        mergeRequiresOrgFrom(tapBlock)
+        mergeRequiresOrgFrom(tapBlock),
+        mergeWorkstreamBindingsFrom(tapBlock)
       );
     },
 
@@ -1961,7 +2002,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         lastOutputSchema,
         undefined,
         mergeFrom(tapIfBlock),
-        mergeRequiresOrgFrom(tapIfBlock)
+        mergeRequiresOrgFrom(tapIfBlock),
+        mergeWorkstreamBindingsFrom(tapIfBlock)
       );
     },
 
@@ -1976,7 +2018,13 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         (acc, h) => acc || Boolean(h.block.requiresOrg),
         accumulatedRequiresOrg ?? false
       );
-      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources);
+      // A rescue handler is an ordinary block and may itself contain a board
+      // (a cleanup drain, say), so its bindings bubble like every other child's.
+      const rescueWorkstreamBindings = handlers.reduce<WorkstreamBindings | undefined>(
+        (acc, h) => mergeWorkstreamBindings(acc, h.block.workstreamBindings),
+        baseBlock.workstreamBindings
+      );
+      return createSequencer<TInput, TOutput, TStateSchema>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg, ownDeclaredResources, rescueWorkstreamBindings);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -2021,7 +2069,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         firstBranchSchema,
         undefined,
         mergeFrom(...branchBlocks),
-        mergeRequiresOrgFrom(...branchBlocks)
+        mergeRequiresOrgFrom(...branchBlocks),
+        mergeWorkstreamBindingsFrom(...branchBlocks)
       );
     },
 
@@ -2077,7 +2126,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         undefined,
         mergeFrom(...stepBlocks),
-        mergeRequiresOrgFrom(...stepBlocks)
+        mergeRequiresOrgFrom(...stepBlocks),
+        mergeWorkstreamBindingsFrom(...stepBlocks)
       );
     },
 
@@ -2118,7 +2168,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         undefined,
         mergeFrom(...blocks),
-        mergeRequiresOrgFrom(...blocks)
+        mergeRequiresOrgFrom(...blocks),
+        mergeWorkstreamBindingsFrom(...blocks)
       );
     },
 
@@ -2237,7 +2288,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         undefined,
         undefined,
         mergeFrom(...blocks),
-        mergeRequiresOrgFrom(...blocks)
+        mergeRequiresOrgFrom(...blocks),
+        mergeWorkstreamBindingsFrom(...blocks)
       );
     },
 
@@ -2397,7 +2449,13 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         // accumulatedRequiresOrg; forward only the constant own-resources set.
         undefined,
         undefined,
-        ownDeclaredResources
+        ownDeclaredResources,
+        // Bindings are NOT among the defaults dropped above (FIX-982). Read off
+        // `baseBlock` for the same reason `mergeWorkstreamBindingsFrom` does: a
+        // board stamps the finished drain, so the closure parameter predates the
+        // stamp and `board.drain.connectInput(...)` would return an executable
+        // sequencer with no route to its own worker.
+        baseBlock.workstreamBindings
       );
     },
 

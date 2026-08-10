@@ -43,6 +43,12 @@ A `Task` is one unit of work. It carries what to do, where it is in its lifecycl
 | `metadata` | `Record<string, unknown>?` | Arbitrary structured data. |
 | `createdAt` / `updatedAt` | `number` | Epoch ms. |
 | `startedAt` / `completedAt` | `number?` | Epoch ms, stamped on first claim and on `complete`. |
+| `revision` | `number?` | Counter advanced by every write that changed the task. |
+| `writeLog` | `{ id: string; revision: number }[]?` | Bounded, newest-last log of write receipts. Read through `didWriteLand`, not directly. |
+| `writeLogTruncated` | `boolean?` | Whether the log has ever dropped a receipt. |
+| `incarnationId` | `string?` | Identifies this task apart from an earlier one that used the same id. |
+
+The last four are write provenance. They exist so a caller can find out whether its own write committed, and they are maintained by the collection rather than by you. See [telling whether your write landed](#telling-whether-your-write-landed).
 
 `input` and `output` validate as `unknown` on the schema. The runtime type `Task<TInput, TOutput>` narrows them at your call site, so a board over a typed collection surfaces real payload types at the worker boundary.
 
@@ -171,7 +177,17 @@ await tasks.complete(task.id, output, {
 });
 ```
 
-`ifAllowed` asks whether the transition is legal, and declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded.
+`ifAllowed` asks whether the task can take this write right now. It declines when the task has already reached a terminal status, so a repeat write cannot clobber a settlement someone else recorded, and when the state machine has no transition from the task's current status to the one the call targets.
+
+A legal status transition is necessary but not sufficient. A verb that owns a single edge runs only from that edge's source status, so a call can be refused where the [status diagram](#the-status-state-machine) shows a line. The paths back to `pending` each have their own verb:
+
+| Returning a task to `pending` from | Call |
+|------------------------------------|------|
+| `blocked` | `unblock(id)` |
+| `awaiting_review` | `resumeFromReview(id, feedback?)` |
+| `in_progress`, once its lease has expired | `reclaim()` |
+
+`unblock` runs on a blocked task and refuses every other status, raising the same `IllegalTaskTransitionError` an illegal transition raises, or declining with reason `disallowed` when you passed `ifAllowed`. If you reached for it to put a *running* task back in the queue, `reclaim()` is the call, and it works differently: it takes no task id, sweeps the whole collection, resets every `in_progress` task whose lease has passed, and resolves to the number it moved. A task parked for review goes back through `resumeFromReview`, which clears its lease on the way.
 
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `awaiting_review`). Two refusals come out of it, and they mean different things:
 
@@ -248,6 +264,55 @@ A `TaskCollectionRef` of your own has to do three things:
 A ref that implements only the first renews correctly and recovers nothing. Reach for the exported `isClaimable(task, lookup, now)` rather than restating the rule.
 
 Your ref also exposes `now()`, the clock it stamps and judges leases against. `() => Date.now()` is the right answer unless you have a reason for another. Compare leases against `collection.now()`, not `Date.now()`: it is the clock that stamped `leaseUntil`.
+
+### Telling whether your write landed
+
+A write can commit and the call still throw — the failure happens after the record changed. What reaches you is a rejected promise, and a rejected promise carries no value, so the `TaskWriteOutcome` above never gets to you.
+
+Reading the task back afterwards doesn't settle it. Say you were failing a task with retry budget left, and by the time you look, another worker has claimed it. Two different stories produce that exact record:
+
+1. Your write committed, the task went back to the queue, and another worker took it.
+2. Your write never landed, the lease expired, a reclaim re-queued the task, and another worker took it.
+
+The first is a real failure someone needs to hear about. The second is routine. They read identically.
+
+To tell them apart, open a write before you make it.
+
+```ts
+import { beginTaskWrite, didWriteLand } from "@flow-state-dev/orchestration";
+
+const write = beginTaskWrite(tasks.get(taskId));
+
+try {
+  await tasks.fail(taskId, "the worker gave up", { ifAllowed: true, claim, write });
+} catch (cause) {
+  switch (didWriteLand(tasks.get(taskId), write)) {
+    case true:
+      // It committed. Something after the write failed, and that is worth reporting.
+      throw new Error("recorded the failure, then fell over", { cause });
+    case false:
+      return; // Nothing was written. Routine.
+    case undefined:
+      throw new Error("cannot tell whether the failure was recorded", { cause });
+  }
+}
+```
+
+`beginTaskWrite` hands back a token: a fresh id, the task's revision as you observed it, and an identity nonce naming the task's current incarnation. Pass the token on the write's options. The receipt is stored on the task itself, so it survives a later worker claiming the task.
+
+Mint the token **before** the write. A token minted afterwards can't answer.
+
+- `true` — your write committed. Its receipt is on the task.
+- `false` — your write changed nothing. Either it never landed, or the task already held the state you asked for.
+- `undefined` — cannot tell.
+
+Surface `undefined` as its own condition instead of guessing. It means the task carries no provenance, your receipt has aged out, or the token names a different incarnation of the task — deleted and recreated under the same id between the mint and the read, whether by an explicit delete or by capacity eviction on a resource-backed collection. A task keeps its four most recent receipts, so a caller asking after several later writes can find its own gone. The answer withholds itself rather than inventing one.
+
+A `false` says your write changed nothing. It does not say why. If you need to know whether a write was *refused* and on what grounds, that's the `declined` verdict above, and the two are worth reading together.
+
+**Which writes you can correlate.** The seven methods that take the options argument: `complete`, `fail`, `block`, `unblock`, `awaitReview`, `resumeFromReview`, and `cancel`. `addTask`, `addTasks`, `claim`, `reclaim` and the five field mutators advance the task's revision, so every committed write moves the record, but they take no options object and so carry no token.
+
+**A collection ref you wrote yourself** maintains none of this. Absence of a record reads as `undefined`, never as "your write did not land".
 
 ## The three backings
 

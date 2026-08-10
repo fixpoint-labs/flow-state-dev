@@ -7,6 +7,8 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
+import { generateId } from "../generate-id";
+import { initialWriteProvenance } from "../write-provenance";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
@@ -23,10 +25,8 @@ import type {
   TaskWriteDeclineReason,
 } from "./types";
 
-let idCounter = 0;
 function generateTaskId(): string {
-  idCounter += 1;
-  return `task_${Date.now().toString(36)}_${idCounter}_${Math.random().toString(16).slice(2, 8)}`;
+  return generateId("task");
 }
 
 /**
@@ -50,12 +50,37 @@ export function createTaskHandleWrapper<TInput, TOutput>(
   });
 }
 
-/** Build a fresh task from a `TaskInit`, stamping defaults and timestamps. */
+/**
+ * Build a fresh task from a `TaskInit`, stamping defaults and timestamps.
+ *
+ * The convergence point for a task's *initial* write provenance (FIX-989):
+ * every add path on both backings builds its task here, so revision 1, the
+ * truncation marker, and the incarnation nonce are set once rather than at
+ * four call sites.
+ *
+ * `incarnationId` is minted here rather than folded into
+ * `initialWriteProvenance()` because it answers a different question — task
+ * *identity* across delete/recreate, not write bookkeeping — but it is
+ * stamped at the same site for the same reason: one place, covering all four
+ * add paths, so a recreated row can never end up sharing an incarnation with
+ * the row it replaced.
+ *
+ * Minted with `crypto.randomUUID()`, not `generateId` — the nonce is persisted
+ * and compared across processes (a resource-backed board on SQLite/Postgres is
+ * explicitly multi-process), and `generateId`'s own header says nothing about
+ * it compares across machines: its counter is per-process and its random tail
+ * is only 24 bits, so two processes can mint the same value. `generateId` stays
+ * for task ids themselves — that scheme is pre-existing and changing it would
+ * alter an already-persisted id format — but the nonce is new in this PR and
+ * has no such compatibility concern.
+ */
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
   now: number
 ): Task<TInput, TOutput> {
   return {
+    ...initialWriteProvenance(),
+    incarnationId: crypto.randomUUID(),
     id: init.id ?? generateTaskId(),
     goal: init.goal,
     title: init.title,
@@ -695,9 +720,28 @@ export function assertValidLeaseDeadline(leaseUntil: number): void {
  *
  * `claimedBy` takes a **narrowed** identity rather than a `BlockContext` on
  * purpose: the write path has no business holding a context, and a plain value
- * is what makes the field testable without one. Omitted when the caller has no
- * identity to supply (a directly-constructed backing in a test), in which case
- * the field stays absent and nothing infers from it (BP-030).
+ * is what makes the field testable without one.
+ *
+ * It is written **unconditionally** — set when the caller has an identity,
+ * cleared when it does not. A conditional spread would be wrong here even
+ * though it reads as the careful option: `claimedBy` is written onto a spread
+ * of the *incoming* task, so adding nothing leaves the previous attempt's
+ * coordinate in place, now paired with a fresh attempt and a fresh lease. That
+ * is worse than absent, because absent is a state readers are told to expect
+ * and handle (BP-030) while a stale coordinate reads as current. Clearing with
+ * `undefined` is the same shape the claim-clear sites use.
+ *
+ * `startedAt` is the deliberate contrast a few lines down: it *does* inherit,
+ * because it answers "when did work on this task first begin", which a
+ * re-claim does not change.
+ *
+ * `incarnationId` (FIX-989) inherits too, and for the same kind of reason —
+ * do not "fix" it to match this field. The two are scoped differently:
+ * `claimedBy` belongs to one *attempt*, so every claim must re-establish or
+ * clear it, while `incarnationId` identifies the *row* for its whole life and
+ * is minted once at creation. A field that is supposed to outlive the write
+ * carrying it forward is correct; a per-attempt field doing so is the bug
+ * above.
  */
 export function applyClaimToTask<TInput, TOutput>(
   task: Task<TInput, TOutput>,
@@ -718,7 +762,7 @@ export function applyClaimToTask<TInput, TOutput>(
     ...(recovering ? { abandonments: readAbandonments(task as Task) + 1 } : {}),
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
-    ...(claimedBy !== undefined ? { claimedBy } : {}),
+    claimedBy,
     updatedAt: now,
   };
 }

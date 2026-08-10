@@ -45,6 +45,7 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
 } from "./internal";
+import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import {
   TaskCapExceededError,
@@ -314,7 +315,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
-        const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
+        // Provenance is stamped here, inside the CAS, off the `task` this
+        // invocation read — so a replay against a fresher map stamps off that
+        // map and there is nothing to reset (FIX-989).
+        const next = stampWrite(
+          task,
+          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          guards?.write
+        );
         return {
           state: { ...tasks, [id]: next },
           result: { kind: "recorded", changeKind: kind, task: next, prevStatus: task.status },
@@ -373,7 +381,9 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         }
         const update = patch(task);
         if (update === undefined) return { state: undefined, result: { kind: "unchanged" } };
-        const next = applyTransition(task, update, now());
+        // No token: these five methods take no options object, so they bump the
+        // revision and mint no receipt (FIX-989).
+        const next = stampWrite(task, applyTransition(task, update, now()));
         return {
           state: { ...tasks, [id]: next },
           result: { kind: "recorded", task: next },
@@ -485,17 +495,23 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             if (
               claimDisposition(candidate as Task, at, DEFAULT_MAX_ABANDONMENTS) === "claim"
             ) {
-              const claimed = applyClaimToTask(
+              // Three stamps, composed: the claim records where it runs
+              // (FIX-1005), the lease is stamped, and the write records its
+              // provenance (FIX-989).
+              const claimed = stampWrite(
                 candidate,
-                at,
-                leaseDurationMs,
-                options.claimIdentity
+                applyClaimToTask(candidate, at, leaseDurationMs, options.claimIdentity)
               );
               next[claimed.id] = claimed;
               pass.claimed = { task: claimed, prevStatus: candidate.status };
               break;
             }
-            const settled = applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS);
+            // The abandonment settlement is a committed write too, so it
+            // advances the record the same way (FIX-989).
+            const settled = stampWrite(
+              candidate,
+              applyAbandonmentSettlement(candidate, at, DEFAULT_MAX_ABANDONMENTS)
+            );
             next[settled.id] = settled;
             pass.settled.push({ task: settled, prevStatus: candidate.status });
           }
@@ -709,13 +725,13 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             // Preserve `assignee` — it's the user-set worker-registry
             // routing key, not the runtime worker identity. Clearing it
             // would break re-dispatch through a worker registry.
-            const reset: Task<TInput, TOutput> = {
+            const reset: Task<TInput, TOutput> = stampWrite(task, {
               ...task,
               status: "pending",
               leaseUntil: undefined,
               claimedBy: undefined,
               updatedAt: at,
-            };
+            });
             next[task.id] = reset;
             claimedBack.push(reset);
           }

@@ -114,6 +114,7 @@ import {
   assertTransitionFrom,
   transitionDeclineReason,
 } from "./internal";
+import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
 /**
@@ -178,6 +179,18 @@ export interface ResourceBackedOptions {
    * receives; omit it and claims record no coordinate.
    */
   claimIdentity?: TaskClaimIdentity;
+  /**
+   * Refuse every `setAssignee` on this collection (FIX-982).
+   *
+   * Set by a task board that declares detached workers. The assignee is what a
+   * detached task's routing coordinate derives from, so reassigning after
+   * admission silently strands the task — see `TaskCollectionRef.setAssignee`.
+   *
+   * Only the resource backing carries this, and that is deliberate rather than
+   * an omission: a detached board is refused at construction unless its backing
+   * is durable, so no other backing can host one.
+   */
+  immutableAssignee?: boolean;
 }
 
 function readTaskState<TInput, TOutput>(
@@ -431,7 +444,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         }
         assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
-        const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
+        // Stamped here, inside the serialized write, off the `task` this
+        // invocation read. Since FIX-992 this updater is re-run against
+        // refreshed state on a version conflict, so a stamp derived from
+        // anything captured outside would describe an attempt that never
+        // committed — deriving it from `current` is what makes a replay correct
+        // with nothing to reset (FIX-989).
+        const next = stampWrite(
+          task,
+          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          guards?.write
+        );
         return {
           state: next as unknown as JsonObject,
           result: { task: next, prevStatus: task.status },
@@ -487,7 +510,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         }
         const update = patch(task);
         if (update === undefined) return { state: current, result: undefined };
-        const next = applyTransition(task, update, now());
+        // No token: these five methods take no options object, so they bump the
+        // revision and mint no receipt (FIX-989).
+        const next = stampWrite(task, applyTransition(task, update, now()));
         return { state: next as unknown as JsonObject, result: next };
       });
     } catch (err) {
@@ -595,13 +620,24 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
             // state. Keeping them apart is what lets the predicate admit a row
             // this branch is about to settle.
             if (claimDisposition(task as Task, at, DEFAULT_MAX_ABANDONMENTS) === "claim") {
-              const next = applyClaimToTask(task, at, leaseDurationMs, options.claimIdentity);
+              // Three stamps, composed: the claim records where it runs
+              // (FIX-1005), the lease is stamped, and the write records its
+              // provenance (FIX-989).
+              const next = stampWrite(
+                task,
+                applyClaimToTask(task, at, leaseDurationMs, options.claimIdentity)
+              );
               return {
                 state: next as unknown as JsonObject,
                 result: { kind: "claimed" as const, task: next, prevStatus: task.status },
               };
             }
-            const settled = applyAbandonmentSettlement(task, at, DEFAULT_MAX_ABANDONMENTS);
+            // The abandonment settlement is a committed write too, so it
+            // advances the record the same way (FIX-989).
+            const settled = stampWrite(
+              task,
+              applyAbandonmentSettlement(task, at, DEFAULT_MAX_ABANDONMENTS)
+            );
             return {
               state: settled as unknown as JsonObject,
               result: { kind: "errored" as const, task: settled, prevStatus: task.status },
@@ -830,13 +866,13 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           // Preserve `assignee` — it's the user-set worker-registry
           // routing key, not the runtime worker identity. Clearing it
           // would break re-dispatch through a worker registry.
-          const reset: Task<TInput, TOutput> = {
+          const reset: Task<TInput, TOutput> = stampWrite(t, {
             ...t,
             status: "pending",
             leaseUntil: undefined,
             claimedBy: undefined,
             updatedAt: at,
-          };
+          });
           return { state: reset as unknown as JsonObject, result: reset };
         });
 
@@ -850,6 +886,24 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
     },
 
     async setAssignee(id, assignee) {
+      // FIX-982: on a detached board the assignee is fixed at admission, and
+      // this arm is checked FIRST because it holds whatever the task's status
+      // is (see `TaskWriteDeclineReason`). Answered without touching the store —
+      // the board either runs detached work or it does not, so there is nothing
+      // to read and nothing to race. The task must still exist, though: a
+      // decline for a task that was never there would be a different kind of
+      // lie, and every sibling patch throws on an unknown id.
+      if (options.immutableAssignee === true) {
+        const ref = mirror.get(id);
+        if (ref === undefined) {
+          throw new Error(`[tasks] task "${id}" not found`);
+        }
+        return {
+          outcome: "declined",
+          reason: "immutable-assignee",
+          status: readTaskState<TInput, TOutput>(ref).status,
+        };
+      }
       // The one guarded patch operation (FIX-976 / A1): reassigning a finished
       // task is refused, because its work will never run again.
       return patchRef(
