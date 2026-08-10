@@ -275,26 +275,29 @@ async function resolveWorkstreamStatus(
 }
 
 /**
- * `topic` and `coordinate` are declared and written by the detached-start
- * path, not by this issue, so they are read structurally rather than off
- * `SessionRecord`: the row owes them to the wire contract the moment they
- * exist, and declaring the schema here would take over half of another issue.
- * Both are optional by design — an ordinary child session has neither, and a
- * record carrying neither is by definition not background work, which is the
- * same signal a client needs to decide whether a row is labelable.
+ * Project the two labels the detached-start writer stamps onto the row.
+ *
+ * Read straight off `SessionRecord`, where both fields are declared: the
+ * writer (`context/create-request-host.ts`) sets them from the routing seed it
+ * derived the child key from, so the compiler now checks that this read and
+ * that write agree. It was a structural cast while the writer was another
+ * issue's to build.
+ *
+ * Both stay optional on the wire, and the guard is `== null` rather than a
+ * truthiness check (BP-030): a child written before the fields existed reads
+ * `undefined`, a store that nulls absent keys hands back `null`, and both mean
+ * *unlabelled* — a row a UI shows without a name, never an error. An ordinary
+ * child session that is not background work has neither, which is the same
+ * signal a client needs to decide whether a row is labelable.
+ *
+ * The labels decide nothing here or anywhere else — see `SessionRecord.topic`.
  */
 function readWorkstreamLabels(
   record: SessionRecord
 ): Pick<WorkstreamSummary, "topic" | "coordinate"> {
-  const labelled = record as SessionRecord & {
-    topic?: unknown;
-    coordinate?: unknown;
-  };
   return {
-    ...(typeof labelled.topic === "string" ? { topic: labelled.topic } : {}),
-    ...(typeof labelled.coordinate === "string"
-      ? { coordinate: labelled.coordinate }
-      : {})
+    ...(record.topic == null ? {} : { topic: record.topic }),
+    ...(record.coordinate == null ? {} : { coordinate: record.coordinate })
   };
 }
 

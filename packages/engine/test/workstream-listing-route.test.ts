@@ -8,6 +8,11 @@
  * Every boundary case is seeded directly, because no shipped writer produces a
  * child that crosses one — which is the point. The guards exist so the
  * property does not depend on one writer's convention.
+ *
+ * The `topic`/`coordinate` labels are the opposite case and are exercised
+ * through the real `startDetached` writer instead: a writer does produce them,
+ * so seeding them by hand would assert a shape nothing emits and pass whether
+ * or not the feature exists.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -18,7 +23,9 @@ import {
   createInMemoryStores,
   parseFlowRoute
 } from "../src";
+import type { RequestHost, StartDetachedInput } from "@flow-state-dev/core/types";
 import type { RequestRecord, SessionRecord, StoreRegistry } from "../src";
+import { createRequestHost } from "../src/context/create-request-host";
 import { TERMINAL_WIRE_STATUS } from "../src/routes/workstream-routes";
 
 type Router = ReturnType<typeof createFlowApiRouter>;
@@ -292,25 +299,6 @@ describe("the read", () => {
   });
 
   /**
-   * `topic` and `coordinate` name the body of work and the worker. They are
-   * written by the detached-start path, not here, but the row owes them the
-   * moment they exist — without them a UI can only label background work by an
-   * opaque derived id.
-   */
-  it("surfaces topic and coordinate when the record carries them", async () => {
-    const { router, stores } = buildRouter();
-    await seedSession(stores, "parent");
-    await seedSession(stores, "child", {
-      parentSessionId: "parent",
-      ...({ topic: "FIX-981", coordinate: "worker-3" } as Partial<SessionRecord>)
-    });
-
-    const [row] = await workstreams(router, "parent");
-    expect(row.topic).toBe("FIX-981");
-    expect(row.coordinate).toBe("worker-3");
-  });
-
-  /**
    * A child appears under exactly one parent and never in a top-level
    * listing. The tempting assertion — that the two result sets are disjoint —
    * is true but weak: it passes if both are empty.
@@ -338,6 +326,199 @@ describe("the read", () => {
     const after = await (await call(router, ["sessions"])).text();
 
     expect(after).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The row labels, through the writer that actually stamps them
+// ---------------------------------------------------------------------------
+
+/**
+ * `topic` and `coordinate` name the body of work and the worker handling it.
+ * Without them a UI can only label background work by an opaque derived id.
+ *
+ * **Every case here goes through the real `startDetached`.** The earlier
+ * version of this suite hand-seeded the two fields onto a session record, which
+ * asserted a shape no writer emitted — so it stayed green while nothing wrote
+ * them, and an endpoint advertising labels it never returned reached review.
+ * A test that cannot fail is worse than no test, because it is counted. Delete
+ * the stamp in `context/create-request-host.ts` and the first three cases below
+ * fail.
+ */
+const LIVENESS = {
+  heartbeatIntervalMs: 10_000,
+  staleThresholdMs: 60_000,
+  staleSweepIntervalMs: 30_000
+};
+
+/** The shipped detached-start writer, wired to the stores the router reads. */
+function detachedStart(stores: StoreRegistry): RequestHost["startDetached"] {
+  const instance = openFlow("chat")({ id: "chat" });
+  const { host } = createRequestHost({
+    stores,
+    // A detached dispatch resolves into the workstream core and never into a
+    // caller-addressed action; a flow without one refuses before it writes.
+    flow: { ...instance, workstream: { block: instance.actions.run!.block } },
+    // The running request's server-derived identity. The child's parent is
+    // this session, and the caller names none of it.
+    identity: {
+      userId: "alice",
+      tenantId: undefined,
+      orgId: undefined,
+      sessionId: "parent"
+    },
+    startOperation: async ({ sessionId }) => {
+      // A real run on the child, so a labelled row also resolves a status —
+      // the two must not be traded against each other.
+      const requestId = `req_${sessionId}`;
+      await seedRequest(stores, { id: requestId, sessionId, status: "in_progress" });
+      return { requestId };
+    },
+    liveness: LIVENESS
+  });
+  return host.startDetached;
+}
+
+/** Start a child under `parent` through the real writer; return its bare id. */
+async function startChild(
+  stores: StoreRegistry,
+  input: StartDetachedInput
+): Promise<string> {
+  const result = await detachedStart(stores)(input);
+  if (!result.ok) throw new Error(`startDetached refused: ${result.refused}`);
+  return result.sessionId;
+}
+
+describe("row labels, as the detached-start writer stamps them", () => {
+  it("labels a job started through startDetached with its seed's topic and worker", async () => {
+    const { router, stores } = buildRouter();
+    await seedSession(stores, "parent");
+
+    const childId = await startChild(stores, {
+      seed: { topic: "market-research", key: "researcher" },
+      input: {}
+    });
+
+    const [row] = await workstreams(router, "parent");
+    // The row the route returns is the child the writer created, not a
+    // look-alike seeded beside it.
+    expect(row?.id).toBe(childId);
+    expect(row?.topic).toBe("market-research");
+    expect(row?.coordinate).toBe("researcher");
+    expect(row?.status).toBe("active");
+  });
+
+  it("omits coordinate entirely when the seed named no worker", async () => {
+    const { router, stores } = buildRouter();
+    await seedSession(stores, "parent");
+    await startChild(stores, { seed: { topic: "draft-summary" }, input: {} });
+
+    const [row] = await workstreams(router, "parent");
+    expect(row?.topic).toBe("draft-summary");
+    // Absent, not `null` and not `""`. A client reads the presence of the key.
+    expect(row).not.toHaveProperty("coordinate");
+  });
+
+  /**
+   * An empty seed field leaves the label off rather than emitting `""`, so
+   * "unlabelled" has exactly one shape on the wire. For `coordinate` that is
+   * forced: the key derivation length-frames the seed, so `key: ""` and an
+   * absent `key` are the same child — stamping one of them an empty label
+   * would make two calls that land on one record disagree about its name.
+   */
+  it("treats an empty seed field as no label, not as an empty one", async () => {
+    const { router, stores } = buildRouter();
+    await seedSession(stores, "parent");
+    await startChild(stores, { seed: { topic: "triage", key: "" }, input: {} });
+
+    const [row] = await workstreams(router, "parent");
+    expect(row?.topic).toBe("triage");
+    expect(row).not.toHaveProperty("coordinate");
+  });
+
+  /**
+   * The labels are server-stamped from the seed the child key was derived
+   * from. `record` is the caller's own bookkeeping and lands in `metadata`
+   * untouched — a `topic` there is data, never a label. Choosing a label and
+   * choosing which child you get are one choice, which is what makes a forged
+   * label unreachable rather than merely filtered.
+   */
+  it("takes the labels from the seed, not from the caller's record bag", async () => {
+    const { router, stores } = buildRouter();
+    await seedSession(stores, "parent");
+
+    const childId = await startChild(stores, {
+      seed: { topic: "board-review" },
+      input: {},
+      record: { topic: "forged", coordinate: "forged-worker", taskId: "task_7f3" }
+    });
+
+    const [row] = await workstreams(router, "parent");
+    expect(row?.topic).toBe("board-review");
+    expect(row).not.toHaveProperty("coordinate");
+
+    // And the bag itself survives verbatim — this suppresses nothing.
+    const stored = await stores.session.get(childId);
+    expect(stored?.metadata).toEqual({
+      topic: "forged",
+      coordinate: "forged-worker",
+      taskId: "task_7f3"
+    });
+  });
+
+  /**
+   * BP-030. A child written before these fields existed carries neither, and a
+   * store that nulls absent keys hands back `null` for both. All of it means
+   * *unlabelled* — a row a UI shows without a name — and none of it is an
+   * error. The writer does not backfill an adopted legacy child either.
+   */
+  it("reads a child written before the fields existed as unlabelled", async () => {
+    const { router, stores } = buildRouter();
+    await seedSession(stores, "parent");
+    await seedSession(stores, "legacy", { parentSessionId: "parent", createdAt: 1 });
+    await seedSession(stores, "nulled", {
+      parentSessionId: "parent",
+      createdAt: 2,
+      // Not a shape the type can express, but one a reader meets: this is the
+      // adapter's null-for-absent, not a writer's output.
+      ...({ topic: null, coordinate: null } as unknown as Partial<SessionRecord>)
+    });
+
+    const rows = await workstreams(router, "parent");
+    expect(rows.map((r) => r.id).sort()).toEqual(["legacy", "nulled"]);
+    for (const row of rows) {
+      expect(row).not.toHaveProperty("topic");
+      expect(row).not.toHaveProperty("coordinate");
+    }
+  });
+
+  /**
+   * The constraint that makes keeping these fields safe: they decide nothing.
+   * `evaluateAdoption` plus the `key-occupied` refusal stay the sole
+   * discriminator for "is this session ours", so a record sitting at the
+   * derived key is adopted on its identity alone — a disagreeing label neither
+   * blocks an adoption nor licenses one. A second discriminator is exactly what
+   * could contradict the first and hand a session to the wrong owner.
+   */
+  it("never lets a label decide an adoption", async () => {
+    const { router, stores } = buildRouter();
+    await seedSession(stores, "parent");
+
+    const childId = await startChild(stores, { seed: { topic: "review" }, input: {} });
+
+    // Rewrite the child's label to something the seed would never produce,
+    // leaving its identity untouched.
+    const child = await stores.session.get(childId);
+    await stores.session.set(childId, { ...child!, topic: "not-the-seed" }, "any");
+
+    // Same seed, same derived key: adopted on identity, label ignored.
+    const again = await detachedStart(stores)({ seed: { topic: "review" }, input: {} });
+    expect(again).toMatchObject({ ok: true, adopted: true, sessionId: childId });
+
+    // And the route reports what is stored rather than re-deriving it — the
+    // labels are display, so nothing repairs them behind a reader's back.
+    const [row] = await workstreams(router, "parent");
+    expect(row?.topic).toBe("not-the-seed");
   });
 });
 

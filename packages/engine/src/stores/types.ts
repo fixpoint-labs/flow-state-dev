@@ -48,6 +48,42 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    * namespacing this field.
    */
   parentSessionId?: string;
+  /**
+   * Human-readable name for the body of work a detached child session was
+   * started for (FIX-1010). Stamped by the detached-start writer
+   * (`context/create-request-host.ts`) from the routing seed the child key was
+   * derived from — **never** from {@link SessionRecord.metadata}, which is the
+   * caller's own free-form bag and can say anything.
+   *
+   * **This field carries no authority, and neither does
+   * {@link SessionRecord.coordinate}.** `evaluateAdoption` together with the
+   * `key-occupied` refusal (`context/detached-child.ts`) is the *sole*
+   * discriminator for "is this session ours" — routing, authorization,
+   * adoption and identity are decided there and nowhere else. Nothing may read
+   * these two fields to make any of those decisions; they exist to put a
+   * readable name on a row in a UI instead of an opaque derived id.
+   *
+   * That restriction is exactly what makes keeping them safe. A *second*
+   * discriminator could disagree with `evaluateAdoption` and hand a session to
+   * the wrong owner; a display-only field has nothing to disagree with. Adding
+   * a read of these fields to any decision path reintroduces that hazard and
+   * is the change this note exists to stop.
+   *
+   * Optional and additive (BP-030). A child written before this field existed
+   * reads back `undefined`, a store that nulls absent keys hands back `null`,
+   * and an adopted legacy child is never backfilled — all three mean
+   * *unlabelled*, which is a row a UI shows without a name, not an error. Guard
+   * with `== null`.
+   */
+  topic?: string;
+  /**
+   * Which worker within the {@link SessionRecord.topic} a detached child is
+   * routed to — the seed's optional further discrimination, absent when the
+   * caller gave none. Same writer, same server-derived source, and the same
+   * no-authority rule: see {@link SessionRecord.topic}, which carries the whole
+   * contract for both fields.
+   */
+  coordinate?: string;
   title?: string;
   description?: string;
   tags?: string[];

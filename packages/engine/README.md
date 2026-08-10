@@ -348,6 +348,13 @@ child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
 `status` of `active` (not finished) or a terminal outcome (`completed`,
 `failed`, `aborted`, `incomplete`). A job with no runs has no `status`.
 
+`topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
+creates the job's session, taken from the routing seed that session's id was
+derived from (`seed.topic` and `seed.key`). The caller's `record` bag lands in
+the record's `metadata` and never becomes a label. Both are display only —
+nothing routes, authorizes or adopts on them — and both are optional, so guard
+with `== null`.
+
 The route is session-addressed: the parent is loaded and ownership-checked
 before the handler runs, and the answer is scoped to the stored parent's owner,
 tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
