@@ -146,8 +146,11 @@ export const taskSchema = z.object({
    * `createdAt` cannot serve as incarnation identity: it is a millisecond
    * clock, and a delete-then-recreate under the same id lands in the same
    * millisecond often enough (measured 198/200) that two different rows share
-   * it. `incarnationId` is minted fresh by `generateId`, so a recreated row
-   * gets a new one every time, clock collisions or not.
+   * it. `incarnationId` is minted fresh with `crypto.randomUUID()`, so a
+   * recreated row gets a new one every time, clock collisions or not — and
+   * because it is persisted and compared across processes on a durable board,
+   * it needs a generator that is unique across them, which `generateId`'s
+   * per-process counter and 24-bit random tail are not.
    *
    * Declared here rather than added by the backings for the identical reason
    * `revision` is: a durable task is validated by `taskEnvelopeSchema` on its
