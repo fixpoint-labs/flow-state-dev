@@ -73,6 +73,13 @@ export interface ResourceBackingSpec extends CommonOptions {
   backing: "resource";
   /** The parameterized resource collection ref. Pattern: `someTopic/{id}`. */
   collection: ResourceCollectionRef<JsonObject>;
+  /**
+   * Refuse every `setAssignee` on this collection (FIX-982). Set by a task
+   * board with detached workers, whose routing coordinate is derived from the
+   * assignee. Only this backing carries it — a detached board is refused at
+   * construction on any other.
+   */
+  immutableAssignee?: boolean;
 }
 
 /**
@@ -207,6 +214,7 @@ export async function getOrCreateTaskCollection<TInput = unknown, TOutput = unkn
     getItems,
     now: options.now,
     claimIdentity,
+    immutableAssignee: options.immutableAssignee,
   });
 }
 

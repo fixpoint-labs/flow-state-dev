@@ -124,22 +124,40 @@ throw on an illegal transition.
 Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
 emitted), `unchanged` (the task already held the state asked for, nothing written),
-or `declined` with a `reason` (`terminal` / `not-my-task` / `disallowed` /
-`lost-claim`, resolved in that precedence order) and the `status` the task was in
-when the write was refused. `not-my-task` means the ticket names a different task,
-a different collection, or an id since reused; `lost-claim` means it names the
-right task but a claim that has moved on. A decline never throws, and discarding
-the return value is supported. `cancel` is advisory whether or not options are
-passed: cancelling a settled task declines with reason `terminal`.
+or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
+`disallowed` / `lost-claim`, resolved in that precedence order) and the `status`
+the task was in when the write was refused. `immutable-assignee` means the board
+runs detached work, where the assignee is fixed at admission; `not-my-task` means
+the ticket names a different task, a different collection, or an id since reused;
+`lost-claim` means it names the right task but a claim that has moved on. A
+decline never throws, and discarding the return value is supported. `cancel` is
+advisory whether or not options are passed: cancelling a settled task declines
+with reason `terminal`.
 
 `setAssignee` is the one field mutator that refuses anything — it declines on a
-terminal task. `setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
+terminal task, and on a durable collection any detached board draws from it
+declines every reassignment whatever the task's status (see "Declaring detached
+work" below).
+`setPriority`, `addLabel`, `removeLabel`, and `patchMetadata` write to
 a terminal task, so a post-drain failure audit can label what went wrong; those four
 answer only `recorded` or `unchanged` (`patchMetadata` merges rather than compares,
 so it answers `recorded` even for a no-op patch). `unchanged` is a statement about
 the task record — on a resource backing the write reaches the resource either way,
 so a `resource_change` can fire for an `unchanged` write. A missing task throws on
 all eight.
+
+A verdict only reaches a call that *returned*. For the path where a write commits
+and the call then **throws**, pass `write: beginTaskWrite(collection.get(id))` on
+the same options argument and ask `didWriteLand(collection.get(id), write)`
+afterwards. It answers `true` (committed), `false` (changed nothing), or
+`undefined` (cannot tell — no provenance on the record, the token names a
+different incarnation of the task (delete/recreate under the same id), or the
+receipt aged out of the task's four-entry log). Mint the token before the write; report `undefined`
+rather than guessing. Correlation is available on the seven methods that take
+`TaskTransitionOptions`. `setAssignee` — the eighth method able to decline, above
+— takes no options object at all, so it and the other four field mutators advance
+`task.revision` but carry no token. A hand-written `TaskCollectionRef` that
+maintains no provenance leaves its callers with `undefined`, never a false `false`.
 
 ```ts
 import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
@@ -223,8 +241,35 @@ request and those backings do not. A detached worker declaring `sessionStateSche
 is refused for the same reason: detached workers share one execution flow, where
 two of them choosing the same state key would overwrite each other silently.
 
-> Detached execution itself is not wired yet. This release ships the declaration
-> and its guards; a worker marked detached still runs inline until the spawn lands.
+Once a board declares anything detached, a task's assignee is fixed at admission:
+`setAssignee` declines with reason `immutable-assignee`. The assignee is what the
+worker's routing coordinate derives from, and that coordinate addresses the child
+session the work runs in. Changing it afterwards redirects nothing — work already
+dispatched keeps running under the old coordinate, and the new one addresses a
+session nothing will wake — so the write is refused rather than silently
+stranding the task. File a new task instead of reassigning.
+
+The rule belongs to the collection, not to the board that declared it. Point a
+second board at the same `defineTaskCollection` value and it declines too, even
+if that board declares nothing detached: the two share task rows, so reassigning
+through either one moves a coordinate the detached board routes by. If a board
+needs freely reassignable tasks, give it its own collection.
+
+Each detached worker also gets a routing coordinate the framework derives:
+`assignee:<name>`, `uniform`, or `floor`. These bubble up from the board's drain
+into a flow-level binding map, so a worker stays addressable from strings alone
+after a restart, without appearing in `flow.actions` where a caller could reach
+it. Nothing is declared to make that happen. Two boards that share a `boardId`
+and land on the same coordinate are refused when the flow is defined, even when
+both hand that coordinate the same worker block: the coordinate is what a
+dispatch names, and two boards answering to it keep separate task ledgers while
+addressing one child session. Reusing a worker block across boards is fine on its
+own — give the boards distinct `boardId`s. One board reached from several places
+is a duplicate rather than a conflict and deduplicates silently.
+
+> Detached execution itself is not wired yet. This release ships the declaration,
+> its guards, and the routing registry; a worker marked detached still runs
+> inline until the spawn lands.
 
 ### goalSeekLoop
 
