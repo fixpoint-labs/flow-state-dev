@@ -13,7 +13,8 @@ import type {
   SessionDetail,
   SessionRequestSummary,
   SessionStateSnapshotResponse,
-  SessionSummary
+  SessionSummary,
+  WorkstreamSummary
 } from "../types";
 
 /**
@@ -48,6 +49,20 @@ export type ListSessionRequestsOptions = {
    * requests.
    */
   includeItems?: boolean;
+};
+
+/**
+ * Query options for listing the Workstreams under one conversation.
+ *
+ * Paging only — there is no filter here. Which background work a caller may
+ * see is decided by the server from the stored parent record, never from
+ * anything the caller sends (BP-031).
+ */
+export type ListWorkstreamsOptions = {
+  /** 1–100. The server returns 25 rows when this is absent. */
+  limit?: number;
+  /** 0–10000. */
+  offset?: number;
 };
 
 /**
@@ -93,6 +108,23 @@ export type SessionClient = {
     sessionId: string,
     options?: ListSessionRequestsOptions
   ) => Promise<SessionRequestSummary[]>;
+  /**
+   * The background work running under one conversation — the first of two
+   * hops. Each row carries the state its work reached, so a list renders from
+   * this call alone; `listSessionRequests` with a row's `id` is the drill-in
+   * that shows what that work has done.
+   *
+   * A conversation with no background work returns an empty list, which is the
+   * ordinary case rather than an error.
+   *
+   * There is no counterpart that *starts* detached work. Whether work runs in
+   * the background is declared by the flow author when the flow is wired up,
+   * never chosen by the caller.
+   */
+  listWorkstreams: (
+    parentSessionId: string,
+    options?: ListWorkstreamsOptions
+  ) => Promise<WorkstreamSummary[]>;
   getSessionState: (
     sessionId: string,
     options?: GetSessionStateOptions
@@ -186,6 +218,33 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     });
 
     return payload.requests;
+  };
+
+  const listWorkstreams = async (
+    parentSessionId: string,
+    listOptions?: ListWorkstreamsOptions
+  ): Promise<WorkstreamSummary[]> => {
+    const parentId = requireId(parentSessionId, "parentSessionId");
+    const payload = await requestJson<{ workstreams: WorkstreamSummary[] }>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${encodeURIComponent(parentId)}/workstreams`,
+        query: asQuery({
+          limit: listOptions?.limit,
+          offset: listOptions?.offset
+        })
+      })
+    });
+
+    // The only filtering this client does, and it is a compatibility check
+    // rather than a visibility one. Deciding *what a caller may see* is
+    // authorization and stays the server's; declining to relabel as this
+    // conversation's background work a row the server never claimed was its
+    // child is the client refusing to invent a meaning.
+    return payload.workstreams.filter(
+      (workstream) => workstream.parentSessionId === parentId
+    );
   };
 
   const getSessionState = async (
@@ -373,6 +432,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     listSessions,
     getSession,
     listSessionRequests,
+    listWorkstreams,
     getSessionState,
     createSession,
     updateSessionMetadata,

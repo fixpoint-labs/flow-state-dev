@@ -152,6 +152,71 @@ export type SessionDetail = SessionSummary & {
 };
 
 /**
+ * How a Workstream's runs ended, or that they have not ended.
+ *
+ * Five values, and `"active"` is opaque **by contract**: it asserts only *not
+ * finished*, covering queued, running, and paused waiting for a person alike.
+ * Never gloss it as "running", "live" or "healthy" — this is the last state
+ * the server durably recorded, not a health check, so a crashed worker's row
+ * keeps reading `"active"` until reclamation corrects it.
+ *
+ * Deliberately **not** `RequestStatus`. That union carries run states
+ * (`"in_progress"`, `"suspended"`, `"interrupted"`) which collapse into
+ * `"active"` and can never appear here; typing the field as `RequestStatus`
+ * would permit values the wire forbids and hand consumers an exhaustive
+ * switch over branches that cannot fire.
+ *
+ * A finer breakdown of `"active"` (running / queued / waiting on a person)
+ * arrives later as a **separate optional field beside `status`**, never as new
+ * members here — adding members would break every exhaustive switch built
+ * against this union and silently redefine `"active"`.
+ */
+export type WorkstreamStatus =
+  | "active"
+  | "completed"
+  | "failed"
+  | "incomplete"
+  | "aborted";
+
+/**
+ * One body of background work running under a conversation.
+ *
+ * A Workstream is a child session that outlives the turn that started it, so
+ * its history is read with {@link SessionClient.listSessionRequests} — the
+ * same call a conversation's own turns are read with.
+ *
+ * The wire sends a named field set rather than a whole session record, so this
+ * stands on its own instead of extending {@link SessionSummary}: the listing
+ * carries no `flowKind`, `userId`, `title` or `metadata`, and declaring them
+ * here would type fields the server never sends.
+ */
+export type WorkstreamSummary = {
+  /** Bare child session id — the address for reading this Workstream's requests. */
+  id: string;
+  /** Bare id of the conversation this work hangs off. */
+  parentSessionId: string;
+  createdAt: number;
+  updatedAt: number;
+  /**
+   * What body of work this is for, and which worker within it. Both are
+   * display-only labels stamped when the work is started — they route,
+   * authorize and identify nothing. Absent on a Workstream started before the
+   * labels existed, and on any child session that is not background work;
+   * guard with `== null` and render an unnamed job rather than an error
+   * (BP-030).
+   */
+  topic?: string;
+  coordinate?: string;
+  /**
+   * Absent when the Workstream has not run anything yet. Absence is not a
+   * status: `"active"` would claim work is under way before it started, and a
+   * terminal value would claim it finished. Render no state rather than a
+   * placeholder.
+   */
+  status?: WorkstreamStatus;
+};
+
+/**
  * Request record fields consumed by client/session views.
  */
 export type SessionRequestSummary = {

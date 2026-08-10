@@ -16,6 +16,7 @@ export {
   type GetSessionStateOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
+  type ListWorkstreamsOptions,
   type SessionClient,
   type UpdateSessionMetadataOptions
 } from "./session-client/sessions";
@@ -105,7 +106,9 @@ export type {
   SessionSummary,
   TypedActionMethods,
   UserSSECallbacks,
-  UserStreamHandle
+  UserStreamHandle,
+  WorkstreamStatus,
+  WorkstreamSummary
 } from "./types";
 
 export { ClientHttpError } from "./types";
