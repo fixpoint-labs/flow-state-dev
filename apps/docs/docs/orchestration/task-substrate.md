@@ -192,7 +192,7 @@ A legal status transition is necessary but not sufficient. A verb that owns a si
 `claim` asks who owns the task. `ticketForClaim` mints a ticket from what `claim()` handed you — the board, the task, the attempt, and the task's creation timestamp — and the write is refused unless the task in front of it is that same task, on that same attempt, in a status the attempt holds (`in_progress` or `awaiting_review`). Two refusals come out of it, and they mean different things:
 
 - The ticket names a different task, a different board, or an id that has since been reused for a new task: `not-my-task`. Nothing about the target's state can make that write legal.
-- The ticket names the right task but a claim that has moved on, or a lease that has run out: `lost-claim`. Somebody else holds it now, or is entitled to.
+- The ticket names the right task but a claim that has moved on, or an `in_progress` task whose lease has run out: `lost-claim`. Somebody else holds it now, or is entitled to.
 
 Pass the ticket rather than the attempt number on its own. Attempt numbers collide constantly across a board (two freshly claimed tasks both sit on attempt 1), so a check against the number alone is satisfied by whichever task the call happened to name.
 
@@ -200,7 +200,9 @@ The task cannot change between the check and the write. Only these refusals go q
 
 A skipped write resolves to `{ outcome: "declined", reason, status }` instead of throwing — see [what a write reports](#what-a-write-reports).
 
-Your writes are good for as long as you hold the lease. Present a ticket after the lease has run out and the write is declined `lost-claim`, the same as any other lost claim, because by then the task is the queue's to hand out again. That is the reason to size a lease to the job it covers.
+While a task is `in_progress`, your writes are good for as long as you hold the lease. Present a ticket after the deadline has passed and the write is declined `lost-claim`, the same as any other lost claim, because by then the task is the queue's to hand out again. That is the reason to size a lease to the job it covers.
+
+The lease answers one question: is a live worker on this right now? A task in `awaiting_review` is stopped on purpose and nobody is running it, so the lease has nothing to govern there. Its deadline can pass by any amount and your ticket still goes through: a `resumeFromReview` an hour into human review is recorded, and nothing reclaims the task while it waits. So when a task has to wait on a person for longer than any lease you would want to set, park it with `awaitReview` rather than holding a claim open on a running task.
 
 With no options object, neither guard runs. An illegal transition throws. A legal one goes through even when another attempt already recorded a result: `completed → completed` is a legal move, so a second unguarded `complete` overwrites the first output. Pass `{ ifAllowed: true }` if you drive a collection directly. `cancel` is the exception and needs nothing, because it runs the terminal check whether you pass options or not.
 
@@ -227,7 +229,7 @@ type TaskWriteOutcome =
 - `terminal` — the task had already reached `completed`, `errored`, or `cancelled`.
 - `not-my-task` — the `claim` you passed names a different task, a different collection, or an id that has since been reused for a new task.
 - `disallowed` — the state machine won't take the move from the task's current, non-terminal status, such as `pending → errored`.
-- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it, or its lease ran out.
+- `lost-claim` — the `claim` names this task but no longer owns it. The task was reclaimed, re-queued, or blocked while you were working on it, or its lease ran out while it was still `in_progress`.
 
 When more than one condition applies, `reason` reports the first that holds in that order: `terminal`, then `not-my-task`, then `disallowed`, then `lost-claim`. The order is part of the contract, so read it in that direction: a cross-task write reports `not-my-task` rather than `disallowed`, but a write naming a task that has already finished reports `terminal` even when the claim names the wrong task too.
 
@@ -364,7 +366,9 @@ The lease is the knob for how long a stranded job stays stranded, and picking it
 
 **A task you claim by hand gets no renewal.** You hold it, so you renew it, with `renewLease(id, deadline, { claim })`. Pass the ticket you minted from the claim; the write is refused if the task is no longer yours. If you would rather not renew, size the lease to cover the work.
 
-Two helpers do the renewing for you. `withLeaseRenewal` wraps work that is a single call. `startLeaseRenewal` returns a `{ signal, stop }` driver for work that spans several steps, and you call `stop()` yourself on every path out. Both renew in the background while the work runs, keep one renewal in flight at a time, and stop when the signal you hand them aborts. Both also give you a second signal that fires the moment the claim is lost, so a worker whose task was taken back can stop instead of finishing work it can no longer record.
+Two helpers do the renewing for you. `withLeaseRenewal` wraps work that is a single call. `startLeaseRenewal` returns a `{ signal, stop }` driver for work that spans several steps, and you call `stop()` yourself on every path out. Both renew in the background while the work runs and keep one renewal in flight at a time.
+
+Two signals are in play and they answer different questions. The `signal` you pass in, normally `ctx.signal`, says when to stop *renewing*: a cancelled request is no longer a live worker, so the driver stops pushing the deadline out. The signal you get back says when to stop *working*, and it aborts the moment the claim is lost. `withLeaseRenewal` hands that one to `run`; `startLeaseRenewal` exposes it as `driver.signal`. Run the work under both.
 
 ```ts
 import { ticketForClaim, withLeaseRenewal } from "@flow-state-dev/orchestration";
@@ -380,12 +384,20 @@ await withLeaseRenewal({
   claimedTask: task, // the task exactly as claim() returned it
   signal: ctx.signal,
   async run(leaseLost) {
-    // leaseLost aborts if another worker takes the task back.
-    const summary = await summarize(task.goal, { signal: leaseLost });
+    // Either signal ends the work: the request was cancelled, or the
+    // claim was taken back.
+    const signal =
+      ctx.signal === undefined
+        ? leaseLost
+        : AbortSignal.any([ctx.signal, leaseLost]);
+
+    const summary = await summarize(task.goal, { signal });
     await tasks.complete(task.id, summary, { ifAllowed: true, claim });
   },
 });
 ```
+
+Run the work under `leaseLost` alone and a cancelled request does not stop it. Renewal stops, the lease lapses, and another worker is free to claim the task while the original work keeps running and keeps costing you. A step dispatched with `.step(block, { abortSignal })` gets that composition for free. Doing it by hand is the cost of driving `claim` yourself.
 
 Settle the task inside `run`. Renewal has to outlive the write it protects: `complete()` and `fail()` are fenced on the claim ticket, and the fence refuses a ticketed write once the lease has run out. The span to cover is claim through settlement, not claim through the work returning. `withLeaseRenewal` stops renewing as soon as `run` returns, so a settling write issued after it is one slow store round trip from being refused, and a refused result puts the task back in the queue for another worker to run from the top.
 
