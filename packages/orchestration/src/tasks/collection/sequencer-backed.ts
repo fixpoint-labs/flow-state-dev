@@ -42,6 +42,7 @@ import {
   retryBudgetExhaustedError,
   routeFailure,
   sumGrantedRetries,
+  assertTransitionFrom,
   transitionDeclineReason,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
@@ -225,9 +226,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     targetStatus: TaskStatus,
     kind: TaskChangeKind | null,
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>,
-    guards?: TaskTransitionOptions
+    guards?: TaskTransitionOptions,
+    requireFrom?: TaskStatus
   ): Promise<TaskWriteOutcome> {
-    return transitionDerived(id, () => ({ targetStatus, kind, patch }), guards);
+    return transitionDerived(id, () => ({ targetStatus, kind, patch, requireFrom }), guards);
   }
 
   /**
@@ -241,6 +243,8 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     targetStatus: TaskStatus;
     kind: TaskChangeKind | null;
     patch: (task: Task<TInput, TOutput>) => Partial<Task<TInput, TOutput>>;
+    /** The one source status this verb may run from — see `assertTransitionFrom`. */
+    requireFrom?: TaskStatus;
   }
 
   /**
@@ -290,13 +294,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         // failure spend another task's retry allowance, or mark the board
         // "retry-budget-exhausted" when nothing was ever refused. Both are
         // invisible to a test that only checks the task's status.
-        const { targetStatus, kind, patch } = derive(task, tasks);
+        const { targetStatus, kind, patch, requireFrom } = derive(task, tasks);
         const reason = transitionDeclineReason(
           task as Task,
           targetStatus,
           guards,
           collectionId,
-          now()
+          now(),
+          requireFrom
         );
         if (reason !== undefined) {
           return {
@@ -307,6 +312,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             },
           };
         }
+        assertTransitionFrom(task as Task, requireFrom, targetStatus, id);
         assertTransitionAllowed(task.status, targetStatus, id);
         const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
         return {
@@ -622,7 +628,12 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         "pending",
         "unblocked",
         () => ({ error: undefined }),
-        options
+        options,
+        // `blocked` is the ONLY status this may run from. The other two paths
+        // to `pending` have their own verbs (`reclaim`, `resumeFromReview`),
+        // and those clear the lease and the claim coordinate; this one has
+        // nothing to clear because `blocked` is reachable only from `pending`.
+        "blocked"
       );
     },
 

@@ -10,7 +10,11 @@ import { ticketNamesTask } from "../claim-ticket";
 import type { Task, TaskClaimIdentity, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
-import { isTerminalStatus, isTransitionAllowed } from "../schema/task-status";
+import {
+  IllegalTaskTransitionError,
+  isTerminalStatus,
+  isTransitionAllowed,
+} from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
 import type {
   ClaimOptions,
@@ -398,25 +402,65 @@ function assertNoRemovedGuards(options: TaskTransitionOptions): void {
  * @param now The clock the write is running against. Both backings already
  *   have one in scope at the call site; taking it as a parameter rather than
  *   capturing `Date.now` is what keeps this testable with an injected clock.
+ * @param requireFrom The one status this verb may run from, when the verb owns a
+ *   single edge rather than every legal path to its target. `unblock` is the
+ *   only such verb: `blocked → pending`. The status table cannot express this —
+ *   it maps status to status, not verb to edge, and `in_progress → pending` and
+ *   `awaiting_review → pending` are legal for `reclaim` and `resumeFromReview`.
+ *   Checked ahead of the general legality arm so the more specific refusal wins.
  */
 export function transitionDeclineReason(
   task: Task,
   targetStatus: TaskStatus,
   options: TaskTransitionOptions | undefined,
   collectionId: string,
-  now: number
+  now: number,
+  requireFrom?: TaskStatus
 ): TaskWriteDeclineReason | undefined {
   if (options === undefined) return undefined;
   assertNoRemovedGuards(options);
   const claim = options.claim;
   if (options.ifAllowed === true && isTerminalStatus(task.status)) return "terminal";
   if (claim !== undefined && !ticketNamesTask(claim, collectionId, task)) return "not-my-task";
+  if (
+    options.ifAllowed === true &&
+    requireFrom !== undefined &&
+    task.status !== requireFrom
+  ) {
+    return "disallowed";
+  }
   if (options.ifAllowed === true && !isTransitionAllowed(task.status, targetStatus)) {
     return "disallowed";
   }
   if (claim !== undefined && !attemptOwnsTask(task, claim.attempt)) return "lost-claim";
   if (claim !== undefined && leaseLapsed(task, now)) return "lost-claim";
   return undefined;
+}
+
+/**
+ * Refuse a verb that owns ONE edge when the task is not sitting on that edge's
+ * source status.
+ *
+ * The non-advisory half of `requireFrom` — see {@link transitionDeclineReason}
+ * for why the status table cannot carry this. Throws the same error type as
+ * {@link assertTransitionAllowed}, because to a caller this *is* an illegal
+ * transition: `unblock` on an `in_progress` task is not a legal write that
+ * happens to skip a field, it is a `reclaim` spelled wrong.
+ *
+ * Runs after the decline check, so an advisory write still reports
+ * `disallowed` instead of throwing.
+ *
+ * @throws {IllegalTaskTransitionError} when `task.status !== requireFrom`.
+ */
+export function assertTransitionFrom(
+  task: Task,
+  requireFrom: TaskStatus | undefined,
+  targetStatus: TaskStatus,
+  taskId: string
+): void {
+  if (requireFrom !== undefined && task.status !== requireFrom) {
+    throw new IllegalTaskTransitionError({ taskId, from: task.status, to: targetStatus });
+  }
 }
 
 /**
