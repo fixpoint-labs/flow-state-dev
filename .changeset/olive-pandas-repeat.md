@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/orchestration": patch
+"@flow-state-dev/orchestration": minor
 ---
 
 `unblock()` now runs only on a task that is actually `blocked`, and refuses
