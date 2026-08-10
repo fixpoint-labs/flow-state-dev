@@ -39,6 +39,14 @@ export type {
 
 export { NoRequestHostError, requireRequestHost } from "./request-host";
 
+export type { WorkstreamBinding, WorkstreamBindings } from "./workstream";
+
+export {
+  declareWorkstreamBindings,
+  mergeWorkstreamBindings,
+  workstreamBindingKey
+} from "./workstream";
+
 export type {
   ActionConfig,
   ActionCore,

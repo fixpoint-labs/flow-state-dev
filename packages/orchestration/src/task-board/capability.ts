@@ -46,6 +46,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
+  type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
   type TaskFilter,
@@ -108,6 +109,14 @@ export interface TaskBoardResourceCapabilityOptions {
   resourceKey: string;
   /** Internal resource-declaring capability composed via `uses`. */
   resourceCapability: DefinedCapability;
+  /**
+   * The ledger declaration this board binds (FIX-982). Forwarded to
+   * `resolveResourceTaskCollection`, which reads the frozen-assignee policy off
+   * it at resolution time — this accessor and the drain's own factory reach the
+   * same rows, so a policy either of them could hold privately is one a caller
+   * routes around by picking the other.
+   */
+  ledger: DefinedTaskCollection;
 }
 
 /**
@@ -245,7 +254,7 @@ export function createTaskBoardCapability<
   }
 
   if (options.backing === "resource") {
-    const { resourceKey, resourceCapability } = options;
+    const { resourceKey, resourceCapability, ledger } = options;
     return defineCapability({
       name: capabilityName,
       // Compose the internal resource-declaring capability so any block that
@@ -257,6 +266,7 @@ export function createTaskBoardCapability<
             boardName,
             resourceKey,
             collectionId,
+            ledger,
           })
         ),
     });

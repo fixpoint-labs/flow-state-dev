@@ -12,6 +12,11 @@ import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
 import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
+import {
+  declareWorkstreamBindings,
+  mergeWorkstreamBindings,
+  type WorkstreamBindings,
+} from "../types/workstream";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -196,10 +201,21 @@ function withFlowTools(
 
   const generatorConfig = block.config as unknown as GeneratorConfig;
   const mergedTools = mergeToolsConfig(flowTools, generatorConfig.flowTools);
-  return generator({
+  const rebuilt = generator({
     ...generatorConfig,
     flowTools: mergedTools
   });
+
+  // Carry definition-only metadata across the rebuild (FIX-982).
+  //
+  // `declaredResources` needs no forwarding here and is a misleading guide:
+  // `generator()` recomputes it from the config it is handed, so it survives on
+  // its own. Bindings have no config half — a board reaches a generator only by
+  // way of a rescue handler, and that lands on the built definition. Rebuilding
+  // without carrying them means a flow silently loses a route the moment it
+  // declares `tools`, and only for the boards behind a generator's failure path.
+  declareWorkstreamBindings(rebuilt, [...(block.workstreamBindings?.values() ?? [])]);
+  return rebuilt;
 }
 
 function mergeActions(
@@ -314,24 +330,72 @@ function withFlowToolsSchedules(
  * detected. Dynamic schedule blocks are produced at dispatch time and cannot
  * be walked here.
  */
+/**
+ * Every block one `ActionCore` statically declares: the root, plus the
+ * lifecycle observers `runAction` executes alongside it.
+ *
+ * The observers are collected for the same reason the root is. They run as real
+ * blocks in the request, so whatever they declare — resources, `requireOrg`,
+ * detached worker bindings — is as load-bearing as the root's. A board mounted
+ * under `onCompleted` is a board this flow has to be able to route to, and a
+ * resource it needs is one the registry has to install.
+ */
+function actionCoreBlocks(core: {
+  block: BlockDefinition;
+  onCompleted?: BlockDefinition<any, any>;
+  onErrored?: BlockDefinition<any, any>;
+}): BlockDefinition[] {
+  const blocks: BlockDefinition[] = [core.block];
+  if (core.onCompleted !== undefined) blocks.push(core.onCompleted);
+  if (core.onErrored !== undefined) blocks.push(core.onErrored);
+  return blocks;
+}
+
+/**
+ * Every statically-declared block in the flow.
+ *
+ * Four binding families all carry the shared `ActionCore` (caller actions,
+ * webhook, chat, and static schedule bindings), so each contributes its root and
+ * its observers. The flow-level `request` and `work` hooks are blocks too, and
+ * are declared once for the whole flow rather than per binding.
+ *
+ * Dynamic schedules (`schedules.resolve`) are deliberately absent: their blocks
+ * do not exist until a resolver runs, so there is nothing to collect at
+ * definition time.
+ */
 function actionBlocks(
   actions: AnyActions,
   webhooks: WebhookConfig | undefined,
   chat: ChatConfig | undefined,
-  schedules: SchedulesConfig | undefined
+  schedules: SchedulesConfig | undefined,
+  request?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any>; onStepErrored?: BlockDefinition<any, any> },
+  work?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any> }
 ): BlockDefinition[] {
   const blocks: BlockDefinition[] = [];
-  for (const action of Object.values(actions)) blocks.push(action.block);
+  for (const action of Object.values(actions)) blocks.push(...actionCoreBlocks(action));
   if (webhooks !== undefined) {
     for (const sub of Object.values(webhooks)) {
-      for (const binding of Object.values(sub.on)) blocks.push(binding.block);
+      for (const binding of Object.values(sub.on)) blocks.push(...actionCoreBlocks(binding));
     }
   }
   if (chat?.on !== undefined) {
-    for (const binding of Object.values(chat.on)) blocks.push(binding.block);
+    for (const binding of Object.values(chat.on)) blocks.push(...actionCoreBlocks(binding));
   }
   if (schedules?.static !== undefined) {
-    for (const schedule of Object.values(schedules.static)) blocks.push(schedule.block);
+    for (const schedule of Object.values(schedules.static)) blocks.push(...actionCoreBlocks(schedule));
+  }
+  for (const hook of [
+    request?.onStarted,
+    request?.onCompleted,
+    request?.onErrored,
+    request?.onFinished,
+    request?.onStepErrored,
+    work?.onStarted,
+    work?.onCompleted,
+    work?.onErrored,
+    work?.onFinished
+  ]) {
+    if (hook !== undefined) blocks.push(hook);
   }
   return blocks;
 }
@@ -344,26 +408,40 @@ function actionBlocks(
  * at this layer.
  */
 function collectBlockResources(
-  actions: AnyActions,
-  webhooks: WebhookConfig | undefined,
-  chat: ChatConfig | undefined,
-  schedules: SchedulesConfig | undefined
+  blocks: readonly BlockDefinition[]
 ): DeclaredResources | undefined {
   let collected: DeclaredResources | undefined;
-  for (const block of actionBlocks(actions, webhooks, chat, schedules)) {
+  for (const block of blocks) {
     collected = mergeDeclaredResources(collected, block.declaredResources);
   }
   return collected;
 }
 
-/** True when any action block (caller or event-addressed) opted into `requireOrg`. */
-function collectRequiresOrg(
-  actions: AnyActions,
-  webhooks: WebhookConfig | undefined,
-  chat: ChatConfig | undefined,
-  schedules: SchedulesConfig | undefined
-): boolean {
-  for (const block of actionBlocks(actions, webhooks, chat, schedules)) {
+/**
+ * Collect detached worker bindings from every declared block in the flow (FIX-982).
+ *
+ * Reads the already-accumulated union off each root rather than walking the
+ * block tree — sequencers and routers merge their children's bindings as they
+ * are composed, so by the time a flow is defined each root carries them all.
+ *
+ * Takes the same block list `collectBlockResources` and `collectRequiresOrg` do,
+ * by construction rather than by convention: all three answer "what did the
+ * blocks of this flow declare?", and the way this rail has failed repeatedly is
+ * one of them seeing a smaller flow than the others.
+ */
+function collectWorkstreamBindings(
+  blocks: readonly BlockDefinition[]
+): WorkstreamBindings | undefined {
+  let collected: WorkstreamBindings | undefined;
+  for (const block of blocks) {
+    collected = mergeWorkstreamBindings(collected, block.workstreamBindings);
+  }
+  return collected;
+}
+
+/** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
+function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
+  for (const block of blocks) {
     if (block.requiresOrg) return true;
   }
   return false;
@@ -641,7 +719,27 @@ function createFlowInstance(
   const chat = withFlowToolsChat(definition.chat, tools);
   const schedules = withFlowToolsSchedules(definition.schedules, tools);
 
-  const blockResources = collectBlockResources(actions, webhooks, chat, schedules);
+  // Enumerated once and shared by every collector below. Three separate
+  // walks was how a lifecycle observer's board could reach `runAction` while
+  // being invisible to `flow.workstreamBindings`.
+  // Merged before collection, not after: `FlowInstanceOptions` can replace a
+  // `request`/`work` lifecycle observer, and the instance returned below runs the
+  // merged one. Collecting from `definition.*` would read the blocks the flow was
+  // authored with rather than the blocks it will execute — missing an override's
+  // declarations, and keeping a replaced block's.
+  const requestMerged = mergeConfig(definition.request, options?.request);
+  const workMerged = mergeConfig(definition.work, options?.work);
+
+  const declaredBlocks = actionBlocks(
+    actions,
+    webhooks,
+    chat,
+    schedules,
+    requestMerged,
+    workMerged
+  );
+
+  const blockResources = collectBlockResources(declaredBlocks);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -682,7 +780,6 @@ function createFlowInstance(
   // default (merged with any instance override) and every per-action override.
   // `actions` is already the merged map, so per-action overrides supplied via
   // `options.actions` are covered by the loop.
-  const requestMerged = mergeConfig(definition.request, options?.request);
   validateConcurrencyConfig(`Flow "${kind}" request default`, requestMerged?.concurrency);
   for (const [actionName, action] of Object.entries(actions)) {
     validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
@@ -692,14 +789,15 @@ function createFlowInstance(
     id: options?.id ?? kind,
     kind,
     requireUser,
-    requiresOrg: collectRequiresOrg(actions, webhooks, chat, schedules),
+    requiresOrg: collectRequiresOrg(declaredBlocks),
     authentication,
     actions,
+    workstreamBindings: collectWorkstreamBindings(declaredBlocks),
     session,
     request: requestMerged,
     user,
     org,
-    work: mergeConfig(definition.work, options?.work),
+    work: workMerged,
     resources: mergedResources,
     flowLevelResourceKeys,
     tools,

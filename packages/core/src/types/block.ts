@@ -11,6 +11,7 @@ import type { ExternalResourceCollectionRef } from "./external-resource-collecti
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { RequestHost } from "./request-host";
+import type { WorkstreamBindings } from "./workstream";
 import type { TracingLevel } from "../helpers/tracing-level";
 import type { Content } from "../items/content";
 import type {
@@ -931,6 +932,18 @@ export interface BlockDefinition<
    * for HTTP-layer enforcement.
    */
   requiresOrg: boolean;
+  /**
+   * Detached worker bindings this block and its descendants declare (FIX-982).
+   *
+   * Bubbles exactly as {@link declaredResources} does — a task board stamps its
+   * bindings on the drain sequencer, enclosing sequencers merge their children's
+   * up, and `defineFlow` reads the union off each action root into
+   * `flow.workstreamBindings`. `undefined` on every block that declares no
+   * detached work, which is every block that ships today.
+   *
+   * Not an app-author surface: nothing is declared to get one.
+   */
+  workstreamBindings?: WorkstreamBindings;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(

@@ -101,6 +101,8 @@ export {
 export {
   defineTaskCollection,
   isDefinedTaskCollection,
+  freezeLedgerAssignee,
+  hasFrozenLedgerAssignee,
   type DefinedTaskCollection,
   type DefineTaskCollectionOptions,
 } from "./collection/define-task-collection";
