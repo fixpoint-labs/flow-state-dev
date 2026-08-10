@@ -134,9 +134,19 @@ export interface LeaseRenewalDriver {
    * the row is no longer this worker's (taken back, cancelled, recreated, or
    * its lease already gone).
    *
+   * **It aborts at the refusal, not at the loss, and the gap between them is a
+   * whole renewal interval.** Nothing notifies a worker that its claim was
+   * taken; the only way this driver can find out is to attempt a write and be
+   * told no. So a claim lost just after a successful renewal leaves this signal
+   * clear until the next tick — up to `span / RENEWAL_DIVISOR`, about a third
+   * of the lease. Treat it as a bounded stop, not a prompt one: work started
+   * before it fires can still be running, and it is not a substitute for the
+   * write fence, which is what actually refuses a stale worker's result.
+   *
    * Compose it with the request's signal rather than substituting it; a step
    * dispatched with `.step(block, { abortSignal })` gets that composition for
-   * free.
+   * free. ({@link withLeaseRenewal} hands its callback the composition already
+   * made — this is the bare lease-loss signal.)
    */
   readonly signal: AbortSignal;
   /** Stop renewing. Idempotent, and safe to call before the first tick. */
