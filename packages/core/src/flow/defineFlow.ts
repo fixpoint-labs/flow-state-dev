@@ -722,13 +722,21 @@ function createFlowInstance(
   // Enumerated once and shared by every collector below. Three separate
   // walks was how a lifecycle observer's board could reach `runAction` while
   // being invisible to `flow.workstreamBindings`.
+  // Merged before collection, not after: `FlowInstanceOptions` can replace a
+  // `request`/`work` lifecycle observer, and the instance returned below runs the
+  // merged one. Collecting from `definition.*` would read the blocks the flow was
+  // authored with rather than the blocks it will execute — missing an override's
+  // declarations, and keeping a replaced block's.
+  const requestMerged = mergeConfig(definition.request, options?.request);
+  const workMerged = mergeConfig(definition.work, options?.work);
+
   const declaredBlocks = actionBlocks(
     actions,
     webhooks,
     chat,
     schedules,
-    definition.request,
-    definition.work
+    requestMerged,
+    workMerged
   );
 
   const blockResources = collectBlockResources(declaredBlocks);
@@ -772,7 +780,6 @@ function createFlowInstance(
   // default (merged with any instance override) and every per-action override.
   // `actions` is already the merged map, so per-action overrides supplied via
   // `options.actions` are covered by the loop.
-  const requestMerged = mergeConfig(definition.request, options?.request);
   validateConcurrencyConfig(`Flow "${kind}" request default`, requestMerged?.concurrency);
   for (const [actionName, action] of Object.entries(actions)) {
     validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
@@ -790,7 +797,7 @@ function createFlowInstance(
     request: requestMerged,
     user,
     org,
-    work: mergeConfig(definition.work, options?.work),
+    work: workMerged,
     resources: mergedResources,
     flowLevelResourceKeys,
     tools,

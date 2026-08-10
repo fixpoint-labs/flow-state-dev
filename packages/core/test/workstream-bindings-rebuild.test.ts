@@ -346,6 +346,52 @@ describe("the flow collects bindings from every block it declares", () => {
     ]);
   });
 
+  it("routes to a board supplied by a request override, not the authored one", () => {
+    // `defineFlow(...)` returns a factory, and the factory's options can replace
+    // a lifecycle observer. The instance runs the merged observer, so collecting
+    // from the authored config reads blocks the flow will not execute.
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: plainRoot() } },
+    } as never)({
+      id: "board",
+      request: { onCompleted: stampedDrain("override") },
+    } as never);
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual(["override"]);
+  });
+
+  it("routes to a board supplied by a work override", () => {
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: plainRoot() } },
+    } as never)({
+      id: "board",
+      work: { onCompleted: stampedDrain("worker-override") },
+    } as never);
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "worker-override",
+    ]);
+  });
+
+  it("drops the authored board's binding when an override replaces it", () => {
+    // The other half: a replaced block is not executed, so keeping its binding
+    // would install a route to a board this instance does not contain.
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: plainRoot() } },
+      request: { onCompleted: stampedDrain("authored") },
+    } as never)({
+      id: "board",
+      request: { onCompleted: stampedDrain("replacement") },
+    } as never);
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "replacement",
+    ]);
+  });
+
   it("also installs an observer's declared resources", () => {
     // Collection is shared: the same list feeds resources, `requiresOrg`, and
     // bindings. A route to a board whose durable collection was never installed
