@@ -1212,7 +1212,14 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // Resolved per dispatch, not at definition time — the signal is a
             // runtime fact (which claim this iteration holds), so a step
             // composed once and run many times gets its own each turn.
-            const extraSignal = resolveAbortSignal?.(ctx);
+            //
+            // Skipped on replay for the same reason the hook below is: there is
+            // no dispatch to run under. The resolver reads live runtime state
+            // (`currentLeaseRenewal()` and the like), and on a resume that state
+            // belongs to the original run — so calling it can throw where the
+            // cached output would have been returned, and any resolver that is
+            // not a pure read would run again on every re-entry.
+            const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
             // `finally`, so it also runs on the one exit no composed handler
             // sees: a `SuspensionError`, which bypasses `.rescue()` by design.
             // The outcome is reported because those exits are not
@@ -1276,6 +1283,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // dispatched has nothing to settle (see `StepOptions.onSettled`).
             // A replayed child is the same situation one layer over.
             const replayed = childWillReplay(ctx, path);
+            // Same gating as `.step` — a replayed child has no dispatch for the
+            // resolver to describe.
+            const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
             let outcome: StepOutcome = "returned";
             try {
               const result = await runChild(
@@ -1284,7 +1294,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                 path,
                 value,
                 sequentialInputHint(ctx, runtime),
-                resolveAbortSignal?.(ctx)
+                extraSignal
               );
               recordSequentialChild(runtime, path);
               return result;

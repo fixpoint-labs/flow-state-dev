@@ -181,33 +181,53 @@ function packWorkerInput(
  * makes it hold at any depth, because every scope now inherits that field from
  * its parent.
  *
+ * **The two channels are fed different signals, and that is the whole point of
+ * taking them as separate arguments.** `foreground` is the request's signal
+ * composed with lease loss. Feeding *that* to the background channel would put
+ * the transport signal into it, so a client disconnect would kill work that
+ * exists precisely to outlive a disconnect (FIX-663) — trading one correct
+ * behaviour for another. The background channel gets `leaseLost` raw, so a
+ * background task stops when the claim is gone and not when the client hangs
+ * up.
+ *
  * A unit-test context installs no scope at all, and there the spread already is
  * the whole story — nested steps run on the context they were handed.
  */
-function workerCtx(ctx: BlockContext, signal: AbortSignal): BlockContext {
-  const background = composeBackgroundSignal(ctx, signal);
+function workerCtx(
+  ctx: BlockContext,
+  foreground: AbortSignal,
+  leaseLost: AbortSignal
+): BlockContext {
+  const background = composeBackgroundSignal(ctx, leaseLost);
   const withScope = ctx._withExecutionScope;
   const base: BlockContext =
     withScope === undefined
-      ? { ...ctx, signal }
+      ? { ...ctx, signal: foreground }
       : {
           ...ctx,
-          signal,
-          _withExecutionScope: (parent, execute, signalOverride, backgroundOverride) =>
-            withScope.call(
+          signal: foreground,
+          _withExecutionScope: (parent, execute, signalOverride, backgroundOverride) => {
+            // Which signal this scope must carry depends on what KIND of scope
+            // it is, and `parent.phase` is the only thing that says so. A
+            // background dispatch arrives here with the request's background
+            // signal as its `signalOverride`; composing the foreground into
+            // that would put the transport signal back into work that exists
+            // to outlive transport teardown. So a `"work"` scope is composed
+            // with the raw lease signal and a main scope with the foreground.
+            const isBackground = parent.phase === "work";
+            const extra = isBackground ? leaseLost : foreground;
+            return withScope.call(
               ctx,
               parent,
               execute,
               signalOverride === undefined
-                ? signal
-                : AbortSignal.any([signalOverride, signal]),
-              // Same composition on the background channel. The scope this
-              // builds is where a descendant's `_requestBackgroundSignal` is
-              // stamped, so passing it here is what makes it hold at depth.
+                ? extra
+                : AbortSignal.any([signalOverride, extra]),
               backgroundOverride === undefined
                 ? background
-                : AbortSignal.any([backgroundOverride, signal])
-            ),
+                : AbortSignal.any([backgroundOverride, leaseLost])
+            );
+          },
         };
   if (background !== undefined) {
     (base as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
@@ -278,13 +298,16 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
         //
         // Composed, never substituted — the worker must still stop when the
         // request is cancelled, not only when the claim is lost.
-        const signal =
+        const foreground =
           ctx.signal === undefined
             ? renewal.signal
             : AbortSignal.any([ctx.signal, renewal.signal]);
         const output = (await asRuntime(worker).run(
           workerInput,
-          workerCtx(ctx, signal)
+          // The raw lease signal is handed over separately, not folded into
+          // `foreground` — background work must stop on lease loss without
+          // inheriting the transport signal `foreground` carries.
+          workerCtx(ctx, foreground, renewal.signal)
         )) as TOut;
         // Advisory write-back (FIX-951): the task may have been settled or
         // handed to another worker while this one ran.

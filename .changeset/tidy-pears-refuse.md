@@ -37,6 +37,14 @@ Recovery is bounded at three re-dispatches, after which the task settles
 `errored`. That allowance is separate from `maxAttempts`: a crashed machine no
 longer spends the retries you configured for real failures.
 
+**The bound covers the recovery the substrate performs on its own.** If you
+built a sweeper on `reclaim()` back when that was the only way to get a stranded
+job moving, it still works and it is still unbounded — it re-pends a row without
+counting an abandonment, so a job that keeps dying keeps coming back and
+eventually presents as spent `maxAttempts` rather than as abandonment. Delete
+the sweeper and let `claim` recover the row if you want the bound; keep it if
+you want the manual override.
+
 Two contracts changed:
 
 - **A dispatcher's `eligibility` predicate now narrows the substrate's

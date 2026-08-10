@@ -84,9 +84,9 @@ export async function runChild(
   inputHint: BlockValueInternal<unknown>,
   extraSignal?: AbortSignal
 ): Promise<RunChildResult> {
-  const childInput = shape.connector ? await shape.connector(input, ctx) : input;
-  stashInputHint(ctx, inputHint);
   if (extraSignal === undefined) {
+    const childInput = shape.connector ? await shape.connector(input, ctx) : input;
+    stashInputHint(ctx, inputHint);
     const value = await executeBlock(shape.block, childInput, ctx, path);
     return { value, descriptor: refDescriptorForPath(ctx, path) };
   }
@@ -102,6 +102,18 @@ export async function runChild(
     (childCtx as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
       background;
   }
+  // The connector runs under the composed context too. It is part of the step's
+  // dispatch — the documented promise is that the step runs under either signal,
+  // and a connector is not exempt from it. An async connector handed the
+  // original context would keep running after the extra signal fired, or block
+  // forever on a signal that was already aborted before the step began.
+  //
+  // The hint is stashed on `childCtx` rather than on `ctx` because that is the
+  // context `executeBlock` reads and clears it from; stashing on the original
+  // and copying it forward would leave a consumed hint behind for a later
+  // sibling to pick up.
+  const childInput = shape.connector ? await shape.connector(input, childCtx) : input;
+  stashInputHint(childCtx, inputHint);
   const value = await executeBlock(shape.block, childInput, childCtx, path, {
     signalOverride: composed,
     ...(background !== undefined ? { backgroundSignalOverride: background } : {}),

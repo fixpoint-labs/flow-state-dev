@@ -563,3 +563,136 @@ describe("a REPLAYED step does not settle", () => {
     expect(calls).toBe(1);
   });
 });
+
+
+describe("the CONNECTOR runs under the step's composed signal", () => {
+  // `.step(connector, block, { abortSignal })` documents that the step runs
+  // under either signal. The connector is part of that dispatch — it is where
+  // an async projection or a fetch would sit — so handing it the original
+  // context means it keeps running after the extra signal fires, or blocks
+  // forever on one that had already fired before the step began.
+
+  it("sees an already-aborted extra signal", async () => {
+    const extra = new AbortController();
+    extra.abort();
+    let seen: boolean | undefined;
+
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ n: 1 }))
+      .step(
+        (out: { n: number }, ctx) => {
+          seen = ctx.signal?.aborted === true;
+          return out.n;
+        },
+        reportsAbort,
+        { abortSignal: () => extra.signal }
+      );
+
+    await runForTest(seq, null, createMockContext());
+    expect(seen).toBe(true);
+  });
+
+  it("is released when the extra signal fires while it is awaiting", async () => {
+    // The shape that hangs without this: a connector that waits on its signal.
+    const extra = new AbortController();
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ n: 1 }))
+      .step(
+        async (out: { n: number }, ctx) =>
+          new Promise<number>((resolve) => {
+            if (ctx.signal?.aborted === true) return resolve(out.n);
+            ctx.signal?.addEventListener("abort", () => resolve(out.n), { once: true });
+            setTimeout(() => resolve(-1), 3_000);
+          }),
+        reportsAbort,
+        { abortSignal: () => extra.signal }
+      );
+
+    const running = runForTest(seq, null, createMockContext());
+    setTimeout(() => extra.abort(), 10);
+
+    expect(await running).toEqual({ aborted: true });
+  }, 10_000);
+
+  it("still sees the request's signal when no extra one is supplied", async () => {
+    // The unchanged path: no options bag, connector runs on the caller's ctx.
+    const request = new AbortController();
+    request.abort();
+    let seen: boolean | undefined;
+
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ n: 1 }))
+      .step((out: { n: number }, ctx) => {
+        seen = ctx.signal?.aborted === true;
+        return out.n;
+      }, reportsAbort);
+
+    await runForTest(seq, null, createMockContext({ signal: request.signal }));
+    expect(seen).toBe(true);
+  });
+});
+
+describe("the abortSignal RESOLVER is skipped on replay too", () => {
+  // Gating only the settle hook left half the problem. The resolver reads live
+  // runtime state — which claim this iteration holds — and on a resume that
+  // state belongs to the original run. Calling it can throw where the cached
+  // output would have been returned, and a resolver that is not a pure read
+  // runs again on every re-entry.
+
+  function ctxWithReplay(path: string, value: unknown) {
+    const ctx = createMockContext() as Record<string, unknown>;
+    ctx._replayLog = {
+      getCompletedOutput: (key: string) =>
+        key.endsWith(`/${path}`) || key.endsWith(`:${path}`)
+          ? { kind: "inline" as const, value }
+          : undefined,
+    };
+    return ctx as unknown as ReturnType<typeof createMockContext>;
+  }
+
+  it("does not call it for a replayed .step", async () => {
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      abortSignal: () => {
+        calls += 1;
+        return undefined;
+      },
+    });
+
+    await runForTest(seq, null, createMockContext());
+    expect(calls).toBe(1); // a real dispatch resolves once
+
+    await runForTest(seq, null, ctxWithReplay("step[0]", { aborted: false }));
+    expect(calls).toBe(1); // the replayed one did not
+  });
+
+  it("does not call it for a replayed .stepIf", async () => {
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: true }))
+      .stepIf((out: { go: boolean }) => out.go, reportsAbort, {
+        abortSignal: () => {
+          calls += 1;
+          return undefined;
+        },
+      });
+
+    await runForTest(seq, null, ctxWithReplay("stepIf[1]", { aborted: false }));
+    expect(calls).toBe(0);
+  });
+
+  it("a resolver that THROWS does not break a resume", async () => {
+    // The concrete failure: the resolver reaches for state the original run
+    // owned. On a resume that state is gone, and the cached output should still
+    // come back.
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      abortSignal: () => {
+        throw new Error("no live claim on resume");
+      },
+    });
+
+    expect(
+      await runForTest(seq, null, ctxWithReplay("step[0]", { aborted: false }))
+    ).toEqual({ aborted: false });
+  });
+});

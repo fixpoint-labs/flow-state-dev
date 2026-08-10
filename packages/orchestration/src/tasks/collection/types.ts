@@ -422,6 +422,25 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
    * Not the recovery path. Since FIX-1005 an abandoned row is recovered inside
    * `claim`, so nothing has to call this for you; the verb is unchanged and
    * stays available for a caller that wants to reset leases by hand.
+   *
+   * **It is the UNBOUNDED way back to `pending`, and deliberately so.** The
+   * automatic recovery `claim` performs is bounded — `DEFAULT_MAX_ABANDONMENTS`
+   * re-dispatches, after which the row settles `errored` rather than being
+   * handed out again. This verb does not count against that budget, so a
+   * caller that keeps calling it on a row whose worker keeps dying will keep
+   * re-dispatching it past the bound, and the failure will present as a spent
+   * `maxAttempts` instead of an abandonment cap.
+   *
+   * That is the same stance `unblock` and `resumeFromReview` already take, and
+   * for the same reason: a bound exists to make a judgment nobody is present to
+   * make, and a caller invoking this verb by hand *is* present. Counting it
+   * would settle a task an operator explicitly asked to requeue.
+   *
+   * So the promise is precise: recovery **the substrate performs on its own**
+   * is bounded. A sweeper built on this verb opts out of that bound — which was
+   * the only way to recover anything before FIX-1005, and is now a manual
+   * override rather than the mechanism. If bounded recovery is what you want,
+   * delete the sweeper and let `claim` do it.
    */
   reclaim(now?: number): Promise<number>;
 

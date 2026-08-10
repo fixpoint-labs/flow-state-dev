@@ -620,3 +620,88 @@ describe("renewal covers the result write, not just the worker", () => {
     expect(inner.get("t")!.status).toBe("errored");
   }, 20_000);
 });
+
+
+describe("a worker's background work survives transport teardown", () => {
+  // The other half of the composition, and the one that is easy to break while
+  // fixing the first. Background work is decoupled from the transport signal on
+  // purpose (FIX-663): a client disconnecting must not kill work already in
+  // flight. Lease loss is a different question with the opposite answer.
+  //
+  // Folding the worker's foreground signal — which is request + lease-loss —
+  // into the background channel satisfies the lease half and silently breaks
+  // this one, because the transport signal rides along. So the raw lease signal
+  // is what the background channel gets.
+
+  it("does NOT abort a .work() task when only the request signal fires", async () => {
+    const c = buildCollection();
+    await c.addTask({ id: "t", goal: "work" });
+
+    const request = new AbortController();
+    const background = new AbortController();
+    const probe: Probe = { ended: "never-ran" };
+
+    const worker = sequencer({ name: "bg-survives", inputSchema: z.any() })
+      .work(backgroundProbe("bg-survives-task", probe))
+      .map(() => ({ done: true }));
+
+    // Transport teardown while the worker runs. The claim is untouched.
+    setTimeout(() => request.abort(), 50);
+
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection: c,
+        dispatcher: shortLeaseDispatcher,
+        workers: worker as never,
+      }),
+      undefined,
+      withBackgroundSignal(
+        installExecutionScope({
+          signal: request.signal,
+          request: { identity: { id: "test-request" } },
+        } as unknown as BlockContext),
+        background.signal
+      )
+    );
+
+    expect(result.error).toBeUndefined();
+    // Ran to completion rather than being aborted by the disconnect.
+    expect(probe.ended).toBe("timeout");
+  }, 20_000);
+
+  it("still aborts it when the CLAIM is lost", async () => {
+    // The control, so the test above cannot pass by the signal simply never
+    // reaching the task at all.
+    const c = buildCollection();
+    await c.addTask({ id: "t", goal: "work" });
+
+    const request = new AbortController();
+    const background = new AbortController();
+    const probe: Probe = { ended: "never-ran" };
+
+    const worker = sequencer({ name: "bg-stops", inputSchema: z.any() })
+      .work(backgroundProbe("bg-stops-task", probe))
+      .map(() => ({ done: true }));
+
+    setTimeout(() => void c.fail("t", "settled by someone else"), 50);
+
+    const result = await runForTest(
+      dispatchAndExecuteBlock({
+        collection: c,
+        dispatcher: shortLeaseDispatcher,
+        workers: worker as never,
+      }),
+      undefined,
+      withBackgroundSignal(
+        installExecutionScope({
+          signal: request.signal,
+          request: { identity: { id: "test-request" } },
+        } as unknown as BlockContext),
+        background.signal
+      )
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(probe.ended).toBe("aborted");
+  }, 20_000);
+});
