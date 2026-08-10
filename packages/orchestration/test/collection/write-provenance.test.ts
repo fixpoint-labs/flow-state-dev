@@ -75,15 +75,30 @@ describe("didWriteLand — the three answers", () => {
 
   // `incarnationId` defaults to "inc-default" to match `record`'s default, so
   // every existing call below is implicitly minted against the same
-  // incarnation it reads.
+  // incarnation it reads. Typed as `string` (not `string | undefined`) so a
+  // vacuous `token(id, rev, undefined)` — a default parameter silently
+  // substituting on an explicit `undefined` argument, the exact defect this
+  // comment used to paper over — is a compile error instead of a test that
+  // passes for the wrong reason. Genuine absence goes through
+  // `tokenWithoutIncarnation` below, which has no default to swallow it.
   const token = (
     id: string,
     sinceRevision: number | undefined,
-    incarnationId: string | undefined = "inc-default"
+    incarnationId: string = "inc-default"
   ): TaskWriteToken => ({
     id,
     sinceRevision,
     incarnationId,
+  });
+
+  /** A token minted with no incarnation nonce at all — the genuine-absence case. */
+  const tokenWithoutIncarnation = (
+    id: string,
+    sinceRevision: number | undefined
+  ): TaskWriteToken => ({
+    id,
+    sinceRevision,
+    incarnationId: undefined,
   });
 
   it("answers landed when the receipt is in the log", () => {
@@ -233,7 +248,7 @@ describe("didWriteLand — the three answers", () => {
       writeLog: [],
       writeLogTruncated: false,
     });
-    expect(didWriteLand(task, token("mine", 4, undefined))).toBeUndefined();
+    expect(didWriteLand(task, tokenWithoutIncarnation("mine", 4))).toBeUndefined();
   });
 
   it("withholds, never a confident false, when NEITHER side carries a nonce", () => {
@@ -248,23 +263,13 @@ describe("didWriteLand — the three answers", () => {
     // replacement row that happens to land back at the token's baseline
     // revision must still withhold, not report a confident "did not land"
     // for a write that in fact committed on the row that no longer exists.
-    //
-    // Built by hand rather than through the `token(...)` helper above: that
-    // helper's third parameter defaults to `"inc-default"`, and a JS default
-    // parameter substitutes on an explicit `undefined` argument too — so
-    // `token("mine", 4, undefined)` can never actually produce an absent
-    // nonce. (That default also quietly undermines the "token does not"
-    // half of the mismatched-presence pair above: it happens to still pass,
-    // but only because `"inc-default"` differs from `"inc-a"`, not because it
-    // exercises an absent token nonce. Out of scope to change here.)
     const task = record({
       incarnationId: undefined,
       revision: 4,
       writeLog: [],
       writeLogTruncated: false,
     });
-    const bothAbsent: TaskWriteToken = { id: "mine", sinceRevision: 4, incarnationId: undefined };
-    expect(didWriteLand(task, bothAbsent)).toBeUndefined();
+    expect(didWriteLand(task, tokenWithoutIncarnation("mine", 4))).toBeUndefined();
   });
 
   it("the incarnation check runs before membership can be skipped by hoisting it above arm 1", () => {
