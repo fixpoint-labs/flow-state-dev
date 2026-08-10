@@ -4,7 +4,7 @@
 
 `useSession` can show the background work running under a conversation (FIX-1012). `session.workstreams` is a second list beside `items` — one entry per body of work, carrying what a row needs to render and the id needed to open it. Empty for any session that never started background work, and `items` is unchanged for every existing app.
 
-Opening one needs nothing new: a body of background work is a session, so `useSession(row.id, { flowKind, autoResume: true })` reads it. A row carries no `flowKind`, so pass the flow your worker runs, or take it from that work's own request records via `listSessionRequests(row.id)`.
+Opening one needs nothing new: a body of background work is a session, so `useSession(row.id, { flowKind, autoResume: true })` reads it. Pass the same flow kind as the conversation the work belongs to — background work runs on its parent flow's worker core and is stamped with that flow's kind rather than a kind of its own, so the value is one the app already has.
 
 **The list is current as of the reader's last interaction — it does not update while they watch.** It is re-read on mount, at the start of every action (`sendAction`, `resumeLatestRequest`, `resumeSuspension`, `continueRequest`), and whenever the app calls `session.refresh()`, which now covers this list as well as the conversation. A job started somewhere else appears on the next action or refresh. That costs one background read per turn and no polling; a self-updating panel can be added later without breaking anything built on this.
 

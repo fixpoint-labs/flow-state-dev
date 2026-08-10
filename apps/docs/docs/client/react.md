@@ -141,15 +141,15 @@ New status values can appear over time. Render one you don't recognise instead o
 A body of background work is a session, so the hook you already have reads it. Mount the detail view once a row is chosen:
 
 ```tsx
-function BackgroundJobDetail({ jobId }: { jobId: string }) {
+function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
   // `autoResume` matters here: without it you load one snapshot and it never
   // fills in while the job keeps going.
-  const job = useSession(jobId, { flowKind: "worker", autoResume: true });
+  const job = useSession(jobId, { flowKind, autoResume: true });
   return <ItemsRenderer items={job.items} />;
 }
 ```
 
-A row carries the job's id but not which flow it runs, so pass the flow your worker uses. If your app runs several and can't know which in advance, read it from the job's own request records with `listSessionRequests(row.id)` and use the `flowKind` on those.
+Pass the **same flow kind as the conversation the job belongs to**. Background work runs on its parent flow's worker core, so the job is stamped with that flow's kind rather than a kind of its own — you already have the value, and it needs no lookup. Passing a different name reads as a different flow, and an active job's stream comes back 404 with the view stuck on its first snapshot.
 
 Steps show up as the job finishes them. You won't see text being typed out as it is generated — background work surfaces completed steps only.
 

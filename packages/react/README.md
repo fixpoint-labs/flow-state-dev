@@ -203,13 +203,13 @@ Current as of the reader's last interaction. It is re-read on mount, at the star
 
 `SessionView.workstreamsStale` is `true` when the most recent re-read failed. The rows already read are kept, so this distinguishes "this is current" from "this is the last list we could fetch". Cleared by the next successful read.
 
-To open one, read it as the session it is. The row carries no `flowKind`, so pass the flow your worker runs — or take it from the work's own request records via `listSessionRequests(row.id)`:
+To open one, read it as the session it is, passing the **same flow kind as the conversation it belongs to**. Background work runs on its parent flow's worker core and is stamped with that flow's kind rather than a kind of its own, so the value is one you already have. A different name reads as a different flow: an active job's stream 404s and the view stays on its first snapshot.
 
 ```tsx
-function BackgroundJobDetail({ jobId }: { jobId: string }) {
+function BackgroundJobDetail({ jobId, flowKind }: { jobId: string; flowKind: string }) {
   // `autoResume` is required here: without it this loads one snapshot and
   // never fills in as the job keeps working.
-  const job = useSession(jobId, { flowKind: "worker", autoResume: true });
+  const job = useSession(jobId, { flowKind, autoResume: true });
   return <ItemsRenderer items={job.items} />;
 }
 ```
