@@ -41,6 +41,27 @@ export type DetachedStartOperation = (spec: {
   input: unknown;
   /** Handler block name, carried as provenance only. */
   actionName: string;
+  /** The flow the child belongs to — always the parent's own (FIX-982 P3a). */
+  flowKind: string;
+  /**
+   * The child's principal, tenant and org.
+   *
+   * Passed rather than re-read from the child record the seam just wrote: these
+   * are the values the seam **derived the child key from** and validated
+   * adoption against, so passing them is what makes the dispatch provably the
+   * same identity as the record. Re-reading would introduce a second source that
+   * can disagree, and the disagreement would be a request running under an
+   * identity the key was never derived for.
+   */
+  userId: string;
+  tenantId?: string;
+  orgId?: string;
+  /**
+   * Provenance stamped onto the request record — what a reader needs to tell
+   * *which* body of background work a detached request is. Server-assembled;
+   * never the caller's bag.
+   */
+  metadata?: Record<string, unknown>;
 }) => Promise<{ requestId: string }>;
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
@@ -217,7 +238,25 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     const started = await inputs.startOperation({
       sessionId: childId,
       input: args.input,
-      actionName: core.block.name
+      actionName: core.block.name,
+      flowKind: flow.kind,
+      // The same identity the child key was derived from and adoption was
+      // validated against — see `DetachedStartOperation`.
+      userId: identity.userId,
+      ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+      ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
+      // The routing seed, restated as request provenance. This is what lets a
+      // reader tell one body of background work from another on the request
+      // record itself, without resolving the child session first. Taken from the
+      // seed this call already consumed to derive the key — so it cannot
+      // disagree with the child it names — and never from `args.record`, which
+      // is the caller's own bag.
+      metadata: {
+        workstream: {
+          topic: args.seed.topic,
+          ...(args.seed.key !== undefined ? { key: args.seed.key } : {})
+        }
+      }
     });
 
     return { ok: true, sessionId: childId, requestId: started.requestId, adopted };
