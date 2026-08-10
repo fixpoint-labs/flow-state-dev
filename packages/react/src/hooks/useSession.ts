@@ -553,6 +553,14 @@ export function useSession(
       setWorkstreamsStale(false);
     } catch {
       if (generation !== workstreamGenerationRef.current) return;
+      // A failure is an outcome, so it is ordered like one. Without this a
+      // slow read that rejects after a newer read succeeded would flag fresh
+      // rows as stale; and because a failure that skipped the ordering never
+      // advanced the applied sequence, an older read settling later would
+      // then be applied on top and clear the flag.
+      if (sequence <= workstreamAppliedSequenceRef.current) return;
+
+      workstreamAppliedSequenceRef.current = sequence;
       // Keep the last known rows, but stop presenting them as current.
       setWorkstreamsStale(true);
     }
@@ -1083,15 +1091,27 @@ export function useSession(
             (r) => r.id === nextDetail.latestRequestId
           );
 
-          if (activeRequest !== undefined) {
-            attachToStream(activeRequest.id);
-          } else if (latestBeforeSnapshot?.status === "in_progress") {
-            // The latest request was still running before we read the
-            // snapshot, and it is no longer in the in-progress list: it
-            // finished inside that window. No stream is attachable and the
-            // snapshot we applied may predate the request's final items, so
+          // Whether the snapshot might be stale is decided independently of
+          // whether there is a stream to join, because the two questions have
+          // different subjects. The snapshot's staleness is about the request
+          // that was running *before* it was read; an attachable request may
+          // be a different, newer one, and its stream is request-scoped, so it
+          // will never replay the older request's final items. Attaching is
+          // therefore not evidence the catch-up is unnecessary — only
+          // attaching to that same request is.
+          if (
+            latestBeforeSnapshot?.status === "in_progress" &&
+            activeRequest?.id !== latestBeforeSnapshot.id
+          ) {
+            // The request that was running before the snapshot is not the one
+            // we are about to attach to (often there is nothing to attach to
+            // at all). The snapshot we applied may predate its final items, so
             // without this the session sits incomplete until the consumer
             // remounts or refreshes by hand. Re-read once to catch up.
+            //
+            // Ordered before the attach below: `applySnapshot` loads the
+            // snapshot over the item store, so running it after a stream had
+            // opened would drop whatever that stream had already delivered.
             const catchUpSnapshot = await fetchSessionSnapshot();
 
             if (cancelled) return;
@@ -1102,14 +1122,18 @@ export function useSession(
 
             // The summary has to agree with the items we just caught up on.
             // `latestRequest` still holds the in-progress record read before
-            // the snapshot, and nothing else will correct it: no stream
-            // attached, so no terminal status event ever arrives. Leaving it
+            // the snapshot. When nothing is attachable nothing else will ever
+            // correct it — no stream, so no terminal status event. Leaving it
             // would show completed work beside a summary that reads in-flight
             // — the same inconsistency this branch exists to remove, one
             // field over.
             await refreshLatestRequest();
 
             if (cancelled) return;
+          }
+
+          if (activeRequest !== undefined) {
+            attachToStream(activeRequest.id);
           }
         }
       } catch (cause) {

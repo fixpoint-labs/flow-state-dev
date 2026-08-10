@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/react": minor
+"@flow-state-dev/react": patch
 ---
 
 `useSession` can show the background work running under a conversation (FIX-1012). `session.workstreams` is a second list beside `items` — one entry per body of work, carrying what a row needs to render and the id needed to open it. Empty for any session that never started background work, and `items` is unchanged for every existing app.

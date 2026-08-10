@@ -168,7 +168,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
   });
 
   it("still reads exactly once per turn with items disabled", async () => {
-    const { result } = await mountSession({ items: { enabled: false } });
+    const { result } = await mountSession({ items: false });
     sessionClientMock.listWorkstreams.mockClear();
 
     await act(async () => {
@@ -313,6 +313,74 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
     expect(result.current.workstreamsStale).toBe(false);
     expect(result.current.workstreams[0]?.status).toBe("completed");
+  });
+
+  it("a read that fails after a newer one succeeded does not mark fresh rows stale", async () => {
+    let rejectFirst: (cause: Error) => void = () => {};
+    const firstRead = new Promise<unknown[]>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+
+    sessionClientMock.listWorkstreams
+      // The mount read: slow, and destined to fail.
+      .mockImplementationOnce(() => firstRead)
+      // A later read that succeeds while the first is still outstanding.
+      .mockResolvedValueOnce([row("ws1", "completed")]);
+
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    await waitFor(() => {
+      expect(result.current.workstreams[0]?.status).toBe("completed");
+    });
+
+    await act(async () => {
+      rejectFirst(new Error("network"));
+      await Promise.resolve();
+    });
+
+    // The rows on screen came from the newer read and are current. A failure
+    // from a read that was already superseded says nothing about them, so
+    // presenting them as possibly out of date would be a lie the user acts on.
+    expect(result.current.workstreams[0]?.status).toBe("completed");
+    expect(result.current.workstreamsStale).toBe(false);
+  });
+
+  it("a read that succeeds after a newer one failed does not clear the stale mark", async () => {
+    let releaseFirst: (rows: unknown[]) => void = () => {};
+    const firstRead = new Promise<unknown[]>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    sessionClientMock.listWorkstreams
+      // The mount read: slow, carrying rows that are already out of date.
+      .mockImplementationOnce(() => firstRead)
+      // A later read that fails while the first is still outstanding.
+      .mockRejectedValueOnce(new Error("network"));
+
+    const { result } = renderHook(() => useSession("sess1", { flowKind: "demo" }));
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    await waitFor(() => {
+      expect(result.current.workstreamsStale).toBe(true);
+    });
+
+    await act(async () => {
+      releaseFirst([row("ws1", "active")]);
+      await Promise.resolve();
+    });
+
+    // The newest thing known about this list is that reading it failed. An
+    // older response arriving afterwards is not evidence it is current again,
+    // and applying it would also regress the rows.
+    expect(result.current.workstreamsStale).toBe(true);
+    expect(result.current.workstreams).toHaveLength(0);
   });
 
   it("clears the axis when the session changes", async () => {

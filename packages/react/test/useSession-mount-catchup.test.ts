@@ -78,9 +78,9 @@ function snapshot(items: unknown[]) {
   };
 }
 
-function request(status: string) {
+function request(status: string, id = "req1") {
   return {
-    id: "req1",
+    id,
     flowKind: "demo",
     actionName: "go",
     userId: "devuser",
@@ -222,6 +222,49 @@ describe("useSession mount catch-up (FIX-1012)", () => {
     expect(order.indexOf("status-read:end")).toBeLessThan(
       order.indexOf("snapshot")
     );
+  });
+
+  it("catches up the older request's items even when a newer request is attachable", async () => {
+    // Two requests overlap on one session — a second tab, or work started
+    // server-side. Request A was running when the snapshot was read and
+    // finished inside the window; request B is newer, still running, and is
+    // what the session now points at. Attaching to B is correct, but B's
+    // stream is request-scoped and will never replay A's final items. Gating
+    // the catch-up on "there was nothing to attach to" therefore loses them,
+    // and if B ends without a completion refresh nothing else goes back for
+    // them either.
+    sessionClientMock.getSession.mockResolvedValue({
+      id: "job1",
+      flowKind: "demo",
+      userId: "devuser",
+      createdAt: 0,
+      updatedAt: 0,
+      latestRequestId: "req2"
+    });
+
+    sessionClientMock.getSessionState
+      .mockResolvedValueOnce(snapshot([]))
+      .mockResolvedValueOnce(snapshot([message("m_final", "A's last step")]));
+
+    sessionClientMock.listSessionRequests.mockImplementation(
+      async (_sessionId: string, options?: { status?: string }) =>
+        options?.status === "in_progress"
+          ? // B is running and is the session's latest, so it is attachable.
+            [request("in_progress", "req2")]
+          : // Before the snapshot, A was the latest and still running.
+            [request("in_progress", "req1")]
+    );
+
+    const { result } = renderHook(() =>
+      useSession("job1", { flowKind: "demo", autoResume: true })
+    );
+
+    await waitFor(() => {
+      expect(result.current.items.map((item) => item.id)).toContain("m_final");
+    });
+
+    // The mount snapshot plus the catch-up.
+    expect(sessionClientMock.getSessionState).toHaveBeenCalledTimes(2);
   });
 
   it("does not re-read the snapshot when the session was already idle at mount", async () => {
