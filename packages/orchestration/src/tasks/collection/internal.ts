@@ -498,9 +498,28 @@ export const DEFAULT_LEASE_DURATION_MS = 30_000;
  *
  * `claimedBy` takes a **narrowed** identity rather than a `BlockContext` on
  * purpose: the write path has no business holding a context, and a plain value
- * is what makes the field testable without one. Omitted when the caller has no
- * identity to supply (a directly-constructed backing in a test), in which case
- * the field stays absent and nothing infers from it (BP-030).
+ * is what makes the field testable without one.
+ *
+ * It is written **unconditionally** — set when the caller has an identity,
+ * cleared when it does not. A conditional spread would be wrong here even
+ * though it reads as the careful option: `claimedBy` is written onto a spread
+ * of the *incoming* task, so adding nothing leaves the previous attempt's
+ * coordinate in place, now paired with a fresh attempt and a fresh lease. That
+ * is worse than absent, because absent is a state readers are told to expect
+ * and handle (BP-030) while a stale coordinate reads as current. Clearing with
+ * `undefined` is the same shape the claim-clear sites use.
+ *
+ * `startedAt` is the deliberate contrast a few lines down: it *does* inherit,
+ * because it answers "when did work on this task first begin", which a
+ * re-claim does not change.
+ *
+ * `incarnationId` (FIX-989) inherits too, and for the same kind of reason —
+ * do not "fix" it to match this field. The two are scoped differently:
+ * `claimedBy` belongs to one *attempt*, so every claim must re-establish or
+ * clear it, while `incarnationId` identifies the *row* for its whole life and
+ * is minted once at creation. A field that is supposed to outlive the write
+ * carrying it forward is correct; a per-attempt field doing so is the bug
+ * above.
  */
 export function applyClaimToTask<TInput, TOutput>(
   task: Task<TInput, TOutput>,
@@ -514,7 +533,7 @@ export function applyClaimToTask<TInput, TOutput>(
     attempts: task.attempts + 1,
     startedAt: task.startedAt ?? now,
     leaseUntil: now + leaseDurationMs,
-    ...(claimedBy !== undefined ? { claimedBy } : {}),
+    claimedBy,
     updatedAt: now,
   };
 }
