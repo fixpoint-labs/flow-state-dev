@@ -7,6 +7,8 @@
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ticketNamesTask } from "../claim-ticket";
+import { generateId } from "../generate-id";
+import { initialWriteProvenance } from "../write-provenance";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
@@ -19,10 +21,8 @@ import type {
   TaskWriteDeclineReason,
 } from "./types";
 
-let idCounter = 0;
 function generateTaskId(): string {
-  idCounter += 1;
-  return `task_${Date.now().toString(36)}_${idCounter}_${Math.random().toString(16).slice(2, 8)}`;
+  return generateId("task");
 }
 
 /**
@@ -46,12 +46,37 @@ export function createTaskHandleWrapper<TInput, TOutput>(
   });
 }
 
-/** Build a fresh task from a `TaskInit`, stamping defaults and timestamps. */
+/**
+ * Build a fresh task from a `TaskInit`, stamping defaults and timestamps.
+ *
+ * The convergence point for a task's *initial* write provenance (FIX-989):
+ * every add path on both backings builds its task here, so revision 1, the
+ * truncation marker, and the incarnation nonce are set once rather than at
+ * four call sites.
+ *
+ * `incarnationId` is minted here rather than folded into
+ * `initialWriteProvenance()` because it answers a different question — task
+ * *identity* across delete/recreate, not write bookkeeping — but it is
+ * stamped at the same site for the same reason: one place, covering all four
+ * add paths, so a recreated row can never end up sharing an incarnation with
+ * the row it replaced.
+ *
+ * Minted with `crypto.randomUUID()`, not `generateId` — the nonce is persisted
+ * and compared across processes (a resource-backed board on SQLite/Postgres is
+ * explicitly multi-process), and `generateId`'s own header says nothing about
+ * it compares across machines: its counter is per-process and its random tail
+ * is only 24 bits, so two processes can mint the same value. `generateId` stays
+ * for task ids themselves — that scheme is pre-existing and changing it would
+ * alter an already-persisted id format — but the nonce is new in this PR and
+ * has no such compatibility concern.
+ */
 export function buildInitialTask<TInput, TOutput>(
   init: TaskInit<TInput>,
   now: number
 ): Task<TInput, TOutput> {
   return {
+    ...initialWriteProvenance(),
+    incarnationId: crypto.randomUUID(),
     id: init.id ?? generateTaskId(),
     goal: init.goal,
     title: init.title,

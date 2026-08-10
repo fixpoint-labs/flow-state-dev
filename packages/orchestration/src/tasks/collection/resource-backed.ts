@@ -108,6 +108,7 @@ import {
   routeFailure,
   transitionDeclineReason,
 } from "./internal";
+import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
 /**
@@ -407,7 +408,17 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           throw new WriteDeclined(reason, task.status);
         }
         assertTransitionAllowed(task.status, targetStatus, id);
-        const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
+        // Stamped here, inside the serialized write, off the `task` this
+        // invocation read. Since FIX-992 this updater is re-run against
+        // refreshed state on a version conflict, so a stamp derived from
+        // anything captured outside would describe an attempt that never
+        // committed — deriving it from `current` is what makes a replay correct
+        // with nothing to reset (FIX-989).
+        const next = stampWrite(
+          task,
+          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          guards?.write
+        );
         return {
           state: next as unknown as JsonObject,
           result: { task: next, prevStatus: task.status },
@@ -463,7 +474,9 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
         }
         const update = patch(task);
         if (update === undefined) return { state: current, result: undefined };
-        const next = applyTransition(task, update, now());
+        // No token: these five methods take no options object, so they bump the
+        // revision and mint no receipt (FIX-989).
+        const next = stampWrite(task, applyTransition(task, update, now()));
         return { state: next as unknown as JsonObject, result: next };
       });
     } catch (err) {
@@ -538,7 +551,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           // Re-check eligibility on the freshest state — another worker
           // may have claimed this task in the time between scan and CAS.
           if (!eligibility(task as Task)) return { state: current, result: undefined };
-          const next = applyClaimToTask(task, now(), leaseDurationMs);
+          const next = stampWrite(task, applyClaimToTask(task, now(), leaseDurationMs));
           return {
             state: next as unknown as JsonObject,
             result: { task: next, prevStatus: task.status },
@@ -710,12 +723,12 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           // Preserve `assignee` — it's the user-set worker-registry
           // routing key, not the runtime worker identity. Clearing it
           // would break re-dispatch through a worker registry.
-          const reset: Task<TInput, TOutput> = {
+          const reset: Task<TInput, TOutput> = stampWrite(t, {
             ...t,
             status: "pending",
             leaseUntil: undefined,
             updatedAt: at,
-          };
+          });
           return { state: reset as unknown as JsonObject, result: reset };
         });
 

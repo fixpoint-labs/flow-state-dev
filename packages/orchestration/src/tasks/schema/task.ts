@@ -85,6 +85,85 @@ export const taskSchema = z.object({
   labels: z.array(z.string()).optional(),
   metadata: z.record(z.unknown()).optional(),
 
+  /**
+   * Committed-write counter, bumped by **every** write that changed this task,
+   * whoever made it (FIX-989).
+   *
+   * Declared here rather than added by the backings because a durable task is
+   * validated by `taskEnvelopeSchema` on its way to the store, and a Zod object
+   * schema strips keys it does not declare — an undeclared field would work
+   * perfectly on the two in-memory backings and vanish on the one that
+   * persists.
+   *
+   * **Absent on any task persisted before FIX-989**, and on any task written by
+   * a hand-written `TaskCollectionRef` that maintains no provenance. Read it
+   * through `didWriteLand`, which `== null`-guards it and answers "cannot tell"
+   * (BP-030) — never treat an absent revision as "nothing has happened".
+   */
+  revision: z.number().int().optional(),
+  /**
+   * Bounded, newest-last log of write receipts (FIX-989).
+   *
+   * Appended only when a caller handed a write token in, so this is not an
+   * audit trail of all activity — `task-change` events already carry that. It
+   * exists so a caller whose call *threw* can find out whether its own write
+   * committed, which a return value cannot tell it.
+   *
+   * Deliberately carries no enum and no free-form kind: a `safeParse` failure
+   * on the durable path persists `{}`, so one unrecognised enum value on a
+   * persisted field would wipe the task record.
+   */
+  writeLog: z
+    .array(
+      z.object({
+        /** The caller's write-token id. */
+        id: z.string(),
+        /** The revision this write committed at. */
+        revision: z.number().int(),
+      })
+    )
+    .optional(),
+  /**
+   * Has `writeLog` ever dropped a receipt (FIX-989)?
+   *
+   * A field rather than a derivation, and that was checked rather than assumed.
+   * The tempting derivation — *"the log is under the cap, so it never
+   * evicted"* — is sound for a fixed cap and **unsafe the moment the cap
+   * changes**: a log written under a cap of 4 that did evict still has length
+   * 4, and reading it later under a cap of 8 makes `4 < 8` look like "never
+   * evicted", producing a confident "did not land" for a write that landed.
+   * That is the permissive direction, so one monotonic field is paid for
+   * instead — and it keeps the read rule free of any cap constant.
+   *
+   * Written whenever `revision` is, so it is present on every record the
+   * substrate wrote. Absent means legacy or a non-provenance ref.
+   */
+  writeLogTruncated: z.boolean().optional(),
+  /**
+   * A per-incarnation identity nonce, minted once when the task is created and
+   * never touched again (FIX-989 follow-up).
+   *
+   * `createdAt` cannot serve as incarnation identity: it is a millisecond
+   * clock, and a delete-then-recreate under the same id lands in the same
+   * millisecond often enough (measured 198/200) that two different rows share
+   * it. `incarnationId` is minted fresh with `crypto.randomUUID()`, so a
+   * recreated row gets a new one every time, clock collisions or not — and
+   * because it is persisted and compared across processes on a durable board,
+   * it needs a generator that is unique across them, which `generateId`'s
+   * per-process counter and 24-bit random tail are not.
+   *
+   * Declared here rather than added by the backings for the identical reason
+   * `revision` is: a durable task is validated by `taskEnvelopeSchema` on its
+   * way to the store, and a Zod object schema strips keys it does not
+   * declare.
+   *
+   * **Absent on any task persisted before this shipped**, and on any task
+   * written by a hand-written `TaskCollectionRef` that maintains no
+   * provenance. Read it only through `didWriteLand`'s incarnation arm, which
+   * withholds rather than guessing when either side lacks it (BP-030).
+   */
+  incarnationId: z.string().optional(),
+
   createdAt: z.number(),
   updatedAt: z.number(),
   startedAt: z.number().optional(),
@@ -103,5 +182,10 @@ export type Task<TInput = unknown, TOutput = unknown> = Omit<
   input?: TInput;
   output?: TOutput;
 };
+
+/** One entry in {@link taskSchema}'s `writeLog` — a caller's write id and the revision it committed at. */
+export type TaskWriteReceipt = NonNullable<
+  z.infer<typeof taskSchema>["writeLog"]
+>[number];
 
 export type { TaskStatus };

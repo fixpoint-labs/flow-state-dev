@@ -39,6 +39,7 @@ import {
   sumGrantedRetries,
   transitionDeclineReason,
 } from "./internal";
+import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import {
   TaskCapExceededError,
@@ -290,7 +291,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
           };
         }
         assertTransitionAllowed(task.status, targetStatus, id);
-        const next = applyTransition(task, { ...patch(task), status: targetStatus }, now());
+        // Provenance is stamped here, inside the CAS, off the `task` this
+        // invocation read — so a replay against a fresher map stamps off that
+        // map and there is nothing to reset (FIX-989).
+        const next = stampWrite(
+          task,
+          applyTransition(task, { ...patch(task), status: targetStatus }, now()),
+          guards?.write
+        );
         return {
           state: { ...tasks, [id]: next },
           result: { kind: "recorded", changeKind: kind, task: next, prevStatus: task.status },
@@ -347,7 +355,9 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         }
         const update = patch(task);
         if (update === undefined) return { state: undefined, result: { kind: "unchanged" } };
-        const next = applyTransition(task, update, now());
+        // No token: these five methods take no options object, so they bump the
+        // revision and mint no receipt (FIX-989).
+        const next = stampWrite(task, applyTransition(task, update, now()));
         return {
           state: { ...tasks, [id]: next },
           result: { kind: "recorded", task: next },
@@ -424,10 +434,13 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
         const pick = candidates[0];
         if (pick === undefined) return { state: undefined, result: undefined };
 
-        const next = applyClaimToTask(
+        const next = stampWrite(
           pick,
-          now(),
-          claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS
+          applyClaimToTask(
+            pick,
+            now(),
+            claimOptions?.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS
+          )
         );
         return {
           state: { ...tasks, [next.id]: next },
@@ -589,12 +602,12 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             // Preserve `assignee` — it's the user-set worker-registry
             // routing key, not the runtime worker identity. Clearing it
             // would break re-dispatch through a worker registry.
-            const reset: Task<TInput, TOutput> = {
+            const reset: Task<TInput, TOutput> = stampWrite(task, {
               ...task,
               status: "pending",
               leaseUntil: undefined,
               updatedAt: at,
-            };
+            });
             next[task.id] = reset;
             claimedBack.push(reset);
           }
