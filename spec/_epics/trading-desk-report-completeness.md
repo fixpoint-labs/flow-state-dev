@@ -153,9 +153,11 @@ it — the figure either stops being presented as deterministic, or its inputs s
 invented. A figure whose *inputs* are missing is theme 1's case and nulls.
 
 This binds FIX-1064 (label the proxies rather than silently improving them), FIX-1065 (the
-reward-to-risk figure — see the open question in §5), FIX-1066 (a four-of-six lens pack with
-gap-blind weighting must not present as a full-pack conviction read), and FIX-826 (a trend
-read that cannot characterize strength must not imply that it can).
+reward-to-risk figure — see the open question in §5), FIX-1066 (a convergence read must say
+how many lenses actually returned a verdict and which flagged a data gap — before the pack
+grows it is four of six, and after it grows a lens that ran on thin data still must not count
+as full-pack conviction), and FIX-826 (a trend read that cannot characterize strength must not
+imply that it can).
 
 ### 3. Renderer ownership — who owns which file
 
@@ -224,8 +226,17 @@ is unusually well established: five of the twelve were filed months before this 
 each against a separately observed report defect, and four of those are already `Todo`. The shared
 surfaces (§2 theme 3) turned out on inspection to be *less* entangled than the framing
 assumed. The question an end-state POC exists to answer — *does the division into issues hold
-once it's all there?* — is answerable from the code, and it does. Building a throwaway
-end-state would have cost a worktree to confirm what §2 theme 3 confirms in a grep.
+once it's all there?* — is answerable from the code, and it does: the set is still twelve
+issues and no two of them own the same seam.
+
+**The skip stands; the confidence behind it was overstated, and review proved it.** This
+section first said a grep confirmed what a POC would have. It didn't quite — reading
+`components/theses/**` in isolation is exactly what made FIX-1062 look theses-local, when
+`app/page.tsx` never mounts the theses and transcript panes together on mobile (§2 theme 3).
+A running end-state would have surfaced that in the first click. It cost one review round
+instead, which is a cheaper place to find it than implementation, so the call was still
+right — but "answerable from the code" means answerable by reading the *call sites*, not the
+directory.
 
 **What the report looks like once all twelve land.** The Summary opens with the decision as
 it does today, but the conviction strip now reads against a research-manager stance that is
@@ -264,7 +275,7 @@ this section is the picture of the end state, and the picture includes them.
 | [FIX-780](https://linear.app/fixpoint-labs/issue/FIX-780) | Flat-stance runs stop overloading stop/target with a range | spec | — | — | Todo |
 | [FIX-779](https://linear.app/fixpoint-labs/issue/FIX-779) | Entity-identity validation on discovery snippets | **bug** | — | — | Todo |
 | **C — analytical depth & data honesty** | | | | | |
-| [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads null instead of zero-fill *(sequence first)* | **bug** ⚠ | — | — | Backlog |
+| [FIX-1063](https://linear.app/fixpoint-labs/issue/FIX-1063) | Unavailable payloads *and* short-history live math null instead of zero-fill; owns the BP-030 dual-read at the ingest boundaries *(sequence first, §2 theme 1)* | **bug** ⚠ | — | — | Backlog |
 | [FIX-1064](https://linear.app/fixpoint-labs/issue/FIX-1064) | Valuation multiples labeled or sharpened, not silently blunt | spec | — | — | Backlog |
 | [FIX-1066](https://linear.app/fixpoint-labs/issue/FIX-1066) | Lens pack to 6 *(activates the two lenses `lenses.ts` defers to FIX-705 — a capability add, §1)*; convergence accounts for per-lens data gaps | spec | — | — | Backlog |
 | [FIX-1065](https://linear.app/fixpoint-labs/issue/FIX-1065) | The reward-to-risk figure stops resting on invented inputs | spec | — | — | Backlog |
@@ -280,6 +291,15 @@ that other code depends on and needs a BP-030 dual-read of persisted records (§
 That is escape hatch 3 in "Which issues get a spec": *the "fix" changes a contract other code
 depends on → promote it.* The routing call is the worker's, not this document's; it is named
 here so it is not missed. Nothing else in the set carries this flag.
+
+**Review strengthened the case, and it is recorded rather than acted on.** Both reviewers
+independently read this as a promote, and theme 1 has since widened the issue's scope twice —
+it now also owns the short-history live math path and the single dual-read boundary every
+other issue depends on. That is more contract, not less. The route is still derived from the
+Linear category label on every refresh and the promotion is still the worker's call
+([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec"),
+so this document does not relabel the issue; it records that two reviewers and the epic all
+point the same way.
 
 ## 5. Open cross-cutting questions
 
