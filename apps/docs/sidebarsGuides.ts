@@ -43,8 +43,8 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Background jobs",
-      items: ["background-jobs-bullmq"],
+      label: "Background work",
+      items: ["background-work", "background-jobs-bullmq"],
     },
     {
       type: "category",

@@ -12,6 +12,8 @@ Side chains let you run work in the background without blocking the main pipelin
 
 Work failures never abort the pipeline. The framework logs them and the failed `block_trace` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
 
+A side chain outlives the sequencer that dispatched it, not the request. For work that has to outlive the request or the process, see [Work that outlives the turn](/guides/background-work).
+
 ## Fire-and-forget
 
 ```ts
