@@ -142,6 +142,7 @@ import {
   type TaskWorkerSlotRegistry,
 } from "./detached";
 import { buildDetachedRunner } from "./detached-runner";
+import { createSpawnDetached } from "./blocks/spawn-detached";
 import { coordinateKey } from "./coordinate";
 
 // ---------------------------------------------------------------------------
@@ -764,10 +765,49 @@ export function taskBoard<
   });
   const teardownFlowState = createTeardownBoardFlowState({ name, runState });
 
+  // FIX-982 P3a — the spawn. A detached slot routes to a block that STARTS the
+  // worker in a Workstream and returns, instead of to the worker itself. The
+  // drain's shape is untouched (claim, route, record); only what the route does
+  // changes, so an inline board composes exactly as it did.
+  //
+  // Substituted here rather than inside `buildWorkerStep` because the routing
+  // table is the one place that already maps a coordinate to a block. The
+  // substitute receives the same packed `TaskWorkerInput` an inline worker
+  // would, which is what makes the two paths agree on what the worker sees.
+  const detachedByWorker = new Map<TaskWorker, TaskWorker>();
+  if (boardId !== undefined) {
+    for (const slot of resolvedWorkers.detached) {
+      detachedByWorker.set(
+        slot.worker,
+        createSpawnDetached({
+          name: `${name}-spawn-${slot.label}`,
+          boardId,
+          coordinate: slot.coordinate,
+        }) as unknown as TaskWorker
+      );
+    }
+  }
+  const spawnFor = (worker: TaskWorker): TaskWorker =>
+    detachedByWorker.get(worker) ?? worker;
+
+  const dispatchWorkers: TaskWorker | TaskWorkerRegistry =
+    typeof (workers as { run?: unknown }).run === "function"
+      ? spawnFor(workers as TaskWorker)
+      : Object.fromEntries(
+          Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
+            assignee,
+            spawnFor(worker),
+          ])
+        );
+  const dispatchDefaultWorker =
+    defaultWorker !== undefined ? spawnFor(defaultWorker) : undefined;
+
   const workerStep = buildWorkerStep({
     name,
-    workers,
-    ...(defaultWorker !== undefined ? { defaultWorker } : {}),
+    workers: dispatchWorkers,
+    ...(dispatchDefaultWorker !== undefined
+      ? { defaultWorker: dispatchDefaultWorker }
+      : {}),
     collection: collectionFactory,
     resolveFlowPolicy: createFlowPolicyResolver(runState),
   });
