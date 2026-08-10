@@ -40,7 +40,7 @@ const turn = sequencer({
   .work(captureMemory);
 ```
 
-`respondToUser` streams to the browser and the chain moves straight on. `captureMemory` runs alongside it. The request itself does wait: every queued task settles before the stream closes, so the work finishes even when the user closes the tab. A failure is logged rather than surfaced, which is the trade you take for not blocking.
+`respondToUser` streams to the browser and the chain moves straight on. `captureMemory` runs alongside it. On a run that finishes normally the request waits: every queued task settles before the stream closes. Closing the tab doesn't cancel that work — background tasks deliberately don't listen to the transport signal — but nothing waits for it either, so a process that shuts down first can still drop it. An explicit abort does cancel it. A failure is logged rather than surfaced, which is the trade you take for not blocking.
 
 Reach for it when the work is cheap, best-effort, and belongs to the turn that produced it. Analytics, cache warming, memory writes, auto-titling.
 
@@ -101,7 +101,7 @@ Read next: **[Background work](/docs/server/background-work)** for the HTTP surf
 
 ## Watching any of it
 
-Whichever path the work takes, the thing you observe is a request. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.
+Whichever path the work takes, the thing you observe is a request — for a side chain, the request it runs inside; for the other two, one of their own. Every run has an id, a lifecycle status, and an item log, and the same tools read all three.
 
 - Attach live with `GET /api/flows/:kind/requests/:requestId/stream`. See [Streaming](/docs/streaming/overview).
 - Read a session's runs with `listSessionRequests`, and a conversation's jobs with `listWorkstreams`. See [Client API](/docs/api/client).
