@@ -97,6 +97,19 @@ export function assertJsonSafe(
     }
 
     const obj = node as object;
+    // A symbol-keyed property is invisible to `Object.entries` AND to
+    // `JSON.stringify` — so `{ [Symbol("token")]: "x" }` arrives as `{}` with
+    // nothing anywhere saying a property was dropped. Checked on every object,
+    // arrays included.
+    const symbols = Object.getOwnPropertySymbols(obj);
+    if (symbols.length > 0) {
+      throw new Error(
+        `${options.label} is not JSON-safe: ${joinPath(path)} has symbol-keyed ` +
+          `${symbols.length === 1 ? "property" : "properties"} ` +
+          `(${symbols.map((s) => s.toString()).join(", ")}), which are dropped entirely.`
+      );
+    }
+
     if (onPath.has(obj)) {
       throw new Error(
         `${options.label} is not JSON-safe: ${joinPath(path)} contains itself, so it cannot be ` +
@@ -121,6 +134,19 @@ export function assertJsonSafe(
         }
         walk(node[index]);
         path.pop();
+      }
+      // An array's own string-keyed properties beyond its indices are dropped
+      // the same way a symbol key is: `const a = [1]; a.total = 1` serializes to
+      // `[1]`, and the index loop above would never look at `total`.
+      const extras = Object.keys(node).filter(
+        (key) => !/^(?:0|[1-9]\d*)$/.test(key) || Number(key) >= node.length
+      );
+      if (extras.length > 0) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)} is an array carrying ` +
+            `non-index ${extras.length === 1 ? "property" : "properties"} ` +
+            `(${extras.join(", ")}), which are dropped entirely. Use an object instead.`
+        );
       }
       onPath.delete(obj);
       return;

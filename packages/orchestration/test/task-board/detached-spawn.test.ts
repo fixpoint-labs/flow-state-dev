@@ -15,7 +15,7 @@
  * BY NAME or the gate is decorative.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { taskBoard, coordinateKey } from "../../src/task-board";
 import { defineTaskCollection } from "../../src/tasks";
@@ -77,6 +77,40 @@ describe("a detached slot routes to the spawn, not to the worker", () => {
     const bindings = [...(board.drain.workstreamBindings?.values() ?? [])];
     expect(bindings).toHaveLength(1);
     expect(bindings[0]!.coordinateKey).toBe(coordinateKey({ kind: "assignee", name: "background" }));
+  });
+
+  it("still installs a resource only the detached worker declares", () => {
+    // The substitution takes the worker off the drain's routing table, so it is
+    // no longer reachable from any action root — and `defineFlow` collects
+    // resources from exactly that reachable set. Without folding the board's
+    // runner into the collection, a resource declared only by a detached worker
+    // vanishes from `flow.resources` and the failure surfaces much later, as an
+    // unresolved resource inside the Workstream.
+    const auditLog = defineResource({
+      name: "detached-audit-log",
+      scope: "user",
+      load: () => ({ entries: [] }),
+    });
+    const implement = handler({
+      name: "implement-with-resource",
+      inputSchema: z.unknown(),
+      resources: { auditLog },
+      execute: () => ({ done: true }),
+    });
+
+    const board = taskBoard({
+      name: "resourceful",
+      boardId: "resourceful",
+      collection: ledger(),
+      workers: { implement: { worker: implement, dispatch: { mode: "detached" } } },
+    });
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: board.drain } },
+    } as never)({ id: "board" });
+
+    expect(Object.keys(flow.resources ?? {})).toContain("auditLog");
   });
 
   it("leaves an inline board's routing untouched", () => {
@@ -170,6 +204,23 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     sparse[1] = 2;
     expect(() => assertJsonSafe({ rows: sparse }, { label })).toThrow(
       /\.rows\[0\] is a hole in a sparse array/
+    );
+  });
+
+  it("rejects a symbol-keyed property, which vanishes with no trace", () => {
+    // Invisible to `Object.entries` AND to `JSON.stringify`, so the walk would
+    // never look at it and the value would arrive `{}` with nothing saying a
+    // property was dropped.
+    expect(() => assertJsonSafe({ auth: { [Symbol("token")]: "x" } }, { label })).toThrow(
+      /\.auth has symbol-keyed property/
+    );
+  });
+
+  it("rejects an array's non-index properties, dropped the same way", () => {
+    const rows: unknown[] & { total?: number } = [1, 2];
+    rows.total = 2;
+    expect(() => assertJsonSafe({ rows }, { label })).toThrow(
+      /\.rows is an array carrying non-index property \(total\)/
     );
   });
 

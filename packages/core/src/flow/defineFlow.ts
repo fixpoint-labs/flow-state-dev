@@ -442,6 +442,21 @@ function collectWorkstreamBindings(
 }
 
 /** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
+/**
+ * The distinct runner blocks in a binding set (FIX-982 P3a).
+ *
+ * Deduped by reference, because a board stamps ONE runner onto every binding it
+ * declares — a board with twelve detached workers must contribute its runner
+ * once, not twelve times, or every resource it declares is merged repeatedly.
+ */
+function distinctRunners(bindings: WorkstreamBindings): BlockDefinition[] {
+  const seen = new Set<BlockDefinition>();
+  for (const binding of bindings.values()) {
+    if (binding.runner != null) seen.add(binding.runner as BlockDefinition);
+  }
+  return [...seen];
+}
+
 function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
   for (const block of blocks) {
     if (block.requiresOrg) return true;
@@ -802,7 +817,29 @@ function createFlowInstance(
     workMerged
   );
 
-  const blockResources = collectBlockResources(declaredBlocks);
+  // Bindings are collected FIRST, because a detached worker is no longer
+  // reachable through the blocks above and its declarations would otherwise be
+  // lost (FIX-982 P3a).
+  //
+  // The drain substitutes a spawn block for each detached worker in its routing
+  // table, so the worker itself is not a child of any action root. The block
+  // that DOES contain it is the board's runner, which reaches the flow only as a
+  // binding. Collect resources and `requiresOrg` over the action blocks plus
+  // those runners, or a worker whose resource nothing inline happens to also
+  // declare would be missing from `flow.resources` — and the failure surfaces as
+  // an unresolved resource inside the Workstream, far from the declaration.
+  // `requiresOrg` is worse: it would simply not be enforced.
+  const workstreamBindings = collectWorkstreamBindings(declaredBlocks);
+  // Reachability stays on the ORIGINAL list: the question it answers is whether
+  // the flow can route to a board it can reach, and the runners are what it
+  // would route to, so including them would make the check trivially true.
+  assertWorkstreamBindingsReachable(kind, declaredBlocks, workstreamBindings);
+  const declaringBlocks =
+    workstreamBindings === undefined
+      ? declaredBlocks
+      : [...declaredBlocks, ...distinctRunners(workstreamBindings)];
+
+  const blockResources = collectBlockResources(declaringBlocks);
   const flowOwnResources = options?.resources ?? definition.resources;
   // Accessor keys declared in the flow's OWN `resources` map, captured before
   // block-tree/capability resources bubble up and merge in (FIX-688). The
@@ -848,8 +885,6 @@ function createFlowInstance(
     validateConcurrencyConfig(`Flow "${kind}" action "${actionName}"`, action.concurrency);
   }
 
-  const workstreamBindings = collectWorkstreamBindings(declaredBlocks);
-  assertWorkstreamBindingsReachable(kind, declaredBlocks, workstreamBindings);
   // The one core a detached dispatch resolves (FIX-982 P3a). Assembled here
   // because this is the only point that holds every board's bindings at once,
   // and `undefined` for a flow that declares no detached work — which is what
@@ -861,7 +896,7 @@ function createFlowInstance(
     id: options?.id ?? kind,
     kind,
     requireUser,
-    requiresOrg: collectRequiresOrg(declaredBlocks),
+    requiresOrg: collectRequiresOrg(declaringBlocks),
     authentication,
     actions,
     workstreamBindings,

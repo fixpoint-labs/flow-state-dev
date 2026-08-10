@@ -46,7 +46,11 @@ import type { WorkstreamDispatchInput } from "@flow-state-dev/core";
 import { z } from "zod";
 import { ticketForClaim } from "../tasks/claim-ticket";
 import { startLeaseRenewal } from "../tasks/lease-renewal";
-import { stampLeaseRenewal, withLeaseRenewalScope } from "../tasks/lease-renewal-scope";
+import {
+  currentLeaseRenewal,
+  stampLeaseRenewal,
+  withLeaseRenewalScope,
+} from "../tasks/lease-renewal-scope";
 import { stampCurrentClaim } from "./flow-policy-wiring";
 import { coordinateKey, type WorkerCoordinate } from "./coordinate";
 import { createRecordError, createRecordSuccess } from "./blocks/record-result";
@@ -333,7 +337,30 @@ export function buildDetachedRunner(
     .step(
       workerRouter.connectInput<WorkstreamDispatchInput>(
         (dispatch: WorkstreamDispatchInput) => dispatch.payload
-      )
+      ),
+      {
+        // The same two lifecycle options the inline worker body carries, for the
+        // same reasons — a detached worker is not a different kind of worker.
+        //
+        // Losing the claim stops the worker paying for work it can no longer
+        // record. It is not what makes the hand-off safe (the substrate's write
+        // fence is), but without it a displaced worker runs to completion and
+        // its result is then declined.
+        abortSignal: () => currentLeaseRenewal()?.signal,
+        // Suspension is the one exit neither recorder below sees:
+        // `SuspensionError` bypasses `.rescue()` by design, and a suspended
+        // request never aborts its signal. Without this the driver would renew
+        // an `in_progress` row for as long as the host lives — the task held by
+        // a worker that is parked, recoverable by nobody. That is the deadlock
+        // the lease exists to remove, rebuilt out of a park.
+        //
+        // ONLY on that exit: the returned and threw paths still owe the
+        // substrate a ticket-fenced write, and stopping renewal before it would
+        // get a healthy worker's result declined on a lapsed lease.
+        onSettled: (_ctx, outcome) => {
+          if (outcome === "suspended") currentLeaseRenewal()?.stop();
+        },
+      }
     )
     // The Workstream settles its own task, through the SAME fenced recorders the
     // inline drain uses — not a second settlement path. Both read the claim off
