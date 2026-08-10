@@ -195,7 +195,15 @@ work. Two helpers do it for you: `withLeaseRenewal` wraps work that is a single
 call, and `startLeaseRenewal` returns a `{ signal, stop }` driver for work that
 spans several steps. Both renew in the background while the work runs, keep one
 renewal in flight at a time, and stop when the signal you hand them aborts.
-Both also give you a second signal that fires the moment the claim is lost.
+Both also give you a second signal that aborts when a renewal comes back
+declined. `withLeaseRenewal` composes it with the signal you passed and hands
+`run` the result; `startLeaseRenewal` exposes it bare as `driver.signal`, so
+compose that one yourself. Loss is detected at a renewal rather than the instant
+it happens, and one goes out every third of the lease, so the signal can lag a
+lost claim by about 40 seconds on the two-minute default. It is there to stop you
+paying for work you can no longer record; the fence on the settling write is what
+keeps the result correct.
+
 Settle the task inside `withLeaseRenewal`'s `run`: it stops renewing the moment
 `run` returns, so a `complete()` or `fail()` issued after it is a fenced write
 on a lease nobody is keeping alive.

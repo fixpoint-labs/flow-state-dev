@@ -368,7 +368,9 @@ The lease is the knob for how long a stranded job stays stranded, and picking it
 
 Two helpers do the renewing for you. `withLeaseRenewal` wraps work that is a single call. `startLeaseRenewal` returns a `{ signal, stop }` driver for work that spans several steps, and you call `stop()` yourself on every path out. Both renew in the background while the work runs and keep one renewal in flight at a time.
 
-Two signals are in play and they answer different questions. The `signal` you pass in, normally `ctx.signal`, says when to stop *renewing*: a cancelled request is no longer a live worker, so the driver stops pushing the deadline out. The signal you get back says when to stop *working*, and it aborts the moment the claim is lost. `withLeaseRenewal` hands that one to `run`; `startLeaseRenewal` exposes it as `driver.signal`. Run the work under both.
+Two signals are in play and they answer different questions. The `signal` you pass in, normally `ctx.signal`, says when to stop *renewing*: a cancelled request is no longer a live worker, so the driver stops pushing the deadline out. The other says when to stop *working*, and it aborts when a renewal attempt comes back declined. `withLeaseRenewal` composes the two and hands `run` the result, so pass what you are given straight to the work.
+
+Loss is detected at a renewal, not the instant it happens. One goes out every third of the lease, so a task cancelled, settled, or reclaimed just after a successful renewal leaves the signal clear until the next attempt: about 40 seconds on the two-minute default. The signal is there to stop you paying for work you can no longer record. Correctness comes from the fence on the settling write, so make the work idempotent or cheap to repeat.
 
 ```ts
 import { ticketForClaim, withLeaseRenewal } from "@flow-state-dev/orchestration";
@@ -383,25 +385,18 @@ await withLeaseRenewal({
   ticket: claim,
   claimedTask: task, // the task exactly as claim() returned it
   signal: ctx.signal,
-  async run(leaseLost) {
-    // Either signal ends the work: the request was cancelled, or the
-    // claim was taken back.
-    const signal =
-      ctx.signal === undefined
-        ? leaseLost
-        : AbortSignal.any([ctx.signal, leaseLost]);
-
+  async run(signal) {
+    // Aborts on either: the request was cancelled, or the claim was
+    // taken back.
     const summary = await summarize(task.goal, { signal });
     await tasks.complete(task.id, summary, { ifAllowed: true, claim });
   },
 });
 ```
 
-Run the work under `leaseLost` alone and a cancelled request does not stop it. Renewal stops, the lease lapses, and another worker is free to claim the task while the original work keeps running and keeps costing you. A step dispatched with `.step(block, { abortSignal })` gets that composition for free. Doing it by hand is the cost of driving `claim` yourself.
-
 Settle the task inside `run`. Renewal has to outlive the write it protects: `complete()` and `fail()` are fenced on the claim ticket, and the fence refuses a ticketed write once the lease has run out. The span to cover is claim through settlement, not claim through the work returning. `withLeaseRenewal` stops renewing as soon as `run` returns, so a settling write issued after it is one slow store round trip from being refused, and a refused result puts the task back in the queue for another worker to run from the top.
 
-Work that doesn't fit in one callback uses `startLeaseRenewal` instead, with `stop()` in a `finally` that closes after the settling write.
+Work that doesn't fit in one callback uses `startLeaseRenewal` instead, with `stop()` in a `finally` that closes after the settling write. The driver composes nothing for you: `driver.signal` is lease loss on its own, so run the work under it and `ctx.signal` together, with `AbortSignal.any` and a guard for a `ctx.signal` that is undefined. A step dispatched with `.step(block, { abortSignal })` gets that composition for free.
 
 ### When a job keeps being abandoned
 
