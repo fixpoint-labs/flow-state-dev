@@ -457,16 +457,30 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
 // value here. This mirrors its shape locally, reading `process.env` off
 // `globalThis` the same way `resolveFetch` reads `fetch` (../internal/http.ts)
 // rather than assuming Node's ambient `process` global.
+//
+// The indirect `globalThis.process` read means a bundler's build-time
+// `process.env.NODE_ENV` replacement can't eliminate this branch in a
+// production bundle — a bare `process.env.NODE_ENV` reference would throw in
+// an unbundled browser instead, which is worse. That dead-code loss is a
+// deliberate, cheap trade for a branch this small; don't "fix" it back to a
+// bare reference.
+//
+// Default must be silent, not loud: `isDevEnv` requires an explicit
+// "development" (or "test", so this suite exercises the warning) rather than
+// treating "not production" as development. A production browser normally
+// has no `process` global at all, so a fail-open default (silent only when
+// NODE_ENV is explicitly "production") would warn — with session and row
+// identifiers — everywhere that isn't a bundled dev build.
 const warnedParentMismatches = new Set<string>();
 
-function isProductionEnv(): boolean {
+function isDevEnv(): boolean {
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } })
     .process?.env;
-  return env?.NODE_ENV === "production";
+  return env?.NODE_ENV === "development" || env?.NODE_ENV === "test";
 }
 
 function warnParentMismatchOnce(key: string, message: string): void {
-  if (isProductionEnv()) return;
+  if (!isDevEnv()) return;
   if (warnedParentMismatches.has(key)) return;
   warnedParentMismatches.add(key);
   // eslint-disable-next-line no-console

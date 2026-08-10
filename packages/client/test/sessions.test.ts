@@ -303,6 +303,32 @@ describe("createSessionClient.listWorkstreams", () => {
     spy.mockRestore();
   });
 
+  it("stays silent on a mismatch when no process global is present (production browser)", async () => {
+    // The default a bundler ships to a production browser: no `process` at
+    // all, not `NODE_ENV === "production"`. The guard must fail closed here,
+    // not treat the absence as development.
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("process", undefined);
+    try {
+      const fetcher = vi.fn<ClientFetch>(async () =>
+        createJsonResponse({
+          workstreams: [
+            { ...WORKSTREAM, id: "ws_silent_child", parentSessionId: "sess_silent_other" }
+          ]
+        })
+      );
+      const client = createSessionClient({ fetcher });
+
+      const result = await client.listWorkstreams("sess_silent_parent");
+
+      expect(result).toEqual([]);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      spy.mockRestore();
+    }
+  });
+
   it("rejects an empty parent session id", async () => {
     const fetcher = vi.fn<ClientFetch>(async () =>
       createJsonResponse({ workstreams: [] })
